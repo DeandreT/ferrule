@@ -149,10 +149,6 @@ fn unsupported_constant_domains_and_enumerations_reject_exactly() {
         (r#"{"title":"x","enum":[]}"#, "no possible values"),
         (r#"{"title":"x","enum":"x"}"#, "must be an array"),
         (
-            r#"{"title":"x","enum":["a","b"]}"#,
-            "typed allowed-value metadata",
-        ),
-        (
             r#"{"title":"x","const":"c","enum":["a","b"]}"#,
             "no value in common",
         ),

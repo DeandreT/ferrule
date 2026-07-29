@@ -125,6 +125,7 @@ internal static partial class Program
                 "{}"));
 
         JsonConstantBoundaries();
+        JsonAllowedValuesBoundaries();
         JsonRangeBoundaries();
         JsonMultipleOfBoundaries();
         JsonItemCountBoundaries();

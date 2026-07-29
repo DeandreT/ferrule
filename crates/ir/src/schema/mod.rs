@@ -1,4 +1,5 @@
 mod item_count_range;
+mod json_allowed_values;
 mod json_format_annotations;
 mod json_multiple_of;
 mod json_pattern_constraints;
@@ -6,6 +7,11 @@ mod numeric_range;
 mod string_length_range;
 
 pub use item_count_range::ItemCountRange;
+pub use json_allowed_values::{
+    JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
+    MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
+    MAX_JSON_ALLOWED_VALUES,
+};
 pub use json_format_annotations::{
     JsonFormatAnnotations, JsonFormatAnnotationsError, MAX_JSON_FORMAT_ANNOTATION_BYTES,
     MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES, MAX_JSON_FORMAT_ANNOTATIONS,

@@ -9,6 +9,7 @@ use super::import;
 use crate::JsonFormatError;
 
 mod all_of;
+mod allowed_values;
 mod constraints;
 mod export_validation;
 mod formats;

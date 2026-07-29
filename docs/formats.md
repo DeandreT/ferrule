@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, ordinary scalar `const` and singleton `enum`, exact numeric ranges and decimal `multipleOf`, exact array-count and Unicode string-length intervals, bounded portable string `pattern` assertions, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count and Unicode string-length intervals, bounded portable string `pattern` assertions, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -58,11 +58,13 @@ layout and dialect details that an extension cannot express.
   from value nullability, including declared names on closed objects and named
   runtime properties on open objects. Required-only schemas without an object
   shape remain outside the subset because they also admit every non-object value.
-  Ordinary scalar `const` and equivalent singleton `enum` constraints are
-  enforced on both input and output and survive export. A `const` combined with
-  a larger `enum` is supported when the constant is a member; general
-  multi-value enums remain unsupported until the IR can retain an allowed-value
-  set without widening the boundary.
+  Bounded scalar `const` and `enum` constraints are enforced exactly on both
+  input and normalized output and survive canonical export. Sets may combine
+  strings, booleans, signed integers, exactly representable finite numbers, and
+  JSON null. References and compatible `allOf` intersect their values; finite
+  scalar `anyOf` takes their union, while `oneOf` retains values admitted by
+  exactly one branch. Structured object and array enum members remain outside
+  the scalar mapping model.
   Ordinary `minimum`, `maximum`, `exclusiveMinimum`, and `exclusiveMaximum`
   constraints are likewise enforced for concrete integer and finite-number
   scalars, including nullable scalar wrappers. Integer constraints normalize to
