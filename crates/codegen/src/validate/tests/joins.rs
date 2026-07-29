@@ -53,6 +53,7 @@ fn join_program() -> Program {
                 .repeating(),
             ],
         ),
+        dynamic: None,
     });
     program.target = SchemaNode::group(
         "Target",
@@ -205,6 +206,7 @@ fn correlated_join_aggregate_program() -> Program {
                     .repeating(),
                 ],
             ),
+            dynamic: None,
         }],
         target: SchemaNode::group(
             "Target",

@@ -10,6 +10,7 @@ mod adjacency_tree;
 mod aggregate;
 mod context;
 mod dynamic_document;
+mod dynamic_source;
 mod dynamic_target;
 mod failure;
 mod generated_sequence;
@@ -32,6 +33,10 @@ pub use context::{
     ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
 pub use dynamic_document::dynamic_document;
+pub use dynamic_source::{
+    DynamicJsonSourceLoader, DynamicSourceItems, DynamicSourceLoader, MAX_DYNAMIC_SOURCE_BYTES,
+    MAX_DYNAMIC_SOURCE_LOADS, MAX_DYNAMIC_SOURCE_PATH_BYTES, MAX_DYNAMIC_SOURCE_TOTAL_BYTES,
+};
 pub use dynamic_target::{dynamic_property_name, insert_dynamic_field, merge_dynamic_fragments};
 pub use failure::mapping_failure;
 pub use functions::FunctionError;
@@ -169,6 +174,27 @@ pub enum RuntimeError {
     },
     UnexpectedNamedSource {
         name: String,
+    },
+    MissingDynamicSourceLoader {
+        source: &'static str,
+    },
+    DynamicSourcePath {
+        source: &'static str,
+        node: u32,
+        found: &'static str,
+    },
+    DynamicSourcePathTooLong {
+        source: &'static str,
+        maximum: usize,
+    },
+    DynamicSourceTooMany {
+        source: &'static str,
+        maximum: usize,
+    },
+    DynamicSourceLoad {
+        source: &'static str,
+        path: String,
+        message: String,
     },
     /// A generated mapping failure selected at least one item. Rule numbers
     /// are one-based and follow declaration order.
@@ -358,6 +384,34 @@ impl fmt::Display for RuntimeError {
                     "named source {name:?} is not declared by this mapping"
                 )
             }
+            Self::MissingDynamicSourceLoader { source } => write!(
+                formatter,
+                "dynamic source {source:?} requires a host source loader"
+            ),
+            Self::DynamicSourcePath {
+                source,
+                node,
+                found,
+            } => write!(
+                formatter,
+                "node {node}: dynamic source {source:?} path expected a string or absent value, got {found}"
+            ),
+            Self::DynamicSourcePathTooLong { source, maximum } => write!(
+                formatter,
+                "dynamic source {source:?} path exceeds the {maximum}-byte limit"
+            ),
+            Self::DynamicSourceTooMany { source, maximum } => write!(
+                formatter,
+                "dynamic source {source:?} requested more than {maximum} documents"
+            ),
+            Self::DynamicSourceLoad {
+                source,
+                path,
+                message,
+            } => write!(
+                formatter,
+                "dynamic source {source:?} could not load {path:?}: {message}"
+            ),
             Self::MappingFailure { rule, message } => write!(
                 formatter,
                 "mapping failure rule {rule}: {}",
@@ -457,6 +511,11 @@ impl std::error::Error for RuntimeError {
             | Self::MissingNamedSource { .. }
             | Self::DuplicateNamedSource { .. }
             | Self::UnexpectedNamedSource { .. }
+            | Self::MissingDynamicSourceLoader { .. }
+            | Self::DynamicSourcePath { .. }
+            | Self::DynamicSourcePathTooLong { .. }
+            | Self::DynamicSourceTooMany { .. }
+            | Self::DynamicSourceLoad { .. }
             | Self::MappingFailure { .. }
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. }

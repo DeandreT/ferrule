@@ -96,6 +96,7 @@ fn join_program() -> Program {
         extra_sources: vec![NamedSourceProgram {
             name: "Catalog".into(),
             source: SchemaNode::group("Catalog", vec![b]),
+            dynamic: None,
         }],
         target: SchemaNode::group(
             "Target",

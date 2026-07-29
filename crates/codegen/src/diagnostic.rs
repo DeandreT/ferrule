@@ -9,11 +9,6 @@ pub enum Diagnostic {
         location: String,
         message: String,
     },
-    UnsupportedDynamicSource {
-        source: String,
-        path_expression: NodeId,
-        iteration: Vec<String>,
-    },
     UnsupportedScope {
         /// Static target-field path. Empty identifies the primary root.
         target_path: Vec<String>,
@@ -85,15 +80,6 @@ impl fmt::Display for Diagnostic {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Validation { location, message } => write!(formatter, "{location}: {message}"),
-            Self::UnsupportedDynamicSource {
-                source,
-                path_expression,
-                iteration,
-            } => write!(
-                formatter,
-                "extra source `{source}`: code generation does not support dynamic path expression {path_expression} over `{}`",
-                display_source_path(iteration)
-            ),
             Self::UnsupportedScope {
                 target_path,
                 feature,
@@ -119,14 +105,6 @@ impl fmt::Display for Diagnostic {
 }
 
 fn display_target_path(path: &[String]) -> String {
-    if path.is_empty() {
-        "<root>".into()
-    } else {
-        path.join("/")
-    }
-}
-
-fn display_source_path(path: &[String]) -> String {
     if path.is_empty() {
         "<root>".into()
     } else {

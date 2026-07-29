@@ -136,6 +136,7 @@ fn fixture() -> Program {
         extra_sources: vec![NamedSourceProgram {
             name: "catalog".into(),
             source: SchemaNode::group("Catalog", vec![b]),
+            dynamic: None,
         }],
         target: SchemaNode::group(
             "Target",

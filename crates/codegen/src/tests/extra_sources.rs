@@ -1,7 +1,7 @@
 use mapping::{DynamicSourcePath, NamedSource};
 
 use super::*;
-use crate::NamedSourceProgram;
+use crate::{DynamicSourceProgram, NamedSourceProgram};
 
 #[test]
 fn lowers_static_schemas_in_declaration_order() {
@@ -31,17 +31,19 @@ fn lowers_static_schemas_in_declaration_order() {
             NamedSourceProgram {
                 name: "Catalog".into(),
                 source: SchemaNode::group("CatalogDocument", vec![scalar("Code")]),
+                dynamic: None,
             },
             NamedSourceProgram {
                 name: "Taxonomy".into(),
                 source: SchemaNode::group("TaxonomyDocument", vec![scalar("Name")]),
+                dynamic: None,
             },
         ]
     );
 }
 
 #[test]
-fn reports_each_dynamic_source_with_its_path_owner() {
+fn lowers_each_dynamic_source_with_its_path_owner() {
     let mut project = supported_project();
     project.graph.nodes.insert(
         40,
@@ -60,20 +62,46 @@ fn reports_each_dynamic_source_with_its_path_owner() {
         }),
     });
 
-    let diagnostics = lower(&project)
-        .expect_err("dynamic source loading remains a host responsibility")
-        .into_diagnostics();
-
+    let program = lower(&project).expect("dynamic source loading lowers to a host contract");
     assert_eq!(
-        diagnostics,
-        vec![Diagnostic::UnsupportedDynamicSource {
-            source: "Catalog".into(),
-            path_expression: 40,
-            iteration: Vec::new(),
+        program.extra_sources,
+        vec![NamedSourceProgram {
+            name: "Catalog".into(),
+            source: SchemaNode::group("CatalogDocument", Vec::new()),
+            dynamic: Some(DynamicSourceProgram {
+                path: 40,
+                driver: SourceIteration::new(Vec::new()),
+            }),
         }]
     );
     assert_eq!(
-        diagnostics[0].to_string(),
-        "extra source `Catalog`: code generation does not support dynamic path expression 40 over `<root>`"
+        program
+            .expressions
+            .iter()
+            .map(|expression| expression.id)
+            .collect::<Vec<_>>(),
+        [10, 20, 30, 40]
     );
+
+    let mut missing = program.clone();
+    missing.expressions.clear();
+    assert!(matches!(
+        validate_program(&missing),
+        Err(ProgramValidationError::MissingDynamicSourcePathExpression {
+            source,
+            expression: 40,
+        }) if source == "Catalog"
+    ));
+
+    let mut invalid_driver = program;
+    invalid_driver.extra_sources[0]
+        .dynamic
+        .as_mut()
+        .expect("dynamic plan exists")
+        .driver = SourceIteration::new(vec!["Missing".into()]);
+    assert!(matches!(
+        validate_program(&invalid_driver),
+        Err(ProgramValidationError::InvalidDynamicSourceDriver { source, driver })
+            if source == "Catalog" && driver == ["Missing"]
+    ));
 }

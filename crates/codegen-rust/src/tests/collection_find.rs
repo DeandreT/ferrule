@@ -25,6 +25,7 @@ fn collection_find_program(named: bool) -> Program {
             .then(|| NamedSourceProgram {
                 name: "Catalog".into(),
                 source: SchemaNode::group("Catalog", vec![people]),
+                dynamic: None,
             })
             .into_iter()
             .collect(),

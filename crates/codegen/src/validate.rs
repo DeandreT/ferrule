@@ -203,6 +203,14 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         source_path: Vec<String>,
     },
+    MissingDynamicSourcePathExpression {
+        source: String,
+        expression: NodeId,
+    },
+    InvalidDynamicSourceDriver {
+        source: String,
+        driver: Vec<String>,
+    },
     DynamicDocumentsRequireRoot {
         target_path: Vec<String>,
     },
@@ -492,6 +500,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     let expressions = collect_expressions(program)?;
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
+    validate_dynamic_sources(program, sources, &expressions)?;
     user_functions::validate(program, &expressions)?;
     xml::validate(sources, &expressions)?;
     validate_aggregate_paths(sources, &expressions)?;
@@ -506,6 +515,45 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_expression_sequence_paths(sources, &expressions)?;
     failures::validate(program, &expressions, &sequence_items)?;
     targets::validate(program, &expressions, &sequence_items)
+}
+
+fn validate_dynamic_sources(
+    program: &Program,
+    sources: SourceCatalog<'_>,
+    expressions: &BTreeMap<NodeId, &Expression>,
+) -> Result<(), ProgramValidationError> {
+    for source in &program.extra_sources {
+        let Some(dynamic) = &source.dynamic else {
+            continue;
+        };
+        if !expressions.contains_key(&dynamic.path) {
+            return Err(ProgramValidationError::MissingDynamicSourcePathExpression {
+                source: source.name.clone(),
+                expression: dynamic.path,
+            });
+        }
+        if dynamic.driver.path().first().is_some_and(|first| {
+            program
+                .extra_sources
+                .iter()
+                .any(|candidate| candidate.name == *first && candidate.dynamic.is_some())
+        }) {
+            return Err(ProgramValidationError::InvalidDynamicSourceDriver {
+                source: source.name.clone(),
+                driver: dynamic.driver.path().to_vec(),
+            });
+        }
+        let Some(driver) = sources.schema_at(None, dynamic.driver.path()) else {
+            return Err(ProgramValidationError::InvalidDynamicSourceDriver {
+                source: source.name.clone(),
+                driver: dynamic.driver.path().to_vec(),
+            });
+        };
+        let owner = SequenceOwner::DynamicSource(source.name.clone());
+        sequences::validate_context(dynamic.path, expressions, &BTreeSet::new(), &[], &owner)?;
+        joins::validate_expression(dynamic.path, expressions, sources, Some(driver), &[], false)?;
+    }
+    Ok(())
 }
 
 fn validate_expression_sequence_paths(
@@ -1851,6 +1899,15 @@ impl fmt::Display for ProgramValidationError {
                 display_path(target_path),
                 display_path(source_path)
             ),
+            Self::MissingDynamicSourcePathExpression { source, expression } => write!(
+                formatter,
+                "dynamic extra source {source:?} references missing path expression {expression}"
+            ),
+            Self::InvalidDynamicSourceDriver { source, driver } => write!(
+                formatter,
+                "dynamic extra source {source:?} driver {} matches no available static source path",
+                display_path(driver)
+            ),
             Self::DynamicDocumentsRequireRoot { target_path } => write!(
                 formatter,
                 "target scope {} dynamic document iteration is valid only at a target root",
@@ -2360,6 +2417,9 @@ fn display_owner(owner: &SequenceOwner) -> String {
             format!("named target `{target}` scope {}", display_path(path))
         }
         SequenceOwner::FailureRule(rule) => format!("failure rule {rule}"),
+        SequenceOwner::DynamicSource(source) => {
+            format!("dynamic extra source {source:?}")
+        }
         SequenceOwner::Expression(node) => format!("compiled mapping expression {node}"),
     }
 }

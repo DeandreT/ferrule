@@ -44,6 +44,8 @@ pub enum SequenceOwner {
     },
     /// A generated sequence owned by a one-based failure-rule index.
     FailureRule(usize),
+    /// The path expression for one host-loaded secondary source.
+    DynamicSource(String),
     Expression(NodeId),
 }
 

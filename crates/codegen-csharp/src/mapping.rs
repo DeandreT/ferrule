@@ -451,6 +451,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 render_concatenated_scope(iteration, &scope.segments, &mut output);
             } else {
                 render_iteration_scope(
+                    program,
                     scope_index,
                     iteration,
                     matches!(
@@ -871,6 +872,11 @@ fn render_entry_points(
         "\n    public static global::Ferrule.Runtime.FerruleInstance ExecuteWithSources(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        return ExecuteOutputsWithSources(source, extraSources, executionContext).Primary;\n    }\n",
     );
     output.push_str(
+        "\n    public static global::Ferrule.Runtime.FerruleInstance ExecuteWithDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        return ExecuteOutputsWithDynamicSourceLoader(source, loader).Primary;\n    }\n\
+         \n    public static global::Ferrule.Runtime.FerruleInstance ExecuteWithSourcesAndDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        return ExecuteOutputsWithSourcesAndDynamicSourceLoader(source, extraSources, loader).Primary;\n    }\n\
+         \n    public static global::Ferrule.Runtime.FerruleInstance ExecuteWithSourcesContextAndDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        return ExecuteOutputsWithSourcesContextAndDynamicSourceLoader(\n            source,\n            extraSources,\n            executionContext,\n            loader).Primary;\n    }\n",
+    );
+    output.push_str(
         "\n    public static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        return ExecuteOutputsWithSources(source, global::System.Array.Empty<NamedInput>());\n    }\n",
     );
     output.push_str(
@@ -881,6 +887,11 @@ fn render_entry_points(
     );
     output.push_str(
         "\n    public static ExecutionOutputs ExecuteOutputsWithSources(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        return ExecuteOutputs(CreateContext(source, extraSources, executionContext));\n    }\n",
+    );
+    output.push_str(
+        "\n    public static ExecutionOutputs ExecuteOutputsWithDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        return ExecuteOutputsWithSourcesAndDynamicSourceLoader(\n            source,\n            global::System.Array.Empty<NamedInput>(),\n            loader);\n    }\n\
+         \n    public static ExecutionOutputs ExecuteOutputsWithSourcesAndDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(loader);\n        return ExecuteOutputs(CreateContext(source, extraSources, null, loader));\n    }\n\
+         \n    public static ExecutionOutputs ExecuteOutputsWithSourcesContextAndDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        global::System.ArgumentNullException.ThrowIfNull(loader);\n        return ExecuteOutputs(CreateContext(source, extraSources, executionContext, loader));\n    }\n",
     );
     render_source_context(program, output);
     output.push_str(
@@ -909,12 +920,30 @@ fn render_entry_points(
 }
 
 fn render_json_entry_points(program: &Program, output: &mut String) -> Result<(), EmitError> {
+    let static_sources = program
+        .extra_sources
+        .iter()
+        .filter(|source| source.dynamic.is_none())
+        .collect::<Vec<_>>();
+    let dynamic_sources = program
+        .extra_sources
+        .iter()
+        .filter(|source| source.dynamic.is_some())
+        .collect::<Vec<_>>();
     let source_schema = serde_json::to_string(&program.source)
         .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
     let target_schema = serde_json::to_string(&program.target)
         .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
     let extra_source_schemas = program
         .extra_sources
+        .iter()
+        .filter(|source| source.dynamic.is_none())
+        .map(|source| {
+            serde_json::to_string(&source.source)
+                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let dynamic_source_schemas = dynamic_sources
         .iter()
         .map(|source| {
             serde_json::to_string(&source.source)
@@ -935,11 +964,22 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
     output.push_str(";\n    private const string TargetJsonSchema = ");
     output.push_str(&literal::string(&target_schema));
     output.push_str(";\n");
-    if !program.extra_sources.is_empty() {
+    if !static_sources.is_empty() {
         output.push_str(
             "    private static readonly string[] ExtraSourceJsonSchemas = new string[]\n    {\n",
         );
         for schema in &extra_source_schemas {
+            output.push_str("        ");
+            output.push_str(&literal::string(schema));
+            output.push_str(",\n");
+        }
+        output.push_str("    };\n");
+    }
+    if !dynamic_sources.is_empty() {
+        output.push_str(
+            "    private static readonly string[] DynamicSourceJsonSchemas = new string[]\n    {\n",
+        );
+        for schema in &dynamic_source_schemas {
             output.push_str("        ");
             output.push_str(&literal::string(schema));
             output.push_str(",\n");
@@ -972,11 +1012,142 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
          \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithSources(\n        string source,\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n        ValidateNamedJsonInputNames(extraSources);\n        var parsedSource = global::Ferrule.Runtime.FerruleJson.Parse(SourceJsonSchema, source);\n        var parsedInputs = ParseNamedJsonInputs(extraSources);\n        return SerializeJsonOutputs(ExecuteOutputsWithSources(parsedSource, parsedInputs));\n    }\n\
          \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithSources(\n        string source,\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        ValidateNamedJsonInputNames(extraSources);\n        var parsedSource = global::Ferrule.Runtime.FerruleJson.Parse(SourceJsonSchema, source);\n        var parsedInputs = ParseNamedJsonInputs(extraSources);\n        return SerializeJsonOutputs(ExecuteOutputsWithSources(\n            parsedSource,\n            parsedInputs,\n            executionContext));\n    }\n",
     );
+    if !dynamic_sources.is_empty() {
+        output.push_str(
+            "\n    public static string ExecuteJsonWithDynamicSourceLoader(\n\
+                 string source,\n\
+                 global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
+             {\n\
+                 return ExecuteJsonOutputsWithDynamicSourceLoader(source, loader).Primary;\n\
+             }\n\
+             \n    public static string ExecuteJsonWithSourcesAndDynamicSourceLoader(\n\
+                 string source,\n\
+                 global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n\
+                 global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
+             {\n\
+                 return ExecuteJsonOutputsWithSourcesAndDynamicSourceLoader(\n\
+                     source,\n\
+                     extraSources,\n\
+                     loader).Primary;\n\
+             }\n\
+             \n    public static string ExecuteJsonWithSourcesContextAndDynamicSourceLoader(\n\
+                 string source,\n\
+                 global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n\
+                 global::Ferrule.Runtime.FerruleExecutionContext executionContext,\n\
+                 global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
+             {\n\
+                 return ExecuteJsonOutputsWithSourcesContextAndDynamicSourceLoader(\n\
+                     source,\n\
+                     extraSources,\n\
+                     executionContext,\n\
+                     loader).Primary;\n\
+             }\n\
+             \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithDynamicSourceLoader(\n\
+                 string source,\n\
+                 global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
+             {\n\
+                 return ExecuteJsonOutputsWithJsonLoader(\n\
+                     source,\n\
+                     global::System.Array.Empty<NamedJsonInput>(),\n\
+                     null,\n\
+                     loader);\n\
+             }\n\
+             \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithSourcesAndDynamicSourceLoader(\n\
+                 string source,\n\
+                 global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n\
+                 global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
+             {\n\
+                 return ExecuteJsonOutputsWithJsonLoader(source, extraSources, null, loader);\n\
+             }\n\
+             \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithSourcesContextAndDynamicSourceLoader(\n\
+                 string source,\n\
+                 global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n\
+                 global::Ferrule.Runtime.FerruleExecutionContext executionContext,\n\
+                 global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
+             {\n\
+                 global::System.ArgumentNullException.ThrowIfNull(executionContext);\n\
+                 return ExecuteJsonOutputsWithJsonLoader(\n\
+                     source,\n\
+                     extraSources,\n\
+                     executionContext,\n\
+                     loader);\n\
+             }\n\
+             \n    private static JsonExecutionOutputs ExecuteJsonOutputsWithJsonLoader(\n\
+                 string source,\n\
+                 global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n\
+                 global::Ferrule.Runtime.FerruleExecutionContext? executionContext,\n\
+                 global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
+             {\n\
+                 global::System.ArgumentNullException.ThrowIfNull(source);\n\
+                 global::System.ArgumentNullException.ThrowIfNull(extraSources);\n\
+                 global::System.ArgumentNullException.ThrowIfNull(loader);\n\
+                 ValidateNamedJsonInputNames(extraSources);\n\
+                 var parsedSource = global::Ferrule.Runtime.FerruleJson.Parse(SourceJsonSchema, source);\n\
+                 var parsedInputs = ParseNamedJsonInputs(extraSources);\n\
+                 var adapter = new GeneratedDynamicJsonSourceLoader(loader);\n\
+                 var outputs = executionContext is null\n\
+                     ? ExecuteOutputsWithSourcesAndDynamicSourceLoader(\n\
+                         parsedSource,\n\
+                         parsedInputs,\n\
+                         adapter)\n\
+                     : ExecuteOutputsWithSourcesContextAndDynamicSourceLoader(\n\
+                         parsedSource,\n\
+                         parsedInputs,\n\
+                         executionContext,\n\
+                         adapter);\n\
+                 return SerializeJsonOutputs(outputs);\n\
+             }\n\
+             \n    private sealed class GeneratedDynamicJsonSourceLoader :\n\
+                 global::Ferrule.Runtime.IFerruleDynamicSourceLoader\n\
+             {\n\
+                 private readonly global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader _loader;\n\
+                 private int _totalBytes;\n\
+             \n        internal GeneratedDynamicJsonSourceLoader(\n\
+                     global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
+                 {\n\
+                     _loader = loader;\n\
+                 }\n\
+             \n        public global::Ferrule.Runtime.FerruleInstance Load(\n\
+                     string sourceName,\n\
+                     string logicalPath)\n\
+                 {\n\
+                     var document = _loader.Load(sourceName, logicalPath) ??\n\
+                         throw new global::System.InvalidOperationException(\"loader returned null\");\n\
+                     if (document.Length > global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumDocumentBytes)\n\
+                     {\n\
+                         throw new global::System.InvalidOperationException(\n\
+                             \"document exceeds the \" + global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumDocumentBytes + \"-byte dynamic-source limit\");\n\
+                     }\n\
+                     var total = (long)_totalBytes + document.Length;\n\
+                     if (total > global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumTotalBytes)\n\
+                     {\n\
+                         throw new global::System.InvalidOperationException(\n\
+                             \"documents exceed the \" + global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumTotalBytes + \"-byte combined dynamic-source limit\");\n\
+                     }\n\
+                     _totalBytes = (int)total;\n\
+                     var text = new global::System.Text.UTF8Encoding(false, true).GetString(document);\n\
+                     var schema = sourceName switch\n\
+                     {\n",
+        );
+        for (index, source) in dynamic_sources.iter().enumerate() {
+            output.push_str("                ");
+            output.push_str(&literal::string(&source.name));
+            output.push_str(&format!(" => DynamicSourceJsonSchemas[{index}],\n"));
+        }
+        output.push_str(
+            "                _ => throw new global::System.InvalidOperationException(\n\
+                                 $\"undeclared dynamic source '{sourceName}'\"),\n\
+                         };\n\
+                     return global::Ferrule.Runtime.FerruleJson.Parse(schema, text);\n\
+                 }\n\
+             }\n",
+        );
+    }
 
     output.push_str(
         "\n    private static void ValidateNamedJsonInputNames(\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources)\n    {\n",
     );
-    if program.extra_sources.is_empty() {
+    if static_sources.is_empty() {
         output.push_str(
             "        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                detail: extraSource.Name);\n        }\n",
         );
@@ -985,7 +1156,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
             "        var matched = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);\n        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Document);\n",
         );
         output.push_str("            if (extraSource.Name is not (");
-        for (index, source) in program.extra_sources.iter().enumerate() {
+        for (index, source) in static_sources.iter().enumerate() {
             if index != 0 {
                 output.push_str(" or ");
             }
@@ -994,7 +1165,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
         output.push_str(
             "))\n            {\n                throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                    $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                    detail: extraSource.Name);\n            }\n            if (!matched.Add(extraSource.Name))\n            {\n                throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.DuplicateNamedSource,\n                    $\"named source '{extraSource.Name}' was supplied more than once\",\n                    detail: extraSource.Name);\n            }\n        }\n",
         );
-        for source in &program.extra_sources {
+        for source in &static_sources {
             let name = literal::string(&source.name);
             output.push_str(&format!(
                 "        if (!matched.Contains({name}))\n        {{\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.MissingNamedSource,\n                \"named source \" + {name} + \" is required by this mapping\",\n                detail: {name});\n        }}\n"
@@ -1006,7 +1177,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
     output.push_str(
         "\n    private static global::System.Collections.Generic.IReadOnlyList<NamedInput> ParseNamedJsonInputs(\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources)\n    {\n",
     );
-    if program.extra_sources.is_empty() {
+    if static_sources.is_empty() {
         output.push_str(
             "        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                detail: extraSource.Name);\n        }\n        return global::System.Array.Empty<NamedInput>();\n",
         );
@@ -1014,7 +1185,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
         output.push_str(
             "        var parsed = new global::System.Collections.Generic.List<NamedInput>(extraSources.Count);\n        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Document);\n            var schema = extraSource.Name switch\n            {\n",
         );
-        for (index, source) in program.extra_sources.iter().enumerate() {
+        for (index, source) in static_sources.iter().enumerate() {
             output.push_str("                ");
             output.push_str(&literal::string(&source.name));
             output.push_str(&format!(" => ExtraSourceJsonSchemas[{index}],\n"));
@@ -1032,10 +1203,15 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
 }
 
 fn render_source_context(program: &Program, output: &mut String) {
+    let static_sources = program
+        .extra_sources
+        .iter()
+        .filter(|source| source.dynamic.is_none())
+        .collect::<Vec<_>>();
     output.push_str(
-        "\n    private static global::Ferrule.Runtime.ScopeContext CreateContext(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext? executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n",
+        "\n    private static global::Ferrule.Runtime.ScopeContext CreateContext(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext? executionContext,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? dynamicSourceLoader = null)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n",
     );
-    if program.extra_sources.is_empty() {
+    if static_sources.is_empty() {
         output.push_str(
             "        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Instance);\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                detail: extraSource.Name);\n        }\n",
         );
@@ -1044,7 +1220,7 @@ fn render_source_context(program: &Program, output: &mut String) {
             "        var namedSources = new global::System.Collections.Generic.Dictionary<string, global::Ferrule.Runtime.FerruleInstance>(global::System.StringComparer.Ordinal);\n        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Instance);\n",
         );
         output.push_str("            if (extraSource.Name is not (");
-        for (index, source) in program.extra_sources.iter().enumerate() {
+        for (index, source) in static_sources.iter().enumerate() {
             if index != 0 {
                 output.push_str(" or ");
             }
@@ -1054,36 +1230,39 @@ fn render_source_context(program: &Program, output: &mut String) {
             "))\n            {\n                throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                    $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                    detail: extraSource.Name);\n            }\n            if (!namedSources.TryAdd(extraSource.Name, extraSource.Instance))\n            {\n                throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.DuplicateNamedSource,\n                    $\"named source '{extraSource.Name}' was supplied more than once\",\n                    detail: extraSource.Name);\n            }\n        }\n",
         );
     }
-    for (index, source) in program.extra_sources.iter().enumerate() {
+    for (index, source) in static_sources.iter().enumerate() {
         let name = literal::string(&source.name);
         output.push_str(&format!(
             "        if (!namedSources.TryGetValue({name}, out var namedSource_{index}))\n        {{\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.MissingNamedSource,\n                \"named source \" + {name} + \" is required by this mapping\",\n                detail: {name});\n        }}\n"
         ));
     }
-    if program.extra_sources.is_empty() {
+    if static_sources.is_empty() {
         output.push_str(
-            "        return global::Ferrule.Runtime.ScopeContext.FromSource(source, executionContext);\n    }\n",
+            "        var context = global::Ferrule.Runtime.ScopeContext.FromSource(source, executionContext);\n        return dynamicSourceLoader is null\n            ? context\n            : context.WithDynamicSourceLoader(dynamicSourceLoader);\n    }\n",
         );
         return;
     }
     output.push_str(
-        "        return global::Ferrule.Runtime.ScopeContext.FromSources(\n            source,\n            new global::Ferrule.Runtime.FerruleField[]\n            {\n",
+        "        var context = global::Ferrule.Runtime.ScopeContext.FromSources(\n            source,\n            new global::Ferrule.Runtime.FerruleField[]\n            {\n",
     );
-    for (index, source) in program.extra_sources.iter().enumerate() {
+    for (index, source) in static_sources.iter().enumerate() {
         output.push_str("                new(");
         output.push_str(&literal::string(&source.name));
         output.push_str(&format!(", namedSource_{index}),\n"));
     }
-    output.push_str("            },\n            executionContext);\n    }\n");
+    output.push_str(
+        "            },\n            executionContext);\n        return dynamicSourceLoader is null\n            ? context\n            : context.WithDynamicSourceLoader(dynamicSourceLoader);\n    }\n",
+    );
 }
 
 fn render_iteration_scope(
+    program: &Program,
     scope: usize,
     iteration: &IterationPlan,
     merge_dynamic_fields: bool,
     output: &mut String,
 ) {
-    render_iteration_candidates(scope, iteration.input(), output);
+    render_iteration_candidates(program, scope, iteration.input(), output);
 
     let sort = iteration.sort();
     let filter_before_sort = iteration.filter().is_some()
@@ -1288,14 +1467,40 @@ fn render_grouping_path(input: &IterationSource, output: &mut String) {
     }
 }
 
-fn render_iteration_candidates(scope: usize, input: &IterationSource, output: &mut String) {
+fn render_iteration_candidates(
+    program: &Program,
+    scope: usize,
+    input: &IterationSource,
+    output: &mut String,
+) {
     match input {
         IterationSource::Source(source) => {
-            output.push_str(&format!(
-                "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateSource("
-            ));
-            render_path(source.path(), output);
-            output.push_str("));\n");
+            let dynamic = source.path().first().and_then(|name| {
+                program
+                    .extra_sources
+                    .iter()
+                    .find(|candidate| candidate.name == *name)
+                    .and_then(|candidate| candidate.dynamic.as_ref().map(|plan| (candidate, plan)))
+            });
+            if let Some((source_program, dynamic)) = dynamic {
+                output.push_str(&format!(
+                    "        var dynamic_source_items_{scope} = global::Ferrule.Runtime.FerruleDynamicSourceItems.Load(\n            context,\n            {},\n            ",
+                    literal::string(&source_program.name),
+                ));
+                render_path(dynamic.driver.path(), output);
+                output.push_str(",\n            ");
+                render_path(&source.path()[1..], output);
+                output.push_str(&format!(
+                    ",\n            {}U,\n            driver_context_{scope} => Node_{}(driver_context_{scope}));\n        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(dynamic_source_items_{scope}.Contexts());\n",
+                    dynamic.path, dynamic.path,
+                ));
+            } else {
+                output.push_str(&format!(
+                    "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateSource("
+                ));
+                render_path(source.path(), output);
+                output.push_str("));\n");
+            }
         }
         IterationSource::DynamicDocuments(dynamic) => {
             output.push_str(&format!(

@@ -60,6 +60,7 @@ fn validates_flattened_primary_and_named_source_paths() {
             "CatalogDocument",
             vec![SchemaNode::group("Items", Vec::new()).repeating()],
         ),
+        dynamic: None,
     });
 
     for collection in [

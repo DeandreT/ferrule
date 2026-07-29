@@ -193,6 +193,7 @@ public sealed partial class ScopeContext
         return new ScopeContext(
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
-            _executionContext);
+            _executionContext,
+            _dynamicSourceLoader);
     }
 }

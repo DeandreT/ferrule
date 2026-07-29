@@ -19,7 +19,7 @@ pub use grouping::GroupedItems;
 pub use join::{InnerJoinKey, InnerJoinStage};
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 
-use crate::{ExecutionContext, Instance, RuntimeError, RuntimeValue, Value};
+use crate::{DynamicSourceLoader, ExecutionContext, Instance, RuntimeError, RuntimeValue, Value};
 
 /// One borrowed, statically declared secondary input.
 #[derive(Clone, Copy, Debug)]
@@ -53,6 +53,7 @@ pub struct ScopeContext<'a> {
     frames: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
     execution: Option<ExecutionContext<'a>>,
+    dynamic_source_loader: Option<&'a dyn DynamicSourceLoader>,
 }
 
 #[derive(Clone)]
@@ -116,6 +117,7 @@ impl<'a> ScopeContext<'a> {
             }],
             named_inputs: &[],
             execution: None,
+            dynamic_source_loader: None,
         }
     }
 
@@ -132,6 +134,7 @@ impl<'a> ScopeContext<'a> {
             }],
             named_inputs: inputs,
             execution: None,
+            dynamic_source_loader: None,
         }
     }
 
@@ -149,6 +152,7 @@ impl<'a> ScopeContext<'a> {
             }],
             named_inputs: &[],
             execution: Some(*execution),
+            dynamic_source_loader: None,
         }
     }
 
@@ -168,7 +172,18 @@ impl<'a> ScopeContext<'a> {
             }],
             named_inputs: inputs,
             execution: Some(*execution),
+            dynamic_source_loader: None,
         }
+    }
+
+    /// Adds the host boundary used to resolve per-driver dynamic sources.
+    pub fn with_dynamic_source_loader(mut self, loader: &'a dyn DynamicSourceLoader) -> Self {
+        self.dynamic_source_loader = Some(loader);
+        self
+    }
+
+    pub(crate) fn dynamic_source_loader(&self) -> Option<&'a dyn DynamicSourceLoader> {
+        self.dynamic_source_loader
     }
 
     /// Resolves one host-supplied scalar or returns the same typed missing
@@ -364,6 +379,7 @@ impl<'a> ScopeContext<'a> {
                 frames,
                 named_inputs: self.named_inputs,
                 execution: self.execution,
+                dynamic_source_loader: self.dynamic_source_loader,
             }
         })
     }
@@ -415,6 +431,7 @@ impl<'a> ScopeContext<'a> {
             frames,
             named_inputs: self.named_inputs,
             execution: self.execution,
+            dynamic_source_loader: self.dynamic_source_loader,
         }
     }
 
@@ -449,6 +466,7 @@ impl<'a> ScopeContext<'a> {
             frames,
             named_inputs: self.named_inputs,
             execution: self.execution,
+            dynamic_source_loader: self.dynamic_source_loader,
         }
     }
 
