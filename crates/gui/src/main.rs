@@ -3,10 +3,15 @@ mod appearance;
 mod appearance_editor;
 mod auto_connect;
 mod canvas;
+#[path = "canvas/endpoints.rs"]
 mod canvas_endpoints;
+#[path = "canvas/keyboard.rs"]
 mod canvas_keyboard;
+#[path = "canvas/layout.rs"]
 mod canvas_layout;
+#[path = "canvas/minimap.rs"]
 mod canvas_minimap;
+#[path = "canvas/search.rs"]
 mod canvas_search;
 mod diagnostics;
 mod document;
