@@ -34,6 +34,9 @@ internal static partial class Program
     private const string ItemCountJsonSchema =
         "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"OptionalRows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}],\"required\":[\"Rows\"]}}";
 
+    private const string PropertyCountJsonSchema =
+        "{\"name\":\"Root\",\"property_count_range\":{\"minimum\":4,\"maximum\":5},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Id\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Nested\",\"property_count_range\":{\"minimum\":1,\"maximum\":1},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"A\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"B\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Rows\",\"repeating\":true,\"property_count_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Code\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Note\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Maybe\",\"container_nullable\":true,\"property_count_range\":{\"minimum\":1,\"maximum\":1},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}]}},{\"name\":\"Open\",\"property_count_range\":{\"minimum\":2,\"maximum\":3},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Fixed\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"dynamic\":{\"name\":\"*\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}],\"required\":[\"Id\",\"Nested\",\"Rows\",\"Maybe\"]}}";
+
     private const string ObjectOpennessJsonSchema =
         "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Known\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Nested\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Name\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Rows\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Code\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Maybe\",\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Id\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}]}},{\"name\":\"Open\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Fixed\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"dynamic\":{\"name\":\"*\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}]}}";
 
@@ -133,6 +136,7 @@ internal static partial class Program
         JsonRangeBoundaries();
         JsonMultipleOfBoundaries();
         JsonItemCountBoundaries();
+        JsonPropertyCountBoundaries();
         JsonUniqueItemsBoundaries();
         JsonFormatAnnotationBoundaries();
         JsonStringLengthBoundaries();
@@ -364,6 +368,94 @@ internal static partial class Program
             Error(
                 FerruleRuntimeError.JsonBoundary,
                 () => FerruleJson.Parse(invalidSchema, "[]"));
+        }
+    }
+
+    private static void JsonPropertyCountBoundaries()
+    {
+        const string valid =
+            "{\"Id\":\"first\",\"Id\":\"last\",\"Nested\":{\"A\":\"one\"},\"Rows\":[{\"Code\":\"A\"},{\"Code\":\"B\",\"Note\":null}],\"Maybe\":null,\"Open\":{\"Fixed\":\"declared\",\"extra\":{\"nested\":true}}}";
+        var parsed = FerruleJson.Parse(PropertyCountJsonSchema, valid);
+        Equal(
+            "{\n  \"Id\": \"last\",\n  \"Nested\": {\n    \"A\": \"one\"\n  },\n  \"Rows\": [\n    {\n      \"Code\": \"A\"\n    },\n    {\n      \"Code\": \"B\",\n      \"Note\": null\n    }\n  ],\n  \"Maybe\": null,\n  \"Open\": {\n    \"Fixed\": \"declared\",\n    \"extra\": {\n      \"nested\": true\n    }\n  }\n}\n",
+            FerruleJson.Serialize(PropertyCountJsonSchema, parsed));
+
+        var countBeforeOpenness = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                PropertyCountJsonSchema,
+                "{\"Id\":\"A\",\"Nested\":{\"A\":\"one\"},\"Rows\":[],\"Maybe\":null,\"Open\":{\"Fixed\":\"known\",\"extra\":1},\"unexpected\":true}"));
+        Equal(
+            true,
+            countBeforeOpenness.Message.Contains(
+                "object 'Root' has 6 properties",
+                StringComparison.Ordinal));
+        Equal(
+            false,
+            countBeforeOpenness.Message.Contains(
+                "does not allow property",
+                StringComparison.Ordinal));
+
+        foreach (var input in new[]
+                 {
+                     "{\"Id\":\"A\",\"Nested\":{},\"Rows\":[],\"Maybe\":null}",
+                     "{\"Id\":\"A\",\"Nested\":{\"A\":\"one\"},\"Rows\":[{}],\"Maybe\":null}",
+                     "{\"Id\":\"A\",\"Nested\":{\"A\":\"one\"},\"Rows\":[{\"Code\":\"A\",\"Note\":\"B\",\"third\":true}],\"Maybe\":null}",
+                     "{\"Id\":\"A\",\"Nested\":{\"A\":\"one\"},\"Rows\":[],\"Maybe\":{},\"Open\":{\"Fixed\":\"known\",\"extra\":1}}",
+                     "{\"Id\":\"A\",\"Nested\":{\"A\":\"one\"},\"Rows\":[],\"Maybe\":null,\"Open\":{\"Fixed\":\"known\"}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(PropertyCountJsonSchema, input));
+        }
+
+        Equal(
+            "{\n  \"Id\": \"A\",\n  \"Nested\": {\n    \"A\": \"one\"\n  },\n  \"Rows\": [],\n  \"Maybe\": null\n}\n",
+            FerruleJson.Serialize(
+                PropertyCountJsonSchema,
+                Group(
+                    Field("Id", Scalar(Text("A"))),
+                    Field(
+                        "Nested",
+                        Group(
+                            Field("A", Scalar(Text("one"))),
+                            Field("B", Scalar(FerruleValue.Null)))),
+                    Field("Rows", Repeated()),
+                    Field("Maybe", Scalar(FerruleValue.JsonNull)))));
+        var outputRange = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                PropertyCountJsonSchema,
+                Group(
+                    Field("Id", Scalar(Text("A"))),
+                    Field("Nested", Group(Field("A", Scalar(Text("one"))))),
+                    Field("Rows", Repeated()),
+                    Field("Maybe", Scalar(FerruleValue.JsonNull)),
+                    Field("Open", Group(Field("Fixed", Scalar(Text("only one"))))))));
+        Equal(
+            true,
+            outputRange.Message.Contains(
+                "object 'Open' has 1 properties",
+                StringComparison.Ordinal));
+
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Value\",\"property_count_range\":{\"minimum\":1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{\"minimum\":2,\"maximum\":1},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{\"minimum\":-1},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{\"minimum\":1.0},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{\"minimum\":18446744073709551616},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{\"minimum\":1,\"maximim\":2},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{\"minimum\":1,\"minimum\":2},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{\"minimum\":2},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Only\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}",
+                     "{\"name\":\"Value\",\"property_count_range\":{\"maximum\":1},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"A\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"B\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"required\":[\"A\",\"B\"]}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "{}"));
         }
     }
 

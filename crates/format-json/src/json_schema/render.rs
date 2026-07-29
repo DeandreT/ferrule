@@ -97,6 +97,7 @@ fn render_shape(
             ..
         } => {
             out.insert("type".into(), "object".into());
+            super::property_counts::render(node, out);
             if !required.is_empty() {
                 out.insert("required".into(), required.clone().into());
             }

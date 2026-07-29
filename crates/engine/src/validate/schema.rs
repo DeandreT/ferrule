@@ -40,6 +40,12 @@ pub(super) fn validate_schema(
             format!("item-count metadata{suffix} requires a repeating schema node"),
         ));
     }
+    if !schema.property_count_range_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("property-count metadata{suffix} requires a feasible object schema"),
+        ));
+    }
     if !schema.string_length_range_is_valid() {
         issues.push(ValidationIssue::new(
             root,

@@ -82,6 +82,12 @@ pub enum JsonFormatError {
         range: String,
         got: usize,
     },
+    #[error("`{name}` requires {range} object properties, got {got}")]
+    PropertyCountMismatch {
+        name: String,
+        range: String,
+        got: usize,
+    },
     #[error(
         "`{name}` requires unique array items, but indexes {first_index} and {duplicate_index} are equal"
     )]
@@ -114,6 +120,8 @@ pub enum JsonFormatError {
     InvalidNumericRangeMetadata { reason: String },
     #[error("JSON uniqueItems metadata is invalid: {reason}")]
     InvalidUniqueItemsMetadata { reason: String },
+    #[error("JSON property-count metadata is invalid: {reason}")]
+    InvalidPropertyCountMetadata { reason: String },
     #[error("JSON pattern matching for `{name}` exceeds the bounded work limit")]
     PatternWorkLimit { name: String },
     #[error("JSON Lines cannot encode nullable array container `{name}`")]
@@ -293,6 +301,7 @@ fn read_node_with_patterns(
                     got: json_type_name(value),
                 });
             };
+            json_schema::property_counts::validate_len(schema, fields.len())?;
             validate_required_fields(schema, required, |name| fields.contains_key(name))?;
             validate_alternative_fields(schema, alternatives, fields)?;
             if dynamic.is_some() && !alternatives.is_empty() {
@@ -664,6 +673,7 @@ fn write_single_node_with_patterns(
                     );
                 }
                 validate_required_fields(schema, required, |name| out.contains_key(name))?;
+                json_schema::property_counts::validate_len(schema, out.len())?;
                 return Ok(serde_json::Value::Object(out));
             }
             for child_schema in children {
@@ -683,6 +693,7 @@ fn write_single_node_with_patterns(
             }
             validate_required_fields(schema, required, |name| out.contains_key(name))?;
             validate_alternative_fields(schema, alternatives, &out)?;
+            json_schema::property_counts::validate_len(schema, out.len())?;
             Ok(serde_json::Value::Object(out))
         }
         (SchemaKind::Scalar { ty }, other) => Err(write_shape_error(

@@ -34,12 +34,16 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         r#"{
   "title":"Envelope",
   "type":"object",
+  "minProperties":6,
+  "maxProperties":8,
   "additionalProperties":false,
   "properties":{
     "MaybeObject":{
       "anyOf":[
         {
           "type":"object",
+          "minProperties":1,
+          "maxProperties":3,
           "properties":{"Code":{"type":"string"}},
           "additionalProperties":true
         },
@@ -52,6 +56,8 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     },
     "TypedOpen":{
       "type":"object",
+      "minProperties":2,
+      "maxProperties":3,
       "properties":{"Unit":{"type":"string"}},
       "additionalProperties":{"type":"integer"}
     },
@@ -60,7 +66,12 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
       "minItems":1,
       "maxItems":2,
       "uniqueItems":true,
-      "items":{"type":"object","properties":{"Id":{"type":"integer"}}}
+      "items":{
+        "type":"object",
+        "minProperties":1,
+        "maxProperties":1,
+        "properties":{"Id":{"type":"integer"}}
+      }
     },
     "Amount":{
       "oneOf":[
@@ -103,6 +114,13 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert!(imported.project.source.dynamic_fields().is_none());
+    let source_property_count = imported
+        .project
+        .source
+        .property_count_range
+        .ok_or("missing root property-count range")?;
+    assert_eq!(source_property_count.minimum(), 6);
+    assert_eq!(source_property_count.maximum(), Some(8));
 
     let object = imported
         .project
@@ -110,6 +128,11 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .child("MaybeObject")
         .ok_or("missing nullable object")?;
     assert!(object.container_nullable);
+    let object_property_count = object
+        .property_count_range
+        .ok_or("missing nullable object property-count range")?;
+    assert_eq!(object_property_count.minimum(), 1);
+    assert_eq!(object_property_count.maximum(), Some(3));
     let dynamic = object.dynamic_fields().ok_or("missing dynamic value")?;
     assert!(dynamic.json_any);
     let implicit_open = imported
@@ -133,6 +156,11 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             ty: ir::ScalarType::Int
         })
     ));
+    let typed_open_property_count = typed_open
+        .property_count_range
+        .ok_or("missing typed-open property-count range")?;
+    assert_eq!(typed_open_property_count.minimum(), 2);
+    assert_eq!(typed_open_property_count.maximum(), Some(3));
     let array = imported
         .project
         .source
@@ -146,6 +174,11 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .ok_or("missing nullable array item-count range")?;
     assert_eq!(range.minimum(), 1);
     assert_eq!(range.maximum(), Some(2));
+    let item_property_count = array
+        .property_count_range
+        .ok_or("missing array-item property-count range")?;
+    assert_eq!(item_property_count.minimum(), 1);
+    assert_eq!(item_property_count.maximum(), Some(1));
     let amount = imported
         .project
         .source
@@ -268,13 +301,68 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     );
     assert!(matches!(
         format_json::from_str(
-            r#"{"Unexpected":true,"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
+            r#"{"Unexpected":true,"MaybeObject":{"Code":"A"},"ImplicitOpen":{},"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
             &imported.project.source,
         ),
         Err(format_json::JsonFormatError::UndeclaredProperty {
             ref object,
             ref property,
         }) if object == "Envelope" && property == "Unexpected"
+    ));
+    assert!(matches!(
+        format_json::from_str(
+            r#"{"MaybeObject":{"Code":"A"},"ImplicitOpen":{},"TypedOpen":{"Unit":"count","widgets":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal","Tracking":"opaque","Unexpected":true}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::PropertyCountMismatch {
+            ref name,
+            got: 9,
+            ..
+        }) if name == "Envelope"
+    ));
+    assert!(matches!(
+        format_json::from_str(
+            r#"{"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::PropertyCountMismatch {
+            ref name,
+            got: 4,
+            ..
+        }) if name == "Envelope"
+    ));
+    assert!(matches!(
+        format_json::from_str(
+            r#"{"MaybeObject":{},"ImplicitOpen":{},"TypedOpen":{"Unit":"count","widgets":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::PropertyCountMismatch {
+            ref name,
+            got: 0,
+            ..
+        }) if name == "MaybeObject"
+    ));
+    assert!(matches!(
+        format_json::from_str(
+            r#"{"MaybeObject":{"Code":"A"},"ImplicitOpen":{},"TypedOpen":{"Unit":"count"},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::PropertyCountMismatch {
+            ref name,
+            got: 1,
+            ..
+        }) if name == "TypedOpen"
+    ));
+    assert!(matches!(
+        format_json::from_str(
+            r#"{"MaybeObject":{"Code":"A"},"ImplicitOpen":{},"TypedOpen":{"Unit":"count","widgets":3},"MaybeArray":[{}],"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::PropertyCountMismatch {
+            ref name,
+            got: 0,
+            ..
+        }) if name == "MaybeArray"
     ));
     assert!(
         format_json::from_str(
@@ -300,9 +388,19 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         directory.0.join("roundtrip-source.schema.json"),
     )?)?;
     assert_eq!(exported_schema["additionalProperties"], false);
+    assert_eq!(exported_schema["minProperties"], 6);
+    assert_eq!(exported_schema["maxProperties"], 8);
     assert_eq!(
         exported_schema["properties"]["MaybeObject"]["anyOf"][0]["additionalProperties"],
         serde_json::json!({})
+    );
+    assert_eq!(
+        exported_schema["properties"]["MaybeObject"]["anyOf"][0]["minProperties"],
+        1
+    );
+    assert_eq!(
+        exported_schema["properties"]["MaybeObject"]["anyOf"][0]["maxProperties"],
+        3
     );
     assert_eq!(
         exported_schema["properties"]["ImplicitOpen"]["additionalProperties"],
@@ -311,6 +409,22 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     assert_eq!(
         exported_schema["properties"]["TypedOpen"]["additionalProperties"]["type"],
         "integer"
+    );
+    assert_eq!(
+        exported_schema["properties"]["TypedOpen"]["minProperties"],
+        2
+    );
+    assert_eq!(
+        exported_schema["properties"]["TypedOpen"]["maxProperties"],
+        3
+    );
+    assert_eq!(
+        exported_schema["properties"]["MaybeArray"]["anyOf"][0]["items"]["minProperties"],
+        1
+    );
+    assert_eq!(
+        exported_schema["properties"]["MaybeArray"]["anyOf"][0]["items"]["maxProperties"],
+        1
     );
     let reimported = mfd::import(&roundtrip_design)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
@@ -372,6 +486,32 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .source
             .child("MaybeArray")
             .is_some_and(|array| array.json_unique_items)
+    );
+    assert_eq!(
+        reimported
+            .project
+            .source
+            .property_count_range
+            .map(|range| (range.minimum(), range.maximum())),
+        Some((6, Some(8)))
+    );
+    assert_eq!(
+        reimported
+            .project
+            .source
+            .child("MaybeObject")
+            .and_then(|object| object.property_count_range)
+            .map(|range| (range.minimum(), range.maximum())),
+        Some((1, Some(3)))
+    );
+    assert_eq!(
+        reimported
+            .project
+            .source
+            .child("MaybeArray")
+            .and_then(|array| array.property_count_range)
+            .map(|range| (range.minimum(), range.maximum())),
+        Some((1, Some(1)))
     );
     Ok(())
 }

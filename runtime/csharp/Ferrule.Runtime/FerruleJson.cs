@@ -253,6 +253,10 @@ public static partial class FerruleJson
             fixedValue,
             patternContext);
         var itemCountRange = ReadItemCountRange(name, element, repeating);
+        var propertyCountRange = ReadPropertyCountRange(
+            name,
+            element,
+            scalarDomain == JsonScalarDomain.None);
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
         var alternatives = new List<JsonAlternative>();
@@ -310,6 +314,13 @@ public static partial class FerruleJson
                 throw Boundary(
                     $"Embedded JSON schema node '{name}' combines an open object with closed alternatives.");
             }
+            ValidatePropertyCountSchema(
+                name,
+                propertyCountRange,
+                children,
+                dynamic,
+                required,
+                alternatives);
         }
         else if (kindElement.TryGetProperty("required", out _))
         {
@@ -332,6 +343,7 @@ public static partial class FerruleJson
             stringLengthRange,
             jsonPatterns,
             itemCountRange,
+            propertyCountRange,
             jsonUniqueItems,
             children,
             dynamic,
@@ -910,6 +922,7 @@ public static partial class FerruleJson
 
         RequireKind(element, JsonValueKind.Object, schema.Name, "object");
         var properties = OrderedProperties(element);
+        ValidatePropertyCount(schema, properties.Count);
         ValidateDeclaredProperties(schema, properties);
         ValidateRequired(schema, properties);
         ValidateAlternatives(schema, properties);
@@ -1165,6 +1178,7 @@ public static partial class FerruleJson
 
         ValidateOutputRequired(schema, group);
         ValidateOutputAlternatives(schema, group);
+        ValidateOutputPropertyCount(schema, group);
         writer.WriteStartObject();
         if (schema.Dynamic is { } dynamic)
         {
@@ -2349,6 +2363,7 @@ public static partial class FerruleJson
             JsonStringLengthRange? stringLengthRange,
             JsonPatternConstraints? jsonPatterns,
             JsonItemCountRange? itemCountRange,
+            JsonPropertyCountRange? propertyCountRange,
             bool jsonUniqueItems,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
@@ -2370,6 +2385,7 @@ public static partial class FerruleJson
             StringLengthRange = stringLengthRange;
             JsonPatterns = jsonPatterns;
             ItemCountRange = itemCountRange;
+            PropertyCountRange = propertyCountRange;
             JsonUniqueItems = jsonUniqueItems;
             Children = children;
             Dynamic = dynamic;
@@ -2405,6 +2421,8 @@ public static partial class FerruleJson
         public JsonPatternConstraints? JsonPatterns { get; }
 
         public JsonItemCountRange? ItemCountRange { get; }
+
+        public JsonPropertyCountRange? PropertyCountRange { get; }
 
         public bool JsonUniqueItems { get; }
 

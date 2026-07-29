@@ -170,7 +170,12 @@ or Ferrule `Null` does not. Object openness is exact as well: omitted or `true`
 `additionalProperties` preserves arbitrary JSON-valued fields, schema-valued
 `additionalProperties` validates each unknown field against its retained type,
 and explicit `false` produces a typed undeclared-property boundary error rather
-than dropping data. These APIs intentionally use JSON regardless of
+than dropping data. Exact object `minProperties`/`maxProperties` intervals
+count distinct parsed input properties before decoding and normalized output
+members after Ferrule `Null` omission. Duplicate input names use the parser's
+last value and count once. Nullable object null bypasses the interval; nested,
+repeated, primary, and named documents apply the same rule. These APIs
+intentionally use JSON regardless of
 stored project paths or format options; hosts needing X12, XML, database, or
 other physical formats should use the interpreter payload API or adapt a typed
 `Instance` at their own boundary.
@@ -316,9 +321,9 @@ return instances or JSON documents and do not write files.
 Embedded JSON schemas are validated recursively before emission and again at
 the generated boundary. Rust and C# enforce scalar constants, exact scalar
 allowed-value sets, numeric ranges, exact decimal `multipleOf` constraints,
-array item-count intervals, exact structural `uniqueItems`, Unicode-scalar
-string-length intervals, and portable JSON Schema `pattern` assertions on both
-input and normalized output.
+array item-count intervals, object property-count intervals, exact structural
+`uniqueItems`, Unicode-scalar string-length intervals, and portable JSON Schema
+`pattern` assertions on both input and normalized output.
 Pattern constraints retain conjunctions and exact disjunctions, nullable
 bypass, array items, typed dynamic properties, and scalar-union runtime tags. Both generated
 runtimes use Ferrule's bounded Thompson-NFA matcher rather than a host regex

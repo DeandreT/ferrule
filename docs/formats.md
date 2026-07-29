@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -66,6 +66,18 @@ layout and dialect details that an extension cannot express.
   `false` for a closed object, so MFD export/re-import preserves the behavior.
   Compatible `allOf` object branches intersect their declared and dynamic
   property permissions rather than widening a closed branch.
+  Concrete objects retain exact non-negative `minProperties` and
+  `maxProperties` intervals through references, nullable wrappers, compatible
+  `allOf` intersections, and object alternatives that share one identical
+  effective interval. Input counts distinct parsed properties before
+  required-property and openness validation, so explicit JSON null and
+  undeclared names both count; duplicate names use the parser's last value and
+  count once. Output counts the normalized object after Ferrule `Null` fields
+  are omitted. A nullable object value of JSON null bypasses the object
+  interval; every JSON Lines row is checked independently. A maximum below the
+  required property count, a closed-object minimum beyond its declared
+  capacity, and alternatives with differing correlated intervals reject rather
+  than widen.
   Bounded scalar `const` and `enum` constraints are enforced exactly on both
   input and normalized output and survive canonical export. Sets may combine
   strings, booleans, signed integers, exactly representable finite numbers, and
@@ -133,7 +145,6 @@ layout and dialect details that an extension cannot express.
   class-set operators reject rather than acquire backend-specific semantics.
   `patternProperties` and `unevaluatedProperties` remain outside this object
   profile and reject rather than silently weakening an otherwise typed object.
-  Property-count assertions are not yet enforced.
   Each source is limited to 64 KiB, 256 nesting levels, 8,192 syntax nodes,
   and 16,384 compiled instructions. Each constrained node retains at most 32
   alternatives and 64 total terms; a complete schema retains at most 64
