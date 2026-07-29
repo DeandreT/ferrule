@@ -5,13 +5,13 @@
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
 //! refs degrade to string scalars). Compatible closed-object `oneOf` and
 //! `anyOf` unions, their required scalar `const` discriminators, and typed
-//! `additionalProperties` schemas are preserved. Compatible object `allOf`
-//! branches flatten into one ordered structural projection. Scalar/container-plus-null
-//! `oneOf` / `anyOf` and nullable type arrays retain explicit nullability,
-//! including scalar array items. Exact heterogeneous scalar `anyOf`, pairwise-
-//! disjoint scalar `oneOf`, and type arrays preserve every allowed runtime
-//! type; array `anyOf` branches canonicalize when they are identical or one
-//! scalar item domain contains all the others. Unconstrained
+//! `additionalProperties` schemas are preserved. Compatible `allOf`
+//! intersections flatten across objects, scalar domains, and matching arrays.
+//! Scalar/container-plus-null `oneOf` / `anyOf` and nullable type arrays retain
+//! explicit nullability, including scalar array items. Exact heterogeneous
+//! scalar `anyOf`, pairwise-disjoint scalar `oneOf`, and type arrays preserve
+//! every allowed runtime type; array `anyOf` branches canonicalize when they
+//! are identical or one scalar item domain contains all the others. Unconstrained
 //! `additionalProperties` values are retained as canonical JSON text in the
 //! graph's string domain. An omitted or false `additionalProperties` is
 //! treated as closed. General composition remains outside this subset;
@@ -26,7 +26,7 @@ mod all_of;
 mod alternatives;
 mod render;
 
-use all_of::parse_object_all_of;
+use all_of::parse_all_of;
 use alternatives::{
     parse_inferred_const_scalar, parse_nullable_container_alternatives,
     parse_nullable_scalar_alternatives, parse_object_alternatives, parse_scalar_any_of,
@@ -86,7 +86,7 @@ fn parse(
         return node;
     }
     if let Some(composition) = schema.get("allOf") {
-        return parse_object_all_of(name, schema, composition, doc, active_refs);
+        return parse_all_of(name, schema, composition, doc, active_refs);
     }
     if let Some(alternatives) = schema.get("oneOf") {
         if let Some(nullable) = parse_nullable_scalar_alternatives(
