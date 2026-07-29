@@ -83,6 +83,7 @@ pub struct PayloadRunOptions<'a> {
     primary: PayloadDocument<'a>,
     extra_sources: &'a [NamedPayloadInput<'a>],
     output_path: Option<&'a Path>,
+    target: Option<engine::TargetSelection<'a>>,
     runtime_parameters: Option<&'a engine::RuntimeParameters>,
     trace_sink: Option<&'a dyn TraceSink>,
 }
@@ -93,6 +94,7 @@ impl<'a> PayloadRunOptions<'a> {
             primary,
             extra_sources: &[],
             output_path: None,
+            target: None,
             runtime_parameters: None,
             trace_sink: None,
         }
@@ -105,6 +107,11 @@ impl<'a> PayloadRunOptions<'a> {
 
     pub fn with_output_path(mut self, path: &'a Path) -> Self {
         self.output_path = Some(path);
+        self
+    }
+
+    pub fn with_target(mut self, target: engine::TargetSelection<'a>) -> Self {
+        self.target = Some(target);
         self
     }
 
@@ -173,20 +180,63 @@ pub fn run_project_value_payloads(
     if let Some(trace_sink) = options.trace_sink {
         execution = execution.with_trace_sink(trace_sink);
     }
-    let output = engine::run_outputs_with_sources_and_context(
-        project,
-        &source,
-        loaded_sources.static_sources,
-        &execution,
-    )?;
+    let (records_written, artifacts) = match options.target {
+        Some(selection) => {
+            let output = engine::run_selected_target_with_sources_and_context(
+                project,
+                &source,
+                loaded_sources.static_sources,
+                &execution,
+                selection,
+            )?;
+            render_selected_target(
+                project,
+                project_path,
+                options.output_path,
+                &output,
+                &current_datetime,
+            )?
+        }
+        None => {
+            let output = engine::run_outputs_with_sources_and_context(
+                project,
+                &source,
+                loaded_sources.static_sources,
+                &execution,
+            )?;
+            render_all_targets(
+                project,
+                project_path,
+                options.output_path,
+                &output,
+                &current_datetime,
+            )?
+        }
+    };
+
+    validate_artifact_budget(&artifacts)?;
+    validate_artifact_paths(&artifacts)?;
+    Ok(PayloadRunOutcome {
+        records_written,
+        artifacts,
+    })
+}
+
+fn render_all_targets(
+    project: &mapping::Project,
+    project_path: &Path,
+    output_path: Option<&Path>,
+    output: &engine::ExecutionOutputs,
+    current_datetime: &str,
+) -> anyhow::Result<(usize, Vec<PayloadArtifact>)> {
     if output.extras.len() != project.extra_targets.len() {
         bail!("engine returned an unexpected number of additional target values");
     }
-    validate_artifact_count(project, &output)?;
+    validate_artifact_count(project, output)?;
 
     let primary_destination = target_destination(
         project_path,
-        options.output_path,
+        output_path,
         project.target_path.as_deref(),
         project.root.output_path().is_some(),
         "primary target",
@@ -197,7 +247,7 @@ pub fn run_project_value_payloads(
         &project.target,
         &output.primary,
         &project.target_options,
-        &current_datetime,
+        current_datetime,
     )?;
     let records_written = artifacts
         .iter()
@@ -218,18 +268,73 @@ pub fn run_project_value_payloads(
             &target.schema,
             &output.instance,
             &target.options,
-            &current_datetime,
+            current_datetime,
         )
         .with_context(|| format!("rendering extra target `{}`", target.name))?;
         artifacts.extend(rendered);
     }
+    Ok((records_written, artifacts))
+}
 
-    validate_artifact_budget(&artifacts)?;
-    validate_artifact_paths(&artifacts)?;
-    Ok(PayloadRunOutcome {
-        records_written,
-        artifacts,
-    })
+fn render_selected_target(
+    project: &mapping::Project,
+    project_path: &Path,
+    output_path: Option<&Path>,
+    output: &engine::SelectedTargetOutput,
+    current_datetime: &str,
+) -> anyhow::Result<(usize, Vec<PayloadArtifact>)> {
+    let (name, stored, scope, schema, instance, options, label) = match output {
+        engine::SelectedTargetOutput::Primary(instance) => (
+            project.target.name.as_str(),
+            project.target_path.as_deref(),
+            &project.root,
+            &project.target,
+            instance,
+            &project.target_options,
+            "primary target".to_string(),
+        ),
+        engine::SelectedTargetOutput::Named(output) => {
+            let target = project
+                .extra_targets
+                .iter()
+                .find(|target| target.name == output.name)
+                .context("engine returned an unknown selected target")?;
+            (
+                target.name.as_str(),
+                target.path.as_deref(),
+                &target.root,
+                &target.schema,
+                &output.instance,
+                &target.options,
+                format!("extra target `{}`", target.name),
+            )
+        }
+    };
+    let count = target_artifact_count(instance, scope.output_path().is_some())?;
+    if count > MAX_PAYLOAD_ARTIFACTS {
+        bail!("payload run exceeds the limit of {MAX_PAYLOAD_ARTIFACTS} output artifacts");
+    }
+    let destination = target_destination(
+        project_path,
+        output_path,
+        stored,
+        scope.output_path().is_some(),
+        &label,
+    )?;
+    let artifacts = render_target(
+        name,
+        &destination,
+        schema,
+        instance,
+        options,
+        current_datetime,
+    )
+    .with_context(|| format!("rendering {label}"))?;
+    let records_written = artifacts
+        .iter()
+        .map(|artifact| artifact.records_written)
+        .sum();
+    Ok((records_written, artifacts))
 }
 
 fn validate_input_budget(options: &PayloadRunOptions<'_>) -> anyhow::Result<()> {
