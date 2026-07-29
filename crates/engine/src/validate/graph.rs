@@ -5,10 +5,10 @@ use mapping::{
     FailureIteration, FailureRule, Graph, Node, NodeId, Project, Scope, ScopeConstruction,
 };
 
-use super::ValidationIssue;
 use super::schema::{
     display_path, follow_schema, source_path_matches, source_path_matches_resolved,
 };
+use super::{ValidationIssue, validate_builtin_call};
 
 pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
     let mut sequence_item_scopes = BTreeMap::new();
@@ -127,11 +127,8 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                 validate_collection_path(project, &location, collection, "position", issues);
             }
             Node::FunctionParameter { .. } | Node::UserFunctionCall { .. } => {}
-            Node::Call { function, .. } if !functions::is_known(function) => {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!("unknown function `{function}`"),
-                ));
+            Node::Call { function, args } => {
+                validate_builtin_call(&location, function, args.len(), issues);
             }
             Node::Lookup {
                 collection,

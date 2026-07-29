@@ -459,6 +459,20 @@ fn reports_dangling_references_paths_unknown_functions_and_cycles() {
             value: Value::String("unused".into()),
         },
     );
+    project.graph.nodes.insert(
+        5,
+        Node::Call {
+            function: "replace".into(),
+            args: vec![4, 4],
+        },
+    );
+    project.graph.nodes.insert(
+        6,
+        Node::Call {
+            function: "json_serialize_object".into(),
+            args: vec![4, 4, 4, 4],
+        },
+    );
     project.root.set_source(None);
     project.root.filter = Some(88);
     project.root.group_by = Some(89);
@@ -483,6 +497,8 @@ fn reports_dangling_references_paths_unknown_functions_and_cycles() {
         .collect();
     for expected in [
         "unknown function `mystery`",
+        "function `replace` expects 3 to 4 argument(s), got 2",
+        "function `json_serialize_object` expects 3 argument(s), then complete groups of 3, got 4",
         "argument 0 references missing node 99",
         "cycle reaches node 2",
         "source field `missing` matches no scalar",
