@@ -119,7 +119,7 @@ fn is_fact_path(schema: &SchemaNode, path: &[String]) -> bool {
         return false;
     };
     match &node.kind {
-        SchemaKind::Scalar { .. } => !node.attribute && !node.text,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => !node.attribute && !node.text,
         SchemaKind::Group { .. } => node.child(XML_TEXT_FIELD).is_some(),
     }
 }

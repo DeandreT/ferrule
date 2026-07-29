@@ -127,9 +127,7 @@ pub(super) fn refine_connected_targets(
             let Some(path) = component.ports.get(input) else {
                 continue;
             };
-            if !schema_node_at(&component.schema, path)
-                .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
-            {
+            if !schema_node_at(&component.schema, path).is_some_and(SchemaNode::is_scalar) {
                 continue;
             }
             let Some(feed) = edge_from.get(input) else {

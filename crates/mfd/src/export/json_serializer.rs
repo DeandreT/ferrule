@@ -235,6 +235,15 @@ fn render_shape(
                 scalar_type_name(*ty)
             );
         }
+        SchemaKind::ScalarUnion { .. } => {
+            // This renderer currently constructs concrete scalar schemas, but
+            // keep a single port leaf if a union reaches it in the future.
+            let port = ports
+                .get(path)
+                .map(|key| format!(" {attr}=\"{key}\""))
+                .unwrap_or_default();
+            let _ = writeln!(out, "{pad}<entry name=\"string\"{port}/>");
+        }
         SchemaKind::Group { children, .. } => {
             let _ = writeln!(out, "{pad}<entry name=\"object\" expanded=\"1\">");
             for child in children {

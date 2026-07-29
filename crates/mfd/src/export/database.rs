@@ -272,7 +272,7 @@ fn subtree_used(
                 child_path.push(child.name.clone());
                 subtree_used(child, &child_path, ports, branch, args)
             }),
-            SchemaKind::Scalar { .. } => false,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,
         }
 }
 
@@ -346,6 +346,12 @@ fn render_table(
                     xml_escape(&child.name),
                     db_type_name(ty)
                 );
+            }
+            SchemaKind::ScalarUnion { .. } => {
+                return Err(MfdError::Unsupported(format!(
+                    "database column `{}` is a heterogeneous scalar union; database .mfd components require one concrete scalar type",
+                    path.join("/")
+                )));
             }
             SchemaKind::Group { .. } => {
                 render_table(child, path, source, target, indent + 1, args, output)?;

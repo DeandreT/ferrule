@@ -14,12 +14,10 @@ pub mod json_schema;
 use std::path::Path;
 
 use ir::{
-    GroupAlternativeConstraintValue, GroupAlternativeMode, Instance, ScalarType, SchemaKind,
-    SchemaNode, Value,
+    GroupAlternativeConstraintValue, GroupAlternativeMode, Instance, ScalarType, ScalarTypeSet,
+    SchemaKind, SchemaNode, Value,
 };
 use thiserror::Error;
-
-const MAX_EXACT_F64_INTEGER: u64 = 1_u64 << f64::MANTISSA_DIGITS;
 
 #[derive(Debug, Error)]
 pub enum JsonFormatError {
@@ -54,6 +52,36 @@ fn json_type_name(value: &serde_json::Value) -> &'static str {
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
     }
+}
+
+fn exact_f64_from_i64(value: i64) -> Option<f64> {
+    let converted = value as f64;
+    ((converted as i128) == i128::from(value)).then_some(converted)
+}
+
+fn exact_f64_from_u64(value: u64) -> Option<f64> {
+    let converted = value as f64;
+    ((converted as u128) == u128::from(value)).then_some(converted)
+}
+
+pub(crate) fn exact_f64_from_json_number(number: &serde_json::Number) -> Option<f64> {
+    if let Some(value) = number.as_i64() {
+        return exact_f64_from_i64(value);
+    }
+    if let Some(value) = number.as_u64() {
+        return exact_f64_from_u64(value);
+    }
+    number.as_f64().filter(|value| value.is_finite())
+}
+
+fn json_number_matches_f64(number: &serde_json::Number, expected: f64) -> bool {
+    if let Some(value) = number.as_i64() {
+        return exact_f64_from_i64(value) == Some(expected);
+    }
+    if let Some(value) = number.as_u64() {
+        return exact_f64_from_u64(value) == Some(expected);
+    }
+    number.as_f64() == Some(expected)
 }
 
 /// Reads a JSON file into an [`Instance`] tree shaped by `schema`.
@@ -136,6 +164,12 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
             schema.nullable,
             &schema.name,
         )?)),
+        SchemaKind::ScalarUnion { types } => Ok(Instance::Scalar(read_scalar_union(
+            value,
+            *types,
+            schema.nullable,
+            &schema.name,
+        )?)),
         SchemaKind::Group {
             children,
             alternatives,
@@ -209,9 +243,53 @@ fn missing_instance(schema: &SchemaNode) -> Instance {
         Instance::Repeated(Vec::new())
     } else {
         match schema.kind {
-            SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+                Instance::Scalar(Value::Null)
+            }
             SchemaKind::Group { .. } => Instance::Group(Vec::new()),
         }
+    }
+}
+
+fn read_scalar_union(
+    value: &serde_json::Value,
+    types: ScalarTypeSet,
+    nullable: bool,
+    name: &str,
+) -> Result<Value, JsonFormatError> {
+    match value {
+        serde_json::Value::Null if nullable => Ok(Value::json_null()),
+        serde_json::Value::String(value) if types.contains(ScalarType::String) => {
+            Ok(Value::String(value.clone()))
+        }
+        serde_json::Value::Bool(value) if types.contains(ScalarType::Bool) => {
+            Ok(Value::Bool(*value))
+        }
+        serde_json::Value::Number(value) => {
+            if let Some(value) = value.as_i64()
+                && types.contains(ScalarType::Int)
+            {
+                return Ok(Value::Int(value));
+            }
+            if types.contains(ScalarType::Float) {
+                return read_scalar(
+                    &serde_json::Value::Number(value.clone()),
+                    ScalarType::Float,
+                    false,
+                    name,
+                );
+            }
+            Err(JsonFormatError::Shape {
+                name: name.to_string(),
+                expected: "declared scalar union",
+                got: "number",
+            })
+        }
+        _ => Err(JsonFormatError::Shape {
+            name: name.to_string(),
+            expected: "declared scalar union",
+            got: json_type_name(value),
+        }),
     }
 }
 
@@ -233,24 +311,17 @@ fn read_scalar(
             n.as_i64().map(Value::Int).ok_or_else(|| bad("integer"))
         }
         (ScalarType::Float, serde_json::Value::Number(number)) => {
-            if number
-                .as_i64()
-                .is_some_and(|value| value.unsigned_abs() > MAX_EXACT_F64_INTEGER)
-                || number
-                    .as_u64()
-                    .is_some_and(|value| value > MAX_EXACT_F64_INTEGER)
-            {
-                return Err(JsonFormatError::Shape {
-                    name: name.to_string(),
-                    expected: "number",
-                    got: "integer outside the exact f64 range",
-                });
+            match exact_f64_from_json_number(number) {
+                Some(value) => Ok(Value::Float(value)),
+                None if number.as_i64().is_some() || number.as_u64().is_some() => {
+                    Err(JsonFormatError::Shape {
+                        name: name.to_string(),
+                        expected: "number",
+                        got: "integer outside the exact f64 range",
+                    })
+                }
+                None => Err(bad("finite number")),
             }
-            number
-                .as_f64()
-                .filter(|value| value.is_finite())
-                .map(Value::Float)
-                .ok_or_else(|| bad("finite number"))
         }
         (ScalarType::Bool, serde_json::Value::Bool(b)) => Ok(Value::Bool(*b)),
         (ScalarType::String, _) => Err(bad("string")),
@@ -356,6 +427,9 @@ fn write_single_node(
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             write_scalar(value, *ty, schema.nullable, &schema.name)
         }
+        (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {
+            write_scalar_union(value, *types, schema.nullable, &schema.name)
+        }
         (
             SchemaKind::Group {
                 children,
@@ -413,6 +487,11 @@ fn write_single_node(
             scalar_type_name(*ty),
             instance_type_name(other),
         )),
+        (SchemaKind::ScalarUnion { .. }, other) => Err(write_shape_error(
+            schema,
+            "declared scalar union",
+            instance_type_name(other),
+        )),
         (SchemaKind::Group { .. }, other) => Err(write_shape_error(
             schema,
             "object",
@@ -455,8 +534,71 @@ fn write_json_any(
 
 fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> bool {
     matches!(instance, Instance::Scalar(Value::Null))
-        && (schema.container_nullable
-            || (!schema.repeating && matches!(schema.kind, SchemaKind::Scalar { .. })))
+        && (schema.container_nullable || (!schema.repeating && schema.is_scalar()))
+}
+
+fn write_scalar_union(
+    value: &Value,
+    types: ScalarTypeSet,
+    nullable: bool,
+    name: &str,
+) -> Result<serde_json::Value, JsonFormatError> {
+    let allowed = match value {
+        Value::String(_) => types.contains(ScalarType::String),
+        Value::Int(_) => types.contains(ScalarType::Int),
+        Value::Float(_) => types.contains(ScalarType::Float),
+        Value::Bool(_) => types.contains(ScalarType::Bool),
+        Value::JsonNull(_) => nullable,
+        Value::Null | Value::XmlNil(_) => false,
+    };
+    if !allowed {
+        if matches!(value, Value::Int(_)) && types.contains(ScalarType::Float) {
+            return write_scalar(value, ScalarType::Float, false, name);
+        }
+        if matches!(value, Value::String(_)) && !types.contains(ScalarType::String) {
+            let mut converted = None;
+            for ty in [ScalarType::Int, ScalarType::Float, ScalarType::Bool] {
+                if types.contains(ty)
+                    && let Ok(candidate) = write_scalar(value, ty, false, name)
+                {
+                    if converted.is_some() {
+                        return Err(JsonFormatError::Shape {
+                            name: name.to_string(),
+                            expected: "unambiguous declared scalar union",
+                            got: "string",
+                        });
+                    }
+                    converted = Some(candidate);
+                }
+            }
+            if let Some(converted) = converted {
+                return Ok(converted);
+            }
+        }
+        return Err(JsonFormatError::Shape {
+            name: name.to_string(),
+            expected: "declared scalar union",
+            got: value.type_name(),
+        });
+    }
+    match value {
+        Value::String(value) => Ok(value.clone().into()),
+        Value::Int(value) => Ok((*value).into()),
+        Value::Float(value) => serde_json::Number::from_f64(*value)
+            .map(serde_json::Value::Number)
+            .ok_or_else(|| JsonFormatError::Shape {
+                name: name.to_string(),
+                expected: "finite number",
+                got: "non-finite float",
+            }),
+        Value::Bool(value) => Ok((*value).into()),
+        Value::JsonNull(_) => Ok(serde_json::Value::Null),
+        Value::Null | Value::XmlNil(_) => Err(JsonFormatError::Shape {
+            name: name.to_string(),
+            expected: "declared scalar union",
+            got: value.type_name(),
+        }),
+    }
 }
 
 fn validate_alternative_fields(
@@ -510,7 +652,7 @@ fn constraint_matches(
             actual.as_i64() == Some(*expected)
         }
         (GroupAlternativeConstraintValue::Float(expected), serde_json::Value::Number(actual)) => {
-            actual.as_f64() == Some(expected.get())
+            json_number_matches_f64(actual, expected.get())
         }
         (GroupAlternativeConstraintValue::Bool(expected), serde_json::Value::Bool(actual)) => {
             expected == actual
@@ -557,7 +699,7 @@ fn write_scalar(
             .parse::<i64>()
             .map(|value| serde_json::Value::Number(value.into()))
             .map_err(|_| bad()),
-        (ScalarType::Float, Value::Int(value)) if value.unsigned_abs() <= MAX_EXACT_F64_INTEGER => {
+        (ScalarType::Float, Value::Int(value)) if exact_f64_from_i64(*value).is_some() => {
             Ok(serde_json::Value::Number((*value).into()))
         }
         (ScalarType::Float, Value::Int(_)) => Err(JsonFormatError::Shape {
@@ -827,6 +969,62 @@ mod tests {
     }
 
     #[test]
+    fn scalar_union_writes_only_unambiguous_existing_scalar_coercions()
+    -> Result<(), JsonFormatError> {
+        let Some(types) = ScalarTypeSet::new([ScalarType::Float, ScalarType::String]) else {
+            panic!("test scalar union must contain distinct types");
+        };
+        let float_or_string = SchemaNode::scalar_union("value", types);
+        assert_eq!(
+            write_node(&float_or_string, &Instance::Scalar(Value::Int(42)))?,
+            serde_json::json!(42)
+        );
+
+        let Some(types) = ScalarTypeSet::new([ScalarType::Int, ScalarType::String]) else {
+            panic!("test scalar union must contain distinct types");
+        };
+        let int_or_string = SchemaNode::scalar_union("value", types);
+        assert_eq!(
+            write_node(
+                &int_or_string,
+                &Instance::Scalar(Value::String("42".into()))
+            )?,
+            serde_json::json!("42")
+        );
+
+        let Some(types) = ScalarTypeSet::new([ScalarType::Float, ScalarType::Bool]) else {
+            panic!("test scalar union must contain distinct types");
+        };
+        let float_or_bool = SchemaNode::scalar_union("value", types);
+        assert!(matches!(
+            write_node(
+                &float_or_bool,
+                &Instance::Scalar(Value::Int((1_i64 << f64::MANTISSA_DIGITS) + 1))
+            ),
+            Err(JsonFormatError::Shape {
+                got: "int outside the exact f64 range",
+                ..
+            })
+        ));
+        let Some(types) = ScalarTypeSet::new([ScalarType::Int, ScalarType::Float]) else {
+            panic!("test scalar union must contain distinct types");
+        };
+        let ambiguous_numeric = SchemaNode::scalar_union("value", types);
+        assert!(matches!(
+            write_node(
+                &ambiguous_numeric,
+                &Instance::Scalar(Value::String("1".into()))
+            ),
+            Err(JsonFormatError::Shape {
+                expected: "unambiguous declared scalar union",
+                got: "string",
+                ..
+            })
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn json_lines_roundtrips_rows_without_an_enclosing_array() {
         let schema = SchemaNode::group(
             "Row",
@@ -1064,17 +1262,28 @@ mod tests {
     }
 
     #[test]
-    fn float_leaves_only_widen_integers_that_roundtrip_exactly() {
+    fn float_leaves_only_widen_integers_that_roundtrip_exactly() -> Result<(), JsonFormatError> {
         let schema = SchemaNode::scalar("Field", ScalarType::Float);
-        let boundary = MAX_EXACT_F64_INTEGER as i64;
-        let encoded = write_node(&schema, &Instance::Scalar(Value::Int(boundary))).unwrap();
-        assert_eq!(
-            read_node(&encoded, &schema).unwrap(),
-            Instance::Scalar(Value::Float(boundary as f64))
-        );
+        for value in [
+            1_i64 << f64::MANTISSA_DIGITS,
+            (1_i64 << f64::MANTISSA_DIGITS) + 2,
+            i64::MIN,
+        ] {
+            let encoded = write_node(&schema, &Instance::Scalar(Value::Int(value)))?;
+            assert_eq!(
+                read_node(&encoded, &schema)?,
+                Instance::Scalar(Value::Float(value as f64))
+            );
+        }
 
-        for value in [boundary + 1, -(boundary + 1)] {
-            let error = write_node(&schema, &Instance::Scalar(Value::Int(value))).unwrap_err();
+        for value in [
+            (1_i64 << f64::MANTISSA_DIGITS) + 1,
+            -((1_i64 << f64::MANTISSA_DIGITS) + 1),
+            i64::MAX,
+        ] {
+            let Err(error) = write_node(&schema, &Instance::Scalar(Value::Int(value))) else {
+                panic!("inexact integer must not widen to float");
+            };
             assert!(matches!(
                 error,
                 JsonFormatError::Shape {
@@ -1084,18 +1293,30 @@ mod tests {
                 } if name == "Field"
             ));
         }
+        Ok(())
     }
 
     #[test]
-    fn float_leaves_reject_lossy_external_json_integers() {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_format_json_float_precision_{}.json",
-            std::process::id()
-        ));
+    fn float_leaves_accept_exact_sparse_external_integers() -> Result<(), Box<dyn std::error::Error>>
+    {
         let schema = SchemaNode::scalar("Field", ScalarType::Float);
 
-        std::fs::write(&path, (MAX_EXACT_F64_INTEGER + 1).to_string()).unwrap();
-        let error = read(&path, &schema).unwrap_err();
+        for text in [
+            ((1_u64 << f64::MANTISSA_DIGITS) + 2).to_string(),
+            i64::MIN.to_string(),
+            (1_u64 << 63).to_string(),
+        ] {
+            let expected = text.parse::<f64>()?;
+            assert_eq!(
+                from_str(&text, &schema)?,
+                Instance::Scalar(Value::Float(expected))
+            );
+        }
+
+        let Err(error) = from_str(&((1_u64 << f64::MANTISSA_DIGITS) + 1).to_string(), &schema)
+        else {
+            panic!("inexact external integer must not narrow to float");
+        };
         assert!(matches!(
             error,
             JsonFormatError::Shape {
@@ -1105,12 +1326,11 @@ mod tests {
             } if name == "Field"
         ));
 
-        std::fs::write(&path, "1.25").unwrap();
         assert_eq!(
-            read(&path, &schema).unwrap(),
+            from_str("1.25", &schema)?,
             Instance::Scalar(Value::Float(1.25))
         );
-        std::fs::remove_file(path).unwrap();
+        Ok(())
     }
 
     #[test]

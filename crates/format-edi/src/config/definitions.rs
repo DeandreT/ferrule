@@ -516,6 +516,7 @@ fn collect_value_constraint_paths(
                 output.push(constraint);
             }
         }
+        SchemaKind::ScalarUnion { .. } => {}
         SchemaKind::Group { children, .. } => {
             for child in children {
                 collect_value_constraint_paths(child, names, path, false, output);
@@ -545,6 +546,7 @@ fn collect_lexical_format_paths(
                 output.push(format);
             }
         }
+        SchemaKind::ScalarUnion { .. } => {}
         SchemaKind::Group { children, .. } => {
             for child in children {
                 collect_lexical_format_paths(child, names, path, false, output);
@@ -574,6 +576,7 @@ fn collect_implied_decimal_paths(
                 output.push(format);
             }
         }
+        SchemaKind::ScalarUnion { .. } => {}
         SchemaKind::Group { children, .. } => {
             for child in children {
                 collect_implied_decimal_paths(child, names, path, false, output);

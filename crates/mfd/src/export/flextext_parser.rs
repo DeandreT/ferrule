@@ -327,7 +327,7 @@ fn entries_xml(schema: &SchemaNode, ports: &BTreeMap<Vec<String>, u32>, indent: 
             .map(|port| format!(" outkey=\"{port}\""))
             .unwrap_or_default();
         match &node.kind {
-            SchemaKind::Scalar { .. } => {
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
                 let _ = writeln!(
                     output,
                     "{pad}<entry name=\"{}\"{port}/>",

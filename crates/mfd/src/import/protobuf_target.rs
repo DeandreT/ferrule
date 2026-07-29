@@ -100,10 +100,14 @@ fn collect_unfed_repetition(
                 {
                     messages.push(path.clone());
                 }
-                SchemaKind::Scalar { .. } if connected.contains(path) => {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }
+                    if connected.contains(path) =>
+                {
                     scalars.push(path.clone());
                 }
-                SchemaKind::Group { .. } | SchemaKind::Scalar { .. } => {}
+                SchemaKind::Group { .. }
+                | SchemaKind::Scalar { .. }
+                | SchemaKind::ScalarUnion { .. } => {}
             }
         }
         collect_unfed_repetition(

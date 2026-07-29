@@ -92,9 +92,8 @@ pub(in crate::import) fn accept_target(
             let mut path = target_path.to_vec();
             path.extend(output.iter().cloned());
             !target_node.repeating
-                && schema_node_at(&target.schema, &path).is_some_and(|node| {
-                    node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                })
+                && schema_node_at(&target.schema, &path)
+                    .is_some_and(|node| node.repeating && node.is_scalar())
         }
         RecipeSource::RecursiveFilter { .. } => true,
         RecipeSource::PathHierarchy { .. } => !target_node.repeating && target_path.is_empty(),
@@ -437,7 +436,7 @@ fn build_path_hierarchy_target(
     collection.path.extend(values.iter().cloned());
     if !builder
         .schema_node(&collection)
-        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        .is_some_and(|node| node.repeating && node.is_scalar())
     {
         return Err("its path-list parameter does not resolve to repeating strings".to_string());
     }
@@ -557,7 +556,7 @@ fn build_recursive_collect_target(
     let mut output_path = target_path.to_vec();
     output_path.extend(output.iter().cloned());
     if !schema_node_at(&target.schema, &output_path)
-        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        .is_some_and(|node| node.repeating && node.is_scalar())
     {
         return Err("its recursive output is not a repeating scalar target".to_string());
     }
@@ -617,7 +616,7 @@ fn build_catalog_target(
         let mut path = target_path.to_vec();
         path.extend(relative.iter().cloned());
         if !schema_node_at(&target.schema, &path)
-            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return Err(format!(
                 "target field `{}` is not a flat scalar",
@@ -726,7 +725,7 @@ fn build_aggregate_target(
         let mut path = target_path.to_vec();
         path.extend(relative.iter().cloned());
         if !schema_node_at(&target.schema, &path)
-            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return Err(format!(
                 "target field `{}` is not a flat scalar",

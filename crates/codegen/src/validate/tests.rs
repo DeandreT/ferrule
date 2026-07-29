@@ -1,4 +1,4 @@
-use ir::{ScalarType, SchemaNode, Value};
+use ir::{ScalarType, ScalarTypeSet, SchemaNode, Value};
 
 use super::*;
 use crate::{
@@ -77,6 +77,43 @@ fn empty_target_scope() -> TargetScope {
         bindings: Vec::new(),
         children: Vec::new(),
     }
+}
+
+fn scalar_union(name: &str) -> SchemaNode {
+    let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+        panic!("test union must contain two distinct types");
+    };
+    SchemaNode::scalar_union(name, types)
+}
+
+#[test]
+fn rejects_scalar_unions_in_embedded_boundary_schemas() {
+    let mut source = program();
+    source.source = SchemaNode::group(
+        "Source",
+        vec![SchemaNode::group("Envelope", vec![scalar_union("Value")])],
+    );
+    assert_eq!(
+        validate_program(&source),
+        Err(ProgramValidationError::UnsupportedScalarUnionSchema {
+            boundary: "source schema".into(),
+            path: vec!["Envelope".into(), "Value".into()],
+        })
+    );
+
+    let mut target = program();
+    target.extra_targets.push(NamedTargetProgram {
+        name: "Audit".into(),
+        target: SchemaNode::group("Audit", vec![scalar_union("Payload")]),
+        root: empty_target_scope(),
+    });
+    assert_eq!(
+        validate_program(&target),
+        Err(ProgramValidationError::UnsupportedScalarUnionSchema {
+            boundary: "named target `Audit` schema".into(),
+            path: vec!["Payload".into()],
+        })
+    );
 }
 
 #[test]

@@ -73,7 +73,7 @@ fn validate_bounded_repeating_construction(
         let Some(projected) = schema::schema_node_at(&component.schema, &absolute) else {
             return Err("a constructed descendant is absent from the variable schema");
         };
-        if !matches!(projected.kind, SchemaKind::Scalar { .. }) {
+        if !projected.is_scalar() {
             return Err("only scalar bindings below the repeated child are supported");
         }
         for depth in output_path.len() + 1..=absolute.len() {
@@ -376,7 +376,7 @@ impl GraphBuilder<'_> {
                     .schema_node(&source_path)
                     .and_then(|node| match &node.kind {
                         SchemaKind::Scalar { ty } => Some(*ty),
-                        SchemaKind::Group { .. } => None,
+                        SchemaKind::ScalarUnion { .. } | SchemaKind::Group { .. } => None,
                     });
                 let input = self.source_field_at(&source_path)?;
                 let Some(ty) = ty else {

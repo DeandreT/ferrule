@@ -141,6 +141,7 @@ fn shape_of(node: &SchemaNode, is_root: bool) -> Result<Shape<'_>, EdiFormatErro
 fn is_scalar_tree(node: &SchemaNode) -> bool {
     match &node.kind {
         SchemaKind::Scalar { .. } => true,
+        SchemaKind::ScalarUnion { .. } => false,
         SchemaKind::Group { children, .. } => children.iter().all(is_scalar_tree),
     }
 }
@@ -217,6 +218,7 @@ fn segment_matches(trigger: &SchemaNode, segment: &Segment) -> bool {
         let components = segment.elements.get(i).and_then(|repeats| repeats.first());
         match &child.kind {
             SchemaKind::Scalar { .. } => fixed_holds(child, components.and_then(|c| c.first())),
+            SchemaKind::ScalarUnion { .. } => false,
             SchemaKind::Group {
                 children: component_schemas,
                 ..
@@ -250,6 +252,7 @@ fn describe_trigger(trigger: &SchemaNode) -> String {
                 .map(|f| format!("{}={f}", child.name))
                 .into_iter()
                 .collect::<Vec<_>>(),
+            SchemaKind::ScalarUnion { .. } => Vec::new(),
             SchemaKind::Group {
                 children: component_schemas,
                 ..
@@ -523,6 +526,10 @@ fn read_one_repeat(
                 raw.as_ref(),
             )?))
         }
+        SchemaKind::ScalarUnion { .. } => Err(EdiFormatError::UnsupportedSchema(format!(
+            "EDI element `{}` cannot preserve a heterogeneous scalar union",
+            element_schema.name
+        ))),
         SchemaKind::Group { children, .. } => {
             let mut parts = Vec::with_capacity(children.len());
             for (j, component_schema) in children.iter().enumerate() {
@@ -562,6 +569,10 @@ fn read_nested_component(
                 raw.as_ref(),
             )?))
         }
+        SchemaKind::ScalarUnion { .. } => Err(EdiFormatError::UnsupportedSchema(format!(
+            "EDI component `{}` cannot preserve a heterogeneous scalar union",
+            schema.name
+        ))),
         SchemaKind::Group { children, .. } => {
             let parts = separator
                 .map(|separator| raw.split(separator).collect::<Vec<_>>())
@@ -725,6 +736,10 @@ fn validate_single_instance(
             };
             scalar_or_fixed(schema, Some(value)).map(|_| ())
         }
+        SchemaKind::ScalarUnion { .. } => Err(EdiFormatError::UnsupportedSchema(format!(
+            "EDI node `{}` cannot preserve a heterogeneous scalar union",
+            schema.name
+        ))),
         SchemaKind::Group { children, .. } => {
             let Instance::Group(fields) = instance else {
                 return Err(instance_shape_error(schema, "a group", instance));
@@ -1026,6 +1041,10 @@ fn write_one_repeat(
             }
             escape(&text, &schema.name, opts, allowed_reserved)
         }
+        SchemaKind::ScalarUnion { .. } => Err(EdiFormatError::UnsupportedSchema(format!(
+            "EDI node `{}` cannot preserve a heterogeneous scalar union",
+            schema.name
+        ))),
         SchemaKind::Group { children, .. } => {
             let mut components: Vec<String> = children
                 .iter()
@@ -1095,8 +1114,8 @@ mod tests {
                 SchemaNode::group(
                     "Type",
                     vec![
-                        SchemaNode::scalar("Code", ScalarType::String).fixed("ORDER"),
-                        SchemaNode::scalar("Version", ScalarType::Int).fixed("1"),
+                        SchemaNode::scalar_fixed("Code", ScalarType::String, "ORDER"),
+                        SchemaNode::scalar_fixed("Version", ScalarType::Int, "1"),
                     ],
                 ),
             ],

@@ -271,6 +271,9 @@ Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable
 function implementations preserve the interpreter's typed arity, type, and
 invalid-argument failures, including the one-million-character padding bound.
+Heterogeneous scalar-union fields currently produce a boundary-and-path
+diagnostic before artifacts are created because the generated Rust and C# JSON
+codecs do not yet carry the union schema kind.
 Generated scopes, failure rules, and sequence reducers support bounded regex
 tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
 expose materially different regex dialects and Unicode behavior, so patterns

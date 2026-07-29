@@ -138,7 +138,7 @@ fn apply_target(
             values,
             value,
         } => {
-            if !target_node.repeating || !matches!(target_node.kind, SchemaKind::Scalar { .. }) {
+            if !target_node.repeating || !target_node.is_scalar() {
                 return Err(
                     "recursive-collect output must feed one repeating scalar target".into(),
                 );

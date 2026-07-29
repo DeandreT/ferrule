@@ -430,6 +430,29 @@ fn rejects_inconsistent_deserialized_group_alternatives() {
 }
 
 #[test]
+fn rejects_programmatically_invalid_fixed_union_metadata() {
+    let mut project = valid_project();
+    let Some(types) = ir::ScalarTypeSet::new([ir::ScalarType::String, ir::ScalarType::Int]) else {
+        panic!("test scalar union members must be distinct");
+    };
+    let SchemaKind::Group { children, .. } = &mut project.target.kind else {
+        panic!("test target must be a group");
+    };
+    let Some(target) = children.iter_mut().find(|child| child.name == "name") else {
+        panic!("test target field must exist");
+    };
+    target.kind = SchemaKind::ScalarUnion { types };
+    target.fixed = Some("ambiguous".into());
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("fixed-value metadata")
+            && issue.message.contains("name")
+    }));
+}
+
+#[test]
 fn reports_dangling_references_paths_unknown_functions_and_cycles() {
     let mut project = valid_project();
     project.graph.nodes.insert(

@@ -16,6 +16,8 @@ pub enum XbrlFormatError {
     InvalidTableSchema,
     #[error("XBRL schema recursion exceeds the {limit}-level limit")]
     SchemaDepth { limit: usize },
+    #[error("XBRL field `{name}` cannot preserve a heterogeneous scalar union")]
+    UnsupportedScalarUnion { name: String },
     #[error("XBRL instance exceeds the {limit} context limit")]
     ContextLimit { limit: usize },
     #[error("XBRL instance exceeds the {limit} fact limit")]

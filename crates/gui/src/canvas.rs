@@ -2,8 +2,10 @@
 //! target endpoint blocks. Endpoint pins keep their complete schema identity,
 //! while blocks group fields by their owning repetition context.
 
-use ir::{ScalarType, SchemaKind, SchemaNode};
+use ir::{SchemaKind, SchemaNode};
 use mapping::NodeId;
+
+use crate::schema_scalar::ScalarDomain;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CanvasNode {
@@ -26,7 +28,7 @@ pub struct SourceLeaf {
     pub label: String,
     pub frame: Option<Vec<String>>,
     pub path: Vec<String>,
-    pub ty: ScalarType,
+    pub ty: ScalarDomain,
 }
 
 /// One scalar leaf of the target schema. `chain` is the group-name chain
@@ -38,7 +40,7 @@ pub struct TargetLeaf {
     pub label: String,
     pub chain: Vec<String>,
     pub field: String,
-    pub ty: ScalarType,
+    pub ty: ScalarDomain,
 }
 
 /// A compact source endpoint. `frame` is populated when every leaf shares one
@@ -139,7 +141,17 @@ fn collect_source(
                 label: label.join("/"),
                 frame: frame_len.map(|len| absolute[..len].to_vec()),
                 path: suffix.clone(),
-                ty: *ty,
+                ty: ScalarDomain::Single(*ty),
+            });
+            suffix.pop();
+        }
+        SchemaKind::ScalarUnion { types } => {
+            suffix.push(node.name.clone());
+            out.push(SourceLeaf {
+                label: label.join("/"),
+                frame: frame_len.map(|len| absolute[..len].to_vec()),
+                path: suffix.clone(),
+                ty: ScalarDomain::Union(*types),
             });
             suffix.pop();
         }
@@ -226,7 +238,17 @@ fn collect_target(node: &SchemaNode, chain: &mut Vec<String>, out: &mut Vec<Targ
                 label: label.join("/"),
                 chain: chain.clone(),
                 field: node.name.clone(),
-                ty: *ty,
+                ty: ScalarDomain::Single(*ty),
+            });
+        }
+        SchemaKind::ScalarUnion { types } => {
+            let mut label = chain.clone();
+            label.push(node.name.clone());
+            out.push(TargetLeaf {
+                label: label.join("/"),
+                chain: chain.clone(),
+                field: node.name.clone(),
+                ty: ScalarDomain::Union(*types),
             });
         }
         SchemaKind::Group { children, .. } => {
@@ -242,7 +264,14 @@ fn collect_target(node: &SchemaNode, chain: &mut Vec<String>, out: &mut Vec<Targ
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::ScalarType;
+    use ir::{ScalarType, ScalarTypeSet};
+
+    fn scalar_union(name: &str, types: impl IntoIterator<Item = ScalarType>) -> SchemaNode {
+        let Some(types) = ScalarTypeSet::new(types) else {
+            panic!("test union must contain distinct scalar types");
+        };
+        SchemaNode::scalar_union(name, types)
+    }
 
     #[test]
     fn source_leaf_paths_are_relative_to_the_innermost_repeating_ancestor() {
@@ -278,22 +307,40 @@ mod tests {
                     label: "Date".into(),
                     frame: None,
                     path: vec!["Date".into()],
-                    ty: ScalarType::String,
+                    ty: ScalarDomain::Single(ScalarType::String),
                 },
                 SourceLeaf {
                     label: "Order/Cust_Name".into(),
                     frame: Some(vec!["Order".into()]),
                     path: vec!["Cust_Name".into()],
-                    ty: ScalarType::String,
+                    ty: ScalarDomain::Single(ScalarType::String),
                 },
                 SourceLeaf {
                     label: "Order/Items/Item/Price".into(),
                     frame: Some(vec!["Order".into(), "Items".into(), "Item".into()]),
                     path: vec!["Price".into()],
-                    ty: ScalarType::Float,
+                    ty: ScalarDomain::Single(ScalarType::Float),
                 },
             ]
         );
+    }
+
+    #[test]
+    fn scalar_unions_remain_one_visible_source_and_target_leaf() {
+        let schema = SchemaNode::group(
+            "root",
+            vec![scalar_union("value", [ScalarType::String, ScalarType::Int])],
+        );
+
+        let sources = source_leaves(&schema);
+        let targets = target_leaves(&schema);
+
+        assert_eq!(sources.len(), 1);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(sources[0].path, ["value"]);
+        assert_eq!(targets[0].field, "value");
+        assert_eq!(sources[0].ty.label(), "String | Int");
+        assert_eq!(targets[0].ty.label(), "String | Int");
     }
 
     #[test]

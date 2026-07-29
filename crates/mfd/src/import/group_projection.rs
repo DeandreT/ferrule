@@ -398,9 +398,7 @@ fn exact_mapped_branches(
         {
             continue;
         }
-        if !schema_node_at(&target.schema, path)
-            .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
-        {
+        if !schema_node_at(&target.schema, path).is_some_and(SchemaNode::is_scalar) {
             return false;
         }
         let owners = target
@@ -612,7 +610,7 @@ fn is_xml_text_group(target: &SchemaComponent, node: &SchemaNode) -> bool {
     target.format.is_xml_like()
         && node
             .child(XML_TEXT_FIELD)
-            .is_some_and(|text| !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|text| !text.repeating && text.is_scalar())
 }
 
 fn text_is_connected(
@@ -676,9 +674,9 @@ fn is_generic_xml_text_path(source: &SchemaComponent, path: &[String]) -> bool {
         && schema_node_at(&source.schema, path).is_some_and(|node| {
             node.repeating
                 && matches!(node.kind, SchemaKind::Group { .. })
-                && node.child(XML_TEXT_FIELD).is_some_and(|text| {
-                    !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. })
-                })
+                && node
+                    .child(XML_TEXT_FIELD)
+                    .is_some_and(|text| !text.repeating && text.is_scalar())
         })
 }
 
@@ -696,7 +694,7 @@ fn scalar_schema_path(schema: &SchemaNode, path: &[String]) -> bool {
         }
         node = child;
     }
-    matches!(node.kind, SchemaKind::Scalar { .. })
+    node.is_scalar()
 }
 
 fn has_connected_descendant(
@@ -983,9 +981,10 @@ fn collect_steps(
     plan: &mut GroupProjectionPlan,
 ) {
     match (&source.kind, &target.kind) {
-        (SchemaKind::Scalar { .. }, SchemaKind::Scalar { .. })
-            if !source.repeating && !target.repeating =>
-        {
+        (
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+        ) if !source.repeating && !target.repeating => {
             // This follows the same adapter-guided coercion as an explicit
             // scalar connection; structural copies do not impose stricter types.
             plan.steps

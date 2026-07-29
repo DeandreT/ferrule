@@ -267,15 +267,14 @@ pub(super) fn validate_xlsx_options(
             SchemaKind::Group { children, .. }
                 if !schema.repeating
                     && children.iter().all(|child| {
-                        !child.repeating
-                            && !child.attribute
-                            && !child.text
-                            && matches!(child.kind, SchemaKind::Scalar { .. })
+                        !child.repeating && !child.attribute && !child.text && child.is_scalar()
                     }) =>
             {
                 Some(children.len())
             }
-            SchemaKind::Scalar { .. } | SchemaKind::Group { .. } => None,
+            SchemaKind::Scalar { .. }
+            | SchemaKind::ScalarUnion { .. }
+            | SchemaKind::Group { .. } => None,
         };
         match field_count {
             Some(count) if count != options.xlsx_headers.len() => {

@@ -557,6 +557,11 @@ fn write_element_required(
                 xsd_type_name(ty)
             ));
         }
+        ir::SchemaKind::ScalarUnion { .. } => {
+            return Err(XmlFormatError::UnsupportedScalarUnion {
+                name: node.name.clone(),
+            });
+        }
         ir::SchemaKind::Group { .. } => {
             out.push_str(&format!(
                 "{pad}<xs:element name=\"{}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}>\n",

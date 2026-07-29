@@ -1538,7 +1538,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                                 "Mapped target"
                             };
                             let hover = crate::x12_tooltips::append_segment_for_path(
-                                format!("{state}: {}", leaf.label),
+                                format!("{state}: {}\nType: {}", leaf.label, leaf.ty.label()),
                                 self.target_x12,
                                 &leaf.label,
                             );
@@ -1612,14 +1612,18 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             section.pin_labels.get(semantic),
                         ) {
                             let context = leaf.frame.as_ref().map_or_else(
-                                || format!("Source: {}", leaf.label),
+                                || format!("Source: {}\nType: {}", leaf.label, leaf.ty.label()),
                                 |frame| {
                                     let frame = if frame.is_empty() {
                                         "document rows".to_string()
                                     } else {
                                         frame.join("/")
                                     };
-                                    format!("Source: {}\nRepeating context: {frame}", leaf.label)
+                                    format!(
+                                        "Source: {}\nType: {}\nRepeating context: {frame}",
+                                        leaf.label,
+                                        leaf.ty.label()
+                                    )
                                 },
                             );
                             let hover = crate::x12_tooltips::append_segment_for_path(

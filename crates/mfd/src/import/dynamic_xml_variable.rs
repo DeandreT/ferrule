@@ -116,7 +116,12 @@ fn scalar_suffix(
     path: &[String],
     node: &ir::SchemaNode,
 ) -> Option<Vec<String>> {
-    if node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. }) {
+    if node.repeating
+        || !matches!(
+            node.kind,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }
+        )
+    {
         return None;
     }
     let suffix = path.strip_prefix(collection)?.to_vec();
@@ -128,11 +133,14 @@ fn has_unique_scalar_descendant(schema: &ir::SchemaNode, name: &str) -> bool {
         let own = usize::from(
             schema.name == name
                 && !schema.repeating
-                && matches!(schema.kind, SchemaKind::Scalar { .. }),
+                && matches!(
+                    schema.kind,
+                    SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }
+                ),
         );
         let children = match &schema.kind {
             SchemaKind::Group { children, .. } => children,
-            SchemaKind::Scalar { .. } => return own,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => return own,
         };
         children
             .iter()

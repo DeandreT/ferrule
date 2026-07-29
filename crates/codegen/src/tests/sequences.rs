@@ -479,7 +479,7 @@ fn reports_unsupported_functions_inside_regex_generated_scopes() {
         41,
         Node::Call {
             function: "flextext_parse_field".into(),
-            args: vec![20, 20],
+            args: vec![20, 20, 20],
         },
     );
     project.root.children[0].filter = Some(41);

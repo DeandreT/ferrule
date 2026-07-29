@@ -215,7 +215,7 @@ fn flat_path_value(input: &SchemaComponent) -> Option<String> {
     let [value] = children.as_slice() else {
         return None;
     };
-    (value.repeating && matches!(value.kind, SchemaKind::Scalar { .. })).then(|| value.name.clone())
+    (value.repeating && value.is_scalar()).then(|| value.name.clone())
 }
 
 fn output_shape(output: &SchemaComponent) -> Option<OutputShape> {
@@ -239,12 +239,11 @@ fn output_shape(output: &SchemaComponent) -> Option<OutputShape> {
     };
     let name = children
         .iter()
-        .find(|child| !child.repeating && matches!(child.kind, SchemaKind::Scalar { .. }))?;
-    if !file_children.iter().any(|child| {
-        child.name == name.name
-            && !child.repeating
-            && matches!(child.kind, SchemaKind::Scalar { .. })
-    }) {
+        .find(|child| !child.repeating && child.is_scalar())?;
+    if !file_children
+        .iter()
+        .any(|child| child.name == name.name && !child.repeating && child.is_scalar())
+    {
         return None;
     }
     Some(OutputShape {

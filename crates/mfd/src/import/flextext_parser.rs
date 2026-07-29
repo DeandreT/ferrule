@@ -119,8 +119,7 @@ fn build_recipe(
     }
     for (output, path) in &outputs {
         if !path.is_empty()
-            && !schema_node_at(&layout.schema(), path)
-                .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+            && !schema_node_at(&layout.schema(), path).is_some_and(|node| node.is_scalar())
         {
             return Err(format!(
                 "output port `{output}` path `{}` is not scalar",

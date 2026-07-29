@@ -7,15 +7,16 @@
 //! `anyOf` unions, their required scalar `const` discriminators, and typed
 //! `additionalProperties` schemas are preserved. Scalar/container-plus-null
 //! `oneOf` / `anyOf` and nullable type arrays retain explicit nullability,
-//! including scalar array items. Homogeneous scalar and array `anyOf` branches
-//! canonicalize to their shared exact runtime shape. Unconstrained
+//! including scalar array items. Exact heterogeneous scalar `anyOf` and type
+//! arrays preserve every allowed runtime type; homogeneous array `anyOf`
+//! branches canonicalize to their shared runtime shape. Unconstrained
 //! `additionalProperties` values are retained as canonical JSON text in the
 //! graph's string domain. An omitted or false `additionalProperties` is
 //! treated as closed. General composition remains outside this subset;
 //! shape-neutral validation keywords are accepted but are not enforced by the
 //! mapping schema.
 
-use ir::{GroupAlternativeMode, ScalarType, SchemaNode};
+use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
 
 use crate::JsonFormatError;
 
@@ -23,10 +24,16 @@ mod alternatives;
 mod render;
 
 use alternatives::{
-    parse_homogeneous_array_any_of, parse_homogeneous_scalar_any_of, parse_inferred_const_scalar,
+    parse_homogeneous_array_any_of, parse_inferred_const_scalar,
     parse_nullable_container_alternatives, parse_nullable_scalar_alternatives,
-    parse_object_alternatives,
+    parse_object_alternatives, parse_scalar_any_of,
 };
+
+enum ImportedSchemaType<'a> {
+    Absent,
+    Single(&'a str),
+    ScalarUnion(ScalarTypeSet),
+}
 
 /// Imports the root of a JSON Schema file as a [`SchemaNode`]. The root
 /// node is named by the schema's `title` (looked up through a root-level
@@ -125,10 +132,8 @@ fn parse(
         )? {
             return Ok(nullable);
         }
-        if let Some(homogeneous) =
-            parse_homogeneous_scalar_any_of(name, schema, alternatives, doc, active_refs)?
-        {
-            return Ok(homogeneous);
+        if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
+            return Ok(scalar);
         }
         if let Some(homogeneous) =
             parse_homogeneous_array_any_of(name, schema, alternatives, doc, active_refs)?
@@ -146,14 +151,14 @@ fn parse(
     }
     let (ty, nullable) = schema_type(name, schema)?;
     match ty {
-        Some("object") => {
+        ImportedSchemaType::Single("object") => {
             let children = parse_properties(schema, doc, active_refs)?;
             let mut node =
                 attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)?;
             node.container_nullable = nullable;
             Ok(node)
         }
-        Some("array") => {
+        ImportedSchemaType::Single("array") => {
             let Some(items) = schema.get("items") else {
                 let mut node = SchemaNode::scalar(name, ScalarType::String).repeating();
                 node.container_nullable = nullable;
@@ -163,36 +168,54 @@ fn parse(
             node.container_nullable = nullable;
             Ok(node)
         }
-        Some("string") => Ok(scalar_schema(name, ScalarType::String, nullable)),
-        Some("integer") => Ok(scalar_schema(name, ScalarType::Int, nullable)),
-        Some("number") => Ok(scalar_schema(name, ScalarType::Float, nullable)),
-        Some("boolean") => Ok(scalar_schema(name, ScalarType::Bool, nullable)),
-        Some("null") => Err(unsupported_union(
+        ImportedSchemaType::Single("string") => {
+            Ok(scalar_schema(name, ScalarType::String, nullable))
+        }
+        ImportedSchemaType::Single("integer") => Ok(scalar_schema(name, ScalarType::Int, nullable)),
+        ImportedSchemaType::Single("number") => {
+            Ok(scalar_schema(name, ScalarType::Float, nullable))
+        }
+        ImportedSchemaType::Single("boolean") => {
+            Ok(scalar_schema(name, ScalarType::Bool, nullable))
+        }
+        ImportedSchemaType::ScalarUnion(types) => {
+            let mut node = SchemaNode::scalar_union(name, types);
+            node.nullable = nullable;
+            Ok(node)
+        }
+        ImportedSchemaType::Single("null") => Err(unsupported_union(
             name,
             "a null-only schema has no distinct ferrule scalar value type",
         )),
-        None if schema.get("const").is_some() => {
+        ImportedSchemaType::Absent if schema.get("const").is_some() => {
             parse_inferred_const_scalar(name, &schema["const"])
         }
         _ if schema.get("properties").is_some() => {
             let children = parse_properties(schema, doc, active_refs)?;
             attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)
         }
-        _ => Ok(SchemaNode::scalar(name, ScalarType::String)),
+        ImportedSchemaType::Absent | ImportedSchemaType::Single(_) => {
+            Ok(SchemaNode::scalar(name, ScalarType::String))
+        }
     }
 }
 
 fn schema_type<'a>(
     name: &str,
     schema: &'a serde_json::Value,
-) -> Result<(Option<&'a str>, bool), JsonFormatError> {
+) -> Result<(ImportedSchemaType<'a>, bool), JsonFormatError> {
     let Some(value) = schema.get("type") else {
-        return Ok((None, false));
+        return Ok((ImportedSchemaType::Absent, false));
     };
     let serde_json::Value::Array(types) = value else {
-        return Ok((value.as_str(), false));
+        return Ok((
+            value
+                .as_str()
+                .map_or(ImportedSchemaType::Absent, ImportedSchemaType::Single),
+            false,
+        ));
     };
-    let mut concrete = None;
+    let mut concrete = Vec::new();
     let mut nullable = false;
     for ty in types {
         let Some(ty) = ty.as_str() else {
@@ -209,31 +232,55 @@ fn schema_type<'a>(
                 ));
             }
             nullable = true;
-        } else if concrete.replace(ty).is_some() {
+        } else if concrete.contains(&ty) {
             return Err(unsupported_union(
                 name,
-                "type arrays may contain only one non-null type",
+                "type arrays may not repeat a non-null type",
             ));
+        } else {
+            concrete.push(ty);
         }
     }
-    let Some(concrete) = concrete else {
+    let Some(first) = concrete.first().copied() else {
         return Err(unsupported_union(
             name,
             "type arrays must contain one non-null type",
         ));
     };
-    if nullable
-        && !matches!(
-            concrete,
-            "string" | "integer" | "number" | "boolean" | "object" | "array"
-        )
-    {
+    if concrete.len() == 1 {
+        if nullable
+            && !matches!(
+                first,
+                "string" | "integer" | "number" | "boolean" | "object" | "array"
+            )
+        {
+            return Err(unsupported_union(
+                name,
+                "nullable type arrays require a supported scalar type",
+            ));
+        }
+        return Ok((ImportedSchemaType::Single(first), nullable));
+    }
+    let scalar_types = concrete
+        .into_iter()
+        .map(|ty| match ty {
+            "string" => Ok(ScalarType::String),
+            "integer" => Ok(ScalarType::Int),
+            "number" => Ok(ScalarType::Float),
+            "boolean" => Ok(ScalarType::Bool),
+            _ => Err(unsupported_union(
+                name,
+                "heterogeneous type arrays may contain only scalar types",
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let Some(types) = ScalarTypeSet::new(scalar_types) else {
         return Err(unsupported_union(
             name,
-            "nullable type arrays require a supported scalar type",
+            "heterogeneous type array contains an invalid scalar type set",
         ));
-    }
-    Ok((Some(concrete), nullable))
+    };
+    Ok((ImportedSchemaType::ScalarUnion(types), nullable))
 }
 
 fn scalar_schema(name: &str, ty: ScalarType, nullable: bool) -> SchemaNode {

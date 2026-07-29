@@ -1,6 +1,6 @@
 use ir::{
     FiniteF64, GroupAlternative, GroupAlternativeConstraint, GroupAlternativeConstraintValue,
-    GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode,
+    GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode,
 };
 
 use super::{parse, parse_properties, resolve_ref, unsupported_union};
@@ -24,11 +24,10 @@ enum ArrayAlternative {
     Other,
 }
 
-/// Collapses an inclusive union whose scalar branches all describe the same
-/// runtime type. Unlike `oneOf`, duplicate `anyOf` branches do not carry
-/// observable selection semantics, so annotations and repeated null branches
-/// can be canonicalized without weakening the accepted value shape.
-pub(super) fn parse_homogeneous_scalar_any_of(
+/// Imports an inclusive union made entirely from exact scalar type branches.
+/// Duplicate branches collapse, while distinct types become a first-class
+/// scalar union and retain their runtime value tags.
+pub(super) fn parse_scalar_any_of(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
@@ -41,25 +40,34 @@ pub(super) fn parse_homogeneous_scalar_any_of(
     else {
         return Ok(None);
     };
-    let mut scalar_type = None;
+    let mut scalar_types = Vec::new();
     let mut nullable = false;
     for alternative in alternatives {
         match classify_exact_scalar_alternative(name, alternative, doc, active_refs)? {
             ScalarAlternative::Null => nullable = true,
             ScalarAlternative::Scalar(ty) => {
-                if scalar_type.is_some_and(|existing| existing != ty) {
-                    return Ok(None);
+                if !scalar_types.contains(&ty) {
+                    scalar_types.push(ty);
                 }
-                scalar_type = Some(ty);
             }
             ScalarAlternative::Other => return Ok(None),
         }
     }
-    let Some(ty) = scalar_type else {
+    let Some(first) = scalar_types.first().copied() else {
         return Ok(None);
     };
     ensure_annotation_only(name, schema, "anyOf")?;
-    let mut node = SchemaNode::scalar(name, ty);
+    let mut node = if scalar_types.len() == 1 {
+        SchemaNode::scalar(name, first)
+    } else {
+        let Some(types) = ScalarTypeSet::new(scalar_types) else {
+            return Err(unsupported_union(
+                name,
+                "scalar anyOf contains an invalid type set",
+            ));
+        };
+        SchemaNode::scalar_union(name, types)
+    };
     node.nullable = nullable;
     Ok(Some(node))
 }
@@ -943,19 +951,56 @@ fn scalar_constraints(
                     &format!("const discriminator `{member}` cannot be an array"),
                 ));
             }
-            let SchemaKind::Scalar { ty } = child.kind else {
-                return Err(unsupported_union(
+            let constraint = match child.kind {
+                SchemaKind::Scalar { ty } => {
+                    constraint_value(union_name, member, value, ty, child.nullable)
+                }
+                SchemaKind::ScalarUnion { types } => {
+                    union_constraint_value(union_name, member, value, types, child.nullable)
+                }
+                SchemaKind::Group { .. } => Err(unsupported_union(
                     union_name,
                     &format!("const discriminator `{member}` must be a scalar field"),
-                ));
+                )),
             };
-            let value = constraint_value(union_name, member, value, ty, child.nullable)?;
+            let value = constraint?;
             Ok(GroupAlternativeConstraint {
                 member: member.clone(),
                 value,
             })
         })
         .collect()
+}
+
+fn union_constraint_value(
+    union_name: &str,
+    member: &str,
+    value: &serde_json::Value,
+    types: ScalarTypeSet,
+    nullable: bool,
+) -> Result<GroupAlternativeConstraintValue, JsonFormatError> {
+    let selected = match value {
+        serde_json::Value::String(_) if types.contains(ScalarType::String) => ScalarType::String,
+        serde_json::Value::Bool(_) if types.contains(ScalarType::Bool) => ScalarType::Bool,
+        serde_json::Value::Number(value)
+            if value.as_i64().is_some() && types.contains(ScalarType::Int) =>
+        {
+            ScalarType::Int
+        }
+        serde_json::Value::Number(_) if types.contains(ScalarType::Float) => ScalarType::Float,
+        serde_json::Value::Null if nullable => {
+            return Ok(GroupAlternativeConstraintValue::JsonNull);
+        }
+        _ => {
+            return Err(unsupported_union(
+                union_name,
+                &format!(
+                    "const discriminator `{member}` does not match any declared scalar union type"
+                ),
+            ));
+        }
+    };
+    constraint_value(union_name, member, value, selected, nullable)
 }
 
 fn constraint_value(
@@ -995,17 +1040,7 @@ fn constraint_value(
 }
 
 fn finite_f64(number: &serde_json::Number) -> Option<f64> {
-    const MAX_EXACT_F64_INTEGER: u64 = 1_u64 << f64::MANTISSA_DIGITS;
-    if number
-        .as_i64()
-        .is_some_and(|value| value.unsigned_abs() > MAX_EXACT_F64_INTEGER)
-        || number
-            .as_u64()
-            .is_some_and(|value| value > MAX_EXACT_F64_INTEGER)
-    {
-        return None;
-    }
-    number.as_f64().filter(|value| value.is_finite())
+    crate::exact_f64_from_json_number(number)
 }
 
 fn required_names(schema: &serde_json::Value) -> Vec<String> {

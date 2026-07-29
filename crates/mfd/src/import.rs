@@ -935,9 +935,7 @@ fn refine_copied_json_root_schemas(
         .iter()
         .enumerate()
         .filter(|(_, target)| {
-            !target.is_source
-                && target.format == ComponentFormat::Json
-                && matches!(target.schema.kind, SchemaKind::Scalar { .. })
+            !target.is_source && target.format == ComponentFormat::Json && target.schema.is_scalar()
         })
         .filter_map(|(target_index, target)| {
             let feed = target
@@ -1186,7 +1184,7 @@ fn install_repeating_scalar_iteration(
 ) -> bool {
     let target_path = target.path();
     if !schema_node_at(&target_component.schema, &target_path)
-        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        .is_some_and(|node| node.repeating && node.is_scalar())
     {
         return false;
     }
@@ -1198,7 +1196,7 @@ fn install_repeating_scalar_iteration(
     };
     if !builder
         .schema_node(&source_path)
-        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        .is_some_and(|node| node.repeating && node.is_scalar())
     {
         return false;
     }
@@ -1227,7 +1225,7 @@ fn order_repeating_scalar_bindings(
     for (index, (binding, _, _)) in bindings.iter().enumerate() {
         let path = binding.path();
         if schema_node_at(&target.schema, &path)
-            .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|node| node.repeating && node.is_scalar())
         {
             positions.entry(path).or_default().push(index);
         }

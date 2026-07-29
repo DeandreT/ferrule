@@ -608,7 +608,7 @@ fn find_schema_instance<'a>(
 fn isa_element(schema: &SchemaNode, index: usize) -> Option<&SchemaNode> {
     match &schema.kind {
         SchemaKind::Group { children, .. } => children.get(index),
-        SchemaKind::Scalar { .. } => None,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
     }
 }
 
@@ -1162,11 +1162,10 @@ SV3*AD:D4341*450~
     fn fixed_envelope_conflicts_precede_separator_inference() {
         let isa_elements = (1..=16)
             .map(|index| {
-                let element = SchemaNode::scalar(index.to_string(), ScalarType::String);
                 if index == 12 {
-                    element.fixed("00401")
+                    SchemaNode::scalar_fixed(index.to_string(), ScalarType::String, "00401")
                 } else {
-                    element
+                    SchemaNode::scalar(index.to_string(), ScalarType::String)
                 }
             })
             .collect();
@@ -1316,7 +1315,7 @@ IEA*1*000000001~
                 vec![
                     SchemaNode::scalar("01", ScalarType::Int),
                     SchemaNode::scalar("02", ScalarType::String),
-                    SchemaNode::scalar("03", ScalarType::String).fixed(qualifier),
+                    SchemaNode::scalar_fixed("03", ScalarType::String, qualifier),
                 ],
             )
         };
@@ -1324,7 +1323,7 @@ IEA*1*000000001~
             SchemaNode::group(
                 "NM1",
                 vec![
-                    SchemaNode::scalar("01", ScalarType::String).fixed(qualifier),
+                    SchemaNode::scalar_fixed("01", ScalarType::String, qualifier),
                     SchemaNode::scalar("02", ScalarType::String),
                     SchemaNode::scalar("03", ScalarType::String),
                 ],
@@ -1417,7 +1416,7 @@ IEA*1*000000001~
                     vec![
                         SchemaNode::scalar("01", ScalarType::Int),
                         SchemaNode::scalar("02", ScalarType::String),
-                        SchemaNode::scalar("03", ScalarType::String).fixed("20"),
+                        SchemaNode::scalar_fixed("03", ScalarType::String, "20"),
                     ],
                 ),
                 segment("IEA", &[]),
@@ -1468,7 +1467,7 @@ IEA*1*000000001~
             SchemaNode::group(
                 "NM1",
                 vec![
-                    SchemaNode::scalar("01", ScalarType::String).fixed(qualifier),
+                    SchemaNode::scalar_fixed("01", ScalarType::String, qualifier),
                     SchemaNode::scalar("02", ScalarType::String),
                     SchemaNode::scalar("03", ScalarType::String),
                 ],
@@ -1543,8 +1542,8 @@ IEA*1*000000001~
             vec![SchemaNode::group(
                 "BEG",
                 vec![
-                    SchemaNode::scalar("01", ScalarType::String).fixed("00"),
-                    SchemaNode::scalar("02", ScalarType::String).fixed("SA"),
+                    SchemaNode::scalar_fixed("01", ScalarType::String, "00"),
+                    SchemaNode::scalar_fixed("02", ScalarType::String, "SA"),
                     SchemaNode::scalar("03", ScalarType::String),
                 ],
             )],

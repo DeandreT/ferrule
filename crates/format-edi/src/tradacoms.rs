@@ -215,8 +215,8 @@ mod tests {
                 SchemaNode::group(
                     "Type",
                     vec![
-                        SchemaNode::scalar("Code", ScalarType::String).fixed("ORDER"),
-                        SchemaNode::scalar("Version", ScalarType::Int).fixed("1"),
+                        SchemaNode::scalar_fixed("Code", ScalarType::String, "ORDER"),
+                        SchemaNode::scalar_fixed("Version", ScalarType::Int, "1"),
                     ],
                 ),
             ],

@@ -353,6 +353,9 @@ fn read_fixed_cell(
 fn scalar_type_of(schema: &SchemaNode, path: &[String]) -> Result<ScalarType, XlsxFormatError> {
     match schema.kind {
         SchemaKind::Scalar { ty } => Ok(ty),
+        SchemaKind::ScalarUnion { .. } => Err(XlsxFormatError::UnsupportedScalarUnion {
+            field: display_path(path),
+        }),
         SchemaKind::Group { .. } => Err(composite_path_error(path, "field is not scalar")),
     }
 }
@@ -362,7 +365,7 @@ fn empty_instance(schema: &SchemaNode) -> Instance {
         return Instance::Repeated(Vec::new());
     }
     match &schema.kind {
-        SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Instance::Scalar(Value::Null),
         SchemaKind::Group { children, .. } => Instance::Group(
             children
                 .iter()
@@ -380,7 +383,9 @@ fn empty_group_instance(schema: &SchemaNode) -> Result<Instance, XlsxFormatError
                 .map(|child| (child.name.clone(), empty_instance(child)))
                 .collect(),
         )),
-        SchemaKind::Scalar { .. } => Err(XlsxFormatError::UnsupportedSchema),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+            Err(XlsxFormatError::UnsupportedSchema)
+        }
     }
 }
 

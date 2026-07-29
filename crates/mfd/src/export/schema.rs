@@ -770,7 +770,7 @@ fn flat_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
                 _ => None,
             })
             .collect(),
-        SchemaKind::Scalar { .. } => None,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
     }
 }
 
@@ -838,6 +838,7 @@ fn db_table_is_valid(table: &SchemaNode, nested: bool) -> bool {
             SchemaKind::Scalar { .. } => {
                 !child.repeating && !child.attribute && !child.text && child.recursive_ref.is_none()
             }
+            SchemaKind::ScalarUnion { .. } => false,
             SchemaKind::Group { .. } => child.repeating && db_table_is_valid(child, true),
         })
 }
@@ -970,6 +971,12 @@ fn render_db_table(
                     db_type_name(ty)
                 );
             }
+            SchemaKind::ScalarUnion { .. } => {
+                return Err(MfdError::Unsupported(format!(
+                    "database column `{}` is a heterogeneous scalar union; database .mfd components require one concrete scalar type",
+                    path.join("/")
+                )));
+            }
             SchemaKind::Group { .. } => {
                 render_db_table(
                     child,
@@ -1001,6 +1008,7 @@ pub(super) const fn db_type_name(ty: ScalarType) -> &'static str {
 fn entry_schema_metadata(node: &SchemaNode) -> String {
     let kind = match node.kind {
         SchemaKind::Scalar { .. } => "scalar",
+        SchemaKind::ScalarUnion { .. } => "scalar",
         SchemaKind::Group { .. } => "group",
     };
     let mut metadata = format!(
@@ -1481,7 +1489,7 @@ impl PortTree {
                             "{pad}<entry name=\"{}\"{type_attr}{metadata} {attr}=\"{key}\" expanded=\"1\"{clone}",
                             xml_escape(&child.name),
                         );
-                        if matches!(child.kind, SchemaKind::Scalar { .. }) {
+                        if child.is_scalar() {
                             out.push_str("/>\n");
                             if let Some(branches) = target_branches {
                                 for clone_key in branches.binding_clone_keys(branch, path) {
@@ -1628,6 +1636,11 @@ impl PortTree {
                     "{pad}<entry name=\"{}\" {attr}=\"{key}\"/>",
                     json_type_name(*ty)
                 );
+            }
+            SchemaKind::ScalarUnion { .. } => {
+                // One neutral value pin avoids claiming that one union member
+                // is authoritative; the schema sibling retains every member.
+                let _ = writeln!(out, "{pad}<entry name=\"value\" {attr}=\"{key}\"/>");
             }
             SchemaKind::Group { children, .. } => {
                 let _ = writeln!(

@@ -14,6 +14,11 @@ use crate::{
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
+    let schema_diagnostics = crate::validate::project_schema_diagnostics(project);
+    if !schema_diagnostics.is_empty() {
+        return Err(LowerError::new(schema_diagnostics));
+    }
+
     let validation = engine::validate(project);
     if !validation.is_empty() {
         return Err(LowerError::new(
@@ -395,7 +400,7 @@ fn lower_scope(
             SchemaKind::Group { children, .. } => {
                 children.iter().map(|child| child.name.clone()).collect()
             }
-            SchemaKind::Scalar { .. } => Vec::new(),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Vec::new(),
         };
         crate::TargetConstruction::DynamicGroup {
             fixed_fields,

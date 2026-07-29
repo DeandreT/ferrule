@@ -268,7 +268,7 @@ fn add_scalar_paths(
     paths: &mut BTreeSet<Vec<String>>,
 ) {
     match &schema.kind {
-        SchemaKind::Scalar { .. } => {
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
             paths.insert(prefix.clone());
         }
         SchemaKind::Group { children, .. } => {
@@ -287,7 +287,7 @@ fn add_scalar_paths(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::ScalarType;
+    use ir::{ScalarType, ScalarTypeSet};
 
     fn nested_source() -> SchemaNode {
         SchemaNode::group(
@@ -435,5 +435,24 @@ mod tests {
             &["catalog", "Products", "Product"],
             &["code"]
         ));
+    }
+
+    #[test]
+    fn union_leaves_are_available_as_complete_collection_values() {
+        let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+            panic!("test union is valid");
+        };
+        let source = SchemaNode::group(
+            "root",
+            vec![
+                SchemaNode::group("rows", vec![SchemaNode::scalar_union("value", types)])
+                    .repeating(),
+            ],
+        );
+
+        let catalog = SourcePathCatalog::new(&source, &[]);
+
+        assert!(has_collection(&catalog, &["rows"]));
+        assert!(has_value(&catalog, &["rows"], &["value"]));
     }
 }

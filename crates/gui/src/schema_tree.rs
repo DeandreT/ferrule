@@ -53,7 +53,7 @@ pub fn show_schema_tree(
 
 pub fn schema_field_count(schema: &SchemaNode) -> usize {
     match &schema.kind {
-        SchemaKind::Scalar { .. } => 1,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => 1,
         SchemaKind::Group { children, .. } => children.iter().map(schema_field_count).sum(),
     }
 }
@@ -104,7 +104,7 @@ impl<'a> MatchPlan<'a> {
         });
         let self_matches = query.matches(node, path);
         let children = match &node.kind {
-            SchemaKind::Scalar { .. } => Vec::new(),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Vec::new(),
             SchemaKind::Group { children, .. } => children
                 .iter()
                 .map(|child| Self::build(child, query, path))
@@ -139,7 +139,7 @@ fn show_node(
     }
     let label = node_label(plan.node);
     match &plan.node.kind {
-        SchemaKind::Scalar { .. } => {
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
             ui.label(match (filtering, plan.self_matches) {
                 (true, true) => RichText::new(label).strong(),
                 _ => RichText::new(label),
@@ -189,7 +189,14 @@ fn node_label(node: &SchemaNode) -> String {
     let prefix = if node.attribute { "@" } else { "" };
     let suffix = if node.repeating { " []" } else { "" };
     match &node.kind {
-        SchemaKind::Scalar { ty } => format!("{prefix}{}{suffix}: {ty:?}", node.name),
+        SchemaKind::Scalar { ty } => {
+            let domain = crate::schema_scalar::ScalarDomain::Single(*ty).label();
+            format!("{prefix}{}{suffix}: {domain}", node.name)
+        }
+        SchemaKind::ScalarUnion { types } => {
+            let domain = crate::schema_scalar::ScalarDomain::Union(*types).label();
+            format!("{prefix}{}{suffix}: {domain}", node.name)
+        }
         SchemaKind::Group { .. } => format!("{prefix}{}{suffix}", node.name),
     }
 }
@@ -197,7 +204,7 @@ fn node_label(node: &SchemaNode) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::ScalarType;
+    use ir::{ScalarType, ScalarTypeSet};
 
     fn schema() -> SchemaNode {
         SchemaNode::group(
@@ -261,6 +268,22 @@ mod tests {
         assert!(state.is_filtering());
         state.clear();
         assert_eq!(state, SchemaExplorerState::default());
+    }
+
+    #[test]
+    fn scalar_union_labels_are_canonical_and_searchable() {
+        let Some(types) =
+            ScalarTypeSet::new([ScalarType::Bool, ScalarType::String, ScalarType::Int])
+        else {
+            panic!("test union is valid");
+        };
+        let union = SchemaNode::scalar_union("value", types);
+        let mut state = SchemaExplorerState::default();
+        *state.query_mut() = "string bool".into();
+
+        assert_eq!(node_label(&union), "value: String | Int | Bool");
+        assert_eq!(schema_field_count(&union), 1);
+        assert_eq!(state.match_count(&union), 1);
     }
 
     #[test]

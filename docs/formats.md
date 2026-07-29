@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs and compatible `complexContent` restrictions; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; JSON Schema local references, compatible object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; JSON Schema local references, heterogeneous scalar type arrays and exact scalar `anyOf`, compatible object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -35,11 +35,11 @@ layout and dialect details that an extension cannot express.
   sibling declarations cannot differ only by namespace; XSD import rejects that
   ambiguous shape explicitly.
 - JSON Schema supports selected object alternatives, exact nullable
-  scalar/object/array wrappers, and homogeneous scalar or array `anyOf`
-  branches, including local references. Heterogeneous scalar and array unions
-  need a first-class union type and remain unsupported. Shape-neutral
-  validation keywords are accepted for schema recovery but are not enforced by
-  the mapping runtime.
+  scalar/object/array wrappers, heterogeneous scalar type arrays and exact
+  scalar `anyOf` unions, and homogeneous array `anyOf` branches, including
+  local references. General scalar `oneOf`, heterogeneous array, and mixed
+  structural unions remain unsupported. Shape-neutral validation keywords are
+  accepted for schema recovery but are not enforced by the mapping runtime.
 - Database execution is SQLite-specific and does not yet provide a general SQL
   mutation or multi-database connector model.
 - Complex XLSX, PDF, EDI, and FlexText layouts depend on an embedded validated

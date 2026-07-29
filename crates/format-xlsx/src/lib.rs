@@ -43,6 +43,8 @@ pub enum XlsxFormatError {
     MissingWorksheet(String),
     #[error("row schema must be a non-repeating group of non-repeating scalar fields")]
     UnsupportedSchema,
+    #[error("XLSX field `{field}` cannot preserve a heterogeneous scalar union")]
+    UnsupportedScalarUnion { field: String },
     #[error("worksheet coordinates are outside Excel's row or column limits")]
     InvalidCoordinate,
     #[error("expected {expected} column selector(s), got {got}")]
@@ -130,10 +132,15 @@ fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, XlsxFormat
                 SchemaKind::Scalar { ty } if !child.repeating && !child.attribute => {
                     Ok((child.name.as_str(), ty))
                 }
+                SchemaKind::ScalarUnion { .. } => Err(XlsxFormatError::UnsupportedScalarUnion {
+                    field: child.name.clone(),
+                }),
                 _ => Err(XlsxFormatError::UnsupportedSchema),
             })
             .collect(),
-        SchemaKind::Scalar { .. } => Err(XlsxFormatError::UnsupportedSchema),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+            Err(XlsxFormatError::UnsupportedSchema)
+        }
     }
 }
 
@@ -1128,6 +1135,25 @@ mod tests {
             SchemaNode::group("records", vec![SchemaNode::scalar("n", ScalarType::Float)]);
         let error = transposed_fields(&invalid_n, &[]).unwrap_err();
         assert!(matches!(error, XlsxFormatError::UnsupportedSchema));
+    }
+
+    #[test]
+    fn flat_tables_reject_heterogeneous_scalar_union_columns_explicitly() {
+        let Some(types) = ir::ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+            panic!("test scalar union must contain two distinct types");
+        };
+        let schema = SchemaNode::group(
+            "records",
+            vec![SchemaNode::scalar_union("identifier", types)],
+        );
+
+        let error = row_fields(&schema).unwrap_err();
+
+        assert!(matches!(
+            error,
+            XlsxFormatError::UnsupportedScalarUnion { field }
+                if field == "identifier"
+        ));
     }
 
     #[test]

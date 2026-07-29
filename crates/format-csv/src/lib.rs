@@ -27,6 +27,8 @@ pub enum CsvFormatError {
     Io(#[from] std::io::Error),
     #[error("row schema must be a non-repeating group of non-repeating scalar fields")]
     UnsupportedSchema,
+    #[error("column `{field}` cannot preserve a heterogeneous scalar union")]
+    UnsupportedScalarUnion { field: String },
     #[error("row {row}: column `{field}` expected {expected:?}, got `{value}`")]
     Parse {
         row: usize,
@@ -99,10 +101,15 @@ fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatE
             .iter()
             .map(|c| match &c.kind {
                 SchemaKind::Scalar { ty } if !c.repeating => Ok((c.name.as_str(), *ty)),
+                SchemaKind::ScalarUnion { .. } => Err(CsvFormatError::UnsupportedScalarUnion {
+                    field: c.name.clone(),
+                }),
                 _ => Err(CsvFormatError::UnsupportedSchema),
             })
             .collect(),
-        SchemaKind::Scalar { .. } => Err(CsvFormatError::UnsupportedSchema),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+            Err(CsvFormatError::UnsupportedSchema)
+        }
     }
 }
 

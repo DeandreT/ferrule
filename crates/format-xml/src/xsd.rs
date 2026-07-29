@@ -580,6 +580,7 @@ fn apply_fixed_value(declaration: &Node<'_, '_>, node: &mut SchemaNode) {
     };
     match &mut node.kind {
         SchemaKind::Scalar { .. } => node.fixed = Some(fixed.to_string()),
+        SchemaKind::ScalarUnion { .. } => {}
         SchemaKind::Group { children, .. } => {
             if let Some(text) = children.iter_mut().find(|child| child.text) {
                 text.fixed = Some(fixed.to_string());
@@ -594,6 +595,7 @@ fn apply_default_value(declaration: &Node<'_, '_>, node: &mut SchemaNode, state:
     };
     match &mut node.kind {
         SchemaKind::Scalar { .. } => node.default = Some(default.to_string()),
+        SchemaKind::ScalarUnion { .. } => {}
         SchemaKind::Group { children, .. } => {
             if let Some(text) = children.iter_mut().find(|child| child.text) {
                 text.default = Some(default.to_string());
@@ -1402,7 +1404,7 @@ fn rebase_recursive_anchor(children: &mut [SchemaNode], from: &str, to: &str) {
 
 fn schema_node_count(node: &SchemaNode) -> usize {
     1 + match &node.kind {
-        ir::SchemaKind::Scalar { .. } => 0,
+        ir::SchemaKind::Scalar { .. } | ir::SchemaKind::ScalarUnion { .. } => 0,
         ir::SchemaKind::Group { children, .. } => children.iter().map(schema_node_count).sum(),
     }
 }

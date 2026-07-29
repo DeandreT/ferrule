@@ -2,10 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::{FunctionId, FunctionParameterId, NodeId};
+use mapping::{FunctionId, FunctionParameterId, NodeId, Project};
 
 use crate::{
-    Expression, IterationOutput, IterationSource, Program, TargetConstruction, TargetScope,
+    Diagnostic, Expression, IterationOutput, IterationSource, Program, TargetConstruction,
+    TargetScope,
 };
 
 mod adjacency_tree;
@@ -483,10 +484,119 @@ pub enum ProgramValidationError {
         binding: usize,
         child: usize,
     },
+    UnsupportedScalarUnionSchema {
+        boundary: String,
+        path: Vec<String>,
+    },
     NamedTarget {
         target: String,
         error: Box<ProgramValidationError>,
     },
+}
+
+pub(crate) fn project_schema_diagnostics(project: &Project) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    collect_project_schema_diagnostics("source schema", &project.source, &mut diagnostics);
+    for source in &project.extra_sources {
+        collect_project_schema_diagnostics(
+            &format!("extra source `{}` schema", source.name),
+            &source.schema,
+            &mut diagnostics,
+        );
+    }
+    collect_project_schema_diagnostics("target schema", &project.target, &mut diagnostics);
+    for target in &project.extra_targets {
+        collect_project_schema_diagnostics(
+            &format!("named target `{}` schema", target.name),
+            &target.schema,
+            &mut diagnostics,
+        );
+    }
+    diagnostics
+}
+
+fn collect_project_schema_diagnostics(
+    boundary: &str,
+    schema: &SchemaNode,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    visit_scalar_unions(schema, &mut Vec::new(), &mut |path| {
+        diagnostics.push(Diagnostic::Validation {
+            location: schema_location(boundary, path),
+            message: "code generation does not support heterogeneous scalar-union fields"
+                .to_string(),
+        });
+    });
+}
+
+fn schema_location(boundary: &str, path: &[String]) -> String {
+    if path.is_empty() {
+        boundary.to_string()
+    } else {
+        format!("{boundary} `{}`", path.join("/"))
+    }
+}
+
+fn visit_scalar_unions(
+    schema: &SchemaNode,
+    path: &mut Vec<String>,
+    visitor: &mut impl FnMut(&[String]),
+) {
+    match &schema.kind {
+        SchemaKind::ScalarUnion { .. } => visitor(path),
+        SchemaKind::Scalar { .. } => {}
+        SchemaKind::Group {
+            children, dynamic, ..
+        } => {
+            for child in children {
+                path.push(child.name.clone());
+                visit_scalar_unions(child, path, visitor);
+                path.pop();
+            }
+            if let Some(dynamic) = dynamic {
+                path.push("*".to_string());
+                visit_scalar_unions(dynamic, path, visitor);
+                path.pop();
+            }
+        }
+    }
+}
+
+fn validate_schema_support(program: &Program) -> Result<(), ProgramValidationError> {
+    validate_boundary_schema("source schema", &program.source)?;
+    for source in &program.extra_sources {
+        validate_boundary_schema(
+            &format!("extra source `{}` schema", source.name),
+            &source.source,
+        )?;
+    }
+    validate_boundary_schema("target schema", &program.target)?;
+    for target in &program.extra_targets {
+        validate_boundary_schema(
+            &format!("named target `{}` schema", target.name),
+            &target.target,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_boundary_schema(
+    boundary: &str,
+    schema: &SchemaNode,
+) -> Result<(), ProgramValidationError> {
+    let mut first = None;
+    visit_scalar_unions(schema, &mut Vec::new(), &mut |path| {
+        if first.is_none() {
+            first = Some(path.to_vec());
+        }
+    });
+    match first {
+        Some(path) => Err(ProgramValidationError::UnsupportedScalarUnionSchema {
+            boundary: boundary.to_string(),
+            path,
+        }),
+        None => Ok(()),
+    }
 }
 
 /// Validates invariants relied on by every source-code emitter.
@@ -496,6 +606,7 @@ pub enum ProgramValidationError {
 /// backend-dependent source when callers construct a [`Program`] directly.
 pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError> {
     sources::validate_names(&program.extra_sources)?;
+    validate_schema_support(program)?;
     let sources = SourceCatalog::new(&program.source, &program.extra_sources);
     let expressions = collect_expressions(program)?;
     validate_dependencies(&expressions)?;
@@ -1387,7 +1498,7 @@ fn validate_scope(
                 .iter()
                 .map(|child| child.name.as_str())
                 .collect::<Vec<_>>(),
-            SchemaKind::Scalar { .. } => Vec::new(),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Vec::new(),
         };
         if fixed_fields
             .iter()
@@ -2376,6 +2487,11 @@ impl fmt::Display for ProgramValidationError {
                 formatter,
                 "target scope {} binding {binding} and child {child} both construct field {target_field:?}",
                 display_path(target_path)
+            ),
+            Self::UnsupportedScalarUnionSchema { boundary, path } => write!(
+                formatter,
+                "{boundary} {} uses a heterogeneous scalar union, which code generation does not support",
+                display_path(path)
             ),
             Self::NamedTarget { target, error } => {
                 write!(formatter, "named target `{target}`: {error}")

@@ -549,7 +549,7 @@ mod tests {
                 segment("UNB", vec![]),
                 segment(
                     "QTY",
-                    vec![SchemaNode::scalar("01", ScalarType::Int).fixed("01")],
+                    vec![SchemaNode::scalar_fixed("01", ScalarType::Int, "01")],
                 ),
             ],
         );
@@ -593,7 +593,7 @@ mod tests {
                 segment("UNB", vec![]),
                 segment(
                     "QTY",
-                    vec![SchemaNode::scalar("01", ScalarType::Int).fixed("01")],
+                    vec![SchemaNode::scalar_fixed("01", ScalarType::Int, "01")],
                 ),
             ],
         );

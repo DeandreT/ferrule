@@ -28,6 +28,11 @@ pub fn from_bytes(
     layout: &SwiftMtLayout,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
+    if let Some(name) = scalar_union_name(schema) {
+        return Err(EdiFormatError::UnsupportedSchema(format!(
+            "SWIFT field `{name}` cannot preserve a heterogeneous scalar union"
+        )));
+    }
     if bytes.len() > MAX_RUNTIME_INPUT_BYTES {
         return Err(EdiFormatError::SwiftLimit("input size"));
     }
@@ -73,6 +78,14 @@ pub fn from_bytes(
         "Message".into(),
         Instance::Repeated(messages),
     )]))
+}
+
+fn scalar_union_name(schema: &SchemaNode) -> Option<&str> {
+    match &schema.kind {
+        SchemaKind::ScalarUnion { .. } => Some(&schema.name),
+        SchemaKind::Group { children, .. } => children.iter().find_map(scalar_union_name),
+        SchemaKind::Scalar { .. } => None,
+    }
 }
 
 fn parse_envelopes(text: &str) -> Result<Vec<BTreeMap<String, String>>, EdiFormatError> {
@@ -394,7 +407,7 @@ fn build_node(schema: &SchemaNode, path: &[String], parsed: &ParsedFields) -> In
         return Instance::Repeated(Vec::new());
     }
     match &schema.kind {
-        SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Instance::Scalar(Value::Null),
         SchemaKind::Group { children, .. } => Instance::Group(
             children
                 .iter()
@@ -410,7 +423,7 @@ fn build_node(schema: &SchemaNode, path: &[String], parsed: &ParsedFields) -> In
 
 fn build_field_value(schema: &SchemaNode, captures: &[FieldCapture], path: &[String]) -> Instance {
     match &schema.kind {
-        SchemaKind::Scalar { .. } => Instance::Scalar(
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Instance::Scalar(
             captures
                 .iter()
                 .find(|(capture_path, _)| capture_path == path)
