@@ -525,6 +525,26 @@ fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
             format_trace_scope(scope),
             format_trace_window(*window)
         ),
+        cli::TraceEvent::TargetFieldWritten {
+            scope,
+            field,
+            binding,
+            positions,
+            kind,
+            value,
+        } => {
+            let value = value
+                .as_ref()
+                .map(|value| format!(" value={}", format_trace_value(value)))
+                .unwrap_or_default();
+            format!(
+                "{prefix}  scope {}  field {field} {} write {}{value}{}",
+                format_trace_scope(scope),
+                format_target_field_binding(*binding),
+                format_output_kind(*kind),
+                format_trace_positions(positions)
+            )
+        }
         cli::TraceEvent::TargetProduced {
             scope,
             positions,
@@ -552,6 +572,21 @@ fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
             format_trace_scope(scope),
             format_output_kind(*kind)
         ),
+    }
+}
+
+fn format_target_field_binding(binding: cli::TraceTargetFieldBinding) -> String {
+    match binding {
+        cli::TraceTargetFieldBinding::StaticBinding { value } => {
+            format!("static-binding value-node={value}")
+        }
+        cli::TraceTargetFieldBinding::DynamicBinding { key, value } => {
+            format!("dynamic-binding key-node={key} value-node={value}")
+        }
+        cli::TraceTargetFieldBinding::StaticChild => "static-child".into(),
+        cli::TraceTargetFieldBinding::DynamicChild { key } => {
+            format!("dynamic-child key-node={key}")
+        }
     }
 }
 
@@ -942,6 +977,27 @@ mod tests {
         assert!(trace_row(1, &filtered).contains("filter node 42 before-sort drop"));
         assert!(trace_row(1, &filtered).contains("Order[3]"));
         assert!(trace_row(2, &window).contains("window 2 from 2 to 4  8 -> 3"));
+    }
+
+    #[test]
+    fn target_field_rows_expose_searchable_binding_context() {
+        let written = cli::TraceEvent::TargetFieldWritten {
+            scope: trace_scope(),
+            field: "delivery-window".into(),
+            binding: cli::TraceTargetFieldBinding::DynamicBinding { key: 17, value: 23 },
+            positions: Vec::new(),
+            kind: cli::TraceOutputKind::Scalar,
+            value: Some(cli::TraceValue {
+                value_type: "xml-nil",
+                preview: "xml-nil".into(),
+                truncated: false,
+            }),
+        };
+
+        let row = trace_row(3, &written);
+        assert!(row.contains("field delivery-window"));
+        assert!(row.contains("dynamic-binding key-node=17 value-node=23"));
+        assert!(row.contains("write scalar value=xml-nil(xml-nil)"));
     }
 
     #[test]

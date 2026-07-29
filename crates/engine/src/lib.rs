@@ -37,7 +37,8 @@ use eval_scope::eval_scope;
 
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
-    TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceValue, TraceWindow,
+    TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceTargetFieldBinding, TraceValue,
+    TraceWindow,
 };
 pub use validate::{ValidationIssue, validate};
 

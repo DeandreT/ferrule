@@ -279,6 +279,7 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
     assert!(kinds.contains("sort_position"), "{kinds:?}");
     assert!(kinds.contains("group_produced"), "{kinds:?}");
     assert!(kinds.contains("window_applied"), "{kinds:?}");
+    assert!(kinds.contains("target_field_written"), "{kinds:?}");
     assert!(kinds.contains("target_produced"), "{kinds:?}");
     assert!(kinds.contains("scope_finished"), "{kinds:?}");
 
