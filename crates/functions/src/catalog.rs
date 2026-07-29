@@ -532,7 +532,7 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         true,
         Authoring,
-        "Adds two numeric values."
+        "Adds two or more numeric values."
     ),
     builtin!(
         Subtract,
@@ -545,7 +545,7 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         true,
         Authoring,
-        "Subtracts two numeric values."
+        "Subtracts each following numeric value from the first."
     ),
     builtin!(
         Multiply,
@@ -558,7 +558,7 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         true,
         Authoring,
-        "Multiplies two numeric values."
+        "Multiplies two or more numeric values."
     ),
     builtin!(
         Divide,
