@@ -148,7 +148,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              SequenceWindow, SortDirection, Value, adapt_target_value, aggregate,\n\
              adapt_user_function_value, apply_sequence_windows, call,\n\
              collection_find_selected, field, generate_sequence,\n\
-             group, item_count, repeated,\n\
+             dynamic_document, group, item_count, repeated,\n\
              recursive_collect, recursive_filter, recursive_sequence_parameter, require_bool, scalar,\n\
              parse_json, serialize_json, serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
              adjacency_tree, path_hierarchy,\n\
@@ -600,6 +600,17 @@ fn render_expression(
                     format!("context.resolve_scalar(&[{path}]).map_err(RuntimeError::from)")
                 }
             }
+        }
+        Expression::DynamicSourceField { object, frame, key } => {
+            let object = render_string_path(object);
+            let frame = frame.as_ref().map_or_else(
+                || "None".to_string(),
+                |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+            );
+            let key = call_expression(*key, "context");
+            format!(
+                "{{\n        let key = {key}?;\n        Ok(context.dynamic_scalar({frame}, &[{object}], &key))\n    }}"
+            )
         }
         Expression::XmlSerialize {
             frame,
@@ -1146,7 +1157,20 @@ fn render_iteration_scope(
         "        ",
         item_context,
     ));
-    output.push_str("        outputs.push(output);\n    }\n");
+    if let Some(dynamic) = iteration.dynamic_document_iteration() {
+        output.push_str(&format!(
+            "        let output_path = expression_{}({item_context})?;\n        outputs.push(dynamic_document({}, output_path, output)?);\n",
+            dynamic.output_path(),
+            dynamic.output_path(),
+        ));
+    } else {
+        output.push_str("        outputs.push(output);\n");
+    }
+    output.push_str("    }\n");
+    if iteration.dynamic_document_iteration().is_some() {
+        output.push_str("    Ok(Instance::DocumentSet(outputs))\n");
+        return output;
+    }
     match iteration.output() {
         IterationOutput::Repeated => output.push_str("    Ok(repeated(outputs))\n"),
         IterationOutput::MappedSequence => {
@@ -1167,6 +1191,10 @@ fn render_grouping(
 ) {
     let wrapper = match input {
         IterationSource::Source(source) => source.path().last().map_or_else(
+            || "None".to_string(),
+            |name| format!("Some({})", rust_string(name)),
+        ),
+        IterationSource::DynamicDocuments(dynamic) => dynamic.source().path().last().map_or_else(
             || "None".to_string(),
             |name| format!("Some({})", rust_string(name)),
         ),
@@ -1300,6 +1328,18 @@ fn render_iteration_candidates(
     match input {
         IterationSource::Source(source) => {
             let path = source
+                .path()
+                .iter()
+                .map(|segment| rust_string(segment))
+                .collect::<Vec<_>>()
+                .join(", ");
+            output.push_str(&format!(
+                "    {binding} = context.walk_source(&[{path}]);\n"
+            ));
+        }
+        IterationSource::DynamicDocuments(dynamic) => {
+            let path = dynamic
+                .source()
                 .path()
                 .iter()
                 .map(|segment| rust_string(segment))

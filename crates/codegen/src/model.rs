@@ -644,6 +644,15 @@ pub enum Expression {
         frame: Option<Vec<String>>,
         path: Vec<String>,
     },
+    /// Reads one runtime-named scalar field from an open source object.
+    ///
+    /// Missing objects/properties, structural values, inactive frames, and
+    /// non-string keys all produce Null. A present JSON null remains distinct.
+    DynamicSourceField {
+        object: Vec<String>,
+        frame: Option<Vec<String>>,
+        key: NodeId,
+    },
     /// Serializes one complete structured XML source element with its exact
     /// static schema and document-level formatting policy.
     XmlSerialize {
@@ -1000,9 +1009,35 @@ impl ScopeSequence {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IterationSource {
     Source(SourceIteration),
+    DynamicDocuments(DynamicDocumentIteration),
     Generated(GeneratedSequence),
     InnerJoin(InnerJoin),
     Concatenate(ScopeSequence),
+}
+
+/// One source-backed root iteration that pairs every produced item with a
+/// graph-computed portable output path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynamicDocumentIteration {
+    source: SourceIteration,
+    output_path: NodeId,
+}
+
+impl DynamicDocumentIteration {
+    pub fn new(source: Vec<String>, output_path: NodeId) -> Self {
+        Self {
+            source: SourceIteration::new(source),
+            output_path,
+        }
+    }
+
+    pub const fn source(&self) -> &SourceIteration {
+        &self.source
+    }
+
+    pub const fn output_path(&self) -> NodeId {
+        self.output_path
+    }
 }
 
 /// One mutually exclusive grouping operation in an iteration pipeline.
@@ -1057,6 +1092,12 @@ impl From<SourceIteration> for IterationSource {
 impl From<GeneratedSequence> for IterationSource {
     fn from(sequence: GeneratedSequence) -> Self {
         Self::Generated(sequence)
+    }
+}
+
+impl From<DynamicDocumentIteration> for IterationSource {
+    fn from(iteration: DynamicDocumentIteration) -> Self {
+        Self::DynamicDocuments(iteration)
     }
 }
 
@@ -1184,6 +1225,16 @@ impl IterationPlan {
         Self::new(sequence, None, None, Vec::new(), IterationOutput::Repeated)
     }
 
+    pub fn dynamic_documents(source: Vec<String>, output_path: NodeId) -> Self {
+        Self::new(
+            DynamicDocumentIteration::new(source, output_path),
+            None,
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        )
+    }
+
     pub fn concatenate(
         first: TargetScope,
         rest: Vec<TargetScope>,
@@ -1252,7 +1303,18 @@ impl IterationPlan {
     pub const fn source_iteration(&self) -> Option<&SourceIteration> {
         match &self.input {
             IterationSource::Source(source) => Some(source),
+            IterationSource::DynamicDocuments(iteration) => Some(iteration.source()),
             IterationSource::Generated(_)
+            | IterationSource::InnerJoin(_)
+            | IterationSource::Concatenate(_) => None,
+        }
+    }
+
+    pub const fn dynamic_document_iteration(&self) -> Option<&DynamicDocumentIteration> {
+        match &self.input {
+            IterationSource::DynamicDocuments(iteration) => Some(iteration),
+            IterationSource::Source(_)
+            | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
             | IterationSource::Concatenate(_) => None,
         }
@@ -1260,7 +1322,7 @@ impl IterationPlan {
 
     pub const fn generated_sequence(&self) -> Option<&GeneratedSequence> {
         match &self.input {
-            IterationSource::Source(_) => None,
+            IterationSource::Source(_) | IterationSource::DynamicDocuments(_) => None,
             IterationSource::Generated(sequence) => Some(sequence),
             IterationSource::InnerJoin(_) | IterationSource::Concatenate(_) => None,
         }
@@ -1270,6 +1332,7 @@ impl IterationPlan {
         match &self.input {
             IterationSource::InnerJoin(join) => Some(join),
             IterationSource::Source(_)
+            | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
             | IterationSource::Concatenate(_) => None,
         }
@@ -1279,6 +1342,7 @@ impl IterationPlan {
         match &self.input {
             IterationSource::Concatenate(sequence) => Some(sequence),
             IterationSource::Source(_)
+            | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_) => None,
         }
@@ -1322,6 +1386,10 @@ impl IterationPlan {
             .chain(self.grouping.map(GroupingPlan::expression))
             .chain(self.post_group_filter)
             .chain(self.windows.iter().copied().flat_map(SequenceWindow::nodes))
+            .chain(
+                self.dynamic_document_iteration()
+                    .map(DynamicDocumentIteration::output_path),
+            )
     }
 }
 

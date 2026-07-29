@@ -9,6 +9,7 @@
 mod adjacency_tree;
 mod aggregate;
 mod context;
+mod dynamic_document;
 mod failure;
 mod generated_sequence;
 mod iteration;
@@ -29,6 +30,7 @@ pub use context::{
     GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput,
     ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
+pub use dynamic_document::dynamic_document;
 pub use failure::mapping_failure;
 pub use functions::FunctionError;
 pub use generated_sequence::{
@@ -36,7 +38,7 @@ pub use generated_sequence::{
     generate_sequence, recursive_collect, recursive_sequence_parameter, tokenize,
     tokenize_by_length, tokenize_regex,
 };
-pub use ir::{Instance, ScalarType, Value};
+pub use ir::{DocumentMember, Instance, ScalarType, Value};
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
 };
@@ -181,6 +183,13 @@ pub enum RuntimeError {
         found: &'static str,
     },
     InvalidBlockSize {
+        node: u32,
+    },
+    DynamicTargetPath {
+        node: u32,
+        found: &'static str,
+    },
+    EmptyDynamicTargetPath {
         node: u32,
     },
     UserFunctionType {
@@ -358,6 +367,16 @@ impl fmt::Display for RuntimeError {
             Self::InvalidBlockSize { node } => {
                 write!(formatter, "node {node}: group block size must be positive")
             }
+            Self::DynamicTargetPath { node, found } => write!(
+                formatter,
+                "node {node}: dynamic target path expected a string, got {found}"
+            ),
+            Self::EmptyDynamicTargetPath { node } => {
+                write!(
+                    formatter,
+                    "node {node}: dynamic target path must not be empty"
+                )
+            }
             Self::UserFunctionType {
                 function,
                 parameter,
@@ -424,6 +443,8 @@ impl std::error::Error for RuntimeError {
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. }
             | Self::InvalidBlockSize { .. }
+            | Self::DynamicTargetPath { .. }
+            | Self::EmptyDynamicTargetPath { .. }
             | Self::UserFunctionType { .. }
             | Self::XmlSerialization { .. } => None,
         }
