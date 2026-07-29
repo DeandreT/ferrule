@@ -18,9 +18,9 @@
 //! `xs:any` imports only when it is an optional, unbounded, local-name,
 //! skip-validation wildcard that can round-trip through the recursive generic
 //! `element()` group. Other wildcard profiles fail with a typed diagnostic.
-//! `xs:anyAttribute` likewise imports only as a direct local-name,
-//! skip-validation wildcard with no other attribute declaration, using the
-//! repeating generic `attribute()` group.
+//! `xs:anyAttribute` likewise imports as a direct or named-attribute-group
+//! local-name, skip-validation wildcard with no other attribute declaration,
+//! using the repeating generic `attribute()` group.
 //! It does not support unions or remote schema URLs -- that's the "lite" in
 //! the name.
 
