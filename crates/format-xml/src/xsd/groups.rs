@@ -23,28 +23,27 @@ pub(super) fn resolve_model_group(
             "a model-group particle must use ref",
         )
     })?;
-    if is_repeating(occurrence) {
-        return Err(unsupported(
-            "group",
-            reference,
-            "repeating xs:group references are not supported",
-        ));
-    }
     let local = local_name(reference);
-    if is_local_qname(schema, reference)
+    let mut children = if is_local_qname(schema, reference)
         && let Some(declaration) = top_level(schema, "group", local)
     {
-        return parse_model_group(&declaration, schema, schema_path, local, state);
-    }
-    let path = state
-        .find_external_declaration(schema, schema_path, "group", reference)
-        .ok_or_else(|| XmlFormatError::MissingElement(format!("named xs:group `{reference}`")))?;
-    let text = read_xml_text(&path)?;
-    let document = roxmltree::Document::parse(&text)?;
-    let external_schema = document.root_element();
-    let declaration = top_level(&external_schema, "group", local)
-        .ok_or_else(|| XmlFormatError::MissingElement(format!("named xs:group `{reference}`")))?;
-    parse_model_group(&declaration, &external_schema, &path, local, state)
+        parse_model_group(&declaration, schema, schema_path, local, state)?
+    } else {
+        let path = state
+            .find_external_declaration(schema, schema_path, "group", reference)
+            .ok_or_else(|| {
+                XmlFormatError::MissingElement(format!("named xs:group `{reference}`"))
+            })?;
+        let text = read_xml_text(&path)?;
+        let document = roxmltree::Document::parse(&text)?;
+        let external_schema = document.root_element();
+        let declaration = top_level(&external_schema, "group", local).ok_or_else(|| {
+            XmlFormatError::MissingElement(format!("named xs:group `{reference}`"))
+        })?;
+        parse_model_group(&declaration, &external_schema, &path, local, state)?
+    };
+    apply_model_group_occurrence(occurrence, reference, &mut children)?;
+    Ok(children)
 }
 
 pub(super) fn resolve_attribute_group(
@@ -187,6 +186,41 @@ fn parse_attribute_group(
     })();
     state.leave();
     result
+}
+
+fn apply_model_group_occurrence(
+    occurrence: &Node<'_, '_>,
+    reference: &str,
+    children: &mut [SchemaNode],
+) -> Result<(), XmlFormatError> {
+    if !is_repeating(occurrence) {
+        return Ok(());
+    }
+    if occurrence.attribute("minOccurs") != Some("0")
+        || occurrence.attribute("maxOccurs") != Some("unbounded")
+    {
+        return Err(unsupported(
+            "group",
+            reference,
+            "repeating xs:group references are not supported",
+        ));
+    }
+    let [child] = children else {
+        return Err(unsupported(
+            "group",
+            reference,
+            "a repeated group must contain exactly one nonrepeating member",
+        ));
+    };
+    if child.repeating {
+        return Err(unsupported(
+            "group",
+            reference,
+            "a repeated group must contain exactly one nonrepeating member",
+        ));
+    }
+    child.repeating = true;
+    Ok(())
 }
 
 fn unsupported_sequence_member(sequence: &Node<'_, '_>) -> Option<&'static str> {
