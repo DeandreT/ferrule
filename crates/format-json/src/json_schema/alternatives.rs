@@ -3,7 +3,10 @@ use ir::{
     GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode,
 };
 
-use super::{item_counts, parse, ranges, resolve_ref, unsupported_union};
+use super::{
+    files, item_counts, parse, ranges, reject_unsupported_ref_siblings, resolve_ref,
+    unsupported_union,
+};
 use crate::JsonFormatError;
 
 enum WrapperAdditional {
@@ -461,7 +464,9 @@ fn is_null_alternative(
     active_refs: &mut Vec<String>,
 ) -> Result<bool, JsonFormatError> {
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
-        ensure_annotation_only(union_name, schema, "$ref")?;
+        if files::ref_siblings_apply(schema) {
+            reject_unsupported_ref_siblings(union_name, schema)?;
+        }
         if active_refs.iter().any(|active| active == reference) {
             return Err(unsupported_union(
                 union_name,
@@ -486,7 +491,9 @@ fn classify_scalar_alternative(
     active_refs: &mut Vec<String>,
 ) -> Result<ScalarAlternative, JsonFormatError> {
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
-        ensure_annotation_only(union_name, schema, "$ref")?;
+        if files::ref_siblings_apply(schema) {
+            reject_unsupported_ref_siblings(union_name, schema)?;
+        }
         if active_refs.iter().any(|active| active == reference) {
             return Err(unsupported_union(
                 union_name,
@@ -532,7 +539,7 @@ fn classify_exact_scalar_alternative(
     active_refs: &mut Vec<String>,
 ) -> Result<ScalarAlternative, JsonFormatError> {
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
-        ensure_annotation_only(union_name, schema, "$ref")?;
+        let apply_siblings = files::ref_siblings_apply(schema);
         if active_refs.iter().any(|active| active == reference) {
             return Err(unsupported_union(
                 union_name,
@@ -548,6 +555,13 @@ fn classify_exact_scalar_alternative(
         active_refs.push(reference.to_string());
         let classified = classify_exact_scalar_alternative(union_name, resolved, doc, active_refs);
         active_refs.pop();
+        if apply_siblings
+            && classified
+                .as_ref()
+                .is_ok_and(|classified| !matches!(classified, ScalarAlternative::Other))
+        {
+            ensure_annotation_only(union_name, schema, "$ref")?;
+        }
         return classified;
     }
     let Some(ty) = schema.get("type").and_then(serde_json::Value::as_str) else {
@@ -572,7 +586,10 @@ fn classify_exact_array_alternative(
     active_refs: &mut Vec<String>,
 ) -> Result<ArrayAlternative, JsonFormatError> {
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
-        ensure_annotation_only(union_name, schema, "$ref")?;
+        let apply_siblings = files::ref_siblings_apply(schema);
+        if apply_siblings {
+            reject_unsupported_ref_siblings(union_name, schema)?;
+        }
         if active_refs.iter().any(|active| active == reference) {
             return Err(unsupported_union(
                 union_name,
@@ -588,7 +605,13 @@ fn classify_exact_array_alternative(
         active_refs.push(reference.to_string());
         let classified = classify_exact_array_alternative(union_name, resolved, doc, active_refs);
         active_refs.pop();
-        return classified;
+        let classified = classified?;
+        if apply_siblings && matches!(classified, ArrayAlternative::Array(_)) {
+            return parse(union_name, schema, doc, active_refs)
+                .map(Box::new)
+                .map(ArrayAlternative::Array);
+        }
+        return Ok(classified);
     }
     match schema.get("type").and_then(serde_json::Value::as_str) {
         Some("null") => {
@@ -713,7 +736,9 @@ fn ensure_annotation_only(
         ));
     };
     if let Some(keyword) = object.keys().find(|keyword| {
-        keyword.as_str() != shape_keyword && !is_annotation_keyword(keyword.as_str())
+        keyword.as_str() != shape_keyword
+            && !files::is_internal_ref_keyword(keyword)
+            && !is_annotation_keyword(keyword.as_str())
     }) {
         return Err(unsupported_union(
             union_name,
@@ -817,14 +842,27 @@ pub(super) fn parse_object_alternatives(
     let mut merged = base_children.clone();
     let mut metadata = Vec::with_capacity(alternatives.len());
     for (index, alternative_schema) in alternatives.iter().enumerate() {
+        if alternative_schema
+            .get("$ref")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+            && files::ref_siblings_apply(alternative_schema)
+        {
+            reject_unsupported_ref_siblings(name, alternative_schema)?;
+        }
         let resolved = alternative_schema
             .get("$ref")
             .and_then(serde_json::Value::as_str)
             .and_then(|reference| resolve_ref(doc, reference))
             .unwrap_or(alternative_schema);
-        let alternative_name = resolved
-            .get("title")
-            .and_then(serde_json::Value::as_str)
+        let alternative_name = files::ref_siblings_apply(alternative_schema)
+            .then(|| {
+                alternative_schema
+                    .get("title")
+                    .and_then(serde_json::Value::as_str)
+            })
+            .flatten()
+            .or_else(|| resolved.get("title").and_then(serde_json::Value::as_str))
             .map(str::to_string)
             .or_else(|| {
                 alternative_schema
