@@ -127,10 +127,10 @@ first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
 direct execution of unrecognized or external-service user components. Bounded
 cross-namespace substitution groups, heterogeneous scalar type arrays,
-pairwise-disjoint scalar `oneOf`, exact scalar `anyOf` unions, and array `anyOf`
-branches whose scalar item domain subsumes every narrower branch are preserved,
-including required or optional typed
-`const` or singleton-`enum` discriminators and JSON-null discriminators.
+pairwise-disjoint scalar `oneOf`, exact scalar `anyOf` unions, bounded exact
+multi-value scalar `enum` domains, and array `anyOf` branches whose scalar item
+domain subsumes every narrower branch are preserved, including required or
+optional typed and JSON-null discriminators.
 Flat nullable compositions may combine null with multiple compatible object,
 scalar-union, or subsumed-array branches.
 JSON components retain exact ordinary integer and finite-number ranges from

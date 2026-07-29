@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ir::{Instance, NumericRange, SchemaKind};
+use ir::{Instance, JsonAllowedValue, NumericRange, SchemaKind};
 
 struct TempDir(PathBuf);
 
@@ -61,13 +61,14 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
       "multipleOf":0.25
     },
     "Status":{"type":"string","const":"ready","minLength":5,"maxLength":5,"pattern":"^ready$","format":"workflow-status"},
+    "Priority":{"enum":["normal","urgent",null]},
     "Tracking":{"type":"string","format":""}
   }
 }"#,
     )?;
     std::fs::write(
         directory.0.join("input.json"),
-        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready"}"#,
+        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"urgent"}"#,
     )?;
     let design = directory.0.join("mapping.mfd");
     std::fs::write(
@@ -191,6 +192,24 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .map(String::as_str),
         Some("")
     );
+    let priority = imported
+        .project
+        .source
+        .child("Priority")
+        .ok_or("missing priority enum")?;
+    let priority_values = priority
+        .json_allowed_values
+        .as_ref()
+        .ok_or("missing priority allowed values")?;
+    assert_eq!(
+        priority_values.values(),
+        [
+            JsonAllowedValue::JsonNull,
+            JsonAllowedValue::String("normal".to_string()),
+            JsonAllowedValue::String("urgent".to_string()),
+        ]
+    );
+    assert!(priority.nullable);
 
     let input = format_json::read(&directory.0.join("input.json"), &imported.project.source)?;
     assert!(matches!(input, Instance::Group(_)));
@@ -216,6 +235,15 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .map(|divisor| divisor.to_decimal_lexical())
             .as_deref(),
         Some("0.25")
+    );
+    assert_eq!(
+        reimported
+            .project
+            .source
+            .child("Priority")
+            .and_then(|priority| priority.json_allowed_values.as_ref())
+            .map(ir::JsonAllowedValues::values),
+        Some(priority_values.values())
     );
     Ok(())
 }

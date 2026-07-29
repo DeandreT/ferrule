@@ -7,6 +7,7 @@ use json_pattern::{DEFAULT_MATCH_WORK_LIMIT, PortableJsonPattern};
 
 use crate::RuntimeError;
 
+mod allowed_values;
 mod multiple_of;
 
 pub const MAX_EMBEDDED_JSON_SCHEMA_BYTES: usize = 1024 * 1024;
@@ -286,6 +287,7 @@ fn without_boundary_constraints(mut schema: SchemaNode) -> SchemaNode {
 }
 
 fn clear_boundary_constraints(schema: &mut SchemaNode) {
+    schema.json_allowed_values = None;
     schema.json_patterns = None;
     schema.json_multiple_of = None;
     if let SchemaKind::Group {
@@ -303,6 +305,7 @@ fn clear_boundary_constraints(schema: &mut SchemaNode) {
 
 #[derive(Debug)]
 enum ConstraintValidationError {
+    AllowedValueMismatch { name: String },
     MissingPatternProgram { source: String },
     PatternMismatch { name: String },
     MultipleOfMismatch { name: String },
@@ -311,6 +314,11 @@ enum ConstraintValidationError {
 
 fn constraint_input_error(error: ConstraintValidationError) -> JsonBoundaryError {
     match error {
+        ConstraintValidationError::AllowedValueMismatch { name } => {
+            JsonBoundaryError::InvalidInput {
+                message: format!("`{name}` is not one of its JSON Schema allowed values"),
+            }
+        }
         ConstraintValidationError::MissingPatternProgram { source } => {
             JsonBoundaryError::InvalidEmbeddedSchema {
                 message: format!("compiled JSON pattern `{source}` is missing"),
@@ -332,6 +340,11 @@ fn constraint_input_error(error: ConstraintValidationError) -> JsonBoundaryError
 
 fn constraint_output_error(error: ConstraintValidationError) -> JsonBoundaryError {
     match error {
+        ConstraintValidationError::AllowedValueMismatch { name } => {
+            JsonBoundaryError::InvalidOutput {
+                message: format!("`{name}` is not one of its JSON Schema allowed values"),
+            }
+        }
         ConstraintValidationError::MissingPatternProgram { source } => {
             JsonBoundaryError::InvalidEmbeddedSchema {
                 message: format!("compiled JSON pattern `{source}` is missing"),
@@ -381,7 +394,8 @@ fn validate_instance_node(
             if let Value::String(value) = value {
                 validate_pattern_value(schema, value, programs, remaining_work)?;
             }
-            multiple_of::validate_instance_value(schema, value)
+            multiple_of::validate_instance_value(schema, value)?;
+            allowed_values::validate_instance_value(schema, value)
         }
         (
             SchemaKind::Group {
@@ -436,14 +450,15 @@ fn validate_json_node(
     remaining_work: &mut u64,
 ) -> Result<(), ConstraintValidationError> {
     match (&schema.kind, value) {
-        (
-            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
-            serde_json::Value::String(value),
-        ) => validate_pattern_value(schema, value, programs, remaining_work),
-        (
-            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
-            serde_json::Value::Number(value),
-        ) => multiple_of::validate_json_value(schema, value),
+        (SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }, value) => {
+            if let serde_json::Value::String(value) = value {
+                validate_pattern_value(schema, value, programs, remaining_work)?;
+            }
+            if let serde_json::Value::Number(value) = value {
+                multiple_of::validate_json_value(schema, value)?;
+            }
+            allowed_values::validate_json_value(schema, value)
+        }
         (
             SchemaKind::Group {
                 children, dynamic, ..
