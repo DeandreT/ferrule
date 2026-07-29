@@ -171,13 +171,150 @@ internal static class FerruleDelimitedText
         }
     }
 
-    private static FerruleValue ParseValue(string text, FerruleScalarType type)
+    internal static FerruleValue ParseFixedWidthField(
+        FerruleValue input,
+        string fill,
+        bool recordDelimiters,
+        bool treatEmptyAsAbsent,
+        IReadOnlyList<uint> widths,
+        IReadOnlyList<FerruleScalarType> fields,
+        uint selected)
+    {
+        ArgumentNullException.ThrowIfNull(fill);
+        ArgumentNullException.ThrowIfNull(widths);
+        ArgumentNullException.ThrowIfNull(fields);
+        if (input.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        {
+            return FerruleValue.Null;
+        }
+        if (input.Kind != FerruleValueKind.String)
+        {
+            throw Type(input);
+        }
+        if (!IsOneScalar(fill) ||
+            widths.Count == 0 ||
+            widths.Count != fields.Count ||
+            selected >= fields.Count)
+        {
+            throw InvalidInput();
+        }
+
+        var text = input.StringValue;
+        if (Encoding.UTF8.GetByteCount(text) > MaximumInputBytes)
+        {
+            throw InvalidInput();
+        }
+        if (text.StartsWith('\uFEFF'))
+        {
+            text = text[1..];
+        }
+
+        try
+        {
+            var recordWidth = 0;
+            foreach (var width in widths)
+            {
+                if (width == 0)
+                {
+                    throw InvalidInput();
+                }
+                recordWidth = checked(recordWidth + checked((int)width));
+            }
+
+            var minimumWidth =
+                recordDelimiters && fields[^1] == FerruleScalarType.String
+                    ? recordWidth - checked((int)widths[^1])
+                    : recordWidth;
+            var recordCount = 0;
+            var nodeCount = 2;
+            var first = FerruleValue.Null;
+            var hasFirst = false;
+
+            void CompleteRecord(string record)
+            {
+                var scalarCount = ScalarCount(record);
+                if (scalarCount < minimumWidth || scalarCount > recordWidth)
+                {
+                    throw InvalidInput();
+                }
+                if (recordCount == MaximumRecords)
+                {
+                    throw InvalidInput();
+                }
+                recordCount++;
+                nodeCount = checked(nodeCount + fields.Count + 1);
+                if (nodeCount > MaximumNodes)
+                {
+                    throw InvalidInput();
+                }
+
+                var offset = 0;
+                for (var fieldIndex = 0; fieldIndex < fields.Count; fieldIndex++)
+                {
+                    var raw = TakeScalars(record, ref offset, checked((int)widths[fieldIndex]));
+                    raw = fields[fieldIndex] == FerruleScalarType.String
+                        ? TrimFillEnd(raw, fill)
+                        : TrimFill(raw, fill);
+                    var value = ParseValue(raw, fields[fieldIndex], treatEmptyAsAbsent);
+                    if (!hasFirst && fieldIndex == selected)
+                    {
+                        first = value;
+                    }
+                }
+                hasFirst = true;
+            }
+
+            if (recordDelimiters)
+            {
+                var offset = 0;
+                while (offset < text.Length)
+                {
+                    var newline = text.IndexOf('\n', offset);
+                    var end = newline < 0 ? text.Length : newline;
+                    if (end > offset && text[end - 1] == '\r')
+                    {
+                        end--;
+                    }
+                    CompleteRecord(text[offset..end]);
+                    if (newline < 0)
+                    {
+                        break;
+                    }
+                    offset = newline + 1;
+                }
+            }
+            else
+            {
+                var scalarCount = ScalarCount(text);
+                if (scalarCount % recordWidth != 0 ||
+                    scalarCount / recordWidth > MaximumRecords)
+                {
+                    throw InvalidInput();
+                }
+                var offset = 0;
+                while (offset < text.Length)
+                {
+                    CompleteRecord(TakeScalars(text, ref offset, recordWidth));
+                }
+            }
+            return hasFirst ? first : FerruleValue.Null;
+        }
+        catch (OverflowException)
+        {
+            throw InvalidInput();
+        }
+    }
+
+    private static FerruleValue ParseValue(
+        string text,
+        FerruleScalarType type,
+        bool emptyIsNull = true)
     {
         if (Encoding.UTF8.GetByteCount(text) > MaximumValueBytes)
         {
             throw InvalidInput();
         }
-        if (text.Length == 0)
+        if (text.Length == 0 && emptyIsNull)
         {
             return FerruleValue.Null;
         }
@@ -206,6 +343,46 @@ internal static class FerruleDelimitedText
                 FerruleValue.FromBoolean(false),
             _ => throw InvalidInput(),
         };
+    }
+
+    private static int ScalarCount(string text)
+    {
+        var count = 0;
+        var offset = 0;
+        while (offset < text.Length)
+        {
+            offset += ScalarLength(text, offset);
+            count = checked(count + 1);
+        }
+        return count;
+    }
+
+    private static string TakeScalars(string text, ref int offset, int count)
+    {
+        var start = offset;
+        for (var taken = 0; taken < count && offset < text.Length; taken++)
+        {
+            offset += ScalarLength(text, offset);
+        }
+        return text[start..offset];
+    }
+
+    private static string TrimFillEnd(string text, string fill)
+    {
+        while (text.EndsWith(fill, StringComparison.Ordinal))
+        {
+            text = text[..^fill.Length];
+        }
+        return text;
+    }
+
+    private static string TrimFill(string text, string fill)
+    {
+        while (text.StartsWith(fill, StringComparison.Ordinal))
+        {
+            text = text[fill.Length..];
+        }
+        return TrimFillEnd(text, fill);
     }
 
     private static int RecordSeparatorLength(string text, int index, string configured)
