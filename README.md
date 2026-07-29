@@ -145,6 +145,7 @@ Import or export a MapForce design:
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --out project.json
 cargo +nightly run -p cli -- import-mfd --mfd package/maps/design.mfd --package-root package --out project.json
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --edi-catalog-root edi-configs --out project.json
+cargo +nightly run -p cli -- import-mfd --mfd design.mfd --json-schema-root schemas --out project.json
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
 ```
 

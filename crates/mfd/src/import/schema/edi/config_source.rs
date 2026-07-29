@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::resource::ResourceResolver;
+use crate::resource::{ResourceResolver, trusted_catalog_relative_path};
 
 const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: usize = 512;
@@ -107,7 +107,7 @@ fn resolve_in_catalogs(
     declared: &str,
     portable: &str,
 ) -> Result<ResolvedConfig, String> {
-    let relative = catalog_relative_path(portable).map_err(|error| {
+    let relative = trusted_catalog_relative_path(portable).map_err(|error| {
         format!("configuration path `{declared}` is not a bounded catalog path ({error})")
     })?;
     for root in roots {
@@ -463,42 +463,6 @@ fn bounded_relative_path(text: &str) -> Option<PathBuf> {
     (!normalized.as_os_str().is_empty()).then_some(normalized)
 }
 
-fn catalog_relative_path(text: &str) -> Result<PathBuf, &'static str> {
-    if text.is_empty() || text.contains('\0') {
-        return Err("path is empty or contains NUL");
-    }
-    let portable = text.replace('\\', "/");
-    let path = Path::new(&portable);
-    let bytes = portable.as_bytes();
-    let windows_drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
-    if path.is_absolute() || windows_drive || portable.starts_with("//") {
-        return Err("absolute paths are not allowed");
-    }
-    let mut normalized = PathBuf::new();
-    let mut saw_normal = false;
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::Normal(value) => {
-                saw_normal = true;
-                normalized.push(value);
-            }
-            Component::ParentDir if !saw_normal => {}
-            Component::ParentDir if normalized.pop() => {}
-            Component::ParentDir => {
-                return Err("parent traversal escapes the virtual catalog root");
-            }
-            Component::Prefix(_) | Component::RootDir => {
-                return Err("absolute paths are not allowed");
-            }
-        }
-    }
-    if normalized.as_os_str().is_empty() {
-        return Err("path does not name a file");
-    }
-    Ok(normalized)
-}
-
 fn portable_key(path: &Path) -> Option<String> {
     path.components()
         .filter_map(|component| match component {
@@ -560,19 +524,19 @@ mod tests {
     #[test]
     fn catalog_paths_clamp_only_leading_parent_components() {
         assert_eq!(
-            catalog_relative_path(r"..\..\EDI\Custom.X12\Envelope.Config"),
+            trusted_catalog_relative_path(r"..\..\EDI\Custom.X12\Envelope.Config"),
             Ok(PathBuf::from("EDI/Custom.X12/Envelope.Config"))
         );
         assert_eq!(
-            catalog_relative_path("EDI/legacy/../Custom.X12/Envelope.Config"),
+            trusted_catalog_relative_path("EDI/legacy/../Custom.X12/Envelope.Config"),
             Ok(PathBuf::from("EDI/Custom.X12/Envelope.Config"))
         );
         assert!(
-            catalog_relative_path("../EDI/../../Envelope.Config")
+            trusted_catalog_relative_path("../EDI/../../Envelope.Config")
                 .is_err_and(|error| error.contains("escapes"))
         );
-        assert!(catalog_relative_path("C:/EDI/Envelope.Config").is_err());
-        assert!(catalog_relative_path(r"C:EDI\Envelope.Config").is_err());
-        assert!(catalog_relative_path("//server/EDI/Envelope.Config").is_err());
+        assert!(trusted_catalog_relative_path("C:/EDI/Envelope.Config").is_err());
+        assert!(trusted_catalog_relative_path(r"C:EDI\Envelope.Config").is_err());
+        assert!(trusted_catalog_relative_path("//server/EDI/Envelope.Config").is_err());
     }
 }
