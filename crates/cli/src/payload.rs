@@ -693,23 +693,21 @@ fn read_payload(
     }
     if let Some(layout) = &options.idoc {
         reject_idoc_conflicts(options, "input")?;
-        return format_edi::idoc::from_bytes(
-            document.bytes,
-            schema,
-            layout,
-            options.lenient_segments,
-        )
-        .context("parsing SAP IDoc input payload");
+        let mut instance =
+            format_edi::idoc::from_bytes(document.bytes, schema, layout, options.lenient_segments)
+                .context("parsing SAP IDoc input payload")?;
+        format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
+            .context("applying EDI numeric formats to SAP IDoc input payload")?;
+        return Ok(instance);
     }
     if let Some(layout) = &options.swift_mt {
         reject_swift_conflicts(options, "input")?;
-        return format_edi::swift::from_bytes(
-            document.bytes,
-            schema,
-            layout,
-            options.lenient_segments,
-        )
-        .context("parsing SWIFT MT input payload");
+        let mut instance =
+            format_edi::swift::from_bytes(document.bytes, schema, layout, options.lenient_segments)
+                .context("parsing SWIFT MT input payload")?;
+        format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
+            .context("applying EDI numeric formats to SWIFT MT input payload")?;
+        return Ok(instance);
     }
     if let Some(boundary) = &options.external_source {
         reject_external_source_conflicts(options, "input")?;
@@ -925,9 +923,12 @@ fn render_payload(
             .context("rendering XBRL output payload")?;
         return Ok((text.into_bytes(), 1));
     }
-    if options.idoc.is_some() {
+    if let Some(layout) = &options.idoc {
         reject_idoc_conflicts(options, "output")?;
-        bail!("SAP IDoc output is not supported; `idoc` is input-only");
+        let formatted = formatted_edi_output(instance, options)?;
+        let bytes = format_edi::idoc::to_bytes(schema, &formatted, layout)
+            .context("rendering SAP IDoc output payload")?;
+        return Ok((bytes, 1));
     }
     if options.swift_mt.is_some() {
         reject_swift_conflicts(options, "output")?;
@@ -1156,7 +1157,7 @@ fn render_edi_payload(
         EdiBoundaryKind::Hl7 => format_edi::hl7::to_string(schema, instance),
         EdiBoundaryKind::Tradacoms => format_edi::tradacoms::to_string(schema, instance),
         EdiBoundaryKind::Idoc => {
-            bail!("SAP IDoc output is not supported; IDoc is input-only")
+            bail!("SAP IDoc output requires an embedded runtime layout")
         }
         EdiBoundaryKind::SwiftMt => {
             bail!("SWIFT MT output is not supported; SWIFT MT is input-only")
