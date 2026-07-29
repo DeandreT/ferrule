@@ -280,6 +280,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.xml_namespace == right.xml_namespace
         && left.xml_name_alternatives == right.xml_name_alternatives
         && left.xml_wildcard_namespace == right.xml_wildcard_namespace
+        && left.xml_wildcard_process_contents == right.xml_wildcard_process_contents
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
         && left.text == right.text
@@ -357,7 +358,12 @@ fn validate_export_node(
     }
     if !node.xml_wildcard_namespace_is_valid() {
         return Err(XmlFormatError::UnsupportedXmlWildcard {
-            reason: "wildcard namespace metadata requires an element() group with string LocalName and NamespaceURI fields",
+            reason: "wildcard namespace metadata requires an element() or attribute() group with string LocalName and NamespaceURI fields",
+        });
+    }
+    if !node.xml_wildcard_process_contents_is_valid() {
+        return Err(XmlFormatError::UnsupportedXmlWildcard {
+            reason: "non-skip wildcard processing requires a namespace-aware generic element() or attribute() group",
         });
     }
     if node.attribute && node.text {
@@ -411,11 +417,20 @@ fn validate_export_node(
         return Ok(());
     }
     if node.name == XML_ATTRIBUTES_FIELD {
-        return if node == &generic_attribute_wildcard_schema() {
+        let expected = node.xml_wildcard_namespace.as_ref().map_or_else(
+            generic_attribute_wildcard_schema,
+            |namespace| {
+                generic_attribute_wildcard_schema_with(
+                    namespace.clone(),
+                    node.xml_wildcard_process_contents,
+                )
+            },
+        );
+        return if node == &expected {
             Ok(())
         } else {
             Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
-                reason: "attribute() must be one repeating unqualified group containing only string LocalName and #text fields",
+                reason: "attribute() must be the canonical repeating generic attribute group for its namespace and processContents metadata",
             })
         };
     }
@@ -423,11 +438,9 @@ fn validate_export_node(
         .iter()
         .filter(|child| child.name == XML_ATTRIBUTES_FIELD)
         .count();
-    if attribute_wildcards > 1
-        || (attribute_wildcards == 1 && children.iter().any(|child| child.attribute))
-    {
+    if attribute_wildcards > 1 {
         return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
-            reason: "an attribute wildcard must be the only attribute declaration in its complex type",
+            reason: "a complex type can contain at most one attribute wildcard",
         });
     }
     for child in children {
@@ -506,7 +519,8 @@ fn write_element_required(
             ""
         };
         out.push_str(&format!(
-            "{pad}<xs:any namespace=\"{namespace}\" processContents=\"skip\"{occurs}/>\n"
+            "{pad}<xs:any namespace=\"{namespace}\" processContents=\"{}\"{occurs}/>\n",
+            wildcard_process_contents(node)
         ));
         return Ok(());
     }
@@ -675,6 +689,14 @@ fn wildcard_namespace_attribute(
     }
 }
 
+fn wildcard_process_contents(node: &SchemaNode) -> &'static str {
+    match node.xml_wildcard_process_contents {
+        XmlWildcardProcessContents::Skip => "skip",
+        XmlWildcardProcessContents::Lax => "lax",
+        XmlWildcardProcessContents::Strict => "strict",
+    }
+}
+
 fn element_fixed(node: &SchemaNode) -> Option<&str> {
     node.fixed.as_deref().or_else(|| {
         let ir::SchemaKind::Group { children, .. } = &node.kind else {
@@ -757,8 +779,8 @@ fn write_complex_type(
         for attr in attrs {
             write_attribute(attr, depth + 3, alternatives, out)?;
         }
-        if attribute_wildcard.is_some() {
-            write_attribute_wildcard(depth + 3, out);
+        if let Some(attribute_wildcard) = attribute_wildcard {
+            write_attribute_wildcard(attribute_wildcard, depth + 3, alternatives, out)?;
         }
         out.push_str(&format!(
             "{pad}    </xs:extension>\n{pad}  </xs:simpleContent>\n{pad}</xs:complexType>\n"
@@ -786,18 +808,26 @@ fn write_complex_type(
     for attr in attrs {
         write_attribute(attr, depth + 1, alternatives, out)?;
     }
-    if attribute_wildcard.is_some() {
-        write_attribute_wildcard(depth + 1, out);
+    if let Some(attribute_wildcard) = attribute_wildcard {
+        write_attribute_wildcard(attribute_wildcard, depth + 1, alternatives, out)?;
     }
     out.push_str(&format!("{pad}</xs:complexType>\n"));
     Ok(())
 }
 
-fn write_attribute_wildcard(depth: usize, out: &mut String) {
+fn write_attribute_wildcard(
+    wildcard: &SchemaNode,
+    depth: usize,
+    alternatives: &AlternativeExportPlan<'_>,
+    out: &mut String,
+) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
+    let namespace = wildcard_namespace_attribute(wildcard, alternatives)?;
     out.push_str(&format!(
-        "{pad}<xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/>\n"
+        "{pad}<xs:anyAttribute namespace=\"{namespace}\" processContents=\"{}\"/>\n",
+        wildcard_process_contents(wildcard)
     ));
+    Ok(())
 }
 
 fn write_nested_elements(

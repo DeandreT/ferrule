@@ -513,6 +513,8 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
     left.name == right.name
         && left.xml_namespace == right.xml_namespace
         && left.xml_name_alternatives == right.xml_name_alternatives
+        && left.xml_wildcard_namespace == right.xml_wildcard_namespace
+        && left.xml_wildcard_process_contents == right.xml_wildcard_process_contents
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
         && left.text == right.text

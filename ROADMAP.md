@@ -38,12 +38,14 @@ clean-room interoperability, and extensible adapters.
   undo/redo, persisted primary/function/named-target canvases, and deterministic
   JSON Lines execution traces; plus a WASM XML/JSON/CSV/XBRL playground.
 - `.mfd` survey: all 187 designs in the local ReferenceSamples corpus import;
-  168 import warning-free, five more are dependency-complete and engine-valid
-  with nonblocking wildcard or structural warnings, and fourteen retain typed
+  175 import warning-free and are dependency-complete and engine-valid, while
+  twelve retain typed
   unresolved external EDI-catalog dependencies and remain deliberately
-  non-executable. All 187 export and re-import warning-free. The
-  read-only execution profile attempts 166 safe-input designs and all 166 pass;
-  seven network or captured-service inputs are unavailable. All 166 safe
+  non-executable. All 187 export and re-import warning-free, and all 175
+  dependency-complete round trips remain engine-valid. The
+  read-only execution profile attempts 168 safe-input designs and all 168 pass,
+  publishing 165 captured outputs; seven network or captured-service inputs are
+  unavailable. All 168 safe
   export/re-import executions match semantically with zero drift. Across the
   latest isolated behavioral manifests, all 79 available deterministic
   references match exactly.
@@ -57,7 +59,7 @@ clean-room interoperability, and extensible adapters.
 
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
-| XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, closed strict wildcards resolved to exact singular or repeating typed choices, direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes and open/lax or namespace-dependent validating wildcards |
+| XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, lax element and attribute wildcards with typed known declarations plus nonduplicating generic fallback, closed strict wildcards resolved to exact singular or repeating typed choices, strict known-attribute projection, direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes, XSD 1.1 wildcard exclusions, unordered wildcard compositors, and unresolved strict wildcard declaration sets |
 | JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, exact object-property presence requirements, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null `const` and singleton-`enum` discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties | Validation-bearing and incompatible intersection composition, heterogeneous array composition, validation-bearing scalar unions, overlapping cross-mode or incompatible typed-wrapper union composition, multi-value or structured discriminator shapes, mixed arrays, validation-keyword enforcement |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
@@ -68,8 +70,8 @@ clean-room interoperability, and extensible adapters.
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
 | Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, and a bounded searchable GUI run report | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 187/187 imports (168 warning-free and five additional engine-valid designs with nonblocking warnings), warning-free export and re-import for all 187, 173 dependency-complete engine-valid designs, fourteen typed missing EDI-catalog dependencies preserved across round trips, 166/166 safe-input executions, 166/166 semantically exact export/re-import executions, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and executable package resolution for externally supplied configuration catalogs |
-| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, 75 scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 173 dependency-complete survey designs emit in both languages | Publish the Rust runtime and consider optional XML-specific XSLT |
+| `.mfd` | 187/187 imports (175 warning-free and engine-valid), warning-free export and re-import for all 187, 175 dependency-complete engine-valid round trips, twelve typed missing EDI-catalog dependencies preserved across round trips, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact export/re-import executions there, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and executable package resolution for externally supplied configuration catalogs |
+| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, 75 scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Publish the Rust runtime and consider optional XML-specific XSLT |
 
 ## Workstreams
 
@@ -132,13 +134,14 @@ during export; per-item dynamic XML sources and captured HTTP POST response
 boundaries also round-trip with their typed contracts.
 The versioned compatibility survey records import, engine validation, export,
 re-import, and post-export validation separately. All 187 local designs import;
-168 do so warning-free and five more are engine-valid with nonblocking import
-warnings. All 187 export and re-import warning-free. In total, 173 designs are
-dependency-complete and engine-valid, while fourteen preserve typed unresolved
-external EDI-catalog dependencies. A broad isolated execution survey runs all
-166 safe-input originals successfully, with seven network or captured-service
-cases unavailable. The round-trip profile executes the same 166 safe originals;
-all 166 exportable/re-importable executions match semantically. The latest
+175 do so warning-free and are dependency-complete and engine-valid. All 187
+export and re-import warning-free, with all 175 dependency-complete round trips
+remaining engine-valid. Twelve designs preserve typed unresolved external
+EDI-catalog dependencies. A broad isolated execution survey runs all
+168 safe-input originals successfully, publishing 165 captured outputs, with
+seven network or captured-service cases unavailable. The round-trip profile
+executes the same 168 safe originals; all 168 exportable/re-importable
+executions match semantically. The latest
 isolated manifests provide 79 deterministic references, all of which match
 exactly. Reference manifests remain a separate behavioral measure and are not
 inferred from structural success.
@@ -340,19 +343,18 @@ Five release journeys require no hand-edited project JSON:
 Update these numbers with each parity increment:
 
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
-- `.mfd` import: 187/187 import; 168 are warning-free, five additional designs
-  are engine-valid with nonblocking warnings, and fourteen retain typed missing
-  EDI-catalog dependencies.
-- `.mfd` validation: all 173 dependency-complete projects are engine-valid;
-  fourteen are explicitly dependency-blocked.
+- `.mfd` import: 187/187 import; 175 are warning-free and twelve retain typed
+  missing EDI-catalog dependencies.
+- `.mfd` validation: all 175 dependency-complete projects are engine-valid;
+  twelve are explicitly dependency-blocked.
 - `.mfd` export/re-import: all 187 designs export and re-import with zero
-  warnings; all 173 dependency-complete round trips remain engine-valid.
-- `.mfd` execution: all 166 attempted read-only executions pass; fourteen are
-  dependency-blocked and seven network or captured-service inputs are
-  unavailable.
-- `.mfd` execution round trips: all 166 safe projects export, re-import,
+  warnings; all 175 dependency-complete round trips remain engine-valid.
+- `.mfd` execution: all 168 attempted read-only executions pass and publish
+  165 captured outputs; twelve are dependency-blocked and seven network or
+  captured-service inputs are unavailable.
+- `.mfd` execution round trips: all 168 safe projects export, re-import,
   validate, execute, and produce semantically identical outputs.
-- Code generation: 173/173 dependency-complete designs lower and emit for both
+- Code generation: 175/175 dependency-complete designs lower and emit for both
   Rust and C#.
 - Behavioral references: 79/79 available deterministic outputs across the current
   isolated manifests match exactly; these are not inferred from structural success.
