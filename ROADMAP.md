@@ -183,6 +183,13 @@ Exit criteria:
   libraries in the engine.
 - Expand built-ins by measured `.mfd` and user demand, not raw catalog count.
 
+Progress: one invariant-preserving catalog now owns all builtin identities,
+fixed/ranged/variadic arities, parameter and return domains, categories,
+authoring exposure, documentation, purity, determinism, and dispatch. Engine
+validation rejects invalid call arities before execution, and the GUI derives
+its searchable categorized function palette, initial pins, pin labels, and
+argument controls from the same catalog.
+
 ### B. Authoring and Inspection
 
 #### B1. Editor Integrity
@@ -213,6 +220,12 @@ Exit criteria:
 - Scope add/remove plus target-driven scope skeleton generation.
 - Searchable categorized function palette with correct initial pins.
 - Auto-connect matching children and explicit subtree expansion.
+
+Progress: XSD/JSON blank-project setup, extra-source and named-target CRUD,
+independent primary/named-target canvases, scope editing, the catalog-backed
+function palette, and conservative compatible-field auto-connect are
+implemented. CSV/database boundary wizards, target-driven scope skeletons,
+explicit subtree expansion, and preview remain.
 
 Exit criteria:
 
@@ -336,7 +349,8 @@ Update these numbers with each parity increment:
 - Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample
   compatibility report and `FERRULE_SURVEY_DETAILS=1` for text diagnostics.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
-  warnings, runtime failures, and invalid command usage.
+  warnings, runtime failures, and invalid command usage; execution traces use
+  a separate bounded version-2 JSON Lines contract.
 - CLI run paths: explicit flags override project-relative `source_path` and
   primary `target_path` defaults while stored extra targets retain their own paths.
 
