@@ -21,15 +21,25 @@ pub(super) struct AlternativeExportPlan<'a> {
 
 struct TypeDefinition<'a> {
     base: Option<String>,
+    derivation: TypeDerivation,
     abstract_type: bool,
     members: Vec<&'a SchemaNode>,
+    prohibited_attributes: Vec<&'a SchemaNode>,
     required: BTreeSet<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TypeDerivation {
+    Extension,
+    Restriction,
 }
 
 impl PartialEq for TypeDefinition<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.base == other.base
+            && self.derivation == other.derivation
             && self.abstract_type == other.abstract_type
+            && self.prohibited_attributes == other.prohibited_attributes
             && self.required == other.required
             && self.members == other.members
     }
@@ -193,15 +203,19 @@ impl<'a> AlternativeExportPlan<'a> {
                 ""
             };
             if let Some(base) = &definition.base {
+                let derivation = match definition.derivation {
+                    TypeDerivation::Extension => "extension",
+                    TypeDerivation::Restriction => "restriction",
+                };
                 out.push_str(&format!(
-                    "  <xs:complexType name=\"{}\">\n    <xs:complexContent>\n      <xs:extension base=\"{}\">\n",
+                    "  <xs:complexType name=\"{}\">\n    <xs:complexContent>\n      <xs:{derivation} base=\"{}\">\n",
                     xml_escape(name),
                     self.qualified(base)
                 ));
                 write_members(definition, 4, root_name, recursive_anchors, self, out)?;
-                out.push_str(
-                    "      </xs:extension>\n    </xs:complexContent>\n  </xs:complexType>\n",
-                );
+                out.push_str(&format!(
+                    "      </xs:{derivation}>\n    </xs:complexContent>\n  </xs:complexType>\n"
+                ));
             } else {
                 out.push_str(&format!(
                     "  <xs:complexType name=\"{}\"{abstract_attr}>\n",
@@ -229,6 +243,7 @@ impl<'a> AlternativeExportPlan<'a> {
         let SchemaKind::Group {
             children,
             alternatives,
+            xml_restricted_alternatives,
             ..
         } = &node.kind
         else {
@@ -238,7 +253,13 @@ impl<'a> AlternativeExportPlan<'a> {
             if node.alternative_mode() == ir::GroupAlternativeMode::Inclusive {
                 return Err(unsupported(node));
             }
-            self.collect_group(node, children, alternatives, reserved)?;
+            self.collect_group(
+                node,
+                children,
+                alternatives,
+                xml_restricted_alternatives,
+                reserved,
+            )?;
         }
         for child in children {
             self.collect(child, reserved, partition_cross_substitutions)?;
@@ -251,6 +272,7 @@ impl<'a> AlternativeExportPlan<'a> {
         node: &'a SchemaNode,
         children: &'a [SchemaNode],
         alternatives: &[GroupAlternative],
+        restricted_alternatives: &[String],
         reserved: &BTreeSet<String>,
     ) -> Result<(), XmlFormatError> {
         if alternatives
@@ -282,11 +304,41 @@ impl<'a> AlternativeExportPlan<'a> {
             None => self.saw_unqualified = true,
         }
 
+        let restriction_base_index = (!restricted_alternatives.is_empty())
+            .then(|| {
+                alternatives.iter().position(|candidate| {
+                    !restricted_alternatives.contains(&candidate.name)
+                        && alternatives.iter().all(|alternative| {
+                            if restricted_alternatives.contains(&alternative.name) {
+                                alternative
+                                    .members
+                                    .iter()
+                                    .all(|member| candidate.members.contains(member))
+                            } else {
+                                candidate
+                                    .members
+                                    .iter()
+                                    .all(|member| alternative.members.contains(member))
+                            }
+                        })
+                })
+            })
+            .flatten();
+        if !restricted_alternatives.is_empty() && restriction_base_index.is_none() {
+            return Err(unsupported(node));
+        }
+
         // One concrete alternative still needs a distinct declared base so
         // export/reimport retains its xsi:type identity. With no observable
         // base member split in the IR, use an empty abstract base and put the
         // complete projection on the concrete derived type.
-        let common = if alternatives.len() == 1 {
+        let common = if let Some(index) = restriction_base_index {
+            alternatives[index]
+                .members
+                .iter()
+                .filter_map(|member| children.iter().find(|child| child.name == *member))
+                .collect()
+        } else if alternatives.len() == 1 {
             Vec::new()
         } else {
             children
@@ -302,19 +354,36 @@ impl<'a> AlternativeExportPlan<'a> {
             .iter()
             .map(|child| child.name.as_str())
             .collect::<BTreeSet<_>>();
-        if !alternatives
+        let common_attributes = common
             .iter()
-            .all(|alternative| extension_prefix_is_valid(children, alternative, &common_names))
-        {
+            .copied()
+            .filter(|child| child.attribute)
+            .collect::<Vec<_>>();
+        let member_order_is_valid = if restriction_base_index.is_some() {
+            alternatives.iter().all(|alternative| {
+                if restricted_alternatives.contains(&alternative.name) {
+                    ordered_subset_is_valid(children, alternative)
+                } else {
+                    extension_prefix_is_valid(children, alternative, &common_names)
+                }
+            })
+        } else {
+            alternatives
+                .iter()
+                .all(|alternative| extension_prefix_is_valid(children, alternative, &common_names))
+        };
+        if !member_order_is_valid {
             return Err(unsupported(node));
         }
 
-        let base_index = alternatives.iter().position(|alternative| {
-            alternative.members.len() == common.len()
-                && alternative
-                    .members
-                    .iter()
-                    .all(|member| common_names.contains(member.as_str()))
+        let base_index = restriction_base_index.or_else(|| {
+            alternatives.iter().position(|alternative| {
+                alternative.members.len() == common.len()
+                    && alternative
+                        .members
+                        .iter()
+                        .all(|member| common_names.contains(member.as_str()))
+            })
         });
         let inferred_base = base_index
             .is_none()
@@ -348,8 +417,10 @@ impl<'a> AlternativeExportPlan<'a> {
                 base_name.clone(),
                 TypeDefinition {
                     base: None,
+                    derivation: TypeDerivation::Extension,
                     abstract_type,
                     members: common,
+                    prohibited_attributes: Vec::new(),
                     required: BTreeSet::new(),
                 },
             )?;
@@ -359,13 +430,19 @@ impl<'a> AlternativeExportPlan<'a> {
             if Some(index) == base_index {
                 continue;
             }
+            let restriction = restricted_alternatives.contains(&alternative.name);
             let members = alternative
                 .members
                 .iter()
-                .filter(|member| !common_names.contains(member.as_str()))
+                .filter(|member| restriction || !common_names.contains(member.as_str()))
                 .filter_map(|member| children.iter().find(|child| child.name == *member))
                 .collect::<Vec<_>>();
-            if members.len() + common_names.len() != alternative.members.len() {
+            let expected_member_count = if restriction {
+                alternative.members.len()
+            } else {
+                alternative.members.len().saturating_sub(common_names.len())
+            };
+            if members.len() != expected_member_count {
                 return Err(unsupported(node));
             }
             let required = alternative
@@ -374,13 +451,28 @@ impl<'a> AlternativeExportPlan<'a> {
                 .filter(|member| !common_names.contains(member.as_str()))
                 .cloned()
                 .collect();
+            let prohibited_attributes = if restriction {
+                common_attributes
+                    .iter()
+                    .copied()
+                    .filter(|child| !alternative.members.contains(&child.name))
+                    .collect()
+            } else {
+                Vec::new()
+            };
             self.insert_definition(
                 node,
                 identities[index].1.clone(),
                 TypeDefinition {
                     base: Some(base_name.clone()),
+                    derivation: if restriction {
+                        TypeDerivation::Restriction
+                    } else {
+                        TypeDerivation::Extension
+                    },
                     abstract_type: false,
                     members,
+                    prohibited_attributes,
                     required,
                 },
             )?;
@@ -471,7 +563,28 @@ fn write_members(
     for attribute in attributes {
         write_attribute(attribute, depth, alternatives, out)?;
     }
+    for attribute in &definition.prohibited_attributes {
+        let pad = "  ".repeat(depth);
+        out.push_str(&format!(
+            "{pad}<xs:attribute name=\"{}\" use=\"prohibited\"/>\n",
+            xml_escape(&attribute.name)
+        ));
+    }
     Ok(())
+}
+
+fn ordered_subset_is_valid(children: &[SchemaNode], alternative: &GroupAlternative) -> bool {
+    let mut next = 0;
+    for member in &alternative.members {
+        let Some(offset) = children[next..]
+            .iter()
+            .position(|child| child.name == *member)
+        else {
+            return false;
+        };
+        next += offset + 1;
+    }
+    true
 }
 
 fn collect_type_names(

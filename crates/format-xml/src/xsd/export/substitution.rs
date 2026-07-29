@@ -448,11 +448,13 @@ fn projection(head: &SchemaNode, members: &[String]) -> SchemaNode {
     if let SchemaKind::Group {
         children,
         alternatives,
+        xml_restricted_alternatives,
         dynamic,
     } = &mut projected.kind
     {
         children.retain(|child| members.iter().any(|member| member == &child.name));
         alternatives.clear();
+        xml_restricted_alternatives.clear();
         *dynamic = None;
     }
     let selected = members.iter().map(String::as_str).collect::<BTreeSet<_>>();

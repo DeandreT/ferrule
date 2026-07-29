@@ -86,6 +86,7 @@ fn reconcile_children(
                 parent.kind = SchemaKind::Group {
                     children: vec![text],
                     alternatives: Vec::new(),
+                    xml_restricted_alternatives: Vec::new(),
                     dynamic: None,
                 };
             }

@@ -128,6 +128,7 @@ fn validate_json_schema(schema: &SchemaNode, role: &str) -> Result<(), MfdError>
         children,
         alternatives,
         dynamic,
+        ..
     } = &schema.kind
     {
         if !alternatives.is_empty() || dynamic.is_some() {

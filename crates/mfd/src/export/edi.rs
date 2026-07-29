@@ -315,6 +315,7 @@ fn validate_schema_node(
             children,
             alternatives,
             dynamic,
+            ..
         } => {
             if node.fixed.is_some() {
                 return Err("a group carries scalar fixed-value metadata");

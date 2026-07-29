@@ -174,6 +174,7 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
             children,
             alternatives,
             dynamic,
+            ..
         } => {
             let serde_json::Value::Object(fields) = value else {
                 return Err(JsonFormatError::Shape {
@@ -435,6 +436,7 @@ fn write_single_node(
                 children,
                 alternatives,
                 dynamic,
+                ..
             },
             Instance::Group(fields),
         ) => {
