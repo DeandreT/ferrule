@@ -9,8 +9,9 @@
 //! discriminators, and typed `additionalProperties` schemas are preserved.
 //! Compatible `allOf` intersections flatten across objects, scalar domains,
 //! and matching arrays.
-//! Scalar/container-plus-null `oneOf` / `anyOf` and nullable type arrays retain
-//! explicit nullability, including scalar array items. Exact heterogeneous
+//! Scalar/container-plus-null `oneOf` / `anyOf`, including flat compositions
+//! with multiple compatible content branches, and nullable type arrays retain
+//! explicit nullability. This includes scalar array items. Exact heterogeneous
 //! scalar `anyOf`, pairwise-disjoint scalar `oneOf`, and type arrays preserve
 //! every allowed runtime type; array `anyOf` branches canonicalize when they
 //! are identical or one scalar item domain contains all the others. Unconstrained
@@ -31,7 +32,7 @@ mod render;
 
 use all_of::parse_all_of;
 use alternatives::{
-    parse_inferred_constraint_scalar, parse_nullable_container_alternatives,
+    parse_inferred_constraint_scalar, parse_nullable_composition,
     parse_nullable_scalar_alternatives, parse_object_alternatives, parse_scalar_any_of,
     parse_scalar_domain_array_any_of, parse_scalar_one_of, singleton_enum_value,
 };
@@ -122,14 +123,9 @@ fn parse(
         )? {
             return Ok(nullable);
         }
-        if let Some(nullable) = parse_nullable_container_alternatives(
-            name,
-            schema,
-            alternatives,
-            "oneOf",
-            doc,
-            active_refs,
-        )? {
+        if let Some(nullable) =
+            parse_nullable_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
+        {
             return Ok(nullable);
         }
         if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
@@ -155,14 +151,9 @@ fn parse(
         )? {
             return Ok(nullable);
         }
-        if let Some(nullable) = parse_nullable_container_alternatives(
-            name,
-            schema,
-            alternatives,
-            "anyOf",
-            doc,
-            active_refs,
-        )? {
+        if let Some(nullable) =
+            parse_nullable_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
+        {
             return Ok(nullable);
         }
         if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {

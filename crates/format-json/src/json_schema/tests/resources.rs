@@ -124,6 +124,55 @@ fn default_import_confines_refs_to_the_schema_directory() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn external_refs_participate_in_flat_nullable_compositions()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = resource_dir("nullable_composition");
+    std::fs::create_dir_all(dir.join("models"))?;
+    std::fs::write(
+        dir.join("root.json"),
+        r#"{
+  "title":"Message",
+  "oneOf":[
+    {"$ref":"models/created.json"},
+    {"$ref":"null.json"},
+    {"$ref":"models/deleted.json"}
+  ]
+}"#,
+    )?;
+    std::fs::write(dir.join("null.json"), r#"{"type":"null"}"#)?;
+    std::fs::write(
+        dir.join("models/created.json"),
+        r#"{
+  "title":"created",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["created"],
+  "properties":{"created":{"type":"integer"}}
+}"#,
+    )?;
+    std::fs::write(
+        dir.join("models/deleted.json"),
+        r#"{
+  "title":"deleted",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["deleted"],
+  "properties":{"deleted":{"type":"string"}}
+}"#,
+    )?;
+
+    let schema = import_with_root(&dir.join("root.json"), &dir)?;
+    assert!(schema.container_nullable);
+    assert_eq!(schema.alternatives().len(), 2);
+    for input in ["null", r#"{"created":7}"#, r#"{"deleted":"duplicate"}"#] {
+        assert!(crate::from_str(input, &schema).is_ok(), "{input}");
+    }
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
 fn rejects_missing_remote_anchor_and_reserved_bundle_refs() -> Result<(), Box<dyn std::error::Error>>
 {
     let dir = resource_dir("invalid");

@@ -236,7 +236,11 @@ pub(super) fn parse_nullable_scalar_alternatives(
     Ok(Some(node))
 }
 
-pub(super) fn parse_nullable_container_alternatives(
+/// Removes exact null branches, lowers the remaining composition through its
+/// ordinary exact scalar/object/array path, then restores the composition's
+/// null domain. This handles flat nullable unions with more than one content
+/// branch as well as nested scalar-union wrappers.
+pub(super) fn parse_nullable_composition(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
@@ -246,23 +250,62 @@ pub(super) fn parse_nullable_container_alternatives(
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     let Some(alternatives) = alternatives
         .as_array()
-        .filter(|alternatives| alternatives.len() == 2)
+        .filter(|alternatives| alternatives.len() >= 2)
     else {
         return Ok(None);
     };
-    let first_is_null = is_null_alternative(name, &alternatives[0], doc, active_refs)?;
-    let second_is_null = is_null_alternative(name, &alternatives[1], doc, active_refs)?;
-    let content = match (first_is_null, second_is_null) {
-        (true, false) => &alternatives[1],
-        (false, true) => &alternatives[0],
-        _ => return Ok(None),
-    };
-    ensure_annotation_only(name, schema, keyword)?;
-    let mut node = parse(name, content, doc, active_refs)?;
-    if !node.repeating && !matches!(node.kind, ir::SchemaKind::Group { .. }) {
+    let mut null_count = 0;
+    let mut content = Vec::with_capacity(alternatives.len());
+    for alternative in alternatives {
+        if is_null_alternative(name, alternative, doc, active_refs)? {
+            null_count += 1;
+        } else {
+            content.push(alternative.clone());
+        }
+    }
+    if null_count == 0 || content.is_empty() {
         return Ok(None);
     }
-    node.container_nullable = true;
+    if keyword == "oneOf" && null_count != 1 {
+        return Err(unsupported_union(
+            name,
+            "nullable oneOf null branches overlap",
+        ));
+    }
+    ensure_annotation_only(name, schema, keyword)?;
+    let mut node = if content.len() == 1 {
+        parse(name, &content[0], doc, active_refs)?
+    } else {
+        let mut reduced = schema.clone();
+        let object = reduced.as_object_mut().ok_or_else(|| {
+            unsupported_union(name, "nullable composition must be a schema object")
+        })?;
+        object.insert(keyword.to_string(), serde_json::Value::Array(content));
+        parse(name, &reduced, doc, active_refs)?
+    };
+    if node.json_any {
+        if keyword == "oneOf" {
+            return Err(unsupported_union(
+                name,
+                "nullable oneOf overlaps an unconstrained branch on null",
+            ));
+        }
+        return Ok(Some(node));
+    }
+    if keyword == "oneOf" && (node.nullable || node.container_nullable) {
+        // The retained composition already accepts null, so the outer exact
+        // null branch makes null match twice. Its non-null domain is unchanged.
+        node.nullable = false;
+        node.container_nullable = false;
+        return Ok(Some(node));
+    }
+    if node.repeating || matches!(node.kind, ir::SchemaKind::Group { .. }) {
+        node.container_nullable = true;
+    } else if node.is_scalar() {
+        node.nullable = true;
+    } else {
+        return Ok(None);
+    }
     Ok(Some(node))
 }
 
@@ -476,7 +519,7 @@ fn ensure_scalar_shape_only(
     let Some(object) = schema.as_object() else {
         return Err(unsupported_union(
             union_name,
-            "nullable scalar alternatives must be schema objects",
+            "nullable composition must be a schema object",
         ));
     };
     if let Some(keyword) = object.keys().find(|keyword| {
@@ -528,7 +571,7 @@ fn ensure_annotation_only(
     }) {
         return Err(unsupported_union(
             union_name,
-            &format!("nullable scalar alternatives cannot preserve `{keyword}` validation"),
+            &format!("nullable composition cannot preserve `{keyword}` validation"),
         ));
     }
     Ok(())
