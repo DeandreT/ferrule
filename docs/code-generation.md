@@ -166,7 +166,11 @@ array `uniqueItems` assertions compare complete raw input values and normalized
 output values, ignoring object member order while retaining nested array order. Embedded
 object-property requirements are enforced on input and generated output:
 explicit JSON null satisfies presence when nullable, while an omitted property
-or Ferrule `Null` does not. These APIs intentionally use JSON regardless of
+or Ferrule `Null` does not. Object openness is exact as well: omitted or `true`
+`additionalProperties` preserves arbitrary JSON-valued fields, schema-valued
+`additionalProperties` validates each unknown field against its retained type,
+and explicit `false` produces a typed undeclared-property boundary error rather
+than dropping data. These APIs intentionally use JSON regardless of
 stored project paths or format options; hosts needing X12, XML, database, or
 other physical formats should use the interpreter payload API or adapt a typed
 `Instance` at their own boundary.

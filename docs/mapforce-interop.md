@@ -152,6 +152,12 @@ valid constraints remain executable after MFD import.
 Referenced array `uniqueItems: true` assertions also remain executable across
 MFD import and generated-schema export, with exact structural comparison on
 native and generated Rust/C# JSON boundaries.
+Referenced JSON objects preserve their exact openness contract as well.
+Omitted or `true` `additionalProperties` remains an unconstrained dynamic
+property domain, schema-valued declarations remain typed, and explicit `false`
+rejects undeclared input properties instead of discarding them. MFD export
+writes a canonical JSON Schema sibling and re-import retains the same open,
+typed-open, or closed behavior.
 Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
 intervals measured in Unicode scalar values, including nullable fields, array
 items, typed dynamic properties, and compatible compositions. The constraints
