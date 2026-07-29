@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use ir::{
     Instance, SchemaKind, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
     XML_LOCAL_NAME_FIELD, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD,
-    XML_NAMESPACE_URI_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
+    XML_NAMESPACE_URI_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD, XmlWildcardProcessContents,
 };
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
@@ -150,9 +150,29 @@ pub(super) fn read_group_fields(
             let value = parse_input_schema_scalar(child, ty, &text)?;
             fields.push((child.name.clone(), Instance::Scalar(value)));
         } else if child.name == XML_ELEMENTS_FIELD {
-            let mut items = element
+            let elements = element
                 .children()
                 .filter(|node| node.is_element())
+                .filter(|node| {
+                    child.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+                        || !children.iter().any(|known| {
+                            known.name != XML_ELEMENTS_FIELD
+                                && !known.attribute
+                                && !known.text
+                                && element_matches_schema(node, known)
+                        })
+                })
+                .collect::<Vec<_>>();
+            if child.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict
+                && let Some(undeclared) = elements.first()
+            {
+                return Err(XmlFormatError::UndeclaredStrictXmlWildcardElement {
+                    name: undeclared.tag_name().name().to_string(),
+                    namespace: namespace_label(undeclared.tag_name().namespace()),
+                });
+            }
+            let mut items = elements
+                .into_iter()
                 .map(|element| {
                     read_node(
                         &element,
@@ -175,8 +195,34 @@ pub(super) fn read_group_fields(
         } else if child.name == XML_ATTRIBUTES_FIELD {
             let items = element
                 .attributes()
+                .filter(|attribute| {
+                    child.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+                        || !children.iter().any(|known| {
+                            known.attribute && attribute_matches_schema(attribute, known)
+                        })
+                })
                 .map(|attribute| {
                     let namespace_aware = child.child(XML_NAMESPACE_URI_FIELD).is_some();
+                    if let Some(constraint) = &child.xml_wildcard_namespace
+                        && !constraint.allows(attribute.namespace())
+                    {
+                        return Err(
+                            XmlFormatError::XmlAttributeWildcardNamespaceMismatch {
+                                name: attribute.name().to_string(),
+                                namespace: namespace_label(attribute.namespace()),
+                            },
+                        );
+                    }
+                    if child.xml_wildcard_process_contents
+                        == XmlWildcardProcessContents::Strict
+                    {
+                        return Err(
+                            XmlFormatError::UndeclaredStrictXmlWildcardAttribute {
+                                name: attribute.name().to_string(),
+                                namespace: namespace_label(attribute.namespace()),
+                            },
+                        );
+                    }
                     if !namespace_aware
                         && child.xml_namespace == Some(ir::XmlNamespace::Unqualified)
                         && attribute
@@ -260,6 +306,21 @@ pub(super) fn read_group_fields(
     Ok(Instance::Group(fields))
 }
 
+fn attribute_matches_schema(attribute: &roxmltree::Attribute<'_, '_>, schema: &SchemaNode) -> bool {
+    attribute.name() == schema.name
+        && schema
+            .xml_namespace
+            .as_ref()
+            .is_none_or(|namespace| namespace.matches(attribute.namespace()))
+}
+
+fn namespace_label(namespace: Option<&str>) -> String {
+    namespace
+        .filter(|namespace| !namespace.is_empty())
+        .unwrap_or("##local")
+        .to_string()
+}
+
 fn element_string_value(element: &roxmltree::Node<'_, '_>) -> String {
     element
         .descendants()
@@ -318,9 +379,20 @@ fn mixed_content_items(
                     .map(|_| {
                         node.tag_name()
                             .namespace()
+                            .filter(|namespace| !namespace.is_empty())
                             .map_or(Value::Null, |namespace| {
                                 Value::String(namespace.to_string())
                             })
+                    })
+                    .or_else(|| {
+                        matched.is_none().then(|| {
+                            node.tag_name()
+                                .namespace()
+                                .filter(|namespace| !namespace.is_empty())
+                                .map_or(Value::Null, |namespace| {
+                                    Value::String(namespace.to_string())
+                                })
+                        })
                     });
                 let value = matched
                     .and_then(|child| {
@@ -384,6 +456,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     instance: &Instance,
     recursion_depth: usize,
     inherited_namespace: Option<&str>,
+    known_elements: &[SchemaNode],
 ) -> Result<(), XmlFormatError> {
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return Err(shape_error(schema, "a generic XML element group", instance));
@@ -415,6 +488,26 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     {
         return Err(wildcard_namespace_mismatch(name, runtime_namespace));
     }
+    if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+        && known_elements.iter().any(|known| {
+            known.name != XML_ELEMENTS_FIELD
+                && !known.attribute
+                && !known.text
+                && known.name == name
+                && known.xml_namespace_matches(runtime_namespace)
+        })
+    {
+        return Err(XmlFormatError::KnownXmlWildcardElementRequiresTypedField {
+            name: name.to_string(),
+            namespace: namespace_label(runtime_namespace),
+        });
+    }
+    if schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict {
+        return Err(XmlFormatError::UndeclaredStrictXmlWildcardElement {
+            name: name.to_string(),
+            namespace: namespace_label(runtime_namespace),
+        });
+    }
     let mut start = BytesStart::new(name);
     let element_namespace = if namespace_aware {
         runtime_namespace
@@ -437,7 +530,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
             .iter()
             .find(|(field, _)| field == XML_ATTRIBUTES_FIELD)
     {
-        push_generic_attributes(&mut start, attribute_schema, attributes)?;
+        push_generic_attributes(&mut start, attribute_schema, attributes, children)?;
     }
     let mut attribute_namespaces = Vec::<&str>::new();
     for child_schema in children.iter().filter(|child| child.attribute) {
@@ -593,6 +686,7 @@ pub(super) fn push_generic_attributes<'a>(
     start: &mut BytesStart<'a>,
     schema: &SchemaNode,
     instance: &Instance,
+    known_attributes: &[SchemaNode],
 ) -> Result<(), XmlFormatError> {
     let SchemaKind::Group {
         children,
@@ -644,6 +738,35 @@ pub(super) fn push_generic_attributes<'a>(
             .then(|| generic_namespace_uri(children, attribute_fields))
             .transpose()?
             .flatten();
+        if let Some(constraint) = &schema.xml_wildcard_namespace
+            && !constraint.allows(namespace)
+        {
+            return Err(XmlFormatError::XmlAttributeWildcardNamespaceMismatch {
+                name: attribute_name.to_string(),
+                namespace: namespace_label(namespace),
+            });
+        }
+        if schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict {
+            return Err(XmlFormatError::UndeclaredStrictXmlWildcardAttribute {
+                name: attribute_name.to_string(),
+                namespace: namespace_label(namespace),
+            });
+        }
+        if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+            && known_attributes.iter().any(|known| {
+                known.attribute
+                    && known.name == attribute_name
+                    && known
+                        .xml_namespace
+                        .as_ref()
+                        .is_none_or(|candidate| candidate.matches(namespace))
+            })
+        {
+            return Err(XmlFormatError::DuplicateField {
+                group: schema.name.clone(),
+                field: attribute_name.to_string(),
+            });
+        }
         if !namespace_aware
             && schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
             && namespace.is_some()

@@ -31,10 +31,13 @@ pub(super) struct SubstitutionIndex {
     by_identity: BTreeMap<String, usize>,
     global_elements: Vec<ElementDeclaration>,
     global_by_identity: BTreeMap<String, usize>,
+    global_attributes: Vec<ElementDeclaration>,
+    global_attribute_by_identity: BTreeMap<String, usize>,
     effective_namespaces: BTreeMap<PathBuf, BTreeSet<Option<String>>>,
     unresolved_namespaces: BTreeSet<Option<String>>,
     conflicting_identity: Option<String>,
     conflicting_global_identity: Option<String>,
+    conflicting_global_attribute_identity: Option<String>,
     limit_reached: bool,
 }
 
@@ -62,6 +65,32 @@ impl SubstitutionIndex {
         self.global_by_identity
             .insert(declaration.identity.clone(), self.global_elements.len());
         self.global_elements.push(declaration);
+    }
+
+    fn insert_global_attribute(&mut self, declaration: ElementDeclaration) {
+        if let Some(existing) = self
+            .global_attribute_by_identity
+            .get(&declaration.identity)
+            .and_then(|index| self.global_attributes.get(*index))
+        {
+            if existing.path != declaration.path
+                || existing.local != declaration.local
+                || existing.namespace != declaration.namespace
+            {
+                self.conflicting_global_attribute_identity
+                    .get_or_insert_with(|| declaration.identity.clone());
+            }
+            return;
+        }
+        if self.global_attributes.len() + self.global_elements.len()
+            >= MAX_MATERIALIZED_SCHEMA_ELEMENTS
+        {
+            self.limit_reached = true;
+            return;
+        }
+        self.global_attribute_by_identity
+            .insert(declaration.identity.clone(), self.global_attributes.len());
+        self.global_attributes.push(declaration);
     }
 
     fn insert(&mut self, declaration: IndexedDeclaration) {
@@ -169,6 +198,23 @@ impl SubstitutionIndex {
         Ok(&self.global_elements)
     }
 
+    pub(super) fn concrete_global_attributes(
+        &self,
+    ) -> Result<&[ElementDeclaration], XmlFormatError> {
+        if self.limit_reached {
+            return Err(XmlFormatError::SubstitutionGroupLimit {
+                limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
+            });
+        }
+        if let Some(identity) = &self.conflicting_global_attribute_identity {
+            return Err(XmlFormatError::ConflictingSubstitutionMember {
+                head: "global attribute declarations".to_string(),
+                member: identity.clone(),
+            });
+        }
+        Ok(&self.global_attributes)
+    }
+
     pub(super) fn unresolved_namespaces(&self) -> &BTreeSet<Option<String>> {
         &self.unresolved_namespaces
     }
@@ -246,6 +292,24 @@ fn collect_declarations(
         if index.limit_reached {
             return;
         }
+    }
+    for declaration in schema
+        .children()
+        .filter(|candidate| candidate.is_element() && candidate.tag_name().name() == "attribute")
+    {
+        let Some(local) = declaration.attribute("name") else {
+            continue;
+        };
+        let Some(identity) = type_identity_in_namespace(effective_namespace, local) else {
+            continue;
+        };
+        index.insert_global_attribute(ElementDeclaration {
+            path: path.clone(),
+            local: local.to_string(),
+            identity,
+            namespace: effective_namespace.map(str::to_string),
+            abstract_element: false,
+        });
     }
 
     for link in schema

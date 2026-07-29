@@ -176,9 +176,9 @@ fn parse_attribute_group(
                     attributes.extend(nested);
                 }
                 "anyAttribute" => {
-                    let wildcard = parse_attribute_wildcard(&child)?;
-                    if state.reserve_elements(schema_node_count(&wildcard)) {
-                        attributes.push(wildcard);
+                    let wildcards = parse_attribute_wildcard(&child, schema, schema_path, state)?;
+                    if state.reserve_elements(wildcards.iter().map(schema_node_count).sum()) {
+                        attributes.extend(wildcards);
                     }
                 }
                 _ => {

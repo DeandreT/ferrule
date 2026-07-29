@@ -276,6 +276,22 @@ impl XmlWildcardNamespaceConstraint {
     }
 }
 
+/// Validation policy for names selected by an XML wildcard.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum XmlWildcardProcessContents {
+    #[default]
+    Skip,
+    Lax,
+    Strict,
+}
+
+impl XmlWildcardProcessContents {
+    pub fn is_skip(&self) -> bool {
+        *self == Self::Skip
+    }
+}
+
 /// Which table owns the foreign-key column for a declared database relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -433,10 +449,13 @@ pub struct SchemaNode {
     /// retain the selected identity for each occurrence.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub xml_name_alternatives: Vec<XmlNamespace>,
-    /// Exact namespace predicate for a generic `element()` group imported
-    /// from `xs:any`. Other schema nodes leave this unset.
+    /// Exact namespace predicate for a generic `element()` or `attribute()`
+    /// group imported from an XML Schema wildcard.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xml_wildcard_namespace: Option<XmlWildcardNamespaceConstraint>,
+    /// Validation policy for one generic XML wildcard group.
+    #[serde(default, skip_serializing_if = "XmlWildcardProcessContents::is_skip")]
+    pub xml_wildcard_process_contents: XmlWildcardProcessContents,
     #[serde(default)]
     pub repeating: bool,
     /// Reuses the shape of the nearest concrete group with this name.
@@ -537,6 +556,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_wildcard_namespace: Option<XmlWildcardNamespaceConstraint>,
             #[serde(default)]
+            xml_wildcard_process_contents: XmlWildcardProcessContents,
+            #[serde(default)]
             repeating: bool,
             #[serde(default)]
             recursive_ref: Option<String>,
@@ -577,6 +598,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             xml_namespace: repr.xml_namespace,
             xml_name_alternatives: repr.xml_name_alternatives,
             xml_wildcard_namespace: repr.xml_wildcard_namespace,
+            xml_wildcard_process_contents: repr.xml_wildcard_process_contents,
             repeating: repr.repeating,
             recursive_ref: repr.recursive_ref,
             attribute: repr.attribute,
@@ -611,9 +633,10 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.container_nullable_is_valid()
             || !node.json_any_is_valid()
             || !node.xml_wildcard_namespace_is_valid()
+            || !node.xml_wildcard_process_contents_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -826,6 +849,7 @@ impl SchemaNode {
             xml_namespace: None,
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
+            xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -858,6 +882,7 @@ impl SchemaNode {
             xml_namespace: None,
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
+            xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -899,6 +924,7 @@ impl SchemaNode {
             xml_namespace: None,
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
+            xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -1023,8 +1049,10 @@ impl SchemaNode {
 
     pub fn xml_wildcard_namespace_is_valid(&self) -> bool {
         self.xml_wildcard_namespace.is_none()
-            || (self.name == XML_ELEMENTS_FIELD
-                && self.recursive_ref.is_none()
+            || (matches!(
+                self.name.as_str(),
+                XML_ELEMENTS_FIELD | XML_ATTRIBUTES_FIELD
+            ) && self.recursive_ref.is_none()
                 && !self.attribute
                 && !self.text
                 && matches!(
@@ -1044,7 +1072,25 @@ impl SchemaNode {
                                         }
                                     )
                             }))
+                            && (self.name != XML_ATTRIBUTES_FIELD
+                                || children.iter().any(|child| {
+                                    child.name == XML_TEXT_FIELD
+                                        && child.text
+                                        && !child.repeating
+                                        && !child.attribute
+                                        && matches!(
+                                            child.kind,
+                                            SchemaKind::Scalar {
+                                                ty: ScalarType::String
+                                            }
+                                        )
+                                }))
                 ))
+    }
+
+    pub fn xml_wildcard_process_contents_is_valid(&self) -> bool {
+        self.xml_wildcard_process_contents.is_skip()
+            || (self.xml_wildcard_namespace.is_some() && self.xml_wildcard_namespace_is_valid())
     }
 
     /// Checks that fixed-value metadata remains limited to one scalar type.
@@ -2673,7 +2719,7 @@ mod tests {
         assert!(constraint.allows(Some("urn:ferrule:external")));
         assert!(!constraint.allows(Some("urn:ferrule:blocked")));
 
-        let wildcard = SchemaNode::group(
+        let mut wildcard = SchemaNode::group(
             XML_ELEMENTS_FIELD,
             vec![
                 SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
@@ -2683,7 +2729,9 @@ mod tests {
         .repeating()
         .with_xml_wildcard_namespace(constraint)
         .unwrap_or_else(|| SchemaNode::group("invalid", Vec::new()));
+        wildcard.xml_wildcard_process_contents = XmlWildcardProcessContents::Lax;
         assert!(wildcard.xml_wildcard_namespace_is_valid());
+        assert!(wildcard.xml_wildcard_process_contents_is_valid());
         let encoded = serde_json::to_string(&wildcard).unwrap();
         assert_eq!(
             serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
@@ -2708,11 +2756,21 @@ mod tests {
             )
             .is_err()
         );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"ordinary","xml_wildcard_process_contents":"strict","kind":{"kind":"group","children":[]}}"#
+            )
+            .is_err()
+        );
 
         let legacy: SchemaNode =
             serde_json::from_str(r#"{"name":"Root","kind":{"kind":"group","children":[]}}"#)
                 .unwrap();
         assert!(legacy.xml_wildcard_namespace.is_none());
+        assert_eq!(
+            legacy.xml_wildcard_process_contents,
+            XmlWildcardProcessContents::Skip
+        );
     }
 
     #[test]

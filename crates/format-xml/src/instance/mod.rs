@@ -108,10 +108,26 @@ pub enum XmlFormatError {
     UnsupportedXmlWildcard { reason: &'static str },
     #[error("xs:any wildcard does not allow element `{name}` in namespace `{namespace}`")]
     XmlWildcardNamespaceMismatch { name: String, namespace: String },
+    #[error(
+        "strict xs:any wildcard has no resolved declaration for element `{name}` in namespace `{namespace}`"
+    )]
+    UndeclaredStrictXmlWildcardElement { name: String, namespace: String },
+    #[error(
+        "generic xs:any element `{name}` in namespace `{namespace}` must use its typed mapping field"
+    )]
+    KnownXmlWildcardElementRequiresTypedField { name: String, namespace: String },
     #[error("single-occurrence xs:any wildcard matched more than one child element")]
     XmlWildcardCardinality,
     #[error("xs:anyAttribute wildcard cannot be represented: {reason}")]
     UnsupportedXmlAttributeWildcard { reason: &'static str },
+    #[error(
+        "xs:anyAttribute wildcard does not allow attribute `{name}` in namespace `{namespace}`"
+    )]
+    XmlAttributeWildcardNamespaceMismatch { name: String, namespace: String },
+    #[error(
+        "strict xs:anyAttribute wildcard has no resolved declaration for attribute `{name}` in namespace `{namespace}`"
+    )]
+    UndeclaredStrictXmlWildcardAttribute { name: String, namespace: String },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
     SchemaMaterializationLimit { limit: usize },
     #[error("named xs:{kind} `{name}` contains a reference cycle")]
@@ -442,6 +458,7 @@ fn resolve_recursive_schema(
     resolved
         .xml_wildcard_namespace
         .clone_from(&occurrence.xml_wildcard_namespace);
+    resolved.xml_wildcard_process_contents = occurrence.xml_wildcard_process_contents;
     resolved.repeating = occurrence.repeating;
     resolved.nillable = occurrence.nillable;
     Ok(resolved)
@@ -797,6 +814,7 @@ fn write_node<W: std::io::Write>(
                 instance,
                 recursion_depth,
                 inherited_namespace,
+                &[],
             )?;
             return Ok(());
         }
@@ -812,6 +830,7 @@ fn write_node<W: std::io::Write>(
                 item,
                 recursion_depth,
                 inherited_namespace,
+                &[],
             )?;
         }
         return Ok(());
@@ -966,7 +985,7 @@ fn write_single_node<W: std::io::Write>(
                     .iter()
                     .find(|(field, _)| field == XML_ATTRIBUTES_FIELD)
             {
-                push_generic_attributes(&mut start, attribute_schema, attributes)?;
+                push_generic_attributes(&mut start, attribute_schema, attributes, children)?;
             }
             for child_schema in children.iter().filter(|child| child.attribute) {
                 if let Some((_, child_instance)) =
@@ -1040,6 +1059,7 @@ fn write_single_node<W: std::io::Write>(
                     write_group_child(
                         writer,
                         child_schema,
+                        children,
                         root_schema,
                         fields,
                         recursion_depth,
@@ -1068,6 +1088,7 @@ fn write_single_node<W: std::io::Write>(
 fn write_group_child<W: std::io::Write>(
     writer: &mut Writer<W>,
     child_schema: &SchemaNode,
+    siblings: &[SchemaNode],
     root_schema: &SchemaNode,
     fields: &[(String, Instance)],
     recursion_depth: usize,
@@ -1087,6 +1108,29 @@ fn write_group_child<W: std::io::Write>(
             Instance::Scalar(Value::Null | Value::JsonNull(_))
         )
     {
+        return Ok(());
+    }
+    if child_schema.name == XML_ELEMENTS_FIELD {
+        let items = match child_instance {
+            Instance::Repeated(items) | Instance::MappedSequence(items)
+                if child_schema.repeating =>
+            {
+                items.as_slice()
+            }
+            instance if !child_schema.repeating => std::slice::from_ref(instance),
+            other => return Err(shape_error(child_schema, "generic XML elements", other)),
+        };
+        for item in items {
+            write_generic_element(
+                writer,
+                child_schema,
+                root_schema,
+                item,
+                recursion_depth,
+                inherited_namespace,
+                siblings,
+            )?;
+        }
         return Ok(());
     }
     write_node(
@@ -1149,6 +1193,7 @@ fn write_repeating_sequence_children<W: std::io::Write>(
         write_group_child(
             writer,
             child,
+            children,
             root_schema,
             fields,
             recursion_depth,
@@ -1390,9 +1435,41 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
             ends_with_element = false;
             continue;
         }
+        let retained_namespace = item_fields
+            .iter()
+            .find(|(name, _)| name == XML_NAMESPACE_URI_FIELD)
+            .and_then(|(_, instance)| instance.as_scalar())
+            .map(|namespace| match namespace {
+                Value::Null => Ok(XmlNamespace::Unqualified),
+                Value::String(namespace) => XmlNamespace::qualified(namespace.clone()).ok_or_else(
+                    || {
+                        invalid_mixed_content(
+                            schema,
+                            format!(
+                                "element item {index} has an empty retained namespace for child `{name}`"
+                            ),
+                        )
+                    },
+                ),
+                _ => Err(invalid_mixed_content(
+                    schema,
+                    format!(
+                        "element item {index} has a non-string retained namespace for child `{name}`"
+                    ),
+                )),
+            })
+            .transpose()?;
         let child_schema = children
             .iter()
-            .find(|child| !child.attribute && !child.text && child.name == name)
+            .find(|child| {
+                !child.attribute
+                    && !child.text
+                    && child.name == name
+                    && retained_namespace.as_ref().is_none_or(|namespace| {
+                        child.xml_namespace.is_some()
+                            && child.xml_namespace_matches(namespace.uri())
+                    })
+            })
             .or_else(|| {
                 children
                     .iter()
@@ -1408,10 +1485,8 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
         let child_schema = if child_schema.xml_name_alternatives.is_empty() {
             child_schema
         } else {
-            let namespace = item_fields
-                .iter()
-                .find(|(name, _)| name == XML_NAMESPACE_URI_FIELD)
-                .and_then(|(_, instance)| instance.as_scalar())
+            let namespace = retained_namespace
+                .clone()
                 .ok_or_else(|| {
                     invalid_mixed_content(
                         schema,
@@ -1420,27 +1495,6 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                         ),
                     )
                 })?;
-            let namespace = match namespace {
-                Value::Null => XmlNamespace::Unqualified,
-                Value::String(namespace) => XmlNamespace::qualified(namespace.clone()).ok_or_else(
-                    || {
-                        invalid_mixed_content(
-                            schema,
-                            format!(
-                                "element item {index} has an empty retained namespace for child `{name}`"
-                            ),
-                        )
-                    },
-                )?,
-                _ => {
-                    return Err(invalid_mixed_content(
-                        schema,
-                        format!(
-                            "element item {index} has a non-string retained namespace for child `{name}`"
-                        ),
-                    ));
-                }
-            };
             if !child_schema.xml_namespace_matches(namespace.uri()) {
                 return Err(invalid_mixed_content(
                     schema,
@@ -1486,6 +1540,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                 child_instance,
                 child_depth,
                 inherited_namespace,
+                children,
             )?;
         } else {
             write_single_node(

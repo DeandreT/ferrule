@@ -80,6 +80,14 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.xml_wildcard_process_contents_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "XML wildcard process metadata{suffix} requires one namespace-aware generic element or attribute group"
+            ),
+        ));
+    }
     if !schema.xml_repeating_sequences_are_valid() {
         issues.push(ValidationIssue::new(
             root,

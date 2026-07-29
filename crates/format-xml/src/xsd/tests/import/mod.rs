@@ -3408,8 +3408,7 @@ fn single_skip_wildcard_round_trips_one_generic_element() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn rejects_wildcards_outside_the_lossless_local_skip_profile()
--> Result<(), Box<dyn std::error::Error>> {
+fn rejects_wildcard_profiles_that_cannot_be_projected() -> Result<(), Box<dyn std::error::Error>> {
     let cases = [
         (
             "mixed-any",
@@ -3422,9 +3421,9 @@ fn rejects_wildcards_outside_the_lossless_local_skip_profile()
             "unsupported special token",
         ),
         (
-            "lax",
-            "<xs:any namespace=\"##local\" processContents=\"lax\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
-            "remains open to undeclared elements",
+            "strict-without-declarations",
+            "<xs:any namespace=\"##local\" processContents=\"strict\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
+            "recurse through the active element",
         ),
         (
             "required",
@@ -3447,19 +3446,9 @@ fn rejects_wildcards_outside_the_lossless_local_skip_profile()
             "explicit occurrence metadata",
         ),
         (
-            "choice",
-            "<xs:choice><xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/></xs:choice>",
-            "xs:choice or xs:all",
-        ),
-        (
-            "optional-wrapper",
-            "<xs:sequence minOccurs=\"0\"><xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/></xs:sequence>",
-            "single-occurrence xs:sequence",
-        ),
-        (
-            "sibling",
-            "<xs:element name=\"Known\" type=\"xs:string\"/><xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
-            "only element particle",
+            "all",
+            "<xs:all><xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/></xs:all>",
+            "xs:any inside xs:all",
         ),
     ];
     for (label, particle, expected) in cases {
@@ -3486,50 +3475,6 @@ fn rejects_wildcards_outside_the_lossless_local_skip_profile()
             }
             Err(error) => error,
         };
-        std::fs::remove_file(path)?;
-        assert!(
-            matches!(
-                &error,
-                XmlFormatError::UnsupportedXmlWildcard { reason }
-                    if reason.contains(expected)
-            ),
-            "{label}: {error}"
-        );
-    }
-    for (label, members, expected) in [
-        (
-            "named-lax",
-            r###"<xs:any namespace="##local" processContents="lax"
-                         minOccurs="0" maxOccurs="unbounded"/>"###,
-            "remains open to undeclared elements",
-        ),
-        (
-            "named-sibling",
-            r###"<xs:element name="Known" type="xs:string"/>
-                 <xs:any namespace="##local" processContents="skip"
-                         minOccurs="0" maxOccurs="unbounded"/>"###,
-            "only element particle",
-        ),
-    ] {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_xsd_unsupported_model_group_wildcard_{label}_{}.xsd",
-            std::process::id()
-        ));
-        std::fs::write(
-            &path,
-            format!(
-                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-                  <xs:group name="OpenContent"><xs:sequence>
-                    {members}
-                  </xs:sequence></xs:group>
-                  <xs:element name="Root"><xs:complexType><xs:sequence>
-                    <xs:group ref="OpenContent"/>
-                  </xs:sequence></xs:complexType></xs:element>
-                </xs:schema>"#
-            ),
-        )?;
-        let error = import_root(&path, Some("Root"))
-            .expect_err("unsupported wildcard inside a named model group imported successfully");
         std::fs::remove_file(path)?;
         assert!(
             matches!(
@@ -3778,43 +3723,23 @@ fn local_attribute_wildcards_roundtrip_simple_content() -> Result<(), Box<dyn st
 }
 
 #[test]
-fn rejects_attribute_wildcards_outside_the_lossless_local_skip_profile()
+fn rejects_attribute_wildcard_profiles_that_cannot_be_projected()
 -> Result<(), Box<dyn std::error::Error>> {
     let cases = [
-        (
-            "any-namespace",
-            r#"<xs:anyAttribute processContents="skip"/>"#,
-            "namespace=\"##local\"",
-        ),
-        (
-            "other-namespace",
-            "<xs:anyAttribute namespace=\"##other\" processContents=\"skip\"/>",
-            "namespace=\"##local\"",
-        ),
-        (
-            "lax",
-            "<xs:anyAttribute namespace=\"##local\" processContents=\"lax\"/>",
-            "processContents=\"skip\"",
-        ),
-        (
-            "strict-default",
-            "<xs:anyAttribute namespace=\"##local\"/>",
-            "processContents=\"skip\"",
-        ),
         (
             "exclusion",
             "<xs:anyAttribute namespace=\"##local\" processContents=\"skip\" notQName=\"blocked\"/>",
             "exclusions",
         ),
         (
-            "declared-sibling",
-            "<xs:attribute name=\"known\" type=\"xs:string\"/><xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/>",
-            "only attribute declaration",
+            "invalid-process",
+            "<xs:anyAttribute namespace=\"##local\" processContents=\"maybe\"/>",
+            "processContents must be skip, lax, or strict",
         ),
         (
             "duplicate",
             "<xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/><xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/>",
-            "only attribute declaration",
+            "multiple attribute wildcard mapping ports",
         ),
     ];
     for (label, attributes, expected) in cases {
@@ -3841,47 +3766,6 @@ fn rejects_attribute_wildcards_outside_the_lossless_local_skip_profile()
             }
             Err(error) => error,
         };
-        std::fs::remove_file(path)?;
-        assert!(
-            matches!(
-                &error,
-                XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
-                    if reason.contains(expected)
-            ),
-            "{label}: {error}"
-        );
-    }
-    for (label, members, expected) in [
-        (
-            "named-lax",
-            r###"<xs:anyAttribute namespace="##local" processContents="lax"/>"###,
-            "processContents=\"skip\"",
-        ),
-        (
-            "named-declared-sibling",
-            r###"<xs:attribute name="known" type="xs:string"/>
-               <xs:anyAttribute namespace="##local" processContents="skip"/>"###,
-            "only attribute declaration",
-        ),
-    ] {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_xsd_unsupported_attribute_group_wildcard_{label}_{}.xsd",
-            std::process::id()
-        ));
-        std::fs::write(
-            &path,
-            format!(
-                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-                  <xs:attributeGroup name="Metadata">{members}</xs:attributeGroup>
-                  <xs:element name="Root"><xs:complexType>
-                    <xs:attributeGroup ref="Metadata"/>
-                  </xs:complexType></xs:element>
-                </xs:schema>"#
-            ),
-        )?;
-        let error = import_root(&path, Some("Root")).expect_err(
-            "unsupported attribute wildcard inside a named group imported successfully",
-        );
         std::fs::remove_file(path)?;
         assert!(
             matches!(
