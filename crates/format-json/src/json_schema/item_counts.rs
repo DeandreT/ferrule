@@ -110,6 +110,13 @@ fn parse(
         .ok_or_else(|| unsupported(name, "`minItems` must not exceed `maxItems`"))
 }
 
+pub(super) fn selected(
+    name: &str,
+    schema: &serde_json::Value,
+) -> Result<Option<ItemCountRange>, JsonFormatError> {
+    parse(name, schema)
+}
+
 fn exact_count(
     name: &str,
     keyword: &str,

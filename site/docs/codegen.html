@@ -163,6 +163,18 @@
         </p>
 
         <p>
+          The exact homogeneous <code>prefixItems</code> importer subset adds no
+          generated-runtime feature or new code-generation IR form. Draft
+          2020-12 and undeclared schemas whose bounded finite prefix
+          entries normalize to one item shape lower to the
+          existing repeated-item schema and item-count interval. A closed tail
+          becomes the equivalent <code>maxItems</code> bound, and canonical
+          export uses ordinary <code>items</code> plus that bound. Rust and C#
+          therefore execute the existing homogeneous array boundary;
+          heterogeneous prefixes and tails remain import-time rejections.
+        </p>
+
+        <p>
           Embedded object property dependencies are enforced on input and
           normalized output too. Whenever a trigger property is present, every
           dependent property must be present. Explicit JSON null counts as

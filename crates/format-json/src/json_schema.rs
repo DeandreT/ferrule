@@ -45,6 +45,7 @@ pub(crate) mod item_counts;
 pub(crate) mod multiples;
 mod patterns;
 pub(crate) mod predicate;
+mod prefix_items;
 pub(crate) mod property_counts;
 pub(crate) mod property_dependencies;
 pub(crate) mod property_names;
@@ -383,6 +384,17 @@ fn parse(
                 node
             }
             ImportedSchemaType::Single("array") => {
+                if let Some(mut node) = prefix_items::normalize(name, schema, doc, active_refs)? {
+                    node.container_nullable = nullable;
+                    ranges::validate_ignored(name, schema)?;
+                    multiples::validate_ignored(name, schema)?;
+                    contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+                    unique_items::apply(name, schema, &mut node, false)?;
+                    string_lengths::validate_ignored(name, schema)?;
+                    patterns::validate_ignored(name, schema)?;
+                    formats::validate(name, schema)?;
+                    return Ok(node);
+                }
                 let Some(items) = schema.get("items") else {
                     let mut node = arbitrary_json_schema(name)?.repeating();
                     node.container_nullable = nullable;
@@ -831,10 +843,13 @@ fn reject_unsupported_object_keywords(
             "`unevaluatedProperties` object validation is not supported",
         ));
     }
-    if dialect.supports_prefix_items() && object.contains_key("prefixItems") {
+    if dialect.supports_prefix_items()
+        && object.contains_key("prefixItems")
+        && !prefix_items::is_direct_array_schema(schema)
+    {
         return Err(unsupported_union(
             name,
-            "`prefixItems` tuple validation is not supported",
+            "`prefixItems` normalization requires a direct concrete array schema",
         ));
     }
     if dialect.supports_unevaluated_items() && object.contains_key("unevaluatedItems") {

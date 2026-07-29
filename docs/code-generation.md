@@ -172,8 +172,18 @@ bypasses the assertions. Multiple compatible `allOf` assertions are
 conjunctive, and predicate pattern matching shares the bounded document work
 budget. A count mismatch remains a typed input/output boundary error, while
 invalid embedded metadata and matcher work exhaustion remain fatal instead of
-being treated as ordinary nonmatches. Embedded
-object-property requirements are enforced on input and generated output:
+being treated as ordinary nonmatches.
+
+The exact homogeneous `prefixItems` importer subset adds no generated-runtime
+feature or new code-generation IR form. Draft 2020-12 and
+undeclared schemas whose bounded finite prefix entries normalize to
+one item shape lower to the existing repeated-item schema and item-count
+interval. A closed tail becomes the equivalent `maxItems` bound, and canonical
+export uses ordinary `items` plus that bound. Rust and C# therefore execute the
+same existing homogeneous array boundary; heterogeneous prefixes
+and tails remain import-time rejections.
+
+Embedded object-property requirements are enforced on input and generated output:
 explicit JSON null satisfies presence when nullable, while an omitted property
 or Ferrule `Null` does not. Object openness is exact as well: omitted or `true`
 `additionalProperties` preserves arbitrary JSON-valued fields, schema-valued
