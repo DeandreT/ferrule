@@ -531,14 +531,15 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
                     Some(sc) => schema_components.push(sc),
                     None => note_skipped_library(&mut skipped_libraries, "db"),
                 },
-                "webservice" => match read_http_get_component(&component, path, &mut warnings) {
+                "webservice" => match read_http_get_component(&component, resources, &mut warnings)
+                {
                     Ok(component) => schema_components.push(component),
                     Err(reason) => {
                         note_skipped_library(&mut skipped_libraries, "webservice");
                         warnings.push(format!("skipped web-service component `{name}`: {reason}"));
                     }
                 },
-                "wsdl" => match read_wsdl_component(&component, path, &mut warnings) {
+                "wsdl" => match read_wsdl_component(&component, resources, &mut warnings) {
                     Ok(component) => schema_components.push(component),
                     Err(reason) => {
                         note_skipped_library(&mut skipped_libraries, "wsdl");
@@ -546,7 +547,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
                     }
                 },
                 "binary" if component.attribute("kind") == Some("33") => {
-                    match read_protobuf_component(&component, path, &mut warnings) {
+                    match read_protobuf_component(&component, resources, &mut warnings) {
                         Ok(component) => schema_components.push(component),
                         Err(reason) => {
                             note_skipped_library(&mut skipped_libraries, "binary/protobuf");

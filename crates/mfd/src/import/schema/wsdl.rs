@@ -4,15 +4,33 @@ use std::path::Path;
 use ir::{SchemaKind, SchemaNode};
 use mapping::{WsdlMessageOptions, WsdlMessageRole};
 
-use super::{SchemaComponent, read_schema_component, schema_node_at};
 use crate::import::function::{FnComponent, is_filter};
+use crate::resource::ResourceResolver;
+
+use super::{
+    SchemaComponent, read_schema_component, read_schema_component_in_package, schema_node_at,
+};
 
 /// Imports a WSDL operation message as an XML boundary. The service invocation
 /// itself remains outside ferrule: request messages are executable XML sources,
 /// while output and fault messages are executable XML targets.
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+    warnings: &mut Vec<String>,
+) -> Result<SchemaComponent, String> {
+    read_resolved(
+        component,
+        resources.mapping_path(),
+        Some(resources),
+        warnings,
+    )
+}
+
+fn read_resolved(
+    component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     if component.attribute("kind") != Some("17") {
@@ -34,8 +52,11 @@ pub(super) fn read(
         ));
     }
 
-    let mut result = read_schema_component(component, mfd_path, warnings)
-        .ok_or_else(|| "WSDL message has no entry tree".to_string())?;
+    let mut result = match resources {
+        Some(resources) => read_schema_component_in_package(component, resources, warnings),
+        None => read_schema_component(component, mfd_path, warnings),
+    }
+    .ok_or_else(|| "WSDL message has no entry tree".to_string())?;
     let declared_source = role.is_none();
     if declared_source && !result.input_keys.is_empty() {
         return Err("WSDL request message contains target input ports".to_string());
@@ -198,7 +219,38 @@ fn schema_node_at_mut<'a>(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use ir::{ScalarType, SchemaKind};
+
     use super::*;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Result<Self, std::io::Error> {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "ferrule-mfd-wsdl-package-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+            std::fs::create_dir_all(&path)?;
+            Ok(Self(path))
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     fn parse_component(xml: &str) -> roxmltree::Document<'_> {
         roxmltree::Document::parse(xml).unwrap_or_else(|error| panic!("invalid test XML: {error}"))
@@ -214,7 +266,7 @@ mod tests {
         );
         let component = document.root_element();
         let mut warnings = Vec::new();
-        let imported = read(&component, Path::new("mapping.mfd"), &mut warnings)
+        let imported = read_resolved(&component, Path::new("mapping.mfd"), None, &mut warnings)
             .unwrap_or_else(|error| panic!("request import failed: {error}"));
 
         assert!(warnings.is_empty(), "{warnings:?}");
@@ -235,7 +287,7 @@ mod tests {
             let document = parse_component(&xml);
             let component = document.root_element();
             let mut warnings = Vec::new();
-            let imported = read(&component, Path::new("mapping.mfd"), &mut warnings)
+            let imported = read_resolved(&component, Path::new("mapping.mfd"), None, &mut warnings)
                 .unwrap_or_else(|error| panic!("response import failed: {error}"));
 
             assert!(warnings.is_empty(), "{warnings:?}");
@@ -254,9 +306,51 @@ mod tests {
         );
         let component = document.root_element();
         let mut warnings = Vec::new();
-        let Err(error) = read(&component, Path::new("mapping.mfd"), &mut warnings) else {
+        let Err(error) = read_resolved(&component, Path::new("mapping.mfd"), None, &mut warnings)
+        else {
             panic!("mixed-direction response must fail");
         };
         assert_eq!(error, "WSDL response message contains source output ports");
+    }
+
+    #[test]
+    fn request_message_schema_resolves_from_a_sibling_package_directory()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let package = TempDir::new()?;
+        let maps = package.0.join("maps");
+        let schemas = package.0.join("resources");
+        std::fs::create_dir_all(&maps)?;
+        std::fs::create_dir_all(&schemas)?;
+        let mapping = maps.join("mapping.mfd");
+        std::fs::write(&mapping, "<mapping/>")?;
+        std::fs::write(
+            schemas.join("request.xsd"),
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="FindRecord"><xs:complexType><xs:sequence><xs:element name="Criteria" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+        )?;
+        let resources = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let document = parse_component(
+            r#"<component name="request" library="wsdl" kind="17"><data>
+              <root><entry name="FindRecord"><entry name="Criteria" outkey="10"/></entry></root>
+              <document schema="..\resources\request.xsd" instanceroot="{}FindRecord"/>
+              <wsdl previewRequestInstanceFile="request.xml"/>
+            </data></component>"#,
+        );
+        let mut warnings = Vec::new();
+
+        let imported = read(&document.root_element(), &resources, &mut warnings)
+            .map_err(std::io::Error::other)?;
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let criteria = imported
+            .schema
+            .child("Criteria")
+            .ok_or("WSDL request schema lost Criteria")?;
+        assert!(matches!(
+            criteria.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
+            }
+        ));
+        Ok(())
     }
 }
