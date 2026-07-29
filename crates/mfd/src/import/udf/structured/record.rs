@@ -119,9 +119,8 @@ pub(super) fn read(
             continue;
         }
         if path.len() != 1
-            || !schema_node_at(&output.schema, path).is_some_and(|node| {
-                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-            })
+            || !schema_node_at(&output.schema, path)
+                .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return Err("structured record output bindings must be flat scalars".to_string());
         }
@@ -205,7 +204,7 @@ pub(super) fn build_target(
         let mut path = target_path.to_vec();
         path.extend(relative.iter().cloned());
         if !schema_node_at(&target.schema, &path)
-            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return Err(format!(
                 "target field `{}` is not a flat scalar",

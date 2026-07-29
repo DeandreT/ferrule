@@ -401,9 +401,9 @@ fn collect_binding_clones(
         let occurrence = occurrences.entry(&binding.target_field).or_default();
         if *occurrence > 0 {
             path.push(binding.target_field.clone());
-            if schema_node_at(schema, path).is_some_and(|node| {
-                node.repeating && !node.attribute && matches!(node.kind, SchemaKind::Scalar { .. })
-            }) {
+            if schema_node_at(schema, path)
+                .is_some_and(|node| node.repeating && !node.attribute && node.is_scalar())
+            {
                 clones.entry(path.clone()).or_default().push(keys.next());
             }
             path.pop();
@@ -522,6 +522,6 @@ fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a Sch
 fn schema_node_count(schema: &SchemaNode) -> usize {
     1 + match &schema.kind {
         SchemaKind::Group { children, .. } => children.iter().map(schema_node_count).sum(),
-        SchemaKind::Scalar { .. } => 0,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => 0,
     }
 }

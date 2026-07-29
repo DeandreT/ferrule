@@ -1760,10 +1760,12 @@ fn collect_db_column_types(
                                     }
                                     Some((column.name, ty))
                                 }
-                                SchemaKind::Group { .. } => None,
+                                SchemaKind::ScalarUnion { .. } | SchemaKind::Group { .. } => None,
                             })
                             .collect(),
-                        SchemaKind::Scalar { .. } => BTreeMap::new(),
+                        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+                            BTreeMap::new()
+                        }
                     };
                     types.insert(physical_table.to_string(), column_types);
                     generated.insert(physical_table.to_string(), generated_columns);
@@ -1994,7 +1996,10 @@ pub(super) fn collect_matching_scalar_paths(
     paths: &mut Vec<Vec<String>>,
 ) {
     match (&source.kind, &target.kind) {
-        (SchemaKind::Scalar { .. }, SchemaKind::Scalar { .. }) => paths.push(path.clone()),
+        (
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+        ) => paths.push(path.clone()),
         (SchemaKind::Group { .. }, SchemaKind::Group { children, .. }) => {
             for target_child in children {
                 if target_child.repeating {

@@ -76,9 +76,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                         source_path_matches(project, owner, |node| !node.alternatives().is_empty())
                     });
                 if !xml_type_marker
-                    && !source_path_matches(project, &absolute, |node| {
-                        matches!(node.kind, SchemaKind::Scalar { .. })
-                    })
+                    && !source_path_matches(project, &absolute, |node| node.is_scalar())
                 {
                     issues.push(ValidationIssue::new(
                         &location,
@@ -158,9 +156,8 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                 let mut absolute = frame.clone().unwrap_or_default();
                 absolute.extend(object.iter().cloned());
                 if !source_path_matches(project, &absolute, |node| {
-                    node.dynamic_fields().is_some_and(|dynamic| {
-                        !dynamic.repeating && matches!(dynamic.kind, SchemaKind::Scalar { .. })
-                    })
+                    node.dynamic_fields()
+                        .is_some_and(|dynamic| !dynamic.repeating && dynamic.is_scalar())
                 }) {
                     issues.push(ValidationIssue::new(
                         &location,
@@ -1054,8 +1051,7 @@ pub(super) fn validate_collection_value(
     issues: &mut Vec<ValidationIssue>,
 ) {
     if !source_path_matches(project, collection, |node| {
-        follow_schema(node, value)
-            .is_some_and(|leaf| matches!(leaf.kind, SchemaKind::Scalar { .. }))
+        follow_schema(node, value).is_some_and(SchemaNode::is_scalar)
     }) {
         issues.push(ValidationIssue::new(
             location,

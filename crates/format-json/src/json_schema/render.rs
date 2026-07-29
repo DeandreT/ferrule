@@ -50,6 +50,17 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
             };
             out.insert("type".into(), ty);
         }
+        SchemaKind::ScalarUnion { types } => {
+            let mut types = types
+                .iter()
+                .map(scalar_type_name)
+                .map(serde_json::Value::from)
+                .collect::<Vec<_>>();
+            if node.nullable {
+                types.push("null".into());
+            }
+            out.insert("type".into(), types.into());
+        }
         SchemaKind::Group {
             children,
             alternatives,
@@ -118,6 +129,15 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                 out.insert("additionalProperties".into(), false.into());
             }
         }
+    }
+}
+
+fn scalar_type_name(ty: ScalarType) -> &'static str {
+    match ty {
+        ScalarType::String => "string",
+        ScalarType::Int => "integer",
+        ScalarType::Float => "number",
+        ScalarType::Bool => "boolean",
     }
 }
 

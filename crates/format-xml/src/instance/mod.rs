@@ -46,6 +46,8 @@ pub enum XmlFormatError {
     },
     #[error("XSD default on `{name}` cannot be represented: {reason}")]
     UnsupportedSchemaDefault { name: String, reason: &'static str },
+    #[error("XML node `{name}` cannot preserve a heterogeneous scalar union")]
+    UnsupportedScalarUnion { name: String },
     #[error("element `{name}` expected {expected}, got {got}")]
     Shape {
         name: String,
@@ -257,6 +259,9 @@ fn read_node(
                 schema, *ty, text,
             )?))
         }
+        SchemaKind::ScalarUnion { .. } => Err(XmlFormatError::UnsupportedScalarUnion {
+            name: schema.name.clone(),
+        }),
         SchemaKind::Group {
             children,
             alternatives,
@@ -857,6 +862,9 @@ fn write_single_node<W: std::io::Write>(
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
             Ok(())
         }
+        (SchemaKind::ScalarUnion { .. }, _) => Err(XmlFormatError::UnsupportedScalarUnion {
+            name: schema.name.clone(),
+        }),
         (
             SchemaKind::Group {
                 children,

@@ -53,6 +53,74 @@ pub enum ScalarType {
     Bool,
 }
 
+impl ScalarType {
+    const ALL: [Self; 4] = [Self::String, Self::Int, Self::Float, Self::Bool];
+
+    const fn bit(self) -> u8 {
+        match self {
+            Self::String => 1 << 0,
+            Self::Int => 1 << 1,
+            Self::Float => 1 << 2,
+            Self::Bool => 1 << 3,
+        }
+    }
+}
+
+/// A canonical set of at least two distinct scalar types.
+///
+/// Single scalar types remain [`SchemaKind::Scalar`]. Keeping this type's
+/// representation private prevents heterogeneous schemas from carrying an
+/// empty, singleton, duplicate, or order-dependent type declaration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScalarTypeSet(u8);
+
+impl ScalarTypeSet {
+    pub fn new(types: impl IntoIterator<Item = ScalarType>) -> Option<Self> {
+        let mut bits = 0_u8;
+        for ty in types {
+            let bit = ty.bit();
+            if bits & bit != 0 {
+                return None;
+            }
+            bits |= bit;
+        }
+        (bits.count_ones() >= 2).then_some(Self(bits))
+    }
+
+    pub const fn contains(self, ty: ScalarType) -> bool {
+        self.0 & ty.bit() != 0
+    }
+
+    pub fn iter(self) -> impl Iterator<Item = ScalarType> {
+        ScalarType::ALL
+            .into_iter()
+            .filter(move |ty| self.contains(*ty))
+    }
+}
+
+impl Serialize for ScalarTypeSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.iter().collect::<Vec<_>>().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ScalarTypeSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let types = Vec::<ScalarType>::deserialize(deserializer)?;
+        Self::new(types).ok_or_else(|| {
+            serde::de::Error::custom(
+                "scalar union types must contain at least two distinct scalar types",
+            )
+        })
+    }
+}
+
 /// A value supplied by the owning format boundary instead of a graph binding.
 ///
 /// This metadata is valid only on non-repeating scalar nodes. `MaxNumber`
@@ -420,6 +488,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.alternatives_are_valid()
             || !node.recursive_ref_is_valid()
+            || !node.fixed_is_valid()
             || !node.value_generation_is_valid()
             || !node.default_is_valid()
             || !node.alternative_mode_is_valid()
@@ -431,7 +500,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.json_any_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -460,6 +529,9 @@ pub struct XmlSequenceMember {
 pub enum SchemaKind {
     Scalar {
         ty: ScalarType,
+    },
+    ScalarUnion {
+        types: ScalarTypeSet,
     },
     Group {
         children: Vec<SchemaNode>,
@@ -511,6 +583,16 @@ pub enum GroupAlternativeConstraintValue {
 }
 
 impl GroupAlternativeConstraintValue {
+    fn scalar_type(&self) -> Option<ScalarType> {
+        match self {
+            Self::String(_) => Some(ScalarType::String),
+            Self::Int(_) => Some(ScalarType::Int),
+            Self::Float(_) => Some(ScalarType::Float),
+            Self::Bool(_) => Some(ScalarType::Bool),
+            Self::JsonNull => None,
+        }
+    }
+
     fn is_valid_for(&self, ty: ScalarType, nullable: bool) -> bool {
         matches!(
             (self, ty),
@@ -612,6 +694,50 @@ impl SchemaNode {
         }
     }
 
+    pub fn scalar_fixed(name: impl Into<String>, ty: ScalarType, value: impl Into<String>) -> Self {
+        let mut node = Self::scalar(name, ty);
+        node.fixed = Some(value.into());
+        node
+    }
+
+    pub fn scalar_union(name: impl Into<String>, types: ScalarTypeSet) -> Self {
+        Self {
+            name: name.into(),
+            xml_namespace: None,
+            repeating: false,
+            recursive_ref: None,
+            attribute: false,
+            text: false,
+            nillable: false,
+            nullable: false,
+            container_nullable: false,
+            json_any: false,
+            fixed: None,
+            default: None,
+            value_generation: None,
+            alternative_mode: GroupAlternativeMode::Exclusive,
+            xml_alternative_kind: XmlAlternativeKind::XsiType,
+            xml_repeating_sequences: Vec::new(),
+            database_relation: None,
+            kind: SchemaKind::ScalarUnion { types },
+        }
+    }
+
+    pub fn is_scalar(&self) -> bool {
+        matches!(
+            self.kind,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }
+        )
+    }
+
+    pub fn accepts_scalar_type(&self, ty: ScalarType) -> bool {
+        match self.kind {
+            SchemaKind::Scalar { ty: expected } => expected == ty,
+            SchemaKind::ScalarUnion { types } => types.contains(ty),
+            SchemaKind::Group { .. } => false,
+        }
+    }
+
     pub fn group(name: impl Into<String>, children: Vec<SchemaNode>) -> Self {
         Self {
             name: name.into(),
@@ -678,6 +804,11 @@ impl SchemaNode {
         Some(self)
     }
 
+    /// Checks that fixed-value metadata remains limited to one scalar type.
+    pub fn fixed_is_valid(&self) -> bool {
+        self.fixed.is_none() || matches!(self.kind, SchemaKind::Scalar { .. })
+    }
+
     /// Checks that generated-value metadata remains scalar-only and cannot
     /// conflict with repetition or a fixed literal.
     pub fn value_generation_is_valid(&self) -> bool {
@@ -700,7 +831,7 @@ impl SchemaNode {
 
     /// Checks that explicit JSON nullability remains scalar-only.
     pub fn nullable_is_valid(&self) -> bool {
-        !self.nullable || matches!(self.kind, SchemaKind::Scalar { .. })
+        !self.nullable || self.is_scalar()
     }
 
     /// Checks that JSON container nullability belongs to an object or array.
@@ -790,7 +921,7 @@ impl SchemaNode {
     pub fn dynamic_fields(&self) -> Option<&SchemaNode> {
         match &self.kind {
             SchemaKind::Group { dynamic, .. } => dynamic.as_deref(),
-            SchemaKind::Scalar { .. } => None,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
         }
     }
 
@@ -876,7 +1007,7 @@ impl SchemaNode {
                 (alternatives.is_empty() || dynamic.is_none())
                     && (alternatives.is_empty() || valid_group_alternatives(children, alternatives))
             }
-            SchemaKind::Scalar { .. } => true,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
         }
     }
 
@@ -887,7 +1018,9 @@ impl SchemaNode {
             SchemaKind::Group { alternatives, .. } => {
                 !alternatives.is_empty() || self.alternative_mode.is_exclusive()
             }
-            SchemaKind::Scalar { .. } => self.alternative_mode.is_exclusive(),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+                self.alternative_mode.is_exclusive()
+            }
         }
     }
 
@@ -956,7 +1089,7 @@ impl SchemaNode {
     pub fn alternatives(&self) -> &[GroupAlternative] {
         match &self.kind {
             SchemaKind::Group { alternatives, .. } => alternatives,
-            SchemaKind::Scalar { .. } => &[],
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => &[],
         }
     }
 
@@ -1002,9 +1135,10 @@ impl SchemaNode {
     }
 
     /// Requires this scalar to hold `value` (builder-style).
-    pub fn fixed(mut self, value: impl Into<String>) -> Self {
+    pub fn with_fixed(mut self, value: impl Into<String>) -> Option<Self> {
         self.fixed = Some(value.into());
-        self
+        (self.fixed_is_valid() && self.default_is_valid() && self.value_generation_is_valid())
+            .then_some(self)
     }
 
     pub fn with_default(mut self, value: impl Into<String>) -> Option<Self> {
@@ -1015,14 +1149,14 @@ impl SchemaNode {
     pub fn child(&self, name: &str) -> Option<&SchemaNode> {
         match &self.kind {
             SchemaKind::Group { children, .. } => children.iter().find(|c| c.name == name),
-            SchemaKind::Scalar { .. } => None,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
         }
     }
 
     pub fn text_child(&self) -> Option<&SchemaNode> {
         match &self.kind {
             SchemaKind::Group { children, .. } => children.iter().find(|child| child.text),
-            SchemaKind::Scalar { .. } => None,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
         }
     }
 }
@@ -1064,11 +1198,22 @@ fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAltern
                             && children.iter().any(|child| {
                                 child.name == constraint.member
                                     && !child.repeating
-                                    && matches!(
-                                        child.kind,
-                                        SchemaKind::Scalar { ty }
-                                            if constraint.value.is_valid_for(ty, child.nullable)
-                                    )
+                                    && match child.kind {
+                                        SchemaKind::Scalar { ty } => {
+                                            constraint.value.is_valid_for(ty, child.nullable)
+                                        }
+                                        SchemaKind::ScalarUnion { types } => {
+                                            constraint
+                                                .value
+                                                .scalar_type()
+                                                .is_some_and(|ty| types.contains(ty))
+                                                || matches!(
+                                                    constraint.value,
+                                                    GroupAlternativeConstraintValue::JsonNull
+                                                ) && child.nullable
+                                        }
+                                        SchemaKind::Group { .. } => false,
+                                    }
                             })
                     },
                 )
@@ -1281,6 +1426,108 @@ mod tests {
             Value::xml_nil()
         );
         assert!(serde_json::from_str::<Value>(r#"{"$xml_nil":false}"#).is_err());
+    }
+
+    #[test]
+    fn scalar_union_types_are_canonical_validated_and_backward_compatible()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(types) =
+            ScalarTypeSet::new([ScalarType::Bool, ScalarType::String, ScalarType::Int])
+        else {
+            panic!("test scalar union must contain distinct types");
+        };
+        assert!(types.contains(ScalarType::String));
+        assert!(types.contains(ScalarType::Int));
+        assert!(types.contains(ScalarType::Bool));
+        assert!(!types.contains(ScalarType::Float));
+        assert_eq!(
+            types.iter().collect::<Vec<_>>(),
+            vec![ScalarType::String, ScalarType::Int, ScalarType::Bool]
+        );
+        assert!(ScalarTypeSet::new([ScalarType::String]).is_none());
+        assert!(ScalarTypeSet::new([ScalarType::String, ScalarType::String]).is_none());
+
+        let union = SchemaNode::scalar_union("value", types);
+        assert!(union.is_scalar());
+        assert!(union.accepts_scalar_type(ScalarType::Bool));
+        assert!(!union.accepts_scalar_type(ScalarType::Float));
+        assert!(union.clone().with_fixed("ready").is_none());
+        let encoded = serde_json::to_string(&union)?;
+        assert!(
+            encoded.contains(r#""kind":{"kind":"scalar_union","types":["string","int","bool"]}"#)
+        );
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, union);
+
+        let legacy: SchemaNode =
+            serde_json::from_str(r#"{"name":"value","kind":{"kind":"scalar","ty":"string"}}"#)?;
+        assert_eq!(
+            legacy.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::String
+            }
+        );
+        for invalid in [
+            r#"{"name":"value","kind":{"kind":"scalar_union","types":[]}}"#,
+            r#"{"name":"value","kind":{"kind":"scalar_union","types":["string"]}}"#,
+            r#"{"name":"value","kind":{"kind":"scalar_union","types":["string","string"]}}"#,
+            r#"{"name":"value","fixed":"ready","kind":{"kind":"scalar_union","types":["string","bool"]}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
+        let Some(fixed) = SchemaNode::scalar("value", ScalarType::String).with_fixed("ready")
+        else {
+            panic!("ordinary scalar fixed metadata should remain valid");
+        };
+        assert!(fixed.fixed_is_valid());
+        assert_eq!(fixed.fixed.as_deref(), Some("ready"));
+        assert!(
+            SchemaNode::group("value", Vec::new())
+                .with_fixed("ready")
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("value", ScalarType::String)
+                .with_default("ready")
+                .is_some_and(|node| node.with_fixed("ready").is_none())
+        );
+
+        let discriminator = SchemaNode::scalar_union("kind", types);
+        let alternatives = vec![
+            GroupAlternative {
+                name: "text".into(),
+                members: vec!["kind".into()],
+                required: vec!["kind".into()],
+                constraints: vec![GroupAlternativeConstraint {
+                    member: "kind".into(),
+                    value: GroupAlternativeConstraintValue::String("ready".into()),
+                }],
+            },
+            GroupAlternative {
+                name: "numeric".into(),
+                members: vec!["kind".into()],
+                required: vec!["kind".into()],
+                constraints: vec![GroupAlternativeConstraint {
+                    member: "kind".into(),
+                    value: GroupAlternativeConstraintValue::Int(7),
+                }],
+            },
+        ];
+        assert!(
+            SchemaNode::group("event", vec![discriminator.clone()])
+                .with_alternatives(alternatives.clone())
+                .is_some()
+        );
+        let mut invalid = alternatives;
+        let Some(value) = FiniteF64::new(7.5) else {
+            panic!("test float should be finite");
+        };
+        invalid[1].constraints[0].value = GroupAlternativeConstraintValue::Float(value);
+        assert!(
+            SchemaNode::group("event", vec![discriminator])
+                .with_alternatives(invalid)
+                .is_none()
+        );
+        Ok(())
     }
 
     #[test]
@@ -1747,8 +1994,7 @@ mod tests {
                 .is_none()
         );
         assert!(
-            SchemaNode::scalar("Count", ScalarType::Int)
-                .fixed("7")
+            SchemaNode::scalar_fixed("Count", ScalarType::Int, "7")
                 .with_default("7")
                 .is_none()
         );

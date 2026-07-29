@@ -27,6 +27,30 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             "projects with more than 256 additional targets cannot be exported to .mfd".to_string(),
         ));
     }
+    validate_scalar_union_boundary(
+        &project.source,
+        side_format(&project.source_path, &project.source_options),
+        "source",
+    )?;
+    for source in &project.extra_sources {
+        validate_scalar_union_boundary(
+            &source.schema,
+            side_format(&Some(source.path.clone()), &source.options),
+            &format!("additional source `{}`", source.name),
+        )?;
+    }
+    validate_scalar_union_boundary(
+        &project.target,
+        side_format(&project.target_path, &project.target_options),
+        "target",
+    )?;
+    for target in &project.extra_targets {
+        validate_scalar_union_boundary(
+            &target.schema,
+            side_format(&target.path, &target.options),
+            &format!("additional target `{}`", target.name),
+        )?;
+    }
     validate_tabular_identity(&project.source_path, &project.source_options, "source")?;
     for source in &project.extra_sources {
         let path = (!source.path.is_empty()).then_some(source.path.clone());
@@ -183,6 +207,68 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         }
     }
     Ok(())
+}
+
+fn validate_scalar_union_boundary(
+    schema: &SchemaNode,
+    format: SideFormat,
+    boundary: &str,
+) -> Result<(), MfdError> {
+    if format == SideFormat::Json {
+        return Ok(());
+    }
+
+    fn first_union(node: &SchemaNode, path: &mut Vec<String>) -> Option<Vec<String>> {
+        match &node.kind {
+            SchemaKind::ScalarUnion { .. } => Some(path.clone()),
+            SchemaKind::Scalar { .. } => None,
+            SchemaKind::Group {
+                children, dynamic, ..
+            } => {
+                for child in children {
+                    path.push(child.name.clone());
+                    if let Some(found) = first_union(child, path) {
+                        return Some(found);
+                    }
+                    path.pop();
+                }
+                if let Some(dynamic) = dynamic {
+                    path.push("*".to_string());
+                    let found = first_union(dynamic, path);
+                    path.pop();
+                    if found.is_some() {
+                        return found;
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    let Some(path) = first_union(schema, &mut Vec::new()) else {
+        return Ok(());
+    };
+    let format = match format {
+        SideFormat::Xbrl => "XBRL",
+        SideFormat::Edi => "EDI",
+        SideFormat::Pdf => "PDF",
+        SideFormat::Xml => "XML",
+        SideFormat::Json => "JSON",
+        SideFormat::Csv => "CSV",
+        SideFormat::FixedWidth => "fixed-width",
+        SideFormat::FlexText => "FlexText",
+        SideFormat::Xlsx => "XLSX",
+        SideFormat::Db => "database",
+    };
+    let path = if path.is_empty() {
+        "<root>".to_string()
+    } else {
+        path.join("/")
+    };
+    Err(MfdError::Unsupported(format!(
+        "the {boundary} {format} field `{path}` is a heterogeneous scalar union; \
+         {format} .mfd components require one concrete scalar type"
+    )))
 }
 
 fn validate_tabular_identity(

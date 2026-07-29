@@ -257,8 +257,7 @@ fn validate_scope(
                 }
                 let target_node = target_node(target, chain)
                     .ok_or_else(|| unsupported("recursive-collect target path does not exist"))?;
-                if !target_node.repeating || !matches!(target_node.kind, SchemaKind::Scalar { .. })
-                {
+                if !target_node.repeating || !target_node.is_scalar() {
                     return Err(unsupported(
                         "recursive-collect must produce one repeating scalar target",
                     ));
@@ -347,12 +346,12 @@ fn validate_scalar_identity_scope(
     let source_collection = source_collection
         .ok_or_else(|| unsupported("scalar scope construction requires a source collection"))?;
     let source = source_node(project, source_collection)
-        .filter(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        .filter(|node| node.repeating && node.is_scalar())
         .ok_or_else(|| {
             unsupported("scalar scope construction requires a repeating scalar source")
         })?;
     let target = target_node(target, target_path)
-        .filter(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        .filter(|node| node.repeating && node.is_scalar())
         .ok_or_else(|| {
             unsupported("scalar scope construction requires a repeating scalar target")
         })?;

@@ -138,7 +138,7 @@ fn collect(
     );
     if matches!(
         schema_node_at(&target.schema, &path).map(|node| &node.kind),
-        Some(SchemaKind::Scalar { .. })
+        Some(SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. })
     ) {
         output.extend(current.into_iter().map(|rule| AppliedRule {
             path: path.clone(),

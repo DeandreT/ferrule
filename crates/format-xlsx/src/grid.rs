@@ -271,6 +271,9 @@ fn direct_child<'a>(schema: &'a SchemaNode, name: &str) -> Result<&'a SchemaNode
 fn ordinary_scalar(schema: &SchemaNode, name: &str) -> Result<ScalarType, XlsxFormatError> {
     match schema.kind {
         SchemaKind::Scalar { ty } if !schema.repeating && !schema.attribute => Ok(ty),
+        SchemaKind::ScalarUnion { .. } => Err(XlsxFormatError::UnsupportedScalarUnion {
+            field: name.to_string(),
+        }),
         _ => Err(grid_field_error(
             name,
             "field must be a non-repeating non-attribute scalar",
@@ -301,7 +304,7 @@ fn empty_instance(schema: &SchemaNode) -> Instance {
         return Instance::Repeated(Vec::new());
     }
     match &schema.kind {
-        SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Instance::Scalar(Value::Null),
         SchemaKind::Group { children, .. } => Instance::Group(
             children
                 .iter()

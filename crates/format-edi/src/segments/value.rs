@@ -21,6 +21,10 @@ pub(super) fn write_component(
             let text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar))?;
             escape(&text, &schema.name, opts, None)
         }
+        SchemaKind::ScalarUnion { .. } => Err(EdiFormatError::UnsupportedSchema(format!(
+            "EDI component `{}` cannot preserve a heterogeneous scalar union",
+            schema.name
+        ))),
         SchemaKind::Group { children, .. } => {
             let WriteStyle::Hl7 { subcomponent } = opts.style else {
                 return Err(EdiFormatError::UnsupportedSchema(schema.name.clone()));
@@ -97,6 +101,7 @@ fn semantically_equal(schema: &SchemaNode, left: &str, right: &str) -> bool {
             .zip(right.parse::<f64>().ok())
             .is_some_and(|(left, right)| left == right),
         SchemaKind::Scalar { .. } => left == right,
+        SchemaKind::ScalarUnion { .. } => false,
         SchemaKind::Group { .. } => false,
     }
 }

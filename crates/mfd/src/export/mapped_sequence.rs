@@ -252,9 +252,9 @@ fn mapped_scope_plan(
         .iter()
         .any(|binding| binding.target_field == ir::XML_TEXT_FIELD);
     if explicit_text_port
-        && !target_group.child(ir::XML_TEXT_FIELD).is_some_and(|text| {
-            text.text && !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. })
-        })
+        && !target_group
+            .child(ir::XML_TEXT_FIELD)
+            .is_some_and(|text| text.text && !text.repeating && text.is_scalar())
     {
         return None;
     }
@@ -621,9 +621,10 @@ fn collect_matching_scalars(
     paths: &mut BTreeSet<Vec<String>>,
 ) {
     match (&source.kind, &target.kind) {
-        (SchemaKind::Scalar { .. }, SchemaKind::Scalar { .. })
-            if !source.repeating && !target.repeating =>
-        {
+        (
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+        ) if !source.repeating && !target.repeating => {
             paths.insert(path.clone());
         }
         (

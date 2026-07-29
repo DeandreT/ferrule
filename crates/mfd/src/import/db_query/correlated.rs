@@ -456,7 +456,7 @@ fn ensure_schema_column(
         SchemaKind::Group { children, .. } => children
             .iter()
             .find(|child| child.name.eq_ignore_ascii_case(column)),
-        SchemaKind::Scalar { .. } => None,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
     }
     .cloned()
     .ok_or_else(|| {
@@ -481,7 +481,7 @@ fn scalar_column_type(schema: &SchemaNode, column: &str) -> Result<ScalarType, S
                 SchemaKind::Scalar { ty } if !child.repeating => Some(ty),
                 _ => None,
             }),
-        SchemaKind::Scalar { .. } => None,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
     }
     .ok_or_else(|| format!("column `{column}` is not scalar"))
 }
@@ -732,7 +732,7 @@ fn canonical_column(schema: &SchemaNode, name: &str) -> Result<String, String> {
             .iter()
             .find(|child| child.name.eq_ignore_ascii_case(name))
             .map(|child| child.name.clone()),
-        SchemaKind::Scalar { .. } => None,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
     }
     .ok_or_else(|| format!("typed table has no output column `{name}`"))
 }

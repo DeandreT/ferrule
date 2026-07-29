@@ -722,6 +722,9 @@ mod repeated_scalar_tests;
 #[path = "tests/runtime_parameters.rs"]
 mod runtime_parameter_tests;
 #[cfg(test)]
+#[path = "tests/scalar_union.rs"]
+mod scalar_union_tests;
+#[cfg(test)]
 #[path = "tests/sequence_aggregate.rs"]
 mod sequence_aggregate_tests;
 #[cfg(test)]

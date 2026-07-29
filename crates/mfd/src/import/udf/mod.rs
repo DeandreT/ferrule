@@ -935,12 +935,8 @@ fn read_lookup_definition(
         let value = schema_node_at(&catalog.schema, &value_path);
         if !schema_node_at(&catalog.schema, collection)
             .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
-            || !key.is_some_and(|node| {
-                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-            })
-            || !value.is_some_and(|node| {
-                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-            })
+            || !key.is_some_and(|node| !node.repeating && node.is_scalar())
+            || !value.is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return Err(
                 "lookup static catalog key and value must be scalar siblings in one repeating group"

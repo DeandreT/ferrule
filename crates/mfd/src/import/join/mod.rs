@@ -809,9 +809,7 @@ fn resolve_join(
             if !sources
                 .get(input.source)
                 .and_then(|source| schema_node_at(&source.schema, &path))
-                .is_some_and(|node| {
-                    !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                })
+                .is_some_and(|node| !node.repeating && node.is_scalar())
             {
                 return Err(format!(
                     "input {} equality path `{}` is not scalar",
@@ -883,8 +881,7 @@ fn resolve_inputs(
         let source_node = sources
             .get(source)
             .and_then(|source| schema_node_at(&source.schema, &path));
-        let singleton = source_node
-            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }));
+        let singleton = source_node.is_some_and(|node| !node.repeating && node.is_scalar());
         if !singleton
             && !source_node
                 .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
@@ -959,9 +956,7 @@ fn resolve_hierarchy(
             } else if sources
                 .get(resolved.source)
                 .and_then(|source| schema_node_at(&source.schema, &source_path.path))
-                .is_some_and(|node| {
-                    !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                })
+                .is_some_and(|node| !node.repeating && node.is_scalar())
             {
                 fields.push((output.port, source_path));
             } else {
@@ -990,9 +985,7 @@ fn validate_outputs(
             && !sources
                 .get(input.source)
                 .and_then(|source| schema_node_at(&source.schema, &absolute))
-                .is_some_and(|node| {
-                    !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                })
+                .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return Err(format!(
                 "output port {} does not project a scalar descendant",

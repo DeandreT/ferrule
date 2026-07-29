@@ -229,7 +229,7 @@ impl GraphBuilder<'_> {
             return None;
         }
         if !schema_node_at(&component.schema, &full_path)
-            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return None;
         }

@@ -590,6 +590,12 @@ fn read_table(
                         Instance::Scalar(read_value(&child.name, row.get_ref(index)?, *ty)?),
                     ));
                 }
+                SchemaKind::ScalarUnion { .. } => {
+                    return Err(invalid_schema(
+                        child,
+                        "SQLite columns cannot preserve heterogeneous scalar unions",
+                    ));
+                }
                 SchemaKind::Group { .. } => {
                     let relation = relations.next().ok_or_else(|| {
                         invalid_schema(plan.schema, "relationship plan was not resolved")
@@ -650,6 +656,10 @@ fn columns_of_relational(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>,
             SchemaKind::Scalar { .. } => Some(Err(invalid_schema(
                 child,
                 "database scalar columns cannot repeat",
+            ))),
+            SchemaKind::ScalarUnion { .. } => Some(Err(invalid_schema(
+                child,
+                "SQLite columns cannot preserve heterogeneous scalar unions",
             ))),
             SchemaKind::Group { .. } if child.repeating => None,
             SchemaKind::Group { .. } => Some(Err(invalid_schema(

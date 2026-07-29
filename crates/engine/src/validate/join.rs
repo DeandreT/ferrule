@@ -21,7 +21,7 @@ pub(super) fn validate_plan(
                     || source_path_matches(project, collection, |node| node.repeating)
             }
             JoinSourceCardinality::Singleton => source_path_matches(project, collection, |node| {
-                !node.repeating && matches!(node.kind, ir::SchemaKind::Scalar { .. })
+                !node.repeating && node.is_scalar()
             }),
         };
         if !valid {

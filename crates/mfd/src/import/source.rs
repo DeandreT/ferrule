@@ -260,9 +260,9 @@ impl GraphBuilder<'_> {
         let has_scalar_text = self.sources.get(source).is_some_and(|component| {
             schema_node_at_resolved(&component.schema, &path).is_some_and(|node| {
                 matches!(node.kind, SchemaKind::Group { .. })
-                    && node.child(XML_TEXT_FIELD).is_some_and(|text| {
-                        !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. })
-                    })
+                    && node
+                        .child(XML_TEXT_FIELD)
+                        .is_some_and(|text| !text.repeating && text.is_scalar())
             })
         });
         if has_scalar_text {

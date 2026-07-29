@@ -529,7 +529,7 @@ fn schema_has_emitted_path(schema: &SchemaNode, path: &[String]) -> bool {
                             || segment == "unit" && child.name.starts_with(XBRL_UNIT_FIELD_PREFIX)
                     })
                     .collect::<Vec<_>>(),
-                SchemaKind::Scalar { .. } => Vec::new(),
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Vec::new(),
             })
             .collect();
         if candidates.is_empty() {

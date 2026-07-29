@@ -897,9 +897,8 @@ impl ItemEvaluator<'_> {
 
         if let ScopeConstruction::Scalar { value } = &scope.construction {
             let mut in_progress = HashSet::new();
-            return eval_expr(program, *value, context, output_positions, &mut in_progress)
-                .map(Instance::Scalar)
-                .map(Some);
+            let value = eval_expr(program, *value, context, output_positions, &mut in_progress)?;
+            return Ok(Some(Instance::Scalar(adapt_target_scalar(value, target))));
         }
 
         if let ScopeConstruction::RecursiveFilter { plan } = &scope.construction {
@@ -964,10 +963,7 @@ impl ItemEvaluator<'_> {
                 &mut in_progress,
             )?;
             let target_field = target.and_then(|schema| schema.child(&binding.target_field));
-            let value = match target_field.map(|field| &field.kind) {
-                Some(SchemaKind::Scalar { ty }) => adapt_numeric_target(value, *ty),
-                Some(SchemaKind::Group { .. }) | None => value,
-            };
+            let value = adapt_target_scalar(value, target_field);
             let repeating = target_field.is_some_and(|field| field.repeating);
             let value = match repeating {
                 true => match value {
@@ -999,13 +995,7 @@ impl ItemEvaluator<'_> {
                 output_positions,
                 &mut in_progress,
             )?;
-            let value = match target
-                .and_then(ir::SchemaNode::dynamic_fields)
-                .map(|field| &field.kind)
-            {
-                Some(SchemaKind::Scalar { ty }) => adapt_numeric_target(value, *ty),
-                Some(SchemaKind::Group { .. }) | None => value,
-            };
+            let value = adapt_target_scalar(value, target.and_then(ir::SchemaNode::dynamic_fields));
             let value = Instance::Scalar(value);
             let traced_key = bounded_text(&key);
             let traced_value = trace_field_value(&value);
@@ -1201,6 +1191,37 @@ fn adapt_numeric_target(value: Value, expected: ScalarType) -> Value {
             }
         }
         (_, value) => value,
+    }
+}
+
+fn adapt_target_scalar(value: Value, target: Option<&ir::SchemaNode>) -> Value {
+    let Some(target) = target else {
+        return value;
+    };
+    match target.kind {
+        SchemaKind::Scalar { ty } => adapt_numeric_target(value, ty),
+        SchemaKind::ScalarUnion { types } => {
+            let actual = match value {
+                Value::String(_) => Some(ScalarType::String),
+                Value::Int(_) => Some(ScalarType::Int),
+                Value::Float(_) => Some(ScalarType::Float),
+                Value::Bool(_) => Some(ScalarType::Bool),
+                Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => None,
+            };
+            if actual.is_some_and(|ty| types.contains(ty)) {
+                return value;
+            }
+            match value {
+                value @ Value::Int(_) if types.contains(ScalarType::Float) => {
+                    adapt_numeric_target(value, ScalarType::Float)
+                }
+                value @ Value::Float(_) if types.contains(ScalarType::Int) => {
+                    adapt_numeric_target(value, ScalarType::Int)
+                }
+                value => value,
+            }
+        }
+        SchemaKind::Group { .. } => value,
     }
 }
 

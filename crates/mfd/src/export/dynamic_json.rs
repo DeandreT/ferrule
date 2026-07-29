@@ -1110,6 +1110,11 @@ fn render_json_value(
                 json_type_name(*ty)
             );
         }
+        SchemaKind::ScalarUnion { .. } => {
+            // The generated JSON Schema sibling is authoritative. The entry
+            // tree only needs one scalar leaf to carry this field's port.
+            let _ = writeln!(out, "{pad}<entry name=\"string\" {attr}=\"{key}\"/>");
+        }
         SchemaKind::Group { children, .. } => {
             let _ = writeln!(
                 out,
@@ -1216,6 +1221,10 @@ fn render_source_value(
                 "{pad}<entry name=\"{}\" outkey=\"{key}\"/>",
                 json_type_name(*ty)
             );
+        }
+        SchemaKind::ScalarUnion { .. } => {
+            // The generated JSON Schema sibling retains the complete union.
+            let _ = writeln!(out, "{pad}<entry name=\"string\" outkey=\"{key}\"/>");
         }
         SchemaKind::Group { children, .. } => {
             let _ = writeln!(

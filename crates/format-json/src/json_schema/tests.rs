@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{
-    GroupAlternativeConstraintValue, GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode,
+    GroupAlternativeConstraintValue, GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind,
+    SchemaNode,
 };
 
 use super::{export, import};
@@ -1527,19 +1528,238 @@ fn object_alternatives_keep_nullable_field_presence_branch_neutral() {
 }
 
 #[test]
-fn type_arrays_with_multiple_non_null_types_are_rejected() {
+fn heterogeneous_scalar_type_arrays_preserve_runtime_tags_and_roundtrip()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_str(
+        r#"{
+  "title":"Parcel",
+  "type":"object",
+  "additionalProperties":false,
+  "properties":{
+    "reference":{"type":["string","integer"]},
+    "status":{"type":["boolean","string","null"]}
+  }
+}"#,
+    );
+    let Some(reference) = schema.child("reference") else {
+        panic!("reference field should be imported");
+    };
+    let Some(reference_types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+        panic!("test scalar union must contain distinct types");
+    };
+    assert_eq!(
+        reference.kind,
+        SchemaKind::ScalarUnion {
+            types: reference_types
+        }
+    );
+    let Some(status) = schema.child("status") else {
+        panic!("status field should be imported");
+    };
+    assert!(status.nullable);
+    let Some(status_types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Bool]) else {
+        panic!("test scalar union must contain distinct types");
+    };
+    assert_eq!(
+        status.kind,
+        SchemaKind::ScalarUnion {
+            types: status_types
+        }
+    );
+
+    for input in [
+        r#"{"reference":731,"status":true}"#,
+        r#"{"reference":"731","status":"ready"}"#,
+        r#"{"reference":"731","status":null}"#,
+    ] {
+        let instance = crate::from_str(input, &schema)?;
+        let output = crate::to_string(&schema, &instance)?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&output)?,
+            serde_json::from_str::<serde_json::Value>(input)?
+        );
+    }
+    let numeric = crate::from_str(r#"{"reference":731,"status":true}"#, &schema)?;
+    assert_eq!(
+        numeric.field("reference").and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::Int(731))
+    );
+    assert_eq!(
+        numeric.field("status").and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::Bool(true))
+    );
+    assert!(matches!(
+        crate::from_str(r#"{"reference":false}"#, &schema),
+        Err(JsonFormatError::Shape { .. })
+    ));
+
+    let exported = export(&schema);
+    let value: serde_json::Value = serde_json::from_str(&exported)?;
+    assert_eq!(
+        value["properties"]["reference"]["type"],
+        serde_json::json!(["string", "integer"])
+    );
+    assert_eq!(
+        value["properties"]["status"]["type"],
+        serde_json::json!(["string", "boolean", "null"])
+    );
+    assert_eq!(import_str(&exported), schema);
+    Ok(())
+}
+
+#[test]
+fn scalar_union_members_can_discriminate_object_alternatives()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_str_result(
+        r#"{
+  "title":"Event",
+  "oneOf":[
+    {
+      "title":"named",
+      "type":"object",
+      "additionalProperties":false,
+      "required":["kind","payload"],
+      "properties":{
+        "kind":{"type":["string","integer"],"const":"ready"},
+        "payload":{"type":"string"}
+      }
+    },
+    {
+      "title":"numbered",
+      "type":"object",
+      "additionalProperties":false,
+      "required":["kind","payload"],
+      "properties":{
+        "kind":{"type":["integer","string"],"const":7},
+        "payload":{"type":"string"}
+      }
+    }
+  ]
+}"#,
+    )?;
+    for input in [
+        r#"{"kind":"ready","payload":"named"}"#,
+        r#"{"kind":7,"payload":"numbered"}"#,
+    ] {
+        let instance = crate::from_str(input, &schema)?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&crate::to_string(&schema, &instance)?)?,
+            serde_json::from_str::<serde_json::Value>(input)?
+        );
+    }
+    assert!(matches!(
+        crate::from_str(r#"{"kind":8,"payload":"invalid"}"#, &schema),
+        Err(JsonFormatError::NoMatchingAlternative { .. })
+    ));
+
+    let exported = export(&schema);
+    assert_eq!(import_str_result(&exported)?, schema);
+    Ok(())
+}
+
+#[test]
+fn float_constraints_do_not_match_neighboring_large_integer_union_values()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_str_result(
+        r#"{
+  "title":"NumericEvent",
+  "oneOf":[
+    {
+      "title":"boundary",
+      "type":"object",
+      "additionalProperties":false,
+      "required":["kind"],
+      "properties":{
+        "kind":{"type":["integer","number"],"const":9007199254740992.0}
+      }
+    },
+    {
+      "title":"zero",
+      "type":"object",
+      "additionalProperties":false,
+      "required":["kind"],
+      "properties":{
+        "kind":{"type":["number","integer"],"const":0.0}
+      }
+    }
+  ]
+}"#,
+    )?;
+    let accepted = crate::from_str(r#"{"kind":9007199254740992}"#, &schema)?;
+    assert_eq!(
+        accepted.field("kind").and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::Int(9_007_199_254_740_992))
+    );
+    for input in [
+        r#"{"kind":9007199254740993}"#,
+        r#"{"kind":9007199254740994}"#,
+    ] {
+        assert!(matches!(
+            crate::from_str(input, &schema),
+            Err(JsonFormatError::NoMatchingAlternative { .. })
+        ));
+    }
+    let exported = export(&schema);
+    assert_eq!(import_str_result(&exported)?, schema);
+    Ok(())
+}
+
+#[test]
+fn heterogeneous_scalar_any_of_is_executable_in_array_items()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_str(
+        r#"{
+  "title":"Identifiers",
+  "type":"array",
+  "items":{
+    "anyOf":[
+      {"type":"integer","description":"numeric identifier"},
+      {"type":"string","description":"external identifier"},
+      {"type":"null"}
+    ]
+  }
+}"#,
+    );
+    assert!(schema.repeating);
+    assert!(schema.nullable);
+    let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+        panic!("test scalar union must contain distinct types");
+    };
+    assert_eq!(schema.kind, SchemaKind::ScalarUnion { types });
+    let instance = crate::from_str(r#"[42,"EXT-42",null]"#, &schema)?;
+    let Some(items) = instance.as_repeated() else {
+        panic!("array schema should produce repeated items");
+    };
+    assert_eq!(items[0].as_scalar(), Some(&ir::Value::Int(42)));
+    assert_eq!(
+        items[1].as_scalar(),
+        Some(&ir::Value::String("EXT-42".into()))
+    );
+    assert_eq!(items[2].as_scalar(), Some(&ir::Value::json_null()));
+    let output = crate::to_string(&schema, &instance)?;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&output)?,
+        serde_json::json!([42, "EXT-42", null])
+    );
+    assert!(matches!(
+        crate::from_str("[true]", &schema),
+        Err(JsonFormatError::Shape { .. })
+    ));
+    assert_eq!(import_str(&export(&schema)), schema);
+    Ok(())
+}
+
+#[test]
+fn heterogeneous_structural_type_arrays_remain_rejected() {
     let error = import_str_result(
         r#"{
   "title":"Ambiguous",
-  "type":["string", "integer", "null"]
+  "type":["string", "array", "null"],
+  "items":{"type":"string"}
 }"#,
     )
     .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("type arrays may contain only one non-null type")
-    );
+    assert!(error.to_string().contains("may contain only scalar types"));
 }
 
 #[test]

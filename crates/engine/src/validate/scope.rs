@@ -141,7 +141,7 @@ pub(super) fn validate_scope(
     let current_source = current_source_schema(project, schemas.parent_source, &scope.iteration);
 
     if let ScopeConstruction::Scalar { value } = &scope.construction {
-        if target.is_none_or(|node| !matches!(node.kind, SchemaKind::Scalar { .. })) {
+        if target.is_none_or(|node| !node.is_scalar()) {
             issues.push(ValidationIssue::new(
                 &location,
                 "scalar construction requires a scalar target schema",
@@ -201,9 +201,7 @@ pub(super) fn validate_scope(
             }
             if target
                 .and_then(|node| node.child(&element.target))
-                .is_none_or(|node| {
-                    !node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. })
-                })
+                .is_none_or(|node| !node.repeating || !node.is_scalar())
             {
                 issues.push(ValidationIssue::new(
                     &location,
@@ -370,9 +368,7 @@ pub(super) fn validate_scope(
 
     if let ScopeConstruction::PathHierarchy { plan } = &scope.construction {
         let collection = source_schema_at(project, schemas.parent_source, plan.collection());
-        if collection
-            .is_none_or(|node| !node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. }))
-        {
+        if collection.is_none_or(|node| !node.repeating || !node.is_scalar()) {
             issues.push(ValidationIssue::new(
                 &location,
                 format!(
@@ -388,9 +384,10 @@ pub(super) fn validate_scope(
             ));
         }
         if let Some(target) = target {
-            if target.child(plan.name()).is_none_or(|name| {
-                name.repeating || !matches!(name.kind, SchemaKind::Scalar { .. })
-            }) {
+            if target
+                .child(plan.name())
+                .is_none_or(|name| name.repeating || !name.is_scalar())
+            {
                 issues.push(ValidationIssue::new(
                     &location,
                     format!(
@@ -402,9 +399,9 @@ pub(super) fn validate_scope(
             if target.child(plan.files()).is_none_or(|files| {
                 !files.repeating
                     || !matches!(files.kind, SchemaKind::Group { .. })
-                    || files.child(plan.name()).is_none_or(|name| {
-                        name.repeating || !matches!(name.kind, SchemaKind::Scalar { .. })
-                    })
+                    || files
+                        .child(plan.name())
+                        .is_none_or(|name| name.repeating || !name.is_scalar())
             }) {
                 issues.push(ValidationIssue::new(
                     &location,
@@ -863,9 +860,7 @@ pub(super) fn validate_scope(
         let duplicate = !bound_fields.insert(&binding.target_field);
         let repeating_scalar = target
             .and_then(|target| target.child(&binding.target_field))
-            .is_some_and(|field| {
-                field.repeating && matches!(field.kind, SchemaKind::Scalar { .. })
-            });
+            .is_some_and(|field| field.repeating && field.is_scalar());
         if duplicate && !repeating_scalar {
             issues.push(ValidationIssue::new(
                 &location,
@@ -889,7 +884,7 @@ pub(super) fn validate_scope(
                 continue;
             }
             match target.child(&binding.target_field) {
-                Some(field) if matches!(field.kind, SchemaKind::Scalar { .. }) => {}
+                Some(field) if field.is_scalar() => {}
                 Some(_) => issues.push(ValidationIssue::new(
                     &location,
                     format!("binding target `{}` is not a scalar", binding.target_field),
@@ -918,10 +913,8 @@ pub(super) fn validate_scope(
         match child_target {
             Some(node)
                 if matches!(node.kind, SchemaKind::Group { .. })
-                    || matches!(
-                        (&node.kind, &child.construction),
-                        (SchemaKind::Scalar { .. }, ScopeConstruction::Scalar { .. })
-                    ) => {}
+                    || node.is_scalar()
+                        && matches!(&child.construction, ScopeConstruction::Scalar { .. }) => {}
             Some(_) => issues.push(ValidationIssue::new(
                 format!("scope `{}`", path.join("/")),
                 "target scope is not a group",
@@ -958,9 +951,7 @@ pub(super) fn validate_scope(
                 ));
             }
         }
-        if dynamic_target
-            .is_some_and(|node| node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. }))
-        {
+        if dynamic_target.is_some_and(|node| node.repeating || !node.is_scalar()) {
             issues.push(ValidationIssue::new(
                 &location,
                 "computed scalar binding requires a non-repeating scalar dynamic field schema",
