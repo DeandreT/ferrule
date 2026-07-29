@@ -109,7 +109,8 @@ fn dtd_generic_members_filter_after_grouping_and_round_trip() {
     );
     let roundtrip = mfd::import(&exported).unwrap();
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
-    assert!(engine::validate(&roundtrip.project).is_empty());
+    let issues = engine::validate(&roundtrip.project);
+    assert!(issues.is_empty(), "{issues:?}");
     let roundtrip_input =
         format_xml::read(&dir.0.join("config.xml"), &roundtrip.project.source).unwrap();
     let roundtrip_output = engine::run(&roundtrip.project, &roundtrip_input).unwrap();

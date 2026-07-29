@@ -2272,3 +2272,257 @@ fn named_model_group_expansion_obeys_the_schema_materialization_limit() {
         }
     ));
 }
+
+#[test]
+fn imports_nested_local_skip_wildcards_without_losing_runtime_content()
+-> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_local_wildcard_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        concat!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Root"><xs:complexType><xs:sequence><xs:sequence>
+            <xs:any namespace=""#,
+            "##local",
+            r#"" processContents="skip"
+                    minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence></xs:sequence>
+          <xs:attribute name="owner" type="xs:string"/>
+          </xs:complexType></xs:element>
+        </xs:schema>"#
+        ),
+    )?;
+    let schema = import_root(&path, Some("Root"))?;
+    std::fs::remove_file(&path)?;
+
+    let wildcard = schema
+        .child(XML_ELEMENTS_FIELD)
+        .ok_or("wildcard did not become an element() group")?;
+    assert!(wildcard.repeating);
+    assert_eq!(wildcard.xml_namespace, Some(XmlNamespace::Unqualified));
+    assert!(wildcard.child(XML_LOCAL_NAME_FIELD).is_some());
+    assert!(
+        wildcard
+            .child(XML_TEXT_FIELD)
+            .is_some_and(|child| child.text)
+    );
+    assert!(wildcard.child(XML_ATTRIBUTES_FIELD).is_some());
+    assert!(
+        wildcard
+            .child(XML_ELEMENTS_FIELD)
+            .is_some_and(|child| child.recursive_ref.as_deref() == Some(XML_ELEMENTS_FIELD))
+    );
+
+    let input = r#"<Root owner="team"><First code="A">before<Inner depth="1">value</Inner>after</First><Second/></Root>"#;
+    let instance = from_str(input, &schema)?;
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains(r#"<Root owner="team">"#), "{output}");
+    assert!(
+        output.contains(r#"<First code="A">before<Inner depth="1">value</Inner>after</First>"#),
+        "{output}"
+    );
+    assert!(output.contains("<Second></Second>"), "{output}");
+    assert_eq!(from_str(&output, &schema)?, instance);
+
+    let exported = export(&schema)?;
+    assert!(
+        exported.contains(
+            "<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>"
+        ),
+        "{exported}"
+    );
+    std::fs::write(&path, exported)?;
+    let reimported = import_root(&path, Some("Root"))?;
+    std::fs::remove_file(path)?;
+    assert_eq!(reimported, schema);
+    Ok(())
+}
+
+#[test]
+fn imports_direct_local_wildcards_below_a_qualified_root() -> Result<(), Box<dyn std::error::Error>>
+{
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_qualified_root_local_wildcard_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        concat!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                           targetNamespace="urn:ferrule:wildcard"
+                           elementFormDefault="qualified">
+              <xs:element name="Root"><xs:complexType><xs:sequence>
+                <xs:any namespace=""#,
+            "##local",
+            r#"" processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"#
+        ),
+    )?;
+    let schema = import_root(&path, Some("{urn:ferrule:wildcard}Root"))?;
+    std::fs::remove_file(path)?;
+
+    let input = r#"<Root xmlns="urn:ferrule:wildcard"><Local xmlns=""><Child/></Local></Root>"#;
+    let instance = from_str(input, &schema)?;
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains(r#"<Local xmlns="">"#), "{output}");
+    assert!(output.contains("<Child></Child>"), "{output}");
+    let reparsed = from_str(&output, &schema)?;
+    let local = reparsed
+        .field(XML_ELEMENTS_FIELD)
+        .and_then(Instance::as_repeated)
+        .and_then(|items| items.first())
+        .ok_or("local wildcard child was not written")?;
+    assert_eq!(
+        local
+            .field(XML_LOCAL_NAME_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("Local".to_string()))
+    );
+    assert_eq!(
+        local
+            .field(XML_ELEMENTS_FIELD)
+            .and_then(Instance::as_repeated)
+            .map(<[Instance]>::len),
+        Some(1)
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_wildcards_outside_the_lossless_local_skip_profile()
+-> Result<(), Box<dyn std::error::Error>> {
+    let cases = [
+        (
+            "any-namespace",
+            r#"<xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>"#,
+            "namespace=\"##local\"",
+        ),
+        (
+            "other-namespace",
+            "<xs:any namespace=\"##other\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
+            "namespace=\"##local\"",
+        ),
+        (
+            "lax",
+            "<xs:any namespace=\"##local\" processContents=\"lax\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
+            "processContents=\"skip\"",
+        ),
+        (
+            "strict-default",
+            "<xs:any namespace=\"##local\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
+            "processContents=\"skip\"",
+        ),
+        (
+            "required",
+            "<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"1\" maxOccurs=\"unbounded\"/>",
+            "minOccurs=\"0\"",
+        ),
+        (
+            "bounded",
+            "<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"2\"/>",
+            "maxOccurs=\"unbounded\"",
+        ),
+        (
+            "choice",
+            "<xs:choice><xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/></xs:choice>",
+            "xs:choice or xs:all",
+        ),
+        (
+            "optional-wrapper",
+            "<xs:sequence minOccurs=\"0\"><xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/></xs:sequence>",
+            "single-occurrence xs:sequence",
+        ),
+        (
+            "sibling",
+            "<xs:element name=\"Known\" type=\"xs:string\"/><xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
+            "only element particle",
+        ),
+    ];
+    for (label, particle, expected) in cases {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_unsupported_wildcard_{label}_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="Root"><xs:complexType><xs:sequence>
+                    {particle}
+                  </xs:sequence></xs:complexType></xs:element>
+                </xs:schema>"#
+            ),
+        )?;
+        let error = match import_root(&path, Some("Root")) {
+            Ok(_) => {
+                return Err(std::io::Error::other(format!(
+                    "{label}: unsupported wildcard profile imported successfully"
+                ))
+                .into());
+            }
+            Err(error) => error,
+        };
+        std::fs::remove_file(path)?;
+        assert!(
+            matches!(
+                &error,
+                XmlFormatError::UnsupportedXmlWildcard { reason }
+                    if reason.contains(expected)
+            ),
+            "{label}: {error}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn rejects_qualified_content_at_a_local_wildcard_runtime_boundary()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = SchemaNode::group("Root", vec![generic_wildcard_schema()]);
+    let error = match from_str(
+        r#"<Root xmlns:q="urn:qualified"><q:Foreign/></Root>"#,
+        &schema,
+    ) {
+        Ok(_) => {
+            return Err(std::io::Error::other(
+                "qualified element was erased by a ##local wildcard",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        XmlFormatError::UnsupportedXmlWildcard {
+            reason: "the supported ##local wildcard profile cannot retain qualified descendant elements"
+        }
+    ));
+
+    let instance = Instance::Group(vec![(
+        XML_ELEMENTS_FIELD.to_string(),
+        Instance::Repeated(vec![Instance::Group(vec![(
+            XML_LOCAL_NAME_FIELD.to_string(),
+            Instance::Scalar(Value::String("q:Foreign".to_string())),
+        )])]),
+    )]);
+    let error = match to_string(&schema, &instance) {
+        Ok(_) => {
+            return Err(std::io::Error::other(
+                "qualified dynamic name was written through a ##local wildcard",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        XmlFormatError::UnsupportedXmlWildcard {
+            reason: "the supported ##local wildcard profile requires unqualified runtime element names"
+        }
+    ));
+    Ok(())
+}
