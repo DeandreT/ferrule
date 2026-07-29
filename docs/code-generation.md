@@ -174,7 +174,12 @@ than dropping data. Exact object `minProperties`/`maxProperties` intervals
 count distinct parsed input properties before decoding and normalized output
 members after Ferrule `Null` omission. Duplicate input names use the parser's
 last value and count once. Nullable object null bypasses the interval; nested,
-repeated, primary, and named documents apply the same rule. These APIs
+repeated, primary, and named documents apply the same rule. Embedded object
+property dependencies are enforced as well. Whenever a trigger property is
+present, every dependent property must be present. Explicit JSON null counts as
+presence on input; generated output is checked after absent Ferrule values are
+omitted. Nullable object null bypasses the relation, while nested, repeated,
+primary, and named documents all use the same rule. These APIs
 intentionally use JSON regardless of
 stored project paths or format options; hosts needing X12, XML, database, or
 other physical formats should use the interpreter payload API or adapt a typed
@@ -321,9 +326,10 @@ return instances or JSON documents and do not write files.
 Embedded JSON schemas are validated recursively before emission and again at
 the generated boundary. Rust and C# enforce scalar constants, exact scalar
 allowed-value sets, numeric ranges, exact decimal `multipleOf` constraints,
-array item-count intervals, object property-count intervals, exact structural
-`uniqueItems`, Unicode-scalar string-length intervals, and portable JSON Schema
-`pattern` assertions on both input and normalized output.
+array item-count intervals, object property-count intervals, object property
+dependencies, exact structural `uniqueItems`, Unicode-scalar string-length
+intervals, and portable JSON Schema `pattern` assertions on both input and
+normalized output.
 Pattern constraints retain conjunctions and exact disjunctions, nullable
 bypass, array items, typed dynamic properties, and scalar-union runtime tags. Both generated
 runtimes use Ferrule's bounded Thompson-NFA matcher rather than a host regex

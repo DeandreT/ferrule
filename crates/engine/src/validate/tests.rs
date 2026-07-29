@@ -533,6 +533,26 @@ fn rejects_programmatically_invalid_property_count_metadata() {
 }
 
 #[test]
+fn rejects_programmatically_invalid_property_dependency_metadata() {
+    let mut project = valid_project();
+    let Ok(dependencies) = ir::JsonPropertyDependencies::new(
+        [("name".to_string(), vec!["other".to_string()])]
+            .into_iter()
+            .collect(),
+    ) else {
+        panic!("test property dependencies are valid");
+    };
+    target_name(&mut project).json_property_dependencies = Some(dependencies);
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("property-dependency metadata")
+            && issue.message.contains("name")
+    }));
+}
+
+#[test]
 fn rejects_programmatically_invalid_string_length_metadata() {
     let mut project = valid_project();
     let Some(range) = ir::StringLengthRange::new(1, Some(3)) else {
