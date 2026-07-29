@@ -28,6 +28,7 @@ pub(super) fn merge_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) {
                         children: vec![generic_entry_schema(&child)],
                         dynamic: None,
                         alternatives: Vec::new(),
+                        required: Vec::new(),
                         xml_restricted_alternatives: Vec::new(),
                     };
                 }

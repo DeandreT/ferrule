@@ -343,12 +343,14 @@ fn exact_fallback_alternative_subset(source: &SchemaNode, target: &SchemaNode) -
         SchemaKind::Group {
             children: source_children,
             alternatives: source_alternatives,
+            required: source_required,
             xml_restricted_alternatives: source_restricted,
             dynamic: source_dynamic,
         },
         SchemaKind::Group {
             children: target_children,
             alternatives: target_alternatives,
+            required: target_required,
             xml_restricted_alternatives: target_restricted,
             dynamic: target_dynamic,
         },
@@ -358,6 +360,7 @@ fn exact_fallback_alternative_subset(source: &SchemaNode, target: &SchemaNode) -
     };
     !source_alternatives.is_empty()
         && target_alternatives.len() > source_alternatives.len()
+        && source_required == target_required
         && source_restricted == target_restricted
         && source_dynamic == target_dynamic
         && source_children
@@ -400,6 +403,7 @@ fn reconcile_children(
                 parent.kind = SchemaKind::Group {
                     children: vec![text],
                     alternatives: Vec::new(),
+                    required: Vec::new(),
                     xml_restricted_alternatives: Vec::new(),
                     dynamic: None,
                 };
