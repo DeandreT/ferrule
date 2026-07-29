@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mapping::{FunctionId, Graph, Node, NodeId, Project, UserFunction};
 
-use super::ValidationIssue;
+use super::{ValidationIssue, validate_builtin_call};
 use crate::user_function::MAX_USER_FUNCTION_DEPTH;
 
 pub(super) fn validate_user_functions(project: &Project, issues: &mut Vec<ValidationIssue>) {
@@ -128,13 +128,8 @@ fn validate_body(
                     ));
                 }
             }
-            Node::Call { function, .. } => {
-                if !functions::is_known(function) {
-                    issues.push(ValidationIssue::new(
-                        &node_location,
-                        format!("unknown function `{function}`"),
-                    ));
-                }
+            Node::Call { function, args } => {
+                validate_builtin_call(&node_location, function, args.len(), issues);
             }
             Node::UserFunctionCall { function, args } => {
                 validate_call(project, &node_location, *function, args.len(), issues);

@@ -471,6 +471,13 @@ fn validates_function_boundaries_bodies_and_call_cycles() {
                         args: Vec::new(),
                     },
                 ),
+                (
+                    6,
+                    Node::Call {
+                        function: "not".into(),
+                        args: Vec::new(),
+                    },
+                ),
             ],
             99,
         ),
@@ -541,6 +548,7 @@ fn validates_function_boundaries_bodies_and_call_cycles() {
     assert!(messages.contains("references missing body node 77"));
     assert!(messages.contains("references undeclared parameter 999"));
     assert!(messages.contains("unknown function `not-a-function`"));
+    assert!(messages.contains("function `not` expects exactly 1 argument(s), got 0"));
     assert!(messages.contains("cycle reaches body node 2"));
     assert!(messages.contains("node kind is not supported"));
     assert!(messages.contains("recursive user-defined function calls are not supported"));
