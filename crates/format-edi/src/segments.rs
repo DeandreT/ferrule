@@ -33,7 +33,8 @@ use crate::EdiFormatError;
 
 mod value;
 
-use value::{escape, scalar_or_fixed, write_component};
+pub(crate) use value::scalar_or_fixed;
+use value::{escape, write_component};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Segment {

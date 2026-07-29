@@ -215,7 +215,7 @@ fn rejects_http_transport_metadata_on_a_target() {
 }
 
 #[test]
-fn validates_idoc_direction_and_format_exclusivity() {
+fn validates_idoc_output_and_structured_edi_format_exclusivity() {
     let field = mapping::IdocFieldLayout::new(
         "value",
         NonZeroU32::new(12).unwrap(),
@@ -253,8 +253,21 @@ fn validates_idoc_direction_and_format_exclusivity() {
     }));
 
     let mut target = valid_project();
-    target.target_options.idoc = Some(layout);
+    target.target_options.idoc = Some(layout.clone());
+    assert!(validate(&target).is_empty());
+
+    target.target_options.delimiter = Some('|');
     assert!(validate(&target).iter().any(|issue| {
+        issue.location == "target format options"
+            && issue.message.contains("`idoc` cannot be combined")
+    }));
+
+    let mut swift_target = valid_project();
+    swift_target.target_options.swift_mt = Some(
+        mapping::SwiftMtLayout::new(vec![mapping::SwiftMessageLayout::new("MT950", Vec::new())])
+            .unwrap(),
+    );
+    assert!(validate(&swift_target).iter().any(|issue| {
         issue.location == "target format options"
             && issue.message.contains("only for mapping sources")
     }));
