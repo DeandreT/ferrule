@@ -1103,14 +1103,13 @@ fn write_constructed_repeating_sequence<W: std::io::Write>(
         inherited_namespace,
     } = context;
     let items_for = |name: &str| -> Result<&[Instance], XmlFormatError> {
-        let instance = fields
+        let Some(instance) = fields
             .iter()
             .find(|(field, _)| field == name)
             .map(|(_, instance)| instance)
-            .ok_or_else(|| XmlFormatError::AmbiguousRepeatingSequence {
-                group: schema.name.clone(),
-                reason: format!("member `{name}` is absent from the instance"),
-            })?;
+        else {
+            return Ok(&[]);
+        };
         instance.as_repeated().ok_or_else(|| XmlFormatError::Shape {
             name: name.to_string(),
             expected: "repeating elements",
@@ -1128,14 +1127,11 @@ fn write_constructed_repeating_sequence<W: std::io::Write>(
             let has_values = sequence.members.iter().try_fold(false, |found, member| {
                 items_for(&member.name).map(|items| found || !items.is_empty())
             })?;
-            if has_values {
-                return Err(XmlFormatError::AmbiguousRepeatingSequence {
-                    group: schema.name.clone(),
-                    reason: "the sequence has no required singular member to determine iteration boundaries"
-                        .to_string(),
-                });
-            }
-            0
+            // Without a singular anchor, one cycle is the only observable
+            // construction when all populated members are themselves
+            // repeating. Multiple indistinguishable cycles serialize to the
+            // same element run, so emit the canonical single-cycle form.
+            usize::from(has_values)
         }
     };
     for anchor in anchors.iter().skip(1) {

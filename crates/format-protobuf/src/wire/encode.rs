@@ -265,8 +265,7 @@ fn encoded_map_key(
     match ty {
         ScalarType::Bool => match value {
             None => Ok(MapKey::Bool(false)),
-            Some(Value::Bool(value)) => Ok(MapKey::Bool(*value)),
-            Some(value) => Err(type_error(path, "bool", value)),
+            Some(value) => boolean(value, path).map(MapKey::Bool),
         },
         ScalarType::String => match value {
             None => Ok(MapKey::String(String::new())),
@@ -447,10 +446,7 @@ fn encode_scalar(
             output.extend_from_slice(&integer(value, path)?.to_le_bytes());
         }
         ScalarType::Bool => {
-            let Value::Bool(value) = value else {
-                return Err(type_error(path, "bool", value));
-            };
-            output.push(u8::from(*value));
+            output.push(u8::from(boolean(value, path)?));
         }
         ScalarType::String => {
             let rendered;
@@ -494,18 +490,21 @@ fn enum_number(
         .enumeration(id)
         .ok_or_else(|| ProtobufError::schema(format!("unknown resolved enum id {}", id.index())))?;
     let number = match value {
-        Value::String(name) => enumeration
-            .value_by_name(name)
-            .map(|value| value.number())
-            .ok_or_else(|| {
-                ProtobufError::instance(
+        Value::String(name) => {
+            if let Some(value) = enumeration.value_by_name(name) {
+                value.number()
+            } else if let Ok(number) = name.trim().parse::<i32>() {
+                number
+            } else {
+                return Err(ProtobufError::instance(
                     path,
                     format!(
                         "enum `{}` has no value named `{name}`",
                         enumeration.full_name()
                     ),
-                )
-            })?,
+                ));
+            }
+        }
         Value::Int(number) => i32::try_from(*number)
             .map_err(|_| ProtobufError::instance(path, "enum number is outside the int32 range"))?,
         Value::Float(number)
@@ -533,6 +532,10 @@ fn enum_number(
 fn integer(value: &Value, path: &str) -> Result<i64, ProtobufError> {
     match value {
         Value::Int(value) => Ok(*value),
+        Value::String(text) => text
+            .trim()
+            .parse()
+            .map_err(|_| type_error(path, "integer", value)),
         _ => Err(type_error(path, "integer", value)),
     }
 }
@@ -547,6 +550,10 @@ fn numeric_float(value: &Value, path: &str) -> Result<f64, ProtobufError> {
     let number = match value {
         Value::Float(value) => *value,
         Value::Int(value) => *value as f64,
+        Value::String(text) => text
+            .trim()
+            .parse()
+            .map_err(|_| type_error(path, "number", value))?,
         _ => return Err(type_error(path, "number", value)),
     };
     if !number.is_finite() {
@@ -556,6 +563,21 @@ fn numeric_float(value: &Value, path: &str) -> Result<f64, ProtobufError> {
         ));
     }
     Ok(number)
+}
+
+fn boolean(value: &Value, path: &str) -> Result<bool, ProtobufError> {
+    match value {
+        Value::Bool(value) => Ok(*value),
+        Value::Int(0) => Ok(false),
+        Value::Int(1) => Ok(true),
+        Value::String(text) => match text.trim() {
+            "false" | "0" => Ok(false),
+            "true" | "1" => Ok(true),
+            _ => Err(type_error(path, "bool or 0/1", value)),
+        },
+        Value::Int(_) => Err(type_error(path, "bool or 0/1", value)),
+        _ => Err(type_error(path, "bool", value)),
+    }
 }
 
 fn type_error(path: &str, expected: &str, value: &Value) -> ProtobufError {
