@@ -75,12 +75,21 @@ The `event.kind` tag selects the event payload:
 | `sort_position` | Stable post-sort output index |
 | `group_produced` | Group mode, size, optional key preview, and retention |
 | `window_applied` | Evaluated window and before/after item counts |
+| `target_field_written` | Successful static/dynamic binding or child insertion, source nodes, output shape, and optional bounded scalar preview |
 | `target_produced` | Produced target kind and optional document path |
 | `scope_finished` | Candidate count, produced count, and final output kind |
 
 Every scope identity includes its primary or named target, semantic target path,
 and structural index path. Structural paths distinguish concatenate segments
 and repeated sibling names without depending on runtime values.
+
+`target_field_written` is emitted only after a field is inserted successfully.
+Its `binding.kind` is `static_binding`, `dynamic_binding`, `static_child`, or
+`dynamic_child`; binding objects include the applicable `key_node` and
+`value_node` identifiers. `field` is capped at 160 Unicode scalar values.
+`output_kind` describes the inserted instance, while `value` is present only
+for a scalar or singleton repeated-scalar write. Groups and larger collections
+are never copied into this event.
 
 Position records contain the source collection path, one-based index, grouping
 state, optional join identity and tuple position, and optional document path.

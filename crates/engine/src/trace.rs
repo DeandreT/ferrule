@@ -225,6 +225,15 @@ impl TraceOutputKind {
     }
 }
 
+/// How one successfully written target field was computed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceTargetFieldBinding {
+    StaticBinding { value: NodeId },
+    DynamicBinding { key: NodeId, value: NodeId },
+    StaticChild,
+    DynamicChild { key: NodeId },
+}
+
 /// A successful, observable step in interpreter evaluation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraceEvent {
@@ -275,6 +284,14 @@ pub enum TraceEvent {
         window: TraceWindow,
         before: usize,
         after: usize,
+    },
+    TargetFieldWritten {
+        scope: TraceScope,
+        field: String,
+        binding: TraceTargetFieldBinding,
+        positions: Vec<TracePosition>,
+        kind: TraceOutputKind,
+        value: Option<TraceValue>,
     },
     TargetProduced {
         scope: TraceScope,
