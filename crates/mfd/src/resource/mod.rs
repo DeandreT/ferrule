@@ -1,8 +1,12 @@
 //! Canonical, package-confined resource resolution for `.mfd` imports.
 
+mod manifest;
+
 use std::path::{Component, Path, PathBuf};
 
 use crate::MfdError;
+
+pub use manifest::PackageManifest;
 
 /// Filesystem boundary shared by every resource referenced from one mapping.
 #[derive(Debug)]
@@ -79,6 +83,19 @@ impl ResourceResolver {
         Ok(self)
     }
 
+    pub(crate) fn with_package_edi_catalog_roots(
+        mut self,
+        roots: &[PathBuf],
+    ) -> Result<Self, MfdError> {
+        for root in roots {
+            let root = self.canonical_package_catalog_root(root, "EDI")?;
+            if !self.edi_catalog_roots.contains(&root) {
+                self.edi_catalog_roots.push(root);
+            }
+        }
+        Ok(self)
+    }
+
     pub(crate) fn mapping_path(&self) -> &Path {
         &self.mapping_path
     }
@@ -113,6 +130,42 @@ impl ResourceResolver {
             }
         }
         Ok(self)
+    }
+
+    pub(crate) fn with_package_json_schema_catalog_roots(
+        mut self,
+        roots: &[PathBuf],
+    ) -> Result<Self, MfdError> {
+        for root in roots {
+            let root = self.canonical_package_catalog_root(root, "JSON Schema")?;
+            if !self.json_schema_catalog_roots.contains(&root) {
+                self.json_schema_catalog_roots.push(root);
+            }
+        }
+        Ok(self)
+    }
+
+    fn canonical_package_catalog_root(&self, root: &Path, kind: &str) -> Result<PathBuf, MfdError> {
+        let canonical = std::fs::canonicalize(root).map_err(|error| {
+            MfdError::Resource(format!(
+                "could not canonicalize package manifest {kind} catalog root `{}` ({error})",
+                root.display()
+            ))
+        })?;
+        if !canonical.starts_with(&self.package_root) {
+            return Err(MfdError::Resource(format!(
+                "package manifest {kind} catalog root `{}` resolves outside package root `{}`",
+                root.display(),
+                self.package_root.display()
+            )));
+        }
+        if !canonical.is_dir() {
+            return Err(MfdError::Resource(format!(
+                "package manifest {kind} catalog root `{}` is not a directory",
+                canonical.display()
+            )));
+        }
+        Ok(canonical)
     }
 
     /// Resolves a JSON Schema from the package first, then from explicitly
@@ -227,7 +280,7 @@ impl ResourceResolver {
         let portable = declared.replace('\\', "/");
         if looks_like_windows_absolute(&portable) {
             return Err(format!(
-                "{description} `{declared}` uses an absolute Windows path"
+                "{description} `{declared}` uses a Windows drive or UNC path"
             ));
         }
         let declared_path = Path::new(&portable);
@@ -262,7 +315,7 @@ impl ResourceResolver {
 
 fn looks_like_windows_absolute(path: &str) -> bool {
     let bytes = path.as_bytes();
-    (bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/')
+    (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
         || path.starts_with("//")
 }
 
@@ -424,6 +477,11 @@ mod tests {
         assert!(
             resolver
                 .resolve_file(r"C:\Resources\schema.json", "JSON Schema")
+                .is_err()
+        );
+        assert!(
+            resolver
+                .resolve_file("C:schema.json", "JSON Schema")
                 .is_err()
         );
         assert!(ResourceResolver::new(&escaped, Some(&package.0)).is_err());

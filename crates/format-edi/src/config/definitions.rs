@@ -183,10 +183,7 @@ pub(super) fn load_definitions(
     files: &mut Files,
     definitions: &mut Definitions,
 ) -> Result<(), ConfigError> {
-    let canonical = std::fs::canonicalize(path).map_err(|source| ConfigError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
+    let canonical = files.confined_file(path)?;
     if files.contains(&canonical) {
         return Ok(());
     }
@@ -246,7 +243,7 @@ pub(super) fn load_definitions(
         .map(str::to_string)
         .collect::<Vec<_>>();
     for include in includes {
-        let include_path = resolve_sibling(&canonical, &include)?;
+        let include_path = resolve_sibling(&canonical, &include, files.root())?;
         load_definitions(&include_path, files, definitions)?;
     }
     Ok(())

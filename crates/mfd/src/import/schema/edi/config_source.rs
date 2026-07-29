@@ -13,12 +13,17 @@ const MAX_EXTRACTED_BYTES: u64 = 32 * 1024 * 1024;
 
 pub(super) struct ResolvedConfig {
     path: PathBuf,
+    authorization_root: PathBuf,
     _archive: Option<ExtractedArchive>,
 }
 
 impl ResolvedConfig {
     pub(super) fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub(super) fn authorization_root(&self) -> &Path {
+        &self.authorization_root
     }
 }
 
@@ -58,8 +63,13 @@ pub(super) fn resolve(
     let direct = resolve_matches(&roots, &relative);
     match direct.as_slice() {
         [path] => {
+            let authorization_root = path
+                .parent()
+                .ok_or_else(|| "resolved configuration has no parent directory".to_string())?
+                .to_path_buf();
             return Ok(ResolvedConfig {
                 path: path.clone(),
+                authorization_root,
                 _archive: None,
             });
         }
@@ -86,8 +96,10 @@ pub(super) fn resolve(
             let (archive, path) = extracted.pop().ok_or_else(|| {
                 "internal packaged EDI configuration resolution error".to_string()
             })?;
+            let authorization_root = archive.root.clone();
             Ok(ResolvedConfig {
                 path,
+                authorization_root,
                 _archive: Some(archive),
             })
         }
@@ -115,6 +127,7 @@ fn resolve_in_catalogs(
             let canonical = confined_catalog_file(root, &candidate, declared)?;
             return Ok(ResolvedConfig {
                 path: canonical,
+                authorization_root: root.clone(),
                 _archive: None,
             });
         }
@@ -182,8 +195,10 @@ fn resolve_catalog_archive(
             let (archive, path) = extracted
                 .pop()
                 .ok_or_else(|| "internal EDI catalog package resolution error".to_string())?;
+            let authorization_root = archive.root.clone();
             Ok(Some(ResolvedConfig {
                 path,
+                authorization_root,
                 _archive: Some(archive),
             }))
         }
@@ -208,6 +223,7 @@ fn resolve_in_package(
         Ok(path) => {
             return Ok(ResolvedConfig {
                 path,
+                authorization_root: resources.package_root().to_path_buf(),
                 _archive: None,
             });
         }
@@ -219,6 +235,14 @@ fn resolve_in_package(
     let mut extracted = Vec::new();
     let mut errors = Vec::new();
     for (archive, entries) in packages {
+        if !archive.starts_with(resources.package_root()) {
+            errors.push(format!(
+                "{}: package resolves outside trusted package root `{}`",
+                archive.display(),
+                resources.package_root().display()
+            ));
+            continue;
+        }
         match extract_matching_archive(&archive, &entries) {
             Ok(Some((archive, path))) => extracted.push((archive, path)),
             Ok(None) => {}
@@ -230,8 +254,10 @@ fn resolve_in_package(
             let (archive, path) = extracted
                 .pop()
                 .ok_or_else(|| "internal EDI package resolution error".to_string())?;
+            let authorization_root = archive.root.clone();
             Ok(ResolvedConfig {
                 path,
+                authorization_root,
                 _archive: Some(archive),
             })
         }

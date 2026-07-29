@@ -31,6 +31,7 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 mod code_generation;
 mod output_documents;
 mod payload;
+mod project_paths;
 mod stdio;
 mod trace_json;
 
@@ -47,6 +48,7 @@ pub use payload::{
     PayloadDocument, PayloadRunOptions, PayloadRunOutcome, run_project_payloads,
     run_project_value_payloads,
 };
+pub use project_paths::rebase as rebase_project_paths;
 pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;
 
@@ -716,17 +718,24 @@ pub fn import_mfd(
     mfd_path: &Path,
     out_path: &Path,
     package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
     edi_catalog_roots: &[PathBuf],
     json_schema_catalog_roots: &[PathBuf],
 ) -> anyhow::Result<Vec<String>> {
     let mut options = mfd::ImportOptions::default()
         .with_edi_catalog_roots(edi_catalog_roots.iter().cloned())
         .with_json_schema_catalog_roots(json_schema_catalog_roots.iter().cloned());
-    if let Some(root) = package_root {
+    if package_root.is_some() && package_manifest.is_some() {
+        anyhow::bail!("package root and package manifest are mutually exclusive");
+    }
+    if let Some(manifest) = package_manifest {
+        options = options.with_package_manifest(manifest)?;
+    } else if let Some(root) = package_root {
         options = options.with_package_root(root);
     }
-    let imported = mfd::import_with_options(mfd_path, &options)
+    let mut imported = mfd::import_with_options(mfd_path, &options)
         .with_context(|| format!("importing {}", mfd_path.display()))?;
+    rebase_project_paths(&mut imported.project, &imported.mapping_path, out_path)?;
     let json = serde_json::to_string_pretty(&imported.project)?;
     std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
     Ok(imported.warnings)

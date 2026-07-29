@@ -43,13 +43,39 @@ pub fn import_config(
     envelope_path: &Path,
     selected_messages: &[String],
 ) -> Result<CompiledSwift, SwiftConfigError> {
+    let authorization_root = envelope_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    import_config_confined(envelope_path, authorization_root, selected_messages)
+}
+
+/// Imports selected SWIFT configurations while confining the envelope, common
+/// definitions, and every selected message to `authorization_root`.
+pub fn import_config_confined(
+    envelope_path: &Path,
+    authorization_root: &Path,
+    selected_messages: &[String],
+) -> Result<CompiledSwift, SwiftConfigError> {
     if selected_messages.is_empty() {
         return Err(SwiftConfigError::Invalid(
             "envelope has no selected message types".into(),
         ));
     }
-    let envelope_text = read_text(envelope_path)?;
-    let envelope = parse_xml(envelope_path, &envelope_text)?;
+    let authorization_root =
+        std::fs::canonicalize(authorization_root).map_err(|source| SwiftConfigError::Io {
+            path: authorization_root.to_path_buf(),
+            source,
+        })?;
+    if !authorization_root.is_dir() {
+        return Err(SwiftConfigError::Invalid(format!(
+            "configuration authorization root `{}` is not a directory",
+            authorization_root.display()
+        )));
+    }
+    let envelope_path = confined_file(&authorization_root, envelope_path)?;
+    let envelope_text = read_text(&envelope_path, &authorization_root)?;
+    let envelope = parse_xml(&envelope_path, &envelope_text)?;
     if !envelope
         .root_element()
         .descendants()
@@ -65,8 +91,8 @@ pub fn import_config(
         .find(|node| node.has_tag_name("Include") && node.attribute("href").is_some())
         .and_then(|node| node.attribute("href"))
         .ok_or_else(|| SwiftConfigError::Invalid("envelope has no common Include".into()))?;
-    let common_path = resolve_sibling(envelope_path, common_href)?;
-    let common_text = read_text(&common_path)?;
+    let common_path = resolve_sibling(&envelope_path, common_href, &authorization_root)?;
+    let common_text = read_text(&common_path, &authorization_root)?;
     let common_doc = parse_xml(&common_path, &common_text)?;
     let mut raw_nodes = 0usize;
     let common = definitions(common_doc.root_element(), &mut raw_nodes)?;
@@ -78,8 +104,8 @@ pub fn import_config(
         .checked_add(common_text.len())
         .ok_or(SwiftConfigError::Limit("total file size"))?;
     for selected in selected_messages {
-        let path = resolve_message(envelope_path, selected)?;
-        let text = read_text(&path)?;
+        let path = resolve_message(&envelope_path, selected, &authorization_root)?;
+        let text = read_text(&path, &authorization_root)?;
         total_bytes = total_bytes
             .checked_add(text.len())
             .ok_or(SwiftConfigError::Limit("total file size"))?;
@@ -596,18 +622,67 @@ fn decode_literal(value: &str) -> Result<String, SwiftConfigError> {
     Ok(output)
 }
 
-fn resolve_sibling(base: &Path, relative: &str) -> Result<PathBuf, SwiftConfigError> {
+fn resolve_sibling(
+    base: &Path,
+    relative: &str,
+    authorization_root: &Path,
+) -> Result<PathBuf, SwiftConfigError> {
+    if relative.is_empty() || relative.contains('\0') {
+        return Err(SwiftConfigError::Invalid(
+            "include path is empty or contains NUL".to_string(),
+        ));
+    }
+    let portable = relative.replace('\\', "/");
+    let relative = Path::new(&portable);
+    if relative.is_absolute() || looks_like_windows_absolute(&portable) {
+        return Err(SwiftConfigError::Invalid(format!(
+            "include path `{portable}` is not a bounded relative path"
+        )));
+    }
     let path = base
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(relative);
-    path.is_file().then_some(path).ok_or_else(|| {
-        SwiftConfigError::Invalid(format!("configuration `{relative}` was not found"))
+    if !path.exists() {
+        return Err(SwiftConfigError::Invalid(format!(
+            "configuration `{portable}` was not found"
+        )));
+    }
+    confined_file(authorization_root, &path)
+}
+
+fn looks_like_windows_absolute(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
+        || path.starts_with("//")
+}
+
+fn confined_file(root: &Path, path: &Path) -> Result<PathBuf, SwiftConfigError> {
+    let canonical = std::fs::canonicalize(path).map_err(|source| SwiftConfigError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if !canonical.starts_with(root) {
+        return Err(SwiftConfigError::Invalid(format!(
+            "configuration `{}` resolves outside authorization root `{}`",
+            path.display(),
+            root.display()
+        )));
+    }
+    canonical.is_file().then_some(canonical).ok_or_else(|| {
+        SwiftConfigError::Invalid(format!(
+            "configuration `{}` does not resolve to a file",
+            path.display()
+        ))
     })
 }
 
-fn resolve_message(base: &Path, message_type: &str) -> Result<PathBuf, SwiftConfigError> {
-    let direct = resolve_sibling(base, &format!("{message_type}.Config"));
+fn resolve_message(
+    base: &Path,
+    message_type: &str,
+    authorization_root: &Path,
+) -> Result<PathBuf, SwiftConfigError> {
+    let direct = resolve_sibling(base, &format!("{message_type}.Config"), authorization_root);
     if direct.is_ok() {
         return direct;
     }
@@ -633,7 +708,8 @@ fn resolve_message(base: &Path, message_type: &str) -> Result<PathBuf, SwiftConf
         if path.extension().and_then(|value| value.to_str()) != Some("Config") {
             continue;
         }
-        let text = read_text(&path)?;
+        let path = confined_file(authorization_root, &path)?;
+        let text = read_text(&path, authorization_root)?;
         total_bytes = total_bytes
             .checked_add(text.len())
             .ok_or(SwiftConfigError::Limit("configuration scan size"))?;
@@ -660,18 +736,16 @@ fn resolve_message(base: &Path, message_type: &str) -> Result<PathBuf, SwiftConf
     })
 }
 
-fn read_text(path: &Path) -> Result<String, SwiftConfigError> {
-    let file = std::fs::File::open(path).map_err(|source| SwiftConfigError::Io {
-        path: path.to_path_buf(),
+fn read_text(path: &Path, authorization_root: &Path) -> Result<String, SwiftConfigError> {
+    let path = confined_file(authorization_root, path)?;
+    let file = std::fs::File::open(&path).map_err(|source| SwiftConfigError::Io {
+        path: path.clone(),
         source,
     })?;
     let mut text = String::new();
     file.take((MAX_TOTAL_BYTES + 1) as u64)
         .read_to_string(&mut text)
-        .map_err(|source| SwiftConfigError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
+        .map_err(|source| SwiftConfigError::Io { path, source })?;
     if text.len() > MAX_TOTAL_BYTES {
         return Err(SwiftConfigError::Limit("file size"));
     }
@@ -740,6 +814,90 @@ mod tests {
         let layout = compiled.layout.message("MT950").unwrap();
         assert_eq!(layout.fields().len(), 2);
         assert!(layout.fields()[1].repeating());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn confined_import_accepts_parent_common_include_inside_root() {
+        let directory = std::env::temp_dir().join(format!(
+            "ferrule_swift_config_parent_{}_{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        let configs = directory.join("configs");
+        let common = directory.join("common");
+        std::fs::create_dir_all(&configs).unwrap();
+        std::fs::create_dir_all(&common).unwrap();
+        std::fs::write(
+            configs.join("Envelope.Config"),
+            r#"<Config><Format standard="SWIFTMT"/><Include href="../common/Common.Config"/><GenericRoot ref="Envelope"/></Config>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            common.join("Common.Config"),
+            r#"<Config><GenericItems><Choice name="Mark" type="string"><Constant value="C"/></Choice></GenericItems></Config>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            configs.join("MT950.Config"),
+            r#"<Config><Format standard="SWIFTMT"/><GenericItems>
+              <SwiftField name="Reference" tag="20" format="16x"/>
+              <Sequence name="MT950"><SwiftField ref="Reference" nodeName="20"/></Sequence>
+            </GenericItems><Message><MessageType>MT950</MessageType>
+              <GenericRoot ref="MT950" nodeName="MT950"/>
+            </Message></Config>"#,
+        )
+        .unwrap();
+
+        let compiled = import_config_confined(
+            &configs.join("Envelope.Config"),
+            &directory,
+            &["MT950".into()],
+        )
+        .unwrap();
+
+        assert!(compiled.schema.child("Message").is_some());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confined_import_rejects_common_configuration_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let directory = std::env::temp_dir().join(format!(
+            "ferrule_swift_config_escape_{}_{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        let package = directory.join("package");
+        std::fs::create_dir_all(&package).unwrap();
+        std::fs::write(
+            package.join("Envelope.Config"),
+            r#"<Config><Format standard="SWIFTMT"/><Include href="Common.Config"/><GenericRoot ref="Envelope"/></Config>"#,
+        )
+        .unwrap();
+        let outside = directory.join("outside.Config");
+        std::fs::write(
+            &outside,
+            r#"<Config><GenericItems><Choice name="Mark" type="string"><Constant value="C"/></Choice></GenericItems></Config>"#,
+        )
+        .unwrap();
+        symlink(&outside, package.join("Common.Config")).unwrap();
+
+        let error = import_config_confined(
+            &package.join("Envelope.Config"),
+            &package,
+            &["MT950".into()],
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error.to_string().contains("outside authorization root"),
+            "{error}"
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 }

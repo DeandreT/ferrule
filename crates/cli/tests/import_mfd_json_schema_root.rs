@@ -13,11 +13,88 @@ fn import_mfd_help_lists_repeatable_json_schema_roots() -> Result<(), Box<dyn Er
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
+    assert!(stdout.contains("--package-manifest <FILE>"), "{stdout}");
     assert!(stdout.contains("--json-schema-root <DIR>"), "{stdout}");
     assert!(
         stdout.contains("Repeat to search multiple catalogs"),
         "{stdout}"
     );
+    Ok(())
+}
+
+#[test]
+fn package_manifest_resolves_json_schema_and_rebases_instance_paths() -> Result<(), Box<dyn Error>>
+{
+    let directory = TempDir::new()?;
+    let maps = directory.path().join("maps");
+    let catalog = directory.path().join("resources/json");
+    std::fs::create_dir_all(&maps)?;
+    write_schema(&catalog, "integer")?;
+    let mapping = maps.join("mapping.mfd");
+    write_mapping(&mapping)?;
+    let manifest = directory.path().join("ferrule-package.json");
+    std::fs::write(
+        &manifest,
+        r#"{"schemaVersion":1,"kind":"ferrule.mapping-package",
+            "catalogs":[{"kind":"json-schema","root":"resources/json"}]}"#,
+    )?;
+    let output = directory.path().join("projects/project.json");
+    std::fs::create_dir_all(output.parent().ok_or("project has no parent")?)?;
+
+    let result = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--mfd"])
+        .arg(&mapping)
+        .args(["--out"])
+        .arg(&output)
+        .args(["--package-manifest"])
+        .arg(&manifest)
+        .output()?;
+
+    assert_success(&result);
+    assert_source_type(&output, ScalarType::Int)?;
+    let project: mapping::Project = serde_json::from_slice(&std::fs::read(output)?)?;
+    assert_eq!(project.source_path.as_deref(), Some("../maps/input.json"));
+    assert_eq!(project.target_path.as_deref(), Some("../maps/output.xml"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_mfd_rebases_from_the_canonical_design_directory() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::symlink;
+
+    let directory = TempDir::new()?;
+    let package = directory.path().join("package");
+    let maps = package.join("maps");
+    let alias = directory.path().join("alias");
+    std::fs::create_dir_all(&maps)?;
+    std::fs::create_dir_all(&alias)?;
+    write_schema(&package, "integer")?;
+    let mapping = maps.join("mapping.mfd");
+    write_mapping(&mapping)?;
+    let linked_mapping = alias.join("mapping.mfd");
+    symlink(&mapping, &linked_mapping)?;
+    let manifest = package.join("ferrule-package.json");
+    std::fs::write(
+        &manifest,
+        r#"{"schemaVersion":1,"kind":"ferrule.mapping-package"}"#,
+    )?;
+    let output = package.join("projects/project.json");
+    std::fs::create_dir_all(output.parent().ok_or("project has no parent")?)?;
+
+    let result = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--mfd"])
+        .arg(&linked_mapping)
+        .args(["--out"])
+        .arg(&output)
+        .args(["--package-manifest"])
+        .arg(&manifest)
+        .output()?;
+
+    assert_success(&result);
+    let project: mapping::Project = serde_json::from_slice(&std::fs::read(output)?)?;
+    assert_eq!(project.source_path.as_deref(), Some("../maps/input.json"));
+    assert_eq!(project.target_path.as_deref(), Some("../maps/output.xml"));
     Ok(())
 }
 
