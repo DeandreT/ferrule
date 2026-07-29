@@ -250,6 +250,139 @@ fn user_functions_can_read_the_stable_runtime_clock() -> Result<(), EngineError>
 }
 
 #[test]
+fn user_functions_can_read_typed_host_runtime_parameters() -> Result<(), Box<dyn std::error::Error>>
+{
+    let function_id = FunctionId::new(1);
+    let user_functions = BTreeMap::from([(
+        function_id,
+        function(
+            "control_number",
+            Vec::new(),
+            ScalarType::Int,
+            [(
+                7,
+                Node::RuntimeParameter {
+                    name: "control_number".into(),
+                    ty: ScalarType::Int,
+                },
+            )],
+            7,
+        ),
+    )]);
+    let graph = Graph {
+        nodes: [(
+            0,
+            Node::UserFunctionCall {
+                function: function_id,
+                args: Vec::new(),
+            },
+        )]
+        .into_iter()
+        .collect(),
+    };
+    let project = project(graph, user_functions, 0);
+    assert!(validate(&project).is_empty());
+
+    let mut parameters = crate::RuntimeParameters::new();
+    parameters.insert("control_number", Value::String("42".into()))?;
+    let execution =
+        ExecutionContext::new(Path::new("/maps/test.json")).with_parameters(&parameters);
+    let output = run_with_context(&project, &source("unused"), &execution)?;
+    assert_eq!(output_value(&output), Some(&Value::Int(42)));
+
+    let empty = crate::RuntimeParameters::new();
+    let execution = ExecutionContext::new(Path::new("/maps/test.json")).with_parameters(&empty);
+    assert_eq!(
+        run_with_context(&project, &source("unused"), &execution),
+        Err(EngineError::MissingRuntimeParameter {
+            node: 7,
+            name: "control_number".into(),
+        })
+    );
+
+    let mut wrong = crate::RuntimeParameters::new();
+    wrong.insert("control_number", Value::Bool(false))?;
+    let execution = ExecutionContext::new(Path::new("/maps/test.json")).with_parameters(&wrong);
+    assert_eq!(
+        run_with_context(&project, &source("unused"), &execution),
+        Err(EngineError::RuntimeParameterType {
+            node: 7,
+            name: "control_number".into(),
+            expected: ScalarType::Int,
+            found: "bool",
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn validates_runtime_parameter_names_inside_user_functions() {
+    let function_id = FunctionId::new(1);
+    let project = project(
+        Graph {
+            nodes: [(
+                0,
+                Node::UserFunctionCall {
+                    function: function_id,
+                    args: Vec::new(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        },
+        BTreeMap::from([(
+            function_id,
+            function(
+                "invalid_parameter",
+                Vec::new(),
+                ScalarType::String,
+                [
+                    (
+                        0,
+                        Node::RuntimeParameter {
+                            name: String::new(),
+                            ty: ScalarType::String,
+                        },
+                    ),
+                    (
+                        1,
+                        Node::RuntimeParameter {
+                            name: "bad\0name".into(),
+                            ty: ScalarType::String,
+                        },
+                    ),
+                    (
+                        2,
+                        Node::RuntimeParameter {
+                            name: "x".repeat(mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES + 1),
+                            ty: ScalarType::String,
+                        },
+                    ),
+                    (
+                        3,
+                        Node::Call {
+                            function: "concat".into(),
+                            args: vec![0, 1, 2],
+                        },
+                    ),
+                ],
+                3,
+            ),
+        )]),
+        0,
+    );
+
+    let messages = validate(&project)
+        .into_iter()
+        .map(|issue| issue.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(messages.contains("body node 0: runtime parameter name cannot be empty"));
+    assert!(messages.contains("body node 1: runtime parameter name cannot contain NUL"));
+    assert!(messages.contains("body node 2: runtime parameter name exceeds 256 UTF-8 bytes"));
+}
+
+#[test]
 fn evaluates_only_the_selected_function_branch() {
     let choose = FunctionId::new(1);
     let mut user_functions = BTreeMap::new();

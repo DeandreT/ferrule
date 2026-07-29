@@ -77,6 +77,32 @@ pub(super) fn validate_builtin_call(
     ));
 }
 
+pub(super) fn validate_runtime_parameter_name(
+    location: &str,
+    name: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if name.is_empty() {
+        issues.push(ValidationIssue::new(
+            location,
+            "runtime parameter name cannot be empty",
+        ));
+    } else if name.contains('\0') {
+        issues.push(ValidationIssue::new(
+            location,
+            "runtime parameter name cannot contain NUL",
+        ));
+    } else if name.len() > mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "runtime parameter name exceeds {} UTF-8 bytes",
+                mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES
+            ),
+        ));
+    }
+}
+
 /// Checks graph integrity, source/target paths, scope references, builtin
 /// names and arities, and cycles without reading input data or evaluating
 /// expressions.
