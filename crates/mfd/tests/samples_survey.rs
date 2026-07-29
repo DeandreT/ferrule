@@ -10,11 +10,14 @@ use std::error::Error;
 use std::io;
 use std::path::{Path, PathBuf};
 
+#[path = "support/sample_discovery.rs"]
+mod sample_discovery;
+
+use sample_discovery::discover_sample_paths;
+
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const JSON_REPORT_ENV: &str = "FERRULE_SURVEY_JSON";
 const REPORT_SCHEMA_VERSION: u32 = 1;
-const MAX_SAMPLE_DEPTH: usize = 32;
-const MAX_SAMPLE_FILES: usize = 10_000;
 
 /// Collapses a diagnostic to a stable category so the histogram groups
 /// per-component messages together.
@@ -40,6 +43,7 @@ fn diagnostic_category(diagnostic: &str) -> String {
 enum StageStatus {
     Passed,
     Failed,
+    DependencyBlocked,
     Skipped,
 }
 
@@ -48,6 +52,7 @@ impl StageStatus {
         match self {
             Self::Passed => "passed",
             Self::Failed => "failed",
+            Self::DependencyBlocked => "dependency_blocked",
             Self::Skipped => "skipped",
         }
     }
@@ -70,6 +75,13 @@ impl StageOutcome {
     fn failed(diagnostics: Vec<String>) -> Self {
         Self {
             status: StageStatus::Failed,
+            diagnostics,
+        }
+    }
+
+    fn dependency_blocked(diagnostics: Vec<String>) -> Self {
+        Self {
+            status: StageStatus::DependencyBlocked,
             diagnostics,
         }
     }
@@ -100,6 +112,7 @@ impl StageOutcome {
 #[derive(Debug)]
 struct SampleOutcome {
     file: String,
+    runtime_dependencies: Vec<String>,
     import: StageOutcome,
     validation: StageOutcome,
     export: StageOutcome,
@@ -114,6 +127,7 @@ impl SampleOutcome {
         let blocked = StageOutcome::skipped("an earlier compatibility stage did not complete");
         Self {
             file,
+            runtime_dependencies: Vec::new(),
             import: blocked.clone(),
             validation: blocked.clone(),
             export: blocked.clone(),
@@ -131,6 +145,7 @@ impl SampleOutcome {
     fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "file": self.file,
+            "runtime_dependencies": self.runtime_dependencies,
             "stages": {
                 "import": self.import.to_json(),
                 "validation": self.validation.to_json(),
@@ -150,11 +165,13 @@ struct SurveySummary {
     imported: usize,
     import_clean: usize,
     valid: usize,
+    dependency_blocked: usize,
     exported: usize,
     export_clean: usize,
     reimported: usize,
     reimport_clean: usize,
     roundtrip_valid: usize,
+    roundtrip_dependency_blocked: usize,
     execution_attempted: usize,
     execution_passed: usize,
     reference_matched: usize,
@@ -167,13 +184,22 @@ impl SurveySummary {
             imported: count(outcomes, |outcome| outcome.import.is_passed()),
             import_clean: count(outcomes, |outcome| outcome.import.is_clean()),
             valid: count(outcomes, |outcome| outcome.validation.is_passed()),
+            dependency_blocked: count(outcomes, |outcome| {
+                outcome.validation.status == StageStatus::DependencyBlocked
+            }),
             exported: count(outcomes, |outcome| outcome.export.is_passed()),
             export_clean: count(outcomes, |outcome| outcome.export.is_clean()),
             reimported: count(outcomes, |outcome| outcome.reimport.is_passed()),
             reimport_clean: count(outcomes, |outcome| outcome.reimport.is_clean()),
             roundtrip_valid: count(outcomes, |outcome| outcome.roundtrip_validation.is_passed()),
+            roundtrip_dependency_blocked: count(outcomes, |outcome| {
+                outcome.roundtrip_validation.status == StageStatus::DependencyBlocked
+            }),
             execution_attempted: count(outcomes, |outcome| {
-                outcome.execution.status != StageStatus::Skipped
+                matches!(
+                    outcome.execution.status,
+                    StageStatus::Passed | StageStatus::Failed
+                )
             }),
             execution_passed: count(outcomes, |outcome| outcome.execution.is_passed()),
             reference_matched: count(outcomes, |outcome| outcome.reference_match.is_passed()),
@@ -186,11 +212,13 @@ impl SurveySummary {
             "imported": self.imported,
             "import_clean": self.import_clean,
             "valid": self.valid,
+            "dependency_blocked": self.dependency_blocked,
             "exported": self.exported,
             "export_clean": self.export_clean,
             "reimported": self.reimported,
             "reimport_clean": self.reimport_clean,
             "roundtrip_valid": self.roundtrip_valid,
+            "roundtrip_dependency_blocked": self.roundtrip_dependency_blocked,
             "execution_attempted": self.execution_attempted,
             "execution_passed": self.execution_passed,
             "reference_matched": self.reference_matched,
@@ -247,50 +275,6 @@ fn validation_outcome(project: &mapping::Project) -> StageOutcome {
     }
 }
 
-fn discover_sample_paths(samples_dir: &Path) -> io::Result<Vec<PathBuf>> {
-    let mut directories = vec![(samples_dir.to_path_buf(), 0usize)];
-    let mut sample_paths = Vec::new();
-    while let Some((directory, depth)) = directories.pop() {
-        let mut entries = std::fs::read_dir(&directory)?.collect::<Result<Vec<_>, _>>()?;
-        entries.sort_by_key(std::fs::DirEntry::file_name);
-        for entry in entries {
-            let file_type = entry.file_type()?;
-            if file_type.is_symlink() {
-                continue;
-            }
-            let path = entry.path();
-            if file_type.is_dir() {
-                if depth >= MAX_SAMPLE_DEPTH {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!(
-                            "sample directory nesting exceeds {MAX_SAMPLE_DEPTH} levels at {}",
-                            path.display()
-                        ),
-                    ));
-                }
-                directories.push((path, depth + 1));
-                continue;
-            }
-            if file_type.is_file()
-                && path
-                    .extension()
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("mfd"))
-            {
-                sample_paths.push(path);
-                if sample_paths.len() > MAX_SAMPLE_FILES {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("sample corpus exceeds {MAX_SAMPLE_FILES} mapping files"),
-                    ));
-                }
-            }
-        }
-    }
-    sample_paths.sort();
-    Ok(sample_paths)
-}
-
 fn sample_name(samples_dir: &Path, path: &Path) -> String {
     path.strip_prefix(samples_dir)
         .unwrap_or(path)
@@ -310,7 +294,17 @@ fn survey_file(samples_dir: &Path, path: &Path, export_path: &Path) -> SampleOut
         }
     };
     outcome.import = StageOutcome::passed(imported.warnings);
-    outcome.validation = validation_outcome(&imported.project);
+    outcome.runtime_dependencies = imported
+        .project
+        .runtime_dependencies()
+        .into_iter()
+        .map(|dependency| dependency.to_string())
+        .collect();
+    outcome.validation = if outcome.runtime_dependencies.is_empty() {
+        validation_outcome(&imported.project)
+    } else {
+        StageOutcome::dependency_blocked(outcome.runtime_dependencies.clone())
+    };
 
     let export_warnings = match mfd::export(&imported.project, export_path) {
         Ok(warnings) => warnings,
@@ -329,7 +323,17 @@ fn survey_file(samples_dir: &Path, path: &Path, export_path: &Path) -> SampleOut
         }
     };
     outcome.reimport = StageOutcome::passed(roundtripped.warnings);
-    outcome.roundtrip_validation = validation_outcome(&roundtripped.project);
+    let roundtrip_dependencies = roundtripped
+        .project
+        .runtime_dependencies()
+        .into_iter()
+        .map(|dependency| dependency.to_string())
+        .collect::<Vec<_>>();
+    outcome.roundtrip_validation = if roundtrip_dependencies.is_empty() {
+        validation_outcome(&roundtripped.project)
+    } else {
+        StageOutcome::dependency_blocked(roundtrip_dependencies)
+    };
     outcome
 }
 
@@ -436,34 +440,18 @@ fn summary_distinguishes_success_from_clean_success() {
             imported: 2,
             import_clean: 1,
             valid: 2,
+            dependency_blocked: 0,
             exported: 2,
             export_clean: 1,
             reimported: 1,
             reimport_clean: 1,
             roundtrip_valid: 1,
+            roundtrip_dependency_blocked: 0,
             execution_attempted: 0,
             execution_passed: 0,
             reference_matched: 0,
         }
     );
-}
-
-#[test]
-fn sample_discovery_recurses_and_preserves_relative_identity() -> Result<(), Box<dyn Error>> {
-    let workspace = SurveyWorkspace::new()?;
-    let nested = workspace.0.join("tutorial/part-1");
-    std::fs::create_dir_all(&nested)?;
-    std::fs::write(workspace.0.join("root.mfd"), "")?;
-    std::fs::write(nested.join("root.mfd"), "")?;
-    std::fs::write(nested.join("ignored.txt"), "")?;
-
-    let paths = discover_sample_paths(&workspace.0)?;
-    let names = paths
-        .iter()
-        .map(|path| sample_name(&workspace.0, path))
-        .collect::<Vec<_>>();
-    assert_eq!(names, ["root.mfd", "tutorial/part-1/root.mfd"]);
-    Ok(())
 }
 
 #[test]
@@ -494,6 +482,7 @@ fn survey_samples() -> Result<(), Box<dyn Error>> {
         summary.imported, summary.import_clean
     );
     println!("engine-valid: {}", summary.valid);
+    println!("runtime dependency-blocked: {}", summary.dependency_blocked);
     println!(
         "exported: {} ({} with zero warnings)",
         summary.exported, summary.export_clean
@@ -503,6 +492,10 @@ fn survey_samples() -> Result<(), Box<dyn Error>> {
         summary.reimported, summary.reimport_clean
     );
     println!("post-export engine-valid: {}", summary.roundtrip_valid);
+    println!(
+        "post-export runtime dependency-blocked: {}",
+        summary.roundtrip_dependency_blocked
+    );
     println!("execution/reference comparison: not measured (read-only survey)");
 
     print_categories(
@@ -515,6 +508,14 @@ fn survey_samples() -> Result<(), Box<dyn Error>> {
             &outcomes,
             |outcome| &outcome.validation,
             StageStatus::Failed,
+        ),
+    );
+    print_categories(
+        "runtime dependencies",
+        stage_diagnostics(
+            &outcomes,
+            |outcome| &outcome.validation,
+            StageStatus::DependencyBlocked,
         ),
     );
     print_categories(

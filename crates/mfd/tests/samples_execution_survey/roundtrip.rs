@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use super::output_support::compare_execution_outputs;
 use super::{
     FIXED_CURRENT_DATETIME, SAMPLES_DIR, StageOutcome, Status, SurveyDynamicSourceLoader,
-    SurveyWorkspace, load_sources,
+    SurveyWorkspace, discover_sample_paths, load_sources,
 };
 
 const JSON_REPORT_ENV: &str = "FERRULE_ROUNDTRIP_EXECUTION_SURVEY_JSON";
@@ -22,6 +22,7 @@ enum SemanticExecution {
 #[derive(Debug)]
 struct RoundtripOutcome {
     file: String,
+    runtime_dependencies: Vec<String>,
     import: StageOutcome,
     validation: StageOutcome,
     source_load: StageOutcome,
@@ -34,14 +35,16 @@ struct RoundtripOutcome {
 }
 
 impl RoundtripOutcome {
-    fn pending(path: &Path) -> Self {
+    fn pending(path: &Path, samples_root: &Path) -> Self {
         let file = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string());
+            .strip_prefix(samples_root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
         let blocked = StageOutcome::skipped("an earlier round-trip stage did not complete");
         Self {
             file,
+            runtime_dependencies: Vec::new(),
             import: blocked.clone(),
             validation: blocked.clone(),
             source_load: blocked.clone(),
@@ -57,6 +60,7 @@ impl RoundtripOutcome {
     fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "file": self.file,
+            "runtime_dependencies": self.runtime_dependencies,
             "stages": {
                 "import": self.import.to_json(),
                 "validation": self.validation.to_json(),
@@ -75,6 +79,7 @@ impl RoundtripOutcome {
 #[derive(Debug, PartialEq, Eq)]
 struct RoundtripSummary {
     total: usize,
+    dependency_blocked: usize,
     safe_inputs: usize,
     original_execution_passed: usize,
     exported: usize,
@@ -92,6 +97,9 @@ impl RoundtripSummary {
         };
         Self {
             total: outcomes.len(),
+            dependency_blocked: count(|outcome| {
+                outcome.validation.status == Status::DependencyBlocked
+            }),
             safe_inputs: count(|outcome| outcome.source_load.status == Status::Passed),
             original_execution_passed: count(|outcome| {
                 outcome.original_execution.status == Status::Passed
@@ -110,6 +118,7 @@ impl RoundtripSummary {
     fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "total": self.total,
+            "dependency_blocked": self.dependency_blocked,
             "safe_inputs": self.safe_inputs,
             "original_execution_passed": self.original_execution_passed,
             "exported": self.exported,
@@ -203,8 +212,9 @@ fn survey_roundtrip_file(
     samples_root: &Path,
     workspace: &SurveyWorkspace,
 ) -> RoundtripOutcome {
-    let mut outcome = RoundtripOutcome::pending(mfd_path);
-    let imported = match mfd::import(mfd_path) {
+    let mut outcome = RoundtripOutcome::pending(mfd_path, samples_root);
+    let options = mfd::ImportOptions::default().with_package_root(samples_root);
+    let imported = match mfd::import_with_options(mfd_path, &options) {
         Ok(imported) => imported,
         Err(error) => {
             outcome.import = StageOutcome::failed(error.to_string());
@@ -212,6 +222,18 @@ fn survey_roundtrip_file(
         }
     };
     outcome.import = passed_with_warnings(imported.warnings);
+    outcome.runtime_dependencies = imported
+        .project
+        .runtime_dependencies()
+        .into_iter()
+        .map(|dependency| dependency.to_string())
+        .collect();
+    if !outcome.runtime_dependencies.is_empty() {
+        let message = outcome.runtime_dependencies.join(" | ");
+        outcome.validation = StageOutcome::dependency_blocked(message.clone());
+        outcome.original_execution = StageOutcome::dependency_blocked(message);
+        return outcome;
+    }
     outcome.validation = validation_outcome(&imported.project);
     if outcome.validation.status != Status::Passed {
         return outcome;
@@ -393,15 +415,7 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
         );
         return Ok(());
     }
-    let mut paths = std::fs::read_dir(&samples_root)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("mfd"))
-        })
-        .collect::<Vec<_>>();
-    paths.sort();
+    let paths = discover_sample_paths(&samples_root)?;
 
     let workspace = SurveyWorkspace::new()?;
     let outcomes = paths
@@ -418,6 +432,7 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
         "safe inputs/original executions: {}/{}",
         summary.original_execution_passed, summary.safe_inputs
     );
+    println!("runtime dependency-blocked: {}", summary.dependency_blocked);
     println!(
         "exported/re-imported/valid: {}/{}/{}",
         summary.exported, summary.reimported, summary.roundtrip_valid
