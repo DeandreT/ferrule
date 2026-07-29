@@ -179,7 +179,12 @@ property dependencies are enforced as well. Whenever a trigger property is
 present, every dependent property must be present. Explicit JSON null counts as
 presence on input; generated output is checked after absent Ferrule values are
 omitted. Nullable object null bypasses the relation, while nested, repeated,
-primary, and named documents all use the same rule. These APIs
+primary, and named documents all use the same rule. Embedded `propertyNames`
+constraints likewise inspect every actual key rather than schema placeholders.
+They retain exact false, finite allowed-name sets, Unicode-scalar length,
+portable pattern, and nonasserting format metadata; raw parsed input keys and
+normalized emitted keys are checked, including the empty string. Nullable
+object null bypasses these name assertions. These APIs
 intentionally use JSON regardless of
 stored project paths or format options; hosts needing X12, XML, database, or
 other physical formats should use the interpreter payload API or adapt a typed
@@ -327,9 +332,9 @@ Embedded JSON schemas are validated recursively before emission and again at
 the generated boundary. Rust and C# enforce scalar constants, exact scalar
 allowed-value sets, numeric ranges, exact decimal `multipleOf` constraints,
 array item-count intervals, object property-count intervals, object property
-dependencies, exact structural `uniqueItems`, Unicode-scalar string-length
-intervals, and portable JSON Schema `pattern` assertions on both input and
-normalized output.
+dependencies, property-name constraints, exact structural `uniqueItems`,
+Unicode-scalar string-length intervals, and portable JSON Schema `pattern`
+assertions on both input and normalized output.
 Pattern constraints retain conjunctions and exact disjunctions, nullable
 bypass, array items, typed dynamic properties, and scalar-union runtime tags. Both generated
 runtimes use Ferrule's bounded Thompson-NFA matcher rather than a host regex

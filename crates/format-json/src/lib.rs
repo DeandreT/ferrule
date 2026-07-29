@@ -62,6 +62,8 @@ pub enum JsonFormatError {
         trigger: String,
         property: String,
     },
+    #[error("object `{object}` contains property name `{property}` rejected by its schema")]
+    InvalidPropertyName { object: String, property: String },
     #[error("closed object `{object}` does not declare property `{property}`")]
     UndeclaredProperty { object: String, property: String },
     #[error("`{name}` requires constant {expected}, got {got}")]
@@ -132,6 +134,8 @@ pub enum JsonFormatError {
     InvalidPropertyCountMetadata { reason: String },
     #[error("JSON property-dependency metadata is invalid: {reason}")]
     InvalidPropertyDependenciesMetadata { reason: String },
+    #[error("JSON property-name metadata is invalid: {reason}")]
+    InvalidPropertyNameMetadata { reason: String },
     #[error("JSON pattern matching for `{name}` exceeds the bounded work limit")]
     PatternWorkLimit { name: String },
     #[error("JSON Lines cannot encode nullable array container `{name}`")]
@@ -312,6 +316,9 @@ fn read_node_with_patterns(
                 });
             };
             json_schema::property_counts::validate_len(schema, fields.len())?;
+            for property in fields.keys() {
+                patterns.validate_property_name(schema, property)?;
+            }
             validate_required_fields(schema, required, |name| fields.contains_key(name))?;
             json_schema::property_dependencies::validate_properties(
                 schema,
@@ -686,6 +693,9 @@ fn write_single_node_with_patterns(
                         write_node_with_patterns(child_schema, child_instance, patterns)?,
                     );
                 }
+                for property in out.keys() {
+                    patterns.validate_property_name(schema, property)?;
+                }
                 validate_required_fields(schema, required, |name| out.contains_key(name))?;
                 json_schema::property_dependencies::validate_properties(
                     schema,
@@ -708,6 +718,9 @@ fn write_single_node_with_patterns(
                         write_node_with_patterns(child_schema, child_instance, patterns)?,
                     );
                 }
+            }
+            for property in out.keys() {
+                patterns.validate_property_name(schema, property)?;
             }
             validate_required_fields(schema, required, |name| out.contains_key(name))?;
             json_schema::property_dependencies::validate_properties(

@@ -121,7 +121,7 @@
           embedded schema at 1 MiB. Invalid shapes, numeric conversions, scalar
           constants, bounded exact scalar allowed-value sets, exact numeric ranges and decimal <code>multipleOf</code>
           constraints, array item-count intervals, object property-count
-          intervals, object property dependencies, structural
+          intervals, object property dependencies, property-name constraints, structural
           <code>uniqueItems</code>, Unicode string-length
           intervals, bounded portable JSON Schema
           <code>pattern</code> assertions, exact open/closed object contracts,
@@ -155,6 +155,15 @@
           presence on input; output checks after absent Ferrule values are
           omitted. Nullable object null bypasses the relation, while nested,
           repeated, primary, and named documents all use the same rule.
+        </p>
+
+        <p>
+          Embedded <code>propertyNames</code> constraints inspect every actual
+          key instead of schema placeholders. Exact false, finite allowed-name
+          sets, Unicode-scalar length, portable patterns, and nonasserting
+          format annotations are retained. Raw parsed input keys and normalized
+          emitted keys are checked, including runtime-named and empty-string
+          properties. Nullable object null bypasses the assertions.
         </p>
 
         <p>

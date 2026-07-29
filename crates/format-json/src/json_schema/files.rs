@@ -10,6 +10,36 @@ const MAX_JSON_DEPTH: usize = 128;
 const MAX_REFERENCES: usize = 100_000;
 const EXTERNAL_DEFS_KEY: &str = "__ferrule_external_documents";
 const IGNORE_REF_SIBLINGS_KEY: &str = "__ferrule_ignore_ref_siblings";
+const VALIDATION_DIALECT_KEY: &str = "__ferrule_validation_dialect";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ValidationDialect {
+    Draft4,
+    Draft6Or7,
+    Modern,
+}
+
+impl ValidationDialect {
+    pub(super) fn supports_property_names(self) -> bool {
+        !matches!(self, Self::Draft4)
+    }
+
+    pub(super) fn supports_contains(self) -> bool {
+        !matches!(self, Self::Draft4)
+    }
+
+    pub(super) fn supports_contains_counts(self) -> bool {
+        matches!(self, Self::Modern)
+    }
+
+    fn marker(self) -> &'static str {
+        match self {
+            Self::Draft4 => "draft4",
+            Self::Draft6Or7 => "draft6_or_7",
+            Self::Modern => "modern",
+        }
+    }
+}
 
 struct Document {
     path: PathBuf,
@@ -98,14 +128,22 @@ impl Loader {
             });
         }
         let mut value = serde_json::from_slice(&bytes)?;
-        let ignore_ref_siblings = uses_legacy_ref_siblings(&value);
+        let dialect = validation_dialect_for_document(&value);
+        let ignore_ref_siblings = !matches!(dialect, ValidationDialect::Modern);
         let index = self.documents.len();
         self.indexes.insert(path.to_path_buf(), index);
         self.documents.push(Document {
             path: path.to_path_buf(),
             value: serde_json::Value::Null,
         });
-        self.rewrite_references(&mut value, index, reference_depth, 0, ignore_ref_siblings)?;
+        self.rewrite_references(
+            &mut value,
+            index,
+            reference_depth,
+            0,
+            ignore_ref_siblings,
+            dialect,
+        )?;
         self.documents[index].value = value;
         Ok(index)
     }
@@ -117,6 +155,7 @@ impl Loader {
         reference_depth: usize,
         json_depth: usize,
         ignore_ref_siblings: bool,
+        dialect: ValidationDialect,
     ) -> Result<(), JsonFormatError> {
         if json_depth > MAX_JSON_DEPTH {
             return Err(JsonFormatError::SchemaResourceLimit {
@@ -131,6 +170,13 @@ impl Loader {
                         document_index,
                         IGNORE_REF_SIBLINGS_KEY,
                         "a schema object uses ferrule's reserved `$ref` policy key",
+                    );
+                }
+                if object.contains_key(VALIDATION_DIALECT_KEY) {
+                    return self.resource_error(
+                        document_index,
+                        VALIDATION_DIALECT_KEY,
+                        "a schema object uses ferrule's reserved dialect-policy key",
                     );
                 }
                 let reference = object
@@ -155,6 +201,16 @@ impl Loader {
                         );
                     }
                 }
+                if object.contains_key("$ref")
+                    || ["propertyNames", "contains", "minContains", "maxContains"]
+                        .into_iter()
+                        .any(|keyword| object.contains_key(keyword))
+                {
+                    object.insert(
+                        VALIDATION_DIALECT_KEY.to_string(),
+                        serde_json::Value::String(dialect.marker().to_string()),
+                    );
+                }
                 for child in object.values_mut() {
                     self.rewrite_references(
                         child,
@@ -162,6 +218,7 @@ impl Loader {
                         reference_depth,
                         json_depth + 1,
                         ignore_ref_siblings,
+                        dialect,
                     )?;
                 }
             }
@@ -173,6 +230,7 @@ impl Loader {
                         reference_depth,
                         json_depth + 1,
                         ignore_ref_siblings,
+                        dialect,
                     )?;
                 }
             }
@@ -324,23 +382,35 @@ pub(super) fn ref_siblings_apply(schema: &serde_json::Value) -> bool {
 }
 
 pub(super) fn is_internal_ref_keyword(keyword: &str) -> bool {
-    keyword == IGNORE_REF_SIBLINGS_KEY
+    matches!(keyword, IGNORE_REF_SIBLINGS_KEY | VALIDATION_DIALECT_KEY)
 }
 
-fn uses_legacy_ref_siblings(schema: &serde_json::Value) -> bool {
+pub(super) fn validation_dialect(schema: &serde_json::Value) -> ValidationDialect {
+    match schema
+        .get(VALIDATION_DIALECT_KEY)
+        .and_then(serde_json::Value::as_str)
+    {
+        Some("draft4") => ValidationDialect::Draft4,
+        Some("draft6_or_7") => ValidationDialect::Draft6Or7,
+        _ => ValidationDialect::Modern,
+    }
+}
+
+fn validation_dialect_for_document(schema: &serde_json::Value) -> ValidationDialect {
     let Some(dialect) = schema.get("$schema").and_then(serde_json::Value::as_str) else {
-        return false;
+        return ValidationDialect::Modern;
     };
     let dialect = dialect.strip_suffix('#').unwrap_or(dialect);
-    matches!(
-        dialect,
-        "http://json-schema.org/draft-04/schema"
-            | "https://json-schema.org/draft-04/schema"
-            | "http://json-schema.org/draft-06/schema"
-            | "https://json-schema.org/draft-06/schema"
-            | "http://json-schema.org/draft-07/schema"
-            | "https://json-schema.org/draft-07/schema"
-    )
+    match dialect {
+        "http://json-schema.org/draft-04/schema" | "https://json-schema.org/draft-04/schema" => {
+            ValidationDialect::Draft4
+        }
+        "http://json-schema.org/draft-06/schema"
+        | "https://json-schema.org/draft-06/schema"
+        | "http://json-schema.org/draft-07/schema"
+        | "https://json-schema.org/draft-07/schema" => ValidationDialect::Draft6Or7,
+        _ => ValidationDialect::Modern,
+    }
 }
 
 fn ensure_contained(

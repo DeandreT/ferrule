@@ -5,7 +5,8 @@ use ir::{
 
 use super::{
     allowed_values, files, formats, item_counts, multiples, parse, patterns, property_counts,
-    property_dependencies, ranges, reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
+    property_dependencies, property_names, ranges, reject_unsupported_ref_siblings, resolve_ref,
+    unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -1243,6 +1244,7 @@ pub(super) fn parse_object_alternatives(
     let mut base_children = parse_alternative_properties(schema, doc, active_refs)?;
     let base_required = required_names(schema);
     let base_property_count = property_counts::selected(name, schema)?;
+    let base_property_names = property_names::selected(name, schema, doc, active_refs)?;
     let base_additional = match schema.get("additionalProperties") {
         None | Some(serde_json::Value::Bool(true)) => WrapperAdditional::Open,
         Some(serde_json::Value::Bool(false)) => WrapperAdditional::Closed,
@@ -1264,6 +1266,8 @@ pub(super) fn parse_object_alternatives(
     let mut saw_property_count = false;
     let mut common_property_dependencies = None;
     let mut saw_property_dependencies = false;
+    let mut common_property_names = None;
+    let mut saw_property_names = false;
     for (index, alternative_schema) in alternatives.iter().enumerate() {
         if alternative_schema
             .get("$ref")
@@ -1365,6 +1369,30 @@ pub(super) fn parse_object_alternatives(
         }
         common_property_dependencies = branch_property_dependencies;
         saw_property_dependencies = true;
+        let sibling_property_names = if !core::ptr::eq(resolved, alternative_schema)
+            && files::ref_siblings_apply(alternative_schema)
+        {
+            property_names::selected(name, alternative_schema, doc, active_refs)?
+        } else {
+            None
+        };
+        let branch_property_names = property_names::intersect(
+            name,
+            parsed.json_property_names.clone(),
+            sibling_property_names,
+        )?;
+        let effective_property_names =
+            property_names::intersect(name, base_property_names.clone(), branch_property_names)?;
+        if saw_property_names && common_property_names != effective_property_names {
+            return Err(unsupported_union(
+                name,
+                &format!(
+                    "{keyword} object alternatives have differing propertyNames constraints that cannot be represented independently"
+                ),
+            ));
+        }
+        common_property_names = effective_property_names;
+        saw_property_names = true;
         if parsed.repeating {
             return Err(unsupported_union(
                 name,
@@ -1490,8 +1518,15 @@ pub(super) fn parse_object_alternatives(
     .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))?;
     group.property_count_range = common_property_count;
     group.json_property_dependencies = common_property_dependencies;
+    group.json_property_names = common_property_names;
     property_counts::ensure_feasible(name, &group)?;
     property_dependencies::ensure_feasible(name, &group)?;
+    if !group.json_property_names_are_valid() || !group.property_count_range_is_valid() {
+        return Err(unsupported_union(
+            name,
+            "object alternative propertyNames constraints reject required properties or conflict with cardinality",
+        ));
+    }
     Ok(group)
 }
 

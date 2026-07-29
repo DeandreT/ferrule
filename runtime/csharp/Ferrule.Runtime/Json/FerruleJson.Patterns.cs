@@ -44,7 +44,7 @@ internal sealed class FerruleJsonPattern
         {
             throw Boundary(
                 $"JSON pattern match requires {work} work units; " +
-                $"only {remainingWork} remain from the {MaximumBoundaryWork}-unit boundary budget.");
+                $"only {remainingWork} remain from the {MaximumBoundaryWork}-unit bounded work limit.");
         }
         remainingWork -= work;
 

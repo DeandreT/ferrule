@@ -553,6 +553,19 @@ fn rejects_programmatically_invalid_property_dependency_metadata() {
 }
 
 #[test]
+fn rejects_programmatically_invalid_property_name_metadata() {
+    let mut project = valid_project();
+    target_name(&mut project).json_property_names = Some(ir::JsonPropertyNameConstraints::never());
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("property-name metadata")
+            && issue.message.contains("name")
+    }));
+}
+
+#[test]
 fn rejects_programmatically_invalid_string_length_metadata() {
     let mut project = valid_project();
     let Some(range) = ir::StringLengthRange::new(1, Some(3)) else {

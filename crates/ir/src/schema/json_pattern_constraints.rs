@@ -129,7 +129,7 @@ impl JsonPatternConstraints {
         Self::from_programmatic(any_of)
     }
 
-    fn is_tautology(&self) -> bool {
+    pub fn is_tautology(&self) -> bool {
         matches!(
             self.any_of.as_slice(),
             [alternative]

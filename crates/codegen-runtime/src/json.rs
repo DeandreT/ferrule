@@ -9,6 +9,8 @@ use crate::RuntimeError;
 
 mod allowed_values;
 mod multiple_of;
+#[cfg(test)]
+mod property_names;
 mod unique_items;
 
 pub const MAX_EMBEDDED_JSON_SCHEMA_BYTES: usize = 1024 * 1024;
