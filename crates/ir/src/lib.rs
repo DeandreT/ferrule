@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 mod schema;
 
-pub use schema::{IntegerRange, NumberBound, NumberRange, NumericRange};
+pub use schema::{IntegerRange, ItemCountRange, NumberBound, NumberRange, NumericRange};
 
 /// Instance-field name used for an XML element's simple text content.
 pub const XML_TEXT_FIELD: &str = "#text";
@@ -517,6 +517,9 @@ pub struct SchemaNode {
     /// bounds retain finite values and endpoint exclusivity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub numeric_range: Option<NumericRange>,
+    /// Exact cardinality bounds for a repeating JSON array node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_count_range: Option<ItemCountRange>,
     /// An XML Schema default lexical value for a scalar element, simple
     /// content value, or ordinary attribute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -588,6 +591,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             numeric_range: Option<NumericRange>,
             #[serde(default)]
+            item_count_range: Option<ItemCountRange>,
+            #[serde(default)]
             default: Option<String>,
             #[serde(default)]
             value_generation: Option<ValueGeneration>,
@@ -621,6 +626,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             json_any: repr.json_any,
             fixed: repr.fixed,
             numeric_range: repr.numeric_range,
+            item_count_range: repr.item_count_range,
             default: repr.default,
             value_generation: repr.value_generation,
             alternative_mode: repr.alternative_mode,
@@ -630,27 +636,9 @@ impl<'de> Deserialize<'de> for SchemaNode {
             database_relation: repr.database_relation,
             kind: repr.kind,
         };
-        if !node.alternatives_are_valid()
-            || !node.required_fields_are_valid()
-            || !node.xml_name_alternatives_are_valid()
-            || !node.recursive_ref_is_valid()
-            || !node.fixed_is_valid()
-            || !node.numeric_range_is_valid()
-            || !node.value_generation_is_valid()
-            || !node.default_is_valid()
-            || !node.alternative_mode_is_valid()
-            || !node.xml_alternative_kind_is_valid()
-            || !node.xml_repeating_sequences_are_valid()
-            || !node.xml_repeating_choices_are_valid()
-            || !node.database_relation_is_valid()
-            || !node.nullable_is_valid()
-            || !node.container_nullable_is_valid()
-            || !node.json_any_is_valid()
-            || !node.xml_wildcard_namespace_is_valid()
-            || !node.xml_wildcard_process_contents_is_valid()
-        {
+        if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, item-count range, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -857,6 +845,29 @@ impl XmlAlternativeKind {
 }
 
 impl SchemaNode {
+    /// Checks every cross-field schema metadata invariant.
+    pub fn metadata_is_valid(&self) -> bool {
+        self.alternatives_are_valid()
+            && self.required_fields_are_valid()
+            && self.xml_name_alternatives_are_valid()
+            && self.recursive_ref_is_valid()
+            && self.fixed_is_valid()
+            && self.numeric_range_is_valid()
+            && self.item_count_range_is_valid()
+            && self.value_generation_is_valid()
+            && self.default_is_valid()
+            && self.alternative_mode_is_valid()
+            && self.xml_alternative_kind_is_valid()
+            && self.xml_repeating_sequences_are_valid()
+            && self.xml_repeating_choices_are_valid()
+            && self.database_relation_is_valid()
+            && self.nullable_is_valid()
+            && self.container_nullable_is_valid()
+            && self.json_any_is_valid()
+            && self.xml_wildcard_namespace_is_valid()
+            && self.xml_wildcard_process_contents_is_valid()
+    }
+
     pub fn scalar(name: impl Into<String>, ty: ScalarType) -> Self {
         Self {
             name: name.into(),
@@ -874,6 +885,7 @@ impl SchemaNode {
             json_any: false,
             fixed: None,
             numeric_range: None,
+            item_count_range: None,
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -908,6 +920,7 @@ impl SchemaNode {
             json_any: false,
             fixed: None,
             numeric_range: None,
+            item_count_range: None,
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -951,6 +964,7 @@ impl SchemaNode {
             json_any: false,
             fixed: None,
             numeric_range: None,
+            item_count_range: None,
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -1144,6 +1158,11 @@ impl SchemaNode {
             }),
             _ => false,
         }
+    }
+
+    /// Checks that item-count metadata remains attached to an array wrapper.
+    pub fn item_count_range_is_valid(&self) -> bool {
+        self.item_count_range.is_none() || self.repeating
     }
 
     /// Checks that generated-value metadata remains scalar-only and cannot
@@ -1635,6 +1654,11 @@ impl SchemaNode {
         self.numeric_range_is_valid().then_some(self)
     }
 
+    pub fn with_item_count_range(mut self, range: ItemCountRange) -> Option<Self> {
+        self.item_count_range = Some(range);
+        self.item_count_range_is_valid().then_some(self)
+    }
+
     pub fn with_default(mut self, value: impl Into<String>) -> Option<Self> {
         self.default = Some(value.into());
         self.default_is_valid().then_some(self)
@@ -2103,6 +2127,56 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn item_count_ranges_require_repeating_nodes_and_roundtrip()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(range) = ItemCountRange::new(2, Some(5)) else {
+            panic!("ordered item-count range is valid");
+        };
+        assert!(range.contains_len(2));
+        assert!(range.contains_len(5));
+        assert!(!range.contains_len(1));
+        assert!(ItemCountRange::new(0, None).is_none());
+        assert!(ItemCountRange::new(3, Some(2)).is_none());
+
+        let Some(schema) = SchemaNode::scalar("Item", ScalarType::String)
+            .repeating()
+            .with_item_count_range(range)
+        else {
+            panic!("item-count metadata is valid on a repeating node");
+        };
+        let encoded = serde_json::to_string(&schema)?;
+        assert!(encoded.contains(r#""item_count_range":{"minimum":2,"maximum":5}"#));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, schema);
+        assert!(
+            SchemaNode::scalar("Item", ScalarType::String)
+                .with_item_count_range(range)
+                .is_none()
+        );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"x","item_count_range":{"minimum":1},"kind":{"kind":"scalar","ty":"string"}}"#,
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"x","repeating":true,"item_count_range":{},"kind":{"kind":"scalar","ty":"string"}}"#,
+            )
+            .is_err()
+        );
+        for invalid in [
+            r#"{"name":"x","repeating":true,"item_count_range":{"minimum":-1},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","repeating":true,"item_count_range":{"maximum":1.5},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","repeating":true,"item_count_range":{"minimum":1,"maxmium":3},"kind":{"kind":"scalar","ty":"string"}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
+        let permissive_null_maximum = r#"{"name":"x","repeating":true,"item_count_range":{"minimum":1,"maximum":null},"kind":{"kind":"scalar","ty":"string"}}"#;
+        assert!(serde_json::from_str::<SchemaNode>(permissive_null_maximum).is_ok());
         Ok(())
     }
 

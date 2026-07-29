@@ -8,7 +8,7 @@ use codegen::{
     Program, RuntimeValue, ScalarFunction, SourceIteration, TargetScope, UserFunctionParameter,
     UserFunctionProgram,
 };
-use ir::{IntegerRange, NumericRange, ScalarType, SchemaNode, Value};
+use ir::{IntegerRange, ItemCountRange, NumericRange, ScalarType, SchemaNode, Value};
 use mapping::{FunctionId, FunctionParameterId};
 
 #[test]
@@ -81,6 +81,49 @@ fn fixture() -> Program {
     else {
         panic!("target range contains its fixed value");
     };
+    let Some(source_tags_range) = ItemCountRange::new(1, Some(2)) else {
+        panic!("source item-count range is valid");
+    };
+    let Some(source_tags) = SchemaNode::scalar("Tags", ScalarType::String)
+        .repeating()
+        .with_item_count_range(source_tags_range)
+    else {
+        panic!("source item-count range matches a repeating node");
+    };
+    let Some(target_count_range) = ItemCountRange::new(1, Some(1)) else {
+        panic!("target item-count range is valid");
+    };
+    let Some(target_schema) = SchemaNode::group(
+        "target schema",
+        vec![
+            target_root,
+            SchemaNode::scalar("Exists", ScalarType::Bool),
+            SchemaNode::scalar("Selected", ScalarType::String),
+            SchemaNode::scalar("LengthSum", ScalarType::Int),
+            SchemaNode::group(
+                "Nested",
+                vec![
+                    SchemaNode::scalar("Copied", ScalarType::String),
+                    SchemaNode::scalar("Lines", ScalarType::String).repeating(),
+                    SchemaNode::scalar("Middle", ScalarType::Int),
+                    SchemaNode::scalar("ExactFloat", ScalarType::Float),
+                    SchemaNode::scalar("LazyValue", ScalarType::Int),
+                    SchemaNode::scalar("Compared", ScalarType::Bool),
+                    SchemaNode::scalar("Customer", ScalarType::String),
+                    SchemaNode::scalar("Sku", ScalarType::String),
+                    SchemaNode::scalar("OrderCode", ScalarType::String),
+                    SchemaNode::scalar("CatalogName", ScalarType::String),
+                    SchemaNode::scalar("Prefix", ScalarType::String),
+                ],
+            )
+            .repeating(),
+        ],
+    )
+    .with_required_fields(vec!["RootInt".into()])
+    .map(SchemaNode::repeating)
+    .and_then(|schema| schema.with_item_count_range(target_count_range)) else {
+        panic!("target schema metadata is valid");
+    };
     Program {
         source: SchemaNode::group(
             "source schema",
@@ -94,6 +137,7 @@ fn fixture() -> Program {
                 SchemaNode::scalar("GeneratedFailure", ScalarType::Bool),
                 SchemaNode::scalar("GeneratedPattern", ScalarType::String),
                 source_count,
+                source_tags,
                 SchemaNode::group(
                     "Orders",
                     vec![
@@ -144,35 +188,7 @@ fn fixture() -> Program {
                 dynamic: None,
             },
         ],
-        target: SchemaNode::group(
-            "target schema",
-            vec![
-                target_root,
-                SchemaNode::scalar("Exists", ScalarType::Bool),
-                SchemaNode::scalar("Selected", ScalarType::String),
-                SchemaNode::scalar("LengthSum", ScalarType::Int),
-                SchemaNode::group(
-                    "Nested",
-                    vec![
-                        SchemaNode::scalar("Copied", ScalarType::String),
-                        SchemaNode::scalar("Lines", ScalarType::String).repeating(),
-                        SchemaNode::scalar("Middle", ScalarType::Int),
-                        SchemaNode::scalar("ExactFloat", ScalarType::Float),
-                        SchemaNode::scalar("LazyValue", ScalarType::Int),
-                        SchemaNode::scalar("Compared", ScalarType::Bool),
-                        SchemaNode::scalar("Customer", ScalarType::String),
-                        SchemaNode::scalar("Sku", ScalarType::String),
-                        SchemaNode::scalar("OrderCode", ScalarType::String),
-                        SchemaNode::scalar("CatalogName", ScalarType::String),
-                        SchemaNode::scalar("Prefix", ScalarType::String),
-                    ],
-                )
-                .repeating(),
-            ],
-        )
-        .with_required_fields(vec!["RootInt".into()])
-        .expect("target requirement is valid")
-        .repeating(),
+        target: target_schema,
         expressions: vec![
             ExpressionNode {
                 id: 1,
@@ -837,6 +853,7 @@ const string sourceJson = """
   "GeneratedFailure": false,
   "GeneratedPattern": ",",
   "InputCount": 5,
+  "Tags": ["generated"],
   "Orders": [
     {
       "Customer": "Ada",
@@ -933,6 +950,11 @@ Error(
     FerruleRuntimeError.JsonBoundary,
     () => GeneratedMapping.ExecuteJsonWithSources(
         sourceJson.Replace("\"InputCount\": 5", "\"InputCount\": 4"),
+        jsonInputs));
+Error(
+    FerruleRuntimeError.JsonBoundary,
+    () => GeneratedMapping.ExecuteJsonWithSources(
+        sourceJson.Replace("\"Tags\": [\"generated\"]", "\"Tags\": []"),
         jsonInputs));
 Error(
     FerruleRuntimeError.JsonBoundary,

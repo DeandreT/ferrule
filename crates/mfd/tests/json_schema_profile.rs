@@ -48,6 +48,8 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     },
     "MaybeArray":{
       "type":["array","null"],
+      "minItems":1,
+      "maxItems":2,
       "items":{"type":"object","properties":{"Id":{"type":"integer"}}}
     },
     "Amount":{
@@ -63,7 +65,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     )?;
     std::fs::write(
         directory.0.join("input.json"),
-        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"MaybeArray":[],"Amount":12.5,"Status":"ready"}"#,
+        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready"}"#,
     )?;
     let design = directory.0.join("mapping.mfd");
     std::fs::write(
@@ -103,6 +105,11 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .ok_or("missing nullable array")?;
     assert!(array.container_nullable);
     assert!(array.repeating);
+    let range = array
+        .item_count_range
+        .ok_or("missing nullable array item-count range")?;
+    assert_eq!(range.minimum(), 1);
+    assert_eq!(range.maximum(), Some(2));
     let amount = imported
         .project
         .source

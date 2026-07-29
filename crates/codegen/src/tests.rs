@@ -116,6 +116,73 @@ fn scalar_union(name: &str) -> SchemaNode {
 }
 
 #[test]
+fn program_validation_rejects_invalid_schema_metadata_on_every_boundary() {
+    let Ok(program) = lower(&supported_project()) else {
+        panic!("supported project should lower");
+    };
+    let Some(numeric) = ir::IntegerRange::new(Some(1), Some(2)).map(ir::NumericRange::Integer)
+    else {
+        panic!("test numeric range is valid");
+    };
+    let Some(items) = ir::ItemCountRange::new(1, Some(2)) else {
+        panic!("test item-count range is valid");
+    };
+
+    let mut primary_source = program.clone();
+    primary_source.source.numeric_range = Some(numeric);
+    assert!(matches!(
+        validate_program(&primary_source),
+        Err(ProgramValidationError::InvalidSchemaMetadata {
+            ref boundary,
+            ..
+        }) if boundary == "source"
+    ));
+
+    let mut primary_target = program.clone();
+    primary_target.target.item_count_range = Some(items);
+    assert!(matches!(
+        validate_program(&primary_target),
+        Err(ProgramValidationError::InvalidSchemaMetadata {
+            ref boundary,
+            ..
+        }) if boundary == "target"
+    ));
+
+    let mut named_source = program.clone();
+    let mut invalid_source = SchemaNode::scalar("Value", ScalarType::String);
+    invalid_source.item_count_range = Some(items);
+    named_source.extra_sources.push(crate::NamedSourceProgram {
+        name: "catalog".into(),
+        source: invalid_source,
+        dynamic: None,
+    });
+    assert!(matches!(
+        validate_program(&named_source),
+        Err(ProgramValidationError::InvalidSchemaMetadata {
+            ref boundary,
+            ..
+        }) if boundary.contains("catalog")
+    ));
+
+    let mut named_target = program;
+    let mut invalid_target = SchemaNode::scalar("Value", ScalarType::String);
+    invalid_target.numeric_range = Some(numeric);
+    let invalid_root = named_target.root.clone();
+    named_target.extra_targets.push(crate::NamedTargetProgram {
+        name: "audit".into(),
+        target: invalid_target,
+        root: invalid_root,
+    });
+    assert!(matches!(
+        validate_program(&named_target),
+        Err(ProgramValidationError::InvalidSchemaMetadata {
+            ref boundary,
+            ..
+        }) if boundary.contains("audit")
+    ));
+}
+
+#[test]
 fn lowering_preserves_scalar_union_boundaries_and_target_domains() {
     let mut project = supported_project();
     let SchemaKind::Group { children, .. } = &mut project.source.kind else {
