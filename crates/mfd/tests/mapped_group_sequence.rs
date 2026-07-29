@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{Binding, Graph, IterationOutput, Node, Project, Scope, ScopeIteration};
+use mapping::{
+    Binding, Graph, IterationOutput, Node, Project, Scope, ScopeIteration, SequenceWindow,
+};
 
 struct TempDir(PathBuf);
 
@@ -555,14 +557,251 @@ fn filtered_group_port_emits_zero_one_or_many_non_repeating_xml_elements() {
         .unwrap()
         .iteration_output = IterationOutput::First;
     let first_path = dir.0.join("first.mfd");
-    write(&first_path, "existing design");
+    assert!(mfd::export(&first, &first_path).unwrap().is_empty());
+    let first_design = std::fs::read_to_string(&first_path).unwrap();
+    assert_eq!(first_design.matches("name=\"first-items\"").count(), 1);
+    let first_roundtrip = mfd::import(&first_path).unwrap();
+    assert!(
+        first_roundtrip.warnings.is_empty(),
+        "{:?}",
+        first_roundtrip.warnings
+    );
+    assert_eq!(
+        first_roundtrip.project.root.children[0].iteration_output,
+        IterationOutput::First
+    );
+    assert!(first_roundtrip.project.root.children[0].windows.is_empty());
+    for (source, _) in &cases {
+        assert_eq!(
+            output_xml(&first, source),
+            output_xml(&first_roundtrip.project, source)
+        );
+    }
+
+    let mut unsupported_first = first;
+    unsupported_first.target_path = Some("target.json".into());
+    let unsupported_path = dir.0.join("unsupported-first.mfd");
+    write(&unsupported_path, "existing design");
     assert!(matches!(
-        mfd::export(&first, &first_path),
-        Err(mfd::MfdError::Unsupported(message)) if message.contains("first-item")
+        mfd::export(&unsupported_first, &unsupported_path),
+        Err(mfd::MfdError::Unsupported(message))
+            if message.contains("requires an XML or XBRL target")
     ));
     assert_eq!(
-        std::fs::read_to_string(first_path).unwrap(),
+        std::fs::read_to_string(unsupported_path).unwrap(),
         "existing design"
+    );
+}
+
+#[test]
+fn nested_first_output_roundtrips_controls_and_compacted_position() {
+    let source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Department",
+                vec![
+                    SchemaNode::scalar("Id", ScalarType::String),
+                    SchemaNode::group(
+                        "Person",
+                        vec![
+                            SchemaNode::scalar("Name", ScalarType::String),
+                            SchemaNode::scalar("Keep", ScalarType::Bool),
+                            SchemaNode::scalar("Score", ScalarType::Int),
+                        ],
+                    )
+                    .repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::group(
+                "Department",
+                vec![
+                    SchemaNode::scalar("Id", ScalarType::String),
+                    SchemaNode::group(
+                        "Selected",
+                        vec![
+                            SchemaNode::scalar("Name", ScalarType::String),
+                            SchemaNode::scalar("Position", ScalarType::Int),
+                        ],
+                    ),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let project = Project {
+        source,
+        target,
+        source_path: Some("source.xml".into()),
+        target_path: Some("target.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::SourceField {
+                        path: vec!["Id".into()],
+                        frame: Some(vec!["Department".into()]),
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec!["Name".into()],
+                        frame: Some(vec!["Department".into(), "Person".into()]),
+                    },
+                ),
+                (
+                    2,
+                    Node::SourceField {
+                        path: vec!["Keep".into()],
+                        frame: Some(vec!["Department".into(), "Person".into()]),
+                    },
+                ),
+                (
+                    3,
+                    Node::SourceField {
+                        path: vec!["Score".into()],
+                        frame: Some(vec!["Department".into(), "Person".into()]),
+                    },
+                ),
+                (
+                    4,
+                    Node::Position {
+                        collection: vec!["Department".into(), "Person".into()],
+                    },
+                ),
+                (
+                    5,
+                    Node::Const {
+                        value: Value::Int(1),
+                    },
+                ),
+                (
+                    6,
+                    Node::Const {
+                        value: Value::Int(2),
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Department".into(),
+                iteration: ScopeIteration::Source(vec!["Department".into()]),
+                bindings: vec![Binding {
+                    target_field: "Id".into(),
+                    node: 0,
+                }],
+                children: vec![Scope {
+                    target_field: "Selected".into(),
+                    iteration: ScopeIteration::Source(vec!["Person".into()]),
+                    filter: Some(2),
+                    sort_by: Some(3),
+                    sort_descending: true,
+                    windows: vec![
+                        SequenceWindow::SkipFirst { count: 5 },
+                        SequenceWindow::First { count: 6 },
+                    ],
+                    iteration_output: IterationOutput::First,
+                    bindings: vec![
+                        Binding {
+                            target_field: "Name".into(),
+                            node: 1,
+                        },
+                        Binding {
+                            target_field: "Position".into(),
+                            node: 4,
+                        },
+                    ],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    assert!(
+        engine::validate(&project).is_empty(),
+        "{:?}",
+        engine::validate(&project)
+    );
+    let source = format_xml::from_str(
+        "<Source><Department><Id>A</Id><Person><Name>discard</Name><Keep>false</Keep><Score>100</Score></Person><Person><Name>first</Name><Keep>true</Keep><Score>90</Score></Person><Person><Name>selected</Name><Keep>true</Keep><Score>80</Score></Person><Person><Name>later</Name><Keep>true</Keep><Score>70</Score></Person></Department><Department><Id>B</Id><Person><Name>none</Name><Keep>false</Keep><Score>10</Score></Person></Department></Source>",
+        &project.source,
+    )
+    .unwrap();
+    let expected = engine::run(&project, &source).unwrap();
+    let departments = expected
+        .field("Department")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        departments[0]
+            .field("Selected")
+            .and_then(|selected| selected.field("Name"))
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("selected".into()))
+    );
+    assert_eq!(
+        departments[0]
+            .field("Selected")
+            .and_then(|selected| selected.field("Position"))
+            .and_then(Instance::as_scalar),
+        Some(&Value::Int(1))
+    );
+    assert_eq!(
+        departments[1].field("Selected"),
+        Some(&Instance::Group(Vec::new()))
+    );
+
+    let dir = TempDir::new();
+    let first_export = dir.0.join("first.mfd");
+    assert!(mfd::export(&project, &first_export).unwrap().is_empty());
+    let design = std::fs::read_to_string(&first_export).unwrap();
+    assert_eq!(design.matches("name=\"first-items\"").count(), 2);
+    assert_eq!(design.matches("name=\"skip-first-items\"").count(), 1);
+    assert!(design.contains("<key direction=\"descending\"/>"));
+
+    let imported = mfd::import(&first_export).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let selected = &imported.project.root.children[0].children[0];
+    assert_eq!(
+        selected.iteration_output,
+        IterationOutput::First,
+        "{selected:#?}"
+    );
+    assert_eq!(selected.windows.len(), 2);
+    assert_eq!(engine::run(&imported.project, &source).unwrap(), expected);
+
+    let second_export = dir.0.join("second.mfd");
+    assert!(
+        mfd::export(&imported.project, &second_export)
+            .unwrap()
+            .is_empty()
+    );
+    let second_design = std::fs::read_to_string(&second_export).unwrap();
+    assert_eq!(second_design.matches("name=\"first-items\"").count(), 2);
+    let imported_twice = mfd::import(&second_export).unwrap();
+    assert!(
+        imported_twice.warnings.is_empty(),
+        "{:?}",
+        imported_twice.warnings
+    );
+    assert_eq!(
+        engine::run(&imported_twice.project, &source).unwrap(),
+        expected
     );
 }
 

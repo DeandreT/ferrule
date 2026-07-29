@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use ir::{SchemaKind, SchemaNode, Value, XML_TYPE_FIELD};
+use ir::{SchemaKind, SchemaNode, XML_TYPE_FIELD};
 use mapping::{Graph, IterationOutput, Node, Scope};
 
 use crate::MfdError;
@@ -90,10 +90,8 @@ pub(super) fn preflight_mapped_sequences(
                 .to_string(),
         ));
     }
-    if !first_outputs_are_exportable(root, graph, target, target_format, &mut Vec::new()) {
-        return Err(MfdError::Unsupported(
-            "first-item scope output does not yet have a lossless MapForce export".to_string(),
-        ));
+    if let Err(reason) = validate_first_outputs(root, target, target_format, &mut Vec::new()) {
+        return Err(MfdError::Unsupported(reason));
     }
     if scope_has_output(root, IterationOutput::MappedSequence)
         && !matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
@@ -115,7 +113,7 @@ pub(super) fn preflight_mapped_sequences(
         &mut plans,
     ) {
         return Err(MfdError::Unsupported(
-            "mapped XML group sequences contain bindings or nested scopes that do not have a lossless MapForce structural-wire export".to_string(),
+            "mapped or first-item XML group sequences contain bindings or nested scopes that do not have a lossless MapForce structural-wire export".to_string(),
         ));
     }
     Ok(plans)
@@ -198,7 +196,11 @@ fn collect_scope_plans(
     let repeated_conditioned_branch = branch.is_some()
         && scope.iteration_output == IterationOutput::Repeated
         && super::concatenation::source_type_condition(scope, graph).is_some();
-    if scope.iteration_output == IterationOutput::MappedSequence || repeated_conditioned_branch {
+    let first_group = scope.iteration_output == IterationOutput::First && !chain.is_empty();
+    if scope.iteration_output == IterationOutput::MappedSequence
+        || repeated_conditioned_branch
+        || first_group
+    {
         let Some(plan) =
             mapped_scope_plan(scope, graph, sources, target_schema, chain, &scope_anchor)
         else {
@@ -423,58 +425,102 @@ fn exact_copy_group(source: &SchemaNode, target: &SchemaNode) -> bool {
         && source.kind == target.kind
 }
 
-fn first_outputs_are_exportable(
+fn validate_first_outputs(
     scope: &Scope,
-    graph: &Graph,
     target: &SchemaNode,
     target_format: SideFormat,
     path: &mut Vec<String>,
-) -> bool {
+) -> Result<(), String> {
     if scope.iteration_output == IterationOutput::First {
-        let mixed_content = matches!(
+        let display_path = if path.is_empty() {
+            "<root>".to_string()
+        } else {
+            path.join("/")
+        };
+        if !matches!(target_format, SideFormat::Xml | SideFormat::Xbrl) {
+            return Err(format!(
+                "first-item scope `{display_path}` requires an XML or XBRL target for lossless MapForce export"
+            ));
+        }
+        let Some(target_group) = schema_node_at(target, path) else {
+            return Err(format!(
+                "first-item scope `{display_path}` has no matching target schema group"
+            ));
+        };
+        if target_group.repeating || !matches!(target_group.kind, SchemaKind::Group { .. }) {
+            return Err(format!(
+                "first-item scope `{display_path}` must populate one non-repeating target group"
+            ));
+        }
+        if matches!(
             scope.construction,
             mapping::ScopeConstruction::XmlMixedContent { .. }
-        ) && !path.is_empty()
-            && matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
-            && scope.source().is_some()
-            && schema_node_at(target, path).is_some_and(|node| {
-                !node.repeating && matches!(node.kind, SchemaKind::Group { .. })
-            })
-            && scope.filter.is_none()
-            && scope.post_group_filter.is_none()
-            && scope.group_by.is_none()
-            && scope.group_starting_with.is_none()
-            && scope.group_adjacent_by.is_none()
-            && scope.group_ending_with.is_none()
-            && scope.group_into_blocks.is_none()
-            && scope.sort_by.is_none()
-            && scope.windows.is_empty();
-        let ordinary_root = path.is_empty()
-            && matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
-            && scope.source() == Some(&[])
-            && !target.repeating
-            && matches!(target.kind, SchemaKind::Group { .. })
-            && scope.group_by.is_none()
-            && scope.group_starting_with.is_none()
-            && scope.group_adjacent_by.is_none()
-            && scope.group_ending_with.is_none()
-            && scope.group_into_blocks.is_none()
-            && matches!(scope.windows.as_slice(), [mapping::SequenceWindow::First { count }] if matches!(
-                graph.nodes.get(count),
-                Some(Node::Const { value: Value::Int(1) })
+        ) && (path.is_empty()
+            || scope.filter.is_some()
+            || scope.post_group_filter.is_some()
+            || scope.has_grouping()
+            || scope.has_sort()
+            || !scope.windows.is_empty())
+        {
+            return Err(format!(
+                "first-item mixed-content scope `{display_path}` cannot retain sequence controls in MapForce"
             ));
-        if !mixed_content && !ordinary_root {
-            return false;
+        }
+        if !path.is_empty()
+            && scope.source().is_some()
+            && (scope.group_by.is_some() || scope.group_into_blocks.is_some())
+        {
+            return Err(format!(
+                "first-item scope `{display_path}` uses grouping that MapForce cannot reconnect to a non-repeating structural target"
+            ));
+        }
+        match &scope.iteration {
+            mapping::ScopeIteration::Source(_) => {}
+            mapping::ScopeIteration::InnerJoin { .. } if !path.is_empty() => {}
+            mapping::ScopeIteration::InnerJoin { .. } => {
+                return Err(
+                    "first-item root scope cannot export a join into a non-repeating MapForce document root"
+                        .to_string(),
+                );
+            }
+            mapping::ScopeIteration::Sequence(_) => {
+                return Err(format!(
+                    "first-item scope `{display_path}` is driven by a generated scalar sequence, which has no structural MapForce group wire"
+                ));
+            }
+            mapping::ScopeIteration::DynamicDocuments { .. } => {
+                return Err(format!(
+                    "first-item scope `{display_path}` cannot also produce dynamically named documents"
+                ));
+            }
+            mapping::ScopeIteration::Concatenate(_) => {
+                return Err(format!(
+                    "first-item scope `{display_path}` cannot wrap a concatenated sequence"
+                ));
+            }
+            mapping::ScopeIteration::None => {
+                return Err(format!(
+                    "first-item scope `{display_path}` has no iterated source"
+                ));
+            }
+        }
+        if !matches!(
+            scope.construction,
+            mapping::ScopeConstruction::Constructed
+                | mapping::ScopeConstruction::CopyCurrentSource
+                | mapping::ScopeConstruction::XmlMixedContent { .. }
+        ) {
+            return Err(format!(
+                "first-item scope `{display_path}` uses a specialized construction with no lossless MapForce first-items representation"
+            ));
         }
     }
     for child in &scope.children {
         path.push(child.target_field.clone());
-        if !first_outputs_are_exportable(child, graph, target, target_format, path) {
-            return false;
-        }
+        validate_first_outputs(child, target, target_format, path)?;
         path.pop();
     }
-    true
+    Ok(())
 }
 
 fn resolve_source_collection(
