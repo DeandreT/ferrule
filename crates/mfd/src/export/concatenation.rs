@@ -119,16 +119,14 @@ impl TargetBranches {
 pub(super) fn validate(
     root: &Scope,
     target: &SchemaNode,
-    graph: &Graph,
     format: SideFormat,
 ) -> Result<(), MfdError> {
-    validate_scope(root, target, graph, format, &mut Vec::new(), false)
+    validate_scope(root, target, format, &mut Vec::new(), false)
 }
 
 fn validate_scope(
     scope: &Scope,
     target: &SchemaNode,
-    graph: &Graph,
     format: SideFormat,
     path: &mut Vec<String>,
     inside_concatenation: bool,
@@ -205,14 +203,14 @@ fn validate_scope(
             ));
         }
         for segment in segments.iter() {
-            validate_segment(segment, target, graph, format, path, output)?;
+            validate_segment(segment, target, format, path, output)?;
         }
         return Ok(());
     }
 
     for child in &scope.children {
         path.push(child.target_field.clone());
-        validate_scope(child, target, graph, format, path, inside_concatenation)?;
+        validate_scope(child, target, format, path, inside_concatenation)?;
         path.pop();
     }
     Ok(())
@@ -251,7 +249,6 @@ fn validate_container(
 fn validate_segment(
     scope: &Scope,
     target: &SchemaNode,
-    graph: &Graph,
     format: SideFormat,
     path: &mut Vec<String>,
     output: IterationOutput,
@@ -294,18 +291,12 @@ fn validate_segment(
         ));
     }
     if output == IterationOutput::MappedSequence {
-        let target_node = schema_node_at(target, path)
+        let _ = schema_node_at(target, path)
             .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
-        if exact_type_condition(scope, graph, target_node).is_none() {
-            return Err(unsupported(
-                path,
-                "mapped-sequence segments require an exact xsi:type alternative filter and matching type binding",
-            ));
-        }
     }
     for child in &scope.children {
         path.push(child.target_field.clone());
-        validate_scope(child, target, graph, format, path, true)?;
+        validate_scope(child, target, format, path, true)?;
         if contains_non_repeated_output(child) {
             return Err(unsupported(
                 path,
@@ -423,7 +414,7 @@ pub(super) fn exact_type_condition(
     graph: &Graph,
     target: &SchemaNode,
 ) -> Option<String> {
-    let (condition, _, _) = source_type_condition(scope, graph)?;
+    let (condition, marker, _) = source_type_condition(scope, graph)?;
     if !target
         .alternatives()
         .iter()
@@ -436,19 +427,15 @@ pub(super) fn exact_type_condition(
         .iter()
         .any(|binding| {
             binding.target_field == XML_TYPE_FIELD
-                && matches!(
-                    graph.nodes.get(&binding.node),
-                    Some(Node::Const {
-                        value: Value::String(value)
-                    }) if value == &condition
-                )
+                && (binding.node == marker
+                    || matches!(
+                        graph.nodes.get(&binding.node),
+                        Some(Node::Const {
+                            value: Value::String(value)
+                        }) if value == &condition
+                    ))
         })
         .then_some(condition)
-}
-
-pub(super) fn exact_type_marker(scope: &Scope, graph: &Graph, target: &SchemaNode) -> Option<u32> {
-    exact_type_condition(scope, graph, target)?;
-    source_type_condition(scope, graph).map(|(_, marker, _)| marker)
 }
 
 pub(super) fn source_type_condition(

@@ -405,7 +405,7 @@ fn validate_target(
                 .to_string(),
         ));
     }
-    concatenation::validate(root, schema, &project.graph, side_format(path, options))?;
+    concatenation::validate(root, schema, side_format(path, options))?;
     recursive::validate_target(project, schema, root)?;
     if additional && has_join(root) {
         return Err(MfdError::Unsupported(

@@ -3,7 +3,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{GroupAlternative, Instance, ScalarType, SchemaNode, Value, XML_TYPE_FIELD};
+use ir::{GroupAlternative, Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_TYPE_FIELD};
 use mapping::{
     Binding, Graph, IterationOutput, Node, Project, Scope, ScopeIteration, ScopeSequence,
 };
@@ -323,6 +323,100 @@ fn conditioned_xml_project() -> Project {
     }
 }
 
+fn unconditioned_mapped_sequence_project() -> Project {
+    let source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Primary",
+                vec![SchemaNode::scalar("Name", ScalarType::String)],
+            )
+            .repeating(),
+            SchemaNode::group(
+                "Secondary",
+                vec![SchemaNode::scalar("Name", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    );
+    let target = SchemaNode::group(
+        "Result",
+        vec![SchemaNode::group(
+            "Address",
+            vec![SchemaNode::scalar("Name", ScalarType::String)],
+        )],
+    );
+    let graph = Graph {
+        nodes: BTreeMap::from([
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["Name".into()],
+                    frame: Some(vec!["Primary".into()]),
+                },
+            ),
+            (
+                1,
+                Node::SourceField {
+                    path: vec!["Name".into()],
+                    frame: Some(vec!["Secondary".into()]),
+                },
+            ),
+        ]),
+    };
+    let segment = |collection: &str, node| Scope {
+        iteration: ScopeIteration::Source(vec![collection.into()]),
+        iteration_output: IterationOutput::MappedSequence,
+        bindings: vec![binding("Name", node)],
+        ..Scope::default()
+    };
+    Project {
+        source,
+        target,
+        source_path: Some("source.xml".into()),
+        target_path: Some("target.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Address".into(),
+                iteration: ScopeIteration::Concatenate(ScopeSequence::new(
+                    segment("Primary", 0),
+                    vec![segment("Secondary", 1)],
+                )),
+                iteration_output: IterationOutput::MappedSequence,
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
+fn unconditioned_mapped_sequence_source() -> Instance {
+    let rows = |names: &[&str]| {
+        Instance::Repeated(
+            names
+                .iter()
+                .map(|name| {
+                    Instance::Group(vec![(
+                        "Name".into(),
+                        Instance::Scalar(Value::String((*name).into())),
+                    )])
+                })
+                .collect(),
+        )
+    };
+    Instance::Group(vec![
+        ("Primary".into(), rows(&["Alpha", "Beta"])),
+        ("Secondary".into(), rows(&["Gamma"])),
+    ])
+}
+
 fn conditioned_source_instance() -> Instance {
     let address = |name: &str, type_name: &str, field: &str, value: &str| {
         Instance::Group(vec![
@@ -457,6 +551,56 @@ fn conditioned_plain_target_project() -> Project {
             ..Scope::default()
         },
     }
+}
+
+fn conditioned_plain_mapped_sequence_project() -> Project {
+    let mut project = conditioned_xml_project();
+    let SchemaKind::Group { children, .. } = &mut project.target.kind else {
+        return project;
+    };
+    let Some(item) = children.iter_mut().find(|child| child.name == "Item") else {
+        return project;
+    };
+    let SchemaKind::Group { children, .. } = &mut item.kind else {
+        return project;
+    };
+    let Some(address) = children.iter_mut().find(|child| child.name == "Address") else {
+        return project;
+    };
+    if let SchemaKind::Group { alternatives, .. } = &mut address.kind {
+        alternatives.clear();
+    }
+    address.xml_alternative_kind = Default::default();
+    if let Some(item) = project.root.children.first_mut()
+        && let Some(address) = item.children.first_mut()
+        && let Some(segments) = address.concatenated_mut()
+    {
+        for segment in segments.iter_mut() {
+            segment
+                .bindings
+                .retain(|binding| binding.target_field != XML_TYPE_FIELD);
+        }
+    }
+    project
+}
+
+fn forwarded_type_marker_project() -> Project {
+    let mut project = conditioned_xml_project();
+    if let Some(item) = project.root.children.first_mut()
+        && let Some(address) = item.children.first_mut()
+        && let Some(segments) = address.concatenated_mut()
+    {
+        for segment in segments.iter_mut() {
+            if let Some(binding) = segment
+                .bindings
+                .iter_mut()
+                .find(|binding| binding.target_field == XML_TYPE_FIELD)
+            {
+                binding.node = 0;
+            }
+        }
+    }
+    project
 }
 
 fn conditioned_plain_source_instance() -> Instance {
@@ -642,12 +786,59 @@ fn conditioned_non_repeating_xml_branches_roundtrip() -> Result<(), Box<dyn Erro
 }
 
 #[test]
+fn unconditioned_mapped_sequence_branches_roundtrip() -> Result<(), Box<dyn Error>> {
+    let project = unconditioned_mapped_sequence_project();
+    assert!(engine::validate(&project).is_empty());
+    let imported = export_import(&project)?;
+    let segments = imported.root.children[0]
+        .concatenated()
+        .ok_or("mapped sequence branches were not reconstructed")?;
+    assert_eq!(segments.len(), 2);
+
+    let source = unconditioned_mapped_sequence_source();
+    assert_eq!(
+        engine::run(&project, &source)?,
+        engine::run(&imported, &source)?
+    );
+    Ok(())
+}
+
+#[test]
 fn conditioned_source_types_roundtrip_to_plain_repeated_targets() -> Result<(), Box<dyn Error>> {
     let project = conditioned_plain_target_project();
     assert!(engine::validate(&project).is_empty());
     let imported = export_import(&project)?;
 
     let source = conditioned_plain_source_instance();
+    assert_eq!(
+        engine::run(&project, &source)?,
+        engine::run(&imported, &source)?
+    );
+    Ok(())
+}
+
+#[test]
+fn conditioned_source_types_roundtrip_to_plain_mapped_sequences() -> Result<(), Box<dyn Error>> {
+    let project = conditioned_plain_mapped_sequence_project();
+    assert!(engine::validate(&project).is_empty());
+    let imported = export_import(&project)?;
+
+    let source = conditioned_source_instance();
+    assert_eq!(
+        engine::run(&project, &source)?,
+        engine::run(&imported, &source)?
+    );
+    Ok(())
+}
+
+#[test]
+fn forwarded_source_type_markers_roundtrip_as_exact_target_alternatives()
+-> Result<(), Box<dyn Error>> {
+    let project = forwarded_type_marker_project();
+    assert!(engine::validate(&project).is_empty());
+    let imported = export_import(&project)?;
+
+    let source = conditioned_source_instance();
     assert_eq!(
         engine::run(&project, &source)?,
         engine::run(&imported, &source)?
