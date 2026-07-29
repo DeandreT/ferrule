@@ -4,7 +4,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{Expression, ProgramValidationError};
-use ir::{Instance, ScalarType, SchemaNode, Value};
+use ir::{Instance, ScalarType, SchemaNode, Value, XML_TYPE_FIELD};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeConstruction, ScopeIteration};
 
 fn item_schema() -> SchemaNode {
@@ -22,9 +22,40 @@ fn item_schema() -> SchemaNode {
             SchemaNode::scalar("Optional", ScalarType::String),
             SchemaNode::scalar("Nil", ScalarType::String).nillable(),
             SchemaNode::scalar("Tag", ScalarType::String).repeating(),
+            address_schema(),
             child,
         ],
     )
+}
+
+fn address_schema() -> SchemaNode {
+    let alternatives = vec![
+        ir::GroupAlternative {
+            name: "{urn:ferrule:types}Domestic".into(),
+            members: vec!["Name".into(), "State".into(), "Zip".into()],
+            required: vec!["State".into(), "Zip".into()],
+            constraints: Vec::new(),
+        },
+        ir::GroupAlternative {
+            name: "{urn:ferrule:types}International".into(),
+            members: vec!["Name".into(), "Postcode".into()],
+            required: vec!["Postcode".into()],
+            constraints: Vec::new(),
+        },
+    ];
+    let Some(schema) = SchemaNode::group(
+        "Address",
+        vec![
+            SchemaNode::scalar("Name", ScalarType::String),
+            SchemaNode::scalar("State", ScalarType::String),
+            SchemaNode::scalar("Zip", ScalarType::Int),
+            SchemaNode::scalar("Postcode", ScalarType::String),
+        ],
+    )
+    .with_alternatives(alternatives) else {
+        panic!("test XML type alternatives are valid");
+    };
+    schema
 }
 
 fn project() -> Project {
@@ -62,7 +93,7 @@ fn project() -> Project {
                     Node::XmlSerialize {
                         path: vec!["Item".into()],
                         frame: Some(vec!["Rows".into()]),
-                        schema: item.clone(),
+                        schema: Box::new(item.clone()),
                         declaration: true,
                         indent: true,
                         namespace: Some("urn:ferrule:test".into()),
@@ -73,7 +104,7 @@ fn project() -> Project {
                     Node::XmlSerialize {
                         path: vec!["Item".into()],
                         frame: Some(vec!["Rows".into()]),
-                        schema: item,
+                        schema: Box::new(item),
                         declaration: false,
                         indent: false,
                         namespace: None,
@@ -138,6 +169,19 @@ fn source() -> Instance {
                     "Tag",
                     repeated([scalar(string("one")), scalar(string("two"))]),
                 ),
+                field(
+                    "Address",
+                    group([
+                        field(
+                            XML_TYPE_FIELD,
+                            scalar(string("{urn:ferrule:types}Domestic")),
+                        ),
+                        field("Name", scalar(string("Ada"))),
+                        field("State", scalar(string("WA"))),
+                        field("Zip", scalar(Value::Int(98101))),
+                        field("Postcode", scalar(Value::Null)),
+                    ]),
+                ),
                 field("Child", group([field("Name", scalar(string("Nested")))])),
             ]),
         )])]),
@@ -168,6 +212,11 @@ fn generated_xml_serializer_matches_engine_output_and_typed_failures() {
     assert!(pretty.contains("\n    <Code>D&lt;1</Code>"), "{pretty}");
     assert!(
         pretty.contains("\n  <Tag>one</Tag>\n  <Tag>two</Tag>"),
+        "{pretty}"
+    );
+    assert!(pretty.contains("xsi:type=\"ft:Domestic\""), "{pretty}");
+    assert!(
+        pretty.contains("xmlns:ft=\"urn:ferrule:types\""),
         "{pretty}"
     );
 
@@ -266,6 +315,12 @@ var source = Group(Field("Rows", Repeated(Group(Field("Item", Group(
     Field("Optional", Scalar(FerruleValue.Null)),
     Field("Nil", Scalar(FerruleValue.XmlNil)),
     Field("Tag", Repeated(Scalar(Text("one")), Scalar(Text("two")))),
+    Field("Address", Group(
+        Field("\u001fferrule-xml-type", Scalar(Text("{urn:ferrule:types}Domestic"))),
+        Field("Name", Scalar(Text("Ada"))),
+        Field("State", Scalar(Text("WA"))),
+        Field("Zip", Scalar(FerruleValue.FromInt64(98101))),
+        Field("Postcode", Scalar(FerruleValue.Null)))),
     Field("Child", Group(Field("Name", Scalar(Text("Nested")))))))))));
 var output = (FerruleGroup)GeneratedMapping.Execute(source);
 var row = (FerruleGroup)((FerruleRepeated)output.Fields.Single(field => field.Name == "Row").Value).Items[0];

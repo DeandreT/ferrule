@@ -669,7 +669,7 @@ pub enum Expression {
     XmlSerialize {
         frame: Option<Vec<String>>,
         path: Vec<String>,
-        schema: SchemaNode,
+        schema: Box<SchemaNode>,
         declaration: bool,
         indent: bool,
         namespace: Option<String>,

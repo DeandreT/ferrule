@@ -1073,12 +1073,18 @@ fn xml_serializer_indent_defaults_on_and_roundtrips_when_disabled() {
     let node = Node::XmlSerialize {
         path: vec!["Item".into()],
         frame: None,
-        schema: ir::SchemaNode::group("Item", Vec::new()),
+        schema: Box::new(ir::SchemaNode::group("Item", Vec::new())),
         declaration: false,
         indent: false,
         namespace: None,
     };
     let encoded = serde_json::to_value(&node).unwrap();
+    assert_eq!(
+        encoded
+            .pointer("/schema/name")
+            .and_then(|name| name.as_str()),
+        Some("Item")
+    );
     let decoded: Node = serde_json::from_value(encoded.clone()).unwrap();
     assert!(matches!(decoded, Node::XmlSerialize { indent: false, .. }));
 

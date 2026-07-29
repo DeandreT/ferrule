@@ -129,7 +129,7 @@ impl GraphBuilder<'_> {
         Some(self.alloc(Node::XmlSerialize {
             path,
             frame,
-            schema: column.schema.clone(),
+            schema: Box::new(column.schema.clone()),
             declaration: false,
             indent: false,
             namespace: column.namespace.clone(),
