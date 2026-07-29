@@ -272,6 +272,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.alternative_mode == right.alternative_mode
         && left.xml_alternative_kind == right.xml_alternative_kind
         && left.xml_repeating_sequences == right.xml_repeating_sequences
+        && left.xml_repeating_choices == right.xml_repeating_choices
         && left.kind == right.kind
 }
 
@@ -328,6 +329,11 @@ fn validate_export_node(
     recursive_anchors: &BTreeMap<String, &SchemaNode>,
 ) -> Result<(), XmlFormatError> {
     if !node.xml_repeating_sequences_are_valid() {
+        return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
+            group: node.name.clone(),
+        });
+    }
+    if !node.xml_repeating_choices_are_valid() {
         return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
             group: node.name.clone(),
         });
@@ -788,6 +794,55 @@ fn write_nested_elements(
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
     for child in children {
+        let choice = group.xml_repeating_choices.iter().find(|choice| {
+            choice
+                .members
+                .first()
+                .is_some_and(|member| member == &child.name)
+        });
+        if let Some(choice) = choice {
+            let pad = "  ".repeat(depth);
+            let min_occurs = if choice.required {
+                ""
+            } else {
+                " minOccurs=\"0\""
+            };
+            out.push_str(&format!(
+                "{pad}<xs:choice{min_occurs} maxOccurs=\"unbounded\">\n"
+            ));
+            for member in &choice.members {
+                let child = children
+                    .iter()
+                    .find(|child| child.name == *member)
+                    .ok_or_else(|| XmlFormatError::UnsupportedSchemaRole {
+                        node: group.name.clone(),
+                        role: "repeating choice with a missing member",
+                        kind: "group",
+                    })?;
+                let mut occurrence = (*child).clone();
+                occurrence.repeating = false;
+                write_element_required(
+                    &occurrence,
+                    depth + 1,
+                    ElementOccurrence::Required,
+                    root_name,
+                    recursive_anchors,
+                    alternatives,
+                    out,
+                )?;
+            }
+            out.push_str(&format!("{pad}</xs:choice>\n"));
+            continue;
+        }
+        if group.xml_repeating_choices.iter().any(|choice| {
+            choice
+                .members
+                .iter()
+                .skip(1)
+                .any(|member| member == &child.name)
+        }) {
+            continue;
+        }
         let sequence = group.xml_repeating_sequences.iter().find(|sequence| {
             sequence
                 .members

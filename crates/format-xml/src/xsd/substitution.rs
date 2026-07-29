@@ -15,6 +15,7 @@ pub(super) struct ElementDeclaration {
     pub path: PathBuf,
     pub local: String,
     pub identity: String,
+    pub namespace: Option<String>,
     pub abstract_element: bool,
 }
 
@@ -28,12 +29,41 @@ struct IndexedDeclaration {
 pub(super) struct SubstitutionIndex {
     declarations: Vec<IndexedDeclaration>,
     by_identity: BTreeMap<String, usize>,
+    global_elements: Vec<ElementDeclaration>,
+    global_by_identity: BTreeMap<String, usize>,
     effective_namespaces: BTreeMap<PathBuf, BTreeSet<Option<String>>>,
+    unresolved_namespaces: BTreeSet<Option<String>>,
     conflicting_identity: Option<String>,
+    conflicting_global_identity: Option<String>,
     limit_reached: bool,
 }
 
 impl SubstitutionIndex {
+    fn insert_global(&mut self, declaration: ElementDeclaration) {
+        if let Some(existing) = self
+            .global_by_identity
+            .get(&declaration.identity)
+            .and_then(|index| self.global_elements.get(*index))
+        {
+            if existing.path != declaration.path
+                || existing.local != declaration.local
+                || existing.namespace != declaration.namespace
+                || existing.abstract_element != declaration.abstract_element
+            {
+                self.conflicting_global_identity
+                    .get_or_insert_with(|| declaration.identity.clone());
+            }
+            return;
+        }
+        if self.global_elements.len() >= MAX_MATERIALIZED_SCHEMA_ELEMENTS {
+            self.limit_reached = true;
+            return;
+        }
+        self.global_by_identity
+            .insert(declaration.identity.clone(), self.global_elements.len());
+        self.global_elements.push(declaration);
+    }
+
     fn insert(&mut self, declaration: IndexedDeclaration) {
         if let Some(existing) = self
             .by_identity
@@ -42,6 +72,7 @@ impl SubstitutionIndex {
         {
             if existing.element.path != declaration.element.path
                 || existing.element.local != declaration.element.local
+                || existing.element.namespace != declaration.element.namespace
                 || existing.element.abstract_element != declaration.element.abstract_element
                 || existing.head != declaration.head
             {
@@ -123,6 +154,25 @@ impl SubstitutionIndex {
         Ok(descendants)
     }
 
+    pub(super) fn concrete_global_elements(&self) -> Result<&[ElementDeclaration], XmlFormatError> {
+        if self.limit_reached {
+            return Err(XmlFormatError::SubstitutionGroupLimit {
+                limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
+            });
+        }
+        if let Some(identity) = &self.conflicting_global_identity {
+            return Err(XmlFormatError::ConflictingSubstitutionMember {
+                head: "global element declarations".to_string(),
+                member: identity.clone(),
+            });
+        }
+        Ok(&self.global_elements)
+    }
+
+    pub(super) fn unresolved_namespaces(&self) -> &BTreeSet<Option<String>> {
+        &self.unresolved_namespaces
+    }
+
     /// Returns a chameleon schema's adopted namespace only when this graph
     /// reaches the physical file through exactly one namespace context.
     pub(super) fn effective_namespace(&self, path: &Path) -> Option<&str> {
@@ -167,34 +217,32 @@ fn collect_declarations(
         return;
     }
 
-    for declaration in schema.children().filter(|candidate| {
-        candidate.is_element()
-            && candidate.tag_name().name() == "element"
-            && candidate.attribute("substitutionGroup").is_some()
-    }) {
+    for declaration in schema
+        .children()
+        .filter(|candidate| candidate.is_element() && candidate.tag_name().name() == "element")
+    {
         let Some(local) = declaration.attribute("name") else {
-            continue;
-        };
-        let Some(head) = declaration
-            .attribute("substitutionGroup")
-            .and_then(|head| expanded_qname_identity(schema, effective_namespace, head))
-        else {
             continue;
         };
         let Some(identity) = type_identity_in_namespace(effective_namespace, local) else {
             continue;
         };
-        index.insert(IndexedDeclaration {
-            element: ElementDeclaration {
-                path: path.clone(),
-                local: local.to_string(),
-                identity,
-                abstract_element: declaration
-                    .attribute("abstract")
-                    .is_some_and(|value| matches!(value, "true" | "1")),
-            },
-            head,
-        });
+        let element = ElementDeclaration {
+            path: path.clone(),
+            local: local.to_string(),
+            identity,
+            namespace: effective_namespace.map(str::to_string),
+            abstract_element: declaration
+                .attribute("abstract")
+                .is_some_and(|value| matches!(value, "true" | "1")),
+        };
+        index.insert_global(element.clone());
+        if let Some(head) = declaration
+            .attribute("substitutionGroup")
+            .and_then(|head| expanded_qname_identity(schema, effective_namespace, head))
+        {
+            index.insert(IndexedDeclaration { element, head });
+        }
         if index.limit_reached {
             return;
         }
@@ -204,10 +252,19 @@ fn collect_declarations(
         .children()
         .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
     {
+        let dependency_namespace = if link.tag_name().name() == "include" {
+            effective_namespace
+        } else {
+            link.attribute("namespace")
+        }
+        .filter(|namespace| !namespace.is_empty())
+        .map(str::to_string);
         let Some(location) = link.attribute("schemaLocation") else {
+            index.unresolved_namespaces.insert(dependency_namespace);
             continue;
         };
         if location.contains("://") {
+            index.unresolved_namespaces.insert(dependency_namespace);
             continue;
         }
         let dependency = path
@@ -215,9 +272,11 @@ fn collect_declarations(
             .unwrap_or_else(|| Path::new("."))
             .join(location);
         let Ok(text) = read_xml_text(&dependency) else {
+            index.unresolved_namespaces.insert(dependency_namespace);
             continue;
         };
         let Ok(document) = roxmltree::Document::parse(&text) else {
+            index.unresolved_namespaces.insert(dependency_namespace);
             continue;
         };
         let dependency_schema = document.root_element();

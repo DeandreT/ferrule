@@ -115,3 +115,80 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     assert!(output.field("Amount").is_some());
     Ok(())
 }
+
+#[test]
+fn package_root_confines_external_json_schema_references() -> Result<(), Box<dyn std::error::Error>>
+{
+    let directory = TempDir::new()?;
+    let maps = directory.0.join("maps");
+    let schemas = directory.0.join("schemas");
+    let shared = directory.0.join("shared");
+    std::fs::create_dir_all(&maps)?;
+    std::fs::create_dir_all(&schemas)?;
+    std::fs::create_dir_all(&shared)?;
+    std::fs::write(
+        shared.join("types.schema.json"),
+        r#"{
+  "$defs":{
+    "Row":{
+      "type":"object",
+      "properties":{"Code":{"type":"string"}},
+      "required":["Code"],
+      "additionalProperties":false
+    }
+  }
+}"#,
+    )?;
+    std::fs::write(
+        schemas.join("source.schema.json"),
+        r#"{
+  "title":"Envelope",
+  "type":"object",
+  "properties":{"Row":{"$ref":"../shared/types.schema.json#/$defs/Row"}},
+  "required":["Row"],
+  "additionalProperties":false
+}"#,
+    )?;
+    std::fs::write(maps.join("input.json"), r#"{"Row":{"Code":"A"}}"#)?;
+    let design = maps.join("mapping.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="json" kind="31"><data>
+    <root><entry name="FileInstance"><entry name="document"><entry name="root">
+      <entry name="object"><entry name="Row" type="json-property"><entry name="object">
+        <entry name="Code" type="json-property"><entry name="string" outkey="10"/></entry>
+      </entry></entry></entry>
+    </entry></entry></entry></root>
+    <json schema="../schemas/source.schema.json" inputinstance="input.json"/>
+  </data></component>
+  <component name="target" library="xml" kind="14">
+    <properties XSLTDefaultOutput="1"/><data>
+      <root><entry name="Output"><entry name="Code" inpkey="20"/></entry></root>
+      <document outputinstance="output.xml" instanceroot="{}Output"/>
+    </data>
+  </component>
+</children><graph><vertices>
+  <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let options = mfd::ImportOptions::default().with_package_root(&directory.0);
+    let imported = mfd::import_with_options(&design, &options)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        imported
+            .project
+            .source
+            .child("Row")
+            .and_then(|row| row.child("Code"))
+            .is_some()
+    );
+    let source = format_json::read(&maps.join("input.json"), &imported.project.source)?;
+    let target = engine::run(&imported.project, &source)?;
+    assert_eq!(
+        target.field("Code").and_then(Instance::as_scalar),
+        Some(&ir::Value::String("A".into()))
+    );
+    Ok(())
+}

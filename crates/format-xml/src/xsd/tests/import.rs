@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::{from_str, to_string};
-use ir::{Instance, SchemaKind, Value, XML_TYPE_FIELD, XmlNamespace};
+use ir::{Instance, SchemaKind, Value, XML_TYPE_FIELD, XmlNamespace, XmlRepeatingChoice};
 
 #[test]
 fn imports_utf16_schemas_with_or_without_a_bom() {
@@ -1492,7 +1492,8 @@ fn recursive_named_types_anchor_to_their_concrete_element() {
         "{exported}"
     );
     assert!(
-        exported.contains(r#"<xs:element name="SubSection" type="MainSectionType" minOccurs="0" maxOccurs="unbounded"/>"#),
+        exported.contains(r#"<xs:choice minOccurs="0" maxOccurs="unbounded">"#)
+            && exported.contains(r#"<xs:element name="SubSection" type="MainSectionType"/>"#),
         "{exported}"
     );
     std::fs::write(&path, exported).unwrap();
@@ -3116,6 +3117,168 @@ fn wildcard_target_namespace_uses_chameleon_include_namespace()
 }
 
 #[test]
+fn resolves_strict_wildcards_to_typed_repeating_choice_ports()
+-> Result<(), Box<dyn std::error::Error>> {
+    const ROOT: &str = "urn:ferrule:strict-wildcard:root";
+    const ALPHA: &str = "urn:ferrule:strict-wildcard:alpha";
+    const BETA: &str = "urn:ferrule:strict-wildcard:beta";
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_strict_wildcard_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("alpha.xsd"),
+        format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:a="{ALPHA}" targetNamespace="{ALPHA}">
+              <xs:element name="Alpha"><xs:complexType><xs:sequence>
+                <xs:element name="Name" type="xs:string"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"#
+        ),
+    )?;
+    std::fs::write(
+        dir.join("beta.xsd"),
+        format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                targetNamespace="{BETA}">
+              <xs:element name="Beta" type="xs:integer"/>
+            </xs:schema>"#
+        ),
+    )?;
+    let root = dir.join("root.xsd");
+    std::fs::write(
+        &root,
+        format!(
+            r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:r="{ROOT}" targetNamespace="{ROOT}" elementFormDefault="qualified">
+              <xs:import namespace="{ALPHA}" schemaLocation="alpha.xsd"/>
+              <xs:import namespace="{BETA}" schemaLocation="beta.xsd"/>
+              <xs:element name="Container"><xs:complexType><xs:sequence>
+                <xs:any namespace="##other" minOccurs="0" maxOccurs="unbounded"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"###
+        ),
+    )?;
+
+    let schema = import_root(&root, Some(&format!("{{{ROOT}}}Container")))?;
+    assert!(schema.child("Alpha").is_some_and(|child| child.repeating));
+    assert!(schema.child("Beta").is_some_and(|child| child.repeating));
+    assert_eq!(
+        schema.xml_repeating_choices,
+        [XmlRepeatingChoice {
+            required: false,
+            members: vec!["Alpha".into(), "Beta".into()],
+        }]
+    );
+
+    let input = format!(
+        r#"<r:Container xmlns:r="{ROOT}" xmlns:a="{ALPHA}" xmlns:b="{BETA}">
+          <a:Alpha><Name>first</Name></a:Alpha><b:Beta>7</b:Beta>
+          <a:Alpha><Name>second</Name></a:Alpha>
+        </r:Container>"#
+    );
+    let instance = from_str(&input, &schema)?;
+    let output = to_string(&schema, &instance)?;
+    assert!(output.find("<Alpha") < output.find("<Beta"));
+    assert!(output.rfind("<Alpha") > output.find("<Beta"));
+    let reparsed = from_str(&output, &schema)?;
+    assert_eq!(reparsed.field("Alpha"), instance.field("Alpha"));
+    assert_eq!(reparsed.field("Beta"), instance.field("Beta"));
+
+    let exported = export_set(&schema, "root.xsd")?;
+    assert!(
+        exported
+            .root
+            .contains("<xs:choice minOccurs=\"0\" maxOccurs=\"unbounded\">")
+    );
+    std::fs::write(&root, &exported.root)?;
+    for dependency in &exported.dependencies {
+        std::fs::write(dir.join(&dependency.filename), &dependency.contents)?;
+    }
+    let reimported = import_root(&root, Some(&format!("{{{ROOT}}}Container")))?;
+    assert_eq!(reimported, schema);
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
+fn strict_wildcard_resolution_requires_a_closed_allowed_namespace_graph()
+-> Result<(), Box<dyn std::error::Error>> {
+    const ROOT: &str = "urn:ferrule:strict-closure:root";
+    const RESOLVED: &str = "urn:ferrule:strict-closure:resolved";
+    const MISSING: &str = "urn:ferrule:strict-closure:missing";
+    let dir =
+        std::env::temp_dir().join(format!("ferrule_xsd_strict_closure_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("resolved.xsd"),
+        format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                targetNamespace="{RESOLVED}">
+              <xs:element name="Member" type="xs:string"/>
+            </xs:schema>"#
+        ),
+    )?;
+    let root = dir.join("root.xsd");
+    let schema = |imports: &str, namespace: &str| {
+        format!(
+            r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                targetNamespace="{ROOT}">
+              {imports}
+              <xs:element name="Container"><xs:complexType><xs:sequence>
+                <xs:any namespace="{namespace}" minOccurs="0" maxOccurs="unbounded"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"###
+        )
+    };
+    let resolved = format!(r#"<xs:import namespace="{RESOLVED}" schemaLocation="resolved.xsd"/>"#);
+    let unresolved_external = format!(r#"<xs:import namespace="{MISSING}"/>"#);
+    let unresolved_target = format!(r#"<xs:import namespace="{ROOT}"/>"#);
+
+    for (label, imports, namespace) in [
+        ("any", format!("{resolved}{unresolved_external}"), "##any"),
+        (
+            "other",
+            format!("{resolved}{unresolved_external}"),
+            "##other",
+        ),
+        ("exact", unresolved_external.clone(), MISSING),
+    ] {
+        std::fs::write(&root, schema(&imports, namespace))?;
+        let error = import_root(&root, Some(&format!("{{{ROOT}}}Container")))
+            .expect_err("an allowed unresolved namespace imported as a closed strict wildcard");
+        assert!(
+            matches!(
+                error,
+                XmlFormatError::UnsupportedXmlWildcard { reason }
+                    if reason.contains("declaration set is not closed")
+            ),
+            "{label}: {error}"
+        );
+    }
+
+    for (imports, namespace) in [
+        (format!("{resolved}{unresolved_target}"), "##other"),
+        (format!("{resolved}{unresolved_external}"), RESOLVED),
+    ] {
+        std::fs::write(&root, schema(&imports, namespace))?;
+        let imported = import_root(&root, Some(&format!("{{{ROOT}}}Container")))?;
+        assert!(
+            imported
+                .child("Member")
+                .is_some_and(|member| member.repeating)
+        );
+    }
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
 fn rejects_wildcards_outside_the_lossless_local_skip_profile()
 -> Result<(), Box<dyn std::error::Error>> {
     let cases = [
@@ -3132,12 +3295,7 @@ fn rejects_wildcards_outside_the_lossless_local_skip_profile()
         (
             "lax",
             "<xs:any namespace=\"##local\" processContents=\"lax\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
-            "processContents=\"skip\"",
-        ),
-        (
-            "strict-default",
-            "<xs:any namespace=\"##local\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
-            "processContents=\"skip\"",
+            "remains open to undeclared elements",
         ),
         (
             "required",
@@ -3204,7 +3362,7 @@ fn rejects_wildcards_outside_the_lossless_local_skip_profile()
             "named-lax",
             r###"<xs:any namespace="##local" processContents="lax"
                          minOccurs="0" maxOccurs="unbounded"/>"###,
-            "processContents=\"skip\"",
+            "remains open to undeclared elements",
         ),
         (
             "named-sibling",

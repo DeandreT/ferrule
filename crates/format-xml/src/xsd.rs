@@ -34,7 +34,7 @@ use std::path::{Path, PathBuf};
 use ir::{
     ScalarType, SchemaKind, SchemaNode, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
     XML_LOCAL_NAME_FIELD, XML_NAMESPACE_URI_FIELD, XML_TEXT_FIELD, XmlNamespace, XmlNamespaceUri,
-    XmlRepeatingSequence, XmlSequenceMember, XmlWildcardNamespaceConstraint,
+    XmlRepeatingChoice, XmlRepeatingSequence, XmlSequenceMember, XmlWildcardNamespaceConstraint,
 };
 use roxmltree::Node;
 
@@ -98,18 +98,21 @@ struct CachedComplexType {
 struct ParsedComplexType {
     children: Vec<SchemaNode>,
     repeating_sequences: Vec<XmlRepeatingSequence>,
+    repeating_choices: Vec<XmlRepeatingChoice>,
 }
 
 impl ParsedComplexType {
     fn into_schema(self, name: impl Into<String>) -> SchemaNode {
         let mut schema = SchemaNode::group(name, self.children);
         schema.xml_repeating_sequences = self.repeating_sequences;
+        schema.xml_repeating_choices = self.repeating_choices;
         schema
     }
 
     fn extend(&mut self, other: Self) {
         self.children.extend(other.children);
         self.repeating_sequences.extend(other.repeating_sequences);
+        self.repeating_choices.extend(other.repeating_choices);
     }
 }
 
@@ -1667,6 +1670,12 @@ fn parse_complex_type(
                         Err(error) => state.reject_repeating_particle(error),
                     }
                 }
+                if child.tag_name().name() == "choice"
+                    && is_repeating(&child)
+                    && let Some(choice) = repeating_choice(&child)
+                {
+                    parsed.repeating_choices.push(choice);
+                }
                 collect_sequence(
                     &child,
                     is_repeating(&child),
@@ -1674,6 +1683,7 @@ fn parse_complex_type(
                     schema_path,
                     state,
                     &mut parsed.children,
+                    &mut parsed.repeating_choices,
                 );
             }
             // complexContent/extension: the named base type's children
@@ -1902,6 +1912,37 @@ fn repeating_sequence(
     }))
 }
 
+fn repeating_choice(choice: &Node<'_, '_>) -> Option<XmlRepeatingChoice> {
+    let mut members = Vec::new();
+    for node in choice
+        .children()
+        .filter(|node| node.is_element() && !is_disabled_particle(node))
+    {
+        if node.tag_name().name() != "element"
+            || is_repeating(&node)
+            || node.attribute("minOccurs") == Some("0")
+        {
+            return None;
+        }
+        members.push(
+            node.attribute("name")
+                .or_else(|| node.attribute("ref").map(local_name))?
+                .to_string(),
+        );
+    }
+    if members.len() < 2 {
+        return None;
+    }
+    let mut unique = BTreeSet::new();
+    if !members.iter().all(|member| unique.insert(member.as_str())) {
+        return None;
+    }
+    Some(XmlRepeatingChoice {
+        required: choice.attribute("minOccurs") != Some("0"),
+        members,
+    })
+}
+
 fn nested_non_sequence_compositor(particle: &Node<'_, '_>) -> Option<String> {
     for child in particle.children().filter(|node| node.is_element()) {
         if is_disabled_particle(&child) {
@@ -1993,6 +2034,7 @@ fn collect_sequence(
     schema_path: &Path,
     state: &mut ParseState,
     out: &mut Vec<SchemaNode>,
+    repeating_choices: &mut Vec<XmlRepeatingChoice>,
 ) {
     if is_disabled_particle(sequence) {
         return;
@@ -2021,10 +2063,18 @@ fn collect_sequence(
                 out.push(node);
             }
             "any" => match parse_wildcard(&child, schema_el, schema_path, state) {
-                Ok(wildcard) if state.reserve_elements(schema_node_count(&wildcard)) => {
-                    out.push(wildcard);
+                Ok(ParsedWildcard::Generic(wildcard))
+                    if state.reserve_elements(schema_node_count(&wildcard)) =>
+                {
+                    out.push(*wildcard);
                 }
-                Ok(_) => {}
+                Ok(ParsedWildcard::Generic(_)) => {}
+                Ok(ParsedWildcard::StrictChoice { children, choice }) => {
+                    out.extend(children);
+                    if let Some(choice) = choice {
+                        repeating_choices.push(choice);
+                    }
+                }
                 Err(error) => state.reject_wildcard(error),
             },
             "sequence" => {
@@ -2035,6 +2085,7 @@ fn collect_sequence(
                     schema_path,
                     state,
                     out,
+                    repeating_choices,
                 );
             }
             "choice" | "all" if particle_contains_wildcard(&child) => {
@@ -2043,6 +2094,12 @@ fn collect_sequence(
                 ));
             }
             "choice" | "all" => {
+                if child.tag_name().name() == "choice"
+                    && is_repeating(&child)
+                    && let Some(choice) = repeating_choice(&child)
+                {
+                    repeating_choices.push(choice);
+                }
                 collect_sequence(
                     &child,
                     inherited_repeating || is_repeating(&child),
@@ -2050,10 +2107,14 @@ fn collect_sequence(
                     schema_path,
                     state,
                     out,
+                    repeating_choices,
                 );
             }
             "group" => match groups::resolve_model_group(&child, schema_el, schema_path, state) {
-                Ok(children) => out.extend(children),
+                Ok(group) => {
+                    out.extend(group.children);
+                    repeating_choices.extend(group.repeating_choices);
+                }
                 Err(error) => state.reject_schema_group(error),
             },
             _ => {}
@@ -2061,17 +2122,20 @@ fn collect_sequence(
     }
 }
 
+enum ParsedWildcard {
+    Generic(Box<SchemaNode>),
+    StrictChoice {
+        children: Vec<SchemaNode>,
+        choice: Option<XmlRepeatingChoice>,
+    },
+}
+
 fn parse_wildcard(
     wildcard: &Node<'_, '_>,
     schema: &Node<'_, '_>,
     schema_path: &Path,
-    state: &ParseState,
-) -> Result<SchemaNode, XmlFormatError> {
-    if wildcard.attribute("processContents") != Some("skip") {
-        return Err(unsupported_wildcard(
-            "only processContents=\"skip\" is supported; lax or strict validation requires resolved declarations",
-        ));
-    }
+    state: &mut ParseState,
+) -> Result<ParsedWildcard, XmlFormatError> {
     if wildcard.attribute("minOccurs") != Some("0")
         || wildcard.attribute("maxOccurs") != Some("unbounded")
     {
@@ -2094,7 +2158,87 @@ fn parse_wildcard(
         wildcard.attribute("namespace").unwrap_or("##any"),
         target_namespace,
     )?;
-    Ok(generic_wildcard_schema_with(namespace))
+    match wildcard.attribute("processContents").unwrap_or("strict") {
+        "skip" => Ok(ParsedWildcard::Generic(Box::new(
+            generic_wildcard_schema_with(namespace),
+        ))),
+        "strict" => parse_strict_wildcard(namespace, state),
+        "lax" => Err(unsupported_wildcard(
+            "processContents=\"lax\" remains open to undeclared elements and cannot become a closed typed choice",
+        )),
+        _ => Err(unsupported_wildcard(
+            "processContents must be skip, strict, or lax",
+        )),
+    }
+}
+
+fn parse_strict_wildcard(
+    namespace: XmlWildcardNamespaceConstraint,
+    state: &mut ParseState,
+) -> Result<ParsedWildcard, XmlFormatError> {
+    if state
+        .substitutions
+        .unresolved_namespaces()
+        .iter()
+        .any(|unresolved| namespace.allows(unresolved.as_deref()))
+    {
+        return Err(unsupported_wildcard(
+            "a matching include or import could not be resolved, so the strict wildcard declaration set is not closed",
+        ));
+    }
+    let declarations = state
+        .substitutions
+        .concrete_global_elements()?
+        .iter()
+        .filter(|declaration| {
+            !declaration.abstract_element && namespace.allows(declaration.namespace.as_deref())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if declarations.is_empty() {
+        return Err(unsupported_wildcard(
+            "no matching concrete global element declaration could be resolved for a strict wildcard",
+        ));
+    }
+    let mut children = Vec::with_capacity(declarations.len());
+    let mut names = BTreeSet::new();
+    for declaration in declarations {
+        if !names.insert(declaration.local.clone()) {
+            return Err(unsupported_wildcard(
+                "resolved strict wildcard declarations have colliding local names and cannot become unique mapping ports",
+            ));
+        }
+        let text = read_xml_text(&declaration.path)?;
+        let document = roxmltree::Document::parse(&text)?;
+        let declaration_schema = document.root_element();
+        let element = top_level(&declaration_schema, "element", &declaration.local)
+            .ok_or_else(|| XmlFormatError::MissingElement(declaration.identity.clone()))?;
+        let mut child = parse_element_declaration(
+            &element,
+            &declaration_schema,
+            &declaration.path,
+            &declaration.local,
+            state,
+        )
+        .ok_or_else(|| XmlFormatError::MissingElement(declaration.identity.clone()))?;
+        if child.recursive_ref.is_some() {
+            return Err(unsupported_wildcard(
+                "resolved strict wildcard declarations that recurse through the active element cannot become finite mapping ports",
+            ));
+        }
+        if child.xml_alternative_kind == ir::XmlAlternativeKind::SubstitutionGroup {
+            return Err(unsupported_wildcard(
+                "resolved strict wildcard declarations with substitution members cannot retain exact occurrence order",
+            ));
+        }
+        child.repeating = true;
+        children.push(child);
+    }
+    let choice = (children.len() > 1).then(|| XmlRepeatingChoice {
+        required: false,
+        members: children.iter().map(|child| child.name.clone()).collect(),
+    });
+    Ok(ParsedWildcard::StrictChoice { children, choice })
 }
 
 fn parse_wildcard_namespace(

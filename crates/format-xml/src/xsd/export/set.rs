@@ -504,6 +504,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.alternative_mode == right.alternative_mode
         && left.xml_alternative_kind == right.xml_alternative_kind
         && left.xml_repeating_sequences == right.xml_repeating_sequences
+        && left.xml_repeating_choices == right.xml_repeating_choices
         && left.kind == right.kind
 }
 
