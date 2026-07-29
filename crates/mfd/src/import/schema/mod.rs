@@ -305,7 +305,7 @@ fn read_schema_component_resolved(
         .and_then(|d| d.attribute("instanceroot"))
         .map(instance_root_segments)
         .unwrap_or_default();
-    let mut schema = document
+    let schema_from_file = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
             let schema_path =
@@ -348,8 +348,9 @@ fn read_schema_component_resolved(
                     None
                 }
             }
-        })
-        .unwrap_or_else(|| entry_tree_schema(&entry));
+        });
+    let schema_from_entry_tree = schema_from_file.is_none();
+    let mut schema = schema_from_file.unwrap_or_else(|| entry_tree_schema(&entry));
     if let Some(rel) = document.and_then(|document| document.attribute("schema"))
         && let Ok(schema_path) = resolve_resource_reference(mfd_path, resources, rel, "XML Schema")
         && !schema_path
@@ -361,6 +362,7 @@ fn read_schema_component_resolved(
             &entry,
             &mut schema,
             &schema_path,
+            schema_from_entry_tree,
             warnings,
         );
     }
