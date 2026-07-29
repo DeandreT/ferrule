@@ -451,6 +451,44 @@ fn correlated_join_scope_program() -> Program {
     program
 }
 
+fn add_allocation_descendant(program: &mut Program) {
+    let SchemaKind::Group { children, .. } = &mut program.source.kind else {
+        panic!("source group");
+    };
+    let Some(line) = children.iter_mut().find(|child| child.name == "Line") else {
+        panic!("line source");
+    };
+    let SchemaKind::Group { children, .. } = &mut line.kind else {
+        panic!("line group");
+    };
+    children.push(
+        SchemaNode::group(
+            "Allocation",
+            vec![
+                SchemaNode::scalar("Sku", ScalarType::String),
+                SchemaNode::scalar("Price", ScalarType::Int),
+            ],
+        )
+        .repeating(),
+    );
+}
+
+fn descendant_join() -> InnerJoin {
+    InnerJoin::new(
+        JoinId::new(8),
+        JoinPlan::new(
+            JoinSource::singleton(vec!["Sku".into()]),
+            JoinSource::new(vec!["Allocation".into()]),
+            JoinConditions::new(JoinKey::new(
+                vec!["Sku".into()],
+                Vec::new(),
+                vec!["Sku".into()],
+            )),
+        )
+        .expect("descendant join plan"),
+    )
+}
+
 #[test]
 fn validates_root_join_controls_and_static_descendants() {
     assert_eq!(validate_program(&join_program()), Ok(()));
@@ -548,6 +586,22 @@ fn validates_only_bounded_correlated_join_aggregates() {
 }
 
 #[test]
+fn validates_correlated_join_aggregates_over_a_repeating_current_descendant() {
+    let mut program = correlated_join_aggregate_program();
+    add_allocation_descendant(&mut program);
+    let Expression::JoinField { collection, .. } = &mut program.expressions[0].expression else {
+        panic!("joined price");
+    };
+    *collection = vec!["Allocation".into()];
+    let Expression::JoinAggregate { join, .. } = &mut program.expressions[1].expression else {
+        panic!("join aggregate");
+    };
+    *join = descendant_join();
+
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
 fn validates_correlated_join_aggregate_with_only_active_singletons() {
     let mut program = correlated_join_aggregate_program();
     program.expressions = vec![ExpressionNode {
@@ -616,6 +670,72 @@ fn validates_bounded_correlated_join_scopes_with_tuple_controls_and_children() {
     );
     assert_eq!(
         validate_program(&unbounded),
+        Err(ProgramValidationError::JoinRequiresRootContext {
+            target_path: vec!["Row".into(), "Match".into()],
+            join: JoinId::new(8),
+        })
+    );
+}
+
+#[test]
+fn validates_correlated_join_scopes_over_a_repeating_current_descendant() {
+    let mut program = correlated_join_scope_program();
+    add_allocation_descendant(&mut program);
+    for expression in &mut program.expressions {
+        let id = expression.id;
+        match &mut expression.expression {
+            Expression::JoinField { collection, .. } | Expression::Position { collection }
+                if matches!(id, 25 | 27) =>
+            {
+                *collection = vec!["Allocation".into()];
+            }
+            _ => {}
+        }
+    }
+    let Some(iteration) = program.root.children[0].children[0].iteration.as_mut() else {
+        panic!("correlated join iteration");
+    };
+    let filter = iteration.filter();
+    let sort = iteration.sort().cloned();
+    let windows = iteration.windows().to_vec();
+    let output = iteration.output();
+    *iteration = IterationPlan::new(descendant_join(), filter, sort, windows, output);
+
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
+fn rejects_an_empty_repeating_path_as_the_current_items_collection() {
+    let mut program = correlated_join_scope_program();
+    let Some(iteration) = program.root.children[0].children[0].iteration.as_mut() else {
+        panic!("correlated join iteration");
+    };
+    let filter = iteration.filter();
+    let sort = iteration.sort().cloned();
+    let windows = iteration.windows().to_vec();
+    let output = iteration.output();
+    *iteration = IterationPlan::new(
+        InnerJoin::new(
+            JoinId::new(8),
+            JoinPlan::new(
+                JoinSource::singleton(vec!["Sku".into()]),
+                JoinSource::new(Vec::new()),
+                JoinConditions::new(JoinKey::new(
+                    vec!["Sku".into()],
+                    Vec::new(),
+                    vec!["Sku".into()],
+                )),
+            )
+            .expect("empty descendant path plan"),
+        ),
+        filter,
+        sort,
+        windows,
+        output,
+    );
+
+    assert_eq!(
+        validate_program(&program),
         Err(ProgramValidationError::JoinRequiresRootContext {
             target_path: vec!["Row".into(), "Match".into()],
             join: JoinId::new(8),

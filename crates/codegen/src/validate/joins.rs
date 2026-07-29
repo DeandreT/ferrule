@@ -397,7 +397,10 @@ fn is_bounded_correlated_plan(
         && singletons_are_bounded_scalars
         && repeating_sources.into_iter().all(|repeating| {
             match runtime_candidate(current_source, &runtime_ancestors, repeating.collection()) {
-                Some((true, _)) | Some((false, None)) => false,
+                Some((true, Some(candidate))) => {
+                    !repeating.collection().is_empty() && candidate.node().repeating
+                }
+                Some((true, None)) | Some((false, None)) => false,
                 Some((false, Some(candidate))) => candidate.node().repeating,
                 None => sources
                     .root_schema_at(repeating.collection())
