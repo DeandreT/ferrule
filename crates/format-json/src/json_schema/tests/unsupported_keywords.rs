@@ -7,7 +7,8 @@ fn validation_effective_conditionals_not_and_tuple_keywords_never_widen_silently
         r#"{
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "type":"array",
-  "prefixItems":[{"type":"string"}]
+  "prefixItems":[{"type":"string"},{"type":"integer"}],
+  "items":false
 }"#,
         r#"{
   "$schema":"https://json-schema.org/draft/2019-09/schema",

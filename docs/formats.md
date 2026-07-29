@@ -111,9 +111,10 @@ layout and dialect details that an extension cannot express.
   row independently. Predicate patterns share the document matcher budget.
   Nested dependent schemas are supported recursively, with the same per-object
   bounds. Effective `if` with `then` or `else`, `patternProperties`,
-  `unevaluatedProperties`, `unevaluatedItems`, modern `prefixItems`, legacy
-  tuple-form `items`, and effective `additionalItems` reject instead of being
-  approximated. A lone validation-neutral conditional keyword is ignored.
+  `unevaluatedProperties`, `unevaluatedItems`, heterogeneous modern
+  `prefixItems`, legacy tuple-form `items`, and effective `additionalItems`
+  reject instead of being approximated. A lone validation-neutral conditional
+  keyword is ignored.
   Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
   and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
   those schema values to use its object form, while Draft 6/7 also accept
@@ -182,6 +183,19 @@ layout and dialect details that an extension cannot express.
   schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
   item-count, string-length, and annotation metadata. Concrete string-capable scalar
   domains retain exact non-negative `minLength` and `maxLength` intervals.
+  Ferrule supports an exact bounded homogeneous `prefixItems` subset for Draft
+  2020-12 and schemas without `$schema`.
+  Every entry in the bounded finite prefix must normalize to one identical,
+  non-repeating item shape. The tail must use that same shape, be `false`
+  (which derives an exact `maxItems` at the prefix length), or be provably
+  unreachable under an existing maximum; an unconstrained tail is also exact
+  when the common prefix shape accepts arbitrary JSON. Conflicting item-count
+  bounds, heterogeneous entries or tails, concrete nested-array entries, and
+  active `unevaluatedItems` reject rather than widen. Canonical export writes
+  the equivalent ordinary `items` schema plus
+  `maxItems` when the tail is closed, so no tuple-specific runtime or mapping
+  IR is required. Draft 4 through Draft 2019-09 treat
+  `prefixItems` as an unknown keyword according to their dialects.
   Concrete array wrappers also retain `uniqueItems: true` through supported
   references and compatible composition. Native and generated Rust/C#
   boundaries compare complete raw input values and normalized output values:
