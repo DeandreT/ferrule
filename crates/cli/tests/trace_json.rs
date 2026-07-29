@@ -263,7 +263,7 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
     let lines = json_lines(&trace)?;
     assert!(!lines.is_empty());
     for (sequence, line) in lines.iter().enumerate() {
-        assert_eq!(line["schema_version"], 1);
+        assert_eq!(line["schema_version"], 2);
         assert_eq!(line["sequence"], sequence);
         assert!(line["event"]["kind"].is_string());
     }

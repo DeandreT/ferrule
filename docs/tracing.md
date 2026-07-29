@@ -31,7 +31,7 @@ Every line is one JSON object:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "sequence": 0,
   "event": {
     "kind": "node_value",
@@ -39,7 +39,8 @@ Every line is one JSON object:
     "positions": [],
     "value": {
       "type": "string",
-      "value": "accepted"
+      "preview": "accepted",
+      "truncated": false
     }
   }
 }
@@ -49,17 +50,20 @@ Every line is one JSON object:
 evaluation order. Consumers must reject unsupported `schema_version` values and
 ignore unknown fields within a supported version.
 
-Scalar values retain their Ferrule domain:
+Scalar previews retain their Ferrule domain and are capped at 160 Unicode
+scalar values:
 
-| `type` | JSON representation |
+| `type` | `preview` representation |
 | --- | --- |
-| `absent` | `null`, meaning no value |
-| `json_null` | `null`, meaning an explicit JSON null |
-| `xml_nil` | `null`, meaning an explicit `xsi:nil` value |
-| `bool` | JSON boolean |
-| `int` | JSON integer |
-| `float` | JSON number, or `"NaN"`, `"Infinity"`, `"-Infinity"` |
-| `string` | JSON string |
+| `null` | `"null"`, meaning no value |
+| `json-null` | `"json-null"`, meaning an explicit JSON null |
+| `xml-nil` | `"xml-nil"`, meaning an explicit `xsi:nil` value |
+| `bool` | `"true"` or `"false"` |
+| `int` | Decimal integer text |
+| `float` | Finite or non-finite float text |
+| `string` | The bounded string prefix |
+
+`truncated` is true when a string result exceeded the preview bound.
 
 ## Event Kinds
 
@@ -93,5 +97,5 @@ are never copied into this event.
 
 Position records contain the source collection path, one-based index, grouping
 state, optional join identity and tuple position, and optional document path.
-Sort and grouping previews are Unicode-safe and bounded; `node_value` records
-retain the complete scalar result.
+All scalar previews are Unicode-safe and bounded, including `node_value`
+records.
