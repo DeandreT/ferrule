@@ -372,18 +372,16 @@ fn is_bounded_correlated_plan(
         .copied()
         .filter(|source| source.cardinality() == JoinSourceCardinality::Repeating)
         .collect::<Vec<_>>();
-    if singleton_sources.is_empty()
-        || singleton_sources.len() + repeating_sources.len() != join_sources.len()
-    {
+    if singleton_sources.len() + repeating_sources.len() != join_sources.len() {
         return false;
     }
     let runtime_ancestors = sources.runtime_ancestors(current_source);
-    let mut has_current_singleton = false;
+    let mut has_current_anchor = false;
     let singletons_are_bounded_scalars = singleton_sources.into_iter().all(|singleton| {
         let candidate =
             match runtime_candidate(current_source, &runtime_ancestors, singleton.collection()) {
                 Some((owned_by_current, candidate)) => {
-                    has_current_singleton |= owned_by_current;
+                    has_current_anchor |= owned_by_current;
                     candidate.and_then(SchemaCursor::resolved)
                 }
                 None => sources
@@ -393,20 +391,21 @@ fn is_bounded_correlated_plan(
         candidate
             .is_some_and(|candidate| !candidate.node().repeating && candidate.node().is_scalar())
     });
-    has_current_singleton
-        && singletons_are_bounded_scalars
-        && repeating_sources.into_iter().all(|repeating| {
-            match runtime_candidate(current_source, &runtime_ancestors, repeating.collection()) {
-                Some((true, Some(candidate))) => {
-                    !repeating.collection().is_empty() && candidate.node().repeating
-                }
-                Some((true, None)) | Some((false, None)) => false,
-                Some((false, Some(candidate))) => candidate.node().repeating,
-                None => sources
-                    .root_schema_at(repeating.collection())
-                    .is_some_and(|candidate| candidate.node().repeating),
+    let repeating_sources_are_bounded = repeating_sources.into_iter().all(|repeating| {
+        match runtime_candidate(current_source, &runtime_ancestors, repeating.collection()) {
+            Some((true, Some(candidate))) => {
+                let bounded = !repeating.collection().is_empty() && candidate.node().repeating;
+                has_current_anchor |= bounded;
+                bounded
             }
-        })
+            Some((true, None)) | Some((false, None)) => false,
+            Some((false, Some(candidate))) => candidate.node().repeating,
+            None => sources
+                .root_schema_at(repeating.collection())
+                .is_some_and(|candidate| candidate.node().repeating),
+        }
+    });
+    has_current_anchor && singletons_are_bounded_scalars && repeating_sources_are_bounded
 }
 
 /// Finds the innermost active runtime frame owning a path's first segment.

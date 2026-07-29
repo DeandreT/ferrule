@@ -17,24 +17,14 @@ use mapping::{
 fn project() -> Project {
     let join = MappingJoinId::new(8);
     let plan = MappingJoinPlan::new(
-        MappingJoinSource::singleton(vec!["Sku".into()]),
         MappingJoinSource::new(vec!["Allocation".into()]),
+        MappingJoinSource::new(vec!["Offer".into()]),
         MappingJoinConditions::new(MappingJoinKey::new(
+            vec!["Allocation".into()],
             vec!["Sku".into()],
-            Vec::new(),
             vec!["Sku".into()],
         )),
     )
-    .and_then(|plan| {
-        plan.then(
-            MappingJoinSource::new(vec!["Offer".into()]),
-            MappingJoinConditions::new(MappingJoinKey::new(
-                vec!["Allocation".into()],
-                vec!["Sku".into()],
-                vec!["Sku".into()],
-            )),
-        )
-    })
     .and_then(|plan| {
         plan.then(
             MappingJoinSource::singleton(vec!["Market".into()]),
