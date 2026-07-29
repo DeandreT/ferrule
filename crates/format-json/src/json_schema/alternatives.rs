@@ -555,7 +555,7 @@ fn is_annotation_keyword(keyword: &str) -> bool {
     )
 }
 
-pub(super) fn parse_inferred_const_scalar(
+pub(super) fn parse_inferred_constraint_scalar(
     name: &str,
     value: &serde_json::Value,
 ) -> Result<SchemaNode, JsonFormatError> {
@@ -566,26 +566,26 @@ pub(super) fn parse_inferred_const_scalar(
         serde_json::Value::Number(number) if number.as_u64().is_some() => {
             return Err(unsupported_union(
                 name,
-                "integer const is outside ferrule's signed 64-bit range",
+                "integer scalar constraint is outside ferrule's signed 64-bit range",
             ));
         }
         serde_json::Value::Number(number) if finite_f64(number).is_some() => ScalarType::Float,
         serde_json::Value::Number(_) => {
             return Err(unsupported_union(
                 name,
-                "numeric const cannot be represented as a finite ferrule number",
+                "numeric scalar constraint cannot be represented as a finite ferrule number",
             ));
         }
         serde_json::Value::Null => {
             return Err(unsupported_union(
                 name,
-                "null const requires an explicitly typed nullable scalar discriminator",
+                "null scalar constraint requires an explicitly typed nullable discriminator",
             ));
         }
         serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
             return Err(unsupported_union(
                 name,
-                "const discriminators must be JSON scalar values",
+                "scalar constraints must be JSON scalar values",
             ));
         }
     };
@@ -1022,21 +1022,26 @@ fn scalar_constraints(
     };
     properties
         .iter()
-        .filter_map(|(member, property)| property.get("const").map(|value| (member, value)))
-        .map(|(member, value)| {
+        .map(|(member, property)| {
+            discriminator_value(union_name, member, property)
+                .map(|value| value.map(|value| (member, value)))
+        })
+        .filter_map(Result::transpose)
+        .map(|result| {
+            let (member, value) = result?;
             let child = children
                 .iter()
                 .find(|child| child.name == *member)
                 .ok_or_else(|| {
                     unsupported_union(
                         union_name,
-                        &format!("const discriminator `{member}` has no declared scalar field"),
+                        &format!("scalar discriminator `{member}` has no declared scalar field"),
                     )
                 })?;
             if child.repeating {
                 return Err(unsupported_union(
                     union_name,
-                    &format!("const discriminator `{member}` cannot be an array"),
+                    &format!("scalar discriminator `{member}` cannot be an array"),
                 ));
             }
             let constraint = match child.kind {
@@ -1048,7 +1053,7 @@ fn scalar_constraints(
                 }
                 SchemaKind::Group { .. } => Err(unsupported_union(
                     union_name,
-                    &format!("const discriminator `{member}` must be a scalar field"),
+                    &format!("scalar discriminator `{member}` must be a scalar field"),
                 )),
             };
             let value = constraint?;
@@ -1058,6 +1063,49 @@ fn scalar_constraints(
             })
         })
         .collect()
+}
+
+pub(super) fn singleton_enum_value(schema: &serde_json::Value) -> Option<&serde_json::Value> {
+    schema
+        .get("enum")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|values| (values.len() == 1).then(|| &values[0]))
+}
+
+fn discriminator_value<'a>(
+    union_name: &str,
+    member: &str,
+    schema: &'a serde_json::Value,
+) -> Result<Option<&'a serde_json::Value>, JsonFormatError> {
+    let constant = schema.get("const");
+    let values = match schema.get("enum") {
+        None => None,
+        Some(serde_json::Value::Array(values)) if values.is_empty() => {
+            return Err(unsupported_union(
+                union_name,
+                &format!("enum discriminator `{member}` has no possible values"),
+            ));
+        }
+        Some(serde_json::Value::Array(values)) => Some(values),
+        Some(_) => {
+            return Err(unsupported_union(
+                union_name,
+                &format!("enum discriminator `{member}` must be an array"),
+            ));
+        }
+    };
+    if let Some(constant) = constant {
+        if values.is_some_and(|values| !values.contains(constant)) {
+            return Err(unsupported_union(
+                union_name,
+                &format!(
+                    "scalar discriminator `{member}` has incompatible const and enum constraints"
+                ),
+            ));
+        }
+        return Ok(Some(constant));
+    }
+    Ok(values.and_then(|values| (values.len() == 1).then(|| &values[0])))
 }
 
 fn union_constraint_value(
@@ -1083,7 +1131,7 @@ fn union_constraint_value(
             return Err(unsupported_union(
                 union_name,
                 &format!(
-                    "const discriminator `{member}` does not match any declared scalar union type"
+                    "scalar discriminator `{member}` does not match any declared scalar union type"
                 ),
             ));
         }
@@ -1101,7 +1149,7 @@ fn constraint_value(
     let unsupported = |reason: &str| {
         unsupported_union(
             union_name,
-            &format!("const discriminator `{member}` {reason}"),
+            &format!("scalar discriminator `{member}` {reason}"),
         )
     };
     match (ty, value) {

@@ -976,9 +976,102 @@ fn unsupported_const_discriminators_are_rejected_actionably() {
         );
         let error = import_str_result(&text).unwrap_err();
         assert!(
-            error.to_string().contains("const discriminator `kind`"),
+            error.to_string().contains("scalar discriminator `kind`"),
             "{error}"
         );
+    }
+}
+
+#[test]
+fn singleton_enum_discriminators_are_canonical_exact_constraints() {
+    let schema = import_str(
+        r#"{
+  "title":"Message",
+  "oneOf":[
+    {
+      "title":"named",
+      "type":"object",
+      "additionalProperties":false,
+      "required":["kind","name"],
+      "properties":{
+        "kind":{"enum":["named"]},
+        "name":{"type":"string"}
+      }
+    },
+    {
+      "title":"numbered",
+      "type":"object",
+      "additionalProperties":false,
+      "required":["kind","number"],
+      "properties":{
+        "kind":{"enum":["numbered"]},
+        "number":{"type":"integer"}
+      }
+    }
+  ]
+}"#,
+    );
+    assert!(matches!(
+        schema.child("kind").map(|child| &child.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::String
+        })
+    ));
+    for input in [
+        r#"{"kind":"named","name":"Ada"}"#,
+        r#"{"kind":"numbered","number":7}"#,
+    ] {
+        let instance = crate::from_str(input, &schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &crate::to_string(&schema, &instance).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(input).unwrap()
+        );
+    }
+    assert!(matches!(
+        crate::from_str(r#"{"kind":"wrong","name":"Ada"}"#, &schema),
+        Err(JsonFormatError::NoMatchingAlternative { .. })
+    ));
+
+    let exported = export(&schema);
+    assert!(exported.contains("\"const\": \"named\""));
+    assert!(exported.contains("\"const\": \"numbered\""));
+    assert!(!exported.contains("\"enum\""));
+    assert_eq!(import_str(&exported), schema);
+
+    assert!(matches!(
+        import_str(r#"{"title":"Code","enum":[2]}"#).kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Int
+        }
+    ));
+}
+
+#[test]
+fn invalid_enum_discriminators_are_rejected_actionably() {
+    for (property, expected) in [
+        (r#"{"type":"string","enum":[]}"#, "has no possible values"),
+        (r#"{"type":"string","enum":"named"}"#, "must be an array"),
+        (
+            r#"{"type":"string","const":"named","enum":["other"]}"#,
+            "incompatible const and enum constraints",
+        ),
+    ] {
+        let text = format!(
+            r#"{{
+  "title":"InvalidEnum",
+  "oneOf":[
+    {{"title":"first","type":"object","additionalProperties":false,
+      "required":["kind"],"properties":{{"kind":{property}}}}},
+    {{"title":"second","type":"object","additionalProperties":false,
+      "required":["other"],"properties":{{"other":{{"type":"string"}}}}}}
+  ]
+}}"#
+        );
+        let error = import_str_result(&text).unwrap_err();
+        assert!(error.to_string().contains(expected), "{error}");
     }
 }
 

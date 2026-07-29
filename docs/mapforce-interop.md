@@ -109,8 +109,9 @@ cross-namespace substitution groups, heterogeneous scalar type arrays,
 pairwise-disjoint scalar `oneOf`, exact scalar `anyOf` unions, and array `anyOf`
 branches whose scalar item domain subsumes every narrower branch are preserved,
 including required or optional typed
-`const` discriminators and JSON-null discriminators. Expanded-name identity for ordinary elements and attributes is
-preserved; foreign declarations export as an atomic graph of local XSD siblings.
+`const` or singleton-`enum` discriminators and JSON-null discriminators.
+Expanded-name identity for ordinary elements and attributes is preserved;
+foreign declarations export as an atomic graph of local XSD siblings.
 Exact optional/unbounded `##local` element wildcards declared inline or through
 named model groups, and direct or named-attribute-group `##local` attribute
 wildcards with `processContents="skip"`, also round-trip as recursive generic
