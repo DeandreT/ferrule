@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -36,14 +37,34 @@ enum Command {
     /// CSV, XLSX, XML, JSON, SQLite, EDI, FlexText, and Protocol Buffers.
     /// For SQLite the table name is the schema root's name.
     Run {
-        #[arg(long)]
-        project: PathBuf,
+        /// Project file. `ferrule run PROJECT - -` streams one payload-compatible
+        /// primary input to one output artifact without temporary files.
+        #[arg(
+            value_name = "PROJECT",
+            required_unless_present = "project",
+            conflicts_with = "project"
+        )]
+        project_positional: Option<PathBuf>,
+        #[arg(long, value_name = "PROJECT", conflicts_with = "project_positional")]
+        project: Option<PathBuf>,
         /// Input instance; defaults to the project's source_path.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "input_positional")]
         input: Option<PathBuf>,
+        #[arg(
+            value_name = "INPUT",
+            allow_hyphen_values = true,
+            conflicts_with = "input"
+        )]
+        input_positional: Option<PathBuf>,
         /// Output instance; defaults to the project's target_path.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "output_positional")]
         output: Option<PathBuf>,
+        #[arg(
+            value_name = "OUTPUT",
+            allow_hyphen_values = true,
+            conflicts_with = "output"
+        )]
+        output_positional: Option<PathBuf>,
         /// Evaluate and write only the primary target or one named target.
         #[arg(long, value_name = "primary|NAME")]
         target: Option<String>,
@@ -243,12 +264,20 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
     match cli.command {
         Command::Run {
             project,
+            project_positional,
             input,
+            input_positional,
             output,
+            output_positional,
             target,
             trace_json,
             parameters,
         } => {
+            let project = project
+                .or(project_positional)
+                .context("missing project path")?;
+            let input = input.or(input_positional);
+            let output = output.or(output_positional);
             let parameters = parse_runtime_parameters(&parameters)?;
             let trace = trace_json
                 .as_deref()
@@ -265,40 +294,73 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::TargetSelection::Named(target)
                 }
             });
-            let outcome = cli::run_project_with_options(
-                &project,
-                &cli::RunOptions {
-                    input_path: input.as_deref(),
-                    output_path: output.as_deref(),
-                    target,
-                    runtime_parameters: Some(&parameters),
-                    trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
-                    protected_output_paths: &protected_output_paths,
-                },
-            )?;
-            if let Some(trace) = trace {
-                trace.finish(&outcome.artifacts)?;
-            }
-            println!(
-                "wrote {} record(s) to {}",
-                outcome.records_written,
-                outcome.output_path.display()
-            );
-            for output in outcome.primary_outputs {
+            if output.as_deref() == Some(std::path::Path::new("-")) {
+                let mut stdin = BufReader::new(std::io::stdin().lock());
+                let mut stdout = BufWriter::new(std::io::stdout().lock());
+                let outcome = cli::run_project_with_standard_streams(
+                    &project,
+                    &cli::StandardIoRunOptions {
+                        input_path: input.as_deref(),
+                        output_path: output.as_deref(),
+                        target,
+                        runtime_parameters: Some(&parameters),
+                        trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
+                    },
+                    &mut stdin,
+                )?;
+                if let Some(trace) = trace {
+                    // Streamed artifacts are never published to their logical paths.
+                    trace.finish(&[])?;
+                }
+                let artifact = outcome
+                    .artifacts
+                    .first()
+                    .context("standard-stream run produced no output artifact")?;
+                stdout
+                    .write_all(&artifact.bytes)
+                    .context("writing mapping artifact to stdout")?;
+                stdout
+                    .flush()
+                    .context("flushing mapping artifact to stdout")?;
+            } else {
+                if input.as_deref() == Some(std::path::Path::new("-")) {
+                    bail!("`--input -` requires `--output -`");
+                }
+                let outcome = cli::run_project_with_options(
+                    &project,
+                    &cli::RunOptions {
+                        input_path: input.as_deref(),
+                        output_path: output.as_deref(),
+                        target,
+                        runtime_parameters: Some(&parameters),
+                        trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
+                        protected_output_paths: &protected_output_paths,
+                    },
+                )?;
+                if let Some(trace) = trace {
+                    trace.finish(&outcome.artifacts)?;
+                }
                 println!(
-                    "wrote {} record(s) for {} to {}",
-                    output.records_written,
-                    output.name,
-                    output.path.display()
+                    "wrote {} record(s) to {}",
+                    outcome.records_written,
+                    outcome.output_path.display()
                 );
-            }
-            for output in outcome.extra_outputs {
-                println!(
-                    "wrote {} record(s) for {} to {}",
-                    output.records_written,
-                    output.name,
-                    output.path.display()
-                );
+                for output in outcome.primary_outputs {
+                    println!(
+                        "wrote {} record(s) for {} to {}",
+                        output.records_written,
+                        output.name,
+                        output.path.display()
+                    );
+                }
+                for output in outcome.extra_outputs {
+                    println!(
+                        "wrote {} record(s) for {} to {}",
+                        output.records_written,
+                        output.name,
+                        output.path.display()
+                    );
+                }
             }
             Ok(ExitCode::SUCCESS)
         }

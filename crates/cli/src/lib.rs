@@ -31,6 +31,7 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 mod code_generation;
 mod output_documents;
 mod payload;
+mod stdio;
 mod trace_json;
 
 pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
@@ -46,6 +47,7 @@ pub use payload::{
     PayloadDocument, PayloadRunOptions, PayloadRunOutcome, run_project_payloads,
     run_project_value_payloads,
 };
+pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;
 
 /// Result of running a project after resolving its input and output paths.
