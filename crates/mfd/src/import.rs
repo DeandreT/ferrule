@@ -119,6 +119,54 @@ fn primary_source_hint(
     })
 }
 
+fn scope_source_hints(structure: &roxmltree::Node<'_, '_>) -> BTreeMap<u32, Vec<String>> {
+    structure
+        .children()
+        .find(|node| {
+            node.has_tag_name("ferrule-scope-sources") && node.attribute("version") == Some("1")
+        })
+        .into_iter()
+        .flat_map(|metadata| {
+            metadata
+                .children()
+                .filter(|node| node.has_tag_name("scope"))
+        })
+        .filter_map(|scope| {
+            let target = scope.attribute("targetkey")?.parse().ok()?;
+            let source = serde_json::from_str(scope.attribute("source")?).ok()?;
+            Some((target, source))
+        })
+        .collect()
+}
+
+fn restore_scope_source_hints(
+    root: &mut Scope,
+    target: &SchemaComponent,
+    hints: &BTreeMap<u32, Vec<String>>,
+) {
+    fn scope_at_mut<'a>(mut scope: &'a mut Scope, path: &[String]) -> Option<&'a mut Scope> {
+        for segment in path {
+            scope = scope
+                .children
+                .iter_mut()
+                .find(|child| child.target_field == *segment)?;
+        }
+        Some(scope)
+    }
+
+    for (target_key, source) in hints {
+        let Some(path) = target.ports.get(target_key) else {
+            continue;
+        };
+        let Some(scope) = scope_at_mut(root, path) else {
+            continue;
+        };
+        if matches!(scope.iteration, ScopeIteration::Source(_)) {
+            scope.iteration = ScopeIteration::Source(source.clone());
+        }
+    }
+}
+
 fn hinted_primary_index(sources: &[&SchemaComponent], hint: &PrimarySourceHint) -> Option<usize> {
     let mut matching = sources.iter().enumerate().filter(|(_, source)| {
         source.name == hint.name
@@ -154,6 +202,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         .find(|n| n.is_element() && n.tag_name().name() == "structure")
         .ok_or(MfdError::NotMfd("wrapper has no structure"))?;
     let primary_source_hint = primary_source_hint(&mapping_el, &structure);
+    let scope_source_hints = scope_source_hints(&structure);
     let selected_language = wrapper
         .children()
         .find(|node| node.has_tag_name("properties"))
@@ -705,7 +754,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         }
     }
 
-    let root = build_target_scope(
+    let mut root = build_target_scope(
         &mapping_el,
         target,
         &structure,
@@ -714,9 +763,10 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         &copy_all_targets,
         &mut builder,
     );
+    restore_scope_source_hints(&mut root, target, &scope_source_hints);
     let mut extra_targets = Vec::new();
     for (index, extra) in connected_targets.iter().copied().enumerate().skip(1) {
-        let extra_root = build_target_scope(
+        let mut extra_root = build_target_scope(
             &mapping_el,
             extra,
             &structure,
@@ -725,6 +775,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
             &copy_all_targets,
             &mut builder,
         );
+        restore_scope_source_hints(&mut extra_root, extra, &scope_source_hints);
         let extra_path = if extra_root.output_path().is_some() {
             None
         } else {
@@ -1112,7 +1163,17 @@ fn build_target_scope(
     target_node_function::install(mapping, target, structure, mfd_path, builder, &mut scopes);
     target_type_cast::install(target, structure, mfd_path, builder, &mut scopes);
     group_projection::install_optional_text_occurrences(target, builder, &mut scopes);
+    ensure_singleton_csv_row_set(target, &mut scopes);
     scopes.root
+}
+
+fn ensure_singleton_csv_row_set(target: &SchemaComponent, scopes: &mut ScopeBuilder) {
+    let has_row_port = target.ports.values().any(Vec::is_empty);
+    if target.format != ComponentFormat::Csv || has_row_port || scopes.root.iterates() {
+        return;
+    }
+    let row = std::mem::take(&mut scopes.root);
+    scopes.root.iteration = ScopeIteration::Concatenate(ScopeSequence::new(row, Vec::new()));
 }
 
 fn install_repeating_scalar_iteration(

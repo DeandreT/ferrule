@@ -180,7 +180,8 @@ fn validate_scope(
                 }
             }
             SideFormat::Csv if path.is_empty() => {
-                if segments.iter().filter(|segment| segment.iterates()).count() != 1 {
+                let repeated = segments.iter().filter(|segment| segment.iterates()).count();
+                if segments.len() != 1 && repeated != 1 {
                     return Err(unsupported(
                         path,
                         "CSV concatenation requires exactly one repeated row segment",
