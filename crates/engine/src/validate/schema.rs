@@ -34,6 +34,14 @@ pub(super) fn validate_schema(
             format!("item-count metadata{suffix} requires a repeating schema node"),
         ));
     }
+    if !schema.string_length_range_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "string-length metadata{suffix} requires a non-arbitrary string-capable scalar domain and must contain its fixed value"
+            ),
+        ));
+    }
     if !schema.json_formats_are_valid() {
         issues.push(ValidationIssue::new(
             root,

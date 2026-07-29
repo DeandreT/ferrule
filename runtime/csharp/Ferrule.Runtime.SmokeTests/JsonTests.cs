@@ -128,6 +128,7 @@ internal static partial class Program
         JsonRangeBoundaries();
         JsonItemCountBoundaries();
         JsonFormatAnnotationBoundaries();
+        JsonStringLengthBoundaries();
         JsonScalarUnionBoundaries();
     }
 
@@ -394,6 +395,98 @@ internal static partial class Program
         $"\"json_any\":{jsonAny.ToString().ToLowerInvariant()}," +
         $"\"json_formats\":{System.Text.Json.JsonSerializer.Serialize(formats)}," +
         $"\"kind\":{kind}}}";
+
+    private static void JsonStringLengthBoundaries()
+    {
+        const string oneOrTwo =
+            "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        Equal(
+            Text("\U0001F600"),
+            ((FerruleScalar)FerruleJson.Parse(oneOrTwo, "\"\\uD83D\\uDE00\"")).Value);
+        Equal(
+            "\"\\uD83D\\uDE00\"\n",
+            FerruleJson.Serialize(oneOrTwo, Scalar(Text("\U0001F600"))));
+        Equal(
+            Text("e\u0301"),
+            ((FerruleScalar)FerruleJson.Parse(oneOrTwo, "\"e\\u0301\"")).Value);
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(oneOrTwo, "\"\""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(oneOrTwo, "\"abc\""));
+
+        const string exactlyTwo =
+            "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":2,\"maximum\":2},\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\"]}}";
+        Equal(
+            Text("ab"),
+            ((FerruleScalar)FerruleJson.Parse(exactlyTwo, "\"ab\"")).Value);
+        Equal(
+            FerruleValue.FromInt64(7),
+            ((FerruleScalar)FerruleJson.Parse(exactlyTwo, "7")).Value);
+        Equal(
+            "7\n",
+            FerruleJson.Serialize(exactlyTwo, Scalar(FerruleValue.FromInt64(7))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(exactlyTwo, "\"a\""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(exactlyTwo, Scalar(Text("abc"))));
+
+        const string exactlyFour =
+            "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":4,\"maximum\":4},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        Equal(
+            "\"true\"\n",
+            FerruleJson.Serialize(
+                exactlyFour,
+                Scalar(FerruleValue.FromBoolean(true))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                exactlyFour,
+                Scalar(FerruleValue.FromBoolean(false))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                oneOrTwo,
+                Scalar(Text(new string('\uD800', 1)))));
+
+        const string nullable =
+            "{\"name\":\"Value\",\"nullable\":true,\"string_length_range\":{\"minimum\":1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        Equal(
+            FerruleValue.JsonNull,
+            ((FerruleScalar)FerruleJson.Parse(nullable, "null")).Value);
+        Equal(
+            "null\n",
+            FerruleJson.Serialize(nullable, Scalar(FerruleValue.JsonNull)));
+
+        const string fixedWithinRange =
+            "{\"name\":\"Value\",\"fixed\":\"ab\",\"string_length_range\":{\"minimum\":2,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        Equal(
+            Text("ab"),
+            ((FerruleScalar)FerruleJson.Parse(fixedWithinRange, "\"ab\"")).Value);
+
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Value\",\"string_length_range\":{},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":2,\"maximum\":1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":-1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":1.0},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":18446744073709551616},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":1,\"maximim\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":1,\"minimum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":1},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_any\":true,\"string_length_range\":{\"minimum\":1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"fixed\":\"x\",\"string_length_range\":{\"minimum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "\"value\""));
+        }
+    }
 
     private static void JsonScalarUnionBoundaries()
     {

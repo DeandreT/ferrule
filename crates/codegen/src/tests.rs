@@ -127,6 +127,9 @@ fn program_validation_rejects_invalid_schema_metadata_on_every_boundary() {
     let Some(items) = ir::ItemCountRange::new(1, Some(2)) else {
         panic!("test item-count range is valid");
     };
+    let Some(string_length) = ir::StringLengthRange::new(1, Some(2)) else {
+        panic!("test string-length range is valid");
+    };
 
     let mut primary_source = program.clone();
     primary_source.source.numeric_range = Some(numeric);
@@ -155,6 +158,16 @@ fn program_validation_rejects_invalid_schema_metadata_on_every_boundary() {
     format_source.source.json_formats = formats;
     assert!(matches!(
         validate_program(&format_source),
+        Err(ProgramValidationError::InvalidSchemaMetadata {
+            ref boundary,
+            ..
+        }) if boundary == "source"
+    ));
+
+    let mut length_source = program.clone();
+    length_source.source.string_length_range = Some(string_length);
+    assert!(matches!(
+        validate_program(&length_source),
         Err(ProgramValidationError::InvalidSchemaMetadata {
             ref boundary,
             ..

@@ -308,8 +308,9 @@ Stored output paths and format options remain host metadata: generated libraries
 return instances or JSON documents and do not write files.
 Embedded JSON schemas are validated recursively before emission and again at
 the generated boundary. Rust and C# enforce scalar constants, numeric ranges,
-and array item-count intervals on both input and output; malformed internal
-metadata fails as an embedded-schema error rather than being ignored.
+array item-count intervals, and Unicode-scalar string-length intervals on both
+input and output; malformed internal metadata fails as an embedded-schema error
+rather than being ignored.
 
 Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable

@@ -214,6 +214,12 @@ public static class FerruleJson
             scalarDomain,
             jsonAny,
             fixedValue);
+        var stringLengthRange = ReadStringLengthRange(
+            name,
+            element,
+            scalarDomain,
+            jsonAny,
+            fixedValue);
         var itemCountRange = ReadItemCountRange(name, element, repeating);
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
@@ -289,6 +295,7 @@ public static class FerruleJson
             scalarDomain,
             fixedValue,
             numericRange,
+            stringLengthRange,
             itemCountRange,
             children,
             dynamic,
@@ -392,6 +399,54 @@ public static class FerruleJson
                 $"Embedded JSON schema node '{name}' has invalid item-count metadata.");
         }
         return new JsonItemCountRange(minimum, maximum);
+    }
+
+    private static JsonStringLengthRange? ReadStringLengthRange(
+        string name,
+        JsonElement element,
+        JsonScalarDomain scalarDomain,
+        bool jsonAny,
+        FerruleValue? fixedValue)
+    {
+        if (!element.TryGetProperty("string_length_range", out var rangeElement) ||
+            rangeElement.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+        RequireKind(
+            rangeElement,
+            JsonValueKind.Object,
+            $"schema node '{name}' string-length range",
+            "object");
+        var fields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var property in rangeElement.EnumerateObject())
+        {
+            if (property.Name is not ("minimum" or "maximum") ||
+                !fields.Add(property.Name))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' string-length range has an unknown or duplicate field '{property.Name}'.");
+            }
+        }
+        var minimum = OptionalUInt64(rangeElement, "minimum", false) ?? 0;
+        var maximum = OptionalUInt64(rangeElement, "maximum", true);
+        if (!scalarDomain.HasFlag(JsonScalarDomain.String) ||
+            jsonAny ||
+            minimum == 0 && maximum is null ||
+            maximum is { } upper && minimum > upper)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has invalid string-length metadata.");
+        }
+
+        var range = new JsonStringLengthRange(minimum, maximum);
+        if (fixedValue is { Kind: FerruleValueKind.String } fixedString &&
+            !range.Contains(name, fixedString.StringValue))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has a fixed string outside its string-length range.");
+        }
+        return range;
     }
 
     private static JsonNumericRange? ReadNumericRange(
@@ -747,6 +802,7 @@ public static class FerruleJson
             throw Boundary(
                 $"JSON scalar '{schema.Name}' is outside its numeric range: {element.GetRawText()}.");
         }
+        ValidateStringLength(schema, value);
         return value;
     }
 
@@ -987,6 +1043,11 @@ public static class FerruleJson
             writer.WriteNullValue();
             return;
         }
+        if (scalar == JsonScalarType.String &&
+            TryOutputString(value, out var outputString))
+        {
+            ValidateStringLength(schema, outputString);
+        }
 
         switch (scalar, value.Kind)
         {
@@ -1175,8 +1236,31 @@ public static class FerruleJson
             writer.WriteNullValue();
             return;
         }
+        ValidateStringLength(schema, normalized);
 
         WriteAdmittedScalar(writer, schema, normalized);
+    }
+
+    private static void ValidateStringLength(
+        JsonSchemaNode schema,
+        FerruleValue value)
+    {
+        if (value.Kind == FerruleValueKind.String)
+        {
+            ValidateStringLength(schema, value.StringValue);
+        }
+    }
+
+    private static void ValidateStringLength(
+        JsonSchemaNode schema,
+        string value)
+    {
+        if (schema.StringLengthRange is { } range &&
+            !range.Contains(schema.Name, value))
+        {
+            throw Boundary(
+                $"JSON string '{schema.Name}' is outside its declared string-length range.");
+        }
     }
 
     private static FerruleValue NormalizeScalarUnion(
@@ -1909,6 +1993,30 @@ public static class FerruleJson
         }
     }
 
+    private sealed record JsonStringLengthRange(ulong Minimum, ulong? Maximum)
+    {
+        public bool Contains(string name, string value)
+        {
+            ulong count = 0;
+            var remaining = value.AsSpan();
+            while (!remaining.IsEmpty)
+            {
+                var status = Rune.DecodeFromUtf16(
+                    remaining,
+                    out _,
+                    out var charsConsumed);
+                if (status != OperationStatus.Done)
+                {
+                    throw Boundary(
+                        $"JSON string '{name}' contains an unpaired UTF-16 surrogate.");
+                }
+                count = checked(count + 1);
+                remaining = remaining[charsConsumed..];
+            }
+            return count >= Minimum && (Maximum is null || count <= Maximum);
+        }
+    }
+
     private sealed class JsonSchemaNode
     {
         public JsonSchemaNode(
@@ -1921,6 +2029,7 @@ public static class FerruleJson
             JsonScalarDomain scalarDomain,
             FerruleValue? fixedValue,
             JsonNumericRange? numericRange,
+            JsonStringLengthRange? stringLengthRange,
             JsonItemCountRange? itemCountRange,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
@@ -1937,6 +2046,7 @@ public static class FerruleJson
             ScalarDomain = scalarDomain;
             Fixed = fixedValue;
             NumericRange = numericRange;
+            StringLengthRange = stringLengthRange;
             ItemCountRange = itemCountRange;
             Children = children;
             Dynamic = dynamic;
@@ -1962,6 +2072,8 @@ public static class FerruleJson
         public FerruleValue? Fixed { get; }
 
         public JsonNumericRange? NumericRange { get; }
+
+        public JsonStringLengthRange? StringLengthRange { get; }
 
         public JsonItemCountRange? ItemCountRange { get; }
 

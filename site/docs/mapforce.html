@@ -71,6 +71,7 @@
           <li>External EDI configuration directories and adjacent bounded ZIP packages compile into portable X12 or EDIFACT runtime schemas.</li>
           <li>Referenced JSON Schemas retain exact integer and finite-number ranges, including nullable fields and compatible <code>allOf</code> intersections.</li>
           <li>Referenced JSON arrays retain exact <code>minItems</code>/<code>maxItems</code> intervals through references, nullable wrappers, and compatible compositions.</li>
+          <li>Referenced JSON strings retain exact Unicode-scalar <code>minLength</code>/<code>maxLength</code> intervals through nullable wrappers, arrays, typed dynamic properties, compatible compositions, and opaque <code>format</code> annotations.</li>
           <li>Unresolved external EDI configuration references survive export and re-import without being treated as executable runtime layouts.</li>
         </ul>
 

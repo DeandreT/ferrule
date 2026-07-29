@@ -517,6 +517,26 @@ fn rejects_programmatically_invalid_item_count_metadata() {
 }
 
 #[test]
+fn rejects_programmatically_invalid_string_length_metadata() {
+    let mut project = valid_project();
+    let Some(range) = ir::StringLengthRange::new(1, Some(3)) else {
+        panic!("test string-length range is valid");
+    };
+    let target = target_name(&mut project);
+    target.kind = SchemaKind::Scalar {
+        ty: ScalarType::Int,
+    };
+    target.string_length_range = Some(range);
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("string-length metadata")
+            && issue.message.contains("name")
+    }));
+}
+
+#[test]
 fn rejects_programmatically_invalid_json_format_metadata() {
     let mut project = valid_project();
     let Ok(formats) = ir::JsonFormatAnnotations::new(["email".to_string()]) else {

@@ -5,7 +5,7 @@ use ir::{
 
 use super::{
     files, formats, item_counts, parse, ranges, reject_unsupported_ref_siblings, resolve_ref,
-    unsupported_union,
+    string_lengths, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -26,6 +26,7 @@ enum ExactScalarAlternative {
     Scalar {
         ty: ScalarType,
         formats: ir::JsonFormatAnnotations,
+        string_length: Option<ir::StringLengthRange>,
     },
     Other,
 }
@@ -81,6 +82,7 @@ fn parse_scalar_composition(
     let mut scalar_types = Vec::new();
     let mut nullable = false;
     let mut format_annotations = ir::JsonFormatAnnotations::default();
+    let mut string_lengths = Vec::new();
     if let Some(format) = formats::validate(name, schema)? {
         formats::accumulate(
             name,
@@ -99,6 +101,7 @@ fn parse_scalar_composition(
             ExactScalarAlternative::Scalar {
                 ty,
                 formats: branch_formats,
+                string_length,
             } => {
                 if exclusive
                     && scalar_types
@@ -112,6 +115,9 @@ fn parse_scalar_composition(
                     scalar_types.push(ty);
                 }
                 formats::accumulate(name, &mut format_annotations, branch_formats.into_vec())?;
+                if ty == ScalarType::String {
+                    string_lengths.push(string_length);
+                }
             }
             ExactScalarAlternative::Other => return Ok(None),
         }
@@ -134,6 +140,7 @@ fn parse_scalar_composition(
     node.nullable = nullable;
     if node.accepts_scalar_type(ScalarType::String) {
         node.json_formats = format_annotations;
+        node.string_length_range = union_string_length_range_set(name, string_lengths)?;
     }
     Ok(Some(node))
 }
@@ -209,6 +216,9 @@ fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> b
         return true;
     }
     if array_item_shapes_equal(superset, subset) {
+        return true;
+    }
+    if constrained_scalar_item_domain_contains(superset, subset) {
         return true;
     }
     if !has_unconstrained_scalar_item_domain(superset) {
@@ -293,6 +303,26 @@ fn array_item_shapes_equal(left: &SchemaNode, right: &SchemaNode) -> bool {
     left == right
 }
 
+fn constrained_scalar_item_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> bool {
+    if !superset.is_scalar() || !subset.is_scalar() {
+        return false;
+    }
+    let mut normalized_superset = superset.clone();
+    let mut normalized_subset = subset.clone();
+    for node in [&mut normalized_superset, &mut normalized_subset] {
+        node.repeating = false;
+        node.container_nullable = false;
+        node.nullable = false;
+        node.item_count_range = None;
+        node.json_formats = Default::default();
+        node.string_length_range = None;
+    }
+    if normalized_superset != normalized_subset {
+        return false;
+    }
+    string_length_domain_contains(superset.string_length_range, subset.string_length_range)
+}
+
 fn has_unconstrained_scalar_item_domain(node: &SchemaNode) -> bool {
     let mut actual = node.clone();
     actual.repeating = false;
@@ -317,6 +347,48 @@ fn item_count_domain_contains(
         (Some(_), None) => false,
         (Some(superset), Some(subset)) => superset.contains_range(subset),
     }
+}
+
+fn string_length_domain_contains(
+    superset: Option<ir::StringLengthRange>,
+    subset: Option<ir::StringLengthRange>,
+) -> bool {
+    match (superset, subset) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(superset), Some(subset)) => superset.contains_range(subset),
+    }
+}
+
+fn union_string_length_range_set(
+    name: &str,
+    ranges: impl IntoIterator<Item = Option<ir::StringLengthRange>>,
+) -> Result<Option<ir::StringLengthRange>, JsonFormatError> {
+    let mut ranges = ranges.into_iter().collect::<Vec<_>>();
+    if ranges.iter().any(Option::is_none) {
+        return Ok(None);
+    }
+    let mut ranges = ranges
+        .drain(..)
+        .flatten()
+        .collect::<Vec<ir::StringLengthRange>>();
+    ranges.sort_by_key(|range| (range.minimum(), range.maximum()));
+    let Some(mut merged) = ranges.first().copied() else {
+        return Ok(None);
+    };
+    for range in ranges.into_iter().skip(1) {
+        let Some(union) = merged.contiguous_union(range) else {
+            return Err(unsupported_union(
+                name,
+                "anyOf string-length ranges are disjoint and cannot be represented as one interval",
+            ));
+        };
+        let Some(union) = union else {
+            return Ok(None);
+        };
+        merged = union;
+    }
+    Ok(Some(merged))
 }
 
 fn union_item_count_range_set(
@@ -403,8 +475,6 @@ fn without_ignored_scalar_validation(schema: &serde_json::Value) -> serde_json::
             "const",
             "enum",
             "pattern",
-            "minLength",
-            "maxLength",
             "multipleOf",
             "contentEncoding",
             "contentMediaType",
@@ -468,6 +538,8 @@ pub(super) fn parse_nullable_composition(
             "exclusiveMaximum",
             "minItems",
             "maxItems",
+            "minLength",
+            "maxLength",
         ] {
             object.remove(constraint_keyword);
         }
@@ -604,14 +676,23 @@ fn classify_exact_scalar_alternative(
             if let ExactScalarAlternative::Scalar {
                 ty: ScalarType::String,
                 formats: annotations,
+                string_length,
             } = &mut classified
-                && let Some(format) = sibling_format
             {
-                formats::accumulate(
+                if let Some(format) = sibling_format {
+                    formats::accumulate(
+                        union_name,
+                        annotations,
+                        core::iter::once(format.to_string()),
+                    )?;
+                }
+                *string_length = string_lengths::intersect(
                     union_name,
-                    annotations,
-                    core::iter::once(format.to_string()),
+                    *string_length,
+                    string_lengths::parse(union_name, schema)?,
                 )?;
+            } else {
+                string_lengths::validate_ignored(union_name, schema)?;
             }
         }
         return Ok(classified);
@@ -620,6 +701,7 @@ fn classify_exact_scalar_alternative(
         return Ok(ExactScalarAlternative::Other);
     };
     let format = formats::validate(union_name, schema)?;
+    let string_length = string_lengths::parse(union_name, schema)?;
     let classified = match ty {
         "null" => ExactScalarAlternative::Null,
         "string" => {
@@ -634,19 +716,23 @@ fn classify_exact_scalar_alternative(
             ExactScalarAlternative::Scalar {
                 ty: ScalarType::String,
                 formats: annotations,
+                string_length,
             }
         }
         "integer" => ExactScalarAlternative::Scalar {
             ty: ScalarType::Int,
             formats: Default::default(),
+            string_length: None,
         },
         "number" => ExactScalarAlternative::Scalar {
             ty: ScalarType::Float,
             formats: Default::default(),
+            string_length: None,
         },
         "boolean" => ExactScalarAlternative::Scalar {
             ty: ScalarType::Bool,
             formats: Default::default(),
+            string_length: None,
         },
         _ => return Ok(ExactScalarAlternative::Other),
     };
@@ -719,6 +805,8 @@ fn ensure_exact_scalar_shape(
     if let Some(keyword) = object.keys().find(|keyword| {
         keyword.as_str() != "type"
             && keyword.as_str() != "format"
+            && keyword.as_str() != "minLength"
+            && keyword.as_str() != "maxLength"
             && !is_annotation_keyword(keyword.as_str())
     }) {
         return Err(unsupported_union(
@@ -814,6 +902,8 @@ fn ensure_annotation_or_format_only(
     if let Some(keyword) = object.keys().find(|keyword| {
         keyword.as_str() != shape_keyword
             && keyword.as_str() != "format"
+            && keyword.as_str() != "minLength"
+            && keyword.as_str() != "maxLength"
             && !files::is_internal_ref_keyword(keyword)
             && !is_annotation_keyword(keyword.as_str())
     }) {
@@ -848,6 +938,8 @@ fn ensure_annotation_or_range_only(
                     | "exclusiveMaximum"
                     | "minItems"
                     | "maxItems"
+                    | "minLength"
+                    | "maxLength"
             )
     }) {
         return Err(unsupported_union(
