@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use ir::{
     Instance, SchemaKind, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
     XML_LOCAL_NAME_FIELD, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD,
-    XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
+    XML_NAMESPACE_URI_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
 };
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
@@ -33,7 +33,16 @@ pub(super) fn read_generic_element(
             kind: "scalar",
         });
     };
-    if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+    if let Some(constraint) = &schema.xml_wildcard_namespace
+        && !constraint.allows(element.tag_name().namespace())
+    {
+        return Err(wildcard_namespace_mismatch(
+            element.tag_name().name(),
+            element.tag_name().namespace(),
+        ));
+    }
+    if schema.xml_wildcard_namespace.is_none()
+        && schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
         && element
             .tag_name()
             .namespace()
@@ -43,7 +52,8 @@ pub(super) fn read_generic_element(
             reason: "the supported ##local wildcard profile cannot retain qualified descendant elements",
         });
     }
-    if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+    if schema.xml_wildcard_namespace.is_none()
+        && schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
         && element.attributes().any(|attribute| {
             attribute
                 .namespace()
@@ -88,6 +98,18 @@ pub(super) fn read_group_fields(
             fields.push((
                 child.name.clone(),
                 Instance::Scalar(Value::String(element.tag_name().name().to_string())),
+            ));
+        } else if generic_element && child.name == XML_NAMESPACE_URI_FIELD {
+            fields.push((
+                child.name.clone(),
+                Instance::Scalar(
+                    element
+                        .tag_name()
+                        .namespace()
+                        .map_or(Value::Null, |namespace| {
+                            Value::String(namespace.to_string())
+                        }),
+                ),
             ));
         } else if generic_element
             && child.name == element.tag_name().name()
@@ -145,7 +167,9 @@ pub(super) fn read_group_fields(
             let items = element
                 .attributes()
                 .map(|attribute| {
-                    if child.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+                    let namespace_aware = child.child(XML_NAMESPACE_URI_FIELD).is_some();
+                    if !namespace_aware
+                        && child.xml_namespace == Some(ir::XmlNamespace::Unqualified)
                         && attribute
                             .namespace()
                             .is_some_and(|namespace| !namespace.is_empty())
@@ -154,16 +178,26 @@ pub(super) fn read_group_fields(
                             reason: "the supported ##local wildcard profile cannot retain qualified attributes",
                         });
                     }
-                    Ok(Instance::Group(vec![
+                    let mut fields = vec![
                         (
                             XML_LOCAL_NAME_FIELD.to_string(),
                             Instance::Scalar(Value::String(attribute.name().to_string())),
                         ),
-                        (
+                    ];
+                    if namespace_aware {
+                        fields.push((
+                            XML_NAMESPACE_URI_FIELD.to_string(),
+                            Instance::Scalar(attribute.namespace().map_or(
+                                Value::Null,
+                                |namespace| Value::String(namespace.to_string()),
+                            )),
+                        ));
+                    }
+                    fields.push((
                             XML_TEXT_FIELD.to_string(),
                             Instance::Scalar(Value::String(attribute.value().to_string())),
-                        ),
-                    ]))
+                        ));
+                    Ok(Instance::Group(fields))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             fields.push((child.name.clone(), Instance::Repeated(items)));
@@ -325,17 +359,37 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     };
     validate_group_fields(schema, children, &[], fields)?;
     let name = generic_element_name(fields)?;
-    if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified) && is_qualified_name(name) {
-        return Err(XmlFormatError::UnsupportedXmlWildcard {
-            reason: "the supported ##local wildcard profile requires unqualified runtime element names",
-        });
+    if is_qualified_name(name) {
+        let reason = if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified) {
+            "the supported ##local wildcard profile requires unqualified runtime element names"
+        } else {
+            "generic element LocalName values cannot contain namespace syntax"
+        };
+        return Err(XmlFormatError::UnsupportedXmlWildcard { reason });
     }
 
+    let namespace_aware = schema.xml_wildcard_namespace.is_some()
+        || children
+            .iter()
+            .any(|child| child.name == XML_NAMESPACE_URI_FIELD);
+    let runtime_namespace = namespace_aware
+        .then(|| generic_namespace_uri(children, fields))
+        .transpose()?
+        .flatten();
+    if let Some(constraint) = &schema.xml_wildcard_namespace
+        && !constraint.allows(runtime_namespace)
+    {
+        return Err(wildcard_namespace_mismatch(name, runtime_namespace));
+    }
     let mut start = BytesStart::new(name);
-    let element_namespace = match &schema.xml_namespace {
-        Some(ir::XmlNamespace::Qualified(namespace)) => Some(namespace.as_str()),
-        Some(ir::XmlNamespace::Unqualified) => None,
-        None => inherited_namespace,
+    let element_namespace = if namespace_aware {
+        runtime_namespace
+    } else {
+        match &schema.xml_namespace {
+            Some(ir::XmlNamespace::Qualified(namespace)) => Some(namespace.as_str()),
+            Some(ir::XmlNamespace::Unqualified) => None,
+            None => inherited_namespace,
+        }
     };
     push_element_namespace(
         &mut start,
@@ -410,7 +464,10 @@ pub(super) fn write_generic_element<W: std::io::Write>(
             && !child.text
             && !matches!(
                 child.name.as_str(),
-                XML_LOCAL_NAME_FIELD | XML_NODE_NAME_FIELD | XML_ATTRIBUTES_FIELD
+                XML_LOCAL_NAME_FIELD
+                    | XML_NODE_NAME_FIELD
+                    | XML_NAMESPACE_URI_FIELD
+                    | XML_ATTRIBUTES_FIELD
             )
     }) {
         if let Some((_, child_instance)) =
@@ -460,6 +517,44 @@ fn generic_element_name(fields: &[(String, Instance)]) -> Result<&str, XmlFormat
         .ok_or(XmlFormatError::MissingGenericElementName)
 }
 
+fn generic_namespace_uri<'a>(
+    children: &[SchemaNode],
+    fields: &'a [(String, Instance)],
+) -> Result<Option<&'a str>, XmlFormatError> {
+    let Some(namespace_schema) = children
+        .iter()
+        .find(|child| child.name == XML_NAMESPACE_URI_FIELD)
+    else {
+        return Ok(None);
+    };
+    let Some((_, namespace)) = fields
+        .iter()
+        .find(|(name, _)| name == XML_NAMESPACE_URI_FIELD)
+    else {
+        return Ok(None);
+    };
+    match namespace {
+        Instance::Scalar(Value::Null) => Ok(None),
+        Instance::Scalar(Value::String(namespace)) if namespace.is_empty() => Ok(None),
+        Instance::Scalar(Value::String(namespace)) => Ok(Some(namespace.as_str())),
+        instance => Err(shape_error(
+            namespace_schema,
+            "an optional namespace URI string",
+            instance,
+        )),
+    }
+}
+
+fn wildcard_namespace_mismatch(name: &str, namespace: Option<&str>) -> XmlFormatError {
+    XmlFormatError::XmlWildcardNamespaceMismatch {
+        name: name.to_string(),
+        namespace: namespace
+            .filter(|namespace| !namespace.is_empty())
+            .unwrap_or("##local")
+            .to_string(),
+    }
+}
+
 pub(super) fn push_generic_attributes<'a>(
     start: &mut BytesStart<'a>,
     schema: &SchemaNode,
@@ -481,6 +576,10 @@ pub(super) fn push_generic_attributes<'a>(
         return Err(shape_error(schema, "generic XML attributes", instance));
     };
     let mut names = BTreeSet::new();
+    let namespace_aware = children
+        .iter()
+        .any(|child| child.name == XML_NAMESPACE_URI_FIELD);
+    let mut namespaces = Vec::<&str>::new();
     for attribute in attributes {
         let Instance::Group(attribute_fields) = attribute else {
             return Err(shape_error(
@@ -499,14 +598,31 @@ pub(super) fn push_generic_attributes<'a>(
                 _ => None,
             })
             .ok_or(XmlFormatError::MissingGenericAttributeName)?;
-        if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
-            && is_qualified_name(attribute_name)
+        if is_qualified_name(attribute_name) {
+            let reason = if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified) {
+                "the supported ##local wildcard profile requires unqualified runtime attribute names"
+            } else {
+                "generic attribute LocalName values cannot contain namespace syntax"
+            };
+            return Err(XmlFormatError::UnsupportedXmlAttributeWildcard { reason });
+        }
+        let namespace = namespace_aware
+            .then(|| generic_namespace_uri(children, attribute_fields))
+            .transpose()?
+            .flatten();
+        if !namespace_aware
+            && schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+            && namespace.is_some()
         {
             return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
                 reason: "the supported ##local wildcard profile requires unqualified runtime attribute names",
             });
         }
-        if !names.insert(attribute_name) {
+        let expanded_name = namespace.map_or_else(
+            || attribute_name.to_string(),
+            |namespace| format!("{{{namespace}}}{attribute_name}"),
+        );
+        if !names.insert(expanded_name) {
             return Err(XmlFormatError::DuplicateField {
                 group: schema.name.clone(),
                 field: attribute_name.to_string(),
@@ -521,7 +637,30 @@ pub(super) fn push_generic_attributes<'a>(
                 _ => None,
             })
             .unwrap_or_default();
-        push_attribute(start, attribute_name, attribute_value);
+        let rendered_name = match namespace {
+            Some("http://www.w3.org/XML/1998/namespace") => {
+                format!("xml:{attribute_name}")
+            }
+            Some(namespace) => {
+                let (index, new_namespace) = namespaces
+                    .iter()
+                    .position(|candidate| *candidate == namespace)
+                    .map_or_else(
+                        || {
+                            namespaces.push(namespace);
+                            (namespaces.len(), true)
+                        },
+                        |index| (index + 1, false),
+                    );
+                let prefix = format!("fga{index}");
+                if new_namespace {
+                    push_attribute(start, &format!("xmlns:{prefix}"), namespace);
+                }
+                format!("{prefix}:{attribute_name}")
+            }
+            None => attribute_name.to_string(),
+        };
+        push_attribute(start, &rendered_name, attribute_value);
     }
     Ok(())
 }

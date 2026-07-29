@@ -99,6 +99,8 @@ pub enum XmlFormatError {
     UnsupportedNestedRepeatingSequence { element_count: usize },
     #[error("xs:any wildcard cannot be represented: {reason}")]
     UnsupportedXmlWildcard { reason: &'static str },
+    #[error("xs:any wildcard does not allow element `{name}` in namespace `{namespace}`")]
+    XmlWildcardNamespaceMismatch { name: String, namespace: String },
     #[error("xs:anyAttribute wildcard cannot be represented: {reason}")]
     UnsupportedXmlAttributeWildcard { reason: &'static str },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
@@ -417,6 +419,9 @@ fn resolve_recursive_schema(
         .ok_or_else(|| XmlFormatError::MissingElement(format!("recursive anchor `{anchor}`")))?;
     resolved.name.clone_from(&occurrence.name);
     resolved.xml_namespace.clone_from(&occurrence.xml_namespace);
+    resolved
+        .xml_wildcard_namespace
+        .clone_from(&occurrence.xml_wildcard_namespace);
     resolved.repeating = occurrence.repeating;
     resolved.nillable = occurrence.nillable;
     Ok(resolved)

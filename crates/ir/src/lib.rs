@@ -42,6 +42,7 @@ pub const XML_ATTRIBUTES_FIELD: &str = "attribute()";
 /// Synthetic fields available on items in [`XML_ELEMENTS_FIELD`].
 pub const XML_LOCAL_NAME_FIELD: &str = "LocalName";
 pub const XML_NODE_NAME_FIELD: &str = "NodeName";
+pub const XML_NAMESPACE_URI_FIELD: &str = "NamespaceURI";
 
 /// The scalar types a field can hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +195,87 @@ impl XmlNamespace {
     }
 }
 
+/// A nonempty, duplicate-free set of exact XML namespace identities.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct XmlWildcardNamespaceList(Vec<XmlNamespace>);
+
+impl XmlWildcardNamespaceList {
+    pub fn new(namespaces: impl IntoIterator<Item = XmlNamespace>) -> Option<Self> {
+        let mut unique = Vec::new();
+        for namespace in namespaces {
+            if unique.contains(&namespace) {
+                return None;
+            }
+            unique.push(namespace);
+        }
+        (!unique.is_empty()).then_some(Self(unique))
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &XmlNamespace> {
+        self.0.iter()
+    }
+}
+
+impl<'de> Deserialize<'de> for XmlWildcardNamespaceList {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let namespaces = Vec::<XmlNamespace>::deserialize(deserializer)?;
+        Self::new(namespaces).ok_or_else(|| {
+            serde::de::Error::custom(
+                "XML wildcard namespace lists must be nonempty and duplicate-free",
+            )
+        })
+    }
+}
+
+/// Exact namespace predicate for one XSD element wildcard.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum XmlWildcardNamespaceConstraint {
+    Any,
+    Other {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_namespace: Option<XmlNamespaceUri>,
+    },
+    List {
+        namespaces: XmlWildcardNamespaceList,
+    },
+}
+
+impl XmlWildcardNamespaceConstraint {
+    pub fn list(namespaces: impl IntoIterator<Item = XmlNamespace>) -> Option<Self> {
+        Some(Self::List {
+            namespaces: XmlWildcardNamespaceList::new(namespaces)?,
+        })
+    }
+
+    pub fn allows(&self, namespace: Option<&str>) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Other { target_namespace } => namespace.is_some_and(|namespace| {
+                !namespace.is_empty()
+                    && target_namespace
+                        .as_ref()
+                        .is_none_or(|target| namespace != target.as_str())
+            }),
+            Self::List { namespaces } => namespaces
+                .iter()
+                .any(|candidate| candidate.matches(namespace)),
+        }
+    }
+
+    pub fn is_local_only(&self) -> bool {
+        matches!(
+            self,
+            Self::List { namespaces }
+                if namespaces.0.as_slice() == [XmlNamespace::Unqualified]
+        )
+    }
+}
+
 /// Which table owns the foreign-key column for a declared database relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -342,6 +424,10 @@ pub struct SchemaNode {
     /// current default namespace. Non-XML formats ignore this metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xml_namespace: Option<XmlNamespace>,
+    /// Exact namespace predicate for a repeating generic `element()` group
+    /// imported from `xs:any`. Other schema nodes leave this unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xml_wildcard_namespace: Option<XmlWildcardNamespaceConstraint>,
     #[serde(default)]
     pub repeating: bool,
     /// Reuses the shape of the nearest concrete group with this name.
@@ -433,6 +519,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_namespace: Option<XmlNamespace>,
             #[serde(default)]
+            xml_wildcard_namespace: Option<XmlWildcardNamespaceConstraint>,
+            #[serde(default)]
             repeating: bool,
             #[serde(default)]
             recursive_ref: Option<String>,
@@ -469,6 +557,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         let node = Self {
             name: repr.name,
             xml_namespace: repr.xml_namespace,
+            xml_wildcard_namespace: repr.xml_wildcard_namespace,
             repeating: repr.repeating,
             recursive_ref: repr.recursive_ref,
             attribute: repr.attribute,
@@ -498,9 +587,10 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.nullable_is_valid()
             || !node.container_nullable_is_valid()
             || !node.json_any_is_valid()
+            || !node.xml_wildcard_namespace_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences, XML wildcard namespace, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -682,6 +772,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_wildcard_namespace: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -711,6 +802,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_wildcard_namespace: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -749,6 +841,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_wildcard_namespace: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -814,6 +907,41 @@ impl SchemaNode {
     pub fn xml_qualified(mut self, uri: impl Into<String>) -> Option<Self> {
         self.xml_namespace = Some(XmlNamespace::qualified(uri)?);
         Some(self)
+    }
+
+    pub fn with_xml_wildcard_namespace(
+        mut self,
+        constraint: XmlWildcardNamespaceConstraint,
+    ) -> Option<Self> {
+        self.xml_wildcard_namespace = Some(constraint);
+        self.xml_wildcard_namespace_is_valid().then_some(self)
+    }
+
+    pub fn xml_wildcard_namespace_is_valid(&self) -> bool {
+        self.xml_wildcard_namespace.is_none()
+            || (self.name == XML_ELEMENTS_FIELD
+                && self.repeating
+                && self.recursive_ref.is_none()
+                && !self.attribute
+                && !self.text
+                && matches!(
+                    &self.kind,
+                    SchemaKind::Group { children, .. }
+                        if [XML_LOCAL_NAME_FIELD, XML_NAMESPACE_URI_FIELD]
+                            .into_iter()
+                            .all(|name| children.iter().any(|child| {
+                                child.name == name
+                                    && !child.repeating
+                                    && !child.attribute
+                                    && !child.text
+                                    && matches!(
+                                        child.kind,
+                                        SchemaKind::Scalar {
+                                            ty: ScalarType::String
+                                        }
+                                    )
+                            }))
+                ))
     }
 
     /// Checks that fixed-value metadata remains limited to one scalar type.
@@ -2226,6 +2354,59 @@ mod tests {
             r#"{"name":"Code","xml_namespace":{"kind":"qualified","uri":""},"kind":{"kind":"scalar","ty":"string"}}"#,
         )
         .is_err());
+    }
+
+    #[test]
+    fn xml_wildcard_namespaces_are_typed_validated_and_serde_defaulted() {
+        let constraint = XmlWildcardNamespaceConstraint::list([
+            XmlNamespace::Unqualified,
+            XmlNamespace::qualified("urn:ferrule:external").unwrap_or(XmlNamespace::Unqualified),
+        ])
+        .unwrap_or(XmlWildcardNamespaceConstraint::Any);
+        assert!(constraint.allows(None));
+        assert!(constraint.allows(Some("urn:ferrule:external")));
+        assert!(!constraint.allows(Some("urn:ferrule:blocked")));
+
+        let wildcard = SchemaNode::group(
+            XML_ELEMENTS_FIELD,
+            vec![
+                SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+                SchemaNode::scalar(XML_NAMESPACE_URI_FIELD, ScalarType::String),
+            ],
+        )
+        .repeating()
+        .with_xml_wildcard_namespace(constraint)
+        .unwrap_or_else(|| SchemaNode::group("invalid", Vec::new()));
+        assert!(wildcard.xml_wildcard_namespace_is_valid());
+        let encoded = serde_json::to_string(&wildcard).unwrap();
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            wildcard
+        );
+
+        let other = XmlWildcardNamespaceConstraint::Other {
+            target_namespace: XmlNamespaceUri::new("urn:ferrule:owner"),
+        };
+        assert!(!other.allows(None));
+        assert!(!other.allows(Some("urn:ferrule:owner")));
+        assert!(other.allows(Some("urn:ferrule:external")));
+        assert!(
+            SchemaNode::group("ordinary", Vec::new())
+                .repeating()
+                .with_xml_wildcard_namespace(XmlWildcardNamespaceConstraint::Any)
+                .is_none()
+        );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"element()","repeating":true,"xml_wildcard_namespace":{"kind":"list","namespaces":[]},"kind":{"kind":"group","children":[]}}"#
+            )
+            .is_err()
+        );
+
+        let legacy: SchemaNode =
+            serde_json::from_str(r#"{"name":"Root","kind":{"kind":"group","children":[]}}"#)
+                .unwrap();
+        assert!(legacy.xml_wildcard_namespace.is_none());
     }
 
     #[test]

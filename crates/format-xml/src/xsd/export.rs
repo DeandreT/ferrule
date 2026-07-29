@@ -262,6 +262,7 @@ fn recursive_export_anchors(
 fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bool {
     left.name == right.name
         && left.xml_namespace == right.xml_namespace
+        && left.xml_wildcard_namespace == right.xml_wildcard_namespace
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
         && left.text == right.text
@@ -329,6 +330,11 @@ fn validate_export_node(
     if !node.xml_repeating_sequences_are_valid() {
         return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
             group: node.name.clone(),
+        });
+    }
+    if !node.xml_wildcard_namespace_is_valid() {
+        return Err(XmlFormatError::UnsupportedXmlWildcard {
+            reason: "wildcard namespace metadata requires a repeating element() group with string LocalName and NamespaceURI fields",
         });
     }
     if node.attribute && node.text {
@@ -476,8 +482,9 @@ fn write_element_required(
 ) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
     if node.name == XML_ELEMENTS_FIELD {
+        let namespace = wildcard_namespace_attribute(node, alternatives)?;
         out.push_str(&format!(
-            "{pad}<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>\n"
+            "{pad}<xs:any namespace=\"{namespace}\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>\n"
         ));
         return Ok(());
     }
@@ -605,6 +612,45 @@ fn write_element_required(
         }
     }
     Ok(())
+}
+
+fn wildcard_namespace_attribute(
+    node: &SchemaNode,
+    alternatives: &AlternativeExportPlan<'_>,
+) -> Result<String, XmlFormatError> {
+    let Some(constraint) = &node.xml_wildcard_namespace else {
+        return Ok("##local".to_string());
+    };
+    match constraint {
+        ir::XmlWildcardNamespaceConstraint::Any => Ok("##any".to_string()),
+        ir::XmlWildcardNamespaceConstraint::Other { target_namespace } => {
+            let target = target_namespace.as_ref().map(ir::XmlNamespaceUri::as_str);
+            if target == alternatives.export_namespace() {
+                Ok("##other".to_string())
+            } else {
+                Err(XmlFormatError::UnsupportedXmlWildcard {
+                    reason: "##other cannot be exported under a different target namespace",
+                })
+            }
+        }
+        ir::XmlWildcardNamespaceConstraint::List { namespaces } => {
+            let tokens = namespaces
+                .iter()
+                .map(|namespace| match namespace {
+                    XmlNamespace::Unqualified => "##local".to_string(),
+                    XmlNamespace::Qualified(namespace)
+                        if Some(namespace.as_str()) == alternatives.export_namespace() =>
+                    {
+                        "##targetNamespace".to_string()
+                    }
+                    XmlNamespace::Qualified(namespace) => {
+                        alternatives::xml_escape(namespace.as_str())
+                    }
+                })
+                .collect::<Vec<_>>();
+            Ok(tokens.join(" "))
+        }
+    }
 }
 
 fn element_fixed(node: &SchemaNode) -> Option<&str> {

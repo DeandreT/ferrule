@@ -17,10 +17,11 @@
 //! `xsi:type` alternatives.
 //! Optional, unbounded named model-group references that expand to exactly one
 //! nonrepeating member flatten losslessly by making that member repeating.
-//! `xs:any` imports only when it is an optional, unbounded, local-name,
-//! skip-validation wildcard declared inline or through a named model group
-//! and can round-trip through the recursive generic `element()` group. Other
-//! wildcard profiles fail with a typed diagnostic.
+//! `xs:any` imports when it is an optional, unbounded, skip-validation
+//! wildcard declared inline or through a named model group. `##any`,
+//! `##other`, and exact namespace lists round-trip through a namespace-aware
+//! recursive generic `element()` group. Other wildcard profiles fail with a
+//! typed diagnostic.
 //! `xs:anyAttribute` likewise imports as a direct or named-attribute-group
 //! local-name, skip-validation wildcard with no other attribute declaration,
 //! using the repeating generic `attribute()` group.
@@ -32,7 +33,8 @@ use std::path::{Path, PathBuf};
 
 use ir::{
     ScalarType, SchemaKind, SchemaNode, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
-    XML_LOCAL_NAME_FIELD, XML_TEXT_FIELD, XmlNamespace, XmlRepeatingSequence, XmlSequenceMember,
+    XML_LOCAL_NAME_FIELD, XML_NAMESPACE_URI_FIELD, XML_TEXT_FIELD, XmlNamespace, XmlNamespaceUri,
+    XmlRepeatingSequence, XmlSequenceMember, XmlWildcardNamespaceConstraint,
 };
 use roxmltree::Node;
 
@@ -2018,7 +2020,7 @@ fn collect_sequence(
                 node.repeating = inherited_repeating || is_repeating(&child);
                 out.push(node);
             }
-            "any" => match parse_wildcard(&child) {
+            "any" => match parse_wildcard(&child, schema_el, schema_path, state) {
                 Ok(wildcard) if state.reserve_elements(schema_node_count(&wildcard)) => {
                     out.push(wildcard);
                 }
@@ -2059,12 +2061,12 @@ fn collect_sequence(
     }
 }
 
-fn parse_wildcard(wildcard: &Node<'_, '_>) -> Result<SchemaNode, XmlFormatError> {
-    if wildcard.attribute("namespace") != Some("##local") {
-        return Err(unsupported_wildcard(
-            "only namespace=\"##local\" is supported; qualified wildcard names require namespace-aware generic fields",
-        ));
-    }
+fn parse_wildcard(
+    wildcard: &Node<'_, '_>,
+    schema: &Node<'_, '_>,
+    schema_path: &Path,
+    state: &ParseState,
+) -> Result<SchemaNode, XmlFormatError> {
     if wildcard.attribute("processContents") != Some("skip") {
         return Err(unsupported_wildcard(
             "only processContents=\"skip\" is supported; lax or strict validation requires resolved declarations",
@@ -2085,25 +2087,94 @@ fn parse_wildcard(wildcard: &Node<'_, '_>) -> Result<SchemaNode, XmlFormatError>
             "XSD 1.1 wildcard exclusions are not supported",
         ));
     }
-    Ok(generic_wildcard_schema())
+    let target_namespace = schema
+        .attribute("targetNamespace")
+        .or_else(|| state.substitutions.effective_namespace(schema_path));
+    let namespace = parse_wildcard_namespace(
+        wildcard.attribute("namespace").unwrap_or("##any"),
+        target_namespace,
+    )?;
+    Ok(generic_wildcard_schema_with(namespace))
 }
 
+fn parse_wildcard_namespace(
+    value: &str,
+    target_namespace: Option<&str>,
+) -> Result<XmlWildcardNamespaceConstraint, XmlFormatError> {
+    let tokens = value.split_ascii_whitespace().collect::<Vec<_>>();
+    match tokens.as_slice() {
+        ["##any"] => return Ok(XmlWildcardNamespaceConstraint::Any),
+        ["##other"] => {
+            return Ok(XmlWildcardNamespaceConstraint::Other {
+                target_namespace: target_namespace.and_then(XmlNamespaceUri::new),
+            });
+        }
+        [] => {
+            return Err(unsupported_wildcard(
+                "the namespace constraint must not be empty",
+            ));
+        }
+        _ => {}
+    }
+    if tokens
+        .iter()
+        .any(|token| matches!(*token, "##any" | "##other"))
+    {
+        return Err(unsupported_wildcard(
+            "##any and ##other cannot be combined with namespace-list members",
+        ));
+    }
+    let mut namespaces = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        let namespace = match token {
+            "##local" => XmlNamespace::Unqualified,
+            "##targetNamespace" => target_namespace
+                .and_then(XmlNamespace::qualified)
+                .unwrap_or(XmlNamespace::Unqualified),
+            token if token.starts_with("##") => {
+                return Err(unsupported_wildcard(
+                    "the namespace list contains an unsupported special token",
+                ));
+            }
+            token => XmlNamespace::qualified(token).ok_or_else(|| {
+                unsupported_wildcard("the namespace list contains an empty namespace URI")
+            })?,
+        };
+        if !namespaces.contains(&namespace) {
+            namespaces.push(namespace);
+        }
+    }
+    XmlWildcardNamespaceConstraint::list(namespaces).ok_or_else(|| {
+        unsupported_wildcard("the namespace constraint must contain at least one namespace")
+    })
+}
+
+#[cfg(test)]
 fn generic_wildcard_schema() -> SchemaNode {
-    let attributes = generic_attribute_wildcard_schema();
-    let mut nested =
-        SchemaNode::recursive_group(XML_ELEMENTS_FIELD, XML_ELEMENTS_FIELD).repeating();
-    nested.xml_namespace = Some(XmlNamespace::Unqualified);
+    generic_wildcard_schema_with(
+        XmlWildcardNamespaceConstraint::list([XmlNamespace::Unqualified])
+            .unwrap_or(XmlWildcardNamespaceConstraint::Any),
+    )
+}
+
+fn generic_wildcard_schema_with(namespace: XmlWildcardNamespaceConstraint) -> SchemaNode {
+    let attributes = generic_attribute_storage_schema();
+    let nested = SchemaNode::recursive_group(XML_ELEMENTS_FIELD, XML_ELEMENTS_FIELD).repeating();
     let mut wildcard = SchemaNode::group(
         XML_ELEMENTS_FIELD,
         vec![
             SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+            SchemaNode::scalar(XML_NAMESPACE_URI_FIELD, ScalarType::String),
             SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
             attributes,
             nested,
         ],
     )
     .repeating();
-    wildcard.xml_namespace = Some(XmlNamespace::Unqualified);
+    if namespace.is_local_only() {
+        wildcard.xml_namespace = Some(XmlNamespace::Unqualified);
+    }
+    wildcard.xml_wildcard_namespace = Some(namespace);
     wildcard
 }
 
@@ -2140,6 +2211,18 @@ fn generic_attribute_wildcard_schema() -> SchemaNode {
     .repeating();
     attributes.xml_namespace = Some(XmlNamespace::Unqualified);
     attributes
+}
+
+fn generic_attribute_storage_schema() -> SchemaNode {
+    SchemaNode::group(
+        XML_ATTRIBUTES_FIELD,
+        vec![
+            SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+            SchemaNode::scalar(XML_NAMESPACE_URI_FIELD, ScalarType::String),
+            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+        ],
+    )
+    .repeating()
 }
 
 fn validate_wildcard_ownership(parsed: &ParsedComplexType, state: &mut ParseState) {
