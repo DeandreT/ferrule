@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use mapping::Node;
+use mapping::{IterationOutput, Node};
 
 struct TempDir(PathBuf);
 
@@ -371,6 +371,128 @@ fn nested_dynamic_values_preserve_source_position_on_export() {
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert!(engine::validate(&roundtrip.project).is_empty());
     assert_eq!(expected, engine::run(&roundtrip.project, &source).unwrap());
+}
+
+#[test]
+fn nested_dynamic_filtered_sequences_export_reimport_and_execute()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new("nested_filtered_export");
+    let design = write_nested_fixture(&dir.0);
+    let mut project = mfd::import(&design)?.project;
+    let available = project
+        .root
+        .children
+        .first_mut()
+        .and_then(|scope| {
+            scope
+                .children
+                .iter_mut()
+                .find(|scope| scope.target_field == "Available")
+        })
+        .ok_or("nested Available scope is missing")?;
+    let count = available
+        .dynamic_bindings
+        .first()
+        .ok_or("nested Available scope has no computed value")?
+        .value;
+    let minimum = project
+        .graph
+        .nodes
+        .keys()
+        .next_back()
+        .copied()
+        .map_or(0, |id| id + 1);
+    project.graph.nodes.insert(
+        minimum,
+        Node::Const {
+            value: ir::Value::Int(2),
+        },
+    );
+    let filter = minimum + 1;
+    project.graph.nodes.insert(
+        filter,
+        Node::Call {
+            function: "greater_than".into(),
+            args: vec![count, minimum],
+        },
+    );
+    available.filter = Some(filter);
+    let issues = engine::validate(&project);
+    if !issues.is_empty() {
+        return Err(format!("filtered dynamic project is invalid: {issues:#?}").into());
+    }
+
+    let source = format_json::read(&dir.0.join("inventory.json"), &project.source)?;
+    let expected = engine::run(&project, &source)?;
+    let expected_path = dir.0.join("nested-filtered.json");
+    format_json::write(&expected_path, &project.target, &expected)?;
+    let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(expected_path)?)?;
+    assert_eq!(
+        value[0]["Stores"][0]["Available"],
+        serde_json::json!({"S": 4.0})
+    );
+    assert_eq!(
+        value[0]["Stores"][1]["Available"],
+        serde_json::json!({"L": 7.0})
+    );
+    assert_eq!(value[1]["Stores"][0]["Available"], serde_json::json!({}));
+
+    let export_path = dir.0.join("nested-filtered-export.mfd");
+    let warnings = mfd::export(&project, &export_path)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&export_path)?;
+    assert!(exported.contains(r#"<component name="filter" library="core""#));
+
+    let roundtrip = mfd::import(&export_path)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    let roundtrip_available = roundtrip
+        .project
+        .root
+        .children
+        .first()
+        .and_then(|scope| {
+            scope
+                .children
+                .iter()
+                .find(|scope| scope.target_field == "Available")
+        })
+        .ok_or("round-trip Available scope is missing")?;
+    assert!(roundtrip_available.filter.is_some());
+    assert_eq!(expected, engine::run(&roundtrip.project, &source)?);
+    Ok(())
+}
+
+#[test]
+fn mapped_sequences_cannot_be_silently_exported_as_computed_json_properties()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new("nested_mapped_sequence_rejected");
+    let design = write_nested_fixture(&dir.0);
+    let mut project = mfd::import(&design)?.project;
+    let available = project
+        .root
+        .children
+        .first_mut()
+        .and_then(|scope| {
+            scope
+                .children
+                .iter_mut()
+                .find(|scope| scope.target_field == "Available")
+        })
+        .ok_or("nested Available scope is missing")?;
+    available.iteration_output = IterationOutput::MappedSequence;
+
+    let output = dir.0.join("invalid-dynamic.mfd");
+    let error = match mfd::export(&project, &output) {
+        Ok(_) => return Err("invalid dynamic mapping exported successfully".into()),
+        Err(error) => error,
+    };
+    assert!(
+        error.to_string().contains("repeated output"),
+        "unexpected export error: {error}"
+    );
+    assert!(!output.exists());
+    Ok(())
 }
 
 #[test]
