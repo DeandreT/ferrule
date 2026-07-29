@@ -72,6 +72,15 @@ layout and dialect details that an extension cannot express.
   boolean exclusives regardless of the declared dialect for interoperability;
   export emits the canonical normalized form. Range-bearing general scalar
   unions and `multipleOf` remain unsupported.
+  Concrete arrays retain exact non-negative `minItems` and `maxItems`
+  intervals through references, nullable wrappers, compatible `allOf`
+  intersections, and exactly representable `anyOf` unions. Input and output
+  enforce the interval before visiting array items. JSON Lines applies a root
+  array interval to the total nonblank line count; nullable root arrays reject
+  because line-oriented null-container semantics are ambiguous. Disjoint count
+  unions and independently constrained nested array wrappers reject rather than
+  widen. As with numeric constraints, `$ref` siblings use the supported modern
+  assertion behavior regardless of a declared draft and export canonically.
   General heterogeneous array composition, validation-bearing scalar unions,
   and mixed structural unions remain unsupported.
   Shape-neutral validation keywords are

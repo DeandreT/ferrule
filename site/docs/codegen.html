@@ -119,7 +119,7 @@
           <strong>Bounded documents.</strong>
           Each JSON input and output is capped at 64 MiB and each trusted
           embedded schema at 1 MiB. Invalid shapes, numeric conversions, scalar
-          constants, exact numeric ranges, output serialization, and size excess
+          constants, exact numeric ranges, array item-count intervals, output serialization, and size excess
           produce typed boundary failures in both Rust and C#. These
           methods are deliberately JSON-only; stored format paths and options
           remain host metadata.

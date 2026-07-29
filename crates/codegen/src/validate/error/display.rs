@@ -8,6 +8,11 @@ use super::ProgramValidationError;
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidSchemaMetadata { boundary, path } => write!(
+                formatter,
+                "compiled mapping {boundary} schema {} has invalid metadata",
+                display_path(path)
+            ),
             Self::EmptyExtraSourceName { index } => write!(
                 formatter,
                 "compiled mapping extra source {} has an empty name",

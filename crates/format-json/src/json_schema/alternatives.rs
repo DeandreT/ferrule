@@ -3,7 +3,7 @@ use ir::{
     GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode,
 };
 
-use super::{parse, resolve_ref, unsupported_union};
+use super::{item_counts, parse, ranges, resolve_ref, unsupported_union};
 use crate::JsonFormatError;
 
 enum WrapperAdditional {
@@ -146,36 +146,23 @@ pub(super) fn parse_scalar_domain_array_any_of(
     else {
         return Ok(None);
     };
-    let mut array: Option<Box<SchemaNode>> = None;
+    let mut arrays = Vec::new();
     let mut nullable = false;
     for alternative in alternatives {
         match classify_exact_array_alternative(name, alternative, doc, active_refs)? {
             ArrayAlternative::Null => nullable = true,
-            ArrayAlternative::Array(candidate) => {
-                if let Some(existing) = array.as_ref() {
-                    if existing == &candidate {
-                        // Keep the first identical branch.
-                    } else if scalar_array_domain_contains(candidate.as_ref(), existing.as_ref()) {
-                        array = Some(candidate);
-                    } else if !scalar_array_domain_contains(existing.as_ref(), candidate.as_ref()) {
-                        return Err(unsupported_union(
-                            name,
-                            "anyOf array alternatives must have identical item schemas or one scalar item domain must contain the other",
-                        ));
-                    }
-                } else {
-                    array = Some(candidate);
-                }
-            }
+            ArrayAlternative::Array(candidate) => arrays.push(*candidate),
             ArrayAlternative::Other => return Ok(None),
         }
     }
-    let Some(node) = array else {
+    if arrays.is_empty() {
         return Ok(None);
-    };
-    ensure_annotation_only(name, schema, "anyOf")?;
-    let mut node = *node;
+    }
+    let mut node = reduce_array_any_of(name, arrays)?;
+    ensure_annotation_or_range_only(name, schema, "anyOf")?;
     node.container_nullable = nullable;
+    ranges::validate_ignored(name, schema)?;
+    item_counts::apply(name, schema, &mut node, false)?;
     Ok(Some(node))
 }
 
@@ -184,7 +171,20 @@ fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> b
         || !subset.repeating
         || (subset.nullable && !superset.nullable)
         || superset.container_nullable != subset.container_nullable
+        || !item_count_domain_contains(superset.item_count_range, subset.item_count_range)
     {
+        return false;
+    }
+    if subset.json_any {
+        return superset.json_any;
+    }
+    if superset.json_any {
+        return true;
+    }
+    if array_item_shapes_equal(superset, subset) {
+        return true;
+    }
+    if !has_unconstrained_scalar_item_domain(superset) {
         return false;
     }
     [
@@ -195,6 +195,113 @@ fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> b
     ]
     .into_iter()
     .all(|ty| !scalar_domain_contains(subset, ty) || scalar_domain_contains(superset, ty))
+}
+
+fn reduce_array_any_of(name: &str, arrays: Vec<SchemaNode>) -> Result<SchemaNode, JsonFormatError> {
+    if let Some(superset) = arrays.iter().find(|candidate| {
+        arrays
+            .iter()
+            .all(|other| scalar_array_domain_contains(candidate, other))
+    }) {
+        return Ok(superset.clone());
+    }
+
+    let mut groups: Vec<Vec<SchemaNode>> = Vec::new();
+    for candidate in arrays {
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| array_item_shapes_equal(&group[0], &candidate))
+        {
+            group.push(candidate);
+        } else {
+            groups.push(vec![candidate]);
+        }
+    }
+    let mut merged = Vec::with_capacity(groups.len());
+    for mut group in groups {
+        let mut node = group.remove(0);
+        node.item_count_range = union_item_count_range_set(
+            name,
+            core::iter::once(node.item_count_range)
+                .chain(group.iter().map(|candidate| candidate.item_count_range)),
+        )?;
+        merged.push(node);
+    }
+    if let Some(superset) = merged.iter().find(|candidate| {
+        merged
+            .iter()
+            .all(|other| scalar_array_domain_contains(candidate, other))
+    }) {
+        return Ok(superset.clone());
+    }
+    Err(unsupported_union(
+        name,
+        "anyOf array alternatives must have identical item schemas with contiguous count ranges, or one exact item/count domain that contains every other branch",
+    ))
+}
+
+fn array_item_shapes_equal(left: &SchemaNode, right: &SchemaNode) -> bool {
+    let mut left = left.clone();
+    let mut right = right.clone();
+    left.item_count_range = None;
+    right.item_count_range = None;
+    left == right
+}
+
+fn has_unconstrained_scalar_item_domain(node: &SchemaNode) -> bool {
+    let mut actual = node.clone();
+    actual.repeating = false;
+    actual.container_nullable = false;
+    actual.item_count_range = None;
+    let mut expected = match &actual.kind {
+        SchemaKind::Scalar { ty } => SchemaNode::scalar(&actual.name, *ty),
+        SchemaKind::ScalarUnion { types } => SchemaNode::scalar_union(&actual.name, *types),
+        SchemaKind::Group { .. } => return false,
+    };
+    expected.nullable = actual.nullable;
+    actual == expected
+}
+
+fn item_count_domain_contains(
+    superset: Option<ir::ItemCountRange>,
+    subset: Option<ir::ItemCountRange>,
+) -> bool {
+    match (superset, subset) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(superset), Some(subset)) => superset.contains_range(subset),
+    }
+}
+
+fn union_item_count_range_set(
+    name: &str,
+    ranges: impl IntoIterator<Item = Option<ir::ItemCountRange>>,
+) -> Result<Option<ir::ItemCountRange>, JsonFormatError> {
+    let mut ranges = ranges.into_iter().collect::<Vec<_>>();
+    if ranges.iter().any(Option::is_none) {
+        return Ok(None);
+    }
+    let mut ranges = ranges
+        .drain(..)
+        .flatten()
+        .collect::<Vec<ir::ItemCountRange>>();
+    ranges.sort_by_key(|range| (range.minimum(), range.maximum()));
+    let Some(mut merged) = ranges.first().copied() else {
+        return Ok(None);
+    };
+    for range in ranges.into_iter().skip(1) {
+        let Some(union) = merged.contiguous_union(range) else {
+            return Err(unsupported_union(
+                name,
+                "anyOf array count ranges are disjoint and cannot be represented as one interval",
+            ));
+        };
+        let Some(union) = union else {
+            return Ok(None);
+        };
+        merged = union;
+    }
+    Ok(Some(merged))
 }
 
 fn scalar_domain_contains(node: &SchemaNode, ty: ScalarType) -> bool {
@@ -309,8 +416,15 @@ pub(super) fn parse_nullable_composition(
             unsupported_union(name, "nullable composition must be a schema object")
         })?;
         object.insert(keyword.to_string(), serde_json::Value::Array(content));
-        for range_keyword in ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"] {
-            object.remove(range_keyword);
+        for constraint_keyword in [
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "minItems",
+            "maxItems",
+        ] {
+            object.remove(constraint_keyword);
         }
         parse(name, &reduced, doc, active_refs)?
     };
@@ -533,7 +647,8 @@ fn ensure_exact_array_shape(
         ));
     }
     if let Some(keyword) = object.keys().find(|keyword| {
-        !matches!(keyword.as_str(), "type" | "items") && !is_annotation_keyword(keyword.as_str())
+        !matches!(keyword.as_str(), "type" | "items" | "minItems" | "maxItems")
+            && !is_annotation_keyword(keyword.as_str())
     }) {
         return Err(unsupported_union(
             union_name,
@@ -624,7 +739,12 @@ fn ensure_annotation_or_range_only(
             && !is_annotation_keyword(keyword.as_str())
             && !matches!(
                 keyword.as_str(),
-                "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum"
+                "minimum"
+                    | "maximum"
+                    | "exclusiveMinimum"
+                    | "exclusiveMaximum"
+                    | "minItems"
+                    | "maxItems"
             )
     }) {
         return Err(unsupported_union(

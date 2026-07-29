@@ -28,6 +28,12 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.item_count_range_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("item-count metadata{suffix} requires a repeating schema node"),
+        ));
+    }
     if !schema.recursive_ref_is_valid() {
         issues.push(ValidationIssue::new(
             root,

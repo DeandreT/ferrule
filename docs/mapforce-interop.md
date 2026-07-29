@@ -119,6 +119,10 @@ their referenced schemas, including nullable numeric fields and compatible
 source documents and write targets; malformed, empty, or precision-ambiguous
 ranges trigger the component's existing schema-fallback diagnostic instead of
 silently widening the mapping boundary.
+Referenced JSON arrays likewise retain exact `minItems`/`maxItems` intervals
+through references, nullable wrappers, and compatible compositions. Invalid or
+nonrepresentable item-count unions use the same actionable schema fallback;
+valid constraints remain executable after MFD import.
 Expanded-name identity for ordinary elements and attributes is preserved;
 foreign declarations export as an atomic graph of local XSD siblings.
 Compatible strict-wildcard declarations that share one local name across

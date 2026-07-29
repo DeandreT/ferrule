@@ -23,7 +23,7 @@
 //! shape-neutral validation keywords are accepted but are not enforced by the
 //! mapping schema.
 
-use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
+use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
 
 use crate::JsonFormatError;
 
@@ -31,6 +31,7 @@ mod all_of;
 mod alternatives;
 pub(crate) mod constraints;
 mod files;
+pub(crate) mod item_counts;
 pub(crate) mod ranges;
 mod render;
 
@@ -102,15 +103,19 @@ fn parse(
     if let Some(r) = schema.get("$ref").and_then(|r| r.as_str()) {
         // Cyclic and external (non-`#/...`) refs degrade to string scalars.
         if active_refs.iter().any(|a| a == r) {
+            reject_unresolved_ref_constraints(name, schema)?;
             return Ok(SchemaNode::scalar(name, ScalarType::String));
         }
         let Some(resolved) = resolve_ref(doc, r) else {
+            reject_unresolved_ref_constraints(name, schema)?;
             return Ok(SchemaNode::scalar(name, ScalarType::String));
         };
         active_refs.push(r.to_string());
-        let node = parse(name, resolved, doc, active_refs);
+        let parsed = parse(name, resolved, doc, active_refs);
         active_refs.pop();
-        return node;
+        let mut node = parsed?;
+        apply_known_shape_constraints(name, schema, &mut node)?;
+        return Ok(node);
     }
     if let Some(composition) = schema.get("allOf") {
         return parse_all_of(name, schema, composition, doc, active_refs);
@@ -125,6 +130,7 @@ fn parse(
             active_refs,
         )? {
             ranges::apply(name, schema, &mut nullable, false)?;
+            item_counts::validate_ignored(name, schema)?;
             return Ok(nullable);
         }
         if let Some(mut nullable) =
@@ -155,6 +161,7 @@ fn parse(
             active_refs,
         )? {
             ranges::apply(name, schema, &mut nullable, false)?;
+            item_counts::validate_ignored(name, schema)?;
             return Ok(nullable);
         }
         if let Some(mut nullable) =
@@ -236,11 +243,22 @@ fn parse(
                     let mut node = arbitrary_json_schema(name)?.repeating();
                     node.container_nullable = nullable;
                     ranges::validate_ignored(name, schema)?;
+                    item_counts::apply(name, schema, &mut node, false)?;
                     return Ok(node);
                 };
-                let mut node = parse(name, items, doc, active_refs)?.repeating();
+                let item = parse(name, items, doc, active_refs)?;
+                if item.repeating
+                    && (item.item_count_range.is_some() || item_counts::has_keywords(schema))
+                {
+                    return Err(unsupported_union(
+                        name,
+                        "nested arrays with item-count constraints require distinct wrapper levels",
+                    ));
+                }
+                let mut node = item.repeating();
                 node.container_nullable = nullable;
                 ranges::validate_ignored(name, schema)?;
+                item_counts::apply(name, schema, &mut node, false)?;
                 return Ok(node);
             }
             ImportedSchemaType::Single("string") => {
@@ -279,6 +297,12 @@ fn parse(
         &mut node,
         type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
     )?;
+    item_counts::apply(
+        name,
+        schema,
+        &mut node,
+        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+    )?;
     Ok(node)
 }
 
@@ -287,11 +311,37 @@ fn apply_nullable_composition_ranges(
     schema: &serde_json::Value,
     node: &mut SchemaNode,
 ) -> Result<(), JsonFormatError> {
-    if node.repeating || matches!(node.kind, SchemaKind::Group { .. }) {
-        ranges::validate_ignored(name, schema)
+    apply_known_shape_constraints(name, schema, node)
+}
+
+fn apply_known_shape_constraints(
+    name: &str,
+    schema: &serde_json::Value,
+    node: &mut SchemaNode,
+) -> Result<(), JsonFormatError> {
+    if node.repeating {
+        ranges::validate_ignored(name, schema)?;
+        item_counts::apply(name, schema, node, false)
     } else {
-        ranges::apply(name, schema, node, false)
+        ranges::apply(name, schema, node, false)?;
+        item_counts::validate_ignored(name, schema)
     }
+}
+
+fn reject_unresolved_ref_constraints(
+    name: &str,
+    schema: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    if ranges::has_range_keywords(schema)
+        || item_counts::has_keywords(schema)
+            && item_counts::is_effectively_constrained(name, schema)?
+    {
+        return Err(unsupported_union(
+            name,
+            "constraints beside an unresolved or cyclic `$ref` cannot be preserved",
+        ));
+    }
+    Ok(())
 }
 
 fn schema_type<'a>(

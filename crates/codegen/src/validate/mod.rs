@@ -39,6 +39,14 @@ use targets::TargetOwner;
 /// This check protects the public programmatic API from emitting recursive or
 /// backend-dependent source when callers construct a [`Program`] directly.
 pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError> {
+    validate_schema_metadata("source", &program.source)?;
+    for source in &program.extra_sources {
+        validate_schema_metadata(&format!("extra source {:?}", source.name), &source.source)?;
+    }
+    validate_schema_metadata("target", &program.target)?;
+    for target in &program.extra_targets {
+        validate_schema_metadata(&format!("extra target {:?}", target.name), &target.target)?;
+    }
     sources::validate_names(&program.extra_sources)?;
     let sources = SourceCatalog::new(&program.source, &program.extra_sources);
     let expressions = collect_expressions(program)?;
@@ -59,6 +67,40 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_expression_sequence_paths(sources, &expressions)?;
     failures::validate(program, &expressions, &sequence_items)?;
     targets::validate(program, &expressions, &sequence_items)
+}
+
+fn validate_schema_metadata(
+    boundary: &str,
+    schema: &SchemaNode,
+) -> Result<(), ProgramValidationError> {
+    fn visit(
+        boundary: &str,
+        schema: &SchemaNode,
+        path: &mut Vec<String>,
+    ) -> Result<(), ProgramValidationError> {
+        if !schema.metadata_is_valid() {
+            return Err(ProgramValidationError::InvalidSchemaMetadata {
+                boundary: boundary.to_string(),
+                path: path.clone(),
+            });
+        }
+        let SchemaKind::Group { children, .. } = &schema.kind else {
+            return Ok(());
+        };
+        for child in children {
+            path.push(child.name.clone());
+            visit(boundary, child, path)?;
+            path.pop();
+        }
+        if let Some(dynamic) = schema.dynamic_fields() {
+            path.push("*".to_string());
+            visit(boundary, dynamic, path)?;
+            path.pop();
+        }
+        Ok(())
+    }
+
+    visit(boundary, schema, &mut Vec::new())
 }
 
 fn validate_dynamic_sources(

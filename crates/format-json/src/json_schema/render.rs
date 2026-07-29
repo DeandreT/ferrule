@@ -26,6 +26,7 @@ fn render_non_nullable(node: &SchemaNode, out: &mut serde_json::Map<String, serd
         let mut items = serde_json::Map::new();
         render_shape(node, &mut items);
         out.insert("items".into(), serde_json::Value::Object(items));
+        super::item_counts::render(node, out);
     } else {
         render_shape(node, out);
     }

@@ -180,6 +180,7 @@ public static class FerruleJson
         var kindElement = RequiredProperty(element, "kind");
         RequireKind(kindElement, JsonValueKind.Object, $"schema node '{name}' kind", "object");
         var kind = RequiredString(kindElement, "kind");
+        var repeating = OptionalBoolean(element, "repeating");
         var scalarDomain = kind switch
         {
             "scalar" => ScalarDomain(
@@ -207,6 +208,7 @@ public static class FerruleJson
             scalarDomain,
             OptionalBoolean(element, "json_any"),
             fixedValue);
+        var itemCountRange = ReadItemCountRange(name, element, repeating);
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
         var alternatives = new List<JsonAlternative>();
@@ -273,13 +275,14 @@ public static class FerruleJson
 
         return new JsonSchemaNode(
             name,
-            OptionalBoolean(element, "repeating"),
+            repeating,
             OptionalBoolean(element, "nullable"),
             OptionalBoolean(element, "container_nullable"),
             OptionalBoolean(element, "json_any"),
             scalarDomain,
             fixedValue,
             numericRange,
+            itemCountRange,
             children,
             dynamic,
             required,
@@ -287,6 +290,41 @@ public static class FerruleJson
             element.TryGetProperty("alternative_mode", out var mode) &&
             mode.ValueKind == JsonValueKind.String &&
             string.Equals(mode.GetString(), "inclusive", StringComparison.Ordinal));
+    }
+
+    private static JsonItemCountRange? ReadItemCountRange(
+        string name,
+        JsonElement element,
+        bool repeating)
+    {
+        if (!element.TryGetProperty("item_count_range", out var rangeElement) ||
+            rangeElement.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+        RequireKind(
+            rangeElement,
+            JsonValueKind.Object,
+            $"schema node '{name}' item-count range",
+            "object");
+        foreach (var property in rangeElement.EnumerateObject())
+        {
+            if (property.Name is not ("minimum" or "maximum"))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' item-count range has unknown field '{property.Name}'.");
+            }
+        }
+        var minimum = OptionalUInt64(rangeElement, "minimum", false) ?? 0;
+        var maximum = OptionalUInt64(rangeElement, "maximum", true);
+        if (!repeating ||
+            minimum == 0 && maximum is null ||
+            maximum is { } upper && minimum > upper)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has invalid item-count metadata.");
+        }
+        return new JsonItemCountRange(minimum, maximum);
     }
 
     private static JsonNumericRange? ReadNumericRange(
@@ -511,6 +549,7 @@ public static class FerruleJson
         if (schema.Repeating)
         {
             RequireKind(element, JsonValueKind.Array, schema.Name, "array");
+            ValidateItemCount(schema, element.GetArrayLength());
             var items = new List<FerruleInstance>();
             foreach (var item in element.EnumerateArray())
             {
@@ -712,6 +751,7 @@ public static class FerruleJson
             {
                 throw Shape(schema.Name, "array", InstanceKind(instance));
             }
+            ValidateItemCount(schema, repeated.Items.Count);
 
             writer.WriteStartArray();
             foreach (var item in repeated.Items)
@@ -724,6 +764,15 @@ public static class FerruleJson
         }
 
         WriteSingleNode(writer, schema, instance, budget, depth);
+    }
+
+    private static void ValidateItemCount(JsonSchemaNode schema, int count)
+    {
+        if (schema.ItemCountRange is { } range && !range.Contains(count))
+        {
+            throw Boundary(
+                $"JSON array '{schema.Name}' has {count} items outside its declared item-count range.");
+        }
     }
 
     private static void WriteSingleNode(
@@ -1186,9 +1235,16 @@ public static class FerruleJson
         writer.WriteRawValue(lexical, skipInputValidation: false);
     }
 
-    private static bool BoundaryAbsence(JsonSchemaNode schema, FerruleInstance instance) =>
-        instance is FerruleScalar { Value.Kind: FerruleValueKind.Null } &&
-        (schema.ContainerNullable || !schema.Repeating && schema.IsScalar);
+    private static bool BoundaryAbsence(JsonSchemaNode schema, FerruleInstance instance)
+    {
+        if (instance is FerruleRepeated { Items.Count: 0 } &&
+            schema.ItemCountRange is { Minimum: > 0 })
+        {
+            return true;
+        }
+        return instance is FerruleScalar { Value.Kind: FerruleValueKind.Null } &&
+               (schema.ContainerNullable || !schema.Repeating && schema.IsScalar);
+    }
 
     private static void ValidateRequired(
         JsonSchemaNode schema,
@@ -1603,6 +1659,25 @@ public static class FerruleJson
             : throw Boundary($"Embedded JSON schema field '{name}' must be a signed integer.");
     }
 
+    private static ulong? OptionalUInt64(
+        JsonElement element,
+        string name,
+        bool allowNull)
+    {
+        if (!element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+        if (allowNull && value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+        return value.ValueKind == JsonValueKind.Number && value.TryGetUInt64(out var integer)
+            ? integer
+            : throw Boundary(
+                $"Embedded JSON schema field '{name}' must be a non-negative integer.");
+    }
+
     private static bool OptionalBoolean(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) &&
         value.ValueKind switch
@@ -1758,6 +1833,15 @@ public static class FerruleJson
         }
     }
 
+    private sealed record JsonItemCountRange(ulong Minimum, ulong? Maximum)
+    {
+        public bool Contains(int count)
+        {
+            var value = (ulong)count;
+            return value >= Minimum && (Maximum is null || value <= Maximum);
+        }
+    }
+
     private sealed class JsonSchemaNode
     {
         public JsonSchemaNode(
@@ -1769,6 +1853,7 @@ public static class FerruleJson
             JsonScalarDomain scalarDomain,
             FerruleValue? fixedValue,
             JsonNumericRange? numericRange,
+            JsonItemCountRange? itemCountRange,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
             IReadOnlyList<string> required,
@@ -1783,6 +1868,7 @@ public static class FerruleJson
             ScalarDomain = scalarDomain;
             Fixed = fixedValue;
             NumericRange = numericRange;
+            ItemCountRange = itemCountRange;
             Children = children;
             Dynamic = dynamic;
             Required = required;
@@ -1805,6 +1891,8 @@ public static class FerruleJson
         public FerruleValue? Fixed { get; }
 
         public JsonNumericRange? NumericRange { get; }
+
+        public JsonItemCountRange? ItemCountRange { get; }
 
         public bool IsScalar => ScalarDomain != JsonScalarDomain.None;
 

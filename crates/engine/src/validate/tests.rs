@@ -501,6 +501,22 @@ fn rejects_programmatically_invalid_numeric_range_metadata() {
 }
 
 #[test]
+fn rejects_programmatically_invalid_item_count_metadata() {
+    let mut project = valid_project();
+    let Some(range) = ir::ItemCountRange::new(1, Some(3)) else {
+        panic!("test item-count range is valid");
+    };
+    target_name(&mut project).item_count_range = Some(range);
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("item-count metadata")
+            && issue.message.contains("name")
+    }));
+}
+
+#[test]
 fn rejects_every_programmatically_invalid_schema_metadata_family() {
     let mut cases = Vec::new();
 

@@ -132,7 +132,7 @@ fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
 
 #[cfg(test)]
 mod tests {
-    use ir::{IntegerRange, NumericRange, ScalarType, ScalarTypeSet, Value};
+    use ir::{IntegerRange, ItemCountRange, NumericRange, ScalarType, ScalarTypeSet, Value};
 
     use super::*;
 
@@ -195,6 +195,52 @@ mod tests {
             ),
             Err(JsonBoundaryError::InvalidOutput { ref message })
                 if message.contains("numeric range")
+        ));
+    }
+
+    #[test]
+    fn enforces_embedded_item_counts_on_input_and_output() {
+        let Some(range) = ItemCountRange::new(1, Some(2)) else {
+            panic!("test item-count range is valid");
+        };
+        let Some(schema) = SchemaNode::scalar("Values", ScalarType::Int)
+            .repeating()
+            .with_item_count_range(range)
+        else {
+            panic!("test item-count range matches a repeating node");
+        };
+        let encoded = serde_json::to_string(&schema).unwrap_or_default();
+        assert!(matches!(
+            parse_json(&encoded, "[]"),
+            Err(JsonBoundaryError::InvalidInput { ref message })
+                if message.contains("between 1 and 2 array items")
+        ));
+        assert_eq!(
+            parse_json(&encoded, "[1,2]"),
+            Ok(Instance::Repeated(vec![
+                Instance::Scalar(Value::Int(1)),
+                Instance::Scalar(Value::Int(2)),
+            ]))
+        );
+        assert!(matches!(
+            serialize_json(&encoded, &Instance::Repeated(Vec::new())),
+            Err(JsonBoundaryError::InvalidOutput { ref message })
+                if message.contains("between 1 and 2 array items")
+        ));
+        assert_eq!(
+            serialize_json(
+                &encoded,
+                &Instance::Repeated(vec![Instance::Scalar(Value::Int(1))])
+            )
+            .as_deref(),
+            Ok("[\n  1\n]\n")
+        );
+
+        let invalid = encoded.replace("\"repeating\":true", "\"repeating\":false");
+        assert!(matches!(
+            parse_json(&invalid, "1"),
+            Err(JsonBoundaryError::InvalidEmbeddedSchema { ref message })
+                if message.contains("item-count range")
         ));
     }
 

@@ -12,6 +12,10 @@ mod display;
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
+    InvalidSchemaMetadata {
+        boundary: String,
+        path: Vec<String>,
+    },
     EmptyExtraSourceName {
         index: usize,
     },

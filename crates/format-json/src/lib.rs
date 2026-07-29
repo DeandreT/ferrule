@@ -63,6 +63,14 @@ pub enum JsonFormatError {
         range: String,
         got: String,
     },
+    #[error("`{name}` requires {range} array items, got {got}")]
+    ItemCountMismatch {
+        name: String,
+        range: String,
+        got: usize,
+    },
+    #[error("JSON Lines cannot encode nullable array container `{name}`")]
+    NullableJsonLinesContainer { name: String },
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
@@ -134,6 +142,7 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatE
 
 /// Reads JSON Lines text into a repeated instance.
 pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    reject_nullable_json_lines_container(schema)?;
     let items = strip_utf8_bom(text)
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -142,6 +151,9 @@ pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonForma
             read_node(&value, schema)
         })
         .collect::<Result<Vec<_>, JsonFormatError>>()?;
+    if schema.repeating {
+        json_schema::item_counts::validate_len(schema, items.len())?;
+    }
     Ok(Instance::Repeated(items))
 }
 
@@ -163,6 +175,7 @@ fn read_repeated(
             got: json_type_name(value),
         });
     };
+    json_schema::item_counts::validate_len(schema, items.len())?;
     let items = items
         .iter()
         .map(|item| read_node(item, schema))
@@ -398,20 +411,36 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Jso
 /// Serializes an instance as JSON Lines using one compact root value per
 /// line. A non-repeated instance becomes a single line.
 pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
+    reject_nullable_json_lines_container(schema)?;
     let mut text = String::new();
     match instance {
         Instance::Repeated(items) => {
+            if schema.repeating {
+                json_schema::item_counts::validate_len(schema, items.len())?;
+            }
             for item in items {
                 text.push_str(&serde_json::to_string(&write_single_node(schema, item)?)?);
                 text.push('\n');
             }
         }
         item => {
+            if schema.repeating {
+                json_schema::item_counts::validate_len(schema, 1)?;
+            }
             text.push_str(&serde_json::to_string(&write_single_node(schema, item)?)?);
             text.push('\n');
         }
     }
     Ok(text)
+}
+
+fn reject_nullable_json_lines_container(schema: &SchemaNode) -> Result<(), JsonFormatError> {
+    if schema.repeating && schema.container_nullable {
+        return Err(JsonFormatError::NullableJsonLinesContainer {
+            name: schema.name.clone(),
+        });
+    }
+    Ok(())
 }
 
 fn write_node(
@@ -429,6 +458,7 @@ fn write_node(
                 instance_type_name(instance),
             ));
         };
+        json_schema::item_counts::validate_len(schema, items.len())?;
         return items
             .iter()
             .map(|item| write_single_node(schema, item))
@@ -581,6 +611,10 @@ fn write_json_any(
 fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> bool {
     matches!(instance, Instance::Scalar(Value::Null))
         && (schema.container_nullable || (!schema.repeating && schema.is_scalar()))
+        || matches!(instance, Instance::Repeated(items) if items.is_empty())
+            && schema
+                .item_count_range
+                .is_some_and(|range| range.minimum() > 0)
 }
 
 fn write_scalar_union(
