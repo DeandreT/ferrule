@@ -5,7 +5,7 @@
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`) plus bounded,
 //! traversal-confined relative local-file reference graphs. Cyclic references
 //! degrade to string scalars. Compatible closed-object `oneOf` and
-//! `anyOf` unions, their required scalar `const` or singleton-`enum`
+//! `anyOf` unions, their required scalar `const` or scalar-`enum`
 //! discriminators, and typed `additionalProperties` schemas are preserved.
 //! Ordinary object `required` declarations retain property-presence semantics,
 //! including runtime-named required properties on open objects.
@@ -19,7 +19,9 @@
 //! are identical or one scalar item domain contains all the others. Unconstrained
 //! `additionalProperties` values are retained as canonical JSON text in the
 //! graph's string domain. An omitted or false `additionalProperties` is
-//! treated as closed. General composition remains outside this subset;
+//! treated as closed. Bounded multi-value scalar `enum` domains are retained
+//! exactly through direct schemas, references, compatible intersections, and
+//! finite scalar `anyOf`/`oneOf` composition. General composition remains outside this subset;
 //! bounded portable `pattern` constraints are enforced while string `format`
 //! annotations are retained without asserting their vocabulary-specific
 //! semantics. Other shape-neutral validation keywords are accepted but are not
@@ -30,6 +32,7 @@ use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
 use crate::JsonFormatError;
 
 mod all_of;
+pub(crate) mod allowed_values;
 mod alternatives;
 pub(crate) mod constraints;
 mod files;
@@ -43,8 +46,9 @@ pub(crate) mod string_lengths;
 
 use all_of::parse_all_of;
 use alternatives::{
-    parse_nullable_composition, parse_nullable_scalar_alternatives, parse_object_alternatives,
-    parse_scalar_any_of, parse_scalar_domain_array_any_of, parse_scalar_one_of,
+    parse_finite_scalar_composition, parse_nullable_composition,
+    parse_nullable_scalar_alternatives, parse_object_alternatives, parse_scalar_any_of,
+    parse_scalar_domain_array_any_of, parse_scalar_one_of,
 };
 
 enum ImportedSchemaType<'a> {
@@ -165,6 +169,13 @@ fn parse(
         return parse_all_of(name, schema, composition, doc, active_refs);
     }
     if let Some(alternatives) = schema.get("oneOf") {
+        if let Some(mut finite) =
+            parse_finite_scalar_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
+        {
+            apply_known_shape_constraints(name, schema, &mut finite)?;
+            formats::apply(name, schema, &mut finite)?;
+            return Ok(finite);
+        }
         if let Some(mut nullable) = parse_nullable_scalar_alternatives(
             name,
             schema,
@@ -211,6 +222,13 @@ fn parse(
         return Ok(node);
     }
     if let Some(alternatives) = schema.get("anyOf") {
+        if let Some(mut finite) =
+            parse_finite_scalar_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
+        {
+            apply_known_shape_constraints(name, schema, &mut finite)?;
+            formats::apply(name, schema, &mut finite)?;
+            return Ok(finite);
+        }
         if let Some(mut nullable) = parse_nullable_scalar_alternatives(
             name,
             schema,
@@ -270,10 +288,10 @@ fn parse(
     multiples::validate_ignored(name, schema)?;
     let (ty, nullable) = schema_type(name, schema)?;
     let type_was_absent = matches!(&ty, ImportedSchemaType::Absent);
-    let constant = constraints::selected_constraint(name, schema)?;
-    let narrowed_by_constant = constant.is_some();
+    let allowed = allowed_values::selected(name, schema)?;
+    let narrowed_by_allowed_values = allowed.is_some();
     if type_was_absent
-        && constant.is_none()
+        && allowed.is_none()
         && schema.get("required").is_some()
         && schema.get("properties").is_none()
     {
@@ -282,30 +300,33 @@ fn parse(
             "required without an object type or properties conditionally constrains objects while admitting non-object values",
         ));
     }
-    let mut node = if let Some(value) = constant {
-        let constant = match &ty {
-            ImportedSchemaType::Absent => constraints::infer(name, value)?,
+    let mut node = if let Some(selection) = allowed {
+        let mut node = match &ty {
+            ImportedSchemaType::Absent => allowed_values::inferred_schema(name, &selection)?,
             ImportedSchemaType::Single("string") => {
-                constraints::for_type(name, value, ScalarType::String)?
+                scalar_schema(name, ScalarType::String, nullable)
             }
-            ImportedSchemaType::Single("integer") => {
-                constraints::for_type(name, value, ScalarType::Int)?
-            }
+            ImportedSchemaType::Single("integer") => scalar_schema(name, ScalarType::Int, nullable),
             ImportedSchemaType::Single("number") => {
-                constraints::for_type(name, value, ScalarType::Float)?
+                scalar_schema(name, ScalarType::Float, nullable)
             }
             ImportedSchemaType::Single("boolean") => {
-                constraints::for_type(name, value, ScalarType::Bool)?
+                scalar_schema(name, ScalarType::Bool, nullable)
             }
-            ImportedSchemaType::ScalarUnion(types) => constraints::for_types(name, value, *types)?,
+            ImportedSchemaType::ScalarUnion(types) => {
+                let mut node = SchemaNode::scalar_union(name, *types);
+                node.nullable = nullable;
+                node
+            }
             ImportedSchemaType::Single(_) => {
                 return Err(unsupported_union(
                     name,
-                    "const and singleton enum are supported only for scalar schemas",
+                    "const and enum are supported only for scalar schemas",
                 ));
             }
         };
-        constraints::schema(name, &constant)
+        allowed_values::apply_selection(name, &mut node, selection)?;
+        node
     } else {
         match ty {
             ImportedSchemaType::Single("object") => {
@@ -335,13 +356,14 @@ fn parse(
                 if item.repeating
                     && (item.item_count_range.is_some()
                         || item.json_multiple_of.is_some()
+                        || item.json_allowed_values.is_some()
                         || item.string_length_range.is_some()
                         || item.json_patterns.is_some()
                         || item_counts::has_keywords(schema))
                 {
                     return Err(unsupported_union(
                         name,
-                        "nested arrays with item-count, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
+                        "nested arrays with item-count, allowed-value, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
                     ));
                 }
                 let mut node = item.repeating();
@@ -394,31 +416,31 @@ fn parse(
         name,
         schema,
         &mut node,
-        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
     multiples::apply(
         name,
         schema,
         &mut node,
-        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
     item_counts::apply(
         name,
         schema,
         &mut node,
-        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
     string_lengths::apply(
         name,
         schema,
         &mut node,
-        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
     patterns::apply(
         name,
         schema,
         &mut node,
-        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
     formats::apply(name, schema, &mut node)?;
     Ok(node)
@@ -437,6 +459,7 @@ fn apply_known_shape_constraints(
     schema: &serde_json::Value,
     node: &mut SchemaNode,
 ) -> Result<(), JsonFormatError> {
+    allowed_values::apply(name, schema, node)?;
     if node.repeating {
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
@@ -457,6 +480,7 @@ fn reject_unresolved_ref_constraints(
     schema: &serde_json::Value,
 ) -> Result<(), JsonFormatError> {
     if ranges::has_range_keywords(schema)
+        || allowed_values::has_keyword(schema)
         || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
             && item_counts::is_effectively_constrained(name, schema)?
@@ -477,6 +501,7 @@ pub(super) fn reject_unsupported_ref_siblings(
     name: &str,
     schema: &serde_json::Value,
 ) -> Result<(), JsonFormatError> {
+    allowed_values::selected(name, schema)?;
     formats::validate(name, schema)?;
     string_lengths::validate_ignored(name, schema)?;
     multiples::validate_ignored(name, schema)?;
@@ -504,8 +529,6 @@ fn unsupported_ref_sibling(keyword: &str) -> bool {
         "$dynamicRef"
             | "$recursiveRef"
             | "type"
-            | "const"
-            | "enum"
             | "maxProperties"
             | "minProperties"
             | "required"
@@ -787,6 +810,12 @@ fn unsupported_object(name: &str, reason: &str) -> JsonFormatError {
 /// reads (repeating nodes become `type: array` wrappers). The root gets a
 /// `title` so the name survives a roundtrip.
 pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
+    if !schema.json_allowed_values_tree_is_valid() {
+        return Err(JsonFormatError::InvalidAllowedValuesMetadata {
+            reason: "allowed values are incompatible with their scalar domains or nullability"
+                .to_string(),
+        });
+    }
     if !schema.json_multiple_of_tree_is_valid() {
         return Err(JsonFormatError::InvalidMultipleOfMetadata {
             reason:

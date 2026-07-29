@@ -206,6 +206,7 @@ public static partial class FerruleJson
                 $"Embedded JSON schema node '{name}' has unknown kind '{kind}'."),
         };
         var jsonAny = OptionalBoolean(element, "json_any");
+        var nullable = OptionalBoolean(element, "nullable");
         var jsonFormats = ReadJsonFormats(name, element, scalarDomain, jsonAny);
         var fixedLexical = OptionalString(element, "fixed");
         FerruleValue? fixedValue = null;
@@ -218,6 +219,13 @@ public static partial class FerruleJson
             }
             fixedValue = ParseFixed(name, SingleScalar(scalarDomain), fixedLexical);
         }
+        var jsonAllowedValues = ReadJsonAllowedValues(
+            name,
+            element,
+            scalarDomain,
+            jsonAny,
+            nullable,
+            fixedValue);
         var numericRange = ReadNumericRange(
             name,
             element,
@@ -311,12 +319,13 @@ public static partial class FerruleJson
         return new JsonSchemaNode(
             name,
             repeating,
-            OptionalBoolean(element, "nullable"),
+            nullable,
             OptionalBoolean(element, "container_nullable"),
             jsonAny,
             jsonFormats,
             scalarDomain,
             fixedValue,
+            jsonAllowedValues,
             numericRange,
             jsonMultipleOf,
             stringLengthRange,
@@ -994,6 +1003,7 @@ public static partial class FerruleJson
                 $"JSON scalar '{schema.Name}' is outside its numeric range: {element.GetRawText()}.");
         }
         ValidateJsonMultipleOf(schema, value);
+        ValidateJsonAllowedValues(schema, value);
         ValidateStringLength(schema, value);
         ValidateJsonPatterns(schema, value, budget);
         return value;
@@ -1238,6 +1248,7 @@ public static partial class FerruleJson
         ValidateFixedOutput(schema, scalar, value);
         ValidateNumericRangeOutput(schema, scalar, value);
         ValidateJsonMultipleOfOutput(schema, scalar, value);
+        ValidateJsonAllowedValuesOutput(schema, scalar, value);
         if (value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
         {
             writer.WriteNullValue();
@@ -1421,11 +1432,13 @@ public static partial class FerruleJson
             TryExactDouble(value.Int64Value, out var converted))
         {
             ValidateJsonMultipleOf(schema, FerruleValue.FromDouble(converted));
+            ValidateJsonAllowedValues(schema, FerruleValue.FromDouble(converted));
             writer.WriteNumberValue(value.Int64Value);
             return;
         }
 
         var normalized = NormalizeScalarUnion(schema, value);
+        ValidateJsonAllowedValues(schema, normalized);
         if (normalized.Kind == FerruleValueKind.JsonNull)
         {
             writer.WriteNullValue();
@@ -2319,6 +2332,7 @@ public static partial class FerruleJson
             IReadOnlyList<string> jsonFormats,
             JsonScalarDomain scalarDomain,
             FerruleValue? fixedValue,
+            JsonAllowedValues? jsonAllowedValues,
             JsonNumericRange? numericRange,
             JsonMultipleOfConstraints? jsonMultipleOf,
             JsonStringLengthRange? stringLengthRange,
@@ -2338,6 +2352,7 @@ public static partial class FerruleJson
             JsonFormats = jsonFormats;
             ScalarDomain = scalarDomain;
             Fixed = fixedValue;
+            JsonAllowedValues = jsonAllowedValues;
             NumericRange = numericRange;
             JsonMultipleOf = jsonMultipleOf;
             StringLengthRange = stringLengthRange;
@@ -2365,6 +2380,8 @@ public static partial class FerruleJson
         public JsonScalarDomain ScalarDomain { get; }
 
         public FerruleValue? Fixed { get; }
+
+        public JsonAllowedValues? JsonAllowedValues { get; }
 
         public JsonNumericRange? NumericRange { get; }
 

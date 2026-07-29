@@ -1,10 +1,10 @@
 use ir::{
     FiniteF64, GroupAlternative, GroupAlternativeConstraint, GroupAlternativeConstraintValue,
-    GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode,
+    GroupAlternativeMode, JsonAllowedValue, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode,
 };
 
 use super::{
-    files, formats, item_counts, multiples, parse, patterns, ranges,
+    allowed_values, files, formats, item_counts, multiples, parse, patterns, ranges,
     reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
 };
 use crate::JsonFormatError;
@@ -39,6 +39,120 @@ enum ArrayAlternative {
     Null,
     Array(Box<SchemaNode>),
     Other,
+}
+
+/// Imports a scalar composition whose non-null branches are all finite
+/// `const`/`enum` domains. Inclusive unions keep every value; exclusive unions
+/// keep only values admitted by exactly one branch.
+pub(super) fn parse_finite_scalar_composition(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    keyword: &str,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
+    let Some(alternatives) = alternatives
+        .as_array()
+        .filter(|alternatives| alternatives.len() >= 2)
+    else {
+        return Ok(None);
+    };
+    let mut branches = Vec::with_capacity(alternatives.len());
+    let mut annotations = ir::JsonFormatAnnotations::default();
+    let mut saw_finite_non_null = false;
+    let mut saw_unbounded_or_structured = false;
+    for alternative in alternatives {
+        if is_null_alternative(name, alternative, doc, active_refs)? {
+            branches.push(vec![JsonAllowedValue::JsonNull]);
+            continue;
+        }
+        if resolves_to_structured_alternative(alternative, doc, active_refs) {
+            saw_unbounded_or_structured = true;
+            continue;
+        }
+        let parsed = parse(name, alternative, doc, active_refs)?;
+        if parsed.repeating || parsed.json_any || !parsed.is_scalar() {
+            saw_unbounded_or_structured = true;
+            continue;
+        }
+        let Some(values) = allowed_values::from_schema(&parsed)? else {
+            saw_unbounded_or_structured = true;
+            continue;
+        };
+        saw_finite_non_null = true;
+        formats::accumulate(
+            name,
+            &mut annotations,
+            parsed.json_formats.clone().into_vec(),
+        )?;
+        branches.push(allowed_values::retained_by_constraints(&parsed, values));
+    }
+    if !saw_finite_non_null {
+        return Ok(None);
+    }
+    if saw_unbounded_or_structured {
+        return Err(unsupported_union(
+            name,
+            &format!(
+                "scalar {keyword} mixes finite const/enum branches with an unbounded or structured branch"
+            ),
+        ));
+    }
+    ensure_annotation_or_format_only(name, schema, keyword)?;
+    let mut candidates = Vec::new();
+    for branch in &branches {
+        for value in branch {
+            if !candidates
+                .iter()
+                .any(|candidate: &JsonAllowedValue| candidate.semantically_equals(value))
+            {
+                candidates.push(value.clone());
+            }
+        }
+    }
+    if keyword == "oneOf" {
+        candidates.retain(|value| {
+            branches
+                .iter()
+                .filter(|branch| {
+                    branch
+                        .iter()
+                        .any(|candidate| candidate.semantically_equals(value))
+                })
+                .count()
+                == 1
+        });
+    }
+    let mut node = allowed_values::schema_from_values(name, candidates)?;
+    if node.accepts_scalar_type(ScalarType::String) {
+        node.json_formats = annotations;
+    }
+    Ok(Some(node))
+}
+
+fn resolves_to_structured_alternative(
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &[String],
+) -> bool {
+    let mut schema = schema;
+    let mut visited = Vec::new();
+    while let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        if active_refs.iter().any(|active| active == reference) || visited.contains(&reference) {
+            return false;
+        }
+        let Some(resolved) = resolve_ref(doc, reference) else {
+            return false;
+        };
+        visited.push(reference);
+        schema = resolved;
+    }
+    matches!(
+        schema.get("type").and_then(serde_json::Value::as_str),
+        Some("object" | "array")
+    ) || schema.get("properties").is_some()
+        || schema.get("items").is_some()
 }
 
 /// Imports an inclusive union made entirely from exact scalar type branches.
@@ -696,6 +810,26 @@ fn is_null_alternative(
         active_refs.pop();
         return is_null;
     }
+    let type_accepts_null = match schema.get("type") {
+        None => true,
+        Some(serde_json::Value::String(value)) => value == "null",
+        Some(serde_json::Value::Array(values)) => values.iter().any(|value| value == "null"),
+        Some(_) => false,
+    };
+    if !type_accepts_null {
+        return Ok(false);
+    }
+    if schema.get("const").is_some() {
+        return Ok(schema.get("const").is_some_and(serde_json::Value::is_null)
+            && schema.get("enum").is_none_or(|values| {
+                values
+                    .as_array()
+                    .is_some_and(|values| values.iter().any(serde_json::Value::is_null))
+            }));
+    }
+    if let Some(values) = schema.get("enum").and_then(serde_json::Value::as_array) {
+        return Ok(!values.is_empty() && values.iter().all(serde_json::Value::is_null));
+    }
     Ok(schema.get("type").and_then(serde_json::Value::as_str) == Some("null"))
 }
 
@@ -993,6 +1127,8 @@ fn ensure_annotation_or_format_only(
     };
     if let Some(keyword) = object.keys().find(|keyword| {
         keyword.as_str() != shape_keyword
+            && keyword.as_str() != "const"
+            && keyword.as_str() != "enum"
             && keyword.as_str() != "format"
             && keyword.as_str() != "minLength"
             && keyword.as_str() != "maxLength"

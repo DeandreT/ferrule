@@ -13,9 +13,11 @@ use serde::{Deserialize, Serialize};
 mod schema;
 
 pub use schema::{
-    IntegerRange, ItemCountRange, JsonFormatAnnotations, JsonFormatAnnotationsError,
-    JsonMultipleOf, JsonMultipleOfConstraints, JsonMultipleOfConstraintsError,
-    JsonPatternConstraints, JsonPatternConstraintsError, MAX_DISTINCT_JSON_PATTERNS,
+    IntegerRange, ItemCountRange, JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
+    JsonFormatAnnotations, JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
+    JsonMultipleOfConstraintsError, JsonPatternConstraints, JsonPatternConstraintsError,
+    MAX_DISTINCT_JSON_PATTERNS, MAX_JSON_ALLOWED_VALUE_STRING_BYTES,
+    MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES, MAX_JSON_ALLOWED_VALUES,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
     MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS,
     MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
@@ -519,6 +521,11 @@ pub struct SchemaNode {
     /// with an `HL` segment are told apart by `HL03` being `20` vs `22`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
+    /// A canonical finite set of exact JSON scalar values accepted by this
+    /// node. This is distinct from [`Self::fixed`], whose lexical semantics
+    /// are also used by XML and EDI adapters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_allowed_values: Option<JsonAllowedValues>,
     /// An exact numeric interval for a JSON scalar.
     ///
     /// Integer bounds are normalized to an inclusive `i64` interval. Number
@@ -618,6 +625,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             fixed: Option<String>,
             #[serde(default)]
+            json_allowed_values: Option<JsonAllowedValues>,
+            #[serde(default)]
             numeric_range: Option<NumericRange>,
             #[serde(default)]
             json_multiple_of: Option<JsonMultipleOfConstraints>,
@@ -662,6 +671,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             container_nullable: repr.container_nullable,
             json_any: repr.json_any,
             fixed: repr.fixed,
+            json_allowed_values: repr.json_allowed_values,
             numeric_range: repr.numeric_range,
             json_multiple_of: repr.json_multiple_of,
             item_count_range: repr.item_count_range,
@@ -679,7 +689,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, JSON multipleOf constraints, item-count range, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count range, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -893,6 +903,7 @@ impl SchemaNode {
             && self.xml_name_alternatives_are_valid()
             && self.recursive_ref_is_valid()
             && self.fixed_is_valid()
+            && self.json_allowed_values_are_valid()
             && self.numeric_range_is_valid()
             && self.json_multiple_of_is_valid()
             && self.item_count_range_is_valid()
@@ -929,6 +940,7 @@ impl SchemaNode {
             container_nullable: false,
             json_any: false,
             fixed: None,
+            json_allowed_values: None,
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
@@ -968,6 +980,7 @@ impl SchemaNode {
             container_nullable: false,
             json_any: false,
             fixed: None,
+            json_allowed_values: None,
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
@@ -1016,6 +1029,7 @@ impl SchemaNode {
             container_nullable: false,
             json_any: false,
             fixed: None,
+            json_allowed_values: None,
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
@@ -1183,7 +1197,52 @@ impl SchemaNode {
 
     /// Checks that fixed-value metadata remains limited to one scalar type.
     pub fn fixed_is_valid(&self) -> bool {
-        self.fixed.is_none() || matches!(self.kind, SchemaKind::Scalar { .. })
+        self.fixed.is_none()
+            || (self.json_allowed_values.is_none()
+                && matches!(self.kind, SchemaKind::Scalar { .. }))
+    }
+
+    /// Checks that JSON allowed-value metadata is compatible with this exact
+    /// scalar domain and is the sole authority for JSON null membership.
+    pub fn json_allowed_values_are_valid(&self) -> bool {
+        let Some(values) = &self.json_allowed_values else {
+            return true;
+        };
+        if self.json_any
+            || self.fixed.is_some()
+            || !self.is_scalar()
+            || self.nullable != values.contains_json_null()
+        {
+            return false;
+        }
+        values.values().iter().all(|value| match value {
+            JsonAllowedValue::String(_) => self.accepts_scalar_type(ScalarType::String),
+            JsonAllowedValue::Int(_) => {
+                self.accepts_scalar_type(ScalarType::Int)
+                    || self.accepts_scalar_type(ScalarType::Float)
+            }
+            JsonAllowedValue::Float(_) => self.accepts_scalar_type(ScalarType::Float),
+            JsonAllowedValue::Bool(_) => self.accepts_scalar_type(ScalarType::Bool),
+            JsonAllowedValue::JsonNull => self.nullable,
+        })
+    }
+
+    /// Recursively checks JSON allowed-value metadata for one schema tree.
+    pub fn json_allowed_values_tree_is_valid(&self) -> bool {
+        self.json_allowed_values_are_valid()
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children
+                        .iter()
+                        .all(SchemaNode::json_allowed_values_tree_is_valid)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::json_allowed_values_tree_is_valid)
+                }
+            }
     }
 
     /// Checks that numeric-range metadata matches one concrete numeric scalar
@@ -1440,7 +1499,7 @@ impl SchemaNode {
 
     /// Checks that explicit JSON nullability remains scalar-only.
     pub fn nullable_is_valid(&self) -> bool {
-        !self.nullable || self.is_scalar()
+        (!self.nullable || self.is_scalar()) && self.json_allowed_values_are_valid()
     }
 
     /// Checks that JSON container nullability belongs to an object or array.
@@ -1457,6 +1516,7 @@ impl SchemaNode {
                 && !self.nullable
                 && !self.container_nullable
                 && self.fixed.is_none()
+                && self.json_allowed_values.is_none()
                 && self.numeric_range.is_none()
                 && self.json_multiple_of.is_none()
                 && self.item_count_range.is_none()
@@ -1888,7 +1948,10 @@ impl SchemaNode {
     /// Marks this scalar as accepting an explicit JSON `null`.
     pub fn nullable(mut self) -> Option<Self> {
         self.nullable = true;
-        (self.nullable_is_valid() && self.json_any_is_valid()).then_some(self)
+        (self.nullable_is_valid()
+            && self.json_allowed_values_are_valid()
+            && self.json_any_is_valid())
+        .then_some(self)
     }
 
     /// Marks this JSON object or array wrapper as accepting explicit `null`.
@@ -1907,6 +1970,7 @@ impl SchemaNode {
     pub fn with_fixed(mut self, value: impl Into<String>) -> Option<Self> {
         self.fixed = Some(value.into());
         (self.fixed_is_valid()
+            && self.json_allowed_values_are_valid()
             && self.numeric_range_is_valid()
             && self.json_multiple_of_is_valid()
             && self.string_length_range_is_valid()
@@ -1915,6 +1979,17 @@ impl SchemaNode {
             && self.value_generation_is_valid()
             && self.json_any_is_valid())
         .then_some(self)
+    }
+
+    /// Restricts this JSON scalar to one canonical finite value set.
+    ///
+    /// Nullability is derived from the set so an allowed `null` cannot drift
+    /// out of sync with the scalar boundary contract.
+    pub fn with_json_allowed_values(mut self, values: JsonAllowedValues) -> Option<Self> {
+        self.nullable = values.contains_json_null();
+        self.json_allowed_values = Some(values);
+        (self.fixed_is_valid() && self.json_allowed_values_are_valid() && self.json_any_is_valid())
+            .then_some(self)
     }
 
     pub fn with_numeric_range(mut self, range: NumericRange) -> Option<Self> {
@@ -2472,6 +2547,96 @@ mod tests {
             r#"{"name":"x","json_multiple_of":{"any_of":[[{"coefficient":2,"decimal_exponent":0}]]},"kind":{"kind":"scalar","ty":"string"}}"#,
             r#"{"name":"x","fixed":"3","json_multiple_of":{"any_of":[[{"coefficient":2,"decimal_exponent":0}]]},"kind":{"kind":"scalar","ty":"int"}}"#,
             r#"{"name":"x","json_any":true,"json_multiple_of":{"any_of":[[{"coefficient":2,"decimal_exponent":0}]]},"kind":{"kind":"scalar","ty":"string"}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn json_allowed_values_are_canonical_typed_and_serde_validated()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let values = JsonAllowedValues::new([
+            JsonAllowedValue::String("ready".to_string()),
+            JsonAllowedValue::JsonNull,
+            JsonAllowedValue::String("pending".to_string()),
+        ])?;
+        let schema = SchemaNode::scalar("Status", ScalarType::String)
+            .with_json_allowed_values(values.clone())
+            .ok_or("string enum values match the scalar domain")?;
+        assert!(schema.nullable);
+        assert!(schema.json_allowed_values_are_valid());
+        assert!(schema.json_allowed_values_tree_is_valid());
+        let encoded = serde_json::to_string(&schema)?;
+        assert!(encoded.contains(
+            r#""json_allowed_values":[{"type":"json_null"},{"type":"string","value":"pending"},{"type":"string","value":"ready"}]"#
+        ));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, schema);
+
+        let numeric_values = JsonAllowedValues::new([
+            JsonAllowedValue::Int(7),
+            JsonAllowedValue::Float(FiniteF64::new(7.5).ok_or("test enum number must be finite")?),
+        ])?;
+        let numeric = SchemaNode::scalar("Amount", ScalarType::Float)
+            .with_json_allowed_values(numeric_values)
+            .ok_or("number enums admit exact integer values")?;
+        assert!(!numeric.nullable);
+        assert!(numeric.json_allowed_values_are_valid());
+        assert!(numeric.clone().repeating().json_allowed_values_are_valid());
+
+        let mixed_values = JsonAllowedValues::new([
+            JsonAllowedValue::Int(1),
+            JsonAllowedValue::String("one".to_string()),
+        ])?;
+        let mixed_types = ScalarTypeSet::new([ScalarType::String, ScalarType::Float])
+            .ok_or("test scalar enum union has distinct types")?;
+        assert!(
+            SchemaNode::scalar_union("Mixed", mixed_types)
+                .with_json_allowed_values(mixed_values.clone())
+                .is_some()
+        );
+        assert!(
+            SchemaNode::scalar("Text", ScalarType::String)
+                .with_json_allowed_values(mixed_values)
+                .is_none()
+        );
+
+        assert!(schema.clone().with_fixed("ready").is_none());
+        assert!(
+            SchemaNode::scalar_fixed("Status", ScalarType::String, "ready")
+                .with_json_allowed_values(values.clone())
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Status", ScalarType::String)
+                .json_any()
+                .and_then(|schema| schema.with_json_allowed_values(values.clone()))
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Status", ScalarType::String)
+                .with_json_allowed_values(values.clone())
+                .and_then(SchemaNode::json_any)
+                .is_none()
+        );
+
+        let mut nested = SchemaNode::group("Root", vec![schema.clone()]);
+        assert!(nested.json_allowed_values_tree_is_valid());
+        let SchemaKind::Group { children, .. } = &mut nested.kind else {
+            return Err("test root must be a group".into());
+        };
+        let Some(child) = children.iter_mut().find(|child| child.name == "Status") else {
+            return Err("test child must exist".into());
+        };
+        child.nullable = false;
+        assert!(!nested.json_allowed_values_tree_is_valid());
+
+        for invalid in [
+            r#"{"name":"x","json_allowed_values":[{"type":"json_null"},{"type":"string","value":"a"}],"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","nullable":true,"json_allowed_values":[{"type":"string","value":"a"},{"type":"string","value":"b"}],"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","fixed":"a","json_allowed_values":[{"type":"string","value":"a"},{"type":"string","value":"b"}],"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","json_allowed_values":[{"type":"float","value":1.5},{"type":"float","value":2.5}],"kind":{"kind":"scalar","ty":"int"}}"#,
+            r#"{"name":"x","json_allowed_values":[{"type":"bool","value":false},{"type":"bool","value":true}],"kind":{"kind":"group","children":[]}}"#,
         ] {
             assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
         }

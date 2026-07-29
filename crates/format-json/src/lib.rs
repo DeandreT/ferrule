@@ -60,6 +60,8 @@ pub enum JsonFormatError {
         expected: String,
         got: String,
     },
+    #[error("`{name}` is not one of its allowed JSON values, got {got}")]
+    AllowedValueMismatch { name: String, got: String },
     #[error("`{name}` requires numeric range {range}, got {got}")]
     RangeMismatch {
         name: String,
@@ -88,6 +90,8 @@ pub enum JsonFormatError {
     PatternMismatch { name: String },
     #[error("JSON pattern metadata is invalid: {reason}")]
     InvalidPatternMetadata { reason: String },
+    #[error("JSON allowed-value metadata is invalid: {reason}")]
+    InvalidAllowedValuesMetadata { reason: String },
     #[error("JSON multipleOf metadata is invalid: {reason}")]
     InvalidMultipleOfMetadata { reason: String },
     #[error("JSON numeric-range metadata is invalid: {reason}")]
@@ -235,6 +239,7 @@ fn read_node_with_patterns(
         SchemaKind::Scalar { ty } => {
             let parsed = read_scalar(value, *ty, schema.nullable, &schema.name)?;
             json_schema::constraints::validate_json(schema, value)?;
+            json_schema::allowed_values::validate_value(schema, &parsed)?;
             json_schema::ranges::validate_json(schema, value)?;
             json_schema::multiples::validate_json(schema, value)?;
             json_schema::string_lengths::validate_json(schema, value)?;
@@ -243,6 +248,7 @@ fn read_node_with_patterns(
         }
         SchemaKind::ScalarUnion { types } => {
             let parsed = read_scalar_union(value, *types, schema.nullable, &schema.name)?;
+            json_schema::allowed_values::validate_value(schema, &parsed)?;
             json_schema::multiples::validate_json(schema, value)?;
             json_schema::string_lengths::validate_json(schema, value)?;
             patterns.validate_json(schema, value)?;
@@ -558,6 +564,8 @@ fn write_single_node_with_patterns(
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             let value = write_scalar(value, *ty, schema.nullable, &schema.name)?;
             json_schema::constraints::validate_json(schema, &value)?;
+            let normalized = read_scalar(&value, *ty, schema.nullable, &schema.name)?;
+            json_schema::allowed_values::validate_value(schema, &normalized)?;
             json_schema::ranges::validate_json(schema, &value)?;
             json_schema::multiples::validate_json(schema, &value)?;
             json_schema::string_lengths::validate_json(schema, &value)?;
@@ -566,6 +574,8 @@ fn write_single_node_with_patterns(
         }
         (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {
             let value = write_scalar_union(value, *types, schema.nullable, &schema.name)?;
+            let normalized = read_scalar_union(&value, *types, schema.nullable, &schema.name)?;
+            json_schema::allowed_values::validate_value(schema, &normalized)?;
             json_schema::multiples::validate_json(schema, &value)?;
             json_schema::string_lengths::validate_json(schema, &value)?;
             patterns.validate_json(schema, &value)?;

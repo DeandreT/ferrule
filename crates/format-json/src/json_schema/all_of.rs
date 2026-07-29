@@ -1,7 +1,7 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use super::{
-    constraints, formats, item_counts, multiples, parse, patterns, ranges, string_lengths,
+    allowed_values, formats, item_counts, multiples, parse, patterns, ranges, string_lengths,
     unsupported_union,
 };
 use crate::JsonFormatError;
@@ -39,7 +39,7 @@ pub(super) fn parse_all_of(
     let mut format_events = Vec::new();
     let mut merged = None;
     if let Some(base) = composition_base(schema) {
-        if is_constraint_only_branch(&base) {
+        if is_constraint_only_branch(&base) && !allowed_values::has_keyword(&base) {
             collect_direct_format(name, &base, &mut format_events)?;
             pending_constraints.push(base);
         } else {
@@ -59,7 +59,7 @@ pub(super) fn parse_all_of(
                 "allOf contains the always-invalid false schema",
             ));
         }
-        if is_constraint_only_branch(branch) {
+        if is_constraint_only_branch(branch) && !allowed_values::has_keyword(branch) {
             collect_direct_format(name, branch, &mut format_events)?;
             pending_constraints.push(branch.clone());
             continue;
@@ -78,6 +78,7 @@ pub(super) fn parse_all_of(
         no_op_pattern_fallback &= patterns::has_keyword(constraints)
             && !patterns::is_effectively_constrained(name, constraints)?
             && !ranges::has_range_keywords(constraints)
+            && !allowed_values::has_keyword(constraints)
             && !multiples::has_keyword(constraints)
             && !item_counts::has_keywords(constraints)
             && !string_lengths::is_effectively_constrained(name, constraints)?
@@ -111,6 +112,7 @@ pub(super) fn parse_all_of(
         }
     };
     for constraints in pending_constraints {
+        allowed_values::apply(name, &constraints, &mut merged)?;
         if merged.repeating {
             ranges::validate_ignored(name, &constraints)?;
             multiples::validate_ignored(name, &constraints)?;
@@ -205,6 +207,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
         return false;
     };
     (ranges::has_range_keywords(schema)
+        || allowed_values::has_keyword(schema)
         || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
         || string_lengths::has_keywords(schema)
@@ -214,6 +217,8 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
             matches!(
                 keyword.as_str(),
                 "minimum"
+                    | "const"
+                    | "enum"
                     | "maximum"
                     | "exclusiveMinimum"
                     | "exclusiveMaximum"
@@ -284,8 +289,8 @@ fn intersect_scalar(
     target: &mut SchemaNode,
     branch: &SchemaNode,
 ) -> Result<(), JsonFormatError> {
-    let target_constant = constraints::from_schema(target)?;
-    let branch_constant = constraints::from_schema(branch)?;
+    let target_allowed = allowed_values::from_schema(target)?;
+    let branch_allowed = allowed_values::from_schema(branch)?;
     let target_range = target.numeric_range;
     let branch_range = branch.numeric_range;
     let target_multiples = target.json_multiple_of.clone();
@@ -294,14 +299,6 @@ fn intersect_scalar(
     let branch_string_length = branch.string_length_range;
     let target_patterns = target.json_patterns.clone();
     let branch_patterns = branch.json_patterns.clone();
-    if let (Some(left), Some(right)) = (&target_constant, &branch_constant)
-        && !left.semantically_equals(right)
-    {
-        return Err(unsupported_union(
-            name,
-            "allOf fixed scalar constraints have no value in common",
-        ));
-    }
     if target.kind != branch.kind {
         let domain = scalar_domain(target) & scalar_domain(branch);
         let mut types = Vec::new();
@@ -336,26 +333,7 @@ fn intersect_scalar(
             }
         };
     }
-    let constant = target_constant.or(branch_constant);
-    if let Some(constant) = constant {
-        let value = constant.to_json();
-        let constant = match target.kind {
-            SchemaKind::Scalar { ty } => constraints::for_type(name, &value, ty)?,
-            SchemaKind::ScalarUnion { types } => constraints::for_types(name, &value, types)?,
-            SchemaKind::Group { .. } => {
-                return Err(unsupported_union(
-                    name,
-                    "allOf scalar intersection produced an object",
-                ));
-            }
-        };
-        let constrained = constraints::schema(&target.name, &constant);
-        target.kind = constrained.kind;
-        target.fixed = constrained.fixed;
-        target.nullable = false;
-    } else {
-        target.fixed = None;
-    }
+    allowed_values::intersect_nodes(name, target, target_allowed, branch_allowed)?;
     target.numeric_range = match target.kind {
         SchemaKind::Scalar {
             ty: ty @ (ScalarType::Int | ScalarType::Float),

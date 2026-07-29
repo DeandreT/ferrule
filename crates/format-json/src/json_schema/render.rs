@@ -65,6 +65,7 @@ fn render_shape(
             if let Some(value) = super::constraints::rendered_fixed(node) {
                 out.insert("const".into(), value);
             }
+            super::allowed_values::render(node, out)?;
             super::ranges::render(node, out)?;
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
@@ -81,6 +82,7 @@ fn render_shape(
                 types.push("null".into());
             }
             out.insert("type".into(), types.into());
+            super::allowed_values::render(node, out)?;
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
             super::patterns::render(node, out);
