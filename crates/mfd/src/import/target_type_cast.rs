@@ -1,11 +1,9 @@
-use std::path::Path;
-
 use mapping::Node;
 
+use crate::resource::ResourceResolver;
+
 use super::graph::GraphBuilder;
-use super::schema::{
-    ComponentFormat, SchemaComponent, normalize_xml_entry_name, resolve_xml_schema_reference,
-};
+use super::schema::{ComponentFormat, SchemaComponent, normalize_xml_entry_name};
 use super::scope::ScopeBuilder;
 
 const MAX_SCHEMA_BYTES: u64 = 8 * 1024 * 1024;
@@ -13,7 +11,7 @@ const MAX_SCHEMA_BYTES: u64 = 8 * 1024 * 1024;
 pub(super) fn install(
     target: &SchemaComponent,
     structure: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     builder: &mut GraphBuilder<'_>,
     scopes: &mut ScopeBuilder,
 ) {
@@ -38,21 +36,28 @@ pub(super) fn install(
         .descendants()
         .find(|node| node.has_tag_name("document"))
         .and_then(|document| document.attribute("schema"));
-    let Some(schema_path) = schema_reference
-        .and_then(|reference| resolve_xml_schema_reference(mfd_path, reference).ok())
-    else {
+    let Some(schema_reference) = schema_reference else {
         return;
     };
-    if std::fs::metadata(&schema_path)
-        .ok()
-        .is_none_or(|metadata| metadata.len() > MAX_SCHEMA_BYTES)
-    {
-        return;
-    }
-    let Some(text) = std::fs::read_to_string(schema_path).ok() else {
-        return;
+    let text = match resources.read_utf8_file(
+        schema_reference,
+        "target cast XML Schema",
+        MAX_SCHEMA_BYTES,
+    ) {
+        Ok(text) => text,
+        Err(reason) => {
+            builder.warnings.push(format!(
+                "target cast-in-subtree metadata from schema `{schema_reference}` was skipped: \
+                 {reason}"
+            ));
+            return;
+        }
     };
     let Some(document) = roxmltree::Document::parse(&text).ok() else {
+        builder.warnings.push(format!(
+            "target cast-in-subtree metadata from schema `{schema_reference}` was skipped: \
+             schema is not well-formed XML"
+        ));
         return;
     };
     install_scope(

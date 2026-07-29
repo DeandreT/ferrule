@@ -191,3 +191,105 @@ fn target_descendant_rule_treats_the_csv_row_block_as_transparent() {
         Some(&Value::String("$9".into()))
     );
 }
+
+fn move_node_function_design_into_package(
+    directory: &TempDir,
+    package: &std::path::Path,
+    target_schema_reference: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let maps = package.join("maps/orders");
+    let schemas = package.join("schemas");
+    std::fs::create_dir_all(&maps)?;
+    std::fs::create_dir_all(&schemas)?;
+    std::fs::rename(directory.0.join("source.xsd"), maps.join("source.xsd"))?;
+    std::fs::rename(directory.0.join("target.xsd"), schemas.join("target.xsd"))?;
+    let mapping = std::fs::read_to_string(directory.0.join("mapping.mfd"))?.replace(
+        "schema=\"target.xsd\"",
+        &format!("schema=\"{target_schema_reference}\""),
+    );
+    let design = maps.join("mapping.mfd");
+    std::fs::write(&design, mapping)?;
+    Ok(design)
+}
+
+fn decimal_source(value: f64) -> Instance {
+    Instance::Group(vec![(
+        "Item".into(),
+        Instance::Repeated(vec![Instance::Group(vec![(
+            "Raw".into(),
+            Instance::Scalar(Value::Float(value)),
+        )])]),
+    )])
+}
+
+fn sequence_items(instance: &Instance) -> Option<&[Instance]> {
+    instance
+        .as_repeated()
+        .or_else(|| instance.as_mapped_sequence())
+}
+
+#[test]
+fn relocated_package_resolves_windows_parent_node_function_schema()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = setup();
+    let original = directory.0.join("original");
+    let design =
+        move_node_function_design_into_package(&directory, &original, r"..\..\schemas\target.xsd")?;
+    let relocated = directory.0.join("relocated");
+    std::fs::rename(&original, &relocated)?;
+    let relocated_design = relocated.join(design.strip_prefix(&original)?);
+    let options = mfd::ImportOptions::default().with_package_root(&relocated);
+
+    let imported = mfd::import_with_options(&relocated_design, &options)?;
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let output = engine::run(&imported.project, &decimal_source(1.235))?;
+    let items = output
+        .field("Item")
+        .and_then(sequence_items)
+        .ok_or("target Item collection is missing")?;
+    let item = items.first().ok_or("target Item collection is empty")?;
+    assert_eq!(
+        item.field("Amount").and_then(Instance::as_scalar),
+        Some(&Value::Float(1.24))
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn target_node_function_schema_symlink_escape_uses_missing_metadata_fallback()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::symlink;
+
+    let directory = setup();
+    let package = directory.0.join("package");
+    let design =
+        move_node_function_design_into_package(&directory, &package, r"..\..\schemas\target.xsd")?;
+    let target_schema = package.join("schemas/target.xsd");
+    let outside_schema = directory.0.join("outside-target.xsd");
+    std::fs::rename(&target_schema, &outside_schema)?;
+    symlink(&outside_schema, &target_schema)?;
+    let mapping = std::fs::read_to_string(&design)?
+        .replace("datatype=\"numeric\"", "datatype=\"anySimpleType\"");
+    std::fs::write(&design, mapping)?;
+    let options = mfd::ImportOptions::default().with_package_root(&package);
+
+    let imported = mfd::import_with_options(&design, &options)?;
+
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("target node-function metadata")
+            && warning.contains("resolves outside package root")
+    }));
+    let output = engine::run(&imported.project, &decimal_source(1.235))?;
+    let items = output
+        .field("Item")
+        .and_then(sequence_items)
+        .ok_or("target Item collection is missing")?;
+    let item = items.first().ok_or("target Item collection is empty")?;
+    assert_eq!(
+        item.field("Amount").and_then(Instance::as_scalar),
+        Some(&Value::Float(1.0))
+    );
+    Ok(())
+}
