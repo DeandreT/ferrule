@@ -111,14 +111,19 @@ layout and dialect details that an extension cannot express.
   row independently. Predicate patterns share the document matcher budget.
   Nested dependent schemas are supported recursively, with the same per-object
   bounds. Draft 7, 2019-09, 2020-12, and schemas without `$schema` also support
-  an exact conditional on a schema with explicit non-null `type: "object"`:
-  `if` must reduce to the presence
-  of exactly one required property, `else` must be absent or `true`, and `then`
-  must fit the supported dependent-schema predicate subset. The conditional
-  normalizes to the same trigger-keyed model, so explicit null counts as
-  presence and canonical export writes `dependentSchemas`. Value-sensitive,
-  multi-trigger, general-`if`, and nontrivial-`else` conditionals remain
-  unsupported. `patternProperties`, `unevaluatedProperties`,
+  an exact conditional on an explicitly typed object schema whose `if` tests
+  the presence of exactly one required property and whose `then` fits the
+  supported dependent-schema predicate subset. A nullable outer object is
+  supported with an absent or `true` `else`
+  only when the `if` explicitly proves `type: "object"`. Exact `else: false`
+  requires a trigger that can be represented as an ordinary required field; it
+  removes the nullable bypass when the false branch rejects null and retains
+  any supported `then` dependency. It does not combine with existing object
+  alternatives, and a closed object must already declare the trigger.
+  Canonical export writes `required` and, when `then` retains a dependency,
+  `dependentRequired` or `dependentSchemas` as appropriate. Value-sensitive,
+  multi-trigger, general-`if`, and other nontrivial `else` schemas remain unsupported.
+  `patternProperties`, `unevaluatedProperties`,
   `unevaluatedItems`, and heterogeneous positional arrays likewise reject
   instead of being approximated. A lone validation-neutral conditional keyword
   is ignored.

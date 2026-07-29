@@ -206,16 +206,20 @@ object/array constraints and export canonically as `dependentSchemas`.
 Repeated rules for a trigger remain conjunctive through export and re-import;
 ordered outer `allOf` branches preserve interleaved trigger declaration order.
 Nested dependent schemas retain the same recursively bounded behavior. Draft 7,
-2019-09, 2020-12, and undeclared schemas with explicit non-null `type: "object"`
-may also express one of these
-rules as `if` with exactly one required-property presence trigger, a supported
-`then` predicate, and an absent or `true` `else`. Import normalizes that exact
-form to the trigger-keyed dependent-schema model, and canonical MFD schema
-export writes `dependentSchemas`. Value-sensitive, multi-trigger,
-general-`if`, or nontrivial-`else` conditionals, pattern/unevaluated
-property keywords, and heterogeneous positional array schemas still produce
-the existing actionable schema-fallback diagnostic rather than being widened
-or discarded. Declared Draft 4/6/7
+2019-09, 2020-12, and undeclared explicitly typed object schemas may also
+express one of these rules as an `if` with exactly one required-property
+presence trigger and a supported `then` predicate. A nullable outer object is
+supported with an absent or `true` `else` only when the `if` explicitly proves
+`type: "object"`. Exact `else: false` requires a trigger that can be represented
+as an ordinary required field; it removes the nullable bypass when the false
+branch rejects null and retains any supported `then` dependency. It does not
+combine with existing object alternatives, and a closed object must already
+declare the trigger. Import normalizes these forms to `required` plus
+`dependentRequired` or `dependentSchemas` metadata as appropriate, which
+canonical MFD schema export preserves. Value-sensitive, multi-trigger,
+general-`if`, other nontrivial `else` schemas, pattern/unevaluated property keywords, and
+heterogeneous positional array schemas still produce the existing actionable
+schema-fallback diagnostic rather than being widened or discarded. Declared Draft 4/6/7
 resources use legacy schema-valued `dependencies`; declared 2019-09/2020-12 use
 modern `dependentSchemas`. Schemas without `$schema` intentionally accept both
 spellings while retaining modern reference-sibling behavior, which preserves

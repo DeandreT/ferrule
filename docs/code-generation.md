@@ -218,15 +218,20 @@ conjunctive, patterns consume the same per-document work budget as ordinary
 field patterns, and malformed embedded metadata remains a typed boundary
 failure. Text and UTF-8 byte entry points enforce identical behavior for
 primary and named inputs and outputs. Draft 7, 2019-09, 2020-12, and undeclared
-schemas with explicit non-null `type: "object"` may spell one such rule as an
-`if` with exactly one
-required-property presence trigger, a supported `then` predicate, and an
-absent or `true` `else`. Import normalizes that form to the existing
-dependent-schema metadata before generation, and canonical schema export
-writes `dependentSchemas`; generated Rust and C# therefore enforce the same
-presence semantics without a separate conditional runtime. Value-sensitive,
-multi-trigger, general-`if`, and nontrivial-`else` conditionals remain
-outside the generated boundary subset. Embedded `propertyNames`
+explicitly typed object schemas may spell one such rule as an `if` with exactly
+one required-property presence trigger and a supported `then` predicate. A
+nullable outer object is supported with an absent or `true` `else` only when
+the `if` explicitly proves `type: "object"`. Exact `else: false` requires a
+trigger that can be represented as an ordinary required field; it removes the
+nullable bypass when the false branch rejects null and retains any supported
+`then` dependency. It does not combine with existing object alternatives, and
+a closed object must already declare the trigger. Import lowers these forms to
+`required` plus `dependentRequired` or `dependentSchemas` metadata as
+appropriate before generation, so generated Rust and C# enforce the same
+semantics without a separate conditional runtime. Value-sensitive,
+multi-trigger, general-`if`, and other nontrivial `else` schemas remain outside
+the generated boundary subset.
+Embedded `propertyNames`
 constraints likewise inspect every actual key rather than schema placeholders.
 They retain exact false, finite allowed-name sets, Unicode-scalar length,
 portable pattern, and nonasserting format metadata; raw parsed input keys and
