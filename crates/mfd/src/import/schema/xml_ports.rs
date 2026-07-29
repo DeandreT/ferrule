@@ -56,6 +56,125 @@ pub(super) fn restore_connected_structural_ports(
     }
 }
 
+/// A failed XML Schema import leaves visible entry-tree leaves as strings.
+/// A whole-structure connection to a same-named, typed target group supplies
+/// the missing shape when no descendant connection or competing target shape
+/// makes that inference ambiguous.
+pub(super) fn refine_copied_fallback_source_groups(
+    components: &mut [SchemaComponent],
+    edge_from: &BTreeMap<u32, u32>,
+    copy_all_targets: &BTreeSet<u32>,
+    fallback_source_outputs: &BTreeSet<u32>,
+    fallback_target_inputs: &BTreeSet<u32>,
+) {
+    let mut inferred = BTreeMap::<(usize, Vec<String>), Option<SchemaNode>>::new();
+    for target in components
+        .iter()
+        .filter(|component| component.format == ComponentFormat::Xml && component.is_target())
+    {
+        for (input, target_path) in &target.ports {
+            if target_path.is_empty()
+                || !copy_all_targets.contains(input)
+                || fallback_target_inputs.contains(input)
+            {
+                continue;
+            }
+            let Some(feed) = edge_from
+                .get(input)
+                .filter(|feed| fallback_source_outputs.contains(feed))
+            else {
+                continue;
+            };
+            let Some(target_group) = schema_node_at(&target.schema, target_path)
+                .filter(|node| !node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+            else {
+                continue;
+            };
+            if target.ports.iter().any(|(descendant, path)| {
+                path.len() > target_path.len()
+                    && path.starts_with(target_path)
+                    && edge_from.contains_key(descendant)
+            }) {
+                continue;
+            }
+            let mut owners = components.iter().enumerate().filter_map(|(index, source)| {
+                (source.format == ComponentFormat::Xml
+                    && source.is_source
+                    && source.output_keys.contains(feed))
+                .then_some((index, source))
+            });
+            let Some((source_index, source)) = owners.next() else {
+                continue;
+            };
+            if owners.next().is_some() {
+                continue;
+            }
+            let Some(source_path) = source.ports.get(feed) else {
+                continue;
+            };
+            if !schema_node_at(&source.schema, source_path).is_some_and(|node| {
+                plain_entry_tree_leaf(node)
+                    && node.name == target_group.name
+                    && source_path.last() == target_path.last()
+            }) {
+                continue;
+            }
+            if source.output_keys.iter().any(|output| {
+                source.ports.get(output).is_some_and(|path| {
+                    path.len() > source_path.len() && path.starts_with(source_path)
+                })
+            }) {
+                continue;
+            }
+            let key = (source_index, source_path.clone());
+            inferred
+                .entry(key)
+                .and_modify(|candidate| {
+                    if candidate.as_ref() != Some(target_group) {
+                        *candidate = None;
+                    }
+                })
+                .or_insert_with(|| Some(target_group.clone()));
+        }
+    }
+    for ((source_index, source_path), replacement) in inferred {
+        let Some(replacement) = replacement else {
+            continue;
+        };
+        if let Some(source) = components
+            .get_mut(source_index)
+            .and_then(|component| schema_node_at_mut(&mut component.schema, &source_path))
+        {
+            *source = replacement;
+        }
+    }
+}
+
+fn plain_entry_tree_leaf(node: &SchemaNode) -> bool {
+    node.xml_namespace.is_none()
+        && !node.repeating
+        && node.recursive_ref.is_none()
+        && !node.attribute
+        && !node.text
+        && !node.nillable
+        && !node.nullable
+        && !node.container_nullable
+        && !node.json_any
+        && node.fixed.is_none()
+        && node.default.is_none()
+        && node.value_generation.is_none()
+        && matches!(node.alternative_mode, ir::GroupAlternativeMode::Exclusive)
+        && matches!(node.xml_alternative_kind, ir::XmlAlternativeKind::XsiType)
+        && node.xml_repeating_sequences.is_empty()
+        && node.database_relation.is_none()
+        && matches!(
+            node.kind,
+            SchemaKind::Scalar {
+                ty: ir::ScalarType::String
+            }
+        )
+}
+
 /// An untyped XSD element imports as a scalar, but MapForce can expose an
 /// explicit `#text` child below that element. Preserve the visible structural
 /// parent port by promoting the scalar to ferrule's simple-content shape.
