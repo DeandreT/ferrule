@@ -1,5 +1,8 @@
+use std::num::NonZeroU32;
+
 use mapping::{
-    DelimitedDialect, DelimitedRecordField, FlexCommand, FlexLineEnding, FlexTextLayout, Node,
+    DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,
+    FlexTextLayout, Node,
 };
 
 use crate::DelimitedTextField;
@@ -146,6 +149,74 @@ fn lowers_literal_delimited_flextext_fields_to_a_validated_profile() {
     project.root.bindings[0].node = 23;
 
     let program = lower(&project).expect("literal delimited FlexText projection is portable");
+    let expression = program
+        .expressions
+        .iter()
+        .find(|expression| expression.id == 23)
+        .expect("projection is reachable");
+    assert_eq!(
+        expression.expression,
+        Expression::DelimitedTextField {
+            input: 20,
+            parser: DelimitedTextField::from_descriptors(&layout, path)
+                .expect("test descriptors are portable"),
+        }
+    );
+}
+
+#[test]
+fn lowers_literal_fixed_width_flextext_fields_to_a_validated_profile() {
+    let layout = FlexTextLayout::new(
+        "Root",
+        FlexCommand::FixedWidthRecords {
+            name: "Row".into(),
+            fields: vec![
+                FixedWidthRecordField::new(
+                    "Name",
+                    ScalarType::String,
+                    NonZeroU32::new(12).expect("test width is nonzero"),
+                )
+                .expect("test field is valid"),
+                FixedWidthRecordField::new(
+                    "Count",
+                    ScalarType::Int,
+                    NonZeroU32::new(4).expect("test width is nonzero"),
+                )
+                .expect("test field is valid"),
+            ],
+            fill_char: '_',
+            record_delimiters: true,
+            treat_empty_as_absent: false,
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .expect("test layout is valid");
+    let layout = serde_json::to_string(&layout).expect("test layout serializes");
+    let path = r#"["Row","Count"]"#;
+    let mut project = supported_project();
+    project.graph.nodes.insert(
+        21,
+        Node::Const {
+            value: Value::String(layout.clone()),
+        },
+    );
+    project.graph.nodes.insert(
+        22,
+        Node::Const {
+            value: Value::String(path.into()),
+        },
+    );
+    project.graph.nodes.insert(
+        23,
+        Node::Call {
+            function: "flextext_parse_field".into(),
+            args: vec![20, 21, 22],
+        },
+    );
+    project.root.bindings[0].node = 23;
+
+    let program = lower(&project).expect("literal fixed-width FlexText projection is portable");
     let expression = program
         .expressions
         .iter()

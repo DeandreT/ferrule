@@ -493,17 +493,31 @@ pub struct ExpressionNode {
     pub expression: Expression,
 }
 
-/// One validated, self-contained delimited FlexText field projection.
+/// One validated, self-contained FlexText record field projection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DelimitedTextField {
     layout_descriptor: String,
     path_descriptor: String,
-    field_separator: String,
-    record_separator: String,
-    quote: String,
-    escape: String,
+    profile: FlexTextFieldProfile,
     fields: Vec<ScalarType>,
     selected: usize,
+}
+
+/// The bounded record layouts that generated runtimes can execute directly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FlexTextFieldProfile {
+    Delimited {
+        field_separator: String,
+        record_separator: String,
+        quote: String,
+        escape: String,
+    },
+    FixedWidth {
+        widths: Vec<u32>,
+        fill_char: char,
+        record_delimiters: bool,
+        treat_empty_as_absent: bool,
+    },
 }
 
 impl DelimitedTextField {
@@ -515,32 +529,65 @@ impl DelimitedTextField {
             .map_err(|_| DelimitedTextFieldError::InvalidLayout)?;
         let path = serde_json::from_str::<Vec<String>>(path_descriptor)
             .map_err(|_| DelimitedTextFieldError::InvalidPath)?;
-        let FlexCommand::DelimitedRecords {
-            name,
-            dialect,
-            fields,
-        } = layout.command()
-        else {
-            return Err(DelimitedTextFieldError::UnsupportedLayout);
-        };
         let [record, field] = path.as_slice() else {
             return Err(DelimitedTextFieldError::UnsupportedPath);
         };
-        if record != name {
-            return Err(DelimitedTextFieldError::UnsupportedPath);
-        }
-        let selected = fields
-            .iter()
-            .position(|candidate| candidate.name() == field)
-            .ok_or(DelimitedTextFieldError::UnsupportedPath)?;
+        let (profile, fields, selected) = match layout.command() {
+            FlexCommand::DelimitedRecords {
+                name,
+                dialect,
+                fields,
+            } => {
+                if record != name {
+                    return Err(DelimitedTextFieldError::UnsupportedPath);
+                }
+                let selected = fields
+                    .iter()
+                    .position(|candidate| candidate.name() == field)
+                    .ok_or(DelimitedTextFieldError::UnsupportedPath)?;
+                (
+                    FlexTextFieldProfile::Delimited {
+                        field_separator: dialect.field_separator().to_string(),
+                        record_separator: dialect.record_separator().to_string(),
+                        quote: dialect.quote().to_string(),
+                        escape: dialect.escape().to_string(),
+                    },
+                    fields.iter().map(|field| field.ty()).collect(),
+                    selected,
+                )
+            }
+            FlexCommand::FixedWidthRecords {
+                name,
+                fields,
+                fill_char,
+                record_delimiters,
+                treat_empty_as_absent,
+            } => {
+                if record != name {
+                    return Err(DelimitedTextFieldError::UnsupportedPath);
+                }
+                let selected = fields
+                    .iter()
+                    .position(|candidate| candidate.name() == field)
+                    .ok_or(DelimitedTextFieldError::UnsupportedPath)?;
+                (
+                    FlexTextFieldProfile::FixedWidth {
+                        widths: fields.iter().map(|field| field.width().get()).collect(),
+                        fill_char: *fill_char,
+                        record_delimiters: *record_delimiters,
+                        treat_empty_as_absent: *treat_empty_as_absent,
+                    },
+                    fields.iter().map(|field| field.ty()).collect(),
+                    selected,
+                )
+            }
+            _ => return Err(DelimitedTextFieldError::UnsupportedLayout),
+        };
         Ok(Self {
             layout_descriptor: layout_descriptor.to_string(),
             path_descriptor: path_descriptor.to_string(),
-            field_separator: dialect.field_separator().to_string(),
-            record_separator: dialect.record_separator().to_string(),
-            quote: dialect.quote().to_string(),
-            escape: dialect.escape().to_string(),
-            fields: fields.iter().map(|field| field.ty()).collect(),
+            profile,
+            fields,
             selected,
         })
     }
@@ -553,20 +600,8 @@ impl DelimitedTextField {
         &self.path_descriptor
     }
 
-    pub fn field_separator(&self) -> &str {
-        &self.field_separator
-    }
-
-    pub fn record_separator(&self) -> &str {
-        &self.record_separator
-    }
-
-    pub fn quote(&self) -> &str {
-        &self.quote
-    }
-
-    pub fn escape(&self) -> &str {
-        &self.escape
+    pub const fn profile(&self) -> &FlexTextFieldProfile {
+        &self.profile
     }
 
     pub fn fields(&self) -> &[ScalarType] {
@@ -592,10 +627,10 @@ impl std::fmt::Display for DelimitedTextFieldError {
             Self::InvalidLayout => "FlexText layout descriptor is invalid",
             Self::InvalidPath => "FlexText field path descriptor is invalid",
             Self::UnsupportedLayout => {
-                "code generation requires a top-level delimited-record FlexText layout"
+                "code generation requires a top-level record-based FlexText layout"
             }
             Self::UnsupportedPath => {
-                "code generation requires one direct field of the delimited record"
+                "code generation requires one direct field of the FlexText record"
             }
         })
     }
