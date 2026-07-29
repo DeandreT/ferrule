@@ -7,7 +7,9 @@ use zip::write::SimpleFileOptions;
 #[test]
 fn adjacent_zip_package_compiles_to_a_portable_executable_schema() {
     let directory = TempDir::new("packaged_config");
-    let archive_path = directory.path().join("Custom.X12.zip");
+    let mapping_directory = directory.path().join("Tutorial");
+    std::fs::create_dir(&mapping_directory).unwrap();
+    let archive_path = mapping_directory.join("Custom.X12.zip");
     write_package(
         &archive_path,
         &[
@@ -46,7 +48,7 @@ fn adjacent_zip_package_compiles_to_a_portable_executable_schema() {
             ),
         ],
     );
-    let mapping_path = directory.path().join("mapping.mfd");
+    let mapping_path = mapping_directory.join("mapping.mfd");
     std::fs::write(
         &mapping_path,
         r#"<mapping version="22"><resources/><component name="defaultmap" uid="1">
@@ -75,7 +77,8 @@ fn adjacent_zip_package_compiles_to_a_portable_executable_schema() {
     )
     .unwrap();
 
-    let imported = mfd::import(&mapping_path).unwrap();
+    let options = mfd::ImportOptions::default().with_package_root(directory.path());
+    let imported = mfd::import_with_options(&mapping_path, &options).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
         imported.project.source_options.edi_kind,
@@ -95,7 +98,7 @@ fn adjacent_zip_package_compiles_to_a_portable_executable_schema() {
     assert!(engine::validate(&imported.project).is_empty());
 
     std::fs::remove_file(&archive_path).unwrap();
-    let exported_path = directory.path().join("roundtrip.mfd");
+    let exported_path = mapping_directory.join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let reimported = mfd::import(&exported_path).unwrap();

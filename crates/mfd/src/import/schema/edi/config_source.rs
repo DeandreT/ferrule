@@ -202,10 +202,12 @@ fn archive_candidates(roots: &[PathBuf], relative: &Path) -> BTreeMap<PathBuf, B
         let mut archive_name = components[split - 1].clone();
         archive_name.push(".zip");
         archive_relative.push(archive_name);
+        let archive_parent_relative = components[split - 1..].iter().collect::<PathBuf>();
         let suffix = components[split..].iter().collect::<PathBuf>();
         for archive in resolve_matches(roots, &archive_relative) {
             let entries = candidates.entry(archive).or_default();
             entries.insert(relative.to_path_buf());
+            entries.insert(archive_parent_relative.clone());
             entries.insert(suffix.clone());
         }
     }
