@@ -5,7 +5,12 @@
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+#[path = "support/sample_discovery.rs"]
+mod sample_discovery;
+
+use sample_discovery::discover_sample_paths;
 
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const LEGACY_VENDOR_NAME: &str = concat!("Alto", "va");
@@ -18,25 +23,11 @@ struct Failure {
     diagnostics: Vec<String>,
 }
 
-fn sample_paths(samples_dir: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    let mut paths = Vec::new();
-    for entry in std::fs::read_dir(samples_dir)? {
-        let path = entry?.path();
-        if path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("mfd"))
-        {
-            paths.push(path);
-        }
-    }
-    paths.sort();
-    Ok(paths)
-}
-
-fn file_name(path: &Path) -> String {
-    path.file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.display().to_string())
+fn sample_name(samples_dir: &Path, path: &Path) -> String {
+    path.strip_prefix(samples_dir)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn diagnostic_category(diagnostic: &str) -> String {
@@ -117,27 +108,33 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let paths = sample_paths(&samples_dir)?;
+    let paths = discover_sample_paths(&samples_dir)?;
     let mut lowered = 0usize;
     let mut rust_emitted = 0usize;
     let mut csharp_emitted = 0usize;
+    let mut dependency_blocked = 0usize;
     let mut failures = Vec::new();
 
     for path in &paths {
-        let imported = match mfd::import(path) {
+        let options = mfd::ImportOptions::default().with_package_root(&samples_dir);
+        let imported = match mfd::import_with_options(path, &options) {
             Ok(imported) => imported,
             Err(error) => {
                 failures.push(Failure {
-                    file: file_name(path),
+                    file: sample_name(&samples_dir, path),
                     diagnostics: vec![format!("import: {error}")],
                 });
                 continue;
             }
         };
+        if !imported.project.runtime_dependencies().is_empty() {
+            dependency_blocked += 1;
+            continue;
+        }
         let validation = engine::validate(&imported.project);
         if !validation.is_empty() {
             failures.push(Failure {
-                file: file_name(path),
+                file: sample_name(&samples_dir, path),
                 diagnostics: validation
                     .into_iter()
                     .map(|issue| format!("validation: {issue}"))
@@ -152,7 +149,7 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
             }
             Err(error) => {
                 failures.push(Failure {
-                    file: file_name(path),
+                    file: sample_name(&samples_dir, path),
                     diagnostics: error
                         .diagnostics()
                         .iter()
@@ -180,7 +177,7 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
         }
         if !emitter_diagnostics.is_empty() {
             failures.push(Failure {
-                file: file_name(path),
+                file: sample_name(&samples_dir, path),
                 diagnostics: emitter_diagnostics,
             });
         }
@@ -190,6 +187,7 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
     println!("lowered: {lowered}");
     println!("Rust emitted: {rust_emitted}");
     println!("C# emitted: {csharp_emitted}");
+    println!("runtime dependency-blocked: {dependency_blocked}");
     print_failures(&failures);
     Ok(())
 }

@@ -23,6 +23,8 @@ mod output_support;
 mod reference_support;
 #[path = "samples_execution_survey/roundtrip.rs"]
 mod roundtrip;
+#[path = "support/sample_discovery.rs"]
+mod sample_discovery;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -49,6 +51,7 @@ use reference_support::{
     GeneratedReferences, first_instance_difference, load_generated_references,
     requested_generated_references,
 };
+use sample_discovery::discover_sample_paths;
 
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const JSON_REPORT_ENV: &str = "FERRULE_EXECUTION_SURVEY_JSON";
@@ -60,6 +63,7 @@ const FIXED_CURRENT_DATETIME: &str = "2000-01-01T00:00:00-08:00";
 enum Status {
     Passed,
     Failed,
+    DependencyBlocked,
     Skipped,
 }
 
@@ -68,6 +72,7 @@ impl Status {
         match self {
             Self::Passed => "passed",
             Self::Failed => "failed",
+            Self::DependencyBlocked => "dependency_blocked",
             Self::Skipped => "skipped",
         }
     }
@@ -94,6 +99,13 @@ impl StageOutcome {
         }
     }
 
+    fn dependency_blocked(message: impl Into<String>) -> Self {
+        Self {
+            status: Status::DependencyBlocked,
+            message: Some(message.into()),
+        }
+    }
+
     fn skipped(message: impl Into<String>) -> Self {
         Self {
             status: Status::Skipped,
@@ -114,6 +126,7 @@ struct SampleOutcome {
     file: String,
     source: Option<String>,
     output: Option<String>,
+    runtime_dependencies: Vec<String>,
     import: StageOutcome,
     validation: StageOutcome,
     execution: StageOutcome,
@@ -131,6 +144,7 @@ impl SampleOutcome {
             file,
             source: None,
             output: None,
+            runtime_dependencies: Vec::new(),
             import: blocked.clone(),
             validation: blocked.clone(),
             execution: blocked.clone(),
@@ -146,6 +160,7 @@ impl SampleOutcome {
                 "source": self.source,
                 "output": self.output,
             },
+            "runtime_dependencies": self.runtime_dependencies,
             "stages": {
                 "import": self.import.to_json(),
                 "validation": self.validation.to_json(),
@@ -162,6 +177,7 @@ struct Summary {
     total: usize,
     imported: usize,
     valid: usize,
+    dependency_blocked: usize,
     execution_attempted: usize,
     execution_passed: usize,
     outputs_written: usize,
@@ -178,15 +194,21 @@ impl Summary {
             valid: count(outcomes, |sample| {
                 sample.validation.status == Status::Passed
             }),
+            dependency_blocked: count(outcomes, |sample| {
+                sample.validation.status == Status::DependencyBlocked
+            }),
             execution_attempted: count(outcomes, |sample| {
-                sample.execution.status != Status::Skipped
+                matches!(sample.execution.status, Status::Passed | Status::Failed)
             }),
             execution_passed: count(outcomes, |sample| sample.execution.status == Status::Passed),
             outputs_written: count(outcomes, |sample| {
                 sample.output_write.status == Status::Passed
             }),
             references_available: count(outcomes, |sample| {
-                sample.reference_match.status != Status::Skipped
+                matches!(
+                    sample.reference_match.status,
+                    Status::Passed | Status::Failed
+                )
             }),
             references_matched: count(outcomes, |sample| {
                 sample.reference_match.status == Status::Passed
@@ -202,6 +224,7 @@ impl Summary {
             "total": self.total,
             "imported": self.imported,
             "valid": self.valid,
+            "dependency_blocked": self.dependency_blocked,
             "execution_attempted": self.execution_attempted,
             "execution_passed": self.execution_passed,
             "outputs_written": self.outputs_written,
@@ -299,8 +322,8 @@ fn explicit_reference(
 }
 
 fn output_instance_owners(samples_root: &Path, reference: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut designs = Vec::new();
-    collect_mfd_paths(samples_root, &mut designs)?;
+    let designs = discover_sample_paths(samples_root)
+        .map_err(|error| format!("discovering mapping designs failed: {error}"))?;
     let mut owners = Vec::new();
     for design in designs {
         let document = std::fs::read_to_string(&design)
@@ -335,30 +358,6 @@ fn output_instance_owners(samples_root: &Path, reference: &Path) -> Result<Vec<P
     owners.sort();
     owners.dedup();
     Ok(owners)
-}
-
-fn collect_mfd_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in std::fs::read_dir(directory)
-        .map_err(|error| format!("reading sample directory failed: {error}"))?
-    {
-        let entry =
-            entry.map_err(|error| format!("reading sample directory entry failed: {error}"))?;
-        let path = entry.path();
-        let file_type = entry
-            .file_type()
-            .map_err(|error| format!("reading sample entry type failed: {error}"))?;
-        if file_type.is_dir() {
-            collect_mfd_paths(&path, paths)?;
-        } else if file_type.is_file()
-            && path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("mfd"))
-        {
-            paths.push(path);
-        }
-    }
-    Ok(())
 }
 
 struct LoadedSources {
@@ -520,22 +519,36 @@ fn survey_file(
 ) -> SampleOutcome {
     let identity = mfd_path.strip_prefix(samples_root).unwrap_or(mfd_path);
     let mut outcome = SampleOutcome::pending(identity);
-    let imported = match mfd::import(mfd_path) {
+    let options = mfd::ImportOptions::default().with_package_root(samples_root);
+    let imported = match mfd::import_with_options(mfd_path, &options) {
         Ok(imported) => imported,
         Err(error) => {
             outcome.import = StageOutcome::failed(error.to_string());
             return outcome;
         }
     };
-    outcome.import = if imported.warnings.is_empty() {
-        StageOutcome::passed()
-    } else {
-        StageOutcome::failed(format!(
-            "import emitted {} warning(s): {}",
-            imported.warnings.len(),
-            imported.warnings.join(" | ")
-        ))
+    outcome.import = StageOutcome {
+        status: Status::Passed,
+        message: (!imported.warnings.is_empty()).then(|| {
+            format!(
+                "import emitted {} warning(s): {}",
+                imported.warnings.len(),
+                imported.warnings.join(" | ")
+            )
+        }),
     };
+    outcome.runtime_dependencies = imported
+        .project
+        .runtime_dependencies()
+        .into_iter()
+        .map(|dependency| dependency.to_string())
+        .collect();
+    if !outcome.runtime_dependencies.is_empty() {
+        let message = outcome.runtime_dependencies.join(" | ");
+        outcome.validation = StageOutcome::dependency_blocked(message.clone());
+        outcome.execution = StageOutcome::dependency_blocked(message);
+        return outcome;
+    }
     let validation = engine::validate(&imported.project);
     if !validation.is_empty() {
         outcome.validation = StageOutcome::failed(
@@ -855,6 +868,7 @@ fn summary_counts_attempts_separately_from_skips() {
             total: 2,
             imported: 2,
             valid: 2,
+            dependency_blocked: 0,
             execution_attempted: 2,
             execution_passed: 1,
             outputs_written: 1,
@@ -1325,9 +1339,7 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
         );
         return Ok(());
     }
-    let mut paths = Vec::new();
-    collect_mfd_paths(&samples_root, &mut paths)?;
-    paths.sort();
+    let paths = discover_sample_paths(&samples_root)?;
 
     let workspace = SurveyWorkspace::new()?;
     let generated_references = requested_generated_references()?;
@@ -1351,8 +1363,9 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
         "imported and engine-valid: {}/{}",
         summary.valid, summary.imported
     );
+    println!("runtime dependency-blocked: {}", summary.dependency_blocked);
     println!(
-        "execution: {}/{} attempted passed; {} skipped",
+        "execution: {}/{} attempted passed; {} not attempted",
         summary.execution_passed,
         summary.execution_attempted,
         summary.total - summary.execution_attempted
