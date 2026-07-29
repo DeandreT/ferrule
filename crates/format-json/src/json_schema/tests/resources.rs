@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaKind};
 
-use super::super::{import, import_with_root};
+use super::super::{files, import, import_with_root};
 use crate::JsonFormatError;
 
 fn resource_dir(label: &str) -> std::path::PathBuf {
@@ -335,5 +335,223 @@ fn rejects_missing_remote_anchor_and_reserved_bundle_refs() -> Result<(), Box<dy
     ));
 
     std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
+fn schema_keyword_property_names_remain_ordinary_properties()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = resource_dir("keyword_property_names");
+    std::fs::create_dir_all(&dir)?;
+    let names = [
+        "$ref",
+        "if",
+        "then",
+        "else",
+        "items",
+        "properties",
+        "dependencies",
+        "dependentSchemas",
+        "prefixItems",
+        "contains",
+        "propertyNames",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+        "__ferrule_ignore_ref_siblings",
+        "__ferrule_validation_dialect",
+    ];
+    let properties: serde_json::Map<String, serde_json::Value> = names
+        .iter()
+        .map(|name| ((*name).to_string(), serde_json::json!({"type": "string"})))
+        .collect();
+    let source = serde_json::json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": properties,
+    });
+    std::fs::write(dir.join("root.json"), serde_json::to_vec(&source)?)?;
+
+    let loaded = files::load(&dir.join("root.json"), &dir)?;
+    let loaded_properties = loaded
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| std::io::Error::other("missing loaded properties"))?;
+    assert_eq!(loaded_properties.len(), names.len());
+    for name in names {
+        let property = loaded_properties
+            .get(name)
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| std::io::Error::other(format!("missing property `{name}`")))?;
+        assert!(!property.contains_key("__ferrule_validation_dialect"));
+        assert!(!property.contains_key("__ferrule_ignore_ref_siblings"));
+    }
+
+    let schema = import_with_root(&dir.join("root.json"), &dir)?;
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Err(std::io::Error::other("root was not an object").into());
+    };
+    assert_eq!(children.len(), names.len());
+    for name in names {
+        assert!(schema.child(name).is_some(), "missing property `{name}`");
+    }
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
+fn references_inside_opaque_values_are_not_loaded_or_rewritten()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = resource_dir("opaque_refs");
+    std::fs::create_dir_all(&dir)?;
+    let source = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string",
+        "default": {
+            "$ref": "missing-default.json",
+            "__ferrule_validation_dialect": "literal"
+        },
+        "examples": [{
+            "nested": {
+                "$ref": "missing-example.json",
+                "__ferrule_ignore_ref_siblings": true
+            }
+        }],
+        "x-metadata": {
+            "if": {
+                "$ref": "missing-extension.json"
+            }
+        }
+    });
+    std::fs::write(dir.join("root.json"), serde_json::to_vec(&source)?)?;
+
+    let loaded = files::load(&dir.join("root.json"), &dir)?;
+    assert_eq!(
+        loaded.pointer("/default/$ref"),
+        Some(&serde_json::json!("missing-default.json"))
+    );
+    assert_eq!(
+        loaded.pointer("/examples/0/nested/$ref"),
+        Some(&serde_json::json!("missing-example.json"))
+    );
+    assert_eq!(
+        loaded.pointer("/x-metadata/if/$ref"),
+        Some(&serde_json::json!("missing-extension.json"))
+    );
+    assert_eq!(
+        loaded.pointer("/default/__ferrule_validation_dialect"),
+        Some(&serde_json::json!("literal"))
+    );
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
+fn references_in_known_schema_positions_are_rewritten() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = resource_dir("schema_positions");
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("target.json"),
+        r#"{"type":"string","minLength":1}"#,
+    )?;
+    let reference = || serde_json::json!({"$ref": "target.json"});
+    let source = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": {"definition": reference()},
+        "definitions": {"legacyDefinition": reference()},
+        "properties": {"property": reference()},
+        "patternProperties": {"^pattern$": reference()},
+        "dependentSchemas": {"property": reference()},
+        "allOf": [reference()],
+        "anyOf": [reference()],
+        "oneOf": [reference()],
+        "prefixItems": [reference()],
+        "items": [reference()],
+        "dependencies": {
+            "schemaDependency": reference(),
+            "propertyDependency": ["$ref", "target.json"]
+        },
+        "additionalItems": reference(),
+        "additionalProperties": reference(),
+        "contains": reference(),
+        "contentSchema": reference(),
+        "propertyNames": reference(),
+        "unevaluatedItems": reference(),
+        "unevaluatedProperties": reference(),
+        "not": reference(),
+        "if": reference(),
+        "then": reference(),
+        "else": reference()
+    });
+    std::fs::write(dir.join("root.json"), serde_json::to_vec(&source)?)?;
+
+    let loaded = files::load(&dir.join("root.json"), &dir)?;
+    let rewritten = "#/$defs/__ferrule_external_documents/1";
+    for pointer in [
+        "/$defs/definition/$ref",
+        "/definitions/legacyDefinition/$ref",
+        "/properties/property/$ref",
+        "/patternProperties/^pattern$/$ref",
+        "/dependentSchemas/property/$ref",
+        "/allOf/0/$ref",
+        "/anyOf/0/$ref",
+        "/oneOf/0/$ref",
+        "/prefixItems/0/$ref",
+        "/items/0/$ref",
+        "/dependencies/schemaDependency/$ref",
+        "/additionalItems/$ref",
+        "/additionalProperties/$ref",
+        "/contains/$ref",
+        "/contentSchema/$ref",
+        "/propertyNames/$ref",
+        "/unevaluatedItems/$ref",
+        "/unevaluatedProperties/$ref",
+        "/not/$ref",
+        "/if/$ref",
+        "/then/$ref",
+        "/else/$ref",
+    ] {
+        assert_eq!(
+            loaded.pointer(pointer).and_then(serde_json::Value::as_str),
+            Some(rewritten),
+            "{pointer}"
+        );
+    }
+    assert_eq!(
+        loaded.pointer("/dependencies/propertyDependency"),
+        Some(&serde_json::json!(["$ref", "target.json"]))
+    );
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
+fn opaque_values_still_participate_in_the_json_depth_limit()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = resource_dir("opaque_depth");
+    std::fs::create_dir_all(&dir)?;
+    let mut nested = serde_json::Value::Null;
+    for _ in 0..140 {
+        nested = serde_json::json!({"metadata": nested});
+    }
+    let source = serde_json::json!({
+        "type": "string",
+        "examples": [nested]
+    });
+    std::fs::write(dir.join("root.json"), serde_json::to_vec(&source)?)?;
+
+    let result = files::load(&dir.join("root.json"), &dir);
+    std::fs::remove_dir_all(dir)?;
+    match result {
+        Err(JsonFormatError::SchemaResourceLimit {
+            kind: "JSON nesting depth",
+            ..
+        }) => {}
+        Err(JsonFormatError::Json(error)) if error.to_string().contains("recursion limit") => {}
+        result => panic!("unexpected opaque-depth result: {result:?}"),
+    }
     Ok(())
 }
