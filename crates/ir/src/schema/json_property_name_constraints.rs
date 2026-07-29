@@ -211,6 +211,22 @@ impl JsonPropertyNameConstraints {
     }
 
     pub fn is_canonical(&self) -> bool {
+        self.is_structurally_canonical()
+            && match self {
+                Self::Never => true,
+                Self::Schema {
+                    allowed, patterns, ..
+                } => allowed.as_ref().is_none_or(|allowed| {
+                    allowed.as_slice().iter().all(|name| {
+                        patterns
+                            .as_ref()
+                            .is_none_or(|patterns| patterns.matches(name))
+                    })
+                }),
+            }
+    }
+
+    pub(crate) fn is_structurally_canonical(&self) -> bool {
         match self {
             Self::Never => true,
             Self::Schema {
@@ -230,13 +246,25 @@ impl JsonPropertyNameConstraints {
                     return false;
                 }
                 allowed.as_ref().is_none_or(|allowed| {
-                    allowed.as_slice().iter().all(|name| {
-                        length.is_none_or(|length| length.contains_str(name))
-                            && patterns
-                                .as_ref()
-                                .is_none_or(|patterns| patterns.matches(name))
-                    })
+                    allowed
+                        .as_slice()
+                        .iter()
+                        .all(|name| length.is_none_or(|length| length.contains_str(name)))
                 })
+            }
+        }
+    }
+
+    pub(crate) fn accepts_without_patterns(&self, name: &str) -> bool {
+        match self {
+            Self::Never => false,
+            Self::Schema {
+                allowed, length, ..
+            } => {
+                allowed
+                    .as_ref()
+                    .is_none_or(|allowed| allowed.contains(name))
+                    && length.is_none_or(|length| length.contains_str(name))
             }
         }
     }
@@ -288,7 +316,12 @@ impl<'de> Deserialize<'de> for JsonPropertyNameConstraints {
                     patterns,
                     formats,
                 };
-                if !constraints.is_canonical() {
+                let canonical = if crate::schema_deserialization_is_active() {
+                    constraints.is_structurally_canonical()
+                } else {
+                    constraints.is_canonical()
+                };
+                if !canonical {
                     return Err(serde::de::Error::custom(
                         "JSON property-name constraints are tautological or contain a finite name outside their other assertions",
                     ));
@@ -346,6 +379,12 @@ mod tests {
     fn tagged_constraints_reject_the_tautological_schema_variant() {
         assert!(
             serde_json::from_str::<JsonPropertyNameConstraints>(r#"{"kind":"schema"}"#).is_err()
+        );
+        assert!(
+            serde_json::from_str::<JsonPropertyNameConstraints>(
+                r#"{"kind":"schema","allowed":["bad"],"patterns":{"any_of":[["^good$"]]}}"#,
+            )
+            .is_err()
         );
         assert_eq!(
             serde_json::to_string(&JsonPropertyNameConstraints::never()).unwrap_or_default(),

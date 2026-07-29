@@ -183,6 +183,21 @@ property domain, schema-valued declarations remain typed, and explicit `false`
 rejects undeclared input properties instead of discarding them. MFD export
 writes a canonical JSON Schema sibling and re-import retains the same open,
 typed-open, or closed behavior.
+Referenced schemas also retain exact closed homogeneous `patternProperties`.
+The containing schema must explicitly type `object` or `object | null`, use
+`additionalProperties: false`, and assign every portable selector in a
+nonempty bounded map one identical exactly representable value schema. Scalar,
+structured object, and homogeneous array values reuse the ordinary supported
+JSON value profile. Selectors are ORed in declaration order. Any matching fixed
+property must have that schema; nonmatching fixed properties remain
+independent. Runtime decoding selects fixed properties first, then applies the
+selector set to remaining names, while `propertyNames` continues to constrain
+every key independently. Dependency rules whose triggers are neither fixed nor
+selected normalize away as semantically unreachable. Nullable null bypasses
+the object checks. Native and generated Rust/C# boundaries enforce the
+selectors on input, normalized output, and every JSON Lines row with the shared
+per-document pattern work budget. Canonical MFD schema export and re-import
+preserve the selector map and closed fallback. An empty map is a no-op.
 Referenced JSON objects also retain exact `minProperties`/`maxProperties`
 intervals through nullable wrappers, dialect-aware references, compatible
 `allOf`, and alternatives with one common effective interval. Imported
@@ -217,9 +232,13 @@ combine with existing object alternatives, and a closed object must already
 declare the trigger. Import normalizes these forms to `required` plus
 `dependentRequired` or `dependentSchemas` metadata as appropriate, which
 canonical MFD schema export preserves. Value-sensitive, multi-trigger,
-general-`if`, other nontrivial `else` schemas, pattern/unevaluated property keywords, and
-heterogeneous positional array schemas still produce the existing actionable
-schema-fallback diagnostic rather than being widened or discarded. Declared Draft 4/6/7
+general-`if`, other nontrivial `else` schemas, distinct per-selector
+`patternProperties` schemas, open or typed pattern-property fallbacks, general
+selector-overlap intersection, value shapes outside the ordinary exact JSON
+profile, pattern-property objects under active `allOf`, alternatives, or
+structural `$ref` siblings, unevaluated property keywords, and heterogeneous
+positional array schemas still produce the existing actionable schema-fallback
+diagnostic rather than being widened or discarded. Declared Draft 4/6/7
 resources use legacy schema-valued `dependencies`; declared 2019-09/2020-12 use
 modern `dependentSchemas`. Schemas without `$schema` intentionally accept both
 spellings while retaining modern reference-sibling behavior, which preserves

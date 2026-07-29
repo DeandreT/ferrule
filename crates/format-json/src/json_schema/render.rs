@@ -164,6 +164,9 @@ fn render_shape(
             }
             out.insert("properties".into(), serde_json::Value::Object(props));
             if let Some(dynamic) = dynamic {
+                if super::pattern_properties::render(node, dynamic, out)? {
+                    return Ok(());
+                }
                 let mut additional = serde_json::Map::new();
                 render(dynamic, &mut additional)?;
                 out.insert(

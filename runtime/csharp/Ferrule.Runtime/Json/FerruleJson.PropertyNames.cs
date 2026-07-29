@@ -298,7 +298,7 @@ public static partial class FerruleJson
                     $"Embedded JSON schema node '{name}' has a duplicate JSON property-name pattern alternative.");
             }
             canonicalSources.Add(sources.ToArray());
-            alternatives.Add(new JsonPatternAlternative(compiledTerms));
+            alternatives.Add(new JsonPatternAlternative(sources.ToArray(), compiledTerms));
         }
         if (alternatives.Count == 0)
         {

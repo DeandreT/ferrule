@@ -62,15 +62,20 @@ impl JsonContainsConstraints {
     }
 
     pub fn is_canonical(&self) -> bool {
+        self.collection_is_canonical()
+            && self.0.iter().all(|constraint| {
+                constraint
+                    .predicate()
+                    .as_schema()
+                    .is_none_or(SchemaNode::metadata_is_valid)
+            })
+    }
+
+    pub(crate) fn collection_is_canonical(&self) -> bool {
         !self.0.is_empty()
             && self.0.len() <= MAX_JSON_CONTAINS_CONSTRAINTS
             && self.0.iter().enumerate().all(|(index, constraint)| {
-                !constraint.is_tautological()
-                    && !self.0[..index].contains(constraint)
-                    && constraint
-                        .predicate()
-                        .as_schema()
-                        .is_none_or(SchemaNode::metadata_is_valid)
+                !constraint.is_tautological() && !self.0[..index].contains(constraint)
             })
     }
 }

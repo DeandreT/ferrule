@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{JsonPropertyDependencies, SchemaKind, SchemaNode};
 
-use super::files;
+use super::{files, pattern_properties};
 use crate::JsonFormatError;
 
 pub(super) fn has_keywords(schema: &serde_json::Value) -> bool {
@@ -58,35 +58,21 @@ pub(super) fn apply(
             "property dependencies without a concrete object type also admit unconstrained non-object values",
         ));
     }
-    let SchemaKind::Group {
-        children,
-        alternatives,
-        dynamic,
-        ..
-    } = &node.kind
-    else {
+    if !matches!(node.kind, SchemaKind::Group { .. }) {
         return Ok(());
-    };
-    if dynamic.is_none() {
-        let possible = if alternatives.is_empty() {
-            children
-                .iter()
-                .map(|child| child.name.as_str())
-                .collect::<BTreeSet<_>>()
-        } else {
-            alternatives
-                .iter()
-                .flat_map(|alternative| alternative.members.iter().map(String::as_str))
-                .collect()
-        };
-        let mut retained = incoming.rules().clone();
-        retained.retain(|trigger, _| possible.contains(trigger.as_str()));
-        if retained.is_empty() {
-            return Ok(());
-        }
-        incoming = JsonPropertyDependencies::new(retained)
-            .map_err(|error| unsupported(name, &error.to_string()))?;
     }
+    let possible = pattern_properties::possible_dependency_triggers(
+        name,
+        node,
+        incoming.rules().keys().cloned(),
+    )?;
+    let mut retained = incoming.rules().clone();
+    retained.retain(|trigger, _| possible.contains(trigger));
+    if retained.is_empty() {
+        return Ok(());
+    }
+    incoming = JsonPropertyDependencies::new(retained)
+        .map_err(|error| unsupported(name, &error.to_string()))?;
     node.json_property_dependencies = intersect(
         name,
         node.json_property_dependencies.as_ref(),

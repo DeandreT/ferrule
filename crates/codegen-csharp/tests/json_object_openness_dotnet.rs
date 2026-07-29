@@ -6,7 +6,7 @@ use codegen::{
     Binding, Expression, ExpressionNode, NamedSourceProgram, Program, ScalarTargetDomain,
     TargetConstruction, TargetScope,
 };
-use ir::{ScalarType, SchemaNode};
+use ir::{JsonPatternPropertyNames, ScalarType, SchemaNode};
 
 #[test]
 fn emitted_package_enforces_closed_objects_and_preserves_dynamic_fields()
@@ -20,6 +20,11 @@ fn emitted_package_enforces_closed_objects_and_preserves_dynamic_fields()
             .json_any()
             .ok_or("test dynamic field accepts arbitrary JSON")?,
     )
+    .and_then(|schema| {
+        schema.with_json_pattern_property_names(
+            JsonPatternPropertyNames::new(["^[a-z]+$", "data"]).ok()?,
+        )
+    })
     .ok_or("test group accepts dynamic fields")?;
     let maybe = SchemaNode::group("Maybe", vec![SchemaNode::scalar("Value", ScalarType::Int)])
         .nullable_container()
@@ -28,6 +33,8 @@ fn emitted_package_enforces_closed_objects_and_preserves_dynamic_fields()
         "Source",
         vec![
             SchemaNode::scalar("Id", ScalarType::String),
+            SchemaNode::scalar("Key", ScalarType::String),
+            SchemaNode::scalar("Value", ScalarType::String),
             SchemaNode::group(
                 "Nested",
                 vec![SchemaNode::scalar("Name", ScalarType::String)],
@@ -38,6 +45,14 @@ fn emitted_package_enforces_closed_objects_and_preserves_dynamic_fields()
             open,
         ],
     );
+    let target = SchemaNode::group("Target", vec![SchemaNode::scalar("Id", ScalarType::String)])
+        .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+        .and_then(|schema| {
+            schema.with_json_pattern_property_names(
+                JsonPatternPropertyNames::new(["^[a-z]+$", "put"]).ok()?,
+            )
+        })
+        .ok_or("test target accepts selected dynamic fields")?;
     let program = Program {
         source,
         extra_sources: vec![NamedSourceProgram {
@@ -48,21 +63,46 @@ fn emitted_package_enforces_closed_objects_and_preserves_dynamic_fields()
             ),
             dynamic: None,
         }],
-        target: SchemaNode::group("Target", vec![SchemaNode::scalar("Id", ScalarType::String)]),
-        expressions: vec![ExpressionNode {
-            id: 1,
-            expression: Expression::SourceField {
-                frame: None,
-                path: vec!["Id".into()],
+        target,
+        expressions: vec![
+            ExpressionNode {
+                id: 1,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Id".into()],
+                },
             },
-        }],
+            ExpressionNode {
+                id: 2,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Key".into()],
+                },
+            },
+            ExpressionNode {
+                id: 3,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Value".into()],
+                },
+            },
+        ],
         user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),
             repeating: false,
             iteration: None,
-            construction: TargetConstruction::Group,
+            construction: TargetConstruction::DynamicGroup {
+                fixed_fields: vec!["Id".into()],
+                bindings: vec![codegen::DynamicTargetBinding {
+                    key: 2,
+                    value: 3,
+                    target_domain: ScalarTargetDomain::Single(ScalarType::String),
+                }],
+                children: Vec::new(),
+                merge: false,
+            },
             bindings: vec![Binding {
                 target_field: "Id".into(),
                 expression: 1,
@@ -83,6 +123,21 @@ fn run_generated(program: &Program) -> Result<(), Box<dyn std::error::Error>> {
         file.path.as_str() == "Runtime/Json/FerruleJson.ObjectOpenness.cs"
             && std::str::from_utf8(&file.contents)
                 .is_ok_and(|source| source.contains("ValidateDeclaredProperties"))
+    }));
+    assert!(artifacts.files().iter().any(|file| {
+        file.path.as_str() == "Runtime/Json/FerruleJson.PatternProperties.cs"
+            && std::str::from_utf8(&file.contents)
+                .is_ok_and(|source| source.contains("ValidatePatternProperties"))
+    }));
+    assert!(artifacts.files().iter().any(|file| {
+        file.path.as_str() == "GeneratedMapping.cs"
+            && std::str::from_utf8(&file.contents).is_ok_and(|source| {
+                source.contains(
+                    r#"\"json_pattern_property_names\":{\"sources\":[\"^[a-z]+$\",\"data\"]}"#,
+                ) && source.contains(
+                    r#"\"json_pattern_property_names\":{\"sources\":[\"^[a-z]+$\",\"put\"]}"#,
+                )
+            })
     }));
     let directory = TempDirectory::new()?;
     for file in artifacts.files() {
@@ -155,6 +210,8 @@ using Ferrule.Runtime;
 const string validSource = """
 {
   "Id": "A",
+  "Key": "output",
+  "Value": "mapped",
   "Nested": { "Name": "nested" },
   "Rows": [{ "Code": "one" }, { "Code": "two" }],
   "Maybe": null,
@@ -166,10 +223,119 @@ const string validSource = """
 """;
 var named = new[] { new NamedJsonInput("Config", """{"Label":"configured"}""") };
 var output = GeneratedMapping.ExecuteJsonWithSources(validSource, named);
-if (!string.Equals(output, "{\n  \"Id\": \"A\"\n}\n", StringComparison.Ordinal))
+if (!string.Equals(
+        output,
+        "{\n  \"Id\": \"A\",\n  \"output\": \"mapped\"\n}\n",
+        StringComparison.Ordinal))
 {
     throw new Exception($"valid object output changed: {output}");
 }
+
+const string explicitDefaultsSchema = """
+{
+  "name": "Root",
+  "json_pattern_property_names": { "sources": ["^x-"] },
+  "kind": {
+    "kind": "group",
+    "children": [
+      {
+        "name": "x-known",
+        "repeating": false,
+        "nullable": false,
+        "container_nullable": false,
+        "json_any": false,
+        "json_formats": [],
+        "json_unique_items": false,
+        "alternative_mode": "exclusive",
+        "kind": { "kind": "scalar", "ty": "string" }
+      }
+    ],
+    "dynamic": {
+      "name": "*",
+      "kind": { "kind": "scalar", "ty": "string" }
+    }
+  }
+}
+""";
+_ = FerruleJson.Parse(explicitDefaultsSchema, """{"x-known":"value"}""");
+
+const string mismatchedOverlapSchema = """
+{
+  "name": "Root",
+  "json_pattern_property_names": { "sources": ["^x-"] },
+  "kind": {
+    "kind": "group",
+    "children": [
+      {
+        "name": "x-known",
+        "nullable": true,
+        "kind": { "kind": "scalar", "ty": "string" }
+      }
+    ],
+    "dynamic": {
+      "name": "*",
+      "kind": { "kind": "scalar", "ty": "string" }
+    }
+  }
+}
+""";
+PatternSchemaError(
+    () => FerruleJson.Parse(mismatchedOverlapSchema, "{}"),
+    "x-known");
+
+var expensiveName = new string('a', 6_000);
+var expensiveSelector =
+    System.Text.Json.JsonSerializer.Serialize(expensiveName);
+var sameSchemaChildren = string.Join(
+    ",",
+    Enumerable.Range(0, 3).Select(index =>
+        $"{{\"name\":{System.Text.Json.JsonSerializer.Serialize(expensiveName + index)}," +
+        "\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}"));
+var sameSchemaBudget =
+    "{\"name\":\"Root\"," +
+    $"\"json_pattern_property_names\":{{\"sources\":[{expensiveSelector}]}}," +
+    "\"kind\":{\"kind\":\"group\"," +
+    $"\"children\":[{sameSchemaChildren}]," +
+    "\"dynamic\":{\"name\":\"*\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}";
+_ = FerruleJson.Parse(sameSchemaBudget, "{}");
+
+var costlyRequired = System.Text.Json.JsonSerializer.Serialize(expensiveName);
+var triggerChildren = string.Join(
+    ",",
+    Enumerable.Range(1, 3).Select(index =>
+        $"{{\"name\":\"t{index}\",\"kind\":{{\"kind\":\"scalar\",\"ty\":\"string\"}}}}"));
+var deduplicatedExpectationSchema =
+    "{\"name\":\"Root\"," +
+    $"\"json_pattern_property_names\":{{\"sources\":[{expensiveSelector}]}}," +
+    "\"json_property_dependencies\":{" +
+    $"\"t1\":[{costlyRequired}],\"t2\":[{costlyRequired}],\"t3\":[{costlyRequired}]" +
+    "}," +
+    "\"kind\":{\"kind\":\"group\"," +
+    $"\"children\":[{triggerChildren}]," +
+    $"\"required\":[{costlyRequired}]," +
+    "\"dynamic\":{\"name\":\"*\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}";
+_ = FerruleJson.Parse(
+    deduplicatedExpectationSchema,
+    $"{{{costlyRequired}:\"value\"}}");
+
+PatternPropertyError(
+    () => GeneratedMapping.ExecuteJsonWithSources(
+        validSource.Replace(
+            "\"metadata\":",
+            "\"bad-key\":",
+            StringComparison.Ordinal),
+        named),
+    "Open",
+    "bad-key");
+PatternPropertyError(
+    () => GeneratedMapping.ExecuteJsonWithSources(
+        validSource.Replace(
+            "\"Key\": \"output\"",
+            "\"Key\": \"bad-key\"",
+            StringComparison.Ordinal),
+        named),
+    "Target",
+    "bad-key");
 
 foreach (var (input, objectName, propertyName) in new[]
          {
@@ -251,6 +417,39 @@ static void ClosedError(Action action, string objectName, string propertyName)
               error.Message.Contains(
                   $"object '{objectName}' does not allow property '{propertyName}'",
                   StringComparison.Ordinal))
+    {
+    }
+}
+
+static void PatternPropertyError(Action action, string objectName, string propertyName)
+{
+    try
+    {
+        action();
+        throw new Exception(
+            $"patternProperties object {objectName} accepted property {propertyName}");
+    }
+    catch (FerruleRuntimeException error)
+        when (error.Error == FerruleRuntimeError.JsonBoundary &&
+              error.Message.Contains(objectName, StringComparison.Ordinal) &&
+              error.Message.Contains(propertyName, StringComparison.Ordinal) &&
+              error.Message.Contains("patternProperties", StringComparison.Ordinal))
+    {
+    }
+}
+
+static void PatternSchemaError(Action action, string propertyName)
+{
+    try
+    {
+        action();
+        throw new Exception(
+            $"patternProperties schema accepted mismatched property {propertyName}");
+    }
+    catch (FerruleRuntimeException error)
+        when (error.Error == FerruleRuntimeError.JsonBoundary &&
+              error.Message.Contains(propertyName, StringComparison.Ordinal) &&
+              error.Message.Contains("differs", StringComparison.Ordinal))
     {
     }
 }

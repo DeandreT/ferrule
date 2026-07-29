@@ -122,7 +122,8 @@
           constants, bounded exact scalar allowed-value sets, exact numeric ranges and decimal <code>multipleOf</code>
           constraints, array item-count and <code>contains</code> match-count intervals, object property-count
           intervals, object property dependencies and dependent-schema predicates,
-          property-name constraints, structural
+          property-name constraints, exact closed homogeneous
+          <code>patternProperties</code>, structural
           <code>uniqueItems</code>, Unicode string-length
           intervals, bounded portable JSON Schema
           <code>pattern</code> assertions, exact open/closed object contracts,
@@ -138,6 +139,29 @@
           validate unknown fields against their retained type, and explicit
           <code>false</code> reports an undeclared property instead of silently
           dropping it.
+        </p>
+
+        <p>
+          Embedded schemas retain a nonempty <code>patternProperties</code> map
+          exactly for an explicit <code>object</code> or
+          <code>object | null</code> with
+          <code>additionalProperties: false</code> when every bounded portable
+          selector has one identical exactly representable value schema.
+          Scalar, structured object, and homogeneous array values reuse the
+          ordinary supported JSON value profile. Selectors are ORed in
+          declaration order. Matching fixed properties must share that schema;
+          nonmatching fixed properties may differ. Generated decoding chooses
+          fixed properties first, while <code>propertyNames</code> remains
+          independent. Dependency rules whose triggers are neither fixed nor
+          selected normalize away as semantically unreachable, and nullable
+          null bypasses object checks. Rust and C# enforce input, normalized
+          output, and JSON Lines with the shared per-document pattern work
+          budget. Canonical export and re-import preserve the selector map; an
+          empty map is a no-op. Distinct selector schemas, open or typed
+          fallbacks, general overlap intersection, value shapes outside the
+          ordinary exact JSON profile, and active <code>allOf</code>, object
+          alternatives, or structural <code>$ref</code> siblings remain
+          outside the profile.
         </p>
 
         <p>
