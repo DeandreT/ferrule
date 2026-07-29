@@ -13,6 +13,7 @@ mod constraints;
 mod export_validation;
 mod formats;
 mod item_counts;
+mod multiples;
 mod nullable_composition;
 mod patterns;
 mod ranges;

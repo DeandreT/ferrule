@@ -57,7 +57,8 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         {"type":"number","minimum":0},
         {"type":"null"}
       ],
-      "exclusiveMaximum":20
+      "exclusiveMaximum":20,
+      "multipleOf":0.25
     },
     "Status":{"type":"string","const":"ready","minLength":5,"maxLength":5,"pattern":"^ready$","format":"workflow-status"},
     "Tracking":{"type":"string","format":""}
@@ -134,6 +135,19 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .maximum()
             .is_some_and(|bound| bound.is_exclusive())
     );
+    let amount_multiple_of = amount
+        .json_multiple_of
+        .as_ref()
+        .ok_or("missing nullable amount multipleOf constraint")?;
+    assert_eq!(
+        amount_multiple_of
+            .any_of()
+            .first()
+            .and_then(|terms| terms.first())
+            .map(|divisor| divisor.to_decimal_lexical())
+            .as_deref(),
+        Some("0.25")
+    );
     assert_eq!(
         imported
             .project
@@ -182,6 +196,27 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     assert!(matches!(input, Instance::Group(_)));
     let output = engine::run(&imported.project, &input)?;
     assert!(output.field("Amount").is_some());
+
+    let roundtrip_design = directory.0.join("roundtrip.mfd");
+    let export_warnings = mfd::export(&imported.project, &roundtrip_design)?;
+    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let reimported = mfd::import(&roundtrip_design)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let reimported_multiple_of = reimported
+        .project
+        .source
+        .child("Amount")
+        .and_then(|amount| amount.json_multiple_of.as_ref())
+        .ok_or("missing round-tripped amount multipleOf constraint")?;
+    assert_eq!(
+        reimported_multiple_of
+            .any_of()
+            .first()
+            .and_then(|terms| terms.first())
+            .map(|divisor| divisor.to_decimal_lexical())
+            .as_deref(),
+        Some("0.25")
+    );
     Ok(())
 }
 

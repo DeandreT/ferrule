@@ -120,7 +120,8 @@ expected to re-import and validate as ferrule projects.
 The main remaining gaps are some XML derived-type input shapes beyond compatible
 `complexContent` and scalar-text/attribute-only `simpleContent` hierarchies,
 XSD 1.1 wildcard exclusions, unordered wildcard compositors, unresolved strict
-wildcard declaration sets, numeric-range-bearing scalar unions and general heterogeneous arrays,
+wildcard declaration sets, heterogeneous or correlated numeric-range scalar
+unions and general heterogeneous arrays,
 overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
 first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
@@ -138,6 +139,12 @@ their referenced schemas, including nullable numeric fields and compatible
 source documents and write targets; malformed, empty, or precision-ambiguous
 ranges trigger the component's existing schema-fallback diagnostic instead of
 silently widening the mapping boundary.
+Positive finite JSON Schema `multipleOf` divisors likewise retain exact
+canonical decimal semantics through referenced schemas, compatible
+compositions, MFD import, and generated schema export. Native and generated
+Rust/C# boundaries enforce the divisor on input and normalized output.
+Correlated unions that vary both a numeric range and its paired divisor fall
+back with an actionable diagnostic rather than being widened.
 Referenced JSON arrays likewise retain exact `minItems`/`maxItems` intervals
 through references, nullable wrappers, and compatible compositions. Invalid or
 nonrepresentable item-count unions use the same actionable schema fallback;

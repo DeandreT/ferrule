@@ -1,7 +1,8 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use super::{
-    constraints, formats, item_counts, parse, patterns, ranges, string_lengths, unsupported_union,
+    constraints, formats, item_counts, multiples, parse, patterns, ranges, string_lengths,
+    unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -77,6 +78,7 @@ pub(super) fn parse_all_of(
         no_op_pattern_fallback &= patterns::has_keyword(constraints)
             && !patterns::is_effectively_constrained(name, constraints)?
             && !ranges::has_range_keywords(constraints)
+            && !multiples::has_keyword(constraints)
             && !item_counts::has_keywords(constraints)
             && !string_lengths::is_effectively_constrained(name, constraints)?
             && !formats::has_keyword(constraints);
@@ -111,11 +113,13 @@ pub(super) fn parse_all_of(
     for constraints in pending_constraints {
         if merged.repeating {
             ranges::validate_ignored(name, &constraints)?;
+            multiples::validate_ignored(name, &constraints)?;
             item_counts::apply(name, &constraints, &mut merged, false)?;
             string_lengths::validate_ignored(name, &constraints)?;
             patterns::validate_ignored(name, &constraints)?;
         } else {
             ranges::apply(name, &constraints, &mut merged, false)?;
+            multiples::apply(name, &constraints, &mut merged, false)?;
             item_counts::validate_ignored(name, &constraints)?;
             string_lengths::apply(name, &constraints, &mut merged, false)?;
             patterns::apply(name, &constraints, &mut merged, false)?;
@@ -180,6 +184,7 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "maximum"
                 | "exclusiveMinimum"
                 | "exclusiveMaximum"
+                | "multipleOf"
                 | "minItems"
                 | "maxItems"
                 | "minLength"
@@ -200,6 +205,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
         return false;
     };
     (ranges::has_range_keywords(schema)
+        || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
         || string_lengths::has_keywords(schema)
         || patterns::has_keyword(schema)
@@ -211,6 +217,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
                     | "maximum"
                     | "exclusiveMinimum"
                     | "exclusiveMaximum"
+                    | "multipleOf"
                     | "minItems"
                     | "maxItems"
                     | "minLength"
@@ -281,6 +288,8 @@ fn intersect_scalar(
     let branch_constant = constraints::from_schema(branch)?;
     let target_range = target.numeric_range;
     let branch_range = branch.numeric_range;
+    let target_multiples = target.json_multiple_of.clone();
+    let branch_multiples = branch.json_multiple_of.clone();
     let target_string_length = target.string_length_range;
     let branch_string_length = branch.string_length_range;
     let target_patterns = target.json_patterns.clone();
@@ -363,6 +372,24 @@ fn intersect_scalar(
         return Err(unsupported_union(
             name,
             "allOf fixed numeric value falls outside the intersected range",
+        ));
+    }
+    target.json_multiple_of = if target.accepts_scalar_type(ScalarType::Int)
+        || target.accepts_scalar_type(ScalarType::Float)
+    {
+        multiples::intersect(name, target_multiples, branch_multiples)?
+    } else if target_multiples.is_none() && branch_multiples.is_none() {
+        None
+    } else {
+        return Err(unsupported_union(
+            name,
+            "multipleOf is incompatible with the intersected scalar type",
+        ));
+    };
+    if !target.json_multiple_of_is_valid() {
+        return Err(unsupported_union(
+            name,
+            "allOf fixed numeric value is not exactly divisible by the intersected multipleOf constraints",
         ));
     }
     target.string_length_range = if target.accepts_scalar_type(ScalarType::String) {

@@ -89,6 +89,100 @@ fn integer_ranges_preserve_large_i64_endpoints_and_reject_inexact_fractional_bou
 }
 
 #[test]
+fn number_range_export_uses_exact_integer_tokens_for_integral_float_bounds() {
+    let Some(zero) = ir::FiniteF64::new(-0.0) else {
+        panic!("signed zero is finite");
+    };
+    let Some(range) = ir::NumberRange::new(Some(ir::NumberBound::inclusive(zero)), None) else {
+        panic!("zero-bounded number range is valid");
+    };
+    let Some(schema) = SchemaNode::scalar("Value", ScalarType::Float)
+        .with_numeric_range(NumericRange::Number(range))
+    else {
+        panic!("number range matches a number scalar");
+    };
+    let rendered = export(&schema);
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&rendered) else {
+        panic!("exported range schema is JSON");
+    };
+    assert_eq!(value.get("minimum"), Some(&serde_json::json!(0)));
+    assert_eq!(import_str(&rendered), schema);
+
+    let Some(unsigned_only) = ir::FiniteF64::new(9_223_372_036_854_775_808.0) else {
+        panic!("two to the 63rd power is finite");
+    };
+    let Some(range) = ir::NumberRange::new(Some(ir::NumberBound::inclusive(unsigned_only)), None)
+    else {
+        panic!("unsigned-only exact integer range is valid");
+    };
+    let Some(schema) = SchemaNode::scalar("Unsigned", ScalarType::Float)
+        .with_numeric_range(NumericRange::Number(range))
+    else {
+        panic!("unsigned-only range matches a number scalar");
+    };
+    let rendered = export(&schema);
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&rendered) else {
+        panic!("exported unsigned range schema is JSON");
+    };
+    assert_eq!(
+        value.get("minimum"),
+        Some(&serde_json::json!(9_223_372_036_854_775_808_u64))
+    );
+    assert_eq!(import_str(&rendered), schema);
+
+    let Some(outside_unsigned) = ir::FiniteF64::new(18_446_744_073_709_551_616.0) else {
+        panic!("two to the 64th power is finite");
+    };
+    let Some(range) =
+        ir::NumberRange::new(Some(ir::NumberBound::inclusive(outside_unsigned)), None)
+    else {
+        panic!("out-of-domain integral range is valid in IR");
+    };
+    let Some(schema) = SchemaNode::scalar("OutsideUnsigned", ScalarType::Float)
+        .with_numeric_range(NumericRange::Number(range))
+    else {
+        panic!("out-of-domain range matches a number scalar");
+    };
+    assert!(matches!(
+        super::super::export(&schema),
+        Err(JsonFormatError::InvalidNumericRangeMetadata { .. })
+    ));
+
+    let Some(below_signed) = ir::FiniteF64::new(-1e20) else {
+        panic!("large negative integral float is finite");
+    };
+    let Some(range) = ir::NumberRange::new(Some(ir::NumberBound::inclusive(below_signed)), None)
+    else {
+        panic!("below-signed-domain range is valid in IR");
+    };
+    let Some(schema) = SchemaNode::scalar("BelowSigned", ScalarType::Float)
+        .with_numeric_range(NumericRange::Number(range))
+    else {
+        panic!("below-signed-domain range matches a number scalar");
+    };
+    assert!(matches!(
+        super::super::export(&schema),
+        Err(JsonFormatError::InvalidNumericRangeMetadata { .. })
+    ));
+
+    let Some(huge) = ir::FiniteF64::new(1e20) else {
+        panic!("large integral float is finite");
+    };
+    let Some(range) = ir::NumberRange::new(Some(ir::NumberBound::inclusive(huge)), None) else {
+        panic!("large integral range is valid in IR");
+    };
+    let Some(schema) = SchemaNode::scalar("Huge", ScalarType::Float)
+        .with_numeric_range(NumericRange::Number(range))
+    else {
+        panic!("large number range matches a number scalar");
+    };
+    assert!(matches!(
+        super::super::export(&schema),
+        Err(JsonFormatError::InvalidNumericRangeMetadata { .. })
+    ));
+}
+
+#[test]
 fn number_ranges_preserve_finite_endpoints_exclusivity_and_nullable_null()
 -> Result<(), JsonFormatError> {
     let schema = import_str(

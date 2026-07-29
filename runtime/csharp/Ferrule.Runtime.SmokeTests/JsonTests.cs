@@ -126,6 +126,7 @@ internal static partial class Program
 
         JsonConstantBoundaries();
         JsonRangeBoundaries();
+        JsonMultipleOfBoundaries();
         JsonItemCountBoundaries();
         JsonFormatAnnotationBoundaries();
         JsonStringLengthBoundaries();
@@ -309,6 +310,108 @@ internal static partial class Program
             Error(
                 FerruleRuntimeError.JsonBoundary,
                 () => FerruleJson.Parse(invalidSchema, "[]"));
+        }
+    }
+
+    private static void JsonMultipleOfBoundaries()
+    {
+        const string tenth =
+            "{\"name\":\"Value\",\"nullable\":true,\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":-1}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";
+        foreach (var input in new[] { "0.3", "-0.3", "0", "-0.0", "1" })
+        {
+            _ = FerruleJson.Parse(tenth, input);
+        }
+        foreach (var input in new[] { "0.30000000000000004", "-0.31" })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(tenth, input));
+        }
+        Equal(
+            FerruleValue.JsonNull,
+            ((FerruleScalar)FerruleJson.Parse(tenth, "null")).Value);
+
+        Equal(
+            "0.3\n",
+            FerruleJson.Serialize(
+                tenth,
+                Scalar(FerruleValue.FromDouble(0.3))));
+        Equal(
+            "0.3\n",
+            FerruleJson.Serialize(tenth, Scalar(Text("0.3"))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                tenth,
+                Scalar(FerruleValue.FromDouble(0.30000000000000004))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                tenth,
+                Scalar(Text("0.30000000000000004"))));
+
+        const string thirds =
+            "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":3,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        foreach (var input in new[] { "6", "-6", "0" })
+        {
+            _ = FerruleJson.Parse(thirds, input);
+        }
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(thirds, "7"));
+        Equal(
+            "6\n",
+            FerruleJson.Serialize(thirds, Scalar(Text("6"))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(thirds, Scalar(Text("7"))));
+
+        const string large =
+            "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":20}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";
+        _ = FerruleJson.Parse(large, "1e21");
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(large, "1.0000000000000001e21"));
+
+        const string small =
+            "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":-7}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";
+        _ = FerruleJson.Parse(small, "1e-7");
+
+        const string smallestSubnormal =
+            "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":5,\"decimal_exponent\":-324}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";
+        _ = FerruleJson.Parse(smallestSubnormal, "5e-324");
+
+        const string sixOrFive =
+            "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":2,\"decimal_exponent\":0},{\"coefficient\":3,\"decimal_exponent\":0}],[{\"coefficient\":5,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        _ = FerruleJson.Parse(sixOrFive, "6");
+        _ = FerruleJson.Parse(sixOrFive, "10");
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(sixOrFive, "4"));
+
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":0,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":10,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":32768}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":309}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":-325}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":0},{\"coefficient\":1,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":0}],[{\"coefficient\":1,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":0,\"extra\":true}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":0}]],\"extra\":true},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":0}]]},\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":2,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_any\":true,\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                     "{\"name\":\"Value\",\"fixed\":\"0.3\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":2,\"decimal_exponent\":-1}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "0"));
         }
     }
 

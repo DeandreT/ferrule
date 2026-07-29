@@ -7,6 +7,8 @@ use json_pattern::{DEFAULT_MATCH_WORK_LIMIT, PortableJsonPattern};
 
 use crate::RuntimeError;
 
+mod multiple_of;
+
 pub const MAX_EMBEDDED_JSON_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_JSON_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
@@ -67,14 +69,14 @@ impl From<RuntimeError> for JsonBoundaryError {
     }
 }
 
-/// Per-document portable-pattern catalog and deterministic work budget.
+/// Per-document portable-constraint state and deterministic pattern work budget.
 #[derive(Debug)]
-struct PatternBoundary {
+struct ConstraintBoundary {
     patterns: RefCell<BTreeMap<String, PortableJsonPattern>>,
     remaining_pattern_work: Cell<u64>,
 }
 
-impl PatternBoundary {
+impl ConstraintBoundary {
     fn new() -> Self {
         Self {
             patterns: RefCell::new(BTreeMap::new()),
@@ -90,12 +92,12 @@ impl PatternBoundary {
         }
     }
 
-    /// Parses one bounded JSON document and applies its embedded pattern
-    /// assertions against the normalized typed instance.
+    /// Parses one bounded JSON document and applies embedded constraints
+    /// against the normalized typed instance.
     fn parse_json(&self, schema: &str, document: &str) -> Result<Instance, JsonBoundaryError> {
         check_input_size(document.len())?;
         let schema = self.parse_schema(schema)?;
-        let formatter_schema = without_patterns(schema.clone());
+        let formatter_schema = without_boundary_constraints(schema.clone());
         let instance = format_json::from_str(document, &formatter_schema).map_err(|error| {
             JsonBoundaryError::InvalidInput {
                 message: error.to_string(),
@@ -119,15 +121,15 @@ impl PatternBoundary {
         self.parse_json(schema, document)
     }
 
-    /// Serializes one instance and applies pattern assertions after all JSON
-    /// scalar normalization and coercion.
+    /// Serializes one instance and applies embedded constraints after all
+    /// JSON scalar normalization and coercion.
     fn serialize_json(
         &self,
         schema: &str,
         instance: &Instance,
     ) -> Result<String, JsonBoundaryError> {
         let schema = self.parse_schema(schema)?;
-        let formatter_schema = without_patterns(schema.clone());
+        let formatter_schema = without_boundary_constraints(schema.clone());
         let document = format_json::to_string(&formatter_schema, instance).map_err(|error| {
             JsonBoundaryError::InvalidOutput {
                 message: error.to_string(),
@@ -179,7 +181,7 @@ impl PatternBoundary {
         let result =
             validate_instance_document(schema, instance, &self.patterns.borrow(), &mut remaining);
         self.remaining_pattern_work.set(remaining);
-        result.map_err(pattern_input_error)
+        result.map_err(constraint_input_error)
     }
 
     fn validate_output(
@@ -190,18 +192,18 @@ impl PatternBoundary {
         let mut remaining = self.remaining_pattern_work.get();
         let result = validate_json_document(schema, value, &self.patterns.borrow(), &mut remaining);
         self.remaining_pattern_work.set(remaining);
-        result.map_err(pattern_output_error)
+        result.map_err(constraint_output_error)
     }
 }
 
 /// Parses one bounded JSON document using an emitter-owned schema.
 pub fn parse_json(schema: &str, document: &str) -> Result<Instance, JsonBoundaryError> {
-    PatternBoundary::new().parse_json(schema, document)
+    ConstraintBoundary::new().parse_json(schema, document)
 }
 
 /// Parses one bounded UTF-8 JSON payload using an emitter-owned schema.
 pub fn parse_json_bytes(schema: &str, document: &[u8]) -> Result<Instance, JsonBoundaryError> {
-    PatternBoundary::new().parse_json_bytes(schema, document)
+    ConstraintBoundary::new().parse_json_bytes(schema, document)
 }
 
 fn check_input_size(bytes: usize) -> Result<(), JsonBoundaryError> {
@@ -216,7 +218,7 @@ fn check_input_size(bytes: usize) -> Result<(), JsonBoundaryError> {
 
 /// Serializes one instance as a bounded pretty-printed JSON document.
 pub fn serialize_json(schema: &str, instance: &Instance) -> Result<String, JsonBoundaryError> {
-    PatternBoundary::new().serialize_json(schema, instance)
+    ConstraintBoundary::new().serialize_json(schema, instance)
 }
 
 /// Serializes one instance as a bounded pretty-printed UTF-8 JSON payload.
@@ -224,7 +226,7 @@ pub fn serialize_json_bytes(
     schema: &str,
     instance: &Instance,
 ) -> Result<Vec<u8>, JsonBoundaryError> {
-    PatternBoundary::new().serialize_json_bytes(schema, instance)
+    ConstraintBoundary::new().serialize_json_bytes(schema, instance)
 }
 
 fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
@@ -278,60 +280,74 @@ fn register_patterns(
     Ok(())
 }
 
-fn without_patterns(mut schema: SchemaNode) -> SchemaNode {
-    clear_patterns(&mut schema);
+fn without_boundary_constraints(mut schema: SchemaNode) -> SchemaNode {
+    clear_boundary_constraints(&mut schema);
     schema
 }
 
-fn clear_patterns(schema: &mut SchemaNode) {
+fn clear_boundary_constraints(schema: &mut SchemaNode) {
     schema.json_patterns = None;
+    schema.json_multiple_of = None;
     if let SchemaKind::Group {
         children, dynamic, ..
     } = &mut schema.kind
     {
         for child in children {
-            clear_patterns(child);
+            clear_boundary_constraints(child);
         }
         if let Some(dynamic) = dynamic {
-            clear_patterns(dynamic);
+            clear_boundary_constraints(dynamic);
         }
     }
 }
 
 #[derive(Debug)]
-enum PatternValidationError {
-    MissingProgram { source: String },
-    Mismatch { name: String },
-    WorkLimit { name: String },
+enum ConstraintValidationError {
+    MissingPatternProgram { source: String },
+    PatternMismatch { name: String },
+    MultipleOfMismatch { name: String },
+    PatternWorkLimit { name: String },
 }
 
-fn pattern_input_error(error: PatternValidationError) -> JsonBoundaryError {
+fn constraint_input_error(error: ConstraintValidationError) -> JsonBoundaryError {
     match error {
-        PatternValidationError::MissingProgram { source } => {
+        ConstraintValidationError::MissingPatternProgram { source } => {
             JsonBoundaryError::InvalidEmbeddedSchema {
                 message: format!("compiled JSON pattern `{source}` is missing"),
             }
         }
-        PatternValidationError::Mismatch { name } => JsonBoundaryError::InvalidInput {
+        ConstraintValidationError::PatternMismatch { name } => JsonBoundaryError::InvalidInput {
             message: format!("`{name}` does not match its JSON Schema pattern constraints"),
         },
-        PatternValidationError::WorkLimit { name } => JsonBoundaryError::InvalidInput {
+        ConstraintValidationError::MultipleOfMismatch { name } => JsonBoundaryError::InvalidInput {
+            message: format!(
+                "`{name}` is not an exact multiple of its JSON Schema multipleOf constraints"
+            ),
+        },
+        ConstraintValidationError::PatternWorkLimit { name } => JsonBoundaryError::InvalidInput {
             message: format!("JSON pattern matching for `{name}` exceeds the bounded work limit"),
         },
     }
 }
 
-fn pattern_output_error(error: PatternValidationError) -> JsonBoundaryError {
+fn constraint_output_error(error: ConstraintValidationError) -> JsonBoundaryError {
     match error {
-        PatternValidationError::MissingProgram { source } => {
+        ConstraintValidationError::MissingPatternProgram { source } => {
             JsonBoundaryError::InvalidEmbeddedSchema {
                 message: format!("compiled JSON pattern `{source}` is missing"),
             }
         }
-        PatternValidationError::Mismatch { name } => JsonBoundaryError::InvalidOutput {
+        ConstraintValidationError::PatternMismatch { name } => JsonBoundaryError::InvalidOutput {
             message: format!("`{name}` does not match its JSON Schema pattern constraints"),
         },
-        PatternValidationError::WorkLimit { name } => JsonBoundaryError::InvalidOutput {
+        ConstraintValidationError::MultipleOfMismatch { name } => {
+            JsonBoundaryError::InvalidOutput {
+                message: format!(
+                    "`{name}` is not an exact multiple of its JSON Schema multipleOf constraints"
+                ),
+            }
+        }
+        ConstraintValidationError::PatternWorkLimit { name } => JsonBoundaryError::InvalidOutput {
             message: format!("JSON pattern matching for `{name}` exceeds the bounded work limit"),
         },
     }
@@ -342,7 +358,7 @@ fn validate_instance_document(
     instance: &Instance,
     programs: &BTreeMap<String, PortableJsonPattern>,
     remaining_work: &mut u64,
-) -> Result<(), PatternValidationError> {
+) -> Result<(), ConstraintValidationError> {
     if schema.repeating {
         if let Instance::Repeated(items) = instance {
             for item in items {
@@ -359,12 +375,14 @@ fn validate_instance_node(
     instance: &Instance,
     programs: &BTreeMap<String, PortableJsonPattern>,
     remaining_work: &mut u64,
-) -> Result<(), PatternValidationError> {
+) -> Result<(), ConstraintValidationError> {
     match (&schema.kind, instance) {
-        (
-            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
-            Instance::Scalar(Value::String(value)),
-        ) => validate_pattern_value(schema, value, programs, remaining_work),
+        (SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }, Instance::Scalar(value)) => {
+            if let Value::String(value) = value {
+                validate_pattern_value(schema, value, programs, remaining_work)?;
+            }
+            multiple_of::validate_instance_value(schema, value)
+        }
         (
             SchemaKind::Group {
                 children, dynamic, ..
@@ -391,7 +409,7 @@ fn validate_json_document(
     value: &serde_json::Value,
     programs: &BTreeMap<String, PortableJsonPattern>,
     remaining_work: &mut u64,
-) -> Result<(), PatternValidationError> {
+) -> Result<(), ConstraintValidationError> {
     if schema.repeating {
         if let serde_json::Value::Array(items) = value {
             for item in items {
@@ -416,12 +434,16 @@ fn validate_json_node(
     value: &serde_json::Value,
     programs: &BTreeMap<String, PortableJsonPattern>,
     remaining_work: &mut u64,
-) -> Result<(), PatternValidationError> {
+) -> Result<(), ConstraintValidationError> {
     match (&schema.kind, value) {
         (
             SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
             serde_json::Value::String(value),
         ) => validate_pattern_value(schema, value, programs, remaining_work),
+        (
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+            serde_json::Value::Number(value),
+        ) => multiple_of::validate_json_value(schema, value),
         (
             SchemaKind::Group {
                 children, dynamic, ..
@@ -456,7 +478,7 @@ fn validate_pattern_value(
     value: &str,
     programs: &BTreeMap<String, PortableJsonPattern>,
     remaining_work: &mut u64,
-) -> Result<(), PatternValidationError> {
+) -> Result<(), ConstraintValidationError> {
     let Some(constraints) = &schema.json_patterns else {
         return Ok(());
     };
@@ -464,7 +486,7 @@ fn validate_pattern_value(
         let mut matched = true;
         for source in alternative {
             let Some(program) = programs.get(source) else {
-                return Err(PatternValidationError::MissingProgram {
+                return Err(ConstraintValidationError::MissingPatternProgram {
                     source: source.clone(),
                 });
             };
@@ -475,7 +497,7 @@ fn validate_pattern_value(
                     break;
                 }
                 Err(_) => {
-                    return Err(PatternValidationError::WorkLimit {
+                    return Err(ConstraintValidationError::PatternWorkLimit {
                         name: schema.name.clone(),
                     });
                 }
@@ -485,7 +507,7 @@ fn validate_pattern_value(
             return Ok(());
         }
     }
-    Err(PatternValidationError::Mismatch {
+    Err(ConstraintValidationError::PatternMismatch {
         name: schema.name.clone(),
     })
 }
@@ -493,8 +515,8 @@ fn validate_pattern_value(
 #[cfg(test)]
 mod tests {
     use ir::{
-        IntegerRange, ItemCountRange, JsonPatternConstraints, NumericRange, ScalarType,
-        ScalarTypeSet, StringLengthRange, Value,
+        IntegerRange, ItemCountRange, JsonMultipleOf, JsonMultipleOfConstraints,
+        JsonPatternConstraints, NumericRange, ScalarType, ScalarTypeSet, StringLengthRange, Value,
     };
 
     use super::*;
@@ -810,6 +832,155 @@ mod tests {
         schema
     }
 
+    fn multiple_of_constraints(divisor: &str) -> JsonMultipleOfConstraints {
+        let Some(divisor) = JsonMultipleOf::from_decimal_lexical(divisor) else {
+            panic!("test multipleOf divisor is valid");
+        };
+        let Ok(constraints) = JsonMultipleOfConstraints::new([[divisor]]) else {
+            panic!("test multipleOf constraints are valid");
+        };
+        constraints
+    }
+
+    fn multiple_of_schema(name: &str, ty: ScalarType, divisor: &str) -> SchemaNode {
+        let constraints = multiple_of_constraints(divisor);
+        let schema = SchemaNode::scalar(name, ty).with_json_multiple_of(constraints);
+        let Some(schema) = schema else {
+            panic!("test multipleOf constraints match the numeric schema");
+        };
+        schema
+    }
+
+    #[test]
+    fn enforces_exact_integer_and_decimal_multiple_of_on_input() {
+        let integer = multiple_of_schema("Quantity", ScalarType::Int, "3");
+        let encoded = serde_json::to_string(&integer).unwrap_or_default();
+        assert_eq!(
+            parse_json(&encoded, "12"),
+            Ok(Instance::Scalar(Value::Int(12)))
+        );
+        assert!(matches!(
+            parse_json(&encoded, "13"),
+            Err(JsonBoundaryError::InvalidInput { ref message })
+                if message.contains("exact multiple")
+        ));
+
+        let decimal = multiple_of_schema("Rate", ScalarType::Float, "0.1");
+        let encoded = serde_json::to_string(&decimal).unwrap_or_default();
+        assert_eq!(
+            parse_json(&encoded, "0.3"),
+            Ok(Instance::Scalar(Value::Float(0.3)))
+        );
+        assert!(matches!(
+            parse_json(&encoded, "0.30000000000000004"),
+            Err(JsonBoundaryError::InvalidInput { ref message })
+                if message.contains("exact multiple")
+        ));
+
+        let Some(types) =
+            ScalarTypeSet::new([ScalarType::String, ScalarType::Int, ScalarType::Float])
+        else {
+            panic!("test scalar union contains distinct scalar types");
+        };
+        let Some(union) = SchemaNode::scalar_union("Value", types)
+            .with_json_multiple_of(multiple_of_constraints("3"))
+        else {
+            panic!("test multipleOf constraints match the numeric scalar union");
+        };
+        let encoded = serde_json::to_string(&union).unwrap_or_default();
+        assert_eq!(
+            parse_json(&encoded, r#""not-numeric""#),
+            Ok(Instance::Scalar(Value::String("not-numeric".into())))
+        );
+        assert_eq!(
+            parse_json(&encoded, "6.0"),
+            Ok(Instance::Scalar(Value::Float(6.0)))
+        );
+        assert!(matches!(
+            parse_json(&encoded, "7"),
+            Err(JsonBoundaryError::InvalidInput { .. })
+        ));
+    }
+
+    #[test]
+    fn handles_signed_zero_subnormals_and_signed_integer_minimum() {
+        let integer = multiple_of_schema("Minimum", ScalarType::Int, "9223372036854775808");
+        let encoded = serde_json::to_string(&integer).unwrap_or_default();
+        assert_eq!(
+            parse_json(&encoded, "-9223372036854775808"),
+            Ok(Instance::Scalar(Value::Int(i64::MIN)))
+        );
+        assert!(matches!(
+            parse_json(&encoded, "9223372036854775807"),
+            Err(JsonBoundaryError::InvalidInput { .. })
+        ));
+
+        let subnormal = multiple_of_schema("Subnormal", ScalarType::Float, "5e-324");
+        let encoded = serde_json::to_string(&subnormal).unwrap_or_default();
+        assert_eq!(
+            parse_json(&encoded, "5e-324"),
+            Ok(Instance::Scalar(Value::Float(f64::from_bits(1))))
+        );
+        let negative_zero = parse_json(&encoded, "-0.0");
+        assert!(matches!(
+            negative_zero,
+            Ok(Instance::Scalar(Value::Float(value))) if value.to_bits() == (-0.0_f64).to_bits()
+        ));
+        assert_eq!(
+            serialize_json(&encoded, &Instance::Scalar(Value::Float(f64::from_bits(1)))).as_deref(),
+            Ok("5e-324\n")
+        );
+
+        let off_grid = multiple_of_schema("Subnormal", ScalarType::Float, "3e-324");
+        let encoded = serde_json::to_string(&off_grid).unwrap_or_default();
+        assert!(matches!(
+            parse_json(&encoded, "5e-324"),
+            Err(JsonBoundaryError::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            serialize_json(&encoded, &Instance::Scalar(Value::Float(f64::from_bits(1)))),
+            Err(JsonBoundaryError::InvalidOutput { .. })
+        ));
+    }
+
+    #[test]
+    fn validates_multiple_of_after_output_numeric_normalization() {
+        let schema = multiple_of_schema("Amount", ScalarType::Float, "0.25");
+        let encoded = serde_json::to_string(&schema).unwrap_or_default();
+        assert_eq!(
+            serialize_json(&encoded, &Instance::Scalar(Value::String("1.50".into()))).as_deref(),
+            Ok("1.5\n")
+        );
+        assert!(matches!(
+            serialize_json(&encoded, &Instance::Scalar(Value::String("1.3".into()))),
+            Err(JsonBoundaryError::InvalidOutput { ref message })
+                if message.contains("exact multiple")
+        ));
+
+        let integer = multiple_of_schema("Count", ScalarType::Int, "3");
+        let encoded = serde_json::to_string(&integer).unwrap_or_default();
+        assert_eq!(
+            serialize_json(&encoded, &Instance::Scalar(Value::String("12".into()))).as_deref(),
+            Ok("12\n")
+        );
+        assert!(matches!(
+            serialize_json(&encoded, &Instance::Scalar(Value::String("13".into()))),
+            Err(JsonBoundaryError::InvalidOutput { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_embedded_multiple_of_domains() {
+        let mut invalid = SchemaNode::scalar("Code", ScalarType::String);
+        invalid.json_multiple_of = Some(multiple_of_constraints("2"));
+        let encoded = serde_json::to_string(&invalid).unwrap_or_default();
+        assert!(matches!(
+            parse_json(&encoded, r#""value""#),
+            Err(JsonBoundaryError::InvalidEmbeddedSchema { ref message })
+                if message.contains("multiple")
+        ));
+    }
+
     #[test]
     fn enforces_portable_pattern_dnf_and_scalar_union_string_tags() {
         let schema = patterned_schema("Code", &[&["^A", "Z$"], &["^(?:😀|[B-C]+)$"]]);
@@ -888,7 +1059,7 @@ mod tests {
         let repeated = schema.repeating();
         let encoded = serde_json::to_string(&repeated).unwrap_or_default();
         let boundary =
-            PatternBoundary::with_pattern_work_limit(charge.saturating_mul(2).saturating_sub(1));
+            ConstraintBoundary::with_pattern_work_limit(charge.saturating_mul(2).saturating_sub(1));
         assert!(matches!(
             boundary.parse_json(&encoded, r#"["a","a"]"#),
             Err(JsonBoundaryError::InvalidInput { ref message })

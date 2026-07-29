@@ -119,13 +119,21 @@
           <strong>Bounded documents.</strong>
           Each JSON input and output is capped at 64 MiB and each trusted
           embedded schema at 1 MiB. Invalid shapes, numeric conversions, scalar
-          constants, exact numeric ranges, array item-count intervals, Unicode
+          constants, exact numeric ranges and decimal <code>multipleOf</code>
+          constraints, array item-count intervals, Unicode
           string-length intervals, bounded portable JSON Schema
           <code>pattern</code> assertions, output serialization, and size excess
           produce typed boundary failures in both Rust and C#. These
           methods are deliberately JSON-only; stored format paths and options
           remain host metadata.
         </div>
+
+        <p>
+          Both generated runtimes evaluate <code>multipleOf</code> through the
+          same canonical decimal coefficient and exponent model, without
+          floating-point tolerance. Compatible conjunctions and exact
+          disjunctions therefore retain identical Rust and C# behavior.
+        </p>
 
         <p>
           JSON Schema patterns use Ferrule's Unicode-scalar Thompson-NFA

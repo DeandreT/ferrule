@@ -14,11 +14,12 @@ mod schema;
 
 pub use schema::{
     IntegerRange, ItemCountRange, JsonFormatAnnotations, JsonFormatAnnotationsError,
+    JsonMultipleOf, JsonMultipleOfConstraints, JsonMultipleOfConstraintsError,
     JsonPatternConstraints, JsonPatternConstraintsError, MAX_DISTINCT_JSON_PATTERNS,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
-    MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS,
-    MAX_JSON_PATTERN_SOURCE_BYTES, MAX_JSON_PATTERN_TERMS, NumberBound, NumberRange, NumericRange,
-    StringLengthRange,
+    MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS,
+    MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
+    MAX_JSON_PATTERN_TERMS, NumberBound, NumberRange, NumericRange, StringLengthRange,
 };
 
 /// Instance-field name used for an XML element's simple text content.
@@ -524,6 +525,11 @@ pub struct SchemaNode {
     /// bounds retain finite values and endpoint exclusivity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub numeric_range: Option<NumericRange>,
+    /// Exact JSON Schema `multipleOf` constraints for a numeric-capable
+    /// scalar. Outer alternatives are ORed; every divisor inside one
+    /// alternative must divide the value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_multiple_of: Option<JsonMultipleOfConstraints>,
     /// Exact cardinality bounds for a repeating JSON array node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_count_range: Option<ItemCountRange>,
@@ -614,6 +620,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             numeric_range: Option<NumericRange>,
             #[serde(default)]
+            json_multiple_of: Option<JsonMultipleOfConstraints>,
+            #[serde(default)]
             item_count_range: Option<ItemCountRange>,
             #[serde(default)]
             string_length_range: Option<StringLengthRange>,
@@ -655,6 +663,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             json_any: repr.json_any,
             fixed: repr.fixed,
             numeric_range: repr.numeric_range,
+            json_multiple_of: repr.json_multiple_of,
             item_count_range: repr.item_count_range,
             string_length_range: repr.string_length_range,
             json_patterns: repr.json_patterns,
@@ -670,7 +679,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, item-count range, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, JSON multipleOf constraints, item-count range, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -885,6 +894,7 @@ impl SchemaNode {
             && self.recursive_ref_is_valid()
             && self.fixed_is_valid()
             && self.numeric_range_is_valid()
+            && self.json_multiple_of_is_valid()
             && self.item_count_range_is_valid()
             && self.string_length_range_is_valid()
             && self.json_patterns_are_valid()
@@ -920,6 +930,7 @@ impl SchemaNode {
             json_any: false,
             fixed: None,
             numeric_range: None,
+            json_multiple_of: None,
             item_count_range: None,
             string_length_range: None,
             json_patterns: None,
@@ -958,6 +969,7 @@ impl SchemaNode {
             json_any: false,
             fixed: None,
             numeric_range: None,
+            json_multiple_of: None,
             item_count_range: None,
             string_length_range: None,
             json_patterns: None,
@@ -1005,6 +1017,7 @@ impl SchemaNode {
             json_any: false,
             fixed: None,
             numeric_range: None,
+            json_multiple_of: None,
             item_count_range: None,
             string_length_range: None,
             json_patterns: None,
@@ -1204,6 +1217,51 @@ impl SchemaNode {
         }
     }
 
+    /// Checks that JSON `multipleOf` metadata is attached to a numeric-capable
+    /// scalar and that an optional fixed lexical value is exactly divisible.
+    pub fn json_multiple_of_is_valid(&self) -> bool {
+        let Some(constraints) = &self.json_multiple_of else {
+            return true;
+        };
+        if self.json_any
+            || !(self.accepts_scalar_type(ScalarType::Int)
+                || self.accepts_scalar_type(ScalarType::Float))
+        {
+            return false;
+        }
+        self.fixed.as_deref().is_none_or(|fixed| match self.kind {
+            SchemaKind::Scalar {
+                ty: ScalarType::Int,
+            } => fixed
+                .parse::<i64>()
+                .is_ok_and(|value| constraints.matches_i64(value)),
+            SchemaKind::Scalar {
+                ty: ScalarType::Float,
+            } => fixed
+                .parse::<f64>()
+                .is_ok_and(|value| constraints.matches_f64(value)),
+            _ => false,
+        })
+    }
+
+    /// Checks JSON `multipleOf` metadata throughout one complete schema tree.
+    pub fn json_multiple_of_tree_is_valid(&self) -> bool {
+        self.json_multiple_of_is_valid()
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children
+                        .iter()
+                        .all(SchemaNode::json_multiple_of_tree_is_valid)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::json_multiple_of_tree_is_valid)
+                }
+            }
+    }
+
     /// Checks that item-count metadata remains attached to an array wrapper.
     pub fn item_count_range_is_valid(&self) -> bool {
         self.item_count_range.is_none() || self.repeating
@@ -1400,6 +1458,7 @@ impl SchemaNode {
                 && !self.container_nullable
                 && self.fixed.is_none()
                 && self.numeric_range.is_none()
+                && self.json_multiple_of.is_none()
                 && self.item_count_range.is_none()
                 && self.string_length_range.is_none()
                 && self.json_patterns.is_none()
@@ -1849,6 +1908,7 @@ impl SchemaNode {
         self.fixed = Some(value.into());
         (self.fixed_is_valid()
             && self.numeric_range_is_valid()
+            && self.json_multiple_of_is_valid()
             && self.string_length_range_is_valid()
             && self.json_pattern_fixed_value_is_valid()
             && self.default_is_valid()
@@ -1860,6 +1920,11 @@ impl SchemaNode {
     pub fn with_numeric_range(mut self, range: NumericRange) -> Option<Self> {
         self.numeric_range = Some(range);
         self.numeric_range_is_valid().then_some(self)
+    }
+
+    pub fn with_json_multiple_of(mut self, constraints: JsonMultipleOfConstraints) -> Option<Self> {
+        self.json_multiple_of = Some(constraints);
+        self.json_multiple_of_is_valid().then_some(self)
     }
 
     pub fn with_item_count_range(mut self, range: ItemCountRange) -> Option<Self> {
@@ -2347,6 +2412,66 @@ mod tests {
             r#"{"name":"x","numeric_range":{"kind":"integer","bounds":{"minimum":1}},"kind":{"kind":"scalar","ty":"string"}}"#,
             r#"{"name":"x","fixed":"0","numeric_range":{"kind":"integer","bounds":{"minimum":1}},"kind":{"kind":"scalar","ty":"int"}}"#,
             r#"{"name":"x","numeric_range":{"kind":"number","bounds":{"minimum":{"value":1.0,"exclusive":true},"maximum":{"value":1.0}}},"kind":{"kind":"scalar","ty":"float"}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn json_multiple_of_constraints_are_typed_exact_and_serde_validated()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let divisor = JsonMultipleOf::from_decimal_lexical("2.5")
+            .ok_or("test multipleOf divisor is representable")?;
+        let constraints = JsonMultipleOfConstraints::new([[divisor]])?;
+
+        let integer = SchemaNode::scalar("Count", ScalarType::Int)
+            .with_json_multiple_of(constraints.clone())
+            .ok_or("integer scalar accepts multipleOf")?;
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&serde_json::to_string(&integer)?)?,
+            integer
+        );
+        assert!(
+            SchemaNode::scalar_fixed("Count", ScalarType::Int, "5")
+                .with_json_multiple_of(constraints.clone())
+                .is_some()
+        );
+        assert!(
+            SchemaNode::scalar_fixed("Count", ScalarType::Int, "6")
+                .with_json_multiple_of(constraints.clone())
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Text", ScalarType::String)
+                .with_json_multiple_of(constraints.clone())
+                .is_none()
+        );
+        assert!(
+            SchemaNode::group("Record", Vec::new())
+                .with_json_multiple_of(constraints.clone())
+                .is_none()
+        );
+        let arbitrary = SchemaNode::scalar("Any", ScalarType::String)
+            .json_any()
+            .ok_or("plain arbitrary JSON scalar is valid")?;
+        assert!(
+            arbitrary
+                .with_json_multiple_of(constraints.clone())
+                .is_none()
+        );
+
+        let types = ScalarTypeSet::new([ScalarType::String, ScalarType::Int])
+            .ok_or("test scalar union is heterogeneous")?;
+        assert!(
+            SchemaNode::scalar_union("Value", types)
+                .with_json_multiple_of(constraints)
+                .is_some()
+        );
+        for invalid in [
+            r#"{"name":"x","json_multiple_of":{"any_of":[[{"coefficient":2,"decimal_exponent":0}]]},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","fixed":"3","json_multiple_of":{"any_of":[[{"coefficient":2,"decimal_exponent":0}]]},"kind":{"kind":"scalar","ty":"int"}}"#,
+            r#"{"name":"x","json_any":true,"json_multiple_of":{"any_of":[[{"coefficient":2,"decimal_exponent":0}]]},"kind":{"kind":"scalar","ty":"string"}}"#,
         ] {
             assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
         }

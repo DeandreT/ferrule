@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, ordinary scalar `const` and singleton `enum`, exact numeric, array-count, and Unicode string-length intervals, bounded portable string `pattern` assertions, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, ordinary scalar `const` and singleton `enum`, exact numeric ranges and decimal `multipleOf`, exact array-count and Unicode string-length intervals, bounded portable string `pattern` assertions, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -70,8 +70,15 @@ layout and dialect details that an extension cannot express.
   exclusive finite endpoints and reject intervals containing no representable
   finite value. Import accepts both modern numeric exclusive bounds and Draft 4
   boolean exclusives regardless of the declared dialect for interoperability;
-  export emits the canonical normalized form. Numeric-range-bearing general scalar
-  unions and `multipleOf` remain unsupported.
+  export emits the canonical normalized form. Positive finite `multipleOf`
+  divisors are retained as canonical decimal coefficients and exponents, with
+  no floating-point tolerance. Compatible `allOf` branches form conjunctions
+  and exact `anyOf` branches form disjunctions. Contiguous same-type numeric
+  range branches normalize to one exact interval when their divisor constraints
+  are identical. When an `anyOf` varies both its numeric range and divisor
+  constraint, Ferrule rejects the correlated union rather than independently
+  widening either axis. Numeric-range-bearing heterogeneous scalar unions remain
+  unsupported.
   Concrete arrays retain exact non-negative `minItems` and `maxItems`
   intervals through references, nullable wrappers, compatible `allOf`
   intersections, and exactly representable `anyOf` unions. Input and output
@@ -81,8 +88,8 @@ layout and dialect details that an extension cannot express.
   unions and independently constrained nested array wrappers reject rather than
   widen. `$ref` siblings follow the dialect declared by their physical schema
   resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
-  schemas without `$schema` apply Ferrule's supported numeric, item-count,
-  string-length, and annotation metadata. Concrete string-capable scalar
+  schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
+  item-count, string-length, and annotation metadata. Concrete string-capable scalar
   domains retain exact non-negative `minLength` and `maxLength` intervals.
   Ferrule measures them in Unicode scalar values, applies them only when a
   scalar union's runtime value is a string, and enforces them on native and
@@ -125,7 +132,8 @@ layout and dialect details that an extension cannot express.
   Unsupported modern structural intersections reject explicitly instead of
   widening silently; external resources select their own policy.
   Export emits the canonical normalized constraint form.
-  General heterogeneous array composition, numeric-range-bearing scalar unions,
+  General heterogeneous array composition, heterogeneous or correlated
+  numeric-range scalar unions,
   and mixed structural unions remain unsupported.
   Shape-neutral validation keywords are
   accepted for schema recovery but are not enforced by the mapping runtime.
