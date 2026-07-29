@@ -2,12 +2,17 @@ use ir::{
     GroupAlternativeConstraintValue, GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode,
 };
 
+use crate::JsonFormatError;
+
 /// Writes `node`'s shape (sans repetition) into `out`; repetition wraps it
 /// in an array schema.
-pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
+pub(super) fn render(
+    node: &SchemaNode,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<(), JsonFormatError> {
     if node.container_nullable {
         let mut content = serde_json::Map::new();
-        render_non_nullable(node, &mut content);
+        render_non_nullable(node, &mut content)?;
         out.insert(
             "anyOf".into(),
             serde_json::Value::Array(vec![
@@ -15,28 +20,35 @@ pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_
                 serde_json::json!({ "type": "null" }),
             ]),
         );
-        return;
+        return Ok(());
     }
-    render_non_nullable(node, out);
+    render_non_nullable(node, out)
 }
 
-fn render_non_nullable(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
+fn render_non_nullable(
+    node: &SchemaNode,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<(), JsonFormatError> {
     if node.repeating {
         out.insert("type".into(), "array".into());
         let mut items = serde_json::Map::new();
-        render_shape(node, &mut items);
+        render_shape(node, &mut items)?;
         out.insert("items".into(), serde_json::Value::Object(items));
         super::item_counts::render(node, out);
     } else {
-        render_shape(node, out);
+        render_shape(node, out)?;
     }
+    Ok(())
 }
 
-fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
+fn render_shape(
+    node: &SchemaNode,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<(), JsonFormatError> {
     match &node.kind {
         SchemaKind::Scalar { ty } => {
             if node.json_any {
-                return;
+                return Ok(());
             }
             let name = match ty {
                 ScalarType::String => "string",
@@ -53,10 +65,11 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
             if let Some(value) = super::constraints::rendered_fixed(node) {
                 out.insert("const".into(), value);
             }
-            super::ranges::render(node, out);
+            super::ranges::render(node, out)?;
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
             super::patterns::render(node, out);
+            super::multiples::render(node, out)?;
         }
         SchemaKind::ScalarUnion { types } => {
             let mut types = types
@@ -71,6 +84,7 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
             super::patterns::render(node, out);
+            super::multiples::render(node, out)?;
         }
         SchemaKind::Group {
             children,
@@ -96,7 +110,7 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                             if let Some(child) = children.iter().find(|child| child.name == *member)
                             {
                                 let mut property = serde_json::Map::new();
-                                render(child, &mut property);
+                                render(child, &mut property)?;
                                 if let Some(constraint) = alternative
                                     .constraints
                                     .iter()
@@ -117,26 +131,26 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                         if !alternative.required.is_empty() {
                             variant.insert("required".into(), alternative.required.clone().into());
                         }
-                        serde_json::Value::Object(variant)
+                        Ok(serde_json::Value::Object(variant))
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, JsonFormatError>>()?;
                 let keyword = match node.alternative_mode() {
                     GroupAlternativeMode::Exclusive => "oneOf",
                     GroupAlternativeMode::Inclusive => "anyOf",
                 };
                 out.insert(keyword.into(), serde_json::Value::Array(variants));
-                return;
+                return Ok(());
             }
             let mut props = serde_json::Map::new();
             for child in children {
                 let mut prop = serde_json::Map::new();
-                render(child, &mut prop);
+                render(child, &mut prop)?;
                 props.insert(child.name.clone(), serde_json::Value::Object(prop));
             }
             out.insert("properties".into(), serde_json::Value::Object(props));
             if let Some(dynamic) = dynamic {
                 let mut additional = serde_json::Map::new();
-                render(dynamic, &mut additional);
+                render(dynamic, &mut additional)?;
                 out.insert(
                     "additionalProperties".into(),
                     serde_json::Value::Object(additional),
@@ -146,6 +160,7 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
             }
         }
     }
+    Ok(())
 }
 
 fn scalar_type_name(ty: ScalarType) -> &'static str {

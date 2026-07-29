@@ -24,6 +24,7 @@ mod extra_targets;
 mod failure_rules;
 mod grouping;
 mod joins;
+mod json_multiple_of;
 mod json_patterns;
 mod recursive_filter;
 mod scalar_functions;

@@ -1,4 +1,6 @@
-use ir::{JsonPatternConstraints, ScalarType, SchemaNode};
+use ir::{
+    JsonMultipleOf, JsonMultipleOfConstraints, JsonPatternConstraints, ScalarType, SchemaNode,
+};
 
 use super::import_str;
 use crate::JsonFormatError;
@@ -42,6 +44,57 @@ fn export_rejects_schema_wide_pattern_program_overflow() {
         })
         .collect();
     assert_invalid_pattern_export(&SchemaNode::group("Root", children));
+}
+
+#[test]
+fn export_rejects_corrupted_multiple_of_domains_and_fixed_values() {
+    let Some(divisor) = JsonMultipleOf::from_decimal_lexical("2") else {
+        panic!("test divisor is representable");
+    };
+    let Ok(constraints) = JsonMultipleOfConstraints::new([[divisor]]) else {
+        panic!("test constraints are valid");
+    };
+
+    let mut string = SchemaNode::scalar("Text", ScalarType::String);
+    string.json_multiple_of = Some(constraints.clone());
+    assert!(matches!(
+        super::super::export(&string),
+        Err(JsonFormatError::InvalidMultipleOfMetadata { .. })
+    ));
+
+    let mut fixed = SchemaNode::scalar_fixed("Count", ScalarType::Int, "3");
+    fixed.json_multiple_of = Some(constraints.clone());
+    assert!(matches!(
+        super::super::export(&fixed),
+        Err(JsonFormatError::InvalidMultipleOfMetadata { .. })
+    ));
+
+    let mut child = SchemaNode::scalar("Child", ScalarType::String);
+    child.json_multiple_of = Some(constraints);
+    assert!(matches!(
+        super::super::export(&SchemaNode::group("Root", vec![child])),
+        Err(JsonFormatError::InvalidMultipleOfMetadata { .. })
+    ));
+}
+
+#[test]
+fn export_rejects_exact_decimal_divisors_that_json_numbers_would_round() {
+    let Some(divisor) = JsonMultipleOf::from_decimal_lexical("3e-324") else {
+        panic!("exact decimal remains positive after finite JSON-number rounding");
+    };
+    let Ok(constraints) = JsonMultipleOfConstraints::new([[divisor]]) else {
+        panic!("test constraints are valid");
+    };
+    let Some(schema) =
+        SchemaNode::scalar("Value", ScalarType::Float).with_json_multiple_of(constraints)
+    else {
+        panic!("number scalar accepts the exact divisor");
+    };
+    assert!(matches!(
+        super::super::export(&schema),
+        Err(JsonFormatError::InvalidMultipleOfMetadata { ref reason })
+            if reason.contains("without changing its exact value")
+    ));
 }
 
 #[test]

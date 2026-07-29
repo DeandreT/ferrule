@@ -308,7 +308,8 @@ Stored output paths and format options remain host metadata: generated libraries
 return instances or JSON documents and do not write files.
 Embedded JSON schemas are validated recursively before emission and again at
 the generated boundary. Rust and C# enforce scalar constants, numeric ranges,
-array item-count intervals, Unicode-scalar string-length intervals, and portable
+exact decimal `multipleOf` constraints, array item-count intervals,
+Unicode-scalar string-length intervals, and portable
 JSON Schema `pattern` assertions on both input and normalized output. Pattern
 constraints retain conjunctions and exact disjunctions, nullable bypass, array
 items, typed dynamic properties, and scalar-union runtime tags. Both generated
@@ -316,6 +317,10 @@ runtimes use Ferrule's bounded Thompson-NFA matcher rather than a host regex
 engine, share one 100-million-unit work budget across each JSON document parse
 or serialization call, and report malformed or over-budget embedded metadata as a
 typed boundary error.
+Both runtimes evaluate `multipleOf` through the same canonical decimal
+coefficient/exponent model rather than epsilon comparison. This keeps ordinary
+decimal cases such as `0.3` divided by `0.1` exact while preserving a distinct
+computed value such as `0.30000000000000004`.
 
 Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable

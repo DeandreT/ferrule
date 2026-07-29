@@ -99,9 +99,12 @@ pub(crate) fn validate_json(
     })
 }
 
-pub(crate) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
+pub(crate) fn render(
+    node: &SchemaNode,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<(), JsonFormatError> {
     let Some(range) = node.numeric_range else {
-        return;
+        return Ok(());
     };
     match range {
         NumericRange::Integer(range) => {
@@ -113,10 +116,11 @@ pub(crate) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_
             }
         }
         NumericRange::Number(range) => {
-            render_number_bound(out, range.minimum(), "minimum", "exclusiveMinimum");
-            render_number_bound(out, range.maximum(), "maximum", "exclusiveMaximum");
+            render_number_bound(out, range.minimum(), "minimum", "exclusiveMinimum")?;
+            render_number_bound(out, range.maximum(), "maximum", "exclusiveMaximum")?;
         }
     }
+    Ok(())
 }
 
 pub(super) fn intersect(
@@ -138,6 +142,200 @@ pub(super) fn intersect(
             .map(Some)
             .ok_or_else(|| unsupported(name, "allOf numeric ranges have an empty intersection")),
     }
+}
+
+pub(super) fn union(
+    name: &str,
+    ranges: impl IntoIterator<Item = Option<NumericRange>>,
+) -> Result<Option<NumericRange>, JsonFormatError> {
+    let ranges = ranges.into_iter().collect::<Vec<_>>();
+    if ranges.iter().any(Option::is_none) {
+        return Ok(None);
+    }
+    let ranges = ranges.into_iter().flatten().collect::<Vec<_>>();
+    let Some(first) = ranges.first() else {
+        return Ok(None);
+    };
+    match first {
+        NumericRange::Integer(_) => union_integer_ranges(name, ranges),
+        NumericRange::Number(_) => union_number_ranges(name, ranges),
+    }
+}
+
+fn union_integer_ranges(
+    name: &str,
+    ranges: Vec<NumericRange>,
+) -> Result<Option<NumericRange>, JsonFormatError> {
+    let mut ranges = ranges
+        .into_iter()
+        .map(|range| match range {
+            NumericRange::Integer(range) => Ok(range),
+            NumericRange::Number(_) => Err(unsupported(
+                name,
+                "anyOf numeric ranges use incompatible integer and number domains",
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    ranges.sort_by_key(|range| (range.minimum().is_some(), range.minimum()));
+    let Some(first) = ranges.first().copied() else {
+        return Ok(None);
+    };
+    let minimum = first.minimum();
+    let mut maximum = first.maximum();
+    for range in ranges.into_iter().skip(1) {
+        let Some(current_maximum) = maximum else {
+            return normalized_integer_union(name, minimum, None);
+        };
+        let Some(next_minimum) = range.minimum() else {
+            return Err(unsupported(
+                name,
+                "anyOf integer ranges are not in canonical lower-bound order",
+            ));
+        };
+        if next_minimum > current_maximum.saturating_add(1) {
+            return Err(unsupported(
+                name,
+                "anyOf numeric ranges are disjoint and cannot be represented as one interval",
+            ));
+        }
+        maximum = match (maximum, range.maximum()) {
+            (_, None) => None,
+            (Some(left), Some(right)) => Some(left.max(right)),
+            (None, _) => None,
+        };
+    }
+    normalized_integer_union(name, minimum, maximum)
+}
+
+fn union_number_ranges(
+    name: &str,
+    ranges: Vec<NumericRange>,
+) -> Result<Option<NumericRange>, JsonFormatError> {
+    let mut ranges = ranges
+        .into_iter()
+        .map(|range| match range {
+            NumericRange::Number(range) => Ok(range),
+            NumericRange::Integer(_) => Err(unsupported(
+                name,
+                "anyOf numeric ranges use incompatible integer and number domains",
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    ranges.sort_by(|left, right| number_first(*left).total_cmp(&number_first(*right)));
+    let Some(first) = ranges.first().copied() else {
+        return Ok(None);
+    };
+    let minimum = first.minimum();
+    let mut maximum = first.maximum();
+    for range in ranges.into_iter().skip(1) {
+        let current_last = number_last(maximum);
+        let next_first = number_first(range);
+        let contiguous = current_last == f64::MAX
+            || next_representable(current_last).is_some_and(|successor| next_first <= successor);
+        if !contiguous {
+            return Err(unsupported(
+                name,
+                "anyOf numeric ranges are disjoint and cannot be represented as one interval",
+            ));
+        }
+        maximum = looser_maximum(maximum, range.maximum());
+    }
+    normalized_number_union(name, minimum, maximum)
+}
+
+fn number_first(range: NumberRange) -> f64 {
+    match range.minimum() {
+        Some(bound) if bound.is_exclusive() => {
+            next_representable(bound.value().get()).unwrap_or(f64::MAX)
+        }
+        Some(bound) => bound.value().get(),
+        None => -f64::MAX,
+    }
+}
+
+fn number_last(maximum: Option<NumberBound>) -> f64 {
+    match maximum {
+        Some(bound) if bound.is_exclusive() => {
+            previous_representable(bound.value().get()).unwrap_or(-f64::MAX)
+        }
+        Some(bound) => bound.value().get(),
+        None => f64::MAX,
+    }
+}
+
+fn looser_maximum(left: Option<NumberBound>, right: Option<NumberBound>) -> Option<NumberBound> {
+    match (left, right) {
+        (None, _) | (_, None) => None,
+        (Some(left), Some(right)) => {
+            let left_value = left.value().get();
+            let right_value = right.value().get();
+            if left_value < right_value {
+                Some(right)
+            } else if left_value > right_value || !left.is_exclusive() {
+                Some(left)
+            } else {
+                Some(right)
+            }
+        }
+    }
+}
+
+fn normalized_integer_union(
+    name: &str,
+    minimum: Option<i64>,
+    maximum: Option<i64>,
+) -> Result<Option<NumericRange>, JsonFormatError> {
+    if minimum.is_none() && maximum.is_none() {
+        return Ok(None);
+    }
+    IntegerRange::new(minimum, maximum)
+        .map(NumericRange::Integer)
+        .map(Some)
+        .ok_or_else(|| unsupported(name, "anyOf integer range union failed to normalize"))
+}
+
+fn normalized_number_union(
+    name: &str,
+    minimum: Option<NumberBound>,
+    maximum: Option<NumberBound>,
+) -> Result<Option<NumericRange>, JsonFormatError> {
+    if minimum.is_none() && maximum.is_none() {
+        return Ok(None);
+    }
+    NumberRange::new(minimum, maximum)
+        .map(NumericRange::Number)
+        .map(Some)
+        .ok_or_else(|| unsupported(name, "anyOf number range union failed to normalize"))
+}
+
+fn next_representable(value: f64) -> Option<f64> {
+    if value == f64::MAX {
+        return None;
+    }
+    if value == 0.0 {
+        return Some(f64::from_bits(1));
+    }
+    let bits = value.to_bits();
+    Some(f64::from_bits(if value > 0.0 {
+        bits + 1
+    } else {
+        bits - 1
+    }))
+}
+
+fn previous_representable(value: f64) -> Option<f64> {
+    if value == -f64::MAX {
+        return None;
+    }
+    if value == 0.0 {
+        return Some(f64::from_bits((1_u64 << 63) | 1));
+    }
+    let bits = value.to_bits();
+    Some(f64::from_bits(if value > 0.0 {
+        bits - 1
+    } else {
+        bits + 1
+    }))
 }
 
 fn convert(
@@ -494,9 +692,9 @@ fn render_number_bound(
     bound: Option<NumberBound>,
     inclusive_name: &str,
     exclusive_name: &str,
-) {
+) -> Result<(), JsonFormatError> {
     let Some(bound) = bound else {
-        return;
+        return Ok(());
     };
     out.insert(
         if bound.is_exclusive() {
@@ -505,8 +703,42 @@ fn render_number_bound(
             inclusive_name
         }
         .into(),
-        bound.value().get().into(),
+        exact_json_number(bound.value().get())?,
     );
+    Ok(())
+}
+
+fn exact_json_number(value: f64) -> Result<serde_json::Value, JsonFormatError> {
+    const I64_UPPER_EXCLUSIVE: f64 = 9_223_372_036_854_775_808.0;
+    const U64_UPPER_EXCLUSIVE: f64 = 18_446_744_073_709_551_616.0;
+
+    if value == 0.0 {
+        return Ok(0_i64.into());
+    }
+    if (i64::MIN as f64..I64_UPPER_EXCLUSIVE).contains(&value) {
+        let integer = value as i64;
+        if integer as f64 == value {
+            return Ok(integer.into());
+        }
+    }
+    if (0.0..U64_UPPER_EXCLUSIVE).contains(&value) {
+        let integer = value as u64;
+        if integer as f64 == value {
+            return Ok(integer.into());
+        }
+    }
+    if value.fract() == 0.0 {
+        return Err(JsonFormatError::InvalidNumericRangeMetadata {
+            reason: format!(
+                "integral number bound `{value}` is outside the exact JSON integer token domain"
+            ),
+        });
+    }
+    serde_json::Number::from_f64(value)
+        .map(serde_json::Value::Number)
+        .ok_or_else(|| JsonFormatError::InvalidNumericRangeMetadata {
+            reason: format!("number bound `{value}` is not finite"),
+        })
 }
 
 fn display(range: NumericRange) -> String {

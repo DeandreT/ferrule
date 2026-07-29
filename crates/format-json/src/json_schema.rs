@@ -35,6 +35,7 @@ pub(crate) mod constraints;
 mod files;
 mod formats;
 pub(crate) mod item_counts;
+pub(crate) mod multiples;
 mod patterns;
 pub(crate) mod ranges;
 mod render;
@@ -173,6 +174,7 @@ fn parse(
             active_refs,
         )? {
             ranges::apply(name, schema, &mut nullable, false)?;
+            multiples::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
@@ -188,6 +190,7 @@ fn parse(
         }
         if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
             let mut scalar = scalar;
+            multiples::apply(name, schema, &mut scalar, false)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
             formats::apply(name, schema, &mut scalar)?;
@@ -202,6 +205,7 @@ fn parse(
             active_refs,
         )?;
         string_lengths::validate_ignored(name, schema)?;
+        multiples::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
@@ -216,6 +220,7 @@ fn parse(
             active_refs,
         )? {
             ranges::apply(name, schema, &mut nullable, false)?;
+            multiples::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
@@ -231,6 +236,7 @@ fn parse(
         }
         if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
             let mut scalar = scalar;
+            multiples::apply(name, schema, &mut scalar, false)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
             formats::apply(name, schema, &mut scalar)?;
@@ -241,6 +247,7 @@ fn parse(
         {
             let mut array = array;
             string_lengths::validate_ignored(name, schema)?;
+            multiples::validate_ignored(name, schema)?;
             patterns::validate_ignored(name, schema)?;
             formats::apply(name, schema, &mut array)?;
             return Ok(array);
@@ -254,11 +261,13 @@ fn parse(
             active_refs,
         )?;
         string_lengths::validate_ignored(name, schema)?;
+        multiples::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
     }
     patterns::validate_ignored(name, schema)?;
+    multiples::validate_ignored(name, schema)?;
     let (ty, nullable) = schema_type(name, schema)?;
     let type_was_absent = matches!(&ty, ImportedSchemaType::Absent);
     let constant = constraints::selected_constraint(name, schema)?;
@@ -315,6 +324,7 @@ fn parse(
                     let mut node = arbitrary_json_schema(name)?.repeating();
                     node.container_nullable = nullable;
                     ranges::validate_ignored(name, schema)?;
+                    multiples::validate_ignored(name, schema)?;
                     item_counts::apply(name, schema, &mut node, false)?;
                     string_lengths::validate_ignored(name, schema)?;
                     patterns::validate_ignored(name, schema)?;
@@ -324,18 +334,20 @@ fn parse(
                 let item = parse(name, items, doc, active_refs)?;
                 if item.repeating
                     && (item.item_count_range.is_some()
+                        || item.json_multiple_of.is_some()
                         || item.string_length_range.is_some()
                         || item.json_patterns.is_some()
                         || item_counts::has_keywords(schema))
                 {
                     return Err(unsupported_union(
                         name,
-                        "nested arrays with item-count, string-length, or pattern constraints require distinct wrapper levels",
+                        "nested arrays with item-count, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
                     ));
                 }
                 let mut node = item.repeating();
                 node.container_nullable = nullable;
                 ranges::validate_ignored(name, schema)?;
+                multiples::validate_ignored(name, schema)?;
                 item_counts::apply(name, schema, &mut node, false)?;
                 string_lengths::validate_ignored(name, schema)?;
                 patterns::validate_ignored(name, schema)?;
@@ -384,6 +396,12 @@ fn parse(
         &mut node,
         type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
     )?;
+    multiples::apply(
+        name,
+        schema,
+        &mut node,
+        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+    )?;
     item_counts::apply(
         name,
         schema,
@@ -421,11 +439,13 @@ fn apply_known_shape_constraints(
 ) -> Result<(), JsonFormatError> {
     if node.repeating {
         ranges::validate_ignored(name, schema)?;
+        multiples::validate_ignored(name, schema)?;
         item_counts::apply(name, schema, node, false)?;
         string_lengths::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)
     } else {
         ranges::apply(name, schema, node, false)?;
+        multiples::apply(name, schema, node, false)?;
         item_counts::validate_ignored(name, schema)?;
         string_lengths::apply(name, schema, node, false)?;
         patterns::apply(name, schema, node, false)
@@ -437,6 +457,7 @@ fn reject_unresolved_ref_constraints(
     schema: &serde_json::Value,
 ) -> Result<(), JsonFormatError> {
     if ranges::has_range_keywords(schema)
+        || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
             && item_counts::is_effectively_constrained(name, schema)?
         || formats::has_keyword(schema)
@@ -458,6 +479,7 @@ pub(super) fn reject_unsupported_ref_siblings(
 ) -> Result<(), JsonFormatError> {
     formats::validate(name, schema)?;
     string_lengths::validate_ignored(name, schema)?;
+    multiples::validate_ignored(name, schema)?;
     patterns::validate_ignored(name, schema)?;
     let Some(object) = schema.as_object() else {
         return Ok(());
@@ -484,7 +506,6 @@ fn unsupported_ref_sibling(keyword: &str) -> bool {
             | "type"
             | "const"
             | "enum"
-            | "multipleOf"
             | "maxProperties"
             | "minProperties"
             | "required"
@@ -636,6 +657,7 @@ fn attach_dynamic_fields(
             if object.is_empty()
                 || (!declares_supported_shape(object)
                     && !string_lengths::is_effectively_constrained("*", additional)?
+                    && !multiples::has_keyword(additional)
                     && !patterns::is_effectively_constrained("*", additional)?)
             {
                 return attach_unconstrained_dynamic(group);
@@ -765,6 +787,13 @@ fn unsupported_object(name: &str, reason: &str) -> JsonFormatError {
 /// reads (repeating nodes become `type: array` wrappers). The root gets a
 /// `title` so the name survives a roundtrip.
 pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
+    if !schema.json_multiple_of_tree_is_valid() {
+        return Err(JsonFormatError::InvalidMultipleOfMetadata {
+            reason:
+                "multipleOf constraints are incompatible with their numeric domains or fixed values"
+                    .to_string(),
+        });
+    }
     if !schema.json_pattern_budget_is_valid() {
         return Err(JsonFormatError::InvalidPatternMetadata {
             reason: "schema-wide pattern domains, fixed values, count, source, instruction, or work budget are invalid"
@@ -773,7 +802,7 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
     }
     let mut root = serde_json::Map::new();
     root.insert("title".into(), schema.name.clone().into());
-    render::render(schema, &mut root);
+    render::render(schema, &mut root)?;
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         root,
     ))?)
