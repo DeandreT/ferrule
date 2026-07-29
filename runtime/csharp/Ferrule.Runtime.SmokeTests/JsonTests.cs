@@ -22,6 +22,9 @@ internal static partial class Program
     private const string ScalarUnionGroupJsonSchema =
         "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\"]}},{\"name\":\"Items\",\"repeating\":true,\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\"]}}]}}";
 
+    private const string RequiredJsonSchema =
+        "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Id\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"Note\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"required\":[\"Id\",\"Note\"]}}";
+
     private static void JsonDocumentBoundaries()
     {
         var parsed = (FerruleGroup)FerruleJson.Parse(
@@ -61,6 +64,30 @@ internal static partial class Program
                 Group(
                     Field("Type", Scalar(Text("text"))),
                     Field("Count", Scalar(FerruleValue.FromInt64(1))))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(RequiredJsonSchema, "{\"Note\":null}"));
+        var required = (FerruleGroup)FerruleJson.Parse(
+            RequiredJsonSchema,
+            "{\"Id\":7,\"Note\":null}");
+        Equal(
+            FerruleValue.JsonNull,
+            ((FerruleScalar)required.Fields[1].Value).Value);
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                RequiredJsonSchema,
+                Group(
+                    Field("Id", Scalar(FerruleValue.Null)),
+                    Field("Note", Scalar(Text("present"))))));
+        Equal(
+            "{\n  \"Id\": 7,\n  \"Note\": null\n}\n",
+            FerruleJson.Serialize(RequiredJsonSchema, required));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                "{\"name\":\"Broken\",\"kind\":{\"kind\":\"group\",\"children\":[],\"required\":[\"missing\"]}}",
+                "{}"));
 
         JsonScalarUnionBoundaries();
     }

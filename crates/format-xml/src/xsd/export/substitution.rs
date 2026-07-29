@@ -450,6 +450,7 @@ fn projection(head: &SchemaNode, members: &[String]) -> SchemaNode {
         alternatives,
         xml_restricted_alternatives,
         dynamic,
+        ..
     } = &mut projected.kind
     {
         children.retain(|child| members.iter().any(|member| member == &child.name));

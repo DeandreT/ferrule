@@ -1726,10 +1726,12 @@ fn xml_entry_schema_is_exact(node: &SchemaNode) -> bool {
         SchemaKind::Group {
             children,
             alternatives,
+            required,
             xml_restricted_alternatives,
             dynamic,
         } => {
             alternatives.is_empty()
+                && required.is_empty()
                 && xml_restricted_alternatives.is_empty()
                 && dynamic.is_none()
                 && if node.name == ir::XML_ELEMENTS_FIELD {

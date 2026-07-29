@@ -346,6 +346,7 @@ fn merge_alternatives_at(
             children,
             dynamic: None,
             alternatives: Vec::new(),
+            required: Vec::new(),
             xml_restricted_alternatives: Vec::new(),
         };
     }

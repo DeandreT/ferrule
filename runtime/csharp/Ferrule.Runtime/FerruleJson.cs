@@ -165,6 +165,7 @@ public static class FerruleJson
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
         var alternatives = new List<JsonAlternative>();
+        var required = Array.Empty<string>();
         if (scalarDomain == JsonScalarDomain.None)
         {
             if (kindElement.TryGetProperty("children", out var childElements))
@@ -194,11 +195,35 @@ public static class FerruleJson
                     alternatives.Add(ReadAlternative(alternative));
                 }
             }
+            if (kindElement.TryGetProperty("required", out _))
+            {
+                required = RequiredStrings(kindElement, "required");
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var field in required)
+                {
+                    if (field.Length == 0 || !seen.Add(field))
+                    {
+                        throw Boundary(
+                            $"Embedded JSON schema node '{name}' has empty or duplicate required fields.");
+                    }
+                    if (dynamic is null && !children.Any(child =>
+                            string.Equals(child.Name, field, StringComparison.Ordinal)))
+                    {
+                        throw Boundary(
+                            $"Embedded JSON schema node '{name}' requires undeclared field '{field}'.");
+                    }
+                }
+            }
             if (dynamic is not null && alternatives.Count != 0)
             {
                 throw Boundary(
                     $"Embedded JSON schema node '{name}' combines an open object with closed alternatives.");
             }
+        }
+        else if (kindElement.TryGetProperty("required", out _))
+        {
+            throw Boundary(
+                $"Embedded JSON scalar schema node '{name}' cannot declare required object fields.");
         }
 
         return new JsonSchemaNode(
@@ -210,6 +235,7 @@ public static class FerruleJson
             scalarDomain,
             children,
             dynamic,
+            required,
             alternatives,
             element.TryGetProperty("alternative_mode", out var mode) &&
             mode.ValueKind == JsonValueKind.String &&
@@ -362,6 +388,7 @@ public static class FerruleJson
 
         RequireKind(element, JsonValueKind.Object, schema.Name, "object");
         var properties = OrderedProperties(element);
+        ValidateRequired(schema, properties);
         ValidateAlternatives(schema, properties);
         var fields = new List<FerruleField>();
         if (schema.Dynamic is { } dynamic)
@@ -569,6 +596,7 @@ public static class FerruleJson
             throw Shape(schema.Name, "object", InstanceKind(instance));
         }
 
+        ValidateOutputRequired(schema, group);
         ValidateOutputAlternatives(schema, group);
         writer.WriteStartObject();
         if (schema.Dynamic is { } dynamic)
@@ -875,6 +903,38 @@ public static class FerruleJson
     private static bool BoundaryAbsence(JsonSchemaNode schema, FerruleInstance instance) =>
         instance is FerruleScalar { Value.Kind: FerruleValueKind.Null } &&
         (schema.ContainerNullable || !schema.Repeating && schema.IsScalar);
+
+    private static void ValidateRequired(
+        JsonSchemaNode schema,
+        IReadOnlyList<JsonProperty> properties)
+    {
+        foreach (var required in schema.Required)
+        {
+            if (!properties.Any(property =>
+                    string.Equals(property.Name, required, StringComparison.Ordinal)))
+            {
+                throw Boundary(
+                    $"JSON object '{schema.Name}' requires property '{required}'.");
+            }
+        }
+    }
+
+    private static void ValidateOutputRequired(
+        JsonSchemaNode schema,
+        FerruleGroup group)
+    {
+        foreach (var required in schema.Required)
+        {
+            var child = schema.Child(required) ?? schema.Dynamic;
+            if (child is null ||
+                !group.TryGetField(required, out var value) ||
+                BoundaryAbsence(child, value))
+            {
+                throw Boundary(
+                    $"JSON object '{schema.Name}' requires property '{required}'.");
+            }
+        }
+    }
 
     private static void ValidateAlternatives(
         JsonSchemaNode schema,
@@ -1366,6 +1426,7 @@ public static class FerruleJson
             JsonScalarDomain scalarDomain,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
+            IReadOnlyList<string> required,
             IReadOnlyList<JsonAlternative> alternatives,
             bool inclusiveAlternatives)
         {
@@ -1377,6 +1438,7 @@ public static class FerruleJson
             ScalarDomain = scalarDomain;
             Children = children;
             Dynamic = dynamic;
+            Required = required;
             Alternatives = alternatives;
             InclusiveAlternatives = inclusiveAlternatives;
         }
@@ -1400,6 +1462,8 @@ public static class FerruleJson
         public IReadOnlyList<JsonSchemaNode> Children { get; }
 
         public JsonSchemaNode? Dynamic { get; }
+
+        public IReadOnlyList<string> Required { get; }
 
         public IReadOnlyList<JsonAlternative> Alternatives { get; }
 

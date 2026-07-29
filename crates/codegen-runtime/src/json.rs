@@ -152,6 +152,42 @@ mod tests {
     }
 
     #[test]
+    fn enforces_required_properties_at_native_boundaries() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("Id", ScalarType::Int),
+                SchemaNode::scalar("Note", ScalarType::String)
+                    .nullable()
+                    .unwrap(),
+            ],
+        )
+        .with_required_fields(vec!["Id".into(), "Note".into()])
+        .unwrap();
+        let encoded = serde_json::to_string(&schema).unwrap_or_default();
+
+        assert!(matches!(
+            parse_json(&encoded, r#"{"Note":null}"#),
+            Err(JsonBoundaryError::InvalidInput { ref message })
+                if message.contains("requires property `Id`")
+        ));
+        assert!(parse_json(&encoded, r#"{"Id":7,"Note":null}"#).is_ok());
+
+        let missing = Instance::Group(vec![
+            ("Id".into(), Instance::Scalar(Value::Null)),
+            (
+                "Note".into(),
+                Instance::Scalar(Value::String("present".into())),
+            ),
+        ]);
+        assert!(matches!(
+            serialize_json(&encoded, &missing),
+            Err(JsonBoundaryError::InvalidOutput { ref message })
+                if message.contains("requires property `Id`")
+        ));
+    }
+
+    #[test]
     fn retains_boundary_and_schema_failure_categories() {
         assert!(matches!(
             parse_json("{}", "{}"),

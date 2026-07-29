@@ -55,7 +55,7 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
     if !object.keys().any(|key| {
         matches!(
             key.as_str(),
-            "type" | "properties" | "additionalProperties" | "const"
+            "type" | "properties" | "required" | "additionalProperties" | "const"
         )
     }) {
         return None;
@@ -190,6 +190,7 @@ fn merge_object(
     ensure_plain_group(name, &branch)?;
     let SchemaKind::Group {
         children: target_children,
+        required: target_required,
         dynamic: target_dynamic,
         ..
     } = &mut target.kind
@@ -200,7 +201,10 @@ fn merge_object(
         ));
     };
     let SchemaKind::Group {
-        children, dynamic, ..
+        children,
+        required,
+        dynamic,
+        ..
     } = branch.kind
     else {
         return Err(unsupported_union(
@@ -219,12 +223,23 @@ fn merge_object(
             target_children.push(child);
         }
     }
+    for field in required {
+        if !target_required.contains(&field) {
+            target_required.push(field);
+        }
+    }
 
     match (target_dynamic.as_mut(), dynamic) {
         // A closed branch makes the intersection closed under Ferrule's
         // existing additionalProperties contract.
         (None, _) | (Some(_), None) => *target_dynamic = None,
         (Some(existing), Some(candidate)) => intersect(name, existing, *candidate)?,
+    }
+    if !target.required_fields_are_valid() {
+        return Err(unsupported_union(
+            name,
+            "allOf requires an undeclared property in a closed object intersection",
+        ));
     }
     Ok(())
 }

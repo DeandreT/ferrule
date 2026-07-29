@@ -50,6 +50,14 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.required_fields_are_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "required-field metadata{suffix} has empty, duplicate, or undeclared closed-object names"
+            ),
+        ));
+    }
     if !schema.alternative_mode_is_valid() {
         issues.push(ValidationIssue::new(
             root,

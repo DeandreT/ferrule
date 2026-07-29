@@ -7,6 +7,8 @@
 //! degrade to string scalars. Compatible closed-object `oneOf` and
 //! `anyOf` unions, their required scalar `const` or singleton-`enum`
 //! discriminators, and typed `additionalProperties` schemas are preserved.
+//! Ordinary object `required` declarations retain property-presence semantics,
+//! including runtime-named required properties on open objects.
 //! Compatible `allOf` intersections flatten across objects, scalar domains,
 //! and matching arrays.
 //! Scalar/container-plus-null `oneOf` / `anyOf`, including flat compositions
@@ -179,11 +181,24 @@ fn parse(
     {
         return parse_inferred_constraint_scalar(name, value);
     }
+    if matches!(&ty, ImportedSchemaType::Absent)
+        && schema.get("required").is_some()
+        && schema.get("properties").is_none()
+    {
+        return Err(unsupported_object(
+            name,
+            "required without an object type or properties conditionally constrains objects while admitting non-object values",
+        ));
+    }
     match ty {
         ImportedSchemaType::Single("object") => {
             let children = parse_properties(schema, doc, active_refs)?;
-            let mut node =
-                attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)?;
+            let mut node = attach_object_metadata(
+                SchemaNode::group(name, children),
+                schema,
+                doc,
+                active_refs,
+            )?;
             node.container_nullable = nullable;
             Ok(node)
         }
@@ -218,7 +233,7 @@ fn parse(
         )),
         _ if schema.get("properties").is_some() => {
             let children = parse_properties(schema, doc, active_refs)?;
-            attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)
+            attach_object_metadata(SchemaNode::group(name, children), schema, doc, active_refs)
         }
         ImportedSchemaType::Absent | ImportedSchemaType::Single(_) => {
             Ok(SchemaNode::scalar(name, ScalarType::String))
@@ -321,6 +336,20 @@ fn arbitrary_json_schema(name: &str) -> Result<SchemaNode, JsonFormatError> {
         .ok_or_else(|| unsupported_union(name, "invalid arbitrary JSON value schema"))
 }
 
+fn attach_object_metadata(
+    group: SchemaNode,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<SchemaNode, JsonFormatError> {
+    let name = group.name.clone();
+    let group = attach_dynamic_fields(group, schema, doc, active_refs)?;
+    let required = parse_required_fields(&name, schema)?;
+    group.with_required_fields(required).ok_or_else(|| {
+        unsupported_object(&name, "required names must identify declared properties")
+    })
+}
+
 fn attach_dynamic_fields(
     group: SchemaNode,
     schema: &serde_json::Value,
@@ -351,6 +380,41 @@ fn attach_dynamic_fields(
             name,
             reason: "open objects cannot use closed object alternatives".to_string(),
         })
+}
+
+fn parse_required_fields(
+    object_name: &str,
+    schema: &serde_json::Value,
+) -> Result<Vec<String>, JsonFormatError> {
+    let Some(required) = schema.get("required") else {
+        return Ok(Vec::new());
+    };
+    let values = required.as_array().ok_or_else(|| {
+        unsupported_object(
+            object_name,
+            "required must be an array of unique property names",
+        )
+    })?;
+    let mut names = Vec::with_capacity(values.len());
+    for value in values {
+        let name = value
+            .as_str()
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| {
+                unsupported_object(
+                    object_name,
+                    "required must contain only non-empty property names",
+                )
+            })?;
+        if names.iter().any(|previous| previous == name) {
+            return Err(unsupported_object(
+                object_name,
+                "required property names must be unique",
+            ));
+        }
+        names.push(name.to_string());
+    }
+    Ok(names)
 }
 
 fn attach_unconstrained_dynamic(group: SchemaNode) -> Result<SchemaNode, JsonFormatError> {
