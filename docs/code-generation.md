@@ -121,6 +121,28 @@ foreach (var output in outputs.Extras)
 }
 ```
 
+Hosts that already own UTF-8 bytes can use the parallel
+`execute_json_bytes...` / `ExecuteJsonBytes...` APIs without performing their
+own text conversion. Named inputs use `NamedJsonBytesInput`, and output-set
+variants return owned byte buffers for the primary target and every ordered
+named target:
+
+```csharp
+var outputs = GeneratedMapping.ExecuteJsonBytesOutputsWithSources(
+    sourceBytes,
+    new[] { new NamedJsonBytesInput("catalog", catalogBytes) });
+Publish(outputs.Primary);
+foreach (var output in outputs.Extras)
+{
+    PublishNamed(output.Name, output.Document);
+}
+```
+
+The byte boundaries enforce the same 64 MiB document limit, require strict
+UTF-8, and accept a UTF-8 BOM. Exact named-source validation completes before
+the primary or named documents are decoded, so missing, duplicate, and
+unexpected names are reported independently of malformed payload bytes.
+
 The singular `execute_json` / `ExecuteJson` variants return only the primary
 document but still evaluate every named target. Context-aware variants accept
 the same mapping paths, stable date-time, and typed runtime parameters as the
