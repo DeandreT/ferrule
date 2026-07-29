@@ -35,7 +35,10 @@ use aggregate::aggregate;
 use context::{runtime_field, runtime_parameter_field};
 use eval_scope::eval_scope;
 
-pub use trace::{TraceEvent, TracePosition, TraceSink};
+pub use trace::{
+    TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
+    TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceValue, TraceWindow,
+};
 pub use validate::{ValidationIssue, validate};
 
 /// One additional named target value produced by a project run.
@@ -545,6 +548,7 @@ fn run_outputs_internal(
             &[],
             &project.extra_sources,
             execution.and_then(|execution| execution.dynamic_source_loader),
+            &TraceScope::primary(),
         )?;
         let mut targets = Vec::with_capacity(project.extra_targets.len());
         for target in &project.extra_targets {
@@ -558,6 +562,7 @@ fn run_outputs_internal(
                     &[],
                     &project.extra_sources,
                     execution.and_then(|execution| execution.dynamic_source_loader),
+                    &TraceScope::named(&target.name),
                 )?,
             });
         }
@@ -590,6 +595,7 @@ fn run_selected_target_internal(
                 &[],
                 &project.extra_sources,
                 execution.and_then(|execution| execution.dynamic_source_loader),
+                &TraceScope::primary(),
             )
             .map(SelectedTargetOutput::Primary),
             Some(target) => eval_scope(
@@ -600,6 +606,7 @@ fn run_selected_target_internal(
                 &[],
                 &project.extra_sources,
                 execution.and_then(|execution| execution.dynamic_source_loader),
+                &TraceScope::named(&target.name),
             )
             .map(|instance| {
                 SelectedTargetOutput::Named(NamedOutput {

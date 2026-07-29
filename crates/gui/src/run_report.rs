@@ -410,6 +410,7 @@ fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
 }
 
 fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
+    let prefix = format!("{:>6}", index + 1);
     match event {
         cli::TraceEvent::NodeValue {
             node,
@@ -423,11 +424,249 @@ fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
                 .join(" > ");
             let value = serde_json::to_string(value).unwrap_or_else(|_| format!("{value:?}"));
             if context.is_empty() {
-                format!("{:>6}  node {node:<6}  {value}", index + 1)
+                format!("{prefix}  node {node:<6}  {value}")
             } else {
-                format!("{:>6}  node {node:<6}  {context}  {value}", index + 1)
+                format!("{prefix}  node {node:<6}  {context}  {value}")
             }
         }
+        cli::TraceEvent::ScopeStarted {
+            scope,
+            iteration,
+            positions,
+        } => format!(
+            "{prefix}  scope {}  start {}{}",
+            format_trace_scope(scope),
+            format_trace_iteration(iteration),
+            format_trace_positions(positions)
+        ),
+        cli::TraceEvent::IterationCandidate {
+            scope,
+            ordinal,
+            positions,
+        } => format!(
+            "{prefix}  scope {}  candidate {ordinal}{}",
+            format_trace_scope(scope),
+            format_trace_positions(positions)
+        ),
+        cli::TraceEvent::FilterDecision {
+            scope,
+            node,
+            phase,
+            positions,
+            passed,
+        } => format!(
+            "{prefix}  scope {}  filter node {node} {} {}{}",
+            format_trace_scope(scope),
+            format_filter_phase(*phase),
+            if *passed { "pass" } else { "drop" },
+            format_trace_positions(positions)
+        ),
+        cli::TraceEvent::SortCandidate {
+            scope,
+            positions,
+            keys,
+        } => {
+            let keys = keys
+                .iter()
+                .map(|key| {
+                    format!(
+                        "node {} {}={}",
+                        key.node,
+                        if key.descending { "desc" } else { "asc" },
+                        format_trace_value(&key.value)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{prefix}  scope {}  sort keys [{keys}]{}",
+                format_trace_scope(scope),
+                format_trace_positions(positions)
+            )
+        }
+        cli::TraceEvent::SortPosition {
+            scope,
+            positions,
+            output_index,
+        } => format!(
+            "{prefix}  scope {}  sorted position {output_index}{}",
+            format_trace_scope(scope),
+            format_trace_positions(positions)
+        ),
+        cli::TraceEvent::GroupProduced {
+            scope,
+            grouping,
+            group_index,
+            member_count,
+            key,
+            retained,
+            positions,
+        } => {
+            let key = key
+                .as_ref()
+                .map(|key| format!(" key={}", format_trace_value(key)))
+                .unwrap_or_default();
+            format!(
+                "{prefix}  scope {}  group {group_index} {} members={member_count}{key} {}{}",
+                format_trace_scope(scope),
+                format_trace_grouping(*grouping),
+                if *retained { "retain" } else { "drop" },
+                format_trace_positions(positions)
+            )
+        }
+        cli::TraceEvent::WindowApplied {
+            scope,
+            window_index,
+            window,
+            before,
+            after,
+        } => format!(
+            "{prefix}  scope {}  window {window_index} {}  {before} -> {after}",
+            format_trace_scope(scope),
+            format_trace_window(*window)
+        ),
+        cli::TraceEvent::TargetProduced {
+            scope,
+            positions,
+            output_path,
+            kind,
+        } => {
+            let output_path = output_path
+                .as_ref()
+                .map(|path| format!(" path={path}"))
+                .unwrap_or_default();
+            format!(
+                "{prefix}  scope {}  produce {}{output_path}{}",
+                format_trace_scope(scope),
+                format_output_kind(*kind),
+                format_trace_positions(positions)
+            )
+        }
+        cli::TraceEvent::ScopeFinished {
+            scope,
+            candidates,
+            produced,
+            kind,
+        } => format!(
+            "{prefix}  scope {}  finish candidates={candidates} produced={produced} {}",
+            format_trace_scope(scope),
+            format_output_kind(*kind)
+        ),
+    }
+}
+
+fn format_trace_scope(scope: &cli::TraceScope) -> String {
+    let mut text = match &scope.target {
+        cli::TraceTarget::Primary => "primary".to_string(),
+        cli::TraceTarget::Named(name) => format!("named:{name}"),
+    };
+    if !scope.target_path.is_empty() {
+        text.push_str(":/");
+        text.push_str(&scope.target_path.join("/"));
+    }
+    text.push_str(" #");
+    if scope.structural_path.is_empty() {
+        text.push_str("root");
+    } else {
+        text.push_str(
+            &scope
+                .structural_path
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join("."),
+        );
+    }
+    text
+}
+
+fn format_trace_iteration(iteration: &cli::TraceIteration) -> String {
+    match iteration {
+        cli::TraceIteration::Once => "once".to_string(),
+        cli::TraceIteration::Source { path } => format!(
+            "iterate source {}",
+            if path.is_empty() {
+                "<current>".to_string()
+            } else {
+                path.join("/")
+            }
+        ),
+        cli::TraceIteration::DynamicDocuments { source } => format!(
+            "dynamic documents {}",
+            if source.is_empty() {
+                "<current>".to_string()
+            } else {
+                source.join("/")
+            }
+        ),
+        cli::TraceIteration::Generated { kind } => format!("generate {kind}"),
+        cli::TraceIteration::Join { join } => format!("join {}", join.get()),
+        cli::TraceIteration::Concatenate { segments } => {
+            format!("concatenate {segments} segments")
+        }
+    }
+}
+
+fn format_filter_phase(phase: cli::TraceFilterPhase) -> &'static str {
+    match phase {
+        cli::TraceFilterPhase::BeforeSort => "before-sort",
+        cli::TraceFilterPhase::AfterSort => "after-sort",
+        cli::TraceFilterPhase::Selection => "selection",
+        cli::TraceFilterPhase::GroupStarting => "group-start",
+        cli::TraceFilterPhase::GroupEnding => "group-end",
+        cli::TraceFilterPhase::PostGroupMember => "post-group",
+    }
+}
+
+fn format_trace_grouping(grouping: cli::TraceGrouping) -> String {
+    match grouping {
+        cli::TraceGrouping::By { node } => format!("by node {node}"),
+        cli::TraceGrouping::AdjacentBy { node } => format!("adjacent-by node {node}"),
+        cli::TraceGrouping::StartingWith { node } => format!("starting-with node {node}"),
+        cli::TraceGrouping::EndingWith { node } => format!("ending-with node {node}"),
+        cli::TraceGrouping::IntoBlocks { node, size } => {
+            format!("blocks node {node} size={size}")
+        }
+    }
+}
+
+fn format_trace_window(window: cli::TraceWindow) -> String {
+    match window {
+        cli::TraceWindow::SkipFirst(count) => format!("skip-first {count}"),
+        cli::TraceWindow::First(count) => format!("first {count}"),
+        cli::TraceWindow::From(position) => format!("from {position}"),
+        cli::TraceWindow::FromTo { first, last } => format!("from {first} to {last}"),
+        cli::TraceWindow::Last(count) => format!("last {count}"),
+    }
+}
+
+fn format_trace_value(value: &cli::TraceValue) -> String {
+    let suffix = if value.truncated { "..." } else { "" };
+    format!("{}({}{suffix})", value.value_type, value.preview)
+}
+
+fn format_output_kind(kind: cli::TraceOutputKind) -> &'static str {
+    match kind {
+        cli::TraceOutputKind::Scalar => "scalar",
+        cli::TraceOutputKind::Group => "group",
+        cli::TraceOutputKind::Repeated => "repeated",
+        cli::TraceOutputKind::MappedSequence => "mapped-sequence",
+        cli::TraceOutputKind::DocumentSet => "document-set",
+    }
+}
+
+fn format_trace_positions(positions: &[cli::TracePosition]) -> String {
+    if positions.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "  {}",
+            positions
+                .iter()
+                .map(format_trace_position)
+                .collect::<Vec<_>>()
+                .join(" > ")
+        )
     }
 }
 
@@ -515,6 +754,14 @@ mod tests {
             node,
             positions: Vec::new(),
             value,
+        }
+    }
+
+    fn trace_scope() -> cli::TraceScope {
+        cli::TraceScope {
+            target: cli::TraceTarget::Named("Audit".into()),
+            target_path: vec!["Orders".into(), "Line".into()],
+            structural_path: vec![1, 3],
         }
     }
 
@@ -657,6 +904,44 @@ mod tests {
         assert_eq!(trace.events.len(), 2);
         assert_eq!(trace.dropped, 1);
         assert!(trace_row(1, &trace.events[1]).contains("node 2"));
+    }
+
+    #[test]
+    fn scope_trace_rows_expose_searchable_control_context() {
+        let started = cli::TraceEvent::ScopeStarted {
+            scope: trace_scope(),
+            iteration: cli::TraceIteration::Source {
+                path: vec!["Order".into(), "Line".into()],
+            },
+            positions: Vec::new(),
+        };
+        let filtered = cli::TraceEvent::FilterDecision {
+            scope: trace_scope(),
+            node: 42,
+            phase: cli::TraceFilterPhase::BeforeSort,
+            positions: vec![cli::TracePosition {
+                collection: vec!["Order".into()],
+                index: 3,
+                grouped: false,
+                join: None,
+                join_position: None,
+                document_path: None,
+            }],
+            passed: false,
+        };
+        let window = cli::TraceEvent::WindowApplied {
+            scope: trace_scope(),
+            window_index: 2,
+            window: cli::TraceWindow::FromTo { first: 2, last: 4 },
+            before: 8,
+            after: 3,
+        };
+
+        assert!(trace_row(0, &started).contains("named:Audit:/Orders/Line #1.3"));
+        assert!(trace_row(0, &started).contains("iterate source Order/Line"));
+        assert!(trace_row(1, &filtered).contains("filter node 42 before-sort drop"));
+        assert!(trace_row(1, &filtered).contains("Order[3]"));
+        assert!(trace_row(2, &window).contains("window 2 from 2 to 4  8 -> 3"));
     }
 
     #[test]
