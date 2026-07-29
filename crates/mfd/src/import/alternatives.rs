@@ -27,10 +27,18 @@ pub(super) fn merge_conditioned_xml_types(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
     xsd_path: &Path,
+    schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
 ) {
     merge_selected_roots(entry, schema, xsd_path, warnings, &mut Vec::new());
-    merge_entry_children(entry, schema, xsd_path, warnings, &mut Vec::new());
+    merge_entry_children(
+        entry,
+        schema,
+        xsd_path,
+        schema_from_entry_tree,
+        warnings,
+        &mut Vec::new(),
+    );
 }
 
 fn merge_selected_roots(
@@ -104,6 +112,7 @@ fn merge_entry_children(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
     xsd_path: &Path,
+    schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
     path: &mut Vec<String>,
 ) {
@@ -124,7 +133,9 @@ fn merge_entry_children(
     }
     for (name, entries) in conditioned {
         path.push(name);
-        if let Err(reason) = merge_alternatives_at(schema, path, &entries, xsd_path) {
+        if let Err(reason) =
+            merge_alternatives_at(schema, path, &entries, xsd_path, schema_from_entry_tree)
+        {
             warnings.push(format!(
                 "conditional XML type alternatives at `{}` could not be represented: {reason}",
                 path.join("/")
@@ -136,7 +147,14 @@ fn merge_entry_children(
     for child in children {
         let name = normalized_entry_name(child.attribute("name").unwrap_or_default());
         path.push(name);
-        merge_entry_children(&child, schema, xsd_path, warnings, path);
+        merge_entry_children(
+            &child,
+            schema,
+            xsd_path,
+            schema_from_entry_tree,
+            warnings,
+            path,
+        );
         path.pop();
     }
 }
@@ -146,6 +164,7 @@ fn merge_alternatives_at(
     path: &[String],
     entries: &[roxmltree::Node<'_, '_>],
     xsd_path: &Path,
+    schema_from_entry_tree: bool,
 ) -> Result<(), String> {
     let node = schema_node_at_mut(schema, path)
         .ok_or_else(|| "the base schema path does not exist".to_string())?;
@@ -154,7 +173,7 @@ fn merge_alternatives_at(
         let type_name = conditioned_type_name(entry).ok_or_else(|| {
             "a condition is not an exact equality between xsi:type and a constant QName".to_string()
         })?;
-        let base_name = (entries.len() == 1)
+        let base_name = (entries.len() == 1 || schema_from_entry_tree)
             .then(|| format_xml::xsd::import_type_base(xsd_path, &type_name))
             .transpose()
             .map_err(|error| error.to_string())?
@@ -173,6 +192,53 @@ fn merge_alternatives_at(
 
     let mut metadata = node.alternatives().to_vec();
     metadata.reserve(entries.len() + usize::from(entries.len() == 1));
+    let promote_fallback = schema_from_entry_tree
+        && matches!(
+            node.kind,
+            SchemaKind::Scalar {
+                ty: ir::ScalarType::String
+            }
+        )
+        && !node.attribute
+        && !node.text
+        && !node.repeating;
+    if promote_fallback {
+        let common_base = imported
+            .first()
+            .and_then(|(_, base, _)| base.as_ref())
+            .filter(|base| {
+                imported
+                    .iter()
+                    .all(|(_, candidate, _)| candidate.as_ref() == Some(*base))
+            })
+            .cloned();
+        let base_children = common_base
+            .as_ref()
+            .map(|base| {
+                format_xml::xsd::import_type(xsd_path, base)
+                    .map_err(|error| error.to_string())
+                    .and_then(|base_schema| match base_schema.kind {
+                        SchemaKind::Group { children, .. } => Ok(children),
+                        _ => Err(format!("base type `{base}` is not a complex type")),
+                    })
+            })
+            .transpose()?;
+        let children = base_children.unwrap_or_default();
+        if let Some(base) = common_base {
+            metadata.push(GroupAlternative {
+                name: base,
+                members: children.iter().map(|child| child.name.clone()).collect(),
+                required: Vec::new(),
+                constraints: Vec::new(),
+            });
+        }
+        node.kind = SchemaKind::Group {
+            children,
+            dynamic: None,
+            alternatives: Vec::new(),
+            xml_restricted_alternatives: Vec::new(),
+        };
+    }
     {
         let SchemaKind::Group { children, .. } = &mut node.kind else {
             return Err("the base schema node is not a group".to_string());
@@ -348,10 +414,16 @@ mod tests {
             </entry></entry>"#,
         )
         .unwrap();
-        let mut schema = format_xml::xsd::import_root(&main, Some("Envelope")).unwrap();
+        let mut schema = SchemaNode::group("Envelope", vec![SchemaNode::group("Body", Vec::new())]);
         let mut warnings = Vec::new();
 
-        merge_conditioned_xml_types(&entry.root_element(), &mut schema, &main, &mut warnings);
+        merge_conditioned_xml_types(
+            &entry.root_element(),
+            &mut schema,
+            &main,
+            false,
+            &mut warnings,
+        );
         std::fs::remove_dir_all(dir).unwrap();
 
         assert!(warnings.is_empty(), "{warnings:?}");
@@ -363,5 +435,102 @@ mod tests {
                 ty: ScalarType::Int
             }
         ));
+    }
+
+    #[test]
+    fn conditioned_complex_types_promote_only_fallback_string_leaves()
+    -> Result<(), Box<dyn std::error::Error>> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ferrule_mfd_fallback_alternatives_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir)?;
+        let schema_path = dir.join("types.xsd");
+        std::fs::write(
+            &schema_path,
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    targetNamespace="urn:ferrule:fallback-types"
+                    xmlns:t="urn:ferrule:fallback-types">
+                <xs:complexType name="Address">
+                    <xs:sequence>
+                        <xs:element name="Name" type="xs:string"/>
+                    </xs:sequence>
+                </xs:complexType>
+                <xs:complexType name="Domestic">
+                    <xs:complexContent><xs:extension base="t:Address"><xs:sequence>
+                        <xs:element name="State" type="xs:string"/>
+                    </xs:sequence></xs:extension></xs:complexContent>
+                </xs:complexType>
+                <xs:complexType name="International">
+                    <xs:complexContent><xs:extension base="t:Address"><xs:sequence>
+                        <xs:element name="Country" type="xs:string"/>
+                    </xs:sequence></xs:extension></xs:complexContent>
+                </xs:complexType>
+            </xs:schema>"#,
+        )?;
+        let entry = roxmltree::Document::parse(
+            r#"<entry name="Root">
+                <entry name="Address">
+                    <condition><expression><function name="equal" library="core">
+                        <expression><attribute name="type" ns="http://www.w3.org/2001/XMLSchema-instance"/></expression>
+                        <expression><constant datatype="QName" value="{urn:ferrule:fallback-types}Domestic"/></expression>
+                    </function></expression></condition>
+                </entry>
+                <entry name="Address" clone="1">
+                    <condition><expression><function name="equal" library="core">
+                        <expression><attribute name="type" ns="http://www.w3.org/2001/XMLSchema-instance"/></expression>
+                        <expression><constant datatype="QName" value="{urn:ferrule:fallback-types}International"/></expression>
+                    </function></expression></condition>
+                </entry>
+            </entry>"#,
+        )?;
+        let fallback = SchemaNode::group(
+            "Root",
+            vec![SchemaNode::scalar("Address", ScalarType::String)],
+        );
+
+        let mut schema_backed = fallback.clone();
+        let mut schema_warnings = Vec::new();
+        merge_conditioned_xml_types(
+            &entry.root_element(),
+            &mut schema_backed,
+            &schema_path,
+            false,
+            &mut schema_warnings,
+        );
+        assert_eq!(schema_warnings.len(), 1);
+        assert!(
+            schema_backed
+                .child("Address")
+                .is_some_and(SchemaNode::is_scalar)
+        );
+
+        let mut entry_backed = fallback;
+        let mut fallback_warnings = Vec::new();
+        merge_conditioned_xml_types(
+            &entry.root_element(),
+            &mut entry_backed,
+            &schema_path,
+            true,
+            &mut fallback_warnings,
+        );
+        std::fs::remove_dir_all(dir)?;
+
+        assert!(fallback_warnings.is_empty(), "{fallback_warnings:?}");
+        let address = entry_backed
+            .child("Address")
+            .ok_or("fallback address was not retained")?;
+        assert_eq!(address.alternatives().len(), 3);
+        assert_eq!(
+            address.alternatives()[0].name,
+            "{urn:ferrule:fallback-types}Address"
+        );
+        assert!(address.child("Name").is_some());
+        assert!(address.child("State").is_some());
+        assert!(address.child("Country").is_some());
+        Ok(())
     }
 }
