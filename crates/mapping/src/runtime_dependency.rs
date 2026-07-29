@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{FormatOptions, Project};
+use crate::{EdiConfigDependency, FormatOptions, Project};
 
 /// One mapping boundary whose runtime behavior depends on an external resource.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,7 +27,7 @@ impl fmt::Display for RuntimeBoundary {
 pub enum RuntimeDependency {
     EdiConfiguration {
         boundary: RuntimeBoundary,
-        reference: String,
+        dependency: EdiConfigDependency,
     },
 }
 
@@ -38,9 +38,15 @@ impl RuntimeDependency {
         }
     }
 
-    pub fn reference(&self) -> &str {
+    pub fn edi_config(&self) -> &EdiConfigDependency {
         match self {
-            Self::EdiConfiguration { reference, .. } => reference,
+            Self::EdiConfiguration { dependency, .. } => dependency,
+        }
+    }
+
+    pub fn reference(&self) -> Option<&str> {
+        match self {
+            Self::EdiConfiguration { dependency, .. } => dependency.reference(),
         }
     }
 }
@@ -50,10 +56,20 @@ impl fmt::Display for RuntimeDependency {
         match self {
             Self::EdiConfiguration {
                 boundary,
-                reference,
+                dependency: EdiConfigDependency::ExternalReference(reference),
+            } => {
+                write!(
+                    formatter,
+                    "{boundary} requires unresolved external EDI configuration `{reference}`"
+                )
+            }
+            Self::EdiConfiguration {
+                boundary,
+                dependency: EdiConfigDependency::MissingConfiguration,
             } => write!(
                 formatter,
-                "{boundary} requires unresolved external EDI configuration `{reference}`"
+                "{boundary} requires an EDI configuration because its imported entry-tree schema \
+                 is untyped"
             ),
         }
     }
@@ -96,10 +112,10 @@ fn collect_edi_dependency(
     boundary: RuntimeBoundary,
     options: &FormatOptions,
 ) {
-    if let Some(reference) = &options.edi_config_reference {
+    if let Some(dependency) = &options.edi_config_reference {
         dependencies.push(RuntimeDependency::EdiConfiguration {
             boundary,
-            reference: reference.clone(),
+            dependency: dependency.clone(),
         });
     }
 }
@@ -154,17 +170,33 @@ mod tests {
             vec![
                 RuntimeDependency::EdiConfiguration {
                     boundary: RuntimeBoundary::PrimarySource,
-                    reference: "X12/850.Config".into(),
+                    dependency: "X12/850.Config".into(),
                 },
                 RuntimeDependency::EdiConfiguration {
                     boundary: RuntimeBoundary::NamedTarget("ack".into()),
-                    reference: "X12/997.Config".into(),
+                    dependency: "X12/997.Config".into(),
                 },
             ]
         );
         assert_eq!(
             dependencies[0].to_string(),
             "primary source requires unresolved external EDI configuration `X12/850.Config`"
+        );
+        assert_eq!(dependencies[0].reference(), Some("X12/850.Config"));
+    }
+
+    #[test]
+    fn project_reports_missing_edi_configuration_without_a_fake_reference() {
+        let mut project = project();
+        project.source_options.edi_config_reference =
+            Some(EdiConfigDependency::MissingConfiguration);
+
+        let dependencies = project.runtime_dependencies();
+
+        assert_eq!(dependencies[0].reference(), None);
+        assert_eq!(
+            dependencies[0].to_string(),
+            "primary source requires an EDI configuration because its imported entry-tree schema is untyped"
         );
     }
 }

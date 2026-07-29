@@ -52,8 +52,8 @@ pub use iteration::{
     ScopeIteration, ScopeSequence,
 };
 pub use model::{
-    AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, FailureIteration,
-    FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,
+    AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, EdiConfigDependency,
+    FailureIteration, FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,
     FunctionParameterId, Graph, IterationOutput, MAX_RUNTIME_PARAMETER_NAME_BYTES, NamedSource,
     NamedTarget, Node, NodeId, Project, RuntimeValue, Scope, ScopeConstruction, SequenceExpr,
     SequenceWindow, SortFilterOrder, SortKey, UserFunction, XlsxColumn, XlsxCompositeLayout,

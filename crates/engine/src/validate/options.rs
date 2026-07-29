@@ -36,6 +36,20 @@ pub(super) fn validate_structured_edi_options(
     options: &FormatOptions,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    if options.edi_config_reference.is_some() && options.edi_kind.is_none() {
+        issues.push(ValidationIssue::new(
+            location,
+            "an unresolved EDI configuration dependency requires `edi_kind`",
+        ));
+    }
+    if options.edi_config_reference.is_some()
+        && (options.idoc.is_some() || options.swift_mt.is_some())
+    {
+        issues.push(ValidationIssue::new(
+            location,
+            "an unresolved EDI configuration dependency cannot be combined with an embedded EDI layout",
+        ));
+    }
     if options.idoc.is_some() && has_non_idoc_format_options(options) {
         issues.push(ValidationIssue::new(
             location,

@@ -3,8 +3,8 @@ use std::path::Path;
 
 use ir::{SchemaKind, SchemaNode};
 use mapping::{
-    EdiAutocomplete, EdiBoundaryKind, EdifactAutocomplete, FormatOptions, X12Autocomplete,
-    X12Separators,
+    EdiAutocomplete, EdiBoundaryKind, EdiConfigDependency, EdifactAutocomplete, FormatOptions,
+    X12Autocomplete, X12Separators,
 };
 
 use crate::resource::ResourceResolver;
@@ -176,16 +176,48 @@ pub(super) fn read(
     let embedded_value_constraints = embedded_value_constraints(&text, &name, warnings);
     let config = text.attribute("config");
     let retained_unresolved_config = if runtime_boundary {
-        match text.attribute("ferrule-unresolved-config") {
-            Some("1") => true,
-            Some(value) => {
+        match (
+            text.attribute("ferrule-unresolved-config"),
+            config.is_some(),
+        ) {
+            (Some("1"), true) => true,
+            (Some("1"), false) => {
+                warnings.push(format!(
+                    "EDI component `{name}` has ferrule-unresolved-config metadata without an \
+                     external configuration reference; the metadata was ignored"
+                ));
+                false
+            }
+            (Some(value), _) => {
                 warnings.push(format!(
                     "EDI component `{name}` has invalid ferrule-unresolved-config metadata \
                      `{value}`; the external configuration will be resolved normally"
                 ));
                 false
             }
-            None => false,
+            (None, _) => false,
+        }
+    } else {
+        false
+    };
+    let retained_missing_config = if runtime_boundary {
+        match (text.attribute("ferrule-missing-config"), config.is_none()) {
+            (Some("1"), true) => true,
+            (Some("1"), false) => {
+                warnings.push(format!(
+                    "EDI component `{name}` has ferrule-missing-config metadata despite having an \
+                     external configuration reference; the marker was ignored"
+                ));
+                false
+            }
+            (Some(value), _) => {
+                warnings.push(format!(
+                    "EDI component `{name}` has invalid ferrule-missing-config metadata `{value}`; \
+                     missing configuration state will be inferred normally"
+                ));
+                false
+            }
+            (None, _) => false,
         }
     } else {
         false
@@ -263,9 +295,17 @@ pub(super) fn read(
         None
     };
     let has_compiled_schema = compiled.is_some();
-    let unresolved_config_reference = (!has_compiled_schema && runtime_boundary)
-        .then(|| config.map(str::to_string))
-        .flatten();
+    let edi_config_dependency = if has_compiled_schema || !runtime_boundary {
+        None
+    } else if retained_missing_config {
+        Some(EdiConfigDependency::missing_configuration())
+    } else if let Some(reference) = config {
+        Some(EdiConfigDependency::external_reference(reference))
+    } else if !has_embedded_schema {
+        Some(EdiConfigDependency::missing_configuration())
+    } else {
+        None
+    };
     let (
         mut schema,
         idoc,
@@ -302,7 +342,7 @@ pub(super) fn read(
         warnings.push(format!("component `{name}` has no connected ports"));
     }
 
-    if runtime_boundary && config.is_none() && !has_embedded_schema {
+    if runtime_boundary && config.is_none() && !has_embedded_schema && !retained_missing_config {
         warnings.push(format!(
             "EDI component `{name}` uses an entry-tree schema inferred without an external `{kind}` \
              configuration; its mapping graph was imported, but execution is disabled until a schema \
@@ -344,7 +384,7 @@ pub(super) fn read(
                 "SWIFTMT" => Some(EdiBoundaryKind::SwiftMt),
                 _ => None,
             },
-            edi_config_reference: unresolved_config_reference,
+            edi_config_reference: edi_config_dependency,
             edi_implied_decimals,
             edi_lexical_formats,
             edi_value_constraints,

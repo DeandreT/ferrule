@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
+use mapping::{EdiAutocomplete, EdiBoundaryKind, EdiConfigDependency, FormatOptions};
 
 use crate::MfdError;
 
@@ -177,17 +177,18 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     )?;
     let retained_layout = retained_layout_xml(kind, args.options)?;
     let retained_settings = retained_settings_xml(kind, args.options);
-    let retained_config = args
-        .options
-        .edi_config_reference
-        .as_deref()
-        .map(|config| {
+    let retained_config = match args.options.edi_config_reference.as_ref() {
+        Some(EdiConfigDependency::ExternalReference(config)) => {
             format!(
                 " config=\"{}\" ferrule-unresolved-config=\"1\"",
                 xml_escape(config)
             )
-        })
-        .unwrap_or_default();
+        }
+        Some(EdiConfigDependency::MissingConfiguration) => {
+            " ferrule-missing-config=\"1\"".to_string()
+        }
+        None => String::new(),
+    };
     let mut out = String::new();
     let _ = write!(
         out,

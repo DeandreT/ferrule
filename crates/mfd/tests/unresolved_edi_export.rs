@@ -42,7 +42,8 @@ fn unresolved_edi_record_parameter_ports_survive_export_and_reimport() -> Result
             .project
             .source_options
             .edi_config_reference
-            .as_deref(),
+            .as_ref()
+            .and_then(mapping::EdiConfigDependency::reference),
         Some("Unavailable/Envelope.Config")
     );
     for path in [
@@ -84,7 +85,8 @@ fn unresolved_edi_record_parameter_ports_survive_export_and_reimport() -> Result
             .project
             .source_options
             .edi_config_reference
-            .as_deref(),
+            .as_ref()
+            .and_then(mapping::EdiConfigDependency::reference),
         Some("Unavailable/Envelope.Config")
     );
     assert_eq!(source_fields(&reimported.project), expected_source_fields);
@@ -129,6 +131,57 @@ fn malformed_unresolved_config_metadata_warns_and_resolves_normally() -> Result<
             .any(|warning| warning.contains("could not compile external configuration"))
     );
     assert_eq!(imported.project.runtime_dependencies().len(), 1);
+    Ok(())
+}
+
+#[test]
+fn missing_edi_configuration_metadata_roundtrips_as_a_typed_dependency()
+-> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new()?;
+    write_fixture(&directory.0)?;
+    let design_path = directory.0.join("mapping.mfd");
+    let design = std::fs::read_to_string(&design_path)?
+        .replace(r#" config="Unavailable/Envelope.Config""#, "");
+    std::fs::write(&design_path, design)?;
+
+    let imported = mfd::import(&design_path)?;
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(imported.warnings[0].contains("entry-tree schema inferred"));
+    assert!(matches!(
+        imported
+            .project
+            .source_options
+            .edi_config_reference
+            .as_ref(),
+        Some(mapping::EdiConfigDependency::MissingConfiguration)
+    ));
+    assert_eq!(imported.project.runtime_dependencies().len(), 1);
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let roundtrip = directory.0.join("missing-roundtrip.mfd");
+    assert!(mfd::export(&imported.project, &roundtrip)?.is_empty());
+    let exported = std::fs::read_to_string(&roundtrip)?;
+    let document = roxmltree::Document::parse(&exported)?;
+    let text = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("type") == Some("edi"))
+        .ok_or("exported mapping has no EDI component")?;
+    assert_eq!(text.attribute("config"), None);
+    assert_eq!(text.attribute("ferrule-missing-config"), Some("1"));
+    assert_eq!(text.attribute("ferrule-unresolved-config"), None);
+
+    let reimported = mfd::import(&roundtrip)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(matches!(
+        reimported
+            .project
+            .source_options
+            .edi_config_reference
+            .as_ref(),
+        Some(mapping::EdiConfigDependency::MissingConfiguration)
+    ));
+    assert_eq!(reimported.project.runtime_dependencies().len(), 1);
+    assert!(engine::validate(&reimported.project).is_empty());
     Ok(())
 }
 
