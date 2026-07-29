@@ -46,6 +46,12 @@ pub(super) fn validate_schema(
             format!("property-count metadata{suffix} requires a feasible object schema"),
         ));
     }
+    if !schema.json_property_dependencies_are_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("JSON property-dependency metadata{suffix} requires a feasible object schema"),
+        ));
+    }
     if !schema.string_length_range_is_valid() {
         issues.push(ValidationIssue::new(
             root,

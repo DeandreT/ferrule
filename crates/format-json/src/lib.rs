@@ -54,6 +54,14 @@ pub enum JsonFormatError {
     DuplicateProperty { object: String, property: String },
     #[error("object `{object}` requires property `{property}`")]
     MissingRequiredProperty { object: String, property: String },
+    #[error(
+        "object `{object}` contains trigger property `{trigger}` but requires dependent property `{property}`"
+    )]
+    MissingDependentProperty {
+        object: String,
+        trigger: String,
+        property: String,
+    },
     #[error("closed object `{object}` does not declare property `{property}`")]
     UndeclaredProperty { object: String, property: String },
     #[error("`{name}` requires constant {expected}, got {got}")]
@@ -122,6 +130,8 @@ pub enum JsonFormatError {
     InvalidUniqueItemsMetadata { reason: String },
     #[error("JSON property-count metadata is invalid: {reason}")]
     InvalidPropertyCountMetadata { reason: String },
+    #[error("JSON property-dependency metadata is invalid: {reason}")]
+    InvalidPropertyDependenciesMetadata { reason: String },
     #[error("JSON pattern matching for `{name}` exceeds the bounded work limit")]
     PatternWorkLimit { name: String },
     #[error("JSON Lines cannot encode nullable array container `{name}`")]
@@ -303,6 +313,10 @@ fn read_node_with_patterns(
             };
             json_schema::property_counts::validate_len(schema, fields.len())?;
             validate_required_fields(schema, required, |name| fields.contains_key(name))?;
+            json_schema::property_dependencies::validate_properties(
+                schema,
+                fields.keys().map(String::as_str),
+            )?;
             validate_alternative_fields(schema, alternatives, fields)?;
             if dynamic.is_some() && !alternatives.is_empty() {
                 return Err(JsonFormatError::UnsupportedSchemaUnion {
@@ -673,6 +687,10 @@ fn write_single_node_with_patterns(
                     );
                 }
                 validate_required_fields(schema, required, |name| out.contains_key(name))?;
+                json_schema::property_dependencies::validate_properties(
+                    schema,
+                    out.keys().map(String::as_str),
+                )?;
                 json_schema::property_counts::validate_len(schema, out.len())?;
                 return Ok(serde_json::Value::Object(out));
             }
@@ -692,6 +710,10 @@ fn write_single_node_with_patterns(
                 }
             }
             validate_required_fields(schema, required, |name| out.contains_key(name))?;
+            json_schema::property_dependencies::validate_properties(
+                schema,
+                out.keys().map(String::as_str),
+            )?;
             validate_alternative_fields(schema, alternatives, &out)?;
             json_schema::property_counts::validate_len(schema, out.len())?;
             Ok(serde_json::Value::Object(out))

@@ -99,7 +99,6 @@ fn modern_structural_and_malformed_supported_siblings_reject() {
         r##""$recursiveRef":"#/$defs/Base""##,
         r#""type":"string""#,
         r#""required":["value"]"#,
-        r#""dependencies":{"value":["other"]}"#,
         r#""allOf":[{"type":"integer"}]"#,
     ] {
         let schema = format!(

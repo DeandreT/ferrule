@@ -19,6 +19,7 @@ mod nullable_composition;
 mod object_openness;
 mod patterns;
 mod property_counts;
+mod property_dependencies;
 mod ranges;
 mod ref_dialects;
 mod required;
