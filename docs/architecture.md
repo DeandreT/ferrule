@@ -139,6 +139,12 @@ logical output-path override to the selected named target. SQLite and
 update-existing XLSX stay on the filesystem runner because their behavior
 depends on persistent prior state.
 
+The `run --trace-json PATH` option streams interpreter events into a private
+sibling staging file and publishes it only after successful execution. Each
+JSON Lines record has a versioned envelope, deterministic sequence number, and
+a tagged node or scope/control event. Failed mappings leave an existing trace
+untouched. See [Execution tracing](tracing.md) for the stable wire contract.
+
 During execution, source contexts form a stack. Field resolution begins at the
 innermost frame and falls outward, which allows parent values to broadcast into
 nested target rows. Repeating source paths can cross several collection levels;

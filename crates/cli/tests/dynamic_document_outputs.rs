@@ -132,6 +132,32 @@ fn writes_every_dynamic_document_beneath_the_explicit_base() -> Result<(), Box<d
 }
 
 #[test]
+fn protected_dynamic_output_base_fails_before_publication() -> Result<(), Box<dyn Error>> {
+    let (directory, project_path) = prepare(&project(3))?;
+    let output = directory.0.join("trace.jsonl");
+    let trace = cli::JsonTraceFile::create(&output)?;
+    let protected = [trace.destination()];
+
+    let error = cli::run_project_with_options(
+        &project_path,
+        &cli::RunOptions::new()
+            .with_output_path(&output)
+            .with_trace_sink(&trace)
+            .with_protected_output_paths(&protected),
+    )
+    .expect_err("a dynamic output base must not replace a protected trace path");
+
+    assert!(
+        error
+            .to_string()
+            .contains("overlaps a path reserved by the host"),
+        "{error:#}"
+    );
+    assert!(!output.exists());
+    Ok(())
+}
+
+#[test]
 fn resolved_source_paths_are_rejected_as_dynamic_output_names() -> Result<(), Box<dyn Error>> {
     let (directory, project_path) = prepare(&project(0))?;
     let output = directory.0.join("output");

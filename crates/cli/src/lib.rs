@@ -31,6 +31,7 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 mod code_generation;
 mod output_documents;
 mod payload;
+mod trace_json;
 
 pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
 pub use engine::{
@@ -44,6 +45,7 @@ pub use payload::{
     PayloadDocument, PayloadRunOptions, PayloadRunOutcome, run_project_payloads,
     run_project_value_payloads,
 };
+pub use trace_json::JsonTraceFile;
 
 /// Result of running a project after resolving its input and output paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +77,8 @@ pub struct RunOptions<'a> {
     pub target: Option<TargetSelection<'a>>,
     pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
     pub trace_sink: Option<&'a dyn TraceSink>,
+    /// Host-owned artifact paths that mapping outputs must not replace.
+    pub protected_output_paths: &'a [&'a Path],
 }
 
 impl<'a> RunOptions<'a> {
@@ -104,6 +108,11 @@ impl<'a> RunOptions<'a> {
 
     pub fn with_trace_sink(mut self, trace_sink: &'a dyn TraceSink) -> Self {
         self.trace_sink = Some(trace_sink);
+        self
+    }
+
+    pub fn with_protected_output_paths(mut self, paths: &'a [&'a Path]) -> Self {
+        self.protected_output_paths = paths;
         self
     }
 }
@@ -227,6 +236,7 @@ pub fn run_project_value_with_options(
         true,
     )?;
     let targets = plan_project_targets(project, project_path, options.output_path, options.target)?;
+    output_documents::reject_protected_static_targets(&targets, options.protected_output_paths)?;
     let required_sources = options
         .target
         .map(|selection| engine::required_sources_for_target(project, selection))
@@ -288,7 +298,12 @@ pub fn run_project_value_with_options(
             &execution,
             selection,
         )?;
-        write_selected_target(&targets[0], &output, &current_datetime)?
+        write_selected_target(
+            &targets[0],
+            &output,
+            &current_datetime,
+            options.protected_output_paths,
+        )?
     } else {
         let outputs = engine::run_outputs_with_sources_and_context(
             project,
@@ -296,7 +311,12 @@ pub fn run_project_value_with_options(
             extras,
             &execution,
         )?;
-        write_all_targets(&targets, &outputs, &current_datetime)?
+        write_all_targets(
+            &targets,
+            &outputs,
+            &current_datetime,
+            options.protected_output_paths,
+        )?
     };
 
     Ok(RunOutcome {
@@ -446,6 +466,7 @@ fn write_all_targets(
     targets: &[PlannedProjectTarget<'_>],
     outputs: &engine::ExecutionOutputs,
     current_datetime: &str,
+    protected_output_paths: &[&Path],
 ) -> anyhow::Result<WrittenTargets> {
     if outputs.extras.len() + 1 != targets.len() {
         bail!("engine returned an unexpected number of target values");
@@ -459,7 +480,7 @@ fn write_all_targets(
     for (target, output) in targets.iter().skip(1).zip(&outputs.extras) {
         writes.push(target_write(target, &output.instance, current_datetime));
     }
-    let mut written = write_target_outputs(&writes)?.into_iter();
+    let mut written = write_target_outputs(&writes, protected_output_paths)?.into_iter();
     let primary_result = written
         .next()
         .context("output batch did not return a primary target result")?;
@@ -485,6 +506,7 @@ fn write_selected_target(
     target: &PlannedProjectTarget<'_>,
     output: &engine::SelectedTargetOutput,
     current_datetime: &str,
+    protected_output_paths: &[&Path],
 ) -> anyhow::Result<WrittenTargets> {
     let instance = match (target.primary, output) {
         (true, engine::SelectedTargetOutput::Primary(instance)) => instance,
@@ -493,8 +515,11 @@ fn write_selected_target(
         }
         _ => bail!("engine returned a different target than requested"),
     };
-    let mut written =
-        write_target_outputs(&[target_write(target, instance, current_datetime)])?.into_iter();
+    let mut written = write_target_outputs(
+        &[target_write(target, instance, current_datetime)],
+        protected_output_paths,
+    )?
+    .into_iter();
     let result = written
         .next()
         .context("output batch did not return the selected target result")?;
