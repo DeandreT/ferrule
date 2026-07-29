@@ -27,6 +27,16 @@ fn project() -> Project {
     )
     .and_then(|plan| {
         plan.then(
+            MappingJoinSource::singleton(vec!["Region".into()]),
+            MappingJoinConditions::new(MappingJoinKey::new(
+                vec!["Catalog".into(), "Product".into()],
+                vec!["Region".into()],
+                Vec::new(),
+            )),
+        )
+    })
+    .and_then(|plan| {
+        plan.then(
             MappingJoinSource::new(vec!["Inventory".into(), "Stock".into()]),
             MappingJoinConditions::new(MappingJoinKey::new(
                 vec!["Catalog".into(), "Product".into()],
@@ -44,6 +54,7 @@ fn project() -> Project {
                     "Line",
                     vec![
                         SchemaNode::scalar("Sku", ScalarType::String),
+                        SchemaNode::scalar("Region", ScalarType::String),
                         SchemaNode::scalar("Quantity", ScalarType::Int),
                         SchemaNode::scalar("Separator", ScalarType::String),
                     ],
@@ -69,6 +80,7 @@ fn project() -> Project {
                                 SchemaNode::scalar("JoinPosition", ScalarType::Int),
                                 SchemaNode::scalar("ProductPosition", ScalarType::Int),
                                 SchemaNode::scalar("OuterQuantity", ScalarType::Int),
+                                SchemaNode::scalar("Region", ScalarType::String),
                                 SchemaNode::scalar("Warehouse", ScalarType::String),
                                 SchemaNode::group(
                                     "Details",
@@ -97,6 +109,7 @@ fn project() -> Project {
                             "Product",
                             vec![
                                 SchemaNode::scalar("Sku", ScalarType::String),
+                                SchemaNode::scalar("Region", ScalarType::String),
                                 SchemaNode::scalar("Price", ScalarType::Int),
                                 SchemaNode::scalar("Label", ScalarType::String),
                                 SchemaNode::scalar("Rank", ScalarType::Int),
@@ -256,6 +269,14 @@ fn project() -> Project {
                         path: vec!["Warehouse".into()],
                     },
                 ),
+                (
+                    18,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Region".into()],
+                        path: Vec::new(),
+                    },
+                ),
             ]),
         },
         root: Scope {
@@ -309,6 +330,10 @@ fn project() -> Project {
                             node: 1,
                         },
                         Binding {
+                            target_field: "Region".into(),
+                            node: 18,
+                        },
+                        Binding {
                             target_field: "Warehouse".into(),
                             node: 17,
                         },
@@ -354,18 +379,19 @@ fn source() -> Instance {
     group([field(
         "Line",
         repeated([
-            line(string("1"), 2, "|"),
-            line(string("2"), 3, "/"),
-            line(Value::Null, 4, "-"),
-            line(Value::xml_nil(), 5, "-"),
-            line(string("9"), 6, "-"),
+            line(string("1"), "west", 2, "|"),
+            line(string("2"), "north", 3, "/"),
+            line(Value::Null, "west", 4, "-"),
+            line(Value::xml_nil(), "west", 5, "-"),
+            line(string("9"), "west", 6, "-"),
         ]),
     )])
 }
 
-fn line(sku: Value, quantity: i64, separator: &str) -> Instance {
+fn line(sku: Value, region: &str, quantity: i64, separator: &str) -> Instance {
     group([
         field("Sku", scalar(sku)),
+        field("Region", scalar(string(region))),
         field("Quantity", scalar(Value::Int(quantity))),
         field("Separator", scalar(string(separator))),
     ])
@@ -375,18 +401,19 @@ fn catalog() -> Instance {
     group([field(
         "Product",
         repeated([
-            product(Value::Int(1), 10, "first", 10),
-            product(string("1"), 20, "second", 30),
-            product(string("2"), 5, "third", 5),
-            product(Value::Null, 100, "null", 99),
-            product(Value::xml_nil(), 100, "xml-nil", 99),
+            product(Value::Int(1), "west", 10, "first", 10),
+            product(string("1"), "east", 20, "second", 30),
+            product(string("2"), "north", 5, "third", 5),
+            product(Value::Null, "west", 100, "null", 99),
+            product(Value::xml_nil(), "west", 100, "xml-nil", 99),
         ]),
     )])
 }
 
-fn product(sku: Value, price: i64, label: &str, rank: i64) -> Instance {
+fn product(sku: Value, region: &str, price: i64, label: &str, rank: i64) -> Instance {
     group([
         field("Sku", scalar(sku)),
+        field("Region", scalar(string(region))),
         field("Price", scalar(Value::Int(price))),
         field("Label", scalar(string(label))),
         field("Rank", scalar(Value::Int(rank))),
@@ -451,12 +478,13 @@ fn signature(output: &Instance) -> String {
                         .field("Details")
                         .unwrap_or_else(|| panic!("matched product details"));
                     format!(
-                        "{}:{}:{}:{}:{}:{}:{}",
+                        "{}:{}:{}:{}:{}:{}:{}:{}",
                         text(product, "Label"),
                         integer(product, "Price"),
                         integer(product, "JoinPosition"),
                         integer(product, "ProductPosition"),
                         integer(product, "OuterQuantity"),
+                        text(product, "Region"),
                         text(product, "Warehouse"),
                         text(details, "Summary")
                     )
@@ -633,17 +661,17 @@ const HARNESS: &str = r#"using Ferrule.Generated;
 using Ferrule.Runtime;
 
 var source = Group(Field("Line", Repeated(
-    Line(Text("1"), 2, "|"),
-    Line(Text("2"), 3, "/"),
-    Line(FerruleValue.Null, 4, "-"),
-    Line(FerruleValue.XmlNil, 5, "-"),
-    Line(Text("9"), 6, "-"))));
+    Line(Text("1"), "west", 2, "|"),
+    Line(Text("2"), "north", 3, "/"),
+    Line(FerruleValue.Null, "west", 4, "-"),
+    Line(FerruleValue.XmlNil, "west", 5, "-"),
+    Line(Text("9"), "west", 6, "-"))));
 var catalog = Group(Field("Product", Repeated(
-    Product(Int(1), 10, "first", 10),
-    Product(Text("1"), 20, "second", 30),
-    Product(Text("2"), 5, "third", 5),
-    Product(FerruleValue.Null, 100, "null", 99),
-    Product(FerruleValue.XmlNil, 100, "xml-nil", 99))));
+    Product(Int(1), "west", 10, "first", 10),
+    Product(Text("1"), "east", 20, "second", 30),
+    Product(Text("2"), "north", 5, "third", 5),
+    Product(FerruleValue.Null, "west", 100, "null", 99),
+    Product(FerruleValue.XmlNil, "west", 100, "xml-nil", 99))));
 var inventory = Group(Field("Stock", Repeated(
     Stock(Text("1"), "east"),
     Stock(Int(2), "north"),
@@ -669,6 +697,7 @@ var signature = string.Join("\n", rows.Items.Cast<FerruleGroup>().Select(row =>
             Value(product, "JoinPosition").Int64Value,
             Value(product, "ProductPosition").Int64Value,
             Value(product, "OuterQuantity").Int64Value,
+            Value(product, "Region").StringValue,
             Value(product, "Warehouse").StringValue,
             Value(details, "Summary").StringValue);
     }));
@@ -688,13 +717,24 @@ var error = Error(() => GeneratedMapping.ExecuteWithSources(
 Equal(FerruleRuntimeError.MissingSourceField, error.Error);
 Equal((ulong?)8UL, error.Join);
 
-static FerruleGroup Line(FerruleValue sku, long quantity, string separator) => Group(
+static FerruleGroup Line(
+    FerruleValue sku,
+    string region,
+    long quantity,
+    string separator) => Group(
     Field("Sku", Scalar(sku)),
+    Field("Region", Scalar(Text(region))),
     Field("Quantity", Scalar(Int(quantity))),
     Field("Separator", Scalar(Text(separator))));
 
-static FerruleGroup Product(FerruleValue sku, long price, string label, long rank) => Group(
+static FerruleGroup Product(
+    FerruleValue sku,
+    string region,
+    long price,
+    string label,
+    long rank) => Group(
     Field("Sku", Scalar(sku)),
+    Field("Region", Scalar(Text(region))),
     Field("Price", Scalar(Int(price))),
     Field("Label", Scalar(Text(label))),
     Field("Rank", Scalar(Int(rank))));
