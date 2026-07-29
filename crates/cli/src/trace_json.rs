@@ -13,7 +13,7 @@ use serde_json::{Value as JsonValue, json};
 
 use crate::WrittenOutput;
 
-const TRACE_SCHEMA_VERSION: u64 = 1;
+const TRACE_SCHEMA_VERSION: u64 = 2;
 const STAGE_ATTEMPTS: usize = 64;
 static STAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -247,7 +247,7 @@ fn event_value(event: &TraceEvent) -> JsonValue {
             "kind": "node_value",
             "node": node,
             "positions": positions_value(positions),
-            "value": scalar_value(value),
+            "value": trace_value(value),
         }),
         TraceEvent::ScopeStarted {
             scope,
@@ -379,30 +379,6 @@ fn event_value(event: &TraceEvent) -> JsonValue {
             "produced": produced,
             "output_kind": output_kind(*kind),
         }),
-    }
-}
-
-fn scalar_value(value: &ir::Value) -> JsonValue {
-    match value {
-        ir::Value::Null => json!({"type": "absent", "value": null}),
-        ir::Value::JsonNull(_) => json!({"type": "json_null", "value": null}),
-        ir::Value::XmlNil(_) => json!({"type": "xml_nil", "value": null}),
-        ir::Value::Bool(value) => json!({"type": "bool", "value": value}),
-        ir::Value::Int(value) => json!({"type": "int", "value": value}),
-        ir::Value::Float(value) if value.is_finite() => {
-            json!({"type": "float", "value": value})
-        }
-        ir::Value::Float(value) => json!({
-            "type": "float",
-            "value": if value.is_nan() {
-                "NaN"
-            } else if value.is_sign_positive() {
-                "Infinity"
-            } else {
-                "-Infinity"
-            },
-        }),
-        ir::Value::String(value) => json!({"type": "string", "value": value}),
     }
 }
 
@@ -554,7 +530,11 @@ mod tests {
             TraceEvent::NodeValue {
                 node: 1,
                 positions: vec![position.clone()],
-                value: ir::Value::Float(f64::INFINITY),
+                value: TraceValue {
+                    value_type: "float",
+                    preview: "inf".into(),
+                    truncated: false,
+                },
             },
             TraceEvent::ScopeStarted {
                 scope: scope(),
