@@ -102,7 +102,7 @@ fn export_rejects_lossy_generic_attribute_groups() {
     assert!(matches!(
         export(&schema),
         Err(XmlFormatError::UnsupportedXmlAttributeWildcard { reason })
-            if reason.contains("repeating unqualified group")
+            if reason.contains("canonical repeating generic attribute group")
     ));
 }
 
