@@ -8,6 +8,8 @@ use ir::{
 use super::{export, import};
 use crate::JsonFormatError;
 
+mod all_of;
+
 fn import_str(text: &str) -> SchemaNode {
     import_str_result(text).unwrap()
 }
