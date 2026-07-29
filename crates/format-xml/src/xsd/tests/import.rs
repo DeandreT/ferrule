@@ -3170,6 +3170,7 @@ fn resolves_strict_wildcards_to_typed_repeating_choice_ports()
         schema.xml_repeating_choices,
         [XmlRepeatingChoice {
             required: false,
+            repeating: true,
             members: vec!["Alpha".into(), "Beta".into()],
         }]
     );
@@ -3279,6 +3280,134 @@ fn strict_wildcard_resolution_requires_a_closed_allowed_namespace_graph()
 }
 
 #[test]
+fn strict_single_wildcard_becomes_an_exact_singular_choice()
+-> Result<(), Box<dyn std::error::Error>> {
+    const ROOT: &str = "urn:ferrule:strict-single:root";
+    const MEMBER: &str = "urn:ferrule:strict-single:member";
+    let dir =
+        std::env::temp_dir().join(format!("ferrule_xsd_strict_single_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("members.xsd"),
+        format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                targetNamespace="{MEMBER}" elementFormDefault="qualified">
+              <xs:element name="Alpha" type="xs:string"/>
+              <xs:element name="Beta"><xs:complexType><xs:sequence>
+                <xs:element name="Value" type="xs:integer"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"#
+        ),
+    )?;
+    let root = dir.join("root.xsd");
+    std::fs::write(
+        &root,
+        format!(
+            r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:r="{ROOT}" targetNamespace="{ROOT}" elementFormDefault="qualified">
+              <xs:import namespace="{MEMBER}" schemaLocation="members.xsd"/>
+              <xs:element name="Container"><xs:complexType><xs:sequence>
+                <xs:any namespace="##other"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"###
+        ),
+    )?;
+
+    let schema = import_root(&root, Some(&format!("{{{ROOT}}}Container")))?;
+    assert!(schema.child("Alpha").is_some_and(|child| !child.repeating));
+    assert!(schema.child("Beta").is_some_and(|child| !child.repeating));
+    assert_eq!(
+        schema.xml_repeating_choices,
+        [XmlRepeatingChoice {
+            required: true,
+            repeating: false,
+            members: vec!["Alpha".into(), "Beta".into()],
+        }]
+    );
+
+    let input = format!(
+        r#"<r:Container xmlns:r="{ROOT}" xmlns:m="{MEMBER}"><m:Beta><m:Value>7</m:Value></m:Beta></r:Container>"#
+    );
+    let instance = from_str(&input, &schema)?;
+    assert_eq!(
+        instance
+            .field("Beta")
+            .and_then(|beta| beta.field("Value"))
+            .and_then(Instance::as_scalar),
+        Some(&Value::Int(7))
+    );
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains("<Beta"));
+    assert!(output.contains("<Value>7</Value>"));
+
+    let exported = export_set(&schema, "root.xsd")?;
+    assert!(exported.root.contains("<xs:choice>"));
+    assert!(!exported.root.contains("<xs:choice maxOccurs="));
+    std::fs::write(&root, &exported.root)?;
+    for dependency in &exported.dependencies {
+        std::fs::write(dir.join(&dependency.filename), &dependency.contents)?;
+    }
+    let reimported = import_root(&root, Some(&format!("{{{ROOT}}}Container")))?;
+    assert_eq!(reimported, schema);
+
+    let missing = format!(r#"<r:Container xmlns:r="{ROOT}"/>"#);
+    assert!(from_str(&missing, &schema).is_ok());
+    let ambiguous = format!(
+        r#"<r:Container xmlns:r="{ROOT}" xmlns:m="{MEMBER}"><m:Alpha>x</m:Alpha><m:Beta><m:Value>7</m:Value></m:Beta></r:Container>"#
+    );
+    assert!(matches!(
+        from_str(&ambiguous, &schema),
+        Err(XmlFormatError::InvalidXmlChoice { .. })
+    ));
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
+fn single_skip_wildcard_round_trips_one_generic_element() -> Result<(), Box<dyn std::error::Error>>
+{
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_single_skip_wildcard_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:any namespace="##local" processContents="skip"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"###,
+    )?;
+
+    let schema = import(&path)?;
+    let generic = schema
+        .child(XML_ELEMENTS_FIELD)
+        .ok_or("single wildcard did not become a generic element")?;
+    assert!(!generic.repeating);
+    let instance = from_str("<Root><Dynamic code=\"x\">value</Dynamic></Root>", &schema)?;
+    let generic = instance
+        .field(XML_ELEMENTS_FIELD)
+        .ok_or("single generic instance is absent")?;
+    assert!(matches!(generic, Instance::Group(_)));
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains("<Dynamic code=\"x\">value</Dynamic>"));
+    assert!(matches!(
+        from_str("<Root><First/><Second/></Root>", &schema),
+        Err(XmlFormatError::XmlWildcardCardinality)
+    ));
+
+    let exported = export(&schema)?;
+    assert!(exported.contains("<xs:any namespace=\"##local\" processContents=\"skip\"/>"));
+    assert!(!exported.contains("maxOccurs=\"unbounded\""));
+    std::fs::write(&path, exported)?;
+    assert_eq!(import(&path)?, schema);
+    std::fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
 fn rejects_wildcards_outside_the_lossless_local_skip_profile()
 -> Result<(), Box<dyn std::error::Error>> {
     let cases = [
@@ -3305,7 +3434,17 @@ fn rejects_wildcards_outside_the_lossless_local_skip_profile()
         (
             "bounded",
             "<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"2\"/>",
-            "maxOccurs=\"unbounded\"",
+            "maxOccurs=\"1\" or maxOccurs=\"unbounded\"",
+        ),
+        (
+            "bounded-minimum",
+            "<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"2\" maxOccurs=\"unbounded\"/>",
+            "minOccurs=\"0\" or minOccurs=\"1\"",
+        ),
+        (
+            "optional-single-skip",
+            "<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\"/>",
+            "explicit occurrence metadata",
         ),
         (
             "choice",

@@ -100,7 +100,7 @@ expected to re-import and validate as ferrule projects.
 
 The main remaining gaps are some XML derived-type input shapes beyond compatible
 `complexContent` and scalar-text/attribute-only `simpleContent` hierarchies,
-namespace-aware or validating wildcards, validation-bearing scalar unions and general heterogeneous arrays,
+open/lax or unresolved validating wildcards, validation-bearing scalar unions and general heterogeneous arrays,
 overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
 first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
@@ -110,12 +110,15 @@ pairwise-disjoint scalar `oneOf`, exact scalar `anyOf` unions, and array `anyOf`
 branches whose scalar item domain subsumes every narrower branch are preserved,
 including required or optional typed
 `const` or singleton-`enum` discriminators and JSON-null discriminators.
+Flat nullable compositions may combine null with multiple compatible object,
+scalar-union, or subsumed-array branches.
 Expanded-name identity for ordinary elements and attributes is preserved;
 foreign declarations export as an atomic graph of local XSD siblings.
-Exact optional/unbounded `##local` element wildcards declared inline or through
-named model groups, and direct or named-attribute-group `##local` attribute
-wildcards with `processContents="skip"`, also round-trip as recursive generic
-element groups and generic attribute collections.
+Namespace-constrained optional/unbounded element wildcards with
+`processContents="skip"` round-trip as recursive generic element groups, while
+closed strict wildcards become exact singular or repeating typed choices.
+Direct or named-attribute-group skip wildcards retain generic attribute
+collections.
 
 The exact supported surface evolves quickly. The
 [workflow-parity roadmap](../ROADMAP.md) records the strategic gaps, while the
