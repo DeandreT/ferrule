@@ -243,6 +243,56 @@ fn mixed_content_preserves_interleaved_text_and_typed_children() {
 }
 
 #[test]
+fn any_content_preserves_recursive_expanded_names_attributes_and_order()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_root_str(
+        r#"
+            <!ELEMENT Envelope ANY>
+            <!ATTLIST Envelope id CDATA #REQUIRED>
+        "#,
+        Some("Envelope"),
+    )?;
+    let elements = schema
+        .child(XML_ELEMENTS_FIELD)
+        .ok_or_else(|| std::io::Error::other("missing generic elements"))?;
+    assert!(elements.repeating);
+    assert!(matches!(
+        elements.xml_wildcard_namespace,
+        Some(XmlWildcardNamespaceConstraint::Any)
+    ));
+    assert!(elements.child(XML_NAMESPACE_URI_FIELD).is_some());
+    assert!(elements.child(XML_ATTRIBUTES_FIELD).is_some());
+    assert!(elements.child(XML_ELEMENTS_FIELD).is_some());
+
+    let input = r#"<Envelope id="42" xmlns:e="urn:ferrule:dtd:any">
+      before<Local plain="yes">local text</Local>
+      between<e:Qualified e:code="Q">qualified <Nested xmlns="urn:ferrule:nested">value</Nested></e:Qualified>after
+    </Envelope>"#;
+    let instance = from_str(input, &schema)?;
+    let items = instance
+        .field(XML_ELEMENTS_FIELD)
+        .and_then(Instance::as_repeated)
+        .ok_or_else(|| std::io::Error::other("missing generic element values"))?;
+    assert_eq!(items.len(), 2);
+    assert_eq!(
+        items[1]
+            .field(XML_NAMESPACE_URI_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("urn:ferrule:dtd:any".into()))
+    );
+
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains("before<Local"), "{output}");
+    assert!(output.contains("between<Qualified"), "{output}");
+    assert!(output.contains("qualified <Nested"), "{output}");
+    assert!(output.contains("</Qualified>after"), "{output}");
+    assert!(output.contains(r#"id="42""#), "{output}");
+    assert!(output.contains(r#"fga1:code="Q""#), "{output}");
+    assert_eq!(from_str(&output, &schema)?, instance);
+    Ok(())
+}
+
+#[test]
 fn file_api_imports_self_authored_dtd() {
     let path = std::env::temp_dir().join(format!(
         "ferrule_dtd_import_test_{}.dtd",
@@ -257,7 +307,6 @@ fn file_api_imports_self_authored_dtd() {
 #[test]
 fn rejects_unsupported_or_unrepresentable_content_precisely() {
     let cases = [
-        ("<!ELEMENT Root ANY>", "ANY element content"),
         (
             "<!ELEMENT Root (#PCDATA|Child)><!ELEMENT Child EMPTY>",
             "mixed PCDATA and child-element content must use `*`",
