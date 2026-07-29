@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const MAX_PREVIEW_BYTES: usize = 1024 * 1024;
+const MAX_BINARY_PREVIEW_BYTES: usize = 4 * 1024;
 pub const MAX_TRACE_EVENTS: usize = 50_000;
 
 #[derive(Debug, Default)]
@@ -61,11 +62,18 @@ impl cli::TraceSink for TraceCollector {
 
 #[derive(Debug)]
 pub struct RunReport {
+    pub kind: RunReportKind,
     pub duration: Duration,
     pub records_written: usize,
     pub input_path: PathBuf,
     pub outputs: Vec<RunOutput>,
     pub trace: TraceReport,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunReportKind {
+    Run,
+    Preview,
 }
 
 impl RunReport {
@@ -80,9 +88,45 @@ impl RunReport {
             .map(RunOutput::from_written)
             .collect();
         Self {
+            kind: RunReportKind::Run,
             duration,
             records_written: outcome.records_written,
             input_path: outcome.input_path,
+            outputs,
+            trace,
+        }
+    }
+
+    pub fn from_payload_with_trace(
+        outcome: cli::PayloadRunOutcome,
+        input_path: PathBuf,
+        duration: Duration,
+        trace: TraceReport,
+    ) -> Self {
+        let mut target_counts = std::collections::BTreeMap::new();
+        for artifact in &outcome.artifacts {
+            let count = target_counts
+                .entry(artifact.target.as_str())
+                .or_insert(0usize);
+            *count = count.saturating_add(1);
+        }
+        let outputs = outcome
+            .artifacts
+            .iter()
+            .map(|output| {
+                RunOutput::from_payload(
+                    output,
+                    target_counts
+                        .get(output.target.as_str())
+                        .is_some_and(|count| *count > 1),
+                )
+            })
+            .collect();
+        Self {
+            kind: RunReportKind::Preview,
+            duration,
+            records_written: outcome.records_written,
+            input_path,
             outputs,
             trace,
         }
@@ -124,6 +168,7 @@ pub struct RunOutput {
     pub name: String,
     pub records_written: usize,
     pub path: PathBuf,
+    in_memory: bool,
     preview: Option<OutputPreview>,
 }
 
@@ -136,27 +181,45 @@ impl RunOutput {
         )
     }
 
+    fn from_payload(output: &cli::PayloadArtifact, distinguish_path: bool) -> Self {
+        let name = if distinguish_path {
+            format!("{} - {}", output.target, output.path.display())
+        } else {
+            output.target.clone()
+        };
+        Self {
+            name,
+            records_written: output.records_written,
+            path: output.path.clone(),
+            in_memory: true,
+            preview: Some(OutputPreview::from_bytes(&output.bytes)),
+        }
+    }
+
     fn new(name: String, records_written: usize, path: PathBuf) -> Self {
         Self {
             name,
             records_written,
             path,
+            in_memory: false,
             preview: None,
         }
     }
 
     fn ensure_preview(&mut self) {
-        if self.preview.is_none() {
+        if self.preview.is_none() && !self.in_memory {
             self.preview = Some(OutputPreview::read(&self.path));
         }
     }
 
     fn refresh_preview(&mut self) {
-        self.preview = Some(OutputPreview::read(&self.path));
+        if !self.in_memory {
+            self.preview = Some(OutputPreview::read(&self.path));
+        }
     }
 
     #[cfg(test)]
-    fn preview(&mut self) -> &OutputPreview {
+    pub(super) fn preview(&mut self) -> &OutputPreview {
         self.ensure_preview();
         match &self.preview {
             Some(preview) => preview,
@@ -173,7 +236,9 @@ pub enum OutputPreview {
         truncated: bool,
     },
     Binary {
+        content: String,
         total_bytes: u64,
+        truncated: bool,
     },
     Unavailable {
         message: String,
@@ -181,6 +246,49 @@ pub enum OutputPreview {
 }
 
 impl OutputPreview {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let total_bytes = bytes.len() as u64;
+        let truncated = bytes.len() > MAX_PREVIEW_BYTES;
+        let end = bytes.len().min(MAX_PREVIEW_BYTES);
+        let mut preview = &bytes[..end];
+        match std::str::from_utf8(preview) {
+            Ok(content) => Self::Text {
+                content: content.to_string(),
+                total_bytes,
+                truncated,
+            },
+            Err(error) if truncated && error.error_len().is_none() => {
+                preview = &preview[..error.valid_up_to()];
+                Self::Text {
+                    content: String::from_utf8_lossy(preview).into_owned(),
+                    total_bytes,
+                    truncated,
+                }
+            }
+            Err(_) => Self::binary(bytes, total_bytes),
+        }
+    }
+
+    fn binary(bytes: &[u8], total_bytes: u64) -> Self {
+        let preview = &bytes[..bytes.len().min(MAX_BINARY_PREVIEW_BYTES)];
+        let content = preview
+            .chunks(16)
+            .map(|chunk| {
+                chunk
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        Self::Binary {
+            content,
+            total_bytes,
+            truncated: total_bytes > MAX_BINARY_PREVIEW_BYTES as u64,
+        }
+    }
+
     fn read(path: &Path) -> Self {
         match read_preview(path) {
             Ok(preview) => preview,
@@ -192,7 +300,7 @@ impl OutputPreview {
 
     fn total_bytes(&self) -> Option<u64> {
         match self {
-            Self::Text { total_bytes, .. } | Self::Binary { total_bytes } => Some(*total_bytes),
+            Self::Text { total_bytes, .. } | Self::Binary { total_bytes, .. } => Some(*total_bytes),
             Self::Unavailable { .. } => None,
         }
     }
@@ -200,7 +308,11 @@ impl OutputPreview {
 
 pub fn show(ctx: &egui::Context, open: &mut bool, view: &mut RunReportView) {
     let mut window_open = *open;
-    egui::Window::new("Run results")
+    let title = match view.report.kind {
+        RunReportKind::Run => "Run results",
+        RunReportKind::Preview => "Preview results",
+    };
+    egui::Window::new(title)
         .open(&mut window_open)
         .default_size(egui::vec2(860.0, 560.0))
         .min_size(egui::vec2(520.0, 320.0))
@@ -212,12 +324,19 @@ pub fn show(ctx: &egui::Context, open: &mut bool, view: &mut RunReportView) {
 fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
     let output_count = view.report.outputs.len();
     ui.horizontal_wrapped(|ui| {
-        ui.strong("Completed");
+        ui.strong(match view.report.kind {
+            RunReportKind::Run => "Completed",
+            RunReportKind::Preview => "Preview completed",
+        });
         ui.separator();
-        ui.label(format!(
-            "Primary: {}",
-            format_records(view.report.records_written)
-        ));
+        ui.label(match view.report.kind {
+            RunReportKind::Run => {
+                format!("Primary: {}", format_records(view.report.records_written))
+            }
+            RunReportKind::Preview => {
+                format!("Records: {}", format_records(view.report.records_written))
+            }
+        });
         ui.separator();
         ui.label(format!(
             "Run time: {}",
@@ -232,7 +351,10 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.label(format!("{} trace events", view.report.trace.events.len()));
     });
     ui.horizontal(|ui| {
-        ui.weak("Input");
+        ui.weak(match view.report.kind {
+            RunReportKind::Run => "Input",
+            RunReportKind::Preview => "Logical input",
+        });
         let input = view.report.input_path.display().to_string();
         ui.add(
             egui::Label::new(&input)
@@ -271,7 +393,10 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
     ui.separator();
 
     let Some(output) = view.report.outputs.get_mut(view.selected_output) else {
-        ui.weak("No output files were produced.");
+        ui.weak(match view.report.kind {
+            RunReportKind::Run => "No output files were produced.",
+            RunReportKind::Preview => "No output artifacts were produced.",
+        });
         return;
     };
     output.ensure_preview();
@@ -290,6 +415,9 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
         }
     });
     ui.horizontal(|ui| {
+        if output.in_memory {
+            ui.weak("Logical output");
+        }
         let path = output.path.display().to_string();
         ui.add(
             egui::Label::new(&path)
@@ -297,16 +425,22 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
                 .wrap_mode(egui::TextWrapMode::Truncate),
         )
         .on_hover_text(&path);
-        if crate::icons::button(ui, true, lucide_icons::Icon::Copy, "Copy output path").clicked() {
+        let copy_tooltip = if output.in_memory {
+            "Copy logical output identity"
+        } else {
+            "Copy output path"
+        };
+        if crate::icons::button(ui, true, lucide_icons::Icon::Copy, copy_tooltip).clicked() {
             ui.ctx().copy_text(path);
         }
-        if crate::icons::button(
-            ui,
-            true,
-            lucide_icons::Icon::RefreshCw,
-            "Refresh output preview",
-        )
-        .clicked()
+        if !output.in_memory
+            && crate::icons::button(
+                ui,
+                true,
+                lucide_icons::Icon::RefreshCw,
+                "Refresh output preview",
+            )
+            .clicked()
         {
             output.refresh_preview();
         }
@@ -343,9 +477,34 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
                     );
                 });
         }
-        OutputPreview::Binary { .. } => {
-            ui.strong("Binary output");
-            ui.weak("A text preview is not available for this file.");
+        OutputPreview::Binary {
+            content, truncated, ..
+        } => {
+            ui.horizontal(|ui| {
+                ui.strong("Hex preview");
+                if *truncated {
+                    ui.weak(format!(
+                        "first {}",
+                        format_bytes(MAX_BINARY_PREVIEW_BYTES as u64)
+                    ));
+                }
+                if crate::icons::button(ui, true, lucide_icons::Icon::Copy, "Copy hex preview")
+                    .clicked()
+                {
+                    ui.ctx().copy_text(content.clone());
+                }
+            });
+            egui::ScrollArea::both()
+                .id_salt(("run_binary_preview", view.selected_output))
+                .auto_shrink([false, false])
+                .max_height(ui.available_height().max(120.0))
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::Label::new(egui::RichText::new(content).monospace())
+                            .selectable(true)
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                    );
+                });
         }
         OutputPreview::Unavailable { message } => {
             ui.colored_label(ui.visuals().error_fg_color, "Preview unavailable");
@@ -749,7 +908,7 @@ fn read_preview(path: &Path) -> std::io::Result<OutputPreview> {
                 truncated,
             })
         }
-        Err(_) => Ok(OutputPreview::Binary { total_bytes }),
+        Err(_) => Ok(OutputPreview::binary(&bytes, total_bytes)),
     }
 }
 
@@ -781,277 +940,5 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn trace_event(node: mapping::NodeId, value: ir::Value) -> cli::TraceEvent {
-        let (value_type, preview) = match value {
-            ir::Value::Null => ("null", "null".to_owned()),
-            ir::Value::JsonNull(_) => ("json-null", "json-null".to_owned()),
-            ir::Value::XmlNil(_) => ("xml-nil", "xml-nil".to_owned()),
-            ir::Value::Bool(value) => ("bool", value.to_string()),
-            ir::Value::Int(value) => ("int", value.to_string()),
-            ir::Value::Float(value) => ("float", value.to_string()),
-            ir::Value::String(value) => ("string", value),
-        };
-        cli::TraceEvent::NodeValue {
-            node,
-            positions: Vec::new(),
-            value: cli::TraceValue {
-                value_type,
-                preview,
-                truncated: false,
-            },
-        }
-    }
-
-    fn trace_scope() -> cli::TraceScope {
-        cli::TraceScope {
-            target: cli::TraceTarget::Named("Audit".into()),
-            target_path: vec!["Orders".into(), "Line".into()],
-            structural_path: vec![1, 3],
-        }
-    }
-
-    fn temporary_path(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "ferrule_gui_run_report_{name}_{}",
-            std::process::id()
-        ))
-    }
-
-    #[test]
-    fn text_previews_are_bounded_without_splitting_utf8() {
-        let path = temporary_path("text");
-        let mut content = "a".repeat(MAX_PREVIEW_BYTES - 1);
-        content.push('é');
-        std::fs::write(&path, content).expect("preview fixture is written");
-
-        let preview = read_preview(&path).expect("preview is read");
-        let OutputPreview::Text {
-            content,
-            total_bytes,
-            truncated,
-        } = preview
-        else {
-            panic!("UTF-8 preview should remain text");
-        };
-        assert!(truncated);
-        assert_eq!(total_bytes, MAX_PREVIEW_BYTES as u64 + 1);
-        assert_eq!(content.len(), MAX_PREVIEW_BYTES - 1);
-        std::fs::remove_file(path).expect("preview fixture is removed");
-    }
-
-    #[test]
-    fn binary_and_missing_outputs_have_explicit_preview_states() {
-        let path = temporary_path("binary");
-        std::fs::write(&path, [0xff, 0x00, 0x80]).expect("preview fixture is written");
-        assert_eq!(
-            read_preview(&path).expect("preview is read"),
-            OutputPreview::Binary { total_bytes: 3 }
-        );
-        std::fs::remove_file(&path).expect("preview fixture is removed");
-        assert!(matches!(
-            OutputPreview::read(&path),
-            OutputPreview::Unavailable { .. }
-        ));
-    }
-
-    #[test]
-    fn report_construction_defers_output_reads_until_selected() {
-        let missing = temporary_path("lazy");
-        let outcome = cli::RunOutcome {
-            records_written: 2,
-            input_path: PathBuf::from("input.xml"),
-            output_path: missing.clone(),
-            primary_outputs: Vec::new(),
-            extra_outputs: Vec::new(),
-            artifacts: vec![cli::WrittenOutput {
-                name: "Primary".into(),
-                records_written: 2,
-                path: missing,
-            }],
-        };
-
-        let mut report = RunReport::from_outcome_with_trace(
-            outcome,
-            Duration::from_millis(12),
-            TraceReport::default(),
-        );
-
-        assert!(report.outputs[0].preview.is_none());
-        assert!(matches!(
-            report.outputs[0].preview(),
-            OutputPreview::Unavailable { .. }
-        ));
-    }
-
-    #[test]
-    fn dynamic_and_extra_outputs_keep_their_declared_order() {
-        let outcome = cli::RunOutcome {
-            records_written: 3,
-            input_path: PathBuf::from("input.xml"),
-            output_path: PathBuf::from("dynamic-base"),
-            primary_outputs: vec![cli::WrittenOutput {
-                name: "Primary 1".into(),
-                records_written: 2,
-                path: PathBuf::from("first.xml"),
-            }],
-            extra_outputs: vec![cli::WrittenOutput {
-                name: "Audit".into(),
-                records_written: 1,
-                path: PathBuf::from("audit.json"),
-            }],
-            artifacts: vec![
-                cli::WrittenOutput {
-                    name: "Primary 1".into(),
-                    records_written: 2,
-                    path: PathBuf::from("first.xml"),
-                },
-                cli::WrittenOutput {
-                    name: "Audit".into(),
-                    records_written: 1,
-                    path: PathBuf::from("audit.json"),
-                },
-            ],
-        };
-
-        let report = RunReport::from_outcome_with_trace(
-            outcome,
-            Duration::from_millis(4),
-            TraceReport::default(),
-        );
-
-        assert_eq!(
-            report
-                .outputs
-                .iter()
-                .map(|output| output.name.as_str())
-                .collect::<Vec<_>>(),
-            ["Primary 1", "Audit"]
-        );
-        assert!(report.outputs.iter().all(|output| output.preview.is_none()));
-    }
-
-    #[test]
-    fn summary_units_are_compact_and_deterministic() {
-        assert_eq!(format_records(1), "1 record");
-        assert_eq!(format_records(2), "2 records");
-        assert_eq!(format_duration(Duration::from_millis(1250)), "1.25 s");
-        assert_eq!(format_bytes(1536), "1.5 KiB");
-    }
-
-    #[test]
-    fn trace_collection_is_bounded_and_reports_omissions() {
-        let collector = TraceCollector::with_limit(2);
-        cli::TraceSink::record(&collector, trace_event(1, ir::Value::Int(10)));
-        cli::TraceSink::record(&collector, trace_event(2, ir::Value::String("kept".into())));
-        cli::TraceSink::record(&collector, trace_event(3, ir::Value::Bool(false)));
-
-        let trace = collector.finish();
-        assert_eq!(trace.events.len(), 2);
-        assert_eq!(trace.dropped, 1);
-        assert!(trace_row(1, &trace.events[1]).contains("node 2"));
-    }
-
-    #[test]
-    fn scope_trace_rows_expose_searchable_control_context() {
-        let started = cli::TraceEvent::ScopeStarted {
-            scope: trace_scope(),
-            iteration: cli::TraceIteration::Source {
-                path: vec!["Order".into(), "Line".into()],
-            },
-            positions: Vec::new(),
-        };
-        let filtered = cli::TraceEvent::FilterDecision {
-            scope: trace_scope(),
-            node: 42,
-            phase: cli::TraceFilterPhase::BeforeSort,
-            positions: vec![cli::TracePosition {
-                collection: vec!["Order".into()],
-                index: 3,
-                grouped: false,
-                join: None,
-                join_position: None,
-                document_path: None,
-            }],
-            passed: false,
-        };
-        let window = cli::TraceEvent::WindowApplied {
-            scope: trace_scope(),
-            window_index: 2,
-            window: cli::TraceWindow::FromTo { first: 2, last: 4 },
-            before: 8,
-            after: 3,
-        };
-
-        assert!(trace_row(0, &started).contains("named:Audit:/Orders/Line #1.3"));
-        assert!(trace_row(0, &started).contains("iterate source Order/Line"));
-        assert!(trace_row(1, &filtered).contains("filter node 42 before-sort drop"));
-        assert!(trace_row(1, &filtered).contains("Order[3]"));
-        assert!(trace_row(2, &window).contains("window 2 from 2 to 4  8 -> 3"));
-    }
-
-    #[test]
-    fn target_field_rows_expose_searchable_binding_context() {
-        let written = cli::TraceEvent::TargetFieldWritten {
-            scope: trace_scope(),
-            field: "delivery-window".into(),
-            binding: cli::TraceTargetFieldBinding::DynamicBinding { key: 17, value: 23 },
-            positions: Vec::new(),
-            kind: cli::TraceOutputKind::Scalar,
-            value: Some(cli::TraceValue {
-                value_type: "xml-nil",
-                preview: "xml-nil".into(),
-                truncated: false,
-            }),
-        };
-
-        let row = trace_row(3, &written);
-        assert!(row.contains("field delivery-window"));
-        assert!(row.contains("dynamic-binding key-node=17 value-node=23"));
-        assert!(row.contains("write scalar value=xml-nil(xml-nil)"));
-    }
-
-    #[test]
-    fn results_window_renders_and_loads_only_the_selected_preview() {
-        let first = temporary_path("window-first");
-        let second = temporary_path("window-second");
-        std::fs::write(&first, "<result>ok</result>").expect("first output is written");
-        std::fs::write(&second, "not selected").expect("second output is written");
-        let report = RunReport {
-            duration: Duration::from_millis(8),
-            records_written: 1,
-            input_path: PathBuf::from("input.xml"),
-            outputs: vec![
-                RunOutput::new("Primary".into(), 1, first.clone()),
-                RunOutput::new("Audit".into(), 1, second.clone()),
-            ],
-            trace: TraceReport {
-                events: vec![trace_event(7, ir::Value::String("ok".into()))],
-                dropped: 0,
-            },
-        };
-        let mut view = RunReportView::new(report);
-        let mut open = true;
-        let context = egui::Context::default();
-        crate::icons::install(&context);
-
-        let output = context.run_ui(Default::default(), |ui| {
-            show(ui.ctx(), &mut open, &mut view);
-        });
-
-        assert!(open);
-        assert!(!output.shapes.is_empty());
-        assert!(view.report.outputs[0].preview.is_some());
-        assert!(view.report.outputs[1].preview.is_none());
-
-        view.page = ReportPage::Trace;
-        let output = context.run_ui(Default::default(), |ui| {
-            show(ui.ctx(), &mut open, &mut view);
-        });
-        assert!(!output.shapes.is_empty());
-        std::fs::remove_file(first).expect("first output is removed");
-        std::fs::remove_file(second).expect("second output is removed");
-    }
-}
+#[path = "run_report_tests.rs"]
+mod tests;
