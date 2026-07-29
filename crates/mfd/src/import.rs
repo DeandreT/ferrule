@@ -68,7 +68,7 @@ use schema::{
     read_json_component_in_package, read_pdf_component, read_protobuf_component,
     read_schema_component_in_package, read_schema_component_in_package_with_provenance,
     read_wsdl_component, read_xbrl_component, read_xlsx_component,
-    refine_copied_fallback_source_groups, refine_wsdl_target_schemas, schema_node_at,
+    refine_copied_fallback_source_shapes, refine_wsdl_target_schemas, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
@@ -602,12 +602,13 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
     );
     refine_wsdl_target_schemas(&mut schema_components, &fn_components, &edge_from);
     let copy_all_targets = read_copy_all_targets(&structure, Some(&wrapper));
-    refine_copied_fallback_source_groups(
+    refine_copied_fallback_source_shapes(
         &mut schema_components,
         &edge_from,
         &copy_all_targets,
         &fallback_xml_source_outputs,
         &fallback_xml_target_inputs,
+        &mut warnings,
     );
     schema::restore_connected_structural_ports(&mut schema_components, &edge_from);
     refine_copied_json_root_schemas(&mut schema_components, &edge_from, &copy_all_targets);
