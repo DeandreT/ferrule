@@ -107,7 +107,7 @@ fn binding(target: &str, expression: u32, target_type: ScalarType) -> Binding {
     Binding {
         target_field: target.into(),
         expression,
-        target_type,
+        target_domain: codegen::ScalarTargetDomain::Single(target_type),
         repeating: false,
     }
 }

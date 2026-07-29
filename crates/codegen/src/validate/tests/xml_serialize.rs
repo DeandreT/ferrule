@@ -20,7 +20,7 @@ fn xml_program() -> Program {
         },
     }];
     program.root.bindings[0].expression = 1;
-    program.root.bindings[0].target_type = ScalarType::String;
+    program.root.bindings[0].target_domain = crate::ScalarTargetDomain::Single(ScalarType::String);
     program
 }
 
@@ -86,6 +86,24 @@ fn validates_xml_serializer_source_schema_cardinality_and_namespace() {
             node: 1,
             schema: "Item".into(),
             feature: "ordered mixed element/text content",
+        })
+    );
+
+    let mut scalar_union = xml_program();
+    let Expression::XmlSerialize { schema, .. } = &mut scalar_union.expressions[0].expression
+    else {
+        panic!("fixture has XML serialization expression");
+    };
+    let Some(types) = ir::ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+        panic!("test union contains distinct types");
+    };
+    *schema = SchemaNode::scalar_union("Item", types);
+    assert_eq!(
+        validate_program(&scalar_union),
+        Err(ProgramValidationError::UnsupportedXmlSerializeSchema {
+            node: 1,
+            schema: "Item".into(),
+            feature: "heterogeneous scalar unions",
         })
     );
 }

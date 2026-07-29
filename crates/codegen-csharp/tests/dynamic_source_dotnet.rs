@@ -21,7 +21,7 @@ fn fixture() -> Program {
     let binding = |target_field: &str, expression| Binding {
         target_field: target_field.into(),
         expression,
-        target_type: ScalarType::String,
+        target_domain: ScalarType::String.into(),
         repeating: false,
     };
     Program {
@@ -205,13 +205,13 @@ fn dynamic_document_fixture() -> Program {
                     Binding {
                         target_field: "path".into(),
                         expression: 1,
-                        target_type: ScalarType::String,
+                        target_domain: ScalarType::String.into(),
                         repeating: false,
                     },
                     Binding {
                         target_field: "value".into(),
                         expression: 2,
-                        target_type: ScalarType::String,
+                        target_domain: ScalarType::String.into(),
                         repeating: false,
                     },
                 ],

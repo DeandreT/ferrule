@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::{FunctionId, FunctionParameterId, NodeId, Project};
+use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 use crate::{
-    Diagnostic, Expression, IterationOutput, IterationSource, Program, TargetConstruction,
+    Expression, IterationOutput, IterationSource, Program, ScalarTargetDomain, TargetConstruction,
     TargetScope,
 };
 
@@ -484,119 +484,18 @@ pub enum ProgramValidationError {
         binding: usize,
         child: usize,
     },
-    UnsupportedScalarUnionSchema {
-        boundary: String,
-        path: Vec<String>,
+    InvalidBindingTarget {
+        target_path: Vec<String>,
+        target_field: String,
+        binding: usize,
+    },
+    InvalidScalarTargetDomain {
+        target_path: Vec<String>,
     },
     NamedTarget {
         target: String,
         error: Box<ProgramValidationError>,
     },
-}
-
-pub(crate) fn project_schema_diagnostics(project: &Project) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    collect_project_schema_diagnostics("source schema", &project.source, &mut diagnostics);
-    for source in &project.extra_sources {
-        collect_project_schema_diagnostics(
-            &format!("extra source `{}` schema", source.name),
-            &source.schema,
-            &mut diagnostics,
-        );
-    }
-    collect_project_schema_diagnostics("target schema", &project.target, &mut diagnostics);
-    for target in &project.extra_targets {
-        collect_project_schema_diagnostics(
-            &format!("named target `{}` schema", target.name),
-            &target.schema,
-            &mut diagnostics,
-        );
-    }
-    diagnostics
-}
-
-fn collect_project_schema_diagnostics(
-    boundary: &str,
-    schema: &SchemaNode,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    visit_scalar_unions(schema, &mut Vec::new(), &mut |path| {
-        diagnostics.push(Diagnostic::Validation {
-            location: schema_location(boundary, path),
-            message: "code generation does not support heterogeneous scalar-union fields"
-                .to_string(),
-        });
-    });
-}
-
-fn schema_location(boundary: &str, path: &[String]) -> String {
-    if path.is_empty() {
-        boundary.to_string()
-    } else {
-        format!("{boundary} `{}`", path.join("/"))
-    }
-}
-
-fn visit_scalar_unions(
-    schema: &SchemaNode,
-    path: &mut Vec<String>,
-    visitor: &mut impl FnMut(&[String]),
-) {
-    match &schema.kind {
-        SchemaKind::ScalarUnion { .. } => visitor(path),
-        SchemaKind::Scalar { .. } => {}
-        SchemaKind::Group {
-            children, dynamic, ..
-        } => {
-            for child in children {
-                path.push(child.name.clone());
-                visit_scalar_unions(child, path, visitor);
-                path.pop();
-            }
-            if let Some(dynamic) = dynamic {
-                path.push("*".to_string());
-                visit_scalar_unions(dynamic, path, visitor);
-                path.pop();
-            }
-        }
-    }
-}
-
-fn validate_schema_support(program: &Program) -> Result<(), ProgramValidationError> {
-    validate_boundary_schema("source schema", &program.source)?;
-    for source in &program.extra_sources {
-        validate_boundary_schema(
-            &format!("extra source `{}` schema", source.name),
-            &source.source,
-        )?;
-    }
-    validate_boundary_schema("target schema", &program.target)?;
-    for target in &program.extra_targets {
-        validate_boundary_schema(
-            &format!("named target `{}` schema", target.name),
-            &target.target,
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_boundary_schema(
-    boundary: &str,
-    schema: &SchemaNode,
-) -> Result<(), ProgramValidationError> {
-    let mut first = None;
-    visit_scalar_unions(schema, &mut Vec::new(), &mut |path| {
-        if first.is_none() {
-            first = Some(path.to_vec());
-        }
-    });
-    match first {
-        Some(path) => Err(ProgramValidationError::UnsupportedScalarUnionSchema {
-            boundary: boundary.to_string(),
-            path,
-        }),
-        None => Ok(()),
-    }
 }
 
 /// Validates invariants relied on by every source-code emitter.
@@ -606,7 +505,6 @@ fn validate_boundary_schema(
 /// backend-dependent source when callers construct a [`Program`] directly.
 pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError> {
     sources::validate_names(&program.extra_sources)?;
-    validate_schema_support(program)?;
     let sources = SourceCatalog::new(&program.source, &program.extra_sources);
     let expressions = collect_expressions(program)?;
     validate_dependencies(&expressions)?;
@@ -778,7 +676,7 @@ fn validate_aggregate_paths(
             && !candidates.into_iter().any(|collection| {
                 collection
                     .follow(value)
-                    .is_some_and(|leaf| matches!(leaf.node().kind, SchemaKind::Scalar { .. }))
+                    .is_some_and(|leaf| leaf.node().is_scalar())
             })
         {
             return Err(ProgramValidationError::InvalidAggregateValuePath {
@@ -804,6 +702,14 @@ fn follow_schema_from<'a>(
         current = current.child(segment)?;
     }
     Some(current)
+}
+
+fn scalar_target_domain(schema: &SchemaNode) -> Option<ScalarTargetDomain> {
+    match schema.kind {
+        SchemaKind::Scalar { ty } => Some(ScalarTargetDomain::Single(ty)),
+        SchemaKind::ScalarUnion { types } => Some(ScalarTargetDomain::Union(types)),
+        SchemaKind::Group { .. } => None,
+    }
 }
 
 fn find_concrete_schema_group<'a>(current: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
@@ -1227,9 +1133,10 @@ fn validate_scope(
                         },
                     );
                 }
-                if target_node.child(&element.target).is_none_or(|target| {
-                    !target.repeating || !matches!(target.kind, SchemaKind::Scalar { .. })
-                }) {
+                if target_node
+                    .child(&element.target)
+                    .is_none_or(|target| !target.repeating || !target.is_scalar())
+                {
                     return Err(
                         ProgramValidationError::InvalidXmlMixedContentConstructionTarget {
                             target_path: target_path.clone(),
@@ -1450,13 +1357,21 @@ fn validate_scope(
                 });
             }
         }
-        TargetConstruction::Scalar { expression } => {
-            if !matches!(target_node.kind, SchemaKind::Scalar { .. }) {
+        TargetConstruction::Scalar {
+            expression,
+            target_domain,
+        } => {
+            let Some(expected_domain) = scalar_target_domain(target_node) else {
                 return Err(
                     ProgramValidationError::ScalarConstructionRequiresScalarTarget {
                         target_path: target_path.clone(),
                     },
                 );
+            };
+            if *target_domain != expected_domain {
+                return Err(ProgramValidationError::InvalidScalarTargetDomain {
+                    target_path: target_path.clone(),
+                });
             }
             if !scope.bindings.is_empty() || !scope.children.is_empty() {
                 return Err(ProgramValidationError::ScalarConstructionHasContent {
@@ -1542,13 +1457,13 @@ fn validate_scope(
             }
         }
         for (property, binding) in dynamic_bindings.iter().enumerate() {
-            let SchemaKind::Scalar { ty } = dynamic_target.kind else {
+            let Some(expected_domain) = scalar_target_domain(dynamic_target) else {
                 return Err(ProgramValidationError::InvalidDynamicTarget {
                     target_path: target_path.clone(),
                     reason: "computed scalar properties require a scalar dynamic-field schema",
                 });
             };
-            if dynamic_target.repeating || binding.target_type != ty {
+            if dynamic_target.repeating || binding.target_domain != expected_domain {
                 return Err(ProgramValidationError::InvalidDynamicTarget {
                     target_path: target_path.clone(),
                     reason: "computed scalar property type does not match the dynamic-field schema",
@@ -1643,7 +1558,7 @@ fn validate_scope(
         }
     }
 
-    let mut bindings = BTreeMap::<&str, (usize, bool, ScalarType)>::new();
+    let mut bindings = BTreeMap::<&str, (usize, bool, ScalarTargetDomain)>::new();
     for (binding_index, binding) in scope.bindings.iter().enumerate() {
         if !expressions.contains_key(&binding.expression) {
             return Err(ProgramValidationError::MissingBindingExpression {
@@ -1666,10 +1581,36 @@ fn validate_scope(
             item_root_context,
             &sequence_owner,
         )?;
-        if let Some(&(first_binding, repeating, target_type)) =
+        let special_xml_type = binding.target_field == ir::XML_TYPE_FIELD
+            && target_node.xml_alternative_kind == ir::XmlAlternativeKind::XsiType
+            && !target_node.alternatives().is_empty();
+        let valid_target = if special_xml_type {
+            binding.target_domain == ScalarTargetDomain::Single(ScalarType::String)
+                && !binding.repeating
+        } else {
+            match target_node.child(&binding.target_field) {
+                Some(target) if target.is_scalar() => {
+                    scalar_target_domain(target) == Some(binding.target_domain)
+                        && target.repeating == binding.repeating
+                }
+                Some(_) => scope
+                    .children
+                    .iter()
+                    .any(|child| child.target_field == binding.target_field),
+                None => false,
+            }
+        };
+        if !valid_target {
+            return Err(ProgramValidationError::InvalidBindingTarget {
+                target_path: target_path.clone(),
+                target_field: binding.target_field.clone(),
+                binding: binding_index,
+            });
+        }
+        if let Some(&(first_binding, repeating, target_domain)) =
             bindings.get(binding.target_field.as_str())
         {
-            if !repeating || !binding.repeating || target_type != binding.target_type {
+            if !repeating || !binding.repeating || target_domain != binding.target_domain {
                 return Err(ProgramValidationError::InvalidDuplicateBinding {
                     target_path: target_path.clone(),
                     target_field: binding.target_field.clone(),
@@ -1680,7 +1621,7 @@ fn validate_scope(
         } else {
             bindings.insert(
                 binding.target_field.as_str(),
-                (binding_index, binding.repeating, binding.target_type),
+                (binding_index, binding.repeating, binding.target_domain),
             );
         }
     }
@@ -2488,10 +2429,19 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} binding {binding} and child {child} both construct field {target_field:?}",
                 display_path(target_path)
             ),
-            Self::UnsupportedScalarUnionSchema { boundary, path } => write!(
+            Self::InvalidBindingTarget {
+                target_path,
+                target_field,
+                binding,
+            } => write!(
                 formatter,
-                "{boundary} {} uses a heterogeneous scalar union, which code generation does not support",
-                display_path(path)
+                "target scope {} binding {binding} does not match scalar field {target_field:?}",
+                display_path(target_path)
+            ),
+            Self::InvalidScalarTargetDomain { target_path } => write!(
+                formatter,
+                "target scope {} scalar construction domain does not match its schema",
+                display_path(target_path)
             ),
             Self::NamedTarget { target, error } => {
                 write!(formatter, "named target `{target}`: {error}")

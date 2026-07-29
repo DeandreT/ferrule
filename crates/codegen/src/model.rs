@@ -1,4 +1,4 @@
-use ir::{ScalarType, SchemaNode, Value};
+use ir::{ScalarType, ScalarTypeSet, SchemaNode, Value};
 use mapping::{AggregateOp, FlexCommand, FlexTextLayout, FunctionId, FunctionParameterId, NodeId};
 
 use crate::{InnerJoin, JoinId};
@@ -1169,6 +1169,7 @@ pub enum TargetConstruction {
     CopyCurrentSource,
     Scalar {
         expression: NodeId,
+        target_domain: ScalarTargetDomain,
     },
     XmlMixedContent {
         elements: Vec<XmlMixedContentElement>,
@@ -1195,12 +1196,34 @@ pub enum TargetConstruction {
     },
 }
 
+/// The complete scalar type domain at one generated target boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScalarTargetDomain {
+    Single(ScalarType),
+    Union(ScalarTypeSet),
+}
+
+impl ScalarTargetDomain {
+    pub fn contains(self, ty: ScalarType) -> bool {
+        match self {
+            Self::Single(expected) => expected == ty,
+            Self::Union(types) => types.contains(ty),
+        }
+    }
+}
+
+impl From<ScalarType> for ScalarTargetDomain {
+    fn from(value: ScalarType) -> Self {
+        Self::Single(value)
+    }
+}
+
 /// One computed scalar property retained by shared lowering.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DynamicTargetBinding {
     pub key: NodeId,
     pub value: NodeId,
-    pub target_type: ScalarType,
+    pub target_domain: ScalarTargetDomain,
 }
 
 /// One computed structured property retained by shared lowering.
@@ -1452,7 +1475,7 @@ pub struct Binding {
     pub target_field: String,
     pub expression: NodeId,
     /// Scalar coercion applied by the engine at this target boundary.
-    pub target_type: ScalarType,
+    pub target_domain: ScalarTargetDomain,
     /// Repeating scalars map Null to no items and other values to one item.
     pub repeating: bool,
 }

@@ -175,6 +175,9 @@ The current portable model includes:
   supplied by the execution host
 - bounded named host parameters with declared string, integer, floating-point,
   or boolean types, scalar coercion, and distinct missing/type failures
+- heterogeneous scalar-union source and target fields at JSON boundaries, with
+  runtime tag preservation, exact-only numeric adaptation, and matching
+  ambiguity or invalid-output failures in Rust and C#
 - lazy conditionals and a closed set of 75 boolean, arithmetic, comparison,
   scalar text, Unicode whitespace/substring/padding, finite numeric detection,
   integer-first conversion, numeric picture formatting, SQL LIKE, bounded regex
@@ -210,8 +213,8 @@ The current portable model includes:
   source, with direct tuple counts, computed per-tuple values, and parent-context
   scalar arguments
 - collection aggregates over direct fields or computed per-item expressions
-- nested, repeating-group, repeating-scalar, and exact whole-current-group
-  target construction with numeric target adaptation for ordinary field bindings
+- nested, repeating-group, repeating-scalar, scalar-union, and exact
+  whole-current-group target construction with exact numeric target adaptation
 - bounded recursive-filter target construction with sparse-field preservation,
   item-local predicates, frame-pinned fields, and exact recursion-depth failures
 - bounded path-hierarchy target construction from repeated scalar paths, with
@@ -271,9 +274,6 @@ Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable
 function implementations preserve the interpreter's typed arity, type, and
 invalid-argument failures, including the one-million-character padding bound.
-Heterogeneous scalar-union fields currently produce a boundary-and-path
-diagnostic before artifacts are created because the generated Rust and C# JSON
-codecs do not yet carry the union schema kind.
 Generated scopes, failure rules, and sequence reducers support bounded regex
 tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
 expose materially different regex dialects and Unicode behavior, so patterns

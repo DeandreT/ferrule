@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -13,8 +14,6 @@ public static class FerruleJson
     public const int MaximumDocumentBytes = 64 * 1024 * 1024;
     public const int MaximumDepth = 256;
     public const int MaximumNodes = 1_000_000;
-
-    private const long MaximumExactDoubleInteger = 1L << 53;
 
     private static readonly JsonSerializerOptions CanonicalJsonOptions = new()
     {
@@ -153,25 +152,20 @@ public static class FerruleJson
         var kindElement = RequiredProperty(element, "kind");
         RequireKind(kindElement, JsonValueKind.Object, $"schema node '{name}' kind", "object");
         var kind = RequiredString(kindElement, "kind");
-        var scalar = kind switch
+        var scalarDomain = kind switch
         {
-            "scalar" => RequiredString(kindElement, "ty") switch
-            {
-                "string" => JsonScalarType.String,
-                "int" => JsonScalarType.Int64,
-                "float" => JsonScalarType.Double,
-                "bool" => JsonScalarType.Bool,
-                var found => throw Boundary(
-                    $"Embedded JSON schema node '{name}' has unknown scalar type '{found}'."),
-            },
-            "group" => (JsonScalarType?)null,
+            "scalar" => ScalarDomain(
+                name,
+                RequiredString(kindElement, "ty")),
+            "scalar_union" => ReadScalarDomain(name, kindElement),
+            "group" => JsonScalarDomain.None,
             _ => throw Boundary(
                 $"Embedded JSON schema node '{name}' has unknown kind '{kind}'."),
         };
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
         var alternatives = new List<JsonAlternative>();
-        if (scalar is null)
+        if (scalarDomain == JsonScalarDomain.None)
         {
             if (kindElement.TryGetProperty("children", out var childElements))
             {
@@ -213,7 +207,7 @@ public static class FerruleJson
             OptionalBoolean(element, "nullable"),
             OptionalBoolean(element, "container_nullable"),
             OptionalBoolean(element, "json_any"),
-            scalar,
+            scalarDomain,
             children,
             dynamic,
             alternatives,
@@ -221,6 +215,75 @@ public static class FerruleJson
             mode.ValueKind == JsonValueKind.String &&
             string.Equals(mode.GetString(), "inclusive", StringComparison.Ordinal));
     }
+
+    private static JsonScalarDomain ReadScalarDomain(
+        string nodeName,
+        JsonElement kindElement)
+    {
+        var typeElements = RequiredProperty(kindElement, "types");
+        RequireKind(
+            typeElements,
+            JsonValueKind.Array,
+            $"schema node '{nodeName}' scalar union types",
+            "array");
+        var domain = JsonScalarDomain.None;
+        var previousOrder = -1;
+        var count = 0;
+        foreach (var typeElement in typeElements.EnumerateArray())
+        {
+            if (typeElement.ValueKind != JsonValueKind.String)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{nodeName}' scalar union types must contain strings.");
+            }
+
+            var typeName = typeElement.GetString() ?? string.Empty;
+            var scalar = ScalarDomain(nodeName, typeName);
+            var order = ScalarOrder(scalar);
+            if (domain.HasFlag(scalar))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{nodeName}' scalar union contains duplicate type '{typeName}'.");
+            }
+            if (order <= previousOrder)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{nodeName}' scalar union types are not in canonical order.");
+            }
+
+            domain |= scalar;
+            previousOrder = order;
+            count = checked(count + 1);
+        }
+
+        if (count < 2)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{nodeName}' scalar union must contain at least two distinct types.");
+        }
+
+        return domain;
+    }
+
+    private static JsonScalarDomain ScalarDomain(string nodeName, string typeName) =>
+        typeName switch
+        {
+            "string" => JsonScalarDomain.String,
+            "int" => JsonScalarDomain.Int64,
+            "float" => JsonScalarDomain.Double,
+            "bool" => JsonScalarDomain.Bool,
+            _ => throw Boundary(
+                $"Embedded JSON schema node '{nodeName}' has unknown scalar type '{typeName}'."),
+        };
+
+    private static int ScalarOrder(JsonScalarDomain scalar) => scalar switch
+    {
+        JsonScalarDomain.String => 0,
+        JsonScalarDomain.Int64 => 1,
+        JsonScalarDomain.Double => 2,
+        JsonScalarDomain.Bool => 3,
+        _ => throw Boundary("Embedded JSON schema scalar domain is invalid."),
+    };
 
     private static JsonAlternative ReadAlternative(JsonElement element)
     {
@@ -292,9 +355,9 @@ public static class FerruleJson
             return new FerruleScalar(FerruleValue.JsonNull);
         }
 
-        if (schema.Scalar is { } scalar)
+        if (schema.IsScalar)
         {
-            return new FerruleScalar(ReadScalar(schema, scalar, element));
+            return new FerruleScalar(ReadScalar(schema, element));
         }
 
         RequireKind(element, JsonValueKind.Object, schema.Name, "object");
@@ -341,7 +404,6 @@ public static class FerruleJson
 
     private static FerruleValue ReadScalar(
         JsonSchemaNode schema,
-        JsonScalarType scalar,
         JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Null && schema.Nullable)
@@ -349,31 +411,54 @@ public static class FerruleJson
             return FerruleValue.JsonNull;
         }
 
-        return scalar switch
+        var domain = schema.ScalarDomain;
+        if (element.ValueKind == JsonValueKind.String &&
+            domain.HasFlag(JsonScalarDomain.String))
         {
-            JsonScalarType.String when element.ValueKind == JsonValueKind.String =>
-                FerruleValue.FromString(element.GetString() ?? string.Empty),
-            JsonScalarType.Int64 when element.ValueKind == JsonValueKind.Number &&
-                                      element.TryGetInt64(out var integer) =>
-                FerruleValue.FromInt64(integer),
-            JsonScalarType.Double when element.ValueKind == JsonValueKind.Number =>
-                ReadDouble(schema.Name, element),
-            JsonScalarType.Bool when element.ValueKind is JsonValueKind.True or JsonValueKind.False =>
-                FerruleValue.FromBoolean(element.GetBoolean()),
-            _ => throw Shape(schema.Name, ScalarName(scalar), element.ValueKind.ToString()),
-        };
+            return FerruleValue.FromString(element.GetString() ?? string.Empty);
+        }
+        if (element.ValueKind == JsonValueKind.Number)
+        {
+            if (domain.HasFlag(JsonScalarDomain.Int64) &&
+                element.TryGetInt64(out var integer))
+            {
+                return FerruleValue.FromInt64(integer);
+            }
+            if (domain.HasFlag(JsonScalarDomain.Double))
+            {
+                return ReadDouble(schema.Name, element);
+            }
+        }
+        if (element.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+            domain.HasFlag(JsonScalarDomain.Bool))
+        {
+            return FerruleValue.FromBoolean(element.GetBoolean());
+        }
+
+        throw Shape(
+            schema.Name,
+            ScalarName(domain),
+            element.ValueKind.ToString());
     }
 
     private static FerruleValue ReadDouble(string name, JsonElement element)
     {
-        if (element.TryGetInt64(out var integer) &&
-            Math.Abs((double)integer) > MaximumExactDoubleInteger)
+        if (element.TryGetInt64(out var integer))
         {
+            if (TryExactDouble(integer, out var converted))
+            {
+                return FerruleValue.FromDouble(converted);
+            }
+
             throw Shape(name, "number", "integer outside the exact double range");
         }
-        if (element.TryGetUInt64(out var unsignedInteger) &&
-            unsignedInteger > MaximumExactDoubleInteger)
+        if (element.TryGetUInt64(out var unsignedInteger))
         {
+            if (TryExactDouble(unsignedInteger, out var converted))
+            {
+                return FerruleValue.FromDouble(converted);
+            }
+
             throw Shape(name, "number", "integer outside the exact double range");
         }
 
@@ -398,9 +483,9 @@ public static class FerruleJson
             return new FerruleRepeated(Array.Empty<FerruleInstance>());
         }
 
-        return schema.Scalar is null
-            ? new FerruleGroup(Array.Empty<FerruleField>())
-            : new FerruleScalar(FerruleValue.Null);
+        return schema.IsScalar
+            ? new FerruleScalar(FerruleValue.Null)
+            : new FerruleGroup(Array.Empty<FerruleField>());
     }
 
     private static void WriteNode(
@@ -458,14 +543,24 @@ public static class FerruleJson
             return;
         }
 
-        if (schema.Scalar is { } scalar)
+        if (schema.IsScalar)
         {
             if (instance is not FerruleScalar value)
             {
-                throw Shape(schema.Name, ScalarName(scalar), InstanceKind(instance));
+                throw Shape(
+                    schema.Name,
+                    ScalarName(schema.ScalarDomain),
+                    InstanceKind(instance));
             }
 
-            WriteScalar(writer, schema, scalar, value.Value);
+            if (schema.IsScalarUnion)
+            {
+                WriteScalarUnion(writer, schema, value.Value);
+            }
+            else
+            {
+                WriteScalar(writer, schema, SingleScalar(schema.ScalarDomain), value.Value);
+            }
             return;
         }
 
@@ -546,7 +641,7 @@ public static class FerruleJson
                 writer.WriteNumberValue(scalar.Value.Int64Value);
                 break;
             case FerruleValueKind.Double when double.IsFinite(scalar.Value.DoubleValue):
-                writer.WriteNumberValue(scalar.Value.DoubleValue);
+                WriteFiniteDouble(writer, scalar.Value.DoubleValue);
                 break;
             case FerruleValueKind.JsonNull:
                 writer.WriteNullValue();
@@ -598,12 +693,12 @@ public static class FerruleJson
                 writer.WriteNumberValue(integer);
                 return;
             case (JsonScalarType.Double, FerruleValueKind.Int64)
-                when Math.Abs((double)value.Int64Value) <= MaximumExactDoubleInteger:
+                when TryExactDouble(value.Int64Value, out _):
                 writer.WriteNumberValue(value.Int64Value);
                 return;
             case (JsonScalarType.Double, FerruleValueKind.Double)
                 when double.IsFinite(value.DoubleValue):
-                writer.WriteNumberValue(value.DoubleValue);
+                WriteFiniteDouble(writer, value.DoubleValue);
                 return;
             case (JsonScalarType.Double, FerruleValueKind.String)
                 when double.TryParse(
@@ -612,7 +707,7 @@ public static class FerruleJson
                          CultureInfo.InvariantCulture,
                          out var number) &&
                      double.IsFinite(number):
-                writer.WriteNumberValue(number);
+                WriteFiniteDouble(writer, number);
                 return;
             case (JsonScalarType.Bool, FerruleValueKind.Bool):
                 writer.WriteBooleanValue(value.BooleanValue);
@@ -630,9 +725,156 @@ public static class FerruleJson
         }
     }
 
+    private static void WriteScalarUnion(
+        Utf8JsonWriter writer,
+        JsonSchemaNode schema,
+        FerruleValue value)
+    {
+        if (value.Kind == FerruleValueKind.Int64 &&
+            !schema.ScalarDomain.HasFlag(JsonScalarDomain.Int64) &&
+            schema.ScalarDomain.HasFlag(JsonScalarDomain.Double) &&
+            TryExactDouble(value.Int64Value, out _))
+        {
+            writer.WriteNumberValue(value.Int64Value);
+            return;
+        }
+
+        var normalized = NormalizeScalarUnion(schema, value);
+        if (normalized.Kind == FerruleValueKind.JsonNull)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        WriteAdmittedScalar(writer, schema, normalized);
+    }
+
+    private static FerruleValue NormalizeScalarUnion(
+        JsonSchemaNode schema,
+        FerruleValue value)
+    {
+        var domain = schema.ScalarDomain;
+        if (value.Kind == FerruleValueKind.JsonNull && schema.Nullable ||
+            ValueDomain(value.Kind) is { } valueDomain && domain.HasFlag(valueDomain))
+        {
+            return value;
+        }
+        if (value.Kind == FerruleValueKind.Int64 &&
+            domain.HasFlag(JsonScalarDomain.Double))
+        {
+            if (TryExactDouble(value.Int64Value, out var converted))
+            {
+                return FerruleValue.FromDouble(converted);
+            }
+
+            throw Shape(
+                schema.Name,
+                "number",
+                "int outside the exact double range");
+        }
+
+        if (value.Kind == FerruleValueKind.String &&
+            !domain.HasFlag(JsonScalarDomain.String))
+        {
+            var converted = FerruleValue.Null;
+            var conversions = 0;
+            var text = value.StringValue.Trim();
+            if (domain.HasFlag(JsonScalarDomain.Int64) &&
+                long.TryParse(
+                    text,
+                    NumberStyles.AllowLeadingSign,
+                    CultureInfo.InvariantCulture,
+                    out var integer))
+            {
+                converted = FerruleValue.FromInt64(integer);
+                conversions++;
+            }
+            if (domain.HasFlag(JsonScalarDomain.Double) &&
+                double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var number) &&
+                double.IsFinite(number))
+            {
+                converted = FerruleValue.FromDouble(number);
+                conversions++;
+            }
+            if (domain.HasFlag(JsonScalarDomain.Bool) &&
+                string.Equals(text, "true", StringComparison.Ordinal))
+            {
+                converted = FerruleValue.FromBoolean(true);
+                conversions++;
+            }
+            else if (domain.HasFlag(JsonScalarDomain.Bool) &&
+                     string.Equals(text, "false", StringComparison.Ordinal))
+            {
+                converted = FerruleValue.FromBoolean(false);
+                conversions++;
+            }
+
+            if (conversions == 1)
+            {
+                return converted;
+            }
+            if (conversions > 1)
+            {
+                throw Shape(
+                    schema.Name,
+                    "unambiguous declared scalar union",
+                    "String");
+            }
+        }
+
+        throw Shape(
+            schema.Name,
+            "declared scalar union",
+            value.Kind.ToString());
+    }
+
+    private static void WriteAdmittedScalar(
+        Utf8JsonWriter writer,
+        JsonSchemaNode schema,
+        FerruleValue value)
+    {
+        switch (value.Kind)
+        {
+            case FerruleValueKind.String:
+                writer.WriteStringValue(value.StringValue);
+                return;
+            case FerruleValueKind.Int64:
+                writer.WriteNumberValue(value.Int64Value);
+                return;
+            case FerruleValueKind.Double when double.IsFinite(value.DoubleValue):
+                WriteFiniteDouble(writer, value.DoubleValue);
+                return;
+            case FerruleValueKind.Bool:
+                writer.WriteBooleanValue(value.BooleanValue);
+                return;
+            default:
+                throw Shape(
+                    schema.Name,
+                    "declared scalar union",
+                    value.Kind.ToString());
+        }
+    }
+
+    private static void WriteFiniteDouble(Utf8JsonWriter writer, double value)
+    {
+        var lexical = value.ToString("R", CultureInfo.InvariantCulture);
+        if (!lexical.Contains('.') &&
+            !lexical.Contains('E') &&
+            !lexical.Contains('e'))
+        {
+            lexical += ".0";
+        }
+
+        writer.WriteRawValue(lexical, skipInputValidation: false);
+    }
+
     private static bool BoundaryAbsence(JsonSchemaNode schema, FerruleInstance instance) =>
         instance is FerruleScalar { Value.Kind: FerruleValueKind.Null } &&
-        (schema.ContainerNullable || !schema.Repeating && schema.Scalar is not null);
+        (schema.ContainerNullable || !schema.Repeating && schema.IsScalar);
 
     private static void ValidateAlternatives(
         JsonSchemaNode schema,
@@ -739,34 +981,72 @@ public static class FerruleJson
                    (schema.Nullable || schema.ContainerNullable);
         }
 
-        if (schema.Scalar is not { } scalarType)
+        if (!schema.IsScalar)
         {
             return false;
         }
 
+        if (schema.IsScalarUnion)
+        {
+            try
+            {
+                return TaggedConstraintMatches(
+                    constraint,
+                    NormalizeScalarUnion(schema, value));
+            }
+            catch (FerruleRuntimeException)
+            {
+                return false;
+            }
+        }
+
+        var domain = schema.ScalarDomain;
         return constraint.Type switch
         {
-            "string" when scalarType == JsonScalarType.String =>
+            "string" when domain.HasFlag(JsonScalarDomain.String) =>
                 TryOutputString(value, out var actualString) &&
                 string.Equals(
                     actualString,
                     constraint.Expected.GetString(),
                     StringComparison.Ordinal),
-            "int" when scalarType == JsonScalarType.Int64 =>
+            "int" when domain.HasFlag(JsonScalarDomain.Int64) =>
                 TryOutputInt64(value, out var actualInteger) &&
                 constraint.Expected.TryGetInt64(out var expectedInteger) &&
                 actualInteger == expectedInteger,
-            "float" when scalarType == JsonScalarType.Double =>
+            "float" when domain.HasFlag(JsonScalarDomain.Double) =>
                 TryOutputDouble(value, out var actualNumber) &&
-                constraint.Expected.TryGetDouble(out var expectedNumber) &&
+                TryReadExactDouble(constraint.Expected, out var expectedNumber) &&
                 actualNumber == expectedNumber,
-            "bool" when scalarType == JsonScalarType.Bool =>
+            "bool" when domain.HasFlag(JsonScalarDomain.Bool) =>
                 TryOutputBoolean(value, out var actualBoolean) &&
                 constraint.Expected.ValueKind is JsonValueKind.True or JsonValueKind.False &&
                 actualBoolean == constraint.Expected.GetBoolean(),
             _ => false,
         };
     }
+
+    private static bool TaggedConstraintMatches(
+        JsonConstraint constraint,
+        FerruleValue value) =>
+        (constraint.Type, value.Kind) switch
+        {
+            ("string", FerruleValueKind.String) =>
+                string.Equals(
+                    value.StringValue,
+                    constraint.Expected.GetString(),
+                    StringComparison.Ordinal),
+            ("int", FerruleValueKind.Int64) =>
+                constraint.Expected.TryGetInt64(out var expectedInteger) &&
+                value.Int64Value == expectedInteger,
+            ("float", FerruleValueKind.Double) =>
+                TryReadExactDouble(constraint.Expected, out var expectedNumber) &&
+                value.DoubleValue == expectedNumber,
+            ("bool", FerruleValueKind.Bool) =>
+                constraint.Expected.ValueKind is
+                    JsonValueKind.True or JsonValueKind.False &&
+                value.BooleanValue == constraint.Expected.GetBoolean(),
+            _ => false,
+        };
 
     private static bool TryOutputString(FerruleValue value, out string output)
     {
@@ -805,9 +1085,8 @@ public static class FerruleJson
     private static bool TryOutputDouble(FerruleValue value, out double output)
     {
         if (value.Kind == FerruleValueKind.Int64 &&
-            Math.Abs((double)value.Int64Value) <= MaximumExactDoubleInteger)
+            TryExactDouble(value.Int64Value, out output))
         {
-            output = value.Int64Value;
             return true;
         }
         if (value.Kind == FerruleValueKind.Double && double.IsFinite(value.DoubleValue))
@@ -824,6 +1103,37 @@ public static class FerruleJson
                    CultureInfo.InvariantCulture,
                    out output) &&
                double.IsFinite(output);
+    }
+
+    private static bool TryReadExactDouble(JsonElement value, out double output)
+    {
+        output = 0;
+        if (value.ValueKind != JsonValueKind.Number)
+        {
+            return false;
+        }
+        if (value.TryGetInt64(out var integer))
+        {
+            return TryExactDouble(integer, out output);
+        }
+        if (value.TryGetUInt64(out var unsignedInteger))
+        {
+            return TryExactDouble(unsignedInteger, out output);
+        }
+
+        return value.TryGetDouble(out output) && double.IsFinite(output);
+    }
+
+    private static bool TryExactDouble(long value, out double output)
+    {
+        output = value;
+        return new BigInteger(output) == new BigInteger(value);
+    }
+
+    private static bool TryExactDouble(ulong value, out double output)
+    {
+        output = value;
+        return new BigInteger(output) == new BigInteger(value);
     }
 
     private static bool TryOutputBoolean(FerruleValue value, out bool output)
@@ -866,8 +1176,8 @@ public static class FerruleJson
                      constraint.Expected.TryGetInt64(out var expectedInteger) &&
                      actualInteger == expectedInteger,
             "float" => value.ValueKind == JsonValueKind.Number &&
-                       value.TryGetDouble(out var actualNumber) &&
-                       constraint.Expected.TryGetDouble(out var expectedNumber) &&
+                       TryReadExactDouble(value, out var actualNumber) &&
+                       TryReadExactDouble(constraint.Expected, out var expectedNumber) &&
                        actualNumber == expectedNumber,
             "bool" => value.ValueKind is JsonValueKind.True or JsonValueKind.False &&
                       constraint.Expected.ValueKind is JsonValueKind.True or JsonValueKind.False &&
@@ -977,6 +1287,35 @@ public static class FerruleJson
         _ => "scalar",
     };
 
+    private static string ScalarName(JsonScalarDomain domain) =>
+        IsSingleScalar(domain)
+            ? ScalarName(SingleScalar(domain))
+            : "declared scalar union";
+
+    private static JsonScalarType SingleScalar(JsonScalarDomain domain) => domain switch
+    {
+        JsonScalarDomain.String => JsonScalarType.String,
+        JsonScalarDomain.Int64 => JsonScalarType.Int64,
+        JsonScalarDomain.Double => JsonScalarType.Double,
+        JsonScalarDomain.Bool => JsonScalarType.Bool,
+        _ => throw Boundary("Embedded JSON schema scalar domain is invalid."),
+    };
+
+    private static JsonScalarDomain? ValueDomain(FerruleValueKind kind) => kind switch
+    {
+        FerruleValueKind.String => JsonScalarDomain.String,
+        FerruleValueKind.Int64 => JsonScalarDomain.Int64,
+        FerruleValueKind.Double => JsonScalarDomain.Double,
+        FerruleValueKind.Bool => JsonScalarDomain.Bool,
+        _ => null,
+    };
+
+    private static bool IsSingleScalar(JsonScalarDomain domain)
+    {
+        var bits = (int)domain;
+        return bits != 0 && (bits & (bits - 1)) == 0;
+    }
+
     private static string InstanceKind(FerruleInstance instance) => instance switch
     {
         FerruleScalar scalar => scalar.Value.Kind.ToString(),
@@ -993,6 +1332,16 @@ public static class FerruleJson
         Int64,
         Double,
         Bool,
+    }
+
+    [Flags]
+    private enum JsonScalarDomain
+    {
+        None = 0,
+        String = 1 << 0,
+        Int64 = 1 << 1,
+        Double = 1 << 2,
+        Bool = 1 << 3,
     }
 
     private sealed record JsonProperty(string Name, JsonElement Value);
@@ -1014,7 +1363,7 @@ public static class FerruleJson
             bool nullable,
             bool containerNullable,
             bool jsonAny,
-            JsonScalarType? scalar,
+            JsonScalarDomain scalarDomain,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
             IReadOnlyList<JsonAlternative> alternatives,
@@ -1025,7 +1374,7 @@ public static class FerruleJson
             Nullable = nullable;
             ContainerNullable = containerNullable;
             JsonAny = jsonAny;
-            Scalar = scalar;
+            ScalarDomain = scalarDomain;
             Children = children;
             Dynamic = dynamic;
             Alternatives = alternatives;
@@ -1042,7 +1391,11 @@ public static class FerruleJson
 
         public bool JsonAny { get; }
 
-        public JsonScalarType? Scalar { get; }
+        public JsonScalarDomain ScalarDomain { get; }
+
+        public bool IsScalar => ScalarDomain != JsonScalarDomain.None;
+
+        public bool IsScalarUnion => IsScalar && !IsSingleScalar(ScalarDomain);
 
         public IReadOnlyList<JsonSchemaNode> Children { get; }
 

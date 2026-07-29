@@ -274,7 +274,7 @@ fn emits_mapped_scope_sequences_and_rejects_invalid_wrappers_atomically() {
     invalid.root.children[0].bindings.push(codegen::Binding {
         target_field: "Name".into(),
         expression: 1,
-        target_type: ScalarType::String,
+        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
         repeating: false,
     });
     assert!(matches!(
