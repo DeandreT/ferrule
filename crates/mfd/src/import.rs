@@ -12,7 +12,10 @@ use mapping::{
     Graph, NamedSource, NamedTarget, Project, Scope, ScopeIteration, ScopeSequence, SequenceExpr,
 };
 
-use crate::{MfdError, canonical_function, resource::ResourceResolver};
+use crate::{
+    MfdError, canonical_function,
+    resource::{PackageManifest, ResourceResolver},
+};
 
 mod aggregate;
 mod alternatives;
@@ -78,12 +81,15 @@ use udf::{Call as UdfCall, Registry as UdfRegistry};
 pub struct Imported {
     pub project: Project,
     pub warnings: Vec<String>,
+    /// Canonical path used as the base for imported relative instance paths.
+    pub mapping_path: PathBuf,
 }
 
 /// Filesystem policy for importing one mapping package.
 #[derive(Debug, Clone, Default)]
 pub struct ImportOptions {
     package_root: Option<PathBuf>,
+    package_manifest: Option<PathBuf>,
     edi_catalog_roots: Vec<PathBuf>,
     json_schema_catalog_roots: Vec<PathBuf>,
 }
@@ -92,11 +98,23 @@ impl ImportOptions {
     /// Confines all mapping resources to this trusted directory.
     pub fn with_package_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.package_root = Some(root.into());
+        self.package_manifest = None;
         self
     }
 
     pub fn package_root(&self) -> Option<&Path> {
         self.package_root.as_deref()
+    }
+
+    /// Applies roots from an explicitly trusted mapping package manifest.
+    ///
+    /// Directly configured catalog roots keep search precedence. The
+    /// manifest's directory becomes the package root.
+    pub fn with_package_manifest(mut self, path: impl AsRef<Path>) -> Result<Self, MfdError> {
+        let manifest = PackageManifest::load(path.as_ref())?;
+        self.package_root = Some(manifest.package_root().to_path_buf());
+        self.package_manifest = Some(manifest.path().to_path_buf());
+        Ok(self)
     }
 
     /// Adds an explicitly trusted EDI configuration catalog.
@@ -235,9 +253,23 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 }
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
-    let resources = ResourceResolver::new(path, options.package_root())?
+    let manifest = options
+        .package_manifest
+        .as_deref()
+        .map(PackageManifest::load)
+        .transpose()?;
+    let package_root = manifest
+        .as_ref()
+        .map(PackageManifest::package_root)
+        .or_else(|| options.package_root());
+    let mut resources = ResourceResolver::new(path, package_root)?
         .with_edi_catalog_roots(options.edi_catalog_roots())?
         .with_json_schema_catalog_roots(options.json_schema_catalog_roots())?;
+    if let Some(manifest) = &manifest {
+        resources = resources
+            .with_package_edi_catalog_roots(manifest.edi_catalog_roots())?
+            .with_package_json_schema_catalog_roots(manifest.json_schema_catalog_roots())?;
+    }
     import_resolved(&resources)
 }
 
@@ -958,7 +990,11 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
     };
     project.prune_unreachable_nodes();
     enrich_unresolved_edi_source_schemas(&mut project);
-    Ok(Imported { project, warnings })
+    Ok(Imported {
+        project,
+        warnings,
+        mapping_path: path.to_path_buf(),
+    })
 }
 
 fn default_pass_through_output_path(component: &SchemaComponent) -> Option<String> {

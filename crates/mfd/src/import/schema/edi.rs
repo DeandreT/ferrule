@@ -211,8 +211,9 @@ pub(super) fn read(
                         })
                         .map_err(|error| error.to_string()),
                     "SWIFTMT" => {
-                        format_edi::config::swift::import_config(
+                        format_edi::config::swift::import_config_confined(
                             resolved.path(),
+                            resolved.authorization_root(),
                             &selected_messages,
                         )
                     }
@@ -227,18 +228,22 @@ pub(super) fn read(
                         )
                     })
                     .map_err(|error| error.to_string()),
-                    _ => format_edi::config::import_config(resolved.path(), &selected_messages)
-                        .map(|compiled| {
-                            (
-                                compiled.schema,
-                                None,
-                                None,
-                                compiled.implied_decimals,
-                                compiled.lexical_formats,
-                                compiled.value_constraints,
-                            )
-                        })
-                        .map_err(|error| error.to_string()),
+                    _ => format_edi::config::import_config_confined(
+                        resolved.path(),
+                        resolved.authorization_root(),
+                        &selected_messages,
+                    )
+                    .map(|compiled| {
+                        (
+                            compiled.schema,
+                            None,
+                            None,
+                            compiled.implied_decimals,
+                            compiled.lexical_formats,
+                            compiled.value_constraints,
+                        )
+                    })
+                    .map_err(|error| error.to_string()),
                 }
             }) {
                 Ok(compiled) => Some(compiled),

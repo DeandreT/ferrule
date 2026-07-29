@@ -8,29 +8,41 @@ use crate::theme::ThemeState;
 const STORAGE_KEY: &str = "ferrule.editor_preferences";
 const CURRENT_VERSION: u32 = 1;
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EditorPreferences {
     version: u32,
     pub theme: ThemeState,
     pub appearance: EditorAppearance,
     pub show_minimap: bool,
+    pub mfd_package_manifest: Option<String>,
 }
 
 impl EditorPreferences {
-    pub const fn new(theme: ThemeState, appearance: EditorAppearance, show_minimap: bool) -> Self {
+    pub fn new(
+        theme: ThemeState,
+        appearance: EditorAppearance,
+        show_minimap: bool,
+        mfd_package_manifest: Option<String>,
+    ) -> Self {
         Self {
             version: CURRENT_VERSION,
             theme,
             appearance,
             show_minimap,
+            mfd_package_manifest,
         }
     }
 }
 
 impl Default for EditorPreferences {
     fn default() -> Self {
-        Self::new(ThemeState::default(), EditorAppearance::default(), true)
+        Self::new(
+            ThemeState::default(),
+            EditorAppearance::default(),
+            true,
+            None,
+        )
     }
 }
 
@@ -44,7 +56,7 @@ pub fn load(storage: Option<&dyn eframe::Storage>) -> EditorPreferences {
         .unwrap_or_default()
 }
 
-pub fn store(storage: &mut dyn eframe::Storage, preferences: EditorPreferences) {
+pub fn store(storage: &mut dyn eframe::Storage, preferences: &EditorPreferences) {
     if let Ok(document) = serde_json::to_string(&preferences) {
         storage.set_string(STORAGE_KEY, document);
     }
@@ -88,6 +100,7 @@ mod tests {
             },
             EditorAppearance::preset(AppearancePreset::Light),
             false,
+            Some("/trusted/ferrule-package.json".to_string()),
         );
         let mut wire = *preferences.appearance.wire();
         wire.set_geometry(WireGeometry::Straight)
@@ -96,9 +109,13 @@ mod tests {
         preferences.appearance.set_wire(wire);
 
         let mut storage = MemoryStorage::default();
-        store(&mut storage, preferences);
+        store(&mut storage, &preferences);
 
         assert_eq!(load(Some(&storage)), preferences);
+        assert_eq!(
+            load(Some(&storage)).mfd_package_manifest.as_deref(),
+            Some("/trusted/ferrule-package.json")
+        );
     }
 
     #[test]

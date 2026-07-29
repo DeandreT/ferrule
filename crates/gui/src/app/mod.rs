@@ -6,7 +6,7 @@
 //! repeating path each scope loops over) is still edited in the side
 //! panel -- connecting wires never changes iteration, only values.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use editor_ui::{DocumentOrigin, SnapshotHistory};
 use egui_snarl::Snarl;
@@ -384,6 +384,7 @@ pub struct FerruleApp {
     appearance_tab: AppearanceTab,
     theme: ThemeState,
     appearance: EditorAppearance,
+    mfd_package_manifest: Option<String>,
     palette: Palette,
     document: DocumentLocation,
     input_path: String,
@@ -422,6 +423,7 @@ enum DialogKind {
     BrowseInput,
     BrowseOutput,
     ImportMfd,
+    BrowseMfdPackageManifest,
     ExportMfd,
     BrowseSourceSchema,
     BrowseTargetSchema,
@@ -443,6 +445,11 @@ enum DestructiveAction {
 enum SaveContinuation {
     Destructive(DestructiveAction),
     Run,
+}
+
+struct DocumentSaveOutcome {
+    validation_issues: Vec<String>,
+    layout_warning: Option<String>,
 }
 
 impl Default for FerruleApp {
@@ -473,6 +480,7 @@ impl Default for FerruleApp {
             appearance_tab: AppearanceTab::default(),
             theme: ThemeState::default(),
             appearance: EditorAppearance::default(),
+            mfd_package_manifest: None,
             palette: crate::theme::palette(crate::theme::ResolvedTheme::Dark),
             document: DocumentLocation::untitled("project.json"),
             input_path: String::new(),
@@ -665,6 +673,7 @@ impl FerruleApp {
             theme: preferences.theme,
             appearance: preferences.appearance,
             show_minimap: preferences.show_minimap,
+            mfd_package_manifest: preferences.mfd_package_manifest,
             ..Self::default()
         }
     }
@@ -939,34 +948,61 @@ impl FerruleApp {
         }
     }
 
-    fn save_document_to(&mut self, path: &std::path::Path) -> anyhow::Result<Vec<String>> {
-        let json = serde_json::to_string_pretty(&self.project)?;
+    fn save_document_to(&mut self, path: &std::path::Path) -> anyhow::Result<DocumentSaveOutcome> {
+        let mut project = self.project.clone();
+        let previous_path = self.document.suggested_path();
+        cli::rebase_project_paths(&mut project, previous_path, path)?;
+        let json = serde_json::to_string_pretty(&project)?;
+        let layout =
+            CanvasLayout::capture(&project, &self.main_canvas.snarl, &self.mapping_workspace);
         std::fs::write(path, json)?;
-        write_layout(
-            path,
-            &CanvasLayout::capture(
-                &self.project,
-                &self.main_canvas.snarl,
-                &self.mapping_workspace,
-            ),
-        )?;
+        self.project = project;
         self.document = DocumentLocation::saved(path);
         self.mark_clean();
-        Ok(cli::validate(&self.project)
-            .into_iter()
-            .map(|issue| issue.to_string())
-            .collect())
+        let layout_warning = write_layout(path, &layout)
+            .err()
+            .map(|error| format!("canvas layout was not saved: {error}"));
+        Ok(DocumentSaveOutcome {
+            validation_issues: cli::validate(&self.project)
+                .into_iter()
+                .map(|issue| issue.to_string())
+                .collect(),
+            layout_warning,
+        })
     }
 
-    fn saved_status(path: &std::path::Path, issues: &[String]) -> String {
-        if issues.is_empty() {
-            format!("saved {}", path.display())
-        } else {
+    fn saved_status(path: &std::path::Path, outcome: &DocumentSaveOutcome) -> String {
+        if !outcome.validation_issues.is_empty() {
             format!(
                 "saved {} with {} validation issue(s)",
                 path.display(),
-                issues.len()
+                outcome.validation_issues.len()
             )
+        } else if outcome.layout_warning.is_some() {
+            format!("saved {} without canvas layout", path.display())
+        } else {
+            format!("saved {}", path.display())
+        }
+    }
+
+    fn apply_save_outcome(&mut self, path: &Path, outcome: DocumentSaveOutcome) {
+        self.status = Self::saved_status(path, &outcome);
+        let mut diagnostics = outcome
+            .validation_issues
+            .into_iter()
+            .map(|message| Diagnostic {
+                level: DiagnosticLevel::Error,
+                message,
+            })
+            .collect::<Vec<_>>();
+        diagnostics.extend(outcome.layout_warning.map(|message| Diagnostic {
+            level: DiagnosticLevel::Warning,
+            message,
+        }));
+        if diagnostics.is_empty() {
+            self.diagnostics.clear();
+        } else {
+            self.diagnostics.replace("Save", diagnostics);
         }
     }
 
@@ -989,13 +1025,8 @@ impl FerruleApp {
             return;
         };
         match self.save_document_to(&path) {
-            Ok(issues) => {
-                self.status = Self::saved_status(&path, &issues);
-                if issues.is_empty() {
-                    self.diagnostics.clear();
-                } else {
-                    self.diagnostics.validation(issues);
-                }
+            Ok(outcome) => {
+                self.apply_save_outcome(&path, outcome);
                 self.pending_destructive_action = None;
                 self.complete_save_continuation(continuation, ctx);
             }
@@ -1018,6 +1049,16 @@ impl FerruleApp {
             Some(SaveContinuation::Run) => self.run_saved(),
             None => {}
         }
+    }
+
+    fn import_mfd_with_resources(&self, path: &str) -> Result<mfd::Imported, mfd::MfdError> {
+        let mapping_path = std::path::Path::new(path);
+        let Some(manifest_path) = &self.mfd_package_manifest else {
+            return mfd::import(mapping_path);
+        };
+        let options = mfd::ImportOptions::default()
+            .with_package_manifest(std::path::Path::new(manifest_path))?;
+        mfd::import_with_options(mapping_path, &options)
     }
 
     /// Applies the result of a finished file dialog, if any.
@@ -1046,13 +1087,8 @@ impl FerruleApp {
                 let continuation = self.pending_save_continuation.take();
                 let path = PathBuf::from(path);
                 match self.save_document_to(&path) {
-                    Ok(issues) => {
-                        self.status = Self::saved_status(&path, &issues);
-                        if issues.is_empty() {
-                            self.diagnostics.clear();
-                        } else {
-                            self.diagnostics.validation(issues);
-                        }
+                    Ok(outcome) => {
+                        self.apply_save_outcome(&path, outcome);
                         self.complete_save_continuation(continuation, ctx);
                     }
                     Err(error) => {
@@ -1085,8 +1121,24 @@ impl FerruleApp {
                     draft.output_path = path;
                 }
             }
-            DialogKind::ImportMfd => match mfd::import(std::path::Path::new(&path)) {
+            DialogKind::BrowseMfdPackageManifest => {
+                match mfd::PackageManifest::load(std::path::Path::new(&path)) {
+                    Ok(manifest) => {
+                        let canonical = manifest.path().display().to_string();
+                        self.mfd_package_manifest = Some(canonical.clone());
+                        self.status = format!("selected MFD package manifest {canonical}");
+                        self.diagnostics.clear();
+                    }
+                    Err(error) => {
+                        self.status = format!("invalid MFD package manifest {path}");
+                        self.diagnostics
+                            .error("MFD package manifest", error.to_string());
+                    }
+                }
+            }
+            DialogKind::ImportMfd => match self.import_mfd_with_resources(&path) {
                 Ok(imported) => {
+                    let project_path = imported.mapping_path.with_extension("json");
                     self.clear_run_report();
                     self.main_canvas = CanvasDocumentState::main(&imported.project);
                     self.reset_canvas_view();
@@ -1095,9 +1147,7 @@ impl FerruleApp {
                     self.history.mark_unsaved();
                     self.selected_scope.clear();
                     self.rebase_history();
-                    self.document = DocumentLocation::untitled(
-                        std::path::Path::new(&path).with_extension("json"),
-                    );
+                    self.document = DocumentLocation::untitled(project_path);
                     let validation = cli::validate(&self.project);
                     let mut diagnostics = imported
                         .warnings
@@ -1157,10 +1207,11 @@ impl eframe::App for FerruleApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         crate::preferences::store(
             storage,
-            crate::preferences::EditorPreferences::new(
+            &crate::preferences::EditorPreferences::new(
                 self.theme,
                 self.appearance,
                 self.show_minimap,
+                self.mfd_package_manifest.clone(),
             ),
         );
     }

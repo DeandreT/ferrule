@@ -119,8 +119,13 @@ enum Command {
         #[arg(long)]
         out: PathBuf,
         /// Trusted root containing the mapping and all referenced resources.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "package_manifest")]
         package_root: Option<PathBuf>,
+        /// Explicitly trusted portable package manifest. Its directory is the
+        /// package root and its relative catalogs are searched after direct
+        /// catalog flags.
+        #[arg(long, value_name = "FILE", conflicts_with = "package_root")]
+        package_manifest: Option<PathBuf>,
         /// Trusted EDI configuration catalog. Repeat to search multiple
         /// catalogs in declaration order after the mapping package.
         #[arg(long = "edi-catalog-root", value_name = "DIR")]
@@ -429,6 +434,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             mfd,
             out,
             package_root,
+            package_manifest,
             edi_catalog_roots,
             json_schema_catalog_roots,
         } => {
@@ -436,6 +442,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 &mfd,
                 &out,
                 package_root.as_deref(),
+                package_manifest.as_deref(),
                 &edi_catalog_roots,
                 &json_schema_catalog_roots,
             )?;

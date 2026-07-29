@@ -98,6 +98,31 @@ impl FerruleApp {
                             }
                             ui.close();
                         }
+                        ui.menu_button("MFD package", |ui| {
+                            if ui.button("Choose manifest...").clicked() {
+                                self.pending_dialog = Some((
+                                    DialogKind::BrowseMfdPackageManifest,
+                                    pick_file("ferrule package manifest", &["json"]),
+                                ));
+                                ui.close();
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.mfd_package_manifest.is_some(),
+                                    egui::Button::new("Clear manifest"),
+                                )
+                                .clicked()
+                            {
+                                self.mfd_package_manifest = None;
+                                self.status = "cleared MFD package manifest".to_string();
+                                ui.close();
+                            }
+                            if let Some(path) = &self.mfd_package_manifest {
+                                ui.separator();
+                                ui.add(egui::Label::new(path).truncate())
+                                    .on_hover_text(path);
+                            }
+                        });
                         if ui.button("Export MFD...").clicked() {
                             self.pending_dialog = Some((
                                 DialogKind::ExportMfd,

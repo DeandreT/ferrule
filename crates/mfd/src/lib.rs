@@ -51,6 +51,7 @@ mod resource;
 
 pub use export::export;
 pub use import::{ImportOptions, Imported, import, import_with_options};
+pub use resource::PackageManifest;
 
 use thiserror::Error;
 

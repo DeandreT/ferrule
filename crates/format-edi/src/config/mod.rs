@@ -61,12 +61,27 @@ pub fn import_config(
     path: &Path,
     selected_messages: &[String],
 ) -> Result<CompiledConfig, ConfigError> {
-    let mut files = Files::default();
-    let mut definitions = Definitions::default();
-    load_definitions(path, &mut files, &mut definitions)?;
+    let authorization_root = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    import_config_confined(path, authorization_root, selected_messages)
+}
 
-    let main_text = files.read(path)?;
-    let main_doc = parse_document(path, &main_text)?;
+/// Imports one complete EDI configuration while confining every transitive
+/// include and sibling message to `authorization_root`.
+pub fn import_config_confined(
+    path: &Path,
+    authorization_root: &Path,
+    selected_messages: &[String],
+) -> Result<CompiledConfig, ConfigError> {
+    let mut files = Files::new(authorization_root)?;
+    let path = files.confined_file(path)?;
+    let mut definitions = Definitions::default();
+    load_definitions(&path, &mut files, &mut definitions)?;
+
+    let main_text = files.read(&path)?;
+    let main_doc = parse_document(&path, &main_text)?;
     let root = main_doc.root_element();
     let standard = root
         .children()
@@ -92,7 +107,7 @@ pub fn import_config(
             message.name = message_type.to_string();
             return Ok(compiled_config(message, &definitions));
         }
-        let envelope_path = resolve_sibling(path, "Envelope.Config")?;
+        let envelope_path = resolve_sibling(&path, "Envelope.Config", files.root())?;
         load_definitions(&envelope_path, &mut files, &mut definitions)?;
         let envelope_text = files.read(&envelope_path)?;
         let envelope_doc = parse_document(&envelope_path, &envelope_text)?;
@@ -125,7 +140,7 @@ pub fn import_config(
     let discriminator = select.attribute("field").map(str::to_string);
     let mut messages = Vec::with_capacity(selected_messages.len());
     for selected in selected_messages {
-        let message_path = resolve_message_config(path, selected)?;
+        let message_path = resolve_message_config(&path, selected, files.root())?;
         load_definitions(&message_path, &mut files, &mut definitions)?;
         let message_text = files.read(&message_path)?;
         let message_doc = parse_document(&message_path, &message_text)?;

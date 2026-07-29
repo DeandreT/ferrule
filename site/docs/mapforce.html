@@ -34,6 +34,22 @@
   --mfd design.mfd \
   --out project.json</code></pre>
         <p>
+          Relocatable packages can place an explicitly selected
+          <code>ferrule-package.json</code> at their trust root:
+        </p>
+        <pre><code>{
+  "schemaVersion": 1,
+  "kind": "ferrule.mapping-package",
+  "catalogs": [
+    {"kind": "edi-config", "root": "resources/edi"},
+    {"kind": "json-schema", "root": "resources/json-schema"}
+  ]
+}</code></pre>
+        <pre><code>cargo +nightly run -p cli -- import-mfd \
+  --mfd package/maps/design.mfd \
+  --package-manifest package/ferrule-package.json \
+  --out package/projects/project.json</code></pre>
+        <p>
           When mapping resources live outside the design directory, pass
           <code>--package-root package</code>. For separately managed EDI
           releases, repeat <code>--edi-catalog-root DIR</code> in search order.
@@ -43,6 +59,15 @@
           parent locators are re-anchored under each catalog, while every
           resolved file and nested schema reference remains canonically confined
           to its explicitly trusted root.
+        </p>
+        <p>
+          A mapping cannot grant itself access to a manifest. The CLI flag or
+          the GUI's MFD package selector provides host trust explicitly.
+          Manifest catalogs must be relative, traversal-free directories inside
+          the package. Transitive EDI includes and selected message definitions
+          remain under the root that authorized the main configuration. Static
+          instance paths are rebased when the project is written or saved in a
+          different directory.
         </p>
         <p>
           Import resolves supported document components, schemas, graph nodes,
