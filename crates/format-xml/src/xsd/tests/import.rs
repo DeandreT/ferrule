@@ -328,6 +328,79 @@ fn imports_named_derived_complex_types() {
 }
 
 #[test]
+fn mixed_complex_content_extensions_preserve_ordered_runtime_content()
+-> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_mixed_complex_derivation_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:t="urn:ferrule:mixed-derived"
+                       targetNamespace="urn:ferrule:mixed-derived"
+                       elementFormDefault="qualified">
+          <xs:complexType name="BaseRecord"><xs:sequence>
+            <xs:element name="Name" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+          <xs:complexType name="RichRecord"><xs:complexContent mixed="true">
+            <xs:extension base="t:BaseRecord"><xs:sequence>
+              <xs:element name="Bold" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence><xs:attribute name="format" type="xs:string"/>
+            </xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:element name="value" type="t:BaseRecord"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )?;
+    let schema = import_root(&path, Some("{urn:ferrule:mixed-derived}Root"))?;
+    let value = schema
+        .child("value")
+        .ok_or("mixed derived field is missing")?;
+    let rich = value
+        .alternatives()
+        .iter()
+        .find(|alternative| alternative.name == "{urn:ferrule:mixed-derived}RichRecord")
+        .ok_or("mixed derived alternative is missing")?;
+    assert_eq!(
+        rich.members,
+        vec![
+            "Name".to_string(),
+            XML_TEXT_FIELD.to_string(),
+            "Bold".to_string(),
+            "format".to_string()
+        ]
+    );
+
+    let input = r#"<Root xmlns="urn:ferrule:mixed-derived"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xmlns:t="urn:ferrule:mixed-derived"><value xsi:type="t:RichRecord"
+                         format="html">lead<Name>Ada</Name>middle<Bold>important</Bold>tail</value></Root>"#;
+    let instance = from_str(input, &schema)?;
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains("xsi:type=\"ft:RichRecord\""), "{output}");
+    assert!(
+        output.contains("lead<Name>Ada</Name>middle<Bold>important</Bold>tail"),
+        "{output}"
+    );
+    assert_eq!(from_str(&output, &schema)?, instance);
+
+    let exported = export(&schema)?;
+    assert!(
+        exported.contains(r#"<xs:complexContent mixed="true">"#)
+            && exported.contains(r#"<xs:extension base="tns:BaseRecord">"#),
+        "{exported}"
+    );
+    std::fs::write(&path, exported)?;
+    let reimported = import_root(&path, Some("{urn:ferrule:mixed-derived}Root"))?;
+    std::fs::remove_file(path)?;
+    assert_eq!(reimported, schema);
+    assert_eq!(from_str(&output, &reimported)?, instance);
+    Ok(())
+}
+
+#[test]
 fn simple_content_extensions_become_executable_xsi_type_alternatives()
 -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::temp_dir().join(format!(

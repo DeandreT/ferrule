@@ -30,8 +30,9 @@ layout and dialect details that an extension cannot express.
 - XML preserves declared expanded-name identity for elements and attributes.
   MFD export partitions foreign declarations into deterministic local XSD
   siblings and publishes the complete graph atomically. Bounded local-graph
-  substitution groups, compatible `complexContent` extension/restriction
-  `xsi:type` hierarchies, scalar-text/attribute-only `simpleContent` derivations,
+  substitution groups, compatible element-only or mixed `complexContent`
+  extension/restriction `xsi:type` hierarchies,
+  scalar-text/attribute-only `simpleContent` derivations,
   optional/unbounded named model groups with exactly one nonrepeating member,
   exact optional/unbounded `##local` `processContents="skip"` element wildcards
   declared inline or through named model groups, and direct or
