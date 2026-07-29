@@ -1,7 +1,9 @@
 use ir::Value;
 
 use super::{
-    FunctionError, datetime, datetime_add, decimal, filepath, flextext, format_number, json,
+    FunctionError,
+    catalog::{BuiltinDefinition, BuiltinId},
+    datetime, datetime_add, decimal, filepath, flextext, format_number, json,
     scalar::text as scalar_text,
 };
 
@@ -10,94 +12,105 @@ mod regex_match;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
 
-pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
-    match name {
-        "concat" => Ok(concat(args)),
-        "upper" => unary_string(args, "upper", str::to_uppercase),
-        "lower" => unary_string(args, "lower", str::to_lowercase),
-        "normalize_space" => unary_string(args, "normalize_space", normalize_space),
-        "is_empty" => unary_string_predicate(args, "is_empty", str::is_empty),
-        "trim" => unary_string(args, "trim", |s| s.trim().to_string()),
-        "left" => edge_chars(args, "left", true),
-        "right" => edge_chars(args, "right", false),
-        "left_trim" => unary_string(args, "left_trim", |s| {
+pub(super) fn call_builtin(
+    builtin: &BuiltinDefinition,
+    args: &[Value],
+) -> Result<Value, FunctionError> {
+    match builtin.id {
+        BuiltinId::Concat => Ok(concat(args)),
+        BuiltinId::Upper => unary_string(args, "upper", str::to_uppercase),
+        BuiltinId::Lower => unary_string(args, "lower", str::to_lowercase),
+        BuiltinId::NormalizeSpace => unary_string(args, "normalize_space", normalize_space),
+        BuiltinId::IsEmpty => unary_string_predicate(args, "is_empty", str::is_empty),
+        BuiltinId::Trim => unary_string(args, "trim", |s| s.trim().to_string()),
+        BuiltinId::Left => edge_chars(args, "left", true),
+        BuiltinId::Right => edge_chars(args, "right", false),
+        BuiltinId::LeftTrim => unary_string(args, "left_trim", |s| {
             s.trim_start_matches([' ', '\t', '\r', '\n']).to_string()
         }),
-        "right_trim" => unary_string(args, "right_trim", |s| {
+        BuiltinId::RightTrim => unary_string(args, "right_trim", |s| {
             s.trim_end_matches([' ', '\t', '\r', '\n']).to_string()
         }),
-        "length" => length(args),
-        "starts_with" => binary_scalar_string(args, "starts_with", |a, b| a.starts_with(b)),
-        "ends_with" => binary_scalar_string(args, "ends_with", |a, b| a.ends_with(b)),
-        "contains" => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
-        "matches" => regex_match::matches(args),
-        "replace" => regex_match::replace(args),
-        "sql_like" => binary_string(args, "sql_like", sql_like),
-        "pad_string_left" => pad_string(args, "pad_string_left", true),
-        "pad_string_right" => pad_string(args, "pad_string_right", false),
-        "add" => numeric(args, "add", i64::checked_add, |a, b| a + b),
-        "subtract" => numeric(args, "subtract", i64::checked_sub, |a, b| a - b),
-        "multiply" => multiply(args),
-        "sqlite_multiply" => sqlite_multiply(args),
-        "divide" => divide(args),
-        "equal" => comparison(args, "equal", |o| o == std::cmp::Ordering::Equal),
-        "not_equal" => comparison(args, "not_equal", |o| o != std::cmp::Ordering::Equal),
-        "less_than" => comparison(args, "less_than", |o| o == std::cmp::Ordering::Less),
-        "greater_than" => comparison(args, "greater_than", |o| o == std::cmp::Ordering::Greater),
-        "less_or_equal" => comparison(args, "less_or_equal", |o| o != std::cmp::Ordering::Greater),
-        "greater_or_equal" => {
+        BuiltinId::Length => length(args),
+        BuiltinId::StartsWith => binary_scalar_string(args, "starts_with", |a, b| a.starts_with(b)),
+        BuiltinId::EndsWith => binary_scalar_string(args, "ends_with", |a, b| a.ends_with(b)),
+        BuiltinId::Contains => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
+        BuiltinId::Matches => regex_match::matches(args),
+        BuiltinId::Replace => regex_match::replace(args),
+        BuiltinId::SqlLike => binary_string(args, "sql_like", sql_like),
+        BuiltinId::PadStringLeft => pad_string(args, "pad_string_left", true),
+        BuiltinId::PadStringRight => pad_string(args, "pad_string_right", false),
+        BuiltinId::Add => numeric(args, "add", i64::checked_add, |a, b| a + b),
+        BuiltinId::Subtract => numeric(args, "subtract", i64::checked_sub, |a, b| a - b),
+        BuiltinId::Multiply => multiply(args),
+        BuiltinId::SqliteMultiply => sqlite_multiply(args),
+        BuiltinId::Divide => divide(args),
+        BuiltinId::Equal => comparison(args, "equal", |o| o == std::cmp::Ordering::Equal),
+        BuiltinId::NotEqual => comparison(args, "not_equal", |o| o != std::cmp::Ordering::Equal),
+        BuiltinId::LessThan => comparison(args, "less_than", |o| o == std::cmp::Ordering::Less),
+        BuiltinId::GreaterThan => {
+            comparison(args, "greater_than", |o| o == std::cmp::Ordering::Greater)
+        }
+        BuiltinId::LessOrEqual => {
+            comparison(args, "less_or_equal", |o| o != std::cmp::Ordering::Greater)
+        }
+        BuiltinId::GreaterOrEqual => {
             comparison(args, "greater_or_equal", |o| o != std::cmp::Ordering::Less)
         }
-        "and" => binary_bool(args, "and", |a, b| a && b),
-        "or" => binary_bool(args, "or", |a, b| a || b),
-        "not" => unary_bool(args, "not", |a| !a),
-        "substring" => substring(args),
-        "substring_before" => split_string(args, "substring_before", true),
-        "substring_after" => split_string(args, "substring_after", false),
-        "string" => string(args),
-        "is_numeric" => is_numeric(args),
-        "to_number" => to_number(args),
-        "boolean" => effective_boolean(args),
-        "positive" => positive(args),
-        "floor" => floor(args),
-        "create_guid" => create_guid(args),
-        "format_number" => format_number::format_number(args),
-        "exists" => exists(args),
-        "round" => round(args),
-        "delay_passthrough" => delay_passthrough(args),
-        "date_from_datetime" => date_from_datetime(args),
-        "year_from_datetime" => year_from_datetime(args),
-        "month_from_datetime" => month_from_datetime(args),
-        "day_from_datetime" => day_from_datetime(args),
-        "weekday" => weekday(args),
-        "hours_from_datetime" => hours_from_datetime(args),
-        "minutes_from_datetime" => minutes_from_datetime(args),
-        "time_from_datetime" => datetime::time_from_datetime(args),
-        "datetime_from_date_and_time" => datetime::datetime_from_date_and_time(args),
-        "datetime_from_parts" => datetime::datetime_from_parts(args),
-        "duration_from_parts" => datetime::duration_from_parts(args),
-        "datetime_add" => datetime_add::datetime_add(args),
-        "parse_date" => datetime::parse_date(args),
-        "parse_datetime" => datetime::parse_datetime(args),
-        "parse_time" => datetime::parse_time(args),
-        "format_date" => datetime::format_date(args),
-        "format_datetime" => datetime::format_datetime(args),
-        "format_time" => datetime::format_time(args),
-        "edifact_to_datetime" => datetime::edifact_to_datetime(args),
-        "coerce_datetime" => datetime::coerce_datetime(args),
-        "substitute_missing" => substitute_missing(args),
-        "substitute_missing_with_xml_nil" => substitute_missing_with_xml_nil(args),
-        "get_folder" => filepath::get_folder(args),
-        "remove_folder" => filepath::remove_folder(args),
-        "get_fileext" => filepath::get_fileext(args),
-        "resolve_filepath" => filepath::resolve_filepath(args),
-        "is_xml_nil" => is_xml_nil(args),
-        "isbn10_to_isbn13" => isbn::isbn10_to_isbn13(args),
-        "json_serialize_object" => json::serialize_object(args),
-        "json_parse_field" => json::parse_field(args),
-        "flextext_parse_field" => flextext::parse_field(args),
-        other => Err(FunctionError::UnknownFunction(other.to_string())),
+        BuiltinId::And => binary_bool(args, "and", |a, b| a && b),
+        BuiltinId::Or => binary_bool(args, "or", |a, b| a || b),
+        BuiltinId::Not => unary_bool(args, "not", |a| !a),
+        BuiltinId::Substring => substring(args),
+        BuiltinId::SubstringBefore => split_string(args, "substring_before", true),
+        BuiltinId::SubstringAfter => split_string(args, "substring_after", false),
+        BuiltinId::String => string(args),
+        BuiltinId::IsNumeric => is_numeric(args),
+        BuiltinId::ToNumber => to_number(args),
+        BuiltinId::Boolean => effective_boolean(args),
+        BuiltinId::Positive => positive(args),
+        BuiltinId::Floor => floor(args),
+        BuiltinId::CreateGuid => create_guid(args),
+        BuiltinId::FormatNumber => format_number::format_number(args),
+        BuiltinId::Exists => exists(args),
+        BuiltinId::Round => round(args),
+        BuiltinId::DelayPassthrough => delay_passthrough(args),
+        BuiltinId::DateFromDatetime => date_from_datetime(args),
+        BuiltinId::YearFromDatetime => year_from_datetime(args),
+        BuiltinId::MonthFromDatetime => month_from_datetime(args),
+        BuiltinId::DayFromDatetime => day_from_datetime(args),
+        BuiltinId::Weekday => weekday(args),
+        BuiltinId::HoursFromDatetime => hours_from_datetime(args),
+        BuiltinId::MinutesFromDatetime => minutes_from_datetime(args),
+        BuiltinId::TimeFromDatetime => datetime::time_from_datetime(args),
+        BuiltinId::DatetimeFromDateAndTime => datetime::datetime_from_date_and_time(args),
+        BuiltinId::DatetimeFromParts => datetime::datetime_from_parts(args),
+        BuiltinId::DurationFromParts => datetime::duration_from_parts(args),
+        BuiltinId::DatetimeAdd => datetime_add::datetime_add(args),
+        BuiltinId::ParseDate => datetime::parse_date(args),
+        BuiltinId::ParseDatetime => datetime::parse_datetime(args),
+        BuiltinId::ParseTime => datetime::parse_time(args),
+        BuiltinId::FormatDate => datetime::format_date(args),
+        BuiltinId::FormatDatetime => datetime::format_datetime(args),
+        BuiltinId::FormatTime => datetime::format_time(args),
+        BuiltinId::EdifactToDatetime => datetime::edifact_to_datetime(args),
+        BuiltinId::CoerceDatetime => datetime::coerce_datetime(args),
+        BuiltinId::SubstituteMissing => substitute_missing(args),
+        BuiltinId::SubstituteMissingWithXmlNil => substitute_missing_with_xml_nil(args),
+        BuiltinId::GetFolder => filepath::get_folder(args),
+        BuiltinId::RemoveFolder => filepath::remove_folder(args),
+        BuiltinId::GetFileext => filepath::get_fileext(args),
+        BuiltinId::ResolveFilepath => filepath::resolve_filepath(args),
+        BuiltinId::IsXmlNil => is_xml_nil(args),
+        BuiltinId::Isbn10ToIsbn13 => isbn::isbn10_to_isbn13(args),
+        BuiltinId::JsonSerializeObject => json::serialize_object(args),
+        BuiltinId::JsonParseField => json::parse_field(args),
+        BuiltinId::FlextextParseField => flextext::parse_field(args),
     }
+}
+
+#[cfg(test)]
+fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
+    crate::call(name, args)
 }
 
 fn create_guid(args: &[Value]) -> Result<Value, FunctionError> {
