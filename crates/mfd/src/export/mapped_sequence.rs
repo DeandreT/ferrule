@@ -86,7 +86,7 @@ pub(super) fn preflight_mapped_sequences(
 ) -> Result<ScopePlans, MfdError> {
     if scope_has_dynamic_mapping(root) {
         return Err(MfdError::Unsupported(
-            "computed JSON property mappings do not yet have a lossless MapForce export"
+            "computed JSON property mapping reached structural sequence export without a dynamic JSON component plan"
                 .to_string(),
         ));
     }
@@ -143,6 +143,9 @@ fn scope_has_dynamic_mapping(scope: &Scope) -> bool {
         || !scope.dynamic_bindings.is_empty()
         || !scope.dynamic_children.is_empty()
         || scope.children.iter().any(scope_has_dynamic_mapping)
+        || scope
+            .concatenated()
+            .is_some_and(|segments| segments.iter().any(scope_has_dynamic_mapping))
 }
 
 fn scope_has_output(scope: &Scope, output: IterationOutput) -> bool {

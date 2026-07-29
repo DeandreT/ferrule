@@ -401,7 +401,6 @@ impl DynamicObjectTarget {
             })?;
         let control = builder.resolve_iteration_feed(feed);
         if control.db_where_component.is_some()
-            || control.has_filter
             || control.has_key_grouping
             || control.has_start_grouping
             || control.has_adjacent_grouping
@@ -413,8 +412,13 @@ impl DynamicObjectTarget {
             || control.has_windows()
         {
             return Err(
-                "nested computed properties currently support only plain source or generated-sequence iteration"
+                "nested computed properties currently support plain or singly filtered source iteration and plain generated-sequence iteration"
                     .to_string(),
+            );
+        }
+        if control.sequence_component.is_some() && control.has_filter {
+            return Err(
+                "filtered nested computed properties require a source collection".to_string(),
             );
         }
         if control.sequence_component.is_some() {
@@ -451,20 +455,8 @@ impl DynamicObjectTarget {
                 "computed nested property collection input is not connected".to_string()
             })?;
         let control = builder.resolve_iteration_feed(property_feed);
-        let nodes = IterationNodes {
-            filter: None,
-            post_group_filter: None,
-            group_by: None,
-            group_starting_with: None,
-            group_adjacent_by: None,
-            group_ending_with: None,
-            group_into_blocks: None,
-            sort_by: None,
-            sort_descending: false,
-            sort_then_by: Vec::new(),
-            sort_filter_order: Default::default(),
-            windows: Vec::new(),
-        };
+        let mut iteration_anchor = Vec::new();
+        let mut source_abs = None;
         if let Some(index) = control.sequence_component {
             builder.sequence_scope_components.insert(index);
             let sequence = builder.sequence_expr(index).ok_or_else(|| {
@@ -476,16 +468,58 @@ impl DynamicObjectTarget {
                         .to_string(),
                 );
             }
-            scopes.add_sequence(&self.owner_path, sequence, nodes, IterationOutput::Repeated);
+            if control.has_filter {
+                return Err(
+                    "filtered nested computed properties require a source collection".to_string(),
+                );
+            }
+            scopes.add_sequence(
+                &self.owner_path,
+                sequence,
+                IterationNodes::default(),
+                IterationOutput::Repeated,
+            );
         } else {
             let source = self
                 .iteration_source(builder)?
                 .ok_or_else(|| "computed nested property has no source collection".to_string())?;
-            let source_abs = builder.context_path(&source);
+            let absolute = builder.context_path(&source);
+            iteration_anchor.clone_from(&absolute);
+            source_abs = Some(absolute);
+        }
+        let filter = if control.has_filter {
+            if control.filter_after_grouping || !control.udf_filters.is_empty() {
+                return Err(
+                    "nested computed properties support only one ordinary pre-group filter"
+                        .to_string(),
+                );
+            }
+            let key = control.filter_expr.ok_or_else(|| {
+                "nested computed property filter has no connected predicate".to_string()
+            })?;
+            let mut filter = builder
+                .scalar_node_at_anchor(key, &iteration_anchor)
+                .ok_or_else(|| {
+                    "nested computed property filter predicate is not representable".to_string()
+                })?;
+            if control.filter_inverted {
+                filter = builder.alloc(mapping::Node::Call {
+                    function: "not".into(),
+                    args: vec![filter],
+                });
+            }
+            Some(filter)
+        } else {
+            None
+        };
+        if let Some(source_abs) = source_abs {
             scopes.add_iteration(
                 &self.owner_path,
                 &source_abs,
-                nodes,
+                IterationNodes {
+                    filter,
+                    ..IterationNodes::default()
+                },
                 IterationOutput::Repeated,
             );
         }
