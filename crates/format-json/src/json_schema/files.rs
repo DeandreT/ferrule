@@ -15,8 +15,11 @@ const VALIDATION_DIALECT_KEY: &str = "__ferrule_validation_dialect";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ValidationDialect {
     Draft4,
-    Draft6Or7,
-    Modern,
+    Draft6,
+    Draft7,
+    Draft2019,
+    Draft2020,
+    Undeclared,
 }
 
 impl ValidationDialect {
@@ -29,14 +32,55 @@ impl ValidationDialect {
     }
 
     pub(super) fn supports_contains_counts(self) -> bool {
-        matches!(self, Self::Modern)
+        matches!(self, Self::Draft2019 | Self::Draft2020 | Self::Undeclared)
+    }
+
+    pub(super) fn supports_boolean_schemas(self) -> bool {
+        !matches!(self, Self::Draft4)
+    }
+
+    pub(super) fn supports_conditionals(self) -> bool {
+        matches!(
+            self,
+            Self::Draft7 | Self::Draft2019 | Self::Draft2020 | Self::Undeclared
+        )
+    }
+
+    pub(super) fn supports_dependent_schemas(self) -> bool {
+        matches!(self, Self::Draft2019 | Self::Draft2020 | Self::Undeclared)
+    }
+
+    pub(super) fn supports_recursive_ref(self) -> bool {
+        matches!(self, Self::Draft2019 | Self::Undeclared)
+    }
+
+    pub(super) fn supports_dynamic_ref(self) -> bool {
+        matches!(self, Self::Draft2020 | Self::Undeclared)
+    }
+
+    pub(super) fn supports_legacy_schema_dependencies(self) -> bool {
+        matches!(
+            self,
+            Self::Draft4 | Self::Draft6 | Self::Draft7 | Self::Undeclared
+        )
+    }
+
+    pub(super) fn supports_unevaluated_items(self) -> bool {
+        matches!(self, Self::Draft2019 | Self::Draft2020 | Self::Undeclared)
+    }
+
+    pub(super) fn supports_prefix_items(self) -> bool {
+        matches!(self, Self::Draft2020 | Self::Undeclared)
     }
 
     fn marker(self) -> &'static str {
         match self {
             Self::Draft4 => "draft4",
-            Self::Draft6Or7 => "draft6_or_7",
-            Self::Modern => "modern",
+            Self::Draft6 => "draft6",
+            Self::Draft7 => "draft7",
+            Self::Draft2019 => "draft2019",
+            Self::Draft2020 => "draft2020",
+            Self::Undeclared => "undeclared",
         }
     }
 }
@@ -129,7 +173,10 @@ impl Loader {
         }
         let mut value = serde_json::from_slice(&bytes)?;
         let dialect = validation_dialect_for_document(&value);
-        let ignore_ref_siblings = !matches!(dialect, ValidationDialect::Modern);
+        let ignore_ref_siblings = matches!(
+            dialect,
+            ValidationDialect::Draft4 | ValidationDialect::Draft6 | ValidationDialect::Draft7
+        );
         let index = self.documents.len();
         self.indexes.insert(path.to_path_buf(), index);
         self.documents.push(Document {
@@ -202,9 +249,25 @@ impl Loader {
                     }
                 }
                 if object.contains_key("$ref")
-                    || ["propertyNames", "contains", "minContains", "maxContains"]
-                        .into_iter()
-                        .any(|keyword| object.contains_key(keyword))
+                    || [
+                        "propertyNames",
+                        "contains",
+                        "minContains",
+                        "maxContains",
+                        "dependencies",
+                        "dependentRequired",
+                        "dependentSchemas",
+                        "prefixItems",
+                        "unevaluatedProperties",
+                        "unevaluatedItems",
+                        "if",
+                        "then",
+                        "else",
+                        "$recursiveRef",
+                        "$dynamicRef",
+                    ]
+                    .into_iter()
+                    .any(|keyword| object.contains_key(keyword))
                 {
                     object.insert(
                         VALIDATION_DIALECT_KEY.to_string(),
@@ -391,25 +454,32 @@ pub(super) fn validation_dialect(schema: &serde_json::Value) -> ValidationDialec
         .and_then(serde_json::Value::as_str)
     {
         Some("draft4") => ValidationDialect::Draft4,
-        Some("draft6_or_7") => ValidationDialect::Draft6Or7,
-        _ => ValidationDialect::Modern,
+        Some("draft6") => ValidationDialect::Draft6,
+        Some("draft7") => ValidationDialect::Draft7,
+        Some("draft2019") => ValidationDialect::Draft2019,
+        Some("draft2020") => ValidationDialect::Draft2020,
+        _ => ValidationDialect::Undeclared,
     }
 }
 
 fn validation_dialect_for_document(schema: &serde_json::Value) -> ValidationDialect {
     let Some(dialect) = schema.get("$schema").and_then(serde_json::Value::as_str) else {
-        return ValidationDialect::Modern;
+        return ValidationDialect::Undeclared;
     };
     let dialect = dialect.strip_suffix('#').unwrap_or(dialect);
     match dialect {
         "http://json-schema.org/draft-04/schema" | "https://json-schema.org/draft-04/schema" => {
             ValidationDialect::Draft4
         }
-        "http://json-schema.org/draft-06/schema"
-        | "https://json-schema.org/draft-06/schema"
-        | "http://json-schema.org/draft-07/schema"
-        | "https://json-schema.org/draft-07/schema" => ValidationDialect::Draft6Or7,
-        _ => ValidationDialect::Modern,
+        "http://json-schema.org/draft-06/schema" | "https://json-schema.org/draft-06/schema" => {
+            ValidationDialect::Draft6
+        }
+        "http://json-schema.org/draft-07/schema" | "https://json-schema.org/draft-07/schema" => {
+            ValidationDialect::Draft7
+        }
+        "https://json-schema.org/draft/2019-09/schema"
+        | "http://json-schema.org/draft/2019-09/schema" => ValidationDialect::Draft2019,
+        _ => ValidationDialect::Draft2020,
     }
 }
 

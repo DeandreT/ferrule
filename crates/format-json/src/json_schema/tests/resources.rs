@@ -93,6 +93,128 @@ fn imports_nested_external_refs_and_cross_file_cycles() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn external_dependency_keywords_follow_each_resources_dialect()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = resource_dir("dependency_dialects");
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("root.json"),
+        r#"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "type":"object",
+  "properties":{
+    "legacy":{"$ref":"legacy.json"},
+    "modern":{"$ref":"modern.json"}
+  }
+}"#,
+    )?;
+    std::fs::write(
+        dir.join("legacy.json"),
+        r#"{
+  "$schema":"http://json-schema.org/draft-07/schema#",
+  "type":"object",
+  "properties":{"trigger":{"type":"string"},"legacy":{"type":"string"}},
+  "dependencies":{"trigger":{"required":["legacy"]}}
+}"#,
+    )?;
+    std::fs::write(
+        dir.join("modern.json"),
+        r#"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "type":"object",
+  "properties":{
+    "trigger":{"type":"string"},
+    "ignored":{"type":"string"},
+    "modern":{"type":"string"}
+  },
+  "dependencies":{"trigger":["ignored"]},
+  "dependentSchemas":{"trigger":{"required":["modern"]}}
+}"#,
+    )?;
+
+    let schema = import_with_root(&dir.join("root.json"), &dir)?;
+    let legacy = schema
+        .child("legacy")
+        .and_then(|node| node.json_property_dependencies.as_ref())
+        .and_then(|dependencies| dependencies.requirements("trigger"));
+    assert_eq!(legacy, Some(["legacy".to_string()].as_slice()));
+    let modern = schema
+        .child("modern")
+        .and_then(|node| node.json_property_dependencies.as_ref())
+        .and_then(|dependencies| dependencies.requirements("trigger"));
+    assert_eq!(modern, Some(["modern".to_string()].as_slice()));
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
+fn external_dynamic_reference_keywords_follow_each_resources_dialect()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = resource_dir("dynamic_reference_dialects");
+    std::fs::create_dir_all(&dir)?;
+    let cases = [
+        (
+            "draft2019-recursive.json",
+            r##"{
+  "$schema":"https://json-schema.org/draft/2019-09/schema",
+  "$recursiveRef":"#"
+}"##,
+            true,
+        ),
+        (
+            "draft2019-dynamic.json",
+            r##"{
+  "$schema":"https://json-schema.org/draft/2019-09/schema",
+  "type":"object",
+  "$dynamicRef":"#ignored"
+}"##,
+            false,
+        ),
+        (
+            "draft2020-dynamic.json",
+            r##"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$dynamicRef":"#ignored"
+}"##,
+            true,
+        ),
+        (
+            "draft2020-recursive.json",
+            r##"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "type":"object",
+  "$recursiveRef":"#"
+}"##,
+            false,
+        ),
+    ];
+    for (file, schema, _) in cases {
+        std::fs::write(dir.join(file), schema)?;
+    }
+
+    for (file, _, should_reject) in cases {
+        std::fs::write(dir.join("root.json"), format!(r#"{{"$ref":"{file}"}}"#))?;
+        let imported = import_with_root(&dir.join("root.json"), &dir);
+        if should_reject {
+            assert!(matches!(
+                imported,
+                Err(JsonFormatError::UnsupportedSchemaUnion { ref reason, .. })
+                    if reason.contains("dynamic reference validation is not supported")
+            ));
+        } else {
+            assert!(matches!(
+                imported.map(|schema| schema.kind),
+                Ok(SchemaKind::Group { .. })
+            ));
+        }
+    }
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
 fn default_import_confines_refs_to_the_schema_directory() -> Result<(), Box<dyn std::error::Error>>
 {
     let dir = resource_dir("confined");

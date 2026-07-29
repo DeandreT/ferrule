@@ -12,6 +12,7 @@ mod all_of;
 mod allowed_values;
 mod constraints;
 mod contains;
+mod dependent_schemas;
 mod export_validation;
 mod formats;
 mod item_counts;
@@ -29,6 +30,7 @@ mod resources;
 mod string_lengths;
 mod unconstrained;
 mod unique_items;
+mod unsupported_keywords;
 
 fn export(schema: &SchemaNode) -> String {
     super::export(schema)

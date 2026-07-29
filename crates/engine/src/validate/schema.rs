@@ -44,7 +44,15 @@ pub(super) fn validate_schema(
         issues.push(ValidationIssue::new(
             root,
             format!(
-                "JSON contains metadata{suffix} requires a repeating schema node with canonical bounded predicate schemas"
+                "JSON contains metadata{suffix} requires a repeating schema node with canonical bounded predicate schemas and exact arbitrary-precision number handling"
+            ),
+        ));
+    }
+    if !schema.json_dependent_schemas_are_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "JSON dependent-schema metadata{suffix} requires an object schema with canonical bounded predicate schemas and exact arbitrary-precision number handling"
             ),
         ));
     }
@@ -200,6 +208,19 @@ pub(super) fn validate_schema(
         for (index, constraint) in constraints.as_slice().iter().enumerate() {
             if let Some(predicate) = constraint.predicate().as_schema() {
                 path.push(format!("<contains:{}>", index + 1));
+                validate_schema(root, predicate, path, issues);
+                path.pop();
+            }
+        }
+    }
+    if let Some(constraints) = &schema.json_dependent_schemas {
+        for (index, constraint) in constraints.as_slice().iter().enumerate() {
+            if let Some(predicate) = constraint.predicate().as_schema() {
+                path.push(format!(
+                    "<dependent-schema:{}:{}>",
+                    index + 1,
+                    constraint.trigger()
+                ));
                 validate_schema(root, predicate, path, issues);
                 path.pop();
             }

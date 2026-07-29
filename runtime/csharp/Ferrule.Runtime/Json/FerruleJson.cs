@@ -268,6 +268,13 @@ public static partial class FerruleJson
             name,
             element,
             scalarDomain == JsonScalarDomain.None);
+        var dependentSchemas = ReadJsonDependentSchemas(
+            name,
+            element,
+            scalarDomain == JsonScalarDomain.None,
+            budget,
+            patternContext,
+            depth);
         var propertyNames = ReadJsonPropertyNames(
             name,
             element,
@@ -379,6 +386,7 @@ public static partial class FerruleJson
             jsonContains,
             propertyCountRange,
             propertyDependencies,
+            dependentSchemas,
             propertyNames,
             jsonUniqueItems,
             children,
@@ -1001,6 +1009,12 @@ public static partial class FerruleJson
             }
         }
 
+        ValidateDependentSchemas(
+            schema,
+            properties,
+            element,
+            budget,
+            depth);
         return new FerruleGroup(fields);
     }
 
@@ -1225,6 +1239,21 @@ public static partial class FerruleJson
         ValidateOutputPropertyDependencies(schema, group);
         ValidateOutputAlternatives(schema, group);
         ValidateOutputPropertyCount(schema, group);
+        if (schema.DependentSchemas.Count != 0)
+        {
+            WriteDependentObject(writer, schema, group, budget, depth);
+            return;
+        }
+        WriteObject(writer, schema, group, budget, depth);
+    }
+
+    private static void WriteObject(
+        Utf8JsonWriter writer,
+        JsonSchemaNode schema,
+        FerruleGroup group,
+        NodeBudget budget,
+        int depth)
+    {
         writer.WriteStartObject();
         if (schema.Dynamic is { } dynamic)
         {
@@ -2412,6 +2441,7 @@ public static partial class FerruleJson
             IReadOnlyList<JsonContainsConstraint> jsonContains,
             JsonPropertyCountRange? propertyCountRange,
             IReadOnlyList<JsonPropertyDependency> propertyDependencies,
+            IReadOnlyList<JsonDependentSchema> dependentSchemas,
             JsonPropertyNameConstraints? propertyNames,
             bool jsonUniqueItems,
             IReadOnlyList<JsonSchemaNode> children,
@@ -2437,6 +2467,7 @@ public static partial class FerruleJson
             JsonContains = jsonContains;
             PropertyCountRange = propertyCountRange;
             PropertyDependencies = propertyDependencies;
+            DependentSchemas = dependentSchemas;
             PropertyNames = propertyNames;
             JsonUniqueItems = jsonUniqueItems;
             Children = children;
@@ -2479,6 +2510,8 @@ public static partial class FerruleJson
         public JsonPropertyCountRange? PropertyCountRange { get; }
 
         public IReadOnlyList<JsonPropertyDependency> PropertyDependencies { get; }
+
+        public IReadOnlyList<JsonDependentSchema> DependentSchemas { get; }
 
         public JsonPropertyNameConstraints? PropertyNames { get; }
 

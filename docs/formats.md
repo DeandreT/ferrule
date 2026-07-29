@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies and whole-object dependent-schema predicates, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -87,11 +87,41 @@ layout and dialect details that an extension cannot express.
   rather than correlating different dependencies with different branches.
   Modern `dependentRequired` imports directly. Legacy property-array
   `dependencies` normalizes to the same model and canonical export writes
-  `dependentRequired`; schema-valued legacy dependencies and
-  `dependentSchemas` reject instead of being ignored. Metadata is limited to
-  256 triggers, 4,096 dependency edges, and 256 KiB of property-name text per
-  object. Unconditional required-property closure must remain possible under
-  the object's closed shape and `maxProperties` interval.
+  `dependentRequired`. Metadata is limited to 256 triggers, 4,096 dependency
+  edges, and 256 KiB of property-name text per object. Unconditional
+  required-property closure must remain possible under the object's closed
+  shape and `maxProperties` interval.
+  Schema-valued legacy `dependencies` and modern `dependentSchemas` apply a
+  schema to the complete containing object when their trigger property is
+  present. The containing schema must have a concrete object shape; a typeless
+  schema that also admits non-object values rejects rather than narrowing those
+  values away. Required-only predicates lower to the property-dependency model.
+  Other predicates retain the currently executable scalar, object, and array
+  JSON constraints, including nested ordinary schemas and bounded patterns.
+  Input uses raw property presence, so explicit null activates a rule; output
+  uses the normalized object after Ferrule `Null` omission. Repeated entries
+  for one trigger are conjunctive. Canonical export groups contiguous entries
+  for that trigger with an inner `allOf`; when a trigger reappears after another
+  trigger, ordered outer `allOf` branches preserve the complete retained rule
+  order through re-import. Compatible outer `allOf` branches append rules in
+  declaration order, while alternatives must have one identical effective rule
+  set. Each object retains at most 32 nontrivial predicates and 256 KiB of
+  trigger-name text.
+  Nullable object null bypasses the rules, and JSON Lines checks every object
+  row independently. Predicate patterns share the document matcher budget.
+  Nested dependent schemas are supported recursively, with the same per-object
+  bounds. Effective `if` with `then` or `else`, `patternProperties`,
+  `unevaluatedProperties`, `unevaluatedItems`, modern `prefixItems`, legacy
+  tuple-form `items`, and effective `additionalItems` reject instead of being
+  approximated. A lone validation-neutral conditional keyword is ignored.
+  Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
+  and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
+  those schema values to use its object form, while Draft 6/7 also accept
+  boolean schemas. Declared
+  2019-09/2020-12 resources accept modern dependency keywords and ignore
+  legacy `dependencies`. A resource without `$schema` intentionally uses a
+  compatibility dialect: modern reference-sibling and structural behavior
+  applies, while both legacy and modern dependency spellings are accepted.
   Object `propertyNames` constraints apply to every actual property name,
   including declared fields, runtime-named fields, and the empty string. Input
   checks raw parsed keys before object decoding; output checks the normalized
@@ -157,7 +187,11 @@ layout and dialect details that an extension cannot express.
   boundaries compare complete raw input values and normalized output values:
   object member order is irrelevant, nested array order is significant, and
   mathematically equal JSON numbers are duplicates before typed input
-  normalization.
+  normalization. Inside private `contains` and `dependentSchemas` predicates,
+  `uniqueItems` rejects item shapes that admit non-integral `number` values or
+  arbitrary JSON, including through nested fields, until predicate matching
+  can retain raw numeric lexemes. Closed integer, string, boolean, and object
+  item shapes remain supported.
   Ferrule measures them in Unicode scalar values, applies them only when a
   scalar union's runtime value is a string, and enforces them on native and
   generated input and output boundaries. They survive nullable wrappers,

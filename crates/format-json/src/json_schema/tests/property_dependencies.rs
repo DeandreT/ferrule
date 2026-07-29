@@ -253,14 +253,12 @@ fn references_follow_dialect_policy_and_legacy_property_arrays_normalize() {
 }
 
 #[test]
-fn malformed_ambiguous_and_schema_valued_dependencies_reject_without_widening() {
+fn malformed_dependencies_reject_without_widening() {
     for malformed in [
         r#"{"type":"object","dependentRequired":[]}"#,
         r#"{"type":"object","dependentRequired":{"a":"b"}}"#,
         r#"{"type":"object","dependentRequired":{"a":[1]}}"#,
         r#"{"type":"object","dependentRequired":{"a":["b","b"]}}"#,
-        r#"{"type":"object","dependencies":{"a":{"required":["b"]}}}"#,
-        r#"{"type":"object","dependentSchemas":{}}"#,
         r#"{"dependentRequired":{"a":["b"]}}"#,
     ] {
         assert!(import_str_result(malformed).is_err(), "{malformed}");

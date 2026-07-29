@@ -100,6 +100,11 @@ fn render_shape(
             out.insert("type".into(), "object".into());
             super::property_counts::render(node, out);
             super::property_dependencies::render(node, out);
+            let ordered_dependent_schemas_in_alternatives =
+                !alternatives.is_empty() && super::dependent_schemas::requires_ordered_all_of(node);
+            if !ordered_dependent_schemas_in_alternatives {
+                super::dependent_schemas::render_constraints(node, out)?;
+            }
             super::property_names::render(node, out);
             if !required.is_empty() {
                 out.insert("required".into(), required.clone().into());
@@ -137,6 +142,9 @@ fn render_shape(
                         variant.insert("properties".into(), properties.into());
                         if !alternative.required.is_empty() {
                             variant.insert("required".into(), alternative.required.clone().into());
+                        }
+                        if ordered_dependent_schemas_in_alternatives {
+                            super::dependent_schemas::render_constraints(node, &mut variant)?;
                         }
                         Ok(serde_json::Value::Object(variant))
                     })

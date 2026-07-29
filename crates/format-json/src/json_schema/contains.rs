@@ -3,7 +3,7 @@ use ir::{
     MAX_JSON_CONTAINS_CONSTRAINTS, SchemaNode,
 };
 
-use super::{files, item_counts, parse, render, unique_items, unsupported_union};
+use super::{files, item_counts, parse, render, unsupported_union};
 use crate::{JsonFormatError, PatternRuntime};
 
 pub(super) fn has_keyword(schema: &serde_json::Value) -> bool {
@@ -109,24 +109,7 @@ pub(crate) fn validate_values(
     for constraint in constraints.as_slice() {
         let mut matched = 0_usize;
         for value in values {
-            let is_match = match constraint.predicate() {
-                JsonContainsPredicate::Never => false,
-                JsonContainsPredicate::Schema { schema: predicate } => {
-                    let matched =
-                        unique_items::validate_json_tree(predicate, value).and_then(|()| {
-                            if predicate.repeating {
-                                crate::read_repeated(value, predicate, patterns)
-                            } else {
-                                crate::read_node_with_patterns(value, predicate, patterns)
-                            }
-                        });
-                    match matched {
-                        Ok(_) => true,
-                        Err(error) if is_assertion_failure(&error) => false,
-                        Err(error) => return Err(error),
-                    }
-                }
-            };
+            let is_match = super::predicate::matches(constraint.predicate(), value, patterns)?;
             if is_match {
                 matched = matched.saturating_add(1);
                 if constraint.range().maximum().is_some_and(|maximum| {
@@ -329,29 +312,6 @@ fn append_all_of(
     if let Some(all_of) = all_of.as_array_mut() {
         all_of.extend(assertions);
     }
-}
-
-fn is_assertion_failure(error: &JsonFormatError) -> bool {
-    !matches!(
-        error,
-        JsonFormatError::Io(_)
-            | JsonFormatError::Json(_)
-            | JsonFormatError::UnsupportedSchemaUnion { .. }
-            | JsonFormatError::UnsupportedSchemaObject { .. }
-            | JsonFormatError::SchemaResource { .. }
-            | JsonFormatError::SchemaResourceLimit { .. }
-            | JsonFormatError::UniqueItemsLimit { .. }
-            | JsonFormatError::InvalidPatternMetadata { .. }
-            | JsonFormatError::InvalidAllowedValuesMetadata { .. }
-            | JsonFormatError::InvalidMultipleOfMetadata { .. }
-            | JsonFormatError::InvalidNumericRangeMetadata { .. }
-            | JsonFormatError::InvalidUniqueItemsMetadata { .. }
-            | JsonFormatError::InvalidPropertyCountMetadata { .. }
-            | JsonFormatError::InvalidPropertyDependenciesMetadata { .. }
-            | JsonFormatError::InvalidPropertyNameMetadata { .. }
-            | JsonFormatError::InvalidContainsMetadata { .. }
-            | JsonFormatError::PatternWorkLimit { .. }
-    )
 }
 
 fn describe(range: ItemCountRange) -> String {

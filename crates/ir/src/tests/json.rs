@@ -648,6 +648,80 @@ fn unique_items_require_repeating_nodes_and_roundtrip() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn private_predicates_reject_lossy_unique_item_domains() -> Result<(), Box<dyn std::error::Error>> {
+    let match_count = ItemCountRange::new(1, None).ok_or("positive contains count is valid")?;
+    let unique_float = SchemaNode::scalar("Value", ScalarType::Float)
+        .repeating()
+        .with_json_unique_items()
+        .ok_or("ordinary float arrays retain raw uniqueItems validation")?;
+    let contains = JsonContainsConstraints::new([JsonContainsConstraint::new(
+        JsonContainsPredicate::schema(unique_float.clone()),
+        match_count,
+    )])
+    .ok_or("contains constraint is canonical")?;
+    assert!(
+        SchemaNode::scalar("Arrays", ScalarType::Int)
+            .repeating()
+            .with_json_contains(contains.clone())
+            .is_none()
+    );
+    let mut invalid_contains = SchemaNode::scalar("Arrays", ScalarType::Int).repeating();
+    invalid_contains.json_contains = Some(contains);
+    assert!(!invalid_contains.metadata_is_valid());
+    assert!(
+        serde_json::from_str::<SchemaNode>(&serde_json::to_string(&invalid_contains)?).is_err()
+    );
+
+    let nested_float = SchemaNode::group("Values", vec![unique_float]);
+    let dependent = JsonDependentSchemaConstraints::new([JsonDependentSchemaConstraint::new(
+        "Trigger",
+        JsonSchemaPredicate::schema(nested_float),
+    )])
+    .ok_or("dependent constraint is canonical")?;
+    assert!(
+        SchemaNode::group(
+            "Root",
+            vec![SchemaNode::scalar("Trigger", ScalarType::Bool)],
+        )
+        .with_json_dependent_schemas(dependent.clone())
+        .is_none()
+    );
+    let mut invalid_dependent = SchemaNode::group(
+        "Root",
+        vec![SchemaNode::scalar("Trigger", ScalarType::Bool)],
+    );
+    invalid_dependent.json_dependent_schemas = Some(dependent);
+    assert!(!invalid_dependent.metadata_is_valid());
+    assert!(
+        serde_json::from_str::<SchemaNode>(&serde_json::to_string(&invalid_dependent)?).is_err()
+    );
+
+    let unique_integers = SchemaNode::group(
+        "Values",
+        vec![
+            SchemaNode::group("Value", vec![SchemaNode::scalar("Count", ScalarType::Int)])
+                .repeating()
+                .with_json_unique_items()
+                .ok_or("closed integer objects have exact uniqueItems semantics")?,
+        ],
+    );
+    let exact = JsonDependentSchemaConstraints::new([JsonDependentSchemaConstraint::new(
+        "Trigger",
+        JsonSchemaPredicate::schema(unique_integers),
+    )])
+    .ok_or("exact dependent constraint is canonical")?;
+    assert!(
+        SchemaNode::group(
+            "Root",
+            vec![SchemaNode::scalar("Trigger", ScalarType::Bool)],
+        )
+        .with_json_dependent_schemas(exact)
+        .is_some()
+    );
+    Ok(())
+}
+
+#[test]
 fn string_length_ranges_require_string_capable_domains_and_roundtrip()
 -> Result<(), Box<dyn std::error::Error>> {
     let Some(range) = StringLengthRange::new(1, Some(3)) else {
