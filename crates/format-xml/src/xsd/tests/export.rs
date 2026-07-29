@@ -75,7 +75,9 @@ fn export_represents_generic_element_groups_as_xsd_wildcards() {
 
     let xsd = export(&schema).unwrap();
     assert!(
-        xsd.contains(r#"<xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>"#),
+        xsd.contains(
+            "<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>"
+        ),
         "{xsd}"
     );
     assert!(!xsd.contains(r#"name="element()""#), "{xsd}");

@@ -9,8 +9,8 @@ use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use super::{
     NodeWriteContext, XmlFormatError, attribute_value, element_matches_schema,
     format_schema_scalar, parse_input_schema_scalar, parse_schema_scalar, push_attribute,
-    push_schema_attribute, read_node, shape_error, validate_group_fields, write_node,
-    write_ordered_mixed_content,
+    push_element_namespace, push_schema_attribute, read_node, shape_error, validate_group_fields,
+    write_node, write_ordered_mixed_content,
 };
 
 pub(super) fn read_generic_element(
@@ -31,6 +31,27 @@ pub(super) fn read_generic_element(
             kind: "scalar",
         });
     };
+    if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+        && element
+            .tag_name()
+            .namespace()
+            .is_some_and(|namespace| !namespace.is_empty())
+    {
+        return Err(XmlFormatError::UnsupportedXmlWildcard {
+            reason: "the supported ##local wildcard profile cannot retain qualified descendant elements",
+        });
+    }
+    if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+        && element.attributes().any(|attribute| {
+            attribute
+                .namespace()
+                .is_some_and(|namespace| !namespace.is_empty())
+        })
+    {
+        return Err(XmlFormatError::UnsupportedXmlWildcard {
+            reason: "the supported ##local wildcard profile cannot retain qualified descendant attributes",
+        });
+    }
     if !alternatives.is_empty() {
         return Err(XmlFormatError::UnsupportedAlternativeRead {
             group: schema.name.clone(),
@@ -108,7 +129,14 @@ pub(super) fn read_group_fields(
             let items = element
                 .children()
                 .filter(|node| node.is_element())
-                .map(|element| read_generic_element(&element, child, root_schema, recursion_depth))
+                .map(|element| {
+                    read_node(
+                        &element,
+                        child,
+                        root_schema,
+                        recursion_depth + usize::from(child.recursive_ref.is_some()),
+                    )
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             fields.push((child.name.clone(), Instance::Repeated(items)));
         } else if child.name == XML_ATTRIBUTES_FIELD {
@@ -286,8 +314,23 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     };
     validate_group_fields(schema, children, &[], fields)?;
     let name = generic_element_name(fields)?;
+    if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified) && is_qualified_name(name) {
+        return Err(XmlFormatError::UnsupportedXmlWildcard {
+            reason: "the supported ##local wildcard profile requires unqualified runtime element names",
+        });
+    }
 
     let mut start = BytesStart::new(name);
+    let element_namespace = match &schema.xml_namespace {
+        Some(ir::XmlNamespace::Qualified(namespace)) => Some(namespace.as_str()),
+        Some(ir::XmlNamespace::Unqualified) => None,
+        None => inherited_namespace,
+    };
+    push_element_namespace(
+        &mut start,
+        element_namespace,
+        element_namespace != inherited_namespace,
+    );
     if let Some(attribute_schema) = children
         .iter()
         .find(|child| child.name == XML_ATTRIBUTES_FIELD)
@@ -312,6 +355,13 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                     _ => None,
                 })
                 .ok_or(XmlFormatError::MissingGenericElementName)?;
+            if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+                && is_qualified_name(attribute_name)
+            {
+                return Err(XmlFormatError::UnsupportedXmlWildcard {
+                    reason: "the supported ##local wildcard profile requires unqualified runtime attribute names",
+                });
+            }
             let attribute_value = attribute_fields
                 .iter()
                 .find(|(field, _)| field == XML_TEXT_FIELD)
@@ -357,7 +407,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
         root_schema,
         fields,
         recursion_depth,
-        inherited_namespace,
+        element_namespace,
     )? {
         writer.write_event(Event::End(BytesEnd::new(name)))?;
         return Ok(());
@@ -407,7 +457,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                 NodeWriteContext {
                     recursion_depth: recursion_depth
                         + usize::from(child_schema.recursive_ref.is_some()),
-                    inherited_namespace,
+                    inherited_namespace: element_namespace,
                     legacy_root_namespace: None,
                 },
             )?;
@@ -431,4 +481,8 @@ fn generic_element_name(fields: &[(String, Instance)]) -> Result<&str, XmlFormat
                 })
         })
         .ok_or(XmlFormatError::MissingGenericElementName)
+}
+
+fn is_qualified_name(name: &str) -> bool {
+    name.contains(':') || name.starts_with('{')
 }
