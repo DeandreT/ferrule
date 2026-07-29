@@ -7,6 +7,9 @@
 //! per-file outcome. A manifest produced by `samples_reference_survey` can be
 //! supplied through `FERRULE_REFERENCE_OUTPUT_MANIFEST`; use the platform
 //! path-list separator to combine independently generated manifests.
+//! Host-selected resources use `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` plus
+//! path lists in `FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
+//! `FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS`.
 //!
 //! The harness resolves every input beneath the sample directory, including
 //! data-dependent secondary sources through a contained host loader, rejects
@@ -25,6 +28,8 @@ mod reference_support;
 mod roundtrip;
 #[path = "support/sample_discovery.rs"]
 mod sample_discovery;
+#[path = "support/survey_import_options.rs"]
+mod survey_import_options;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -52,6 +57,7 @@ use reference_support::{
     requested_generated_references,
 };
 use sample_discovery::discover_sample_paths;
+use survey_import_options::{SurveyResourceProvenance, SurveyResourceSelection};
 
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const JSON_REPORT_ENV: &str = "FERRULE_EXECUTION_SURVEY_JSON";
@@ -516,11 +522,11 @@ fn survey_file(
     samples_root: &Path,
     workspace: &SurveyWorkspace,
     generated_references: Option<&GeneratedReferences>,
+    options: &mfd::ImportOptions,
 ) -> SampleOutcome {
     let identity = mfd_path.strip_prefix(samples_root).unwrap_or(mfd_path);
     let mut outcome = SampleOutcome::pending(identity);
-    let options = mfd::ImportOptions::default().with_package_root(samples_root);
-    let imported = match mfd::import_with_options(mfd_path, &options) {
+    let imported = match mfd::import_with_options(mfd_path, options) {
         Ok(imported) => imported,
         Err(error) => {
             outcome.import = StageOutcome::failed(error.to_string());
@@ -791,6 +797,7 @@ fn scope_binds_fields(scope: &Scope, segment: &str, fields: &[&str]) -> bool {
 fn write_json_report(
     report_path: &Path,
     samples_root: &Path,
+    resource_configuration: &SurveyResourceProvenance,
     summary: &Summary,
     outcomes: &[SampleOutcome],
 ) -> Result<(), Box<dyn Error>> {
@@ -807,6 +814,7 @@ fn write_json_report(
         "schema_version": REPORT_SCHEMA_VERSION,
         "kind": "ferrule.mfd_sample_execution",
         "samples_dir": samples_root,
+        "resource_configuration": resource_configuration.to_json(),
         "safety": {
             "network_access": false,
             "inputs_restricted_to_samples_dir": true,
@@ -1222,7 +1230,17 @@ fn report_creation_never_follows_an_existing_leaf() -> Result<(), Box<dyn Error>
     std::fs::hard_link(&sample, &report)?;
 
     let summary = Summary::from_outcomes(&[]);
-    assert!(write_json_report(&report, &sample_root, &summary, &[]).is_err());
+    let import_context = SurveyResourceSelection::default().resolve(&sample_root)?;
+    assert!(
+        write_json_report(
+            &report,
+            &sample_root,
+            &import_context.provenance,
+            &summary,
+            &[]
+        )
+        .is_err()
+    );
     assert_eq!(std::fs::read_to_string(sample)?, "keep");
     Ok(())
 }
@@ -1339,6 +1357,7 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
         );
         return Ok(());
     }
+    let import_context = SurveyResourceSelection::from_environment().resolve(&samples_root)?;
     let paths = discover_sample_paths(&samples_root)?;
 
     let workspace = SurveyWorkspace::new()?;
@@ -1353,6 +1372,7 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
                 &samples_root,
                 &workspace,
                 generated_references.as_ref(),
+                &import_context.options,
             )
         })
         .collect::<Vec<_>>();
@@ -1384,7 +1404,13 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
             return Err(format!("{JSON_REPORT_ENV} must name an output file").into());
         }
         let report_path = PathBuf::from(report_path);
-        write_json_report(&report_path, &samples_root, &summary, &outcomes)?;
+        write_json_report(
+            &report_path,
+            &samples_root,
+            &import_context.provenance,
+            &summary,
+            &outcomes,
+        )?;
         println!("json report: {}", report_path.display());
     }
     Ok(())

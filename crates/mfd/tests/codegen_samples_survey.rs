@@ -2,6 +2,9 @@
 //!
 //! Run with:
 //! `cargo test -p mfd --test codegen_samples_survey -- --ignored --nocapture`.
+//! Host-selected resources use `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` plus
+//! path lists in `FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
+//! `FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS`.
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -9,8 +12,11 @@ use std::path::Path;
 
 #[path = "support/sample_discovery.rs"]
 mod sample_discovery;
+#[path = "support/survey_import_options.rs"]
+mod survey_import_options;
 
 use sample_discovery::discover_sample_paths;
+use survey_import_options::SurveyResourceSelection;
 
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const LEGACY_VENDOR_NAME: &str = concat!("Alto", "va");
@@ -108,6 +114,7 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    let import_context = SurveyResourceSelection::from_environment().resolve(&samples_dir)?;
     let paths = discover_sample_paths(&samples_dir)?;
     let mut lowered = 0usize;
     let mut rust_emitted = 0usize;
@@ -116,8 +123,7 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
     let mut failures = Vec::new();
 
     for path in &paths {
-        let options = mfd::ImportOptions::default().with_package_root(&samples_dir);
-        let imported = match mfd::import_with_options(path, &options) {
+        let imported = match mfd::import_with_options(path, &import_context.options) {
             Ok(imported) => imported,
             Err(error) => {
                 failures.push(Failure {
@@ -188,6 +194,10 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
     println!("Rust emitted: {rust_emitted}");
     println!("C# emitted: {csharp_emitted}");
     println!("runtime dependency-blocked: {dependency_blocked}");
+    println!(
+        "resource configuration: {}",
+        import_context.provenance.to_json()
+    );
     print_failures(&failures);
     Ok(())
 }

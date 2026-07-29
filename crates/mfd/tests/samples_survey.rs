@@ -3,6 +3,9 @@
 //! Run with `cargo test -p mfd --test samples_survey -- --ignored --nocapture`.
 //! Set `FERRULE_SURVEY_JSON=/path/to/report.json` for a versioned machine-
 //! readable report and `FERRULE_SURVEY_DETAILS=1` for per-file diagnostics.
+//! Host-selected resources use `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` plus
+//! path lists in `FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
+//! `FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS`.
 //! The survey never executes a sample or writes inside the sample tree.
 
 use std::collections::BTreeMap;
@@ -12,8 +15,11 @@ use std::path::{Path, PathBuf};
 
 #[path = "support/sample_discovery.rs"]
 mod sample_discovery;
+#[path = "support/survey_import_options.rs"]
+mod survey_import_options;
 
 use sample_discovery::discover_sample_paths;
+use survey_import_options::{SurveyResourceProvenance, SurveyResourceSelection};
 
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const JSON_REPORT_ENV: &str = "FERRULE_SURVEY_JSON";
@@ -282,11 +288,15 @@ fn sample_name(samples_dir: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
-fn survey_file(samples_dir: &Path, path: &Path, export_path: &Path) -> SampleOutcome {
+fn survey_file(
+    samples_dir: &Path,
+    path: &Path,
+    export_path: &Path,
+    options: &mfd::ImportOptions,
+) -> SampleOutcome {
     let file = sample_name(samples_dir, path);
     let mut outcome = SampleOutcome::pending(file);
-    let options = mfd::ImportOptions::default().with_package_root(samples_dir);
-    let imported = match mfd::import_with_options(path, &options) {
+    let imported = match mfd::import_with_options(path, options) {
         Ok(imported) => imported,
         Err(error) => {
             outcome.import = StageOutcome::failed(vec![error.to_string()]);
@@ -367,6 +377,7 @@ fn stage_diagnostics(
 fn write_json_report(
     path: &Path,
     samples_dir: &Path,
+    resource_configuration: &SurveyResourceProvenance,
     summary: &SurveySummary,
     outcomes: &[SampleOutcome],
 ) -> Result<(), Box<dyn Error>> {
@@ -374,6 +385,7 @@ fn write_json_report(
         "schema_version": REPORT_SCHEMA_VERSION,
         "kind": "ferrule.mfd_sample_compatibility",
         "samples_dir": samples_dir,
+        "resource_configuration": resource_configuration.to_json(),
         "summary": summary.to_json(),
         "samples": outcomes.iter().map(SampleOutcome::to_json).collect::<Vec<_>>(),
     });
@@ -455,6 +467,41 @@ fn summary_distinguishes_success_from_clean_success() {
 }
 
 #[test]
+fn schema_v1_report_adds_non_path_resource_provenance() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let samples_dir = workspace.0.join("samples");
+    std::fs::create_dir(&samples_dir)?;
+    let report_path = workspace.0.join("report.json");
+    let import_context = SurveyResourceSelection::default().resolve(&samples_dir)?;
+    let summary = SurveySummary::from_outcomes(&[]);
+
+    write_json_report(
+        &report_path,
+        &samples_dir,
+        &import_context.provenance,
+        &summary,
+        &[],
+    )?;
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(report_path)?)?;
+
+    assert_eq!(report["schema_version"], REPORT_SCHEMA_VERSION);
+    assert_eq!(
+        report["resource_configuration"]["package_selection"],
+        "default_sample_root"
+    );
+    assert_eq!(
+        report["resource_configuration"]["resource_root_paths_disclosed"],
+        false
+    );
+    assert!(
+        report["resource_configuration"]
+            .get("package_root")
+            .is_none()
+    );
+    Ok(())
+}
+
+#[test]
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_samples() -> Result<(), Box<dyn Error>> {
     let samples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
@@ -466,13 +513,21 @@ fn survey_samples() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    let import_context = SurveyResourceSelection::from_environment().resolve(&samples_dir)?;
     let sample_paths = discover_sample_paths(&samples_dir)?;
 
     let workspace = SurveyWorkspace::new()?;
     let outcomes = sample_paths
         .iter()
         .enumerate()
-        .map(|(index, path)| survey_file(&samples_dir, path, &workspace.export_path(index)))
+        .map(|(index, path)| {
+            survey_file(
+                &samples_dir,
+                path,
+                &workspace.export_path(index),
+                &import_context.options,
+            )
+        })
         .collect::<Vec<_>>();
     let summary = SurveySummary::from_outcomes(&outcomes);
 
@@ -551,7 +606,13 @@ fn survey_samples() -> Result<(), Box<dyn Error>> {
             return Err(format!("{JSON_REPORT_ENV} must name an output file").into());
         }
         let report_path = PathBuf::from(report_path);
-        write_json_report(&report_path, &samples_dir, &summary, &outcomes)?;
+        write_json_report(
+            &report_path,
+            &samples_dir,
+            &import_context.provenance,
+            &summary,
+            &outcomes,
+        )?;
         println!("json report: {}", report_path.display());
     }
 
