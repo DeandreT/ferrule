@@ -56,19 +56,21 @@ pub(super) fn restore_connected_structural_ports(
     xml_ports::restore_connected_structural_ports(components, edge_from);
 }
 
-pub(super) fn refine_copied_fallback_source_groups(
+pub(super) fn refine_copied_fallback_source_shapes(
     components: &mut [SchemaComponent],
     edge_from: &BTreeMap<u32, u32>,
     copy_all_targets: &BTreeSet<u32>,
     fallback_source_outputs: &BTreeSet<u32>,
     fallback_target_inputs: &BTreeSet<u32>,
+    warnings: &mut Vec<String>,
 ) {
-    xml_ports::refine_copied_fallback_source_groups(
+    xml_ports::refine_copied_fallback_source_shapes(
         components,
         edge_from,
         copy_all_targets,
         fallback_source_outputs,
         fallback_target_inputs,
+        warnings,
     );
 }
 
