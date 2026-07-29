@@ -28,6 +28,10 @@ pub(super) use shared::{
     resolve_xml_schema_reference,
 };
 
+pub(super) fn enrich_unresolved_edi_source_schemas(project: &mut mapping::Project) {
+    edi::enrich_unresolved_source_schemas(project);
+}
+
 use csv::select_block as select_csv_block;
 pub(crate) use csv::{SingletonPosition as CsvSingletonPosition, split_singleton_port};
 use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};

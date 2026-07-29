@@ -62,12 +62,12 @@ use function::{
 };
 use graph::{GraphBuilder, read_copy_all_targets, read_edges};
 use schema::{
-    ComponentFormat, SchemaComponent, note_skipped_library, read_csv_component,
-    read_db_component_in_package, read_edi_component, read_fixed_width_component,
-    read_flextext_component, read_http_get_component, read_json_component_in_package,
-    read_pdf_component, read_protobuf_component, read_schema_component_in_package,
-    read_wsdl_component, read_xbrl_component, read_xlsx_component, refine_wsdl_target_schemas,
-    schema_node_at,
+    ComponentFormat, SchemaComponent, enrich_unresolved_edi_source_schemas, note_skipped_library,
+    read_csv_component, read_db_component_in_package, read_edi_component,
+    read_fixed_width_component, read_flextext_component, read_http_get_component,
+    read_json_component_in_package, read_pdf_component, read_protobuf_component,
+    read_schema_component_in_package, read_wsdl_component, read_xbrl_component,
+    read_xlsx_component, refine_wsdl_target_schemas, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
@@ -864,6 +864,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         root,
     };
     project.prune_unreachable_nodes();
+    enrich_unresolved_edi_source_schemas(&mut project);
     Ok(Imported { project, warnings })
 }
 
