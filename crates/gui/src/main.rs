@@ -18,6 +18,7 @@ mod layout_store;
 mod new_mapping;
 mod path_picker;
 mod preferences;
+mod preview;
 mod run_report;
 mod schema_scalar;
 mod schema_tree;

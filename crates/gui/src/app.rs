@@ -50,6 +50,8 @@ mod extra_target_ui;
 mod function_workspace;
 #[path = "app_new_mapping.rs"]
 mod new_mapping_ui;
+#[path = "app_preview.rs"]
+mod preview_ui;
 #[path = "app_run.rs"]
 mod run_ui;
 #[path = "app_scopes.rs"]
@@ -376,6 +378,7 @@ pub struct FerruleApp {
     narrow_pane: WorkspacePane,
     last_layout_class: Option<LayoutClass>,
     show_run_setup: bool,
+    preview_draft: Option<crate::preview::PreviewDraft>,
     show_run_report: bool,
     show_appearance_editor: bool,
     appearance_tab: AppearanceTab,
@@ -464,6 +467,7 @@ impl Default for FerruleApp {
             narrow_pane: WorkspacePane::Canvas,
             last_layout_class: None,
             show_run_setup: false,
+            preview_draft: None,
             show_run_report: false,
             show_appearance_editor: false,
             appearance_tab: AppearanceTab::default(),
@@ -1183,7 +1187,8 @@ impl eframe::App for FerruleApp {
             && self.pending_extra_source_removal.is_none()
             && self.extra_target_draft.is_none()
             && self.pending_extra_target_removal.is_none()
-            && self.pending_auto_connect.is_none();
+            && self.pending_auto_connect.is_none()
+            && self.preview_draft.is_none();
         let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -1302,6 +1307,7 @@ impl eframe::App for FerruleApp {
         self.show_extra_target_setup(ui.ctx());
         self.show_extra_target_removal_confirmation(ui.ctx());
         self.show_auto_connect_confirmation(ui.ctx());
+        self.show_preview_setup(ui.ctx());
         self.show_new_function_dialog(ui.ctx());
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
         self.show_floating_function_windows(ui.ctx(), project_editing_enabled);

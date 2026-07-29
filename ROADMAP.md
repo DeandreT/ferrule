@@ -57,7 +57,7 @@ clean-room interoperability, and extensible adapters.
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
 | XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes, simple and ordered mixed content, `xsi:nil`, generic elements, bounded cross-namespace substitution groups, and bounded transitive derived-type input/output | Remaining derived-type input shapes and namespace-dependent wildcards |
-| JSON | JSON Schema subset, local refs, exact nullable scalar/object/array wrappers, homogeneous scalar/array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null `const` discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties | First-class heterogeneous scalar/array unions, overlapping cross-mode or incompatible typed-wrapper union composition, untyped discriminator shapes, mixed arrays, validation-keyword enforcement |
+| JSON | JSON Schema subset, local refs, exact nullable scalar/object/array wrappers, heterogeneous scalar type arrays and exact scalar `anyOf`, homogeneous array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null `const` discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties | Heterogeneous array and general scalar `oneOf` composition, overlapping cross-mode or incompatible typed-wrapper union composition, untyped discriminator shapes, mixed arrays, validation-keyword enforcement |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Validation reports, additional configuration commands, and pluggable release packs |
@@ -65,7 +65,7 @@ clean-room interoperability, and extensible adapters.
 | Dataflow | One primary driver plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, and dynamic per-document output paths | Fully general named N-to-M endpoints and an ordered stage DAG |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
-| Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, undo, and layout | Complete schema/format wizards and preview |
+| Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
 | Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, and a bounded searchable GUI run report | Connector history, context/row inspection, stepping, breakpoints |
 | `.mfd` | 187/187 imports, warning-free export for all 187, 173 dependency-complete warning-free/engine-valid designs, fourteen typed missing EDI-catalog dependencies preserved across round trips, 166/166 safe-input executions, 166/166 semantically exact export/re-import executions, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and executable package resolution for externally supplied configuration catalogs |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs, 75 scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 173 dependency-complete survey designs emit in both languages | Publish the Rust runtime and consider optional XML-specific XSLT |
@@ -84,7 +84,8 @@ are implemented. Generated and source-backed scopes execute and export ordered
 skip/first/from/range/last windows after sort/filter/group controls with stage-correct
 positions, while generated sequences can feed scalar `item-at`.
 Compatible JSON object alternatives preserve required or optional typed scalar
-and JSON-null `const` discriminators, while exact scalar-plus-null unions
+and JSON-null `const` discriminators. Heterogeneous scalar type arrays and exact
+scalar `anyOf` unions preserve each runtime value tag, while nullable members
 distinguish explicit JSON null from a missing property. Those alternatives can drive exact derived XML
 type output. Transitive concrete XSD descendants are discovered through abstract
 include/import intermediates, and bounded substitution groups retain their exact
@@ -225,7 +226,7 @@ Progress: XSD/JSON blank-project setup, extra-source and named-target CRUD,
 independent primary/named-target canvases, scope editing, the catalog-backed
 function palette, and conservative compatible-field auto-connect are
 implemented. CSV/database boundary wizards, target-driven scope skeletons,
-explicit subtree expansion, and preview remain.
+and explicit subtree expansion remain.
 
 Exit criteria:
 
@@ -249,8 +250,11 @@ Exit criteria:
 
 Progress: node, scope-candidate, filter, sort, grouping, window, and successful
 target-field events are exposed through the engine and versioned CLI JSONL.
-The GUI shows a bounded, searchable run report. Connector history, context/row
-inspection, and interactive debugging remain.
+The GUI shows a bounded, searchable run report and can execute the current
+unsaved project against bounded editable input without writing output files.
+Preview selects the active primary or named target and preflights every required
+secondary source. Connector history, context/row inspection, navigable
+validation focus, and interactive debugging remain.
 
 #### B4. Shared Native and Browser Editor
 
