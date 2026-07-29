@@ -193,3 +193,76 @@ fn exact_numeric_target_adapter_converts_before_strict_csv_write()
     ));
     Ok(())
 }
+
+#[test]
+fn singleton_csv_target_block_produces_one_boundary_row() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    write(
+        &dir.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Record"><xs:complexType><xs:sequence>
+            <xs:element name="Label" type="xs:string"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )?;
+    write(
+        &dir.0.join("source.xml"),
+        "<Record><Label>sample</Label></Record>",
+    )?;
+    write(
+        &dir.0.join("mapping.mfd"),
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data>
+            <root><entry name="Record"><entry name="Label" outkey="10"/></entry></root>
+            <document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Record"/>
+          </data></component>
+          <component name="target" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="Rows"><entry name="Label" inpkey="20"/></entry></root>
+            <text type="csv" outputinstance="output.csv"><settings separator="," firstrownames="false">
+              <names root="Rows" block="Rows"><field0 name="Label" type="string"/></names>
+            </settings></text>
+          </data></component>
+        </children><graph><vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(!imported.project.target.repeating);
+    assert!(imported.project.root.concatenated().is_some());
+
+    let input = format_xml::read(&dir.0.join("source.xml"), &imported.project.source)?;
+    let output = engine::run(&imported.project, &input)?;
+    let rows = output
+        .as_repeated()
+        .ok_or("singleton CSV target did not produce a row set")?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        format_csv::to_string(
+            &imported.project.target,
+            rows,
+            imported.project.target_options.delimiter,
+            false,
+        )?,
+        "sample\n"
+    );
+
+    let exported = dir.0.join("roundtrip.mfd");
+    assert!(mfd::export(&imported.project, &exported)?.is_empty());
+    let exported_text = std::fs::read_to_string(&exported)?;
+    let exported_document = roxmltree::Document::parse(&exported_text)?;
+    let row = exported_document
+        .descendants()
+        .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Rows"))
+        .ok_or("exported CSV component omitted its row")?;
+    assert_eq!(row.attribute("inpkey"), None);
+    assert_eq!(row.attribute("clone"), None);
+
+    let reimported = mfd::import(&exported)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let roundtrip = engine::run(&reimported.project, &input)?;
+    assert_eq!(roundtrip, output);
+    Ok(())
+}

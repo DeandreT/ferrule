@@ -2,7 +2,10 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{DocumentMember, Instance, Value};
+use std::collections::BTreeMap;
+
+use ir::{DocumentMember, Instance, ScalarType, SchemaNode, Value};
+use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
 struct TempDir(PathBuf);
 
@@ -109,5 +112,126 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert!(roundtrip.project.root.output_path().is_some());
     assert!(engine::validate(&roundtrip.project).is_empty());
+    Ok(())
+}
+
+#[test]
+fn nested_current_and_restarted_collection_sources_roundtrip_distinctly()
+-> Result<(), Box<dyn Error>> {
+    let item = SchemaNode::group(
+        "Item",
+        vec![
+            SchemaNode::scalar("Name", ScalarType::String),
+            SchemaNode::scalar("Value", ScalarType::String),
+        ],
+    )
+    .repeating();
+    let source_schema = SchemaNode::group("Source", vec![item]);
+    let target_schema = SchemaNode::group(
+        "Report",
+        vec![
+            SchemaNode::group(
+                "Employee",
+                vec![
+                    SchemaNode::group(
+                        "Item",
+                        vec![SchemaNode::scalar("Value", ScalarType::String)],
+                    )
+                    .repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let project = Project {
+        source: source_schema,
+        target: target_schema,
+        source_path: Some("source.xml".into()),
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::SourceField {
+                        path: vec!["Name".into()],
+                        frame: Some(vec!["Item".into()]),
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec!["Value".into()],
+                        frame: Some(vec!["Item".into()]),
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            iteration: ScopeIteration::DynamicDocuments {
+                source: vec!["Item".into()],
+                output_path: 0,
+            },
+            children: vec![Scope {
+                target_field: "Employee".into(),
+                iteration: ScopeIteration::Source(Vec::new()),
+                children: vec![Scope {
+                    target_field: "Item".into(),
+                    iteration: ScopeIteration::Source(vec!["Item".into()]),
+                    bindings: vec![Binding {
+                        target_field: "Value".into(),
+                        node: 1,
+                    }],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    assert!(engine::validate(&project).is_empty());
+    let row = |name: &str, value: &str| {
+        Instance::Group(vec![
+            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+            (
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+        ])
+    };
+    let source = Instance::Group(vec![(
+        "Item".into(),
+        Instance::Repeated(vec![row("first.xml", "A"), row("second.xml", "B")]),
+    )]);
+    let expected = engine::run(&project, &source)?;
+
+    let directory = TempDir::new()?;
+    let design = directory.0.join("nested-sources.mfd");
+    assert!(mfd::export(&project, &design)?.is_empty());
+    let exported = std::fs::read_to_string(&design)?;
+    assert!(exported.contains("<ferrule-scope-sources version=\"1\">"));
+
+    let roundtrip = mfd::import(&design)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    let employee = roundtrip
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Employee")
+        .ok_or("round-trip project has no Employee scope")?;
+    assert_eq!(employee.source(), Some([].as_slice()));
+    let item = employee
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Item")
+        .ok_or("round-trip project has no Item scope")?;
+    assert_eq!(item.source(), Some(["Item".to_string()].as_slice()));
+    assert_eq!(engine::run(&roundtrip.project, &source)?, expected);
     Ok(())
 }

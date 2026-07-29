@@ -6,7 +6,9 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use ir::{SchemaKind, SchemaNode};
-use mapping::{FormatOptions, IterationOutput, NodeId, Project, Scope, ScopeConstruction};
+use mapping::{
+    FormatOptions, IterationOutput, NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
+};
 
 use crate::MfdError;
 
@@ -196,6 +198,41 @@ fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<
     let mut ports = BTreeSet::new();
     collect(schema, root, &mut Vec::new(), &mut ports);
     ports
+}
+
+fn render_scope_source_metadata(targets: &[TargetExport<'_>]) -> String {
+    fn collect(scope: &Scope, path: &mut Vec<String>, ports: &PortTree, entries: &mut String) {
+        if matches!(scope.iteration, ScopeIteration::Concatenate(_)) {
+            return;
+        }
+        if let ScopeIteration::Source(source) = &scope.iteration
+            && let Some(target_key) = ports.key_for_abs(path)
+            && let Ok(source) = serde_json::to_string(source)
+        {
+            let _ = writeln!(
+                entries,
+                "\t\t\t\t<scope targetkey=\"{target_key}\" source=\"{}\"/>",
+                xml_escape(&source)
+            );
+        }
+        for child in &scope.children {
+            path.push(child.target_field.clone());
+            collect(child, path, ports, entries);
+            path.pop();
+        }
+    }
+
+    let mut entries = String::new();
+    for target in targets {
+        collect(target.root, &mut Vec::new(), &target.ports, &mut entries);
+    }
+    if entries.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\t\t\t<ferrule-scope-sources version=\"1\">\n{entries}\t\t\t</ferrule-scope-sources>\n"
+        )
+    }
 }
 
 /// Writes a MapForce design and generated schema siblings, returning warnings
@@ -496,6 +533,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         .iter()
         .flat_map(|(from, to)| [*from, *to])
         .collect::<BTreeSet<_>>();
+    let scope_source_metadata = render_scope_source_metadata(&targets);
 
     let mut out = String::new();
     let _ = write!(
@@ -506,6 +544,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
          \t<component name=\"defaultmap\" uid=\"1\" editable=\"1\">\n\
          \t\t{}\n\
          \t\t<structure>\n\
+         {scope_source_metadata}\
          \t\t\t<children>\n",
         sources.primary_component_uid(),
         wsdl::mapping_properties(project)
