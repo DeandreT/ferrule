@@ -288,7 +288,8 @@ fn read_node(
                 el,
                 children,
                 false,
-                !schema.xml_repeating_sequences.is_empty(),
+                !schema.xml_repeating_sequences.is_empty()
+                    || !schema.xml_repeating_choices.is_empty(),
                 root_schema,
                 recursion_depth,
             )?;
@@ -1312,6 +1313,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
             "the ordered content field must be a repeated sequence",
         ));
     };
+    let mut ends_with_element = false;
     for (index, item) in items.iter().enumerate() {
         let Instance::Group(item_fields) = item else {
             return Err(invalid_mixed_content(
@@ -1345,9 +1347,8 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                         format!("text item {index} has no string text value"),
                     )
                 })?;
-            if !text.is_empty() {
-                writer.write_event(Event::Text(BytesText::new(text)))?;
-            }
+            writer.write_event(Event::Text(BytesText::new(text)))?;
+            ends_with_element = false;
             continue;
         }
         let child_schema = children
@@ -1407,6 +1408,12 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                 None,
             )?;
         }
+        ends_with_element = true;
+    }
+    if ends_with_element {
+        // Mark the parent as text-adjacent so quick-xml's indentation layer
+        // does not invent whitespace between the final child and its close.
+        writer.write_event(Event::Text(BytesText::new("")))?;
     }
     Ok(true)
 }
@@ -1637,7 +1644,8 @@ fn validate_group_fields(
             };
         let mixed_content_marker = name == XML_MIXED_CONTENT_FIELD
             && (children.iter().any(|child| child.text)
-                || !schema.xml_repeating_sequences.is_empty());
+                || !schema.xml_repeating_sequences.is_empty()
+                || !schema.xml_repeating_choices.is_empty());
         if !xml_alternative_marker
             && !mixed_content_marker
             && !children.iter().any(|child| child.name == *name)

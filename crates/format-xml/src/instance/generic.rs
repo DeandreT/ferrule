@@ -73,7 +73,7 @@ pub(super) fn read_generic_element(
         element,
         children,
         true,
-        !schema.xml_repeating_sequences.is_empty(),
+        !schema.xml_repeating_sequences.is_empty() || !schema.xml_repeating_choices.is_empty(),
         root_schema,
         recursion_depth,
     )
@@ -295,7 +295,11 @@ fn mixed_content_items(
                 )
             } else if node.is_element() {
                 let name = node.tag_name().name().to_string();
-                let text = element_string_value(&node);
+                let text = if include_text {
+                    element_string_value(&node)
+                } else {
+                    String::new()
+                };
                 let value = children
                     .iter()
                     .find(|child| child.name == name && element_matches_schema(&node, child))
