@@ -538,7 +538,12 @@ fn parse_element(
     } else {
         SchemaNode::scalar(name, ScalarType::String)
     };
-    node.xml_namespace = declaration_namespace(el, schema_el, false);
+    node.xml_namespace = declaration_namespace(
+        el,
+        schema_el,
+        state.substitutions.effective_namespace(schema_path),
+        false,
+    );
     apply_exported_alternative_view(el, &mut node);
     apply_fixed_value(el, &mut node);
     apply_default_value(el, &mut node, state);
@@ -555,6 +560,7 @@ fn parse_element(
 fn declaration_namespace(
     declaration: &Node<'_, '_>,
     schema: &Node<'_, '_>,
+    inherited_namespace: Option<&str>,
     attribute: bool,
 ) -> Option<XmlNamespace> {
     if declaration.attribute((LEGACY_NAME_NAMESPACE, "namespace")) == Some("legacy") {
@@ -573,6 +579,7 @@ fn declaration_namespace(
     if qualified
         && let Some(namespace) = schema
             .attribute("targetNamespace")
+            .or(inherited_namespace)
             .filter(|namespace| !namespace.is_empty())
         && let Some(namespace) = XmlNamespace::qualified(namespace)
     {
@@ -581,6 +588,7 @@ fn declaration_namespace(
         let explicitly_unqualified = declaration.attribute("form") == Some("unqualified");
         let schema_has_namespace = schema
             .attribute("targetNamespace")
+            .or(inherited_namespace)
             .is_some_and(|namespace| !namespace.is_empty());
         (explicitly_unqualified || schema_has_namespace).then_some(XmlNamespace::Unqualified)
     }
@@ -1130,7 +1138,12 @@ fn parse_element_declaration_inner(
 ) -> Option<SchemaNode> {
     if !state.enter(schema_path, "element", name) {
         let mut node = SchemaNode::recursive_group(name, name);
-        node.xml_namespace = declaration_namespace(declaration, schema_el, false);
+        node.xml_namespace = declaration_namespace(
+            declaration,
+            schema_el,
+            state.substitutions.effective_namespace(schema_path),
+            false,
+        );
         return Some(node);
     }
     let mut node = parse_element(declaration, schema_el, schema_path, state);
@@ -1817,7 +1830,12 @@ fn parse_attribute(
         })
         .unwrap_or(ScalarType::String);
     let mut attribute = SchemaNode::scalar(name, ty).attribute();
-    attribute.xml_namespace = declaration_namespace(declaration, schema, true);
+    attribute.xml_namespace = declaration_namespace(
+        declaration,
+        schema,
+        state.substitutions.effective_namespace(schema_path),
+        true,
+    );
     if let Some(fixed) = declaration.attribute("fixed") {
         attribute.fixed = Some(fixed.to_string());
     }

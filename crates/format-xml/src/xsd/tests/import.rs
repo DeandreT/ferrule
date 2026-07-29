@@ -910,6 +910,133 @@ fn imports_transitive_complex_substitution_groups_and_preserves_element_names() 
 }
 
 #[test]
+fn imports_substitution_groups_from_chameleon_includes_across_imports()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root_namespace = "urn:ferrule:chameleon-substitution:root";
+    let creature_namespace = "urn:ferrule:chameleon-substitution:creatures";
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_chameleon_substitution_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("root.xsd"),
+        format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    xmlns:r="{root_namespace}" xmlns:c="{creature_namespace}"
+                    targetNamespace="{root_namespace}" elementFormDefault="qualified">
+              <xs:import namespace="{creature_namespace}" schemaLocation="creatures.xsd"/>
+              <xs:element name="Habitat"><xs:complexType><xs:sequence>
+                <xs:element ref="c:Creature" maxOccurs="unbounded"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"#
+        ),
+    )?;
+    std::fs::write(
+        dir.join("creatures.xsd"),
+        format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    xmlns:c="{creature_namespace}" targetNamespace="{creature_namespace}">
+              <xs:include schemaLocation="declarations.xsd"/>
+            </xs:schema>"#
+        ),
+    )?;
+    std::fs::write(
+        dir.join("declarations.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    elementFormDefault="qualified" attributeFormDefault="qualified">
+              <xs:complexType name="CreatureType"><xs:sequence>
+                <xs:element name="Name" type="xs:string"/>
+              </xs:sequence></xs:complexType>
+              <xs:complexType name="CatType"><xs:complexContent>
+                <xs:extension base="CreatureType"><xs:sequence>
+                  <xs:element name="Lives" type="xs:integer"/>
+                </xs:sequence>
+                  <xs:attribute name="Kind" type="xs:string" use="required"/>
+                </xs:extension>
+              </xs:complexContent></xs:complexType>
+              <xs:element name="Creature" type="CreatureType" abstract="true"/>
+              <xs:element name="Cat" type="CatType" substitutionGroup="Creature"/>
+            </xs:schema>"#,
+    )?;
+
+    let schema = import_root(
+        &dir.join("root.xsd"),
+        Some(&format!("{{{root_namespace}}}Habitat")),
+    )?;
+    let creature = schema.child("Creature").ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "missing Creature field")
+    })?;
+    assert_eq!(
+        creature.xml_namespace.as_ref().and_then(XmlNamespace::uri),
+        Some(creature_namespace)
+    );
+    assert_eq!(
+        creature
+            .child("Name")
+            .and_then(|child| child.xml_namespace.as_ref())
+            .and_then(XmlNamespace::uri),
+        Some(creature_namespace)
+    );
+    assert_eq!(
+        creature
+            .child("Kind")
+            .and_then(|child| child.xml_namespace.as_ref())
+            .and_then(XmlNamespace::uri),
+        Some(creature_namespace)
+    );
+    assert_eq!(
+        creature
+            .alternatives()
+            .iter()
+            .map(|alternative| alternative.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![format!("{{{creature_namespace}}}Cat")]
+    );
+
+    let input = from_str(
+        &format!(
+            r#"<r:Habitat xmlns:r="{root_namespace}" xmlns:c="{creature_namespace}"><c:Cat c:Kind="indoor"><c:Name>Ada</c:Name><c:Lives>9</c:Lives></c:Cat></r:Habitat>"#
+        ),
+        &schema,
+    )?;
+    let cat = input
+        .field("Creature")
+        .and_then(Instance::as_repeated)
+        .and_then(|members| members.first())
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "missing Cat instance"))?;
+    assert_eq!(
+        cat.field(ir::XML_SUBSTITUTION_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String(format!("{{{creature_namespace}}}Cat")))
+    );
+    assert_eq!(
+        cat.field("Kind").and_then(Instance::as_scalar),
+        Some(&Value::String("indoor".into()))
+    );
+    let output = to_string(&schema, &input)?;
+    assert!(
+        output.contains(&format!("<Cat xmlns=\"{creature_namespace}\"")),
+        "{output}"
+    );
+    assert_eq!(from_str(&output, &schema)?, input);
+
+    let exported = export_set(&schema, "habitat.xsd")?;
+    std::fs::write(dir.join("habitat.xsd"), &exported.root)?;
+    for dependency in &exported.dependencies {
+        std::fs::write(dir.join(&dependency.filename), &dependency.contents)?;
+    }
+    let reimported = import_root(
+        &dir.join("habitat.xsd"),
+        Some(&format!("{{{root_namespace}}}Habitat")),
+    )?;
+    assert_eq!(reimported, schema);
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
 fn rejects_substitution_members_with_ambiguous_field_schemas() {
     let path = std::env::temp_dir().join(format!(
         "ferrule_xsd_ambiguous_substitution_{}.xsd",

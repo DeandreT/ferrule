@@ -28,6 +28,7 @@ struct IndexedDeclaration {
 pub(super) struct SubstitutionIndex {
     declarations: Vec<IndexedDeclaration>,
     by_identity: BTreeMap<String, usize>,
+    effective_namespaces: BTreeMap<PathBuf, BTreeSet<Option<String>>>,
     conflicting_identity: Option<String>,
     limit_reached: bool,
 }
@@ -121,6 +122,16 @@ impl SubstitutionIndex {
         }
         Ok(descendants)
     }
+
+    /// Returns a chameleon schema's adopted namespace only when this graph
+    /// reaches the physical file through exactly one namespace context.
+    pub(super) fn effective_namespace(&self, path: &Path) -> Option<&str> {
+        let namespaces = self.effective_namespaces.get(&normalized_path(path))?;
+        if namespaces.len() != 1 {
+            return None;
+        }
+        namespaces.first()?.as_deref()
+    }
 }
 
 pub(super) fn build(schema: &Node<'_, '_>, schema_path: &Path) -> SubstitutionIndex {
@@ -147,6 +158,11 @@ fn collect_declarations(
     }
     let path = normalized_path(schema_path);
     let effective_namespace = schema.attribute("targetNamespace").or(inherited_namespace);
+    index
+        .effective_namespaces
+        .entry(path.clone())
+        .or_default()
+        .insert(effective_namespace.map(str::to_string));
     if !visited.insert((path.clone(), effective_namespace.map(str::to_string))) {
         return;
     }
