@@ -253,8 +253,9 @@ the generated boundary subset.
 Embedded `propertyNames`
 constraints likewise inspect every actual key rather than schema placeholders.
 They retain exact false, finite allowed-name sets, Unicode-scalar length,
-portable pattern, and nonasserting format metadata; raw parsed input keys and
-normalized emitted keys are checked, including the empty string. Nullable
+finite `not` exclusions, portable pattern, and nonasserting format metadata;
+raw parsed input keys and normalized emitted keys are checked, including the
+empty string. Nullable
 object null bypasses these name assertions. These APIs
 intentionally use JSON regardless of
 stored project paths or format options; hosts needing X12, XML, database, or

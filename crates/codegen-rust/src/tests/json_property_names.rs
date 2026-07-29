@@ -13,6 +13,7 @@ fn arbitrary_json(name: &str) -> Result<SchemaNode, &'static str> {
 
 fn property_names(
     allowed: Option<&[&str]>,
+    excluded: Option<&[&str]>,
     length: Option<(u64, Option<u64>)>,
     patterns: Option<&[&[&str]]>,
     formats: &[&str],
@@ -21,6 +22,10 @@ fn property_names(
         .map(|names| JsonPropertyNameSet::new(names.iter().map(|name| (*name).to_string())))
         .transpose()
         .map_err(|_| "test property-name set is bounded")?;
+    let excluded = excluded
+        .map(|names| JsonPropertyNameSet::new(names.iter().map(|name| (*name).to_string())))
+        .transpose()
+        .map_err(|_| "test excluded property-name set is bounded")?;
     let length = match length {
         Some((minimum, maximum)) => Some(
             StringLengthRange::new(minimum, maximum)
@@ -40,7 +45,7 @@ fn property_names(
         .map_err(|_| "test property-name patterns are portable and bounded")?;
     let formats = JsonFormatAnnotations::new(formats.iter().map(|format| (*format).to_string()))
         .map_err(|_| "test property-name formats are bounded")?;
-    JsonPropertyNameConstraints::schema(allowed, length, patterns, formats)
+    JsonPropertyNameConstraints::schema_excluding(allowed, excluded, length, patterns, formats)
         .ok_or("test property-name constraints are not tautological")
 }
 
@@ -72,19 +77,28 @@ fn property_name_program() -> Result<Program, &'static str> {
             "Rows",
             "Value",
         ]),
+        None,
         Some((0, Some(16))),
         Some(&[&["^$|^[A-Z][A-Za-z]*$"]]),
         &["ferrule-property-name"],
     )?;
-    let nested_names = property_names(None, Some((0, Some(8))), Some(&[&["^$|^[a-z]+$"]]), &[])?;
+    let nested_names = property_names(
+        None,
+        None,
+        Some((0, Some(8))),
+        Some(&[&["^$|^[a-z]+$"]]),
+        &[],
+    )?;
     let named_names = property_names(
         Some(&["", "extra", "named"]),
+        None,
         None,
         Some(&[&["^$|^[a-z]+$"]]),
         &["named-property"],
     )?;
     let output_names = property_names(
         None,
+        Some(&["forbidden"]),
         Some((0, Some(8))),
         Some(&[&["^$|^[a-z]+$"]]),
         &["output-property"],
@@ -186,7 +200,7 @@ fn property_name_program() -> Result<Program, &'static str> {
 }
 
 fn pattern_budget_program() -> Result<Program, &'static str> {
-    let expensive = property_names(None, None, Some(&[&["^(a?){8000}$"]]), &[])?;
+    let expensive = property_names(None, None, None, Some(&[&["^(a?){8000}$"]]), &[])?;
     Ok(Program {
         source: constrained_group("Source", Vec::new(), arbitrary_json("*")?, expensive)?,
         extra_sources: Vec::new(),
@@ -228,6 +242,7 @@ fn generated_json_boundaries_enforce_property_names_on_actual_keys()
         .ok_or("generated Rust source is present UTF-8")?;
     assert!(generated_source.contains(r#"\"json_property_names\":{\"kind\":\"schema\""#));
     assert!(generated_source.contains(r#"\"formats\":[\"ferrule-property-name\"]"#));
+    assert!(generated_source.contains(r#"\"excluded\":[\"forbidden\"]"#));
     assert!(generated_source.contains(r#"\"json_property_names\":{\"kind\":\"never\"}"#));
 
     let output = TempDir::new("rust_json_property_names_codegen");
@@ -320,6 +335,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
         Err(JsonBoundaryError::InvalidOutput { message })
             if message.contains("bad-key") && message.contains("property name"),
+    ));
+    assert!(matches!(
+        generated_property_names::execute_json_with_sources(
+            &valid.replace(r#""valid""#, r#""forbidden""#),
+            &named,
+        ),
+        Err(JsonBoundaryError::InvalidOutput { message })
+            if message.contains("forbidden") && message.contains("property name"),
     ));
     assert_eq!(
         generated_property_names::execute_json_with_sources(

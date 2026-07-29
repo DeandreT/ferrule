@@ -54,7 +54,7 @@ public static partial class FerruleJson
         {
             var known = string.Equals(kind, "never", StringComparison.Ordinal)
                 ? property.Name is "kind"
-                : property.Name is "kind" or "allowed" or "length" or "patterns" or "formats";
+                : property.Name is "kind" or "allowed" or "excluded" or "length" or "patterns" or "formats";
             if (!known || !fields.Add(property.Name))
             {
                 throw Boundary(
@@ -76,6 +76,10 @@ public static partial class FerruleJson
                       allowedElement.ValueKind != JsonValueKind.Null
             ? ReadPropertyNameSet(name, allowedElement)
             : null;
+        var excluded = constraintsElement.TryGetProperty("excluded", out var excludedElement) &&
+                       excludedElement.ValueKind != JsonValueKind.Null
+            ? ReadPropertyNameSet(name, excludedElement)
+            : null;
         var length = constraintsElement.TryGetProperty("length", out var lengthElement) &&
                      lengthElement.ValueKind != JsonValueKind.Null
             ? ReadPropertyNameLength(name, lengthElement)
@@ -88,6 +92,7 @@ public static partial class FerruleJson
             ? ReadPropertyNameFormats(name, formatsElement)
             : Array.Empty<string>();
         if (allowed is null &&
+            excluded is null &&
             length is null &&
             patterns is null &&
             formats.Count == 0)
@@ -96,6 +101,12 @@ public static partial class FerruleJson
                 $"Embedded JSON schema node '{name}' has tautological JSON property-name constraints that must be omitted.");
         }
 
+        if (allowed is not null &&
+            excluded is not null)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has both allowed and excluded JSON property-name sets.");
+        }
         if (allowed is not null &&
             allowed.Any(candidate =>
                 length is not null && !length.Contains(name, candidate) ||
@@ -107,6 +118,7 @@ public static partial class FerruleJson
         return new JsonPropertyNameConstraints(
             false,
             allowed,
+            excluded,
             length,
             patterns,
             formats);
@@ -497,16 +509,18 @@ public static partial class FerruleJson
     private sealed record JsonPropertyNameConstraints(
         bool RejectAll,
         IReadOnlyList<string>? Allowed,
+        IReadOnlyList<string>? Excluded,
         JsonStringLengthRange? Length,
         JsonPatternConstraints? Patterns,
         IReadOnlyList<string> Formats)
     {
         public static JsonPropertyNameConstraints Never { get; } =
-            new(true, null, null, null, Array.Empty<string>());
+            new(true, null, null, null, null, Array.Empty<string>());
 
         public bool AcceptsWithoutBudget(string name) =>
             !RejectAll &&
             (Allowed is null || Allowed.Contains(name, StringComparer.Ordinal)) &&
+            (Excluded is null || !Excluded.Contains(name, StringComparer.Ordinal)) &&
             (Length is null || Length.Contains(string.Empty, name));
 
         public bool AcceptsForSchema(string name)

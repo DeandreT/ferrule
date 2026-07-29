@@ -158,11 +158,14 @@ layout and dialect details that an extension cannot express.
   rejects every nonempty object, while `true` and an unconstrained schema
   normalize away. Nullable object null bypasses name assertions, and each JSON
   Lines object row is checked independently. Supported string assertions are
-  finite `const`/`enum` name
-  sets, `minLength`/`maxLength` measured in Unicode scalar values, bounded
+  finite `const`/`enum` name sets, their exact finite complements through
+  `not`, `minLength`/`maxLength` measured in Unicode scalar values, bounded
   portable `pattern` conjunctions/disjunctions, and ordered `format`
-  annotations retained without vocabulary assertion. General correlated
-  property-name unions and `not` reject instead of being widened. Draft 4
+  annotations retained without vocabulary assertion. Finite complements
+  intersect by excluding the union of their sets; compatible `anyOf` branches
+  exclude only names common to every branch, and a double complement restores
+  the finite allowed set. Pattern, length, correlated, and other infinite
+  complements reject instead of being widened. Draft 4
   resources ignore `propertyNames`; Draft 6 and newer resources apply it.
   Finite name domains are limited to 4,096 names, 256 KiB per name, and 1 MiB
   total, while name patterns share the document's bounded matcher budget.
