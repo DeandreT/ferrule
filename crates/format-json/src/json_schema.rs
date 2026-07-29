@@ -29,14 +29,14 @@ use crate::JsonFormatError;
 
 mod all_of;
 mod alternatives;
+pub(crate) mod constraints;
 mod files;
 mod render;
 
 use all_of::parse_all_of;
 use alternatives::{
-    parse_inferred_constraint_scalar, parse_nullable_composition,
-    parse_nullable_scalar_alternatives, parse_object_alternatives, parse_scalar_any_of,
-    parse_scalar_domain_array_any_of, parse_scalar_one_of, singleton_enum_value,
+    parse_nullable_composition, parse_nullable_scalar_alternatives, parse_object_alternatives,
+    parse_scalar_any_of, parse_scalar_domain_array_any_of, parse_scalar_one_of,
 };
 
 enum ImportedSchemaType<'a> {
@@ -176,10 +176,30 @@ fn parse(
         );
     }
     let (ty, nullable) = schema_type(name, schema)?;
-    if matches!(&ty, ImportedSchemaType::Absent)
-        && let Some(value) = schema.get("const").or_else(|| singleton_enum_value(schema))
-    {
-        return parse_inferred_constraint_scalar(name, value);
+    if let Some(value) = constraints::selected_constraint(name, schema)? {
+        let constant = match &ty {
+            ImportedSchemaType::Absent => constraints::infer(name, value)?,
+            ImportedSchemaType::Single("string") => {
+                constraints::for_type(name, value, ScalarType::String)?
+            }
+            ImportedSchemaType::Single("integer") => {
+                constraints::for_type(name, value, ScalarType::Int)?
+            }
+            ImportedSchemaType::Single("number") => {
+                constraints::for_type(name, value, ScalarType::Float)?
+            }
+            ImportedSchemaType::Single("boolean") => {
+                constraints::for_type(name, value, ScalarType::Bool)?
+            }
+            ImportedSchemaType::ScalarUnion(types) => constraints::for_types(name, value, *types)?,
+            ImportedSchemaType::Single(_) => {
+                return Err(unsupported_union(
+                    name,
+                    "const and singleton enum are supported only for scalar schemas",
+                ));
+            }
+        };
+        return Ok(constraints::schema(name, &constant));
     }
     if matches!(&ty, ImportedSchemaType::Absent)
         && schema.get("required").is_some()

@@ -3,7 +3,7 @@ use ir::{
     GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode,
 };
 
-use super::{parse, parse_properties, resolve_ref, unsupported_union};
+use super::{parse, resolve_ref, unsupported_union};
 use crate::JsonFormatError;
 
 enum WrapperAdditional {
@@ -598,43 +598,6 @@ fn is_annotation_keyword(keyword: &str) -> bool {
     )
 }
 
-pub(super) fn parse_inferred_constraint_scalar(
-    name: &str,
-    value: &serde_json::Value,
-) -> Result<SchemaNode, JsonFormatError> {
-    let ty = match value {
-        serde_json::Value::String(_) => ScalarType::String,
-        serde_json::Value::Bool(_) => ScalarType::Bool,
-        serde_json::Value::Number(number) if number.as_i64().is_some() => ScalarType::Int,
-        serde_json::Value::Number(number) if number.as_u64().is_some() => {
-            return Err(unsupported_union(
-                name,
-                "integer scalar constraint is outside ferrule's signed 64-bit range",
-            ));
-        }
-        serde_json::Value::Number(number) if finite_f64(number).is_some() => ScalarType::Float,
-        serde_json::Value::Number(_) => {
-            return Err(unsupported_union(
-                name,
-                "numeric scalar constraint cannot be represented as a finite ferrule number",
-            ));
-        }
-        serde_json::Value::Null => {
-            return Err(unsupported_union(
-                name,
-                "null scalar constraint requires an explicitly typed nullable discriminator",
-            ));
-        }
-        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-            return Err(unsupported_union(
-                name,
-                "scalar constraints must be JSON scalar values",
-            ));
-        }
-    };
-    Ok(SchemaNode::scalar(name, ty))
-}
-
 pub(super) fn parse_object_alternatives(
     name: &str,
     schema: &serde_json::Value,
@@ -656,7 +619,7 @@ pub(super) fn parse_object_alternatives(
                 &format!("{keyword} must contain at least two alternatives"),
             )
         })?;
-    let base_children = parse_properties(schema, doc, active_refs)?;
+    let mut base_children = parse_alternative_properties(schema, doc, active_refs)?;
     let base_required = required_names(schema);
     let base_additional = match schema.get("additionalProperties") {
         None | Some(serde_json::Value::Bool(true)) => WrapperAdditional::Open,
@@ -672,6 +635,7 @@ pub(super) fn parse_object_alternatives(
         }
     };
     let base_constraints = scalar_constraints(name, schema, &base_children)?;
+    clear_constrained_fixed(&mut base_children, &base_constraints);
     let mut merged = base_children.clone();
     let mut metadata = Vec::with_capacity(alternatives.len());
     for (index, alternative_schema) in alternatives.iter().enumerate() {
@@ -692,7 +656,8 @@ pub(super) fn parse_object_alternatives(
                     .map(str::to_string)
             })
             .unwrap_or_else(|| format!("{keyword}{index}"));
-        let parsed = parse(&alternative_name, alternative_schema, doc, active_refs)?;
+        let normalized = without_direct_property_constraints(resolved);
+        let parsed = parse(&alternative_name, &normalized, doc, active_refs)?;
         if parsed.repeating {
             return Err(unsupported_union(
                 name,
@@ -701,7 +666,7 @@ pub(super) fn parse_object_alternatives(
         }
         let nested_mode = parsed.alternative_mode();
         let SchemaKind::Group {
-            children: variant_children,
+            children: mut variant_children,
             alternatives: nested_alternatives,
             ..
         } = parsed.kind
@@ -748,6 +713,7 @@ pub(super) fn parse_object_alternatives(
             }
         }
         let constraints = scalar_constraints(name, resolved, &variant_children)?;
+        clear_constrained_fixed(&mut variant_children, &constraints);
         let constraints = merge_constraints(name, &base_constraints, constraints)?;
         let mut members = Vec::new();
         for child in variant_children {
@@ -1108,11 +1074,81 @@ fn scalar_constraints(
         .collect()
 }
 
-pub(super) fn singleton_enum_value(schema: &serde_json::Value) -> Option<&serde_json::Value> {
+fn clear_constrained_fixed(
+    children: &mut [SchemaNode],
+    constraints: &[GroupAlternativeConstraint],
+) {
+    for constraint in constraints {
+        if let Some(child) = children
+            .iter_mut()
+            .find(|child| child.name == constraint.member)
+        {
+            child.fixed = None;
+        }
+    }
+}
+
+fn parse_alternative_properties(
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Vec<SchemaNode>, JsonFormatError> {
     schema
-        .get("enum")
-        .and_then(serde_json::Value::as_array)
-        .and_then(|values| (values.len() == 1).then(|| &values[0]))
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .map(|properties| {
+            properties
+                .iter()
+                .map(|(name, property)| {
+                    parse(name, &without_scalar_constraint(property), doc, active_refs)
+                })
+                .collect()
+        })
+        .unwrap_or_else(|| Ok(Vec::new()))
+}
+
+fn without_direct_property_constraints(schema: &serde_json::Value) -> serde_json::Value {
+    let mut schema = schema.clone();
+    let Some(properties) = schema
+        .as_object_mut()
+        .and_then(|schema| schema.get_mut("properties"))
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return schema;
+    };
+    for property in properties.values_mut() {
+        *property = without_scalar_constraint(property);
+    }
+    schema
+}
+
+fn without_scalar_constraint(schema: &serde_json::Value) -> serde_json::Value {
+    let mut schema = schema.clone();
+    if let Some(schema) = schema.as_object_mut() {
+        if !schema.contains_key("type") {
+            let value = schema.get("const").or_else(|| {
+                schema
+                    .get("enum")
+                    .and_then(serde_json::Value::as_array)
+                    .and_then(|values| values.first().filter(|_| values.len() == 1))
+            });
+            let inferred = match value {
+                Some(serde_json::Value::String(_)) => Some("string"),
+                Some(serde_json::Value::Bool(_)) => Some("boolean"),
+                Some(serde_json::Value::Number(number)) if number.as_i64().is_some() => {
+                    Some("integer")
+                }
+                Some(serde_json::Value::Number(_)) => Some("number"),
+                _ => None,
+            };
+            if let Some(inferred) = inferred {
+                schema.insert("type".into(), inferred.into());
+            }
+        }
+        schema.remove("const");
+        schema.remove("enum");
+    }
+    schema
 }
 
 fn discriminator_value<'a>(

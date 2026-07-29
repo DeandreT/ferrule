@@ -162,6 +162,17 @@ public static class FerruleJson
             _ => throw Boundary(
                 $"Embedded JSON schema node '{name}' has unknown kind '{kind}'."),
         };
+        var fixedLexical = OptionalString(element, "fixed");
+        FerruleValue? fixedValue = null;
+        if (fixedLexical is not null)
+        {
+            if (!IsSingleScalar(scalarDomain) || OptionalBoolean(element, "json_any"))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has a fixed value without one concrete scalar type.");
+            }
+            fixedValue = ParseFixed(name, SingleScalar(scalarDomain), fixedLexical);
+        }
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
         var alternatives = new List<JsonAlternative>();
@@ -233,6 +244,7 @@ public static class FerruleJson
             OptionalBoolean(element, "container_nullable"),
             OptionalBoolean(element, "json_any"),
             scalarDomain,
+            fixedValue,
             children,
             dynamic,
             required,
@@ -433,39 +445,49 @@ public static class FerruleJson
         JsonSchemaNode schema,
         JsonElement element)
     {
+        FerruleValue value;
         if (element.ValueKind == JsonValueKind.Null && schema.Nullable)
         {
-            return FerruleValue.JsonNull;
+            value = FerruleValue.JsonNull;
         }
-
-        var domain = schema.ScalarDomain;
-        if (element.ValueKind == JsonValueKind.String &&
-            domain.HasFlag(JsonScalarDomain.String))
+        else
         {
-            return FerruleValue.FromString(element.GetString() ?? string.Empty);
-        }
-        if (element.ValueKind == JsonValueKind.Number)
-        {
-            if (domain.HasFlag(JsonScalarDomain.Int64) &&
-                element.TryGetInt64(out var integer))
+            var domain = schema.ScalarDomain;
+            if (element.ValueKind == JsonValueKind.String &&
+                domain.HasFlag(JsonScalarDomain.String))
             {
-                return FerruleValue.FromInt64(integer);
+                value = FerruleValue.FromString(element.GetString() ?? string.Empty);
             }
-            if (domain.HasFlag(JsonScalarDomain.Double))
+            else if (element.ValueKind == JsonValueKind.Number &&
+                     domain.HasFlag(JsonScalarDomain.Int64) &&
+                     element.TryGetInt64(out var integer))
             {
-                return ReadDouble(schema.Name, element);
+                value = FerruleValue.FromInt64(integer);
+            }
+            else if (element.ValueKind == JsonValueKind.Number &&
+                     domain.HasFlag(JsonScalarDomain.Double))
+            {
+                value = ReadDouble(schema.Name, element);
+            }
+            else if (element.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                     domain.HasFlag(JsonScalarDomain.Bool))
+            {
+                value = FerruleValue.FromBoolean(element.GetBoolean());
+            }
+            else
+            {
+                throw Shape(
+                    schema.Name,
+                    ScalarName(domain),
+                    element.ValueKind.ToString());
             }
         }
-        if (element.ValueKind is JsonValueKind.True or JsonValueKind.False &&
-            domain.HasFlag(JsonScalarDomain.Bool))
+        if (schema.Fixed is { } expected && value != expected)
         {
-            return FerruleValue.FromBoolean(element.GetBoolean());
+            throw Boundary(
+                $"JSON scalar '{schema.Name}' requires constant {FixedDisplay(expected)}, got {element.GetRawText()}.");
         }
-
-        throw Shape(
-            schema.Name,
-            ScalarName(domain),
-            element.ValueKind.ToString());
+        return value;
     }
 
     private static FerruleValue ReadDouble(string name, JsonElement element)
@@ -688,6 +710,7 @@ public static class FerruleJson
         JsonScalarType scalar,
         FerruleValue value)
     {
+        ValidateFixedOutput(schema, scalar, value);
         if (value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
         {
             writer.WriteNullValue();
@@ -752,6 +775,84 @@ public static class FerruleJson
                 throw Shape(schema.Name, ScalarName(scalar), value.Kind.ToString());
         }
     }
+
+    private static FerruleValue ParseFixed(
+        string name,
+        JsonScalarType scalar,
+        string lexical)
+    {
+        switch (scalar)
+        {
+            case JsonScalarType.String:
+                return FerruleValue.FromString(lexical);
+            case JsonScalarType.Int64 when long.TryParse(
+                lexical,
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out var integer):
+                return FerruleValue.FromInt64(integer);
+            case JsonScalarType.Double when double.TryParse(
+                lexical,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var number) && double.IsFinite(number):
+                return FerruleValue.FromDouble(number);
+            case JsonScalarType.Bool when string.Equals(
+                lexical,
+                "true",
+                StringComparison.Ordinal):
+                return FerruleValue.FromBoolean(true);
+            case JsonScalarType.Bool when string.Equals(
+                lexical,
+                "false",
+                StringComparison.Ordinal):
+                return FerruleValue.FromBoolean(false);
+            default:
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has an invalid {ScalarName(scalar)} fixed value.");
+        }
+    }
+
+    private static void ValidateFixedOutput(
+        JsonSchemaNode schema,
+        JsonScalarType scalar,
+        FerruleValue value)
+    {
+        if (schema.Fixed is not { } expected)
+        {
+            return;
+        }
+        var matches = scalar switch
+        {
+            JsonScalarType.String =>
+                TryOutputString(value, out var actualString) &&
+                expected.Kind == FerruleValueKind.String &&
+                string.Equals(actualString, expected.StringValue, StringComparison.Ordinal),
+            JsonScalarType.Int64 =>
+                TryOutputInt64(value, out var actualInteger) &&
+                expected.Kind == FerruleValueKind.Int64 &&
+                actualInteger == expected.Int64Value,
+            JsonScalarType.Double =>
+                TryOutputDouble(value, out var actualNumber) &&
+                expected.Kind == FerruleValueKind.Double &&
+                actualNumber == expected.DoubleValue,
+            JsonScalarType.Bool =>
+                TryOutputBoolean(value, out var actualBoolean) &&
+                expected.Kind == FerruleValueKind.Bool &&
+                actualBoolean == expected.BooleanValue,
+            _ => false,
+        };
+        if (!matches)
+        {
+            throw Boundary(
+                $"JSON scalar '{schema.Name}' requires constant {FixedDisplay(expected)}, got {value}.");
+        }
+    }
+
+    private static string FixedDisplay(FerruleValue value) =>
+        value.Kind == FerruleValueKind.String
+            ? JsonSerializer.Serialize(value.StringValue, CanonicalJsonOptions)
+            : value.ToString();
 
     private static void WriteScalarUnion(
         Utf8JsonWriter writer,
@@ -1295,6 +1396,17 @@ public static class FerruleJson
             : throw Boundary($"Embedded JSON schema field '{name}' must be a string.");
     }
 
+    private static string? OptionalString(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+        return value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : throw Boundary($"Embedded JSON schema field '{name}' must be a string.");
+    }
+
     private static bool OptionalBoolean(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) &&
         value.ValueKind switch
@@ -1424,6 +1536,7 @@ public static class FerruleJson
             bool containerNullable,
             bool jsonAny,
             JsonScalarDomain scalarDomain,
+            FerruleValue? fixedValue,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
             IReadOnlyList<string> required,
@@ -1436,6 +1549,7 @@ public static class FerruleJson
             ContainerNullable = containerNullable;
             JsonAny = jsonAny;
             ScalarDomain = scalarDomain;
+            Fixed = fixedValue;
             Children = children;
             Dynamic = dynamic;
             Required = required;
@@ -1454,6 +1568,8 @@ public static class FerruleJson
         public bool JsonAny { get; }
 
         public JsonScalarDomain ScalarDomain { get; }
+
+        public FerruleValue? Fixed { get; }
 
         public bool IsScalar => ScalarDomain != JsonScalarDomain.None;
 

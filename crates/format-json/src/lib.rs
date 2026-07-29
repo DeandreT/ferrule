@@ -51,6 +51,12 @@ pub enum JsonFormatError {
     DuplicateProperty { object: String, property: String },
     #[error("object `{object}` requires property `{property}`")]
     MissingRequiredProperty { object: String, property: String },
+    #[error("`{name}` requires constant {expected}, got {got}")]
+    ConstantMismatch {
+        name: String,
+        expected: String,
+        got: String,
+    },
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
@@ -168,12 +174,11 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
         return Ok(Instance::Scalar(Value::json_null()));
     }
     match &schema.kind {
-        SchemaKind::Scalar { ty } => Ok(Instance::Scalar(read_scalar(
-            value,
-            *ty,
-            schema.nullable,
-            &schema.name,
-        )?)),
+        SchemaKind::Scalar { ty } => {
+            let parsed = read_scalar(value, *ty, schema.nullable, &schema.name)?;
+            json_schema::constraints::validate_json(schema, value)?;
+            Ok(Instance::Scalar(parsed))
+        }
         SchemaKind::ScalarUnion { types } => Ok(Instance::Scalar(read_scalar_union(
             value,
             *types,
@@ -438,7 +443,9 @@ fn write_single_node(
     }
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
-            write_scalar(value, *ty, schema.nullable, &schema.name)
+            let value = write_scalar(value, *ty, schema.nullable, &schema.name)?;
+            json_schema::constraints::validate_json(schema, &value)?;
+            Ok(value)
         }
         (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {
             write_scalar_union(value, *types, schema.nullable, &schema.name)

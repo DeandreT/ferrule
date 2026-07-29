@@ -1,6 +1,6 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
-use super::{parse, unsupported_union};
+use super::{constraints, parse, unsupported_union};
 use crate::JsonFormatError;
 
 /// Flattens representable intersections into one structural projection.
@@ -55,7 +55,7 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
     if !object.keys().any(|key| {
         matches!(
             key.as_str(),
-            "type" | "properties" | "required" | "additionalProperties" | "const"
+            "type" | "properties" | "required" | "additionalProperties" | "const" | "enum"
         )
     }) {
         return None;
@@ -97,7 +97,21 @@ fn intersect_scalar(
     target: &mut SchemaNode,
     branch: &SchemaNode,
 ) -> Result<(), JsonFormatError> {
+    let target_constant = constraints::from_schema(target)?;
+    let branch_constant = constraints::from_schema(branch)?;
+    if let (Some(left), Some(right)) = (&target_constant, &branch_constant)
+        && !left.semantically_equals(right)
+    {
+        return Err(unsupported_union(
+            name,
+            "allOf fixed scalar constraints have no value in common",
+        ));
+    }
     if target.kind == branch.kind {
+        if let Some(constant) = target_constant.or(branch_constant) {
+            target.fixed = Some(constant.lexical());
+            target.nullable = false;
+        }
         return Ok(());
     }
     let domain = scalar_domain(target) & scalar_domain(branch);
@@ -132,6 +146,26 @@ fn intersect_scalar(
             SchemaKind::ScalarUnion { types }
         }
     };
+    let constant = target_constant.or(branch_constant);
+    if let Some(constant) = constant {
+        let value = constant.to_json();
+        let constant = match target.kind {
+            SchemaKind::Scalar { ty } => constraints::for_type(name, &value, ty)?,
+            SchemaKind::ScalarUnion { types } => constraints::for_types(name, &value, types)?,
+            SchemaKind::Group { .. } => {
+                return Err(unsupported_union(
+                    name,
+                    "allOf scalar intersection produced an object",
+                ));
+            }
+        };
+        let constrained = constraints::schema(&target.name, &constant);
+        target.kind = constrained.kind;
+        target.fixed = constrained.fixed;
+        target.nullable = false;
+    } else {
+        target.fixed = None;
+    }
     Ok(())
 }
 
