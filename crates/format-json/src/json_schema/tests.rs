@@ -9,6 +9,7 @@ use super::{export, import};
 use crate::JsonFormatError;
 
 mod all_of;
+mod nullable_composition;
 mod resources;
 mod unconstrained;
 
