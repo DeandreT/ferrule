@@ -29,9 +29,10 @@ layout and dialect details that an extension cannot express.
 - XML preserves declared expanded-name identity for elements and attributes.
   MFD export partitions foreign declarations into deterministic local XSD
   siblings and publishes the complete graph atomically. Bounded local-graph
-  substitution groups are supported; general `xsi:type` and
-  namespace-dependent wildcard semantics remain outside the supported schema
-  subset. Because mapping paths use local field names,
+  substitution groups and compatible `complexContent` extension/restriction
+  `xsi:type` hierarchies are supported; other derived-type shapes and
+  namespace-dependent wildcard semantics remain outside the supported subset.
+  Because mapping paths use local field names,
   sibling declarations cannot differ only by namespace; XSD import rejects that
   ambiguous shape explicitly.
 - JSON Schema supports selected object alternatives, exact nullable

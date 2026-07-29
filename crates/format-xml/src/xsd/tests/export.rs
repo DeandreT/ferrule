@@ -125,6 +125,59 @@ fn export_roundtrips_named_base_and_derived_group_alternatives() {
 }
 
 #[test]
+fn export_roundtrips_restricted_group_alternatives() {
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_restricted_alternative_export_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("source.xsd");
+    std::fs::write(
+        &source,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:restricted-export"
+                targetNamespace="urn:ferrule:restricted-export"
+                elementFormDefault="qualified">
+          <xs:complexType name="Record"><xs:sequence>
+            <xs:element name="id" type="xs:string"/>
+            <xs:element name="note" type="xs:string" minOccurs="0"/>
+          </xs:sequence>
+          <xs:attribute name="source" type="xs:string"/>
+          </xs:complexType>
+          <xs:complexType name="CompactRecord"><xs:complexContent>
+            <xs:restriction base="t:Record"><xs:sequence>
+              <xs:element name="id" type="xs:string"/>
+            </xs:sequence>
+            <xs:attribute name="source" use="prohibited"/>
+            </xs:restriction>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Envelope"><xs:complexType><xs:sequence>
+            <xs:element name="record" type="t:Record"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    let schema = import_root(&source, Some("{urn:ferrule:restricted-export}Envelope")).unwrap();
+
+    let xsd = export(&schema).unwrap();
+    assert!(
+        xsd.contains(r#"<xs:restriction base="tns:Record">"#),
+        "{xsd}"
+    );
+    assert!(
+        xsd.contains(r#"<xs:attribute name="source" use="prohibited"/>"#),
+        "{xsd}"
+    );
+    let exported = dir.join("exported.xsd");
+    std::fs::write(&exported, xsd).unwrap();
+    let reimported =
+        import_root(&exported, Some("{urn:ferrule:restricted-export}Envelope")).unwrap();
+    assert_eq!(reimported, schema);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn export_roundtrips_one_concrete_xsi_type_through_an_abstract_base() {
     let address = SchemaNode::group(
         "Address",

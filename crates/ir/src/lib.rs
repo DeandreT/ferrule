@@ -539,6 +539,13 @@ pub enum SchemaKind {
         /// merged `children` projection. Empty for ordinary groups.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         alternatives: Vec<GroupAlternative>,
+        /// `xsi:type` alternatives declared through `xs:restriction`.
+        ///
+        /// Names are exact alternative identities. Keeping this distinction
+        /// prevents XSD export from guessing whether nested member sets were
+        /// formed by extension or restriction.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        xml_restricted_alternatives: Vec<String>,
         /// Schema shared by computed object fields whose names are supplied
         /// at mapping run time. Closed groups leave this unset.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -760,6 +767,7 @@ impl SchemaNode {
             kind: SchemaKind::Group {
                 children,
                 alternatives: Vec::new(),
+                xml_restricted_alternatives: Vec::new(),
                 dynamic: None,
             },
         }
@@ -785,8 +793,12 @@ impl SchemaNode {
                 SchemaKind::Group {
                     children,
                     alternatives,
+                    xml_restricted_alternatives,
                     dynamic,
-                } if children.is_empty() && alternatives.is_empty() && dynamic.is_none()
+                } if children.is_empty()
+                    && alternatives.is_empty()
+                    && xml_restricted_alternatives.is_empty()
+                    && dynamic.is_none()
             )
             && self.alternative_mode.is_exclusive()
             && self.xml_alternative_kind.is_xsi_type()
@@ -982,6 +994,7 @@ impl SchemaNode {
         let SchemaKind::Group {
             children,
             alternatives: target,
+            xml_restricted_alternatives,
             dynamic,
         } = &mut self.kind
         else {
@@ -991,9 +1004,44 @@ impl SchemaNode {
             return false;
         }
         *target = alternatives;
+        xml_restricted_alternatives.clear();
         self.alternative_mode = mode;
         self.xml_alternative_kind = xml_kind;
         true
+    }
+
+    pub fn set_xml_restricted_alternatives(&mut self, restricted: Vec<String>) -> bool {
+        let SchemaKind::Group {
+            alternatives,
+            xml_restricted_alternatives,
+            ..
+        } = &mut self.kind
+        else {
+            return false;
+        };
+        if !self.alternative_mode.is_exclusive()
+            || !self.xml_alternative_kind.is_xsi_type()
+            || restricted.iter().enumerate().any(|(index, name)| {
+                restricted[..index].contains(name)
+                    || !alternatives
+                        .iter()
+                        .any(|alternative| alternative.name == *name)
+            })
+        {
+            return false;
+        }
+        *xml_restricted_alternatives = restricted;
+        true
+    }
+
+    pub fn xml_restricted_alternatives(&self) -> &[String] {
+        match &self.kind {
+            SchemaKind::Group {
+                xml_restricted_alternatives,
+                ..
+            } => xml_restricted_alternatives,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => &[],
+        }
     }
 
     /// Checks metadata that may have entered through direct deserialization.
@@ -1002,10 +1050,23 @@ impl SchemaNode {
             SchemaKind::Group {
                 children,
                 alternatives,
+                xml_restricted_alternatives,
                 dynamic,
             } => {
                 (alternatives.is_empty() || dynamic.is_none())
                     && (alternatives.is_empty() || valid_group_alternatives(children, alternatives))
+                    && xml_restricted_alternatives
+                        .iter()
+                        .enumerate()
+                        .all(|(index, name)| {
+                            !xml_restricted_alternatives[..index].contains(name)
+                                && alternatives
+                                    .iter()
+                                    .any(|alternative| alternative.name == *name)
+                        })
+                    && (xml_restricted_alternatives.is_empty()
+                        || self.alternative_mode.is_exclusive()
+                            && self.xml_alternative_kind.is_xsi_type())
             }
             SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
         }
@@ -1875,6 +1936,50 @@ mod tests {
         assert!(
             serde_json::from_str::<SchemaNode>(
                 r#"{"name":"Invalid","xml_alternative_kind":"substitution_group","kind":{"kind":"scalar","ty":"string"}}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn xml_restricted_alternatives_are_explicit_and_validated() {
+        let mut restricted = SchemaNode::group(
+            "Record",
+            vec![
+                SchemaNode::scalar("id", ScalarType::String),
+                SchemaNode::scalar("note", ScalarType::String),
+            ],
+        )
+        .with_alternatives(vec![
+            GroupAlternative {
+                name: "Base".into(),
+                members: vec!["id".into(), "note".into()],
+                required: Vec::new(),
+                constraints: Vec::new(),
+            },
+            GroupAlternative {
+                name: "Compact".into(),
+                members: vec!["id".into()],
+                required: Vec::new(),
+                constraints: Vec::new(),
+            },
+        ])
+        .unwrap();
+        assert!(restricted.set_xml_restricted_alternatives(vec!["Compact".into()]));
+        assert_eq!(restricted.xml_restricted_alternatives(), ["Compact"]);
+        let encoded = serde_json::to_string(&restricted).unwrap();
+        assert!(encoded.contains(r#""xml_restricted_alternatives":["Compact"]"#));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            restricted
+        );
+
+        assert!(
+            !restricted.set_xml_restricted_alternatives(vec!["Compact".into(), "Compact".into()])
+        );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"Record","kind":{"kind":"group","children":[],"xml_restricted_alternatives":["Missing"]}}"#
             )
             .is_err()
         );

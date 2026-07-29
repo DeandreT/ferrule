@@ -369,6 +369,7 @@ fn exact_group_children<'a>(
             children,
             alternatives,
             dynamic,
+            ..
         } if node.recursive_ref.is_none() && alternatives.is_empty() && dynamic.is_none() => {
             Ok(children)
         }
@@ -933,6 +934,7 @@ fn direct_scalar_fields(schema: &SchemaNode) -> Option<&[SchemaNode]> {
         children,
         alternatives,
         dynamic,
+        ..
     } = &schema.kind
     else {
         return None;

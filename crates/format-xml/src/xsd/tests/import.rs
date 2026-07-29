@@ -467,6 +467,77 @@ fn imported_derived_types_select_xsi_type_across_an_include() {
 }
 
 #[test]
+fn compatible_complex_restrictions_become_xsi_type_alternatives() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_restricted_alternatives_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:restricted" targetNamespace="urn:ferrule:restricted"
+                elementFormDefault="qualified">
+          <xs:complexType name="Record"><xs:sequence>
+            <xs:element name="id" type="xs:string"/>
+            <xs:element name="note" type="xs:string" minOccurs="0"/>
+          </xs:sequence></xs:complexType>
+          <xs:complexType name="CompactRecord"><xs:complexContent>
+            <xs:restriction base="t:Record"><xs:sequence>
+              <xs:element name="id" type="xs:string"/>
+            </xs:sequence></xs:restriction>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Envelope"><xs:complexType><xs:sequence>
+            <xs:element name="record" type="t:Record"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&path, Some("{urn:ferrule:restricted}Envelope")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let record = schema.child("record").unwrap();
+    assert_eq!(
+        record
+            .alternatives()
+            .iter()
+            .map(|alternative| (alternative.name.clone(), alternative.members.clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "{urn:ferrule:restricted}Record".to_string(),
+                vec!["id".to_string(), "note".to_string()],
+            ),
+            (
+                "{urn:ferrule:restricted}CompactRecord".to_string(),
+                vec!["id".to_string()],
+            ),
+        ]
+    );
+
+    let compact = from_str(
+        r#"<Envelope xmlns="urn:ferrule:restricted"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xmlns:t="urn:ferrule:restricted">
+          <record xsi:type="t:CompactRecord"><id>r-1</id></record>
+        </Envelope>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        compact
+            .field("record")
+            .and_then(|record| record.field(ir::XML_TYPE_FIELD))
+            .and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::String(
+            "{urn:ferrule:restricted}CompactRecord".into()
+        ))
+    );
+    let output = crate::to_string(&schema, &compact).unwrap();
+    assert!(output.contains("xsi:type=\"ft:CompactRecord\""), "{output}");
+    assert!(!output.contains("<note>"), "{output}");
+}
+
+#[test]
 fn imports_one_concrete_type_derived_from_an_abstract_base() {
     let path = std::env::temp_dir().join(format!(
         "ferrule_xsd_single_concrete_type_{}.xsd",

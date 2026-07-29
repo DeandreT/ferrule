@@ -65,6 +65,7 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
             children,
             alternatives,
             dynamic,
+            ..
         } => {
             out.insert("type".into(), "object".into());
             if !alternatives.is_empty() {
