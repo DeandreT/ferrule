@@ -791,6 +791,7 @@ pub(super) fn db_layout(schema: &SchemaNode) -> Option<DbLayout<'_>> {
         children,
         alternatives,
         dynamic,
+        ..
     } = &schema.kind
     else {
         return None;
@@ -828,6 +829,7 @@ fn db_table_is_valid(table: &SchemaNode, nested: bool) -> bool {
         children,
         alternatives,
         dynamic,
+        ..
     } = &table.kind
     else {
         return false;

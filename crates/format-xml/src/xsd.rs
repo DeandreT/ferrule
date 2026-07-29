@@ -656,6 +656,12 @@ fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
         .iter()
         .flat_map(|alternative| alternative.members.iter().cloned())
         .collect::<BTreeSet<_>>();
+    let selected_restrictions = node
+        .xml_restricted_alternatives()
+        .iter()
+        .filter(|name| names.contains(name))
+        .cloned()
+        .collect::<Vec<_>>();
     let original_children = children.clone();
     let retained = children
         .iter()
@@ -666,7 +672,9 @@ fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
         return;
     };
     *children = retained;
-    if !node.set_alternatives(selected) {
+    if !node.set_alternatives(selected)
+        || !node.set_xml_restricted_alternatives(selected_restrictions)
+    {
         // The exported view is advisory metadata; malformed external metadata
         // leaves the ordinary XSD-derived alternatives intact.
         if let SchemaKind::Group { children, .. } = &mut node.kind {
@@ -723,7 +731,7 @@ fn attach_type_alternatives(
         .collect::<Vec<_>>();
     let original_children = base_children.clone();
     let mut resolved = Vec::new();
-    for derived in derived {
+    for derived in &derived {
         let Ok(text) = read_xml_text(&derived.path) else {
             return;
         };
@@ -747,12 +755,16 @@ fn attach_type_alternatives(
         if !group.repeating_sequences.is_empty() {
             return;
         }
-        resolved.push((derived.identity, group.children));
+        resolved.push((
+            derived.identity.clone(),
+            derived.restriction,
+            group.children,
+        ));
     }
     let alternative_count = resolved.len() + usize::from(!base_is_abstract);
 
     let mut merged = base_children.clone();
-    for (_, children) in &resolved {
+    for (_, _, children) in &resolved {
         for child in children {
             if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
                 if existing != child {
@@ -775,7 +787,7 @@ fn attach_type_alternatives(
     alternatives.extend(
         resolved
             .into_iter()
-            .map(|(name, children)| ir::GroupAlternative {
+            .map(|(name, _, children)| ir::GroupAlternative {
                 name,
                 members: children.into_iter().map(|child| child.name).collect(),
                 required: Vec::new(),
@@ -785,9 +797,18 @@ fn attach_type_alternatives(
     if let SchemaKind::Group { children, .. } = &mut node.kind {
         *children = merged;
     }
-    if !node.set_alternatives(alternatives)
-        && let SchemaKind::Group { children, .. } = &mut node.kind
-    {
+    if node.set_alternatives(alternatives) {
+        let restricted = derived
+            .iter()
+            .filter(|derived| derived.restriction)
+            .map(|derived| derived.identity.clone())
+            .collect();
+        if !node.set_xml_restricted_alternatives(restricted)
+            && let SchemaKind::Group { children, .. } = &mut node.kind
+        {
+            *children = original_children;
+        }
+    } else if let SchemaKind::Group { children, .. } = &mut node.kind {
         *children = original_children;
     }
 }
@@ -799,6 +820,7 @@ struct DerivedTypeDeclaration {
     identity: String,
     base_identity: String,
     abstract_type: bool,
+    restriction: bool,
 }
 
 #[derive(Default)]
@@ -820,6 +842,7 @@ impl DerivedTypeIndex {
                 || existing.local != declaration.local
                 || existing.base_identity != declaration.base_identity
                 || existing.abstract_type != declaration.abstract_type
+                || existing.restriction != declaration.restriction
             {
                 self.conflicting_identity = true;
             }
@@ -931,7 +954,7 @@ fn collect_derived_type_declarations(
         let Some(local) = declaration.attribute("name") else {
             continue;
         };
-        let Some(base) = direct_extension_base(&declaration) else {
+        let Some((base, restriction)) = direct_complex_derivation(&declaration) else {
             continue;
         };
         let Some(base_identity) = expanded_qname_identity(schema_el, effective_namespace, &base)
@@ -949,6 +972,7 @@ fn collect_derived_type_declarations(
             abstract_type: declaration
                 .attribute("abstract")
                 .is_some_and(|value| matches!(value, "true" | "1")),
+            restriction,
         });
         if index.limit_reached {
             return;
@@ -1022,14 +1046,18 @@ fn type_identity_in_namespace(namespace: Option<&str>, local: &str) -> Option<St
     )
 }
 
-fn direct_extension_base(declaration: &Node<'_, '_>) -> Option<String> {
-    declaration
+fn direct_complex_derivation(declaration: &Node<'_, '_>) -> Option<(String, bool)> {
+    let derivation = declaration
         .children()
         .find(|child| child.is_element() && child.tag_name().name() == "complexContent")?
         .children()
-        .find(|child| child.is_element() && child.tag_name().name() == "extension")?
-        .attribute("base")
-        .map(str::to_string)
+        .find(|child| {
+            child.is_element() && matches!(child.tag_name().name(), "extension" | "restriction")
+        })?;
+    Some((
+        derivation.attribute("base")?.to_string(),
+        derivation.tag_name().name() == "restriction",
+    ))
 }
 
 /// Finds a named top-level declaration (`xs:complexType name=..` etc.).
@@ -1140,6 +1168,7 @@ fn attach_substitution_alternatives(
         children: head_children,
         alternatives: head_alternatives,
         dynamic,
+        ..
     } = &node.kind
     else {
         return Err(unsupported_substitution(
@@ -1216,6 +1245,7 @@ fn attach_substitution_alternatives(
             children: member_children,
             alternatives: member_alternatives,
             dynamic: member_dynamic,
+            ..
         } = member.kind
         else {
             return Err(unsupported_substitution(
