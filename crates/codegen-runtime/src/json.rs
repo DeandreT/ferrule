@@ -9,6 +9,7 @@ use crate::RuntimeError;
 
 mod allowed_values;
 mod multiple_of;
+mod unique_items;
 
 pub const MAX_EMBEDDED_JSON_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_JSON_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
@@ -98,6 +99,14 @@ impl ConstraintBoundary {
     fn parse_json(&self, schema: &str, document: &str) -> Result<Instance, JsonBoundaryError> {
         check_input_size(document.len())?;
         let schema = self.parse_schema(schema)?;
+        if unique_items::schema_contains_assertion(&schema) {
+            format_json::json_schema::unique_items::validate_raw_json_unique_items(
+                &schema, document,
+            )
+            .map_err(|error| JsonBoundaryError::InvalidInput {
+                message: error.to_string(),
+            })?;
+        }
         let formatter_schema = without_boundary_constraints(schema.clone());
         let instance = format_json::from_str(document, &formatter_schema).map_err(|error| {
             JsonBoundaryError::InvalidInput {
@@ -190,6 +199,7 @@ impl ConstraintBoundary {
         schema: &SchemaNode,
         value: &serde_json::Value,
     ) -> Result<(), JsonBoundaryError> {
+        unique_items::validate_document(schema, value).map_err(unique_items::output_error)?;
         let mut remaining = self.remaining_pattern_work.get();
         let result = validate_json_document(schema, value, &self.patterns.borrow(), &mut remaining);
         self.remaining_pattern_work.set(remaining);
@@ -290,6 +300,7 @@ fn clear_boundary_constraints(schema: &mut SchemaNode) {
     schema.json_allowed_values = None;
     schema.json_patterns = None;
     schema.json_multiple_of = None;
+    schema.json_unique_items = false;
     if let SchemaKind::Group {
         children, dynamic, ..
     } = &mut schema.kind
@@ -640,7 +651,7 @@ mod tests {
         assert!(matches!(
             parse_json(&invalid, "1"),
             Err(JsonBoundaryError::InvalidEmbeddedSchema { ref message })
-                if message.contains("item-count range")
+                if message.contains("item-count")
         ));
     }
 

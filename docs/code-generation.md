@@ -162,6 +162,8 @@ conversion, output serialization, and size failures remain typed boundary
 errors. Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated
 output in Rust and C#, including after supported output coercion. Embedded
+array `uniqueItems` assertions compare complete raw input values and normalized
+output values, ignoring object member order while retaining nested array order. Embedded
 object-property requirements are enforced on input and generated output:
 explicit JSON null satisfies presence when nullable, while an omitted property
 or Ferrule `Null` does not. These APIs intentionally use JSON regardless of
@@ -310,8 +312,9 @@ return instances or JSON documents and do not write files.
 Embedded JSON schemas are validated recursively before emission and again at
 the generated boundary. Rust and C# enforce scalar constants, exact scalar
 allowed-value sets, numeric ranges, exact decimal `multipleOf` constraints,
-array item-count intervals, Unicode-scalar string-length intervals, and
-portable JSON Schema `pattern` assertions on both input and normalized output.
+array item-count intervals, exact structural `uniqueItems`, Unicode-scalar
+string-length intervals, and portable JSON Schema `pattern` assertions on both
+input and normalized output.
 Pattern constraints retain conjunctions and exact disjunctions, nullable
 bypass, array items, typed dynamic properties, and scalar-union runtime tags. Both generated
 runtimes use Ferrule's bounded Thompson-NFA matcher rather than a host regex

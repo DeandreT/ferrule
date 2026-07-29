@@ -50,6 +50,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
       "type":["array","null"],
       "minItems":1,
       "maxItems":2,
+      "uniqueItems":true,
       "items":{"type":"object","properties":{"Id":{"type":"integer"}}}
     },
     "Amount":{
@@ -108,6 +109,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .ok_or("missing nullable array")?;
     assert!(array.container_nullable);
     assert!(array.repeating);
+    assert!(array.json_unique_items);
     let range = array
         .item_count_range
         .ok_or("missing nullable array item-count range")?;
@@ -213,6 +215,13 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
 
     let input = format_json::read(&directory.0.join("input.json"), &imported.project.source)?;
     assert!(matches!(input, Instance::Group(_)));
+    assert!(
+        format_json::from_str(
+            r#"{"MaybeArray":[{"Id":1},{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
+            &imported.project.source,
+        )
+        .is_err()
+    );
     let output = engine::run(&imported.project, &input)?;
     assert!(output.field("Amount").is_some());
 
@@ -244,6 +253,13 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .and_then(|priority| priority.json_allowed_values.as_ref())
             .map(ir::JsonAllowedValues::values),
         Some(priority_values.values())
+    );
+    assert!(
+        reimported
+            .project
+            .source
+            .child("MaybeArray")
+            .is_some_and(|array| array.json_unique_items)
     );
     Ok(())
 }

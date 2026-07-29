@@ -2,7 +2,7 @@ use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use super::{
     allowed_values, formats, item_counts, multiples, parse, patterns, ranges, string_lengths,
-    unsupported_union,
+    unique_items, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -73,10 +73,14 @@ pub(super) fn parse_all_of(
     }
     let format_only_fallback =
         merged.is_none() && pending_constraints.iter().any(formats::has_keyword);
-    let mut no_op_pattern_fallback = merged.is_none() && !pending_constraints.is_empty();
+    let mut no_op_constraint_fallback = merged.is_none() && !pending_constraints.is_empty();
     for constraints in &pending_constraints {
-        no_op_pattern_fallback &= patterns::has_keyword(constraints)
-            && !patterns::is_effectively_constrained(name, constraints)?
+        no_op_constraint_fallback &= (patterns::has_keyword(constraints)
+            || unique_items::has_keyword(constraints))
+            && (!patterns::has_keyword(constraints)
+                || !patterns::is_effectively_constrained(name, constraints)?)
+            && (!unique_items::has_keyword(constraints)
+                || !unique_items::selected(name, constraints)?)
             && !ranges::has_range_keywords(constraints)
             && !allowed_values::has_keyword(constraints)
             && !multiples::has_keyword(constraints)
@@ -103,7 +107,7 @@ pub(super) fn parse_all_of(
     let mut merged = match merged {
         Some(merged) => merged,
         None if format_only_fallback => SchemaNode::scalar(name, ScalarType::String),
-        None if no_op_pattern_fallback => super::arbitrary_json_schema(name)?,
+        None if no_op_constraint_fallback => super::arbitrary_json_schema(name)?,
         None => {
             return Err(unsupported_union(
                 name,
@@ -117,12 +121,14 @@ pub(super) fn parse_all_of(
             ranges::validate_ignored(name, &constraints)?;
             multiples::validate_ignored(name, &constraints)?;
             item_counts::apply(name, &constraints, &mut merged, false)?;
+            unique_items::apply(name, &constraints, &mut merged, false)?;
             string_lengths::validate_ignored(name, &constraints)?;
             patterns::validate_ignored(name, &constraints)?;
         } else {
             ranges::apply(name, &constraints, &mut merged, false)?;
             multiples::apply(name, &constraints, &mut merged, false)?;
             item_counts::validate_ignored(name, &constraints)?;
+            unique_items::validate_ignored(name, &constraints)?;
             string_lengths::apply(name, &constraints, &mut merged, false)?;
             patterns::apply(name, &constraints, &mut merged, false)?;
         }
@@ -189,6 +195,7 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "multipleOf"
                 | "minItems"
                 | "maxItems"
+                | "uniqueItems"
                 | "minLength"
                 | "maxLength"
                 | "pattern"
@@ -210,6 +217,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
         || allowed_values::has_keyword(schema)
         || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
+        || unique_items::has_keyword(schema)
         || string_lengths::has_keywords(schema)
         || patterns::has_keyword(schema)
         || formats::has_keyword(schema))
@@ -225,6 +233,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
                     | "multipleOf"
                     | "minItems"
                     | "maxItems"
+                    | "uniqueItems"
                     | "minLength"
                     | "maxLength"
                     | "pattern"
@@ -270,6 +279,7 @@ fn intersect(
     target.container_nullable &= branch.container_nullable;
     target.item_count_range =
         item_counts::intersect(name, target.item_count_range, branch.item_count_range)?;
+    target.json_unique_items |= branch.json_unique_items;
 
     match (&target.kind, &branch.kind) {
         (SchemaKind::Group { .. }, SchemaKind::Group { .. }) => merge_object(name, target, branch),

@@ -80,6 +80,20 @@ pub enum JsonFormatError {
         range: String,
         got: usize,
     },
+    #[error(
+        "`{name}` requires unique array items, but indexes {first_index} and {duplicate_index} are equal"
+    )]
+    UniqueItemsMismatch {
+        name: String,
+        first_index: usize,
+        duplicate_index: usize,
+    },
+    #[error("JSON uniqueItems validation for `{name}` exceeds the {max} {resource} limit")]
+    UniqueItemsLimit {
+        name: String,
+        resource: &'static str,
+        max: usize,
+    },
     #[error("`{name}` requires string length {range}, got {got} Unicode scalar values")]
     StringLengthMismatch {
         name: String,
@@ -96,6 +110,8 @@ pub enum JsonFormatError {
     InvalidMultipleOfMetadata { reason: String },
     #[error("JSON numeric-range metadata is invalid: {reason}")]
     InvalidNumericRangeMetadata { reason: String },
+    #[error("JSON uniqueItems metadata is invalid: {reason}")]
+    InvalidUniqueItemsMetadata { reason: String },
     #[error("JSON pattern matching for `{name}` exceeds the bounded work limit")]
     PatternWorkLimit { name: String },
     #[error("JSON Lines cannot encode nullable array container `{name}`")]
@@ -161,7 +177,9 @@ pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonForm
 /// This is the in-memory equivalent of [`read`], suitable for hosts without
 /// filesystem access such as WebAssembly applications.
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let value: serde_json::Value = serde_json::from_str(strip_utf8_bom(text))?;
+    let text = strip_utf8_bom(text);
+    json_schema::unique_items::validate_raw_json_unique_items(schema, text)?;
+    let value: serde_json::Value = serde_json::from_str(text)?;
     let mut patterns = PatternRuntime::new(schema)?;
     if schema.repeating {
         read_repeated(&value, schema, &mut patterns)
@@ -174,16 +192,21 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatE
 pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
-    let mut items = Vec::new();
-    for line in strip_utf8_bom(text)
+    let lines = strip_utf8_bom(text)
         .lines()
         .filter(|line| !line.trim().is_empty())
-    {
-        let value: serde_json::Value = serde_json::from_str(line)?;
-        items.push(read_node_with_patterns(&value, schema, &mut patterns)?);
+        .collect::<Vec<_>>();
+    json_schema::unique_items::validate_raw_json_lines_unique_items(schema, &lines)?;
+    let mut values = Vec::new();
+    for line in lines {
+        values.push(serde_json::from_str(line)?);
     }
     if schema.repeating {
-        json_schema::item_counts::validate_len(schema, items.len())?;
+        json_schema::item_counts::validate_len(schema, values.len())?;
+    }
+    let mut items = Vec::with_capacity(values.len());
+    for value in &values {
+        items.push(read_node_with_patterns(value, schema, &mut patterns)?);
     }
     Ok(Instance::Repeated(items))
 }
@@ -475,32 +498,39 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Jso
 pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
-    let mut text = String::new();
-    match instance {
+    let values = match instance {
         Instance::Repeated(items) => {
             if schema.repeating {
                 json_schema::item_counts::validate_len(schema, items.len())?;
             }
+            let mut values = Vec::with_capacity(items.len());
             for item in items {
-                text.push_str(&serde_json::to_string(&write_single_node_with_patterns(
+                values.push(write_single_node_with_patterns(
                     schema,
                     item,
                     &mut patterns,
-                )?)?);
-                text.push('\n');
+                )?);
             }
+            values
         }
         item => {
             if schema.repeating {
                 json_schema::item_counts::validate_len(schema, 1)?;
             }
-            text.push_str(&serde_json::to_string(&write_single_node_with_patterns(
+            vec![write_single_node_with_patterns(
                 schema,
                 item,
                 &mut patterns,
-            )?)?);
-            text.push('\n');
+            )?]
         }
+    };
+    if schema.repeating {
+        json_schema::unique_items::validate(schema, &values)?;
+    }
+    let mut text = String::new();
+    for value in values {
+        text.push_str(&serde_json::to_string(&value)?);
+        text.push('\n');
     }
     Ok(text)
 }
@@ -544,6 +574,7 @@ fn write_node_with_patterns(
         for item in items {
             values.push(write_single_node_with_patterns(schema, item, patterns)?);
         }
+        json_schema::unique_items::validate(schema, &values)?;
         return Ok(serde_json::Value::Array(values));
     }
     write_single_node_with_patterns(schema, instance, patterns)
