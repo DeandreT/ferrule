@@ -150,6 +150,7 @@ fn preserves_repeating_choice_order_and_export_shape() {
     assert_eq!(children.len(), 2);
     assert!(children.iter().all(|child| child.repeating));
     assert_eq!(schema.xml_repeating_choices.len(), 1);
+    assert!(schema.xml_repeating_choices[0].repeating);
     assert_eq!(schema.xml_repeating_choices[0].members, ["Code", "Amount"]);
 
     let instance = from_str(
@@ -178,6 +179,53 @@ fn preserves_repeating_choice_order_and_export_shape() {
         reimported.xml_repeating_choices,
         schema.xml_repeating_choices
     );
+}
+
+#[test]
+fn preserves_and_enforces_a_direct_singular_choice() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_singular_choice_test_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Value">
+    <xs:complexType>
+      <xs:choice>
+        <xs:element name="Code" type="xs:string"/>
+        <xs:element name="Amount" type="xs:decimal"/>
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
+"#,
+    )
+    .unwrap();
+
+    let schema = xsd::import(&path).unwrap();
+    assert_eq!(schema.xml_repeating_choices.len(), 1);
+    assert!(schema.xml_repeating_choices[0].required);
+    assert!(!schema.xml_repeating_choices[0].repeating);
+    assert!(schema.child("Code").is_some_and(|child| !child.repeating));
+    assert!(schema.child("Amount").is_some_and(|child| !child.repeating));
+
+    let instance = from_str("<Value><Code>A</Code></Value>", &schema).unwrap();
+    assert_eq!(
+        instance.field("Code"),
+        Some(&Instance::Scalar(Value::String("A".into())))
+    );
+    assert!(from_str("<Value/>", &schema).is_ok());
+    assert!(from_str("<Value><Code>A</Code><Amount>1.5</Amount></Value>", &schema).is_err());
+
+    let exported = xsd::export(&schema).unwrap();
+    assert!(exported.contains("<xs:choice>"));
+    assert!(!exported.contains("<xs:choice maxOccurs="));
+    std::fs::write(&path, exported).unwrap();
+    let reimported = xsd::import(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(reimported, schema);
 }
 
 #[test]

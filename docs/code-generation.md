@@ -201,7 +201,8 @@ The current portable model includes:
   paths, with an embedded closed schema, document declaration/indent/default-
   namespace controls, attributes, text, repetition, Null omission, recursive
   groups, XML nil, and closed exclusive `xsi:type` group alternatives with
-  exact namespace-qualified identities and required-member validation;
+  exact namespace-qualified identities and required-member validation, plus
+  singular exclusivity and ordered occurrences from closed XML choices;
   substitution-group, inclusive/value-constrained, generic-element, and mixed
   schemas reject before artifact creation
 - ordered XML mixed-content reconstruction with graph-computed direct-child

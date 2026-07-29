@@ -104,17 +104,11 @@ fn validates_xml_serializer_source_schema_cardinality_and_namespace() {
     assert!(
         schema.set_xml_repeating_choices(vec![ir::XmlRepeatingChoice {
             required: false,
+            repeating: true,
             members: vec!["Name".into(), "Code".into()],
         }])
     );
-    assert_eq!(
-        validate_program(&repeating_choice),
-        Err(ProgramValidationError::UnsupportedXmlSerializeSchema {
-            node: 1,
-            schema: "Item".into(),
-            feature: "repeating-choice order metadata",
-        })
-    );
+    assert_eq!(validate_program(&repeating_choice), Ok(()));
 
     let alternatives = vec![
         ir::GroupAlternative {

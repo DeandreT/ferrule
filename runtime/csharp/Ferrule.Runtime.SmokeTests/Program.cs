@@ -30,6 +30,7 @@ internal static partial class Program
             ("source document path", SourceDocumentPath),
             ("JSON document boundaries", JsonDocumentBoundaries),
             ("XML type alternatives", XmlTypeAlternatives),
+            ("XML repeating choices", XmlRepeatingChoices),
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),
             ("scalar functions", ScalarFunctions),

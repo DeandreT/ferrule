@@ -7,8 +7,8 @@ layout and dialect details that an extension cannot express.
 
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
-| XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, and exact `##local` skip element/attribute wildcards; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; JSON Schema local references, compatible structural `allOf` intersections, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -34,17 +34,18 @@ layout and dialect details that an extension cannot express.
   extension/restriction `xsi:type` hierarchies,
   scalar-text/attribute-only `simpleContent` derivations,
   optional/unbounded named model groups with exactly one nonrepeating member,
-  exact optional/unbounded `##local` `processContents="skip"` element wildcards
-  declared inline or through named model groups, and direct or
-  named-attribute-group `##local` skip attribute wildcards are supported; other
-  derived-type, namespace-aware, and validating wildcard shapes remain outside
-  the subset.
+  namespace-constrained optional/unbounded `processContents="skip"` element
+  wildcards declared inline or through named model groups, closed strict
+  wildcards resolved to exact singular or repeating typed choices, and direct
+  or named-attribute-group skip attribute wildcards are supported. Open/lax and
+  unresolved validating wildcard shapes remain outside the subset.
   Because mapping paths use local field names,
   sibling declarations cannot differ only by namespace; XSD import rejects that
   ambiguous shape explicitly.
 - JSON Schema supports compatible structural `allOf` intersections across objects,
   scalar domains, and matching arrays, selected object alternatives, exact nullable
-  scalar/object/array wrappers, heterogeneous scalar type arrays, exact scalar
+  scalar/object/array wrappers and flat compatible multi-branch nullable
+  compositions, heterogeneous scalar type arrays, exact scalar
   `anyOf` unions, pairwise-disjoint scalar `oneOf`, and identical or
   scalar-domain-subsumed array `anyOf` branches, including local references.
   General heterogeneous array composition, validation-bearing scalar unions,

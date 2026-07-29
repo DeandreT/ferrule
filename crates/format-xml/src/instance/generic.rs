@@ -150,7 +150,7 @@ pub(super) fn read_group_fields(
             let value = parse_input_schema_scalar(child, ty, &text)?;
             fields.push((child.name.clone(), Instance::Scalar(value)));
         } else if child.name == XML_ELEMENTS_FIELD {
-            let items = element
+            let mut items = element
                 .children()
                 .filter(|node| node.is_element())
                 .map(|element| {
@@ -162,7 +162,16 @@ pub(super) fn read_group_fields(
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            fields.push((child.name.clone(), Instance::Repeated(items)));
+            if child.repeating {
+                fields.push((child.name.clone(), Instance::Repeated(items)));
+            } else {
+                if items.len() > 1 {
+                    return Err(XmlFormatError::XmlWildcardCardinality);
+                }
+                if let Some(item) = items.pop() {
+                    fields.push((child.name.clone(), item));
+                }
+            }
         } else if child.name == XML_ATTRIBUTES_FIELD {
             let items = element
                 .attributes()
@@ -318,12 +327,15 @@ fn mixed_content_items(
                         }
                     })
                     .or_else(|| {
-                        let value = fields
+                        let generic = fields
                             .iter()
                             .find(|(field, _)| field == XML_ELEMENTS_FIELD)
-                            .and_then(|(_, instance)| instance.as_repeated())?
-                            .get(generic_index)?
-                            .clone();
+                            .map(|(_, instance)| instance)?;
+                        let value = match generic {
+                            Instance::Repeated(items) => items.get(generic_index)?.clone(),
+                            Instance::Group(_) if generic_index == 0 => generic.clone(),
+                            _ => return None,
+                        };
                         generic_index += 1;
                         Some(value)
                     })

@@ -9,6 +9,9 @@ pub(super) fn merge_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) {
     for child in entry.children().filter(|node| node.has_tag_name("entry")) {
         let (name, _) = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
         if name == XML_ELEMENTS_FIELD {
+            if replace_singular_choice_with_generic(&child, schema) {
+                continue;
+            }
             match &mut schema.kind {
                 SchemaKind::Group { children, .. } => {
                     if let Some(generic) = children
@@ -38,6 +41,52 @@ pub(super) fn merge_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) {
             merge_entries(&child, schema_child);
         }
     }
+}
+
+fn replace_singular_choice_with_generic(
+    entry: &roxmltree::Node<'_, '_>,
+    schema: &mut SchemaNode,
+) -> bool {
+    let exposed = entry
+        .parent()
+        .into_iter()
+        .flat_map(|parent| parent.children())
+        .filter(|sibling| sibling.has_tag_name("entry"))
+        .filter_map(|sibling| sibling.attribute("name"))
+        .map(normalize_xml_entry_name)
+        .map(|(name, _)| name.to_string())
+        .filter(|name| name != XML_ELEMENTS_FIELD)
+        .collect::<std::collections::BTreeSet<_>>();
+    let members = schema
+        .xml_repeating_choices
+        .iter()
+        .filter(|choice| {
+            !choice.repeating
+                && choice
+                    .members
+                    .iter()
+                    .all(|member| !exposed.contains(member.as_str()))
+        })
+        .flat_map(|choice| choice.members.iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>();
+    if members.is_empty() {
+        return false;
+    }
+    schema.xml_repeating_choices.retain(|choice| {
+        choice.repeating
+            || choice
+                .members
+                .iter()
+                .any(|member| exposed.contains(member.as_str()))
+    });
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return false;
+    };
+    children.retain(|child| !members.contains(&child.name));
+    let mut generic = generic_entry_schema(entry);
+    generic.repeating = false;
+    children.push(generic);
+    true
 }
 
 fn merge_generic_entry_children(entry: &roxmltree::Node<'_, '_>, schema: &mut SchemaNode) {
@@ -126,7 +175,7 @@ fn attribute_schema() -> SchemaNode {
 
 #[cfg(test)]
 mod tests {
-    use ir::{ScalarType, SchemaKind};
+    use ir::{ScalarType, SchemaKind, XmlRepeatingChoice};
 
     use super::*;
 
@@ -238,5 +287,71 @@ mod tests {
         assert_one_text_child(&schema);
         assert_one_text_child(nested);
         assert!(nested.repeating);
+    }
+
+    #[test]
+    fn singular_xml_choices_become_one_generic_entry_port() {
+        let document = parse_entry(
+            r#"<entry name="Root">
+                <entry name="element()">
+                    <entry name="LocalName"/>
+                </entry>
+            </entry>"#,
+        );
+        let mut schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("Alpha", ScalarType::String),
+                SchemaNode::scalar("Beta", ScalarType::String),
+            ],
+        );
+        assert!(schema.set_xml_repeating_choices(vec![XmlRepeatingChoice {
+            required: true,
+            repeating: false,
+            members: vec!["Alpha".into(), "Beta".into()],
+        }]));
+
+        merge_entries(&document.root_element(), &mut schema);
+
+        assert!(schema.xml_repeating_choices.is_empty());
+        assert!(schema.child("Alpha").is_none());
+        assert!(schema.child("Beta").is_none());
+        let generic = schema
+            .child(XML_ELEMENTS_FIELD)
+            .expect("generic wildcard port");
+        assert!(!generic.repeating);
+        assert!(generic.child(XML_LOCAL_NAME_FIELD).is_some());
+    }
+
+    #[test]
+    fn explicit_singular_choices_are_not_treated_as_wildcards() {
+        let document = parse_entry(
+            r#"<entry name="Root">
+                <entry name="Alpha"/>
+                <entry name="Beta"/>
+                <entry name="element()">
+                    <entry name="LocalName"/>
+                </entry>
+            </entry>"#,
+        );
+        let mut schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("Alpha", ScalarType::String),
+                SchemaNode::scalar("Beta", ScalarType::String),
+            ],
+        );
+        assert!(schema.set_xml_repeating_choices(vec![XmlRepeatingChoice {
+            required: true,
+            repeating: false,
+            members: vec!["Alpha".into(), "Beta".into()],
+        }]));
+
+        merge_entries(&document.root_element(), &mut schema);
+
+        assert_eq!(schema.xml_repeating_choices.len(), 1);
+        assert!(schema.child("Alpha").is_some());
+        assert!(schema.child("Beta").is_some());
+        assert!(schema.child(XML_ELEMENTS_FIELD).is_some());
     }
 }

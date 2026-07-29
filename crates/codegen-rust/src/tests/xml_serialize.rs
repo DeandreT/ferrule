@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use ir::{Instance, XML_TYPE_FIELD};
+use ir::{
+    Instance, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD,
+    XML_TYPE_FIELD, XmlRepeatingChoice,
+};
 use mapping::{
     Binding as MappingBinding, Graph, Node, Project, Scope, ScopeConstruction, ScopeIteration,
 };
@@ -30,7 +33,7 @@ fn string(value: &str) -> Value {
 fn item_schema() -> SchemaNode {
     let mut child = SchemaNode::recursive_group("Child", "Item");
     child.nillable = true;
-    SchemaNode::group(
+    let mut schema = SchemaNode::group(
         "Item",
         vec![
             SchemaNode::scalar("id", ScalarType::String).attribute(),
@@ -43,9 +46,17 @@ fn item_schema() -> SchemaNode {
             SchemaNode::scalar("Nil", ScalarType::String).nillable(),
             SchemaNode::scalar("Tag", ScalarType::String).repeating(),
             address_schema(),
+            SchemaNode::scalar("ChoiceCode", ScalarType::String).repeating(),
+            SchemaNode::scalar("ChoiceAmount", ScalarType::Int).repeating(),
             child,
         ],
-    )
+    );
+    assert!(schema.set_xml_repeating_choices(vec![XmlRepeatingChoice {
+        required: false,
+        repeating: true,
+        members: vec!["ChoiceCode".into(), "ChoiceAmount".into()],
+    }]));
+    schema
 }
 
 fn address_schema() -> SchemaNode {
@@ -182,6 +193,77 @@ fn source() -> Instance {
                         field("Postcode", scalar(Value::Null)),
                     ]),
                 ),
+                field(
+                    "ChoiceCode",
+                    repeated([scalar(string("A")), scalar(string("B"))]),
+                ),
+                field("ChoiceAmount", repeated([scalar(Value::Int(2))])),
+                field(
+                    XML_MIXED_CONTENT_FIELD,
+                    repeated([
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Name"))),
+                            field(
+                                XML_MIXED_CONTENT_VALUE_FIELD,
+                                scalar(string("Alpha & \"Beta\"")),
+                            ),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Details"))),
+                            field(
+                                XML_MIXED_CONTENT_VALUE_FIELD,
+                                group([field("Code", scalar(string("D<1")))]),
+                            ),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Nil"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(Value::xml_nil())),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Tag"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(string("one"))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Tag"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(string("two"))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Address"))),
+                            field(
+                                XML_MIXED_CONTENT_VALUE_FIELD,
+                                group([
+                                    field(
+                                        XML_TYPE_FIELD,
+                                        scalar(string("{urn:ferrule:types}Domestic")),
+                                    ),
+                                    field("Name", scalar(string("Ada"))),
+                                    field("State", scalar(string("WA"))),
+                                    field("Zip", scalar(Value::Int(98101))),
+                                    field("Postcode", scalar(Value::Null)),
+                                ]),
+                            ),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("ChoiceCode"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(string("A"))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("ChoiceAmount"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(Value::Int(2))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("ChoiceCode"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(string("B"))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Child"))),
+                            field(
+                                XML_MIXED_CONTENT_VALUE_FIELD,
+                                group([field("Name", scalar(string("Nested")))]),
+                            ),
+                        ]),
+                    ]),
+                ),
                 field("Child", group([field("Name", scalar(string("Nested")))])),
             ]),
         )])]),
@@ -214,6 +296,12 @@ fn generated_xml_serialization_matches_engine_and_retains_typed_errors() {
     assert!(pretty.contains("xsi:type=\"ft:Domestic\""), "{pretty}");
     assert!(
         pretty.contains("xmlns:ft=\"urn:ferrule:types\""),
+        "{pretty}"
+    );
+    assert!(
+        pretty.find("<ChoiceCode>A</ChoiceCode>") < pretty.find("<ChoiceAmount>2</ChoiceAmount>")
+            && pretty.find("<ChoiceAmount>2</ChoiceAmount>")
+                < pretty.find("<ChoiceCode>B</ChoiceCode>"),
         "{pretty}"
     );
     assert!(!pretty.contains("<Item>\n    <Name>Nested"), "{pretty}");
@@ -257,6 +345,63 @@ fn source() -> Instance {
                     field("State", scalar(string("WA"))),
                     field("Zip", scalar(Value::Int(98101))),
                     field("Postcode", scalar(Value::Null)),
+                ])),
+                field("ChoiceCode", repeated([
+                    scalar(string("A")),
+                    scalar(string("B")),
+                ])),
+                field("ChoiceAmount", repeated([scalar(Value::Int(2))])),
+                field("\u{1f}ferrule-xml-mixed-content", repeated([
+                    group([
+                        field("NodeName", scalar(string("Name"))),
+                        field("\u{1f}ferrule-xml-mixed-value", scalar(string("Alpha & \"Beta\""))),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("Details"))),
+                        field("\u{1f}ferrule-xml-mixed-value", group([
+                            field("Code", scalar(string("D<1"))),
+                        ])),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("Nil"))),
+                        field("\u{1f}ferrule-xml-mixed-value", scalar(Value::xml_nil())),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("Tag"))),
+                        field("\u{1f}ferrule-xml-mixed-value", scalar(string("one"))),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("Tag"))),
+                        field("\u{1f}ferrule-xml-mixed-value", scalar(string("two"))),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("Address"))),
+                        field("\u{1f}ferrule-xml-mixed-value", group([
+                            field("\u{1f}ferrule-xml-type", scalar(string("{urn:ferrule:types}Domestic"))),
+                            field("Name", scalar(string("Ada"))),
+                            field("State", scalar(string("WA"))),
+                            field("Zip", scalar(Value::Int(98101))),
+                            field("Postcode", scalar(Value::Null)),
+                        ])),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("ChoiceCode"))),
+                        field("\u{1f}ferrule-xml-mixed-value", scalar(string("A"))),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("ChoiceAmount"))),
+                        field("\u{1f}ferrule-xml-mixed-value", scalar(Value::Int(2))),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("ChoiceCode"))),
+                        field("\u{1f}ferrule-xml-mixed-value", scalar(string("B"))),
+                    ]),
+                    group([
+                        field("NodeName", scalar(string("Child"))),
+                        field("\u{1f}ferrule-xml-mixed-value", group([
+                            field("Name", scalar(string("Nested"))),
+                        ])),
+                    ]),
                 ])),
                 field("Child", group([field("Name", scalar(string("Nested")))])),
             ]),

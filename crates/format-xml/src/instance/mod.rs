@@ -66,6 +66,8 @@ pub enum XmlFormatError {
     UnexpectedField { group: String, field: String },
     #[error("element `{group}` has duplicate field `{field}`")]
     DuplicateField { group: String, field: String },
+    #[error("element `{group}` has invalid singular XML choice: {reason}")]
+    InvalidXmlChoice { group: String, reason: String },
     #[error("element `{group}` has invalid mixed-content metadata: {reason}")]
     InvalidMixedContent { group: String, reason: String },
     #[error("element `{group}` cannot reconstruct its repeating XML sequence: {reason}")]
@@ -101,6 +103,8 @@ pub enum XmlFormatError {
     UnsupportedXmlWildcard { reason: &'static str },
     #[error("xs:any wildcard does not allow element `{name}` in namespace `{namespace}`")]
     XmlWildcardNamespaceMismatch { name: String, namespace: String },
+    #[error("single-occurrence xs:any wildcard matched more than one child element")]
+    XmlWildcardCardinality,
     #[error("xs:anyAttribute wildcard cannot be represented: {reason}")]
     UnsupportedXmlAttributeWildcard { reason: &'static str },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
@@ -293,6 +297,10 @@ fn read_node(
                 root_schema,
                 recursion_depth,
             )?;
+            let Instance::Group(fields) = &instance else {
+                unreachable!("read_group_fields always returns a group")
+            };
+            validate_singular_xml_choices(schema, fields)?;
             if alternatives.is_empty() {
                 return Ok(instance);
             }
@@ -766,6 +774,17 @@ fn write_node<W: std::io::Write>(
         schema
     };
     if schema.name == XML_ELEMENTS_FIELD && !is_root {
+        if !schema.repeating {
+            write_generic_element(
+                writer,
+                schema,
+                root_schema,
+                instance,
+                recursion_depth,
+                inherited_namespace,
+            )?;
+            return Ok(());
+        }
         let items = match instance {
             Instance::Repeated(items) | Instance::MappedSequence(items) => items,
             other => return Err(shape_error(schema, "generic XML elements", other)),
@@ -1662,7 +1681,45 @@ fn validate_group_fields(
             });
         }
     }
+    validate_singular_xml_choices(schema, fields)
+}
+
+fn validate_singular_xml_choices(
+    schema: &SchemaNode,
+    fields: &[(String, Instance)],
+) -> Result<(), XmlFormatError> {
+    for choice in schema
+        .xml_repeating_choices
+        .iter()
+        .filter(|choice| !choice.repeating)
+    {
+        let selected = choice
+            .members
+            .iter()
+            .filter(|member| {
+                fields
+                    .iter()
+                    .find(|(name, _)| name == *member)
+                    .is_some_and(|(_, instance)| instance_occurs(instance))
+            })
+            .count();
+        if selected > 1 {
+            return Err(XmlFormatError::InvalidXmlChoice {
+                group: schema.name.clone(),
+                reason: "more than one member is present".to_string(),
+            });
+        }
+    }
     Ok(())
+}
+
+fn instance_occurs(instance: &Instance) -> bool {
+    match instance {
+        Instance::Scalar(Value::Null | Value::JsonNull(_)) => false,
+        Instance::Scalar(_) | Instance::Group(_) => true,
+        Instance::Repeated(items) | Instance::MappedSequence(items) => !items.is_empty(),
+        Instance::DocumentSet(documents) => !documents.is_empty(),
+    }
 }
 
 fn is_xml_metadata_field(name: &str) -> bool {

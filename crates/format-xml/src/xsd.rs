@@ -1671,7 +1671,6 @@ fn parse_complex_type(
                     }
                 }
                 if child.tag_name().name() == "choice"
-                    && is_repeating(&child)
                     && let Some(choice) = repeating_choice(&child)
                 {
                     parsed.repeating_choices.push(choice);
@@ -1913,6 +1912,10 @@ fn repeating_sequence(
 }
 
 fn repeating_choice(choice: &Node<'_, '_>) -> Option<XmlRepeatingChoice> {
+    let repeating = is_repeating(choice);
+    if !repeating && !is_single_occurrence(choice) {
+        return None;
+    }
     let mut members = Vec::new();
     for node in choice
         .children()
@@ -1939,6 +1942,7 @@ fn repeating_choice(choice: &Node<'_, '_>) -> Option<XmlRepeatingChoice> {
     }
     Some(XmlRepeatingChoice {
         required: choice.attribute("minOccurs") != Some("0"),
+        repeating,
         members,
     })
 }
@@ -2095,7 +2099,6 @@ fn collect_sequence(
             }
             "choice" | "all" => {
                 if child.tag_name().name() == "choice"
-                    && is_repeating(&child)
                     && let Some(choice) = repeating_choice(&child)
                 {
                     repeating_choices.push(choice);
@@ -2130,17 +2133,47 @@ enum ParsedWildcard {
     },
 }
 
+#[derive(Clone, Copy)]
+struct WildcardOccurrence {
+    required: bool,
+    repeating: bool,
+}
+
+fn wildcard_occurrence(wildcard: &Node<'_, '_>) -> Result<WildcardOccurrence, XmlFormatError> {
+    let required = match wildcard.attribute("minOccurs") {
+        None | Some("1") => true,
+        Some("0") => false,
+        Some(_) => {
+            return Err(unsupported_wildcard(
+                "supported wildcards require minOccurs=\"0\" or minOccurs=\"1\"",
+            ));
+        }
+    };
+    let repeating = match wildcard.attribute("maxOccurs") {
+        None | Some("1") => false,
+        Some("unbounded") => true,
+        Some(_) => {
+            return Err(unsupported_wildcard(
+                "supported wildcards require maxOccurs=\"1\" or maxOccurs=\"unbounded\"",
+            ));
+        }
+    };
+    Ok(WildcardOccurrence {
+        required,
+        repeating,
+    })
+}
+
 fn parse_wildcard(
     wildcard: &Node<'_, '_>,
     schema: &Node<'_, '_>,
     schema_path: &Path,
     state: &mut ParseState,
 ) -> Result<ParsedWildcard, XmlFormatError> {
-    if wildcard.attribute("minOccurs") != Some("0")
-        || wildcard.attribute("maxOccurs") != Some("unbounded")
-    {
+    let occurrence = wildcard_occurrence(wildcard)?;
+    if occurrence.repeating && occurrence.required {
         return Err(unsupported_wildcard(
-            "supported wildcards require minOccurs=\"0\" and maxOccurs=\"unbounded\"",
+            "unbounded wildcards require minOccurs=\"0\"",
         ));
     }
     if wildcard
@@ -2159,10 +2192,13 @@ fn parse_wildcard(
         target_namespace,
     )?;
     match wildcard.attribute("processContents").unwrap_or("strict") {
+        "skip" if !occurrence.repeating && !occurrence.required => Err(unsupported_wildcard(
+            "optional single-occurrence skip wildcards require explicit occurrence metadata",
+        )),
         "skip" => Ok(ParsedWildcard::Generic(Box::new(
-            generic_wildcard_schema_with(namespace),
+            generic_wildcard_schema_with(namespace, occurrence.repeating),
         ))),
-        "strict" => parse_strict_wildcard(namespace, state),
+        "strict" => parse_strict_wildcard(namespace, occurrence, state),
         "lax" => Err(unsupported_wildcard(
             "processContents=\"lax\" remains open to undeclared elements and cannot become a closed typed choice",
         )),
@@ -2174,6 +2210,7 @@ fn parse_wildcard(
 
 fn parse_strict_wildcard(
     namespace: XmlWildcardNamespaceConstraint,
+    occurrence: WildcardOccurrence,
     state: &mut ParseState,
 ) -> Result<ParsedWildcard, XmlFormatError> {
     if state
@@ -2221,7 +2258,7 @@ fn parse_strict_wildcard(
             state,
         )
         .ok_or_else(|| XmlFormatError::MissingElement(declaration.identity.clone()))?;
-        if child.recursive_ref.is_some() {
+        if occurrence.repeating && child.recursive_ref.is_some() {
             return Err(unsupported_wildcard(
                 "resolved strict wildcard declarations that recurse through the active element cannot become finite mapping ports",
             ));
@@ -2231,11 +2268,12 @@ fn parse_strict_wildcard(
                 "resolved strict wildcard declarations with substitution members cannot retain exact occurrence order",
             ));
         }
-        child.repeating = true;
+        child.repeating = occurrence.repeating;
         children.push(child);
     }
     let choice = (children.len() > 1).then(|| XmlRepeatingChoice {
-        required: false,
+        required: occurrence.required,
+        repeating: occurrence.repeating,
         members: children.iter().map(|child| child.name.clone()).collect(),
     });
     Ok(ParsedWildcard::StrictChoice { children, choice })
@@ -2298,10 +2336,14 @@ fn generic_wildcard_schema() -> SchemaNode {
     generic_wildcard_schema_with(
         XmlWildcardNamespaceConstraint::list([XmlNamespace::Unqualified])
             .unwrap_or(XmlWildcardNamespaceConstraint::Any),
+        true,
     )
 }
 
-fn generic_wildcard_schema_with(namespace: XmlWildcardNamespaceConstraint) -> SchemaNode {
+fn generic_wildcard_schema_with(
+    namespace: XmlWildcardNamespaceConstraint,
+    repeating: bool,
+) -> SchemaNode {
     let attributes = generic_attribute_storage_schema();
     let nested = SchemaNode::recursive_group(XML_ELEMENTS_FIELD, XML_ELEMENTS_FIELD).repeating();
     let mut wildcard = SchemaNode::group(
@@ -2313,8 +2355,8 @@ fn generic_wildcard_schema_with(namespace: XmlWildcardNamespaceConstraint) -> Sc
             attributes,
             nested,
         ],
-    )
-    .repeating();
+    );
+    wildcard.repeating = repeating;
     if namespace.is_local_only() {
         wildcard.xml_namespace = Some(XmlNamespace::Unqualified);
     }
