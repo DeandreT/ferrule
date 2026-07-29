@@ -14,8 +14,11 @@ mod schema;
 
 pub use schema::{
     IntegerRange, ItemCountRange, JsonFormatAnnotations, JsonFormatAnnotationsError,
+    JsonPatternConstraints, JsonPatternConstraintsError, MAX_DISTINCT_JSON_PATTERNS,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
-    MAX_JSON_FORMAT_ANNOTATIONS, NumberBound, NumberRange, NumericRange, StringLengthRange,
+    MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS,
+    MAX_JSON_PATTERN_SOURCE_BYTES, MAX_JSON_PATTERN_TERMS, NumberBound, NumberRange, NumericRange,
+    StringLengthRange,
 };
 
 /// Instance-field name used for an XML element's simple text content.
@@ -529,6 +532,13 @@ pub struct SchemaNode {
     /// On a repeating scalar node these bounds apply to each array item.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub string_length_range: Option<StringLengthRange>,
+    /// Exact JSON Schema pattern constraints for this string-capable scalar.
+    ///
+    /// The outer alternatives are ORed; every pattern inside one alternative
+    /// must match. On a repeating scalar node these constraints apply to each
+    /// array item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_patterns: Option<JsonPatternConstraints>,
     /// Ordered JSON Schema `format` annotations for this string-capable scalar
     /// value, or for each item when this node is repeating.
     #[serde(default, skip_serializing_if = "JsonFormatAnnotations::is_empty")]
@@ -608,6 +618,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             string_length_range: Option<StringLengthRange>,
             #[serde(default)]
+            json_patterns: Option<JsonPatternConstraints>,
+            #[serde(default)]
             json_formats: JsonFormatAnnotations,
             #[serde(default)]
             default: Option<String>,
@@ -645,6 +657,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             numeric_range: repr.numeric_range,
             item_count_range: repr.item_count_range,
             string_length_range: repr.string_length_range,
+            json_patterns: repr.json_patterns,
             json_formats: repr.json_formats,
             default: repr.default,
             value_generation: repr.value_generation,
@@ -657,7 +670,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, item-count range, string-length range, JSON format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, item-count range, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -874,6 +887,7 @@ impl SchemaNode {
             && self.numeric_range_is_valid()
             && self.item_count_range_is_valid()
             && self.string_length_range_is_valid()
+            && self.json_patterns_are_valid()
             && self.json_formats_are_valid()
             && self.value_generation_is_valid()
             && self.default_is_valid()
@@ -908,6 +922,7 @@ impl SchemaNode {
             numeric_range: None,
             item_count_range: None,
             string_length_range: None,
+            json_patterns: None,
             json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
@@ -945,6 +960,7 @@ impl SchemaNode {
             numeric_range: None,
             item_count_range: None,
             string_length_range: None,
+            json_patterns: None,
             json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
@@ -991,6 +1007,7 @@ impl SchemaNode {
             numeric_range: None,
             item_count_range: None,
             string_length_range: None,
+            json_patterns: None,
             json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
@@ -1206,6 +1223,136 @@ impl SchemaNode {
                 .is_none_or(|fixed| range.contains_str(fixed))
     }
 
+    /// Checks that pattern constraints describe a string-capable scalar domain.
+    pub fn json_patterns_are_valid(&self) -> bool {
+        if self.json_patterns.is_none() {
+            return true;
+        }
+        !self.json_any && self.accepts_scalar_type(ScalarType::String)
+    }
+
+    /// Checks one optional fixed lexical value against this node's pattern DNF.
+    ///
+    /// Whole-schema validation uses [`Self::json_pattern_budget_is_valid`] so
+    /// fixed values across descendants share one work budget.
+    pub fn json_pattern_fixed_value_is_valid(&self) -> bool {
+        self.json_patterns_are_valid()
+            && self.fixed.as_deref().is_none_or(|fixed| {
+                self.json_patterns
+                    .as_ref()
+                    .is_none_or(|patterns| patterns.matches(fixed))
+            })
+    }
+
+    /// Validates the aggregate pattern-program budget for one complete schema.
+    ///
+    /// Exact sources shared by multiple nodes count once. This is intentionally
+    /// separate from [`Self::metadata_is_valid`] so callers can validate one
+    /// root in linear time rather than rescanning descendants at every node.
+    pub fn json_pattern_budget_is_valid(&self) -> bool {
+        let mut programs = std::collections::BTreeMap::new();
+        let mut source_bytes = 0_usize;
+        let mut instructions = 0_usize;
+        let mut fixed_work = json_pattern::DEFAULT_MATCH_WORK_LIMIT;
+        self.accumulate_json_pattern_budget(
+            &mut programs,
+            &mut source_bytes,
+            &mut instructions,
+            &mut fixed_work,
+        )
+    }
+
+    fn accumulate_json_pattern_budget<'a>(
+        &'a self,
+        programs: &mut std::collections::BTreeMap<&'a str, json_pattern::PortableJsonPattern>,
+        source_bytes: &mut usize,
+        instructions: &mut usize,
+        fixed_work: &mut u64,
+    ) -> bool {
+        if !self.json_patterns_are_valid() {
+            return false;
+        }
+        if let Some(patterns) = &self.json_patterns {
+            for source in patterns.any_of().iter().flatten().map(String::as_str) {
+                if programs.contains_key(source) {
+                    continue;
+                }
+                if programs.len() == MAX_DISTINCT_JSON_PATTERNS {
+                    return false;
+                }
+                let Some(next_source_bytes) = source_bytes.checked_add(source.len()) else {
+                    return false;
+                };
+                if next_source_bytes > MAX_JSON_PATTERN_SOURCE_BYTES {
+                    return false;
+                }
+                let Ok(compiled) = json_pattern::PortableJsonPattern::compile(source) else {
+                    return false;
+                };
+                let Some(next_instructions) =
+                    instructions.checked_add(compiled.instruction_count())
+                else {
+                    return false;
+                };
+                if next_instructions > MAX_JSON_PATTERN_INSTRUCTIONS {
+                    return false;
+                }
+                programs.insert(source, compiled);
+                *source_bytes = next_source_bytes;
+                *instructions = next_instructions;
+            }
+            if let Some(fixed) = self.fixed.as_deref() {
+                let mut matched = false;
+                for alternative in patterns.any_of() {
+                    let mut alternative_matched = true;
+                    for source in alternative {
+                        let Some(program) = programs.get(source.as_str()) else {
+                            return false;
+                        };
+                        match program.is_match_with_budget(fixed, fixed_work) {
+                            Ok(true) => {}
+                            Ok(false) => {
+                                alternative_matched = false;
+                                break;
+                            }
+                            Err(_) => return false,
+                        }
+                    }
+                    if alternative_matched {
+                        matched = true;
+                        break;
+                    }
+                }
+                if !matched {
+                    return false;
+                }
+            }
+        }
+
+        match &self.kind {
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+            SchemaKind::Group {
+                children, dynamic, ..
+            } => {
+                children.iter().all(|child| {
+                    child.accumulate_json_pattern_budget(
+                        programs,
+                        source_bytes,
+                        instructions,
+                        fixed_work,
+                    )
+                }) && dynamic.as_deref().is_none_or(|child| {
+                    child.accumulate_json_pattern_budget(
+                        programs,
+                        source_bytes,
+                        instructions,
+                        fixed_work,
+                    )
+                })
+            }
+        }
+    }
+
     /// Checks that JSON format annotations describe a string-capable scalar
     /// value or each scalar item of a repeating node.
     pub fn json_formats_are_valid(&self) -> bool {
@@ -1249,6 +1396,16 @@ impl SchemaNode {
             || (!self.repeating
                 && !self.attribute
                 && !self.text
+                && !self.nullable
+                && !self.container_nullable
+                && self.fixed.is_none()
+                && self.numeric_range.is_none()
+                && self.item_count_range.is_none()
+                && self.string_length_range.is_none()
+                && self.json_patterns.is_none()
+                && self.json_formats.is_empty()
+                && self.default.is_none()
+                && self.value_generation.is_none()
                 && matches!(
                     self.kind,
                     SchemaKind::Scalar {
@@ -1296,7 +1453,7 @@ impl SchemaNode {
     /// Marks a non-repeating scalar as format-generated.
     pub fn with_value_generation(mut self, generation: ValueGeneration) -> Option<Self> {
         self.value_generation = Some(generation);
-        self.value_generation_is_valid().then_some(self)
+        (self.value_generation_is_valid() && self.json_any_is_valid()).then_some(self)
     }
 
     /// Declares a homogeneous computed-field value schema for this group.
@@ -1672,7 +1829,7 @@ impl SchemaNode {
     /// Marks this scalar as accepting an explicit JSON `null`.
     pub fn nullable(mut self) -> Option<Self> {
         self.nullable = true;
-        self.nullable_is_valid().then_some(self)
+        (self.nullable_is_valid() && self.json_any_is_valid()).then_some(self)
     }
 
     /// Marks this JSON object or array wrapper as accepting explicit `null`.
@@ -1684,10 +1841,7 @@ impl SchemaNode {
     /// Marks this string scalar as the canonical encoding of arbitrary JSON.
     pub fn json_any(mut self) -> Option<Self> {
         self.json_any = true;
-        (self.json_any_is_valid()
-            && self.string_length_range_is_valid()
-            && self.json_formats_are_valid())
-        .then_some(self)
+        self.json_any_is_valid().then_some(self)
     }
 
     /// Requires this scalar to hold `value` (builder-style).
@@ -1696,8 +1850,10 @@ impl SchemaNode {
         (self.fixed_is_valid()
             && self.numeric_range_is_valid()
             && self.string_length_range_is_valid()
+            && self.json_pattern_fixed_value_is_valid()
             && self.default_is_valid()
-            && self.value_generation_is_valid())
+            && self.value_generation_is_valid()
+            && self.json_any_is_valid())
         .then_some(self)
     }
 
@@ -1716,6 +1872,11 @@ impl SchemaNode {
         self.string_length_range_is_valid().then_some(self)
     }
 
+    pub fn with_json_patterns(mut self, patterns: JsonPatternConstraints) -> Option<Self> {
+        self.json_patterns = Some(patterns);
+        self.json_pattern_fixed_value_is_valid().then_some(self)
+    }
+
     pub fn with_json_formats(mut self, formats: JsonFormatAnnotations) -> Option<Self> {
         self.json_formats = formats;
         self.json_formats_are_valid().then_some(self)
@@ -1723,7 +1884,7 @@ impl SchemaNode {
 
     pub fn with_default(mut self, value: impl Into<String>) -> Option<Self> {
         self.default = Some(value.into());
-        self.default_is_valid().then_some(self)
+        (self.default_is_valid() && self.json_any_is_valid()).then_some(self)
     }
 
     pub fn child(&self, name: &str) -> Option<&SchemaNode> {
@@ -2297,6 +2458,195 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn json_pattern_constraints_require_string_capable_domains_and_roundtrip()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let patterns = JsonPatternConstraints::new([
+            ["^A".to_string(), "Z$".to_string()],
+            ["^B$".to_string(), "^B$".to_string()],
+        ])?;
+        let Some(string) =
+            SchemaNode::scalar("Value", ScalarType::String).with_json_patterns(patterns.clone())
+        else {
+            panic!("pattern metadata matches a string scalar");
+        };
+        let encoded = serde_json::to_string(&string)?;
+        assert!(encoded.contains(r#""json_patterns":{"any_of":[["^A","Z$"],["^B$"]]}"#));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, string);
+
+        assert!(
+            SchemaNode::scalar_fixed("Value", ScalarType::String, "ABZ")
+                .with_json_patterns(patterns.clone())
+                .is_some()
+        );
+        assert!(
+            SchemaNode::scalar_fixed("Value", ScalarType::String, "B")
+                .with_json_patterns(patterns.clone())
+                .is_some()
+        );
+        assert!(
+            SchemaNode::scalar_fixed("Value", ScalarType::String, "C")
+                .with_json_patterns(patterns.clone())
+                .is_none()
+        );
+
+        let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+            panic!("test union is valid");
+        };
+        assert!(
+            SchemaNode::scalar_union("Value", types)
+                .repeating()
+                .with_json_patterns(patterns.clone())
+                .is_some()
+        );
+        assert!(
+            SchemaNode::scalar("Value", ScalarType::Int)
+                .with_json_patterns(patterns.clone())
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Value", ScalarType::String)
+                .with_json_patterns(patterns)
+                .and_then(SchemaNode::json_any)
+                .is_none()
+        );
+
+        for invalid in [
+            r#"{"name":"x","json_patterns":{"any_of":[["A"]]},"kind":{"kind":"scalar","ty":"int"}}"#,
+            r#"{"name":"x","json_any":true,"json_patterns":{"any_of":[["A"]]},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","json_patterns":{"any_of":[]},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","json_patterns":{"any_of":[["A","A"]]},"kind":{"kind":"scalar","ty":"string"}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
+        let mismatched: SchemaNode = serde_json::from_str(
+            r#"{"name":"x","fixed":"C","json_patterns":{"any_of":[["^A$"]]},"kind":{"kind":"scalar","ty":"string"}}"#,
+        )?;
+        assert!(!mismatched.json_pattern_budget_is_valid());
+        Ok(())
+    }
+
+    #[test]
+    fn json_pattern_plan_budgets_are_global_deduplicated_and_include_dynamic_fields()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut distinct_children = Vec::new();
+        for index in 0..MAX_DISTINCT_JSON_PATTERNS {
+            let patterns = JsonPatternConstraints::new([[format!("^value-{index}$")]])?;
+            let Some(child) = SchemaNode::scalar(format!("field-{index}"), ScalarType::String)
+                .with_json_patterns(patterns)
+            else {
+                panic!("pattern metadata matches a string child");
+            };
+            distinct_children.push(child);
+        }
+        let within_budget = SchemaNode::group("Root", distinct_children.clone());
+        assert!(within_budget.json_pattern_budget_is_valid());
+
+        let overflow_patterns = JsonPatternConstraints::new([["^overflow$"]])?;
+        let Some(overflow) =
+            SchemaNode::scalar("*", ScalarType::String).with_json_patterns(overflow_patterns)
+        else {
+            panic!("overflow pattern metadata is locally valid");
+        };
+        let Some(with_dynamic_overflow) = within_budget.clone().with_dynamic_fields(overflow)
+        else {
+            panic!("dynamic field metadata is structurally valid");
+        };
+        let nested_overflow = SchemaNode::group("Envelope", vec![with_dynamic_overflow]);
+        assert!(!nested_overflow.json_pattern_budget_is_valid());
+
+        let mut source_heavy_children = Vec::new();
+        for (index, marker) in ['b', 'c', 'd', 'e', 'f'].into_iter().enumerate() {
+            let source = format!("[{}{marker}]", "a".repeat(60_000));
+            let patterns = JsonPatternConstraints::new([[source]])?;
+            let Some(child) = SchemaNode::scalar(format!("source-{index}"), ScalarType::String)
+                .with_json_patterns(patterns)
+            else {
+                panic!("large character-class pattern is locally valid");
+            };
+            source_heavy_children.push(child);
+        }
+        assert!(
+            !SchemaNode::group("SourceHeavy", source_heavy_children).json_pattern_budget_is_valid()
+        );
+
+        let mut instruction_heavy_children = Vec::new();
+        for index in 0..14 {
+            let source = format!("{}{index}", "a".repeat(5_000));
+            let patterns = JsonPatternConstraints::new([[source]])?;
+            let Some(child) =
+                SchemaNode::scalar(format!("instruction-{index}"), ScalarType::String)
+                    .with_json_patterns(patterns)
+            else {
+                panic!("long literal pattern is locally valid");
+            };
+            instruction_heavy_children.push(child);
+        }
+        assert!(
+            !SchemaNode::group("InstructionHeavy", instruction_heavy_children)
+                .json_pattern_budget_is_valid()
+        );
+
+        let repeated_patterns = JsonPatternConstraints::new([["^shared$"]])?;
+        let mut repeated_children = Vec::new();
+        for index in 0..=MAX_DISTINCT_JSON_PATTERNS {
+            let Some(child) = SchemaNode::scalar(format!("field-{index}"), ScalarType::String)
+                .with_json_patterns(repeated_patterns.clone())
+            else {
+                panic!("shared pattern metadata matches a string child");
+            };
+            repeated_children.push(child);
+        }
+        let Some(shared_dynamic) =
+            SchemaNode::scalar("*", ScalarType::String).with_json_patterns(repeated_patterns)
+        else {
+            panic!("shared dynamic pattern metadata is valid");
+        };
+        let Some(shared_root) =
+            SchemaNode::group("Root", repeated_children).with_dynamic_fields(shared_dynamic)
+        else {
+            panic!("shared dynamic root is structurally valid");
+        };
+        assert!(shared_root.json_pattern_budget_is_valid());
+
+        let costly_source = format!("^{}$", "a".repeat(6_000));
+        let costly_patterns = JsonPatternConstraints::new([[costly_source]])?;
+        let costly_fixed = || {
+            SchemaNode::scalar_fixed("fixed", ScalarType::String, "a".repeat(6_000))
+                .with_json_patterns(costly_patterns.clone())
+                .ok_or("costly fixed pattern remains locally valid")
+        };
+        let within_fixed_work = SchemaNode::group("Fixed", vec![costly_fixed()?, costly_fixed()?]);
+        assert!(within_fixed_work.json_pattern_budget_is_valid());
+        let over_fixed_work = SchemaNode::group(
+            "Fixed",
+            vec![costly_fixed()?, costly_fixed()?, costly_fixed()?],
+        );
+        assert!(!over_fixed_work.json_pattern_budget_is_valid());
+        Ok(())
+    }
+
+    #[test]
+    fn repeated_expansion_heavy_pattern_metadata_deserializes_before_one_root_compile()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let patterns = JsonPatternConstraints::new([["a{16000}"]])?;
+        let mut children = Vec::new();
+        for index in 0..1_024 {
+            let Some(child) = SchemaNode::scalar(format!("field-{index}"), ScalarType::String)
+                .with_json_patterns(patterns.clone())
+            else {
+                panic!("expansion-heavy pattern metadata matches a string child");
+            };
+            children.push(child);
+        }
+        let schema = SchemaNode::group("Root", children);
+        let encoded = serde_json::to_string(&schema)?;
+        let decoded: SchemaNode = serde_json::from_str(&encoded)?;
+        assert_eq!(decoded, schema);
+        assert!(decoded.json_pattern_budget_is_valid());
         Ok(())
     }
 
@@ -2999,6 +3349,56 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn arbitrary_json_rejects_bypassed_scalar_metadata_in_either_builder_order()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(any) = SchemaNode::scalar("*", ScalarType::String).json_any() else {
+            panic!("plain arbitrary JSON schema should be valid");
+        };
+        assert!(any.clone().nullable().is_none());
+        assert!(any.clone().with_fixed("value").is_none());
+        assert!(any.clone().with_default("value").is_none());
+        assert!(
+            any.clone()
+                .with_value_generation(ValueGeneration::MaxNumber)
+                .is_none()
+        );
+
+        assert!(
+            SchemaNode::scalar("*", ScalarType::String)
+                .nullable()
+                .and_then(SchemaNode::json_any)
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar_fixed("*", ScalarType::String, "value")
+                .json_any()
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("*", ScalarType::String)
+                .with_default("value")
+                .and_then(SchemaNode::json_any)
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("*", ScalarType::String)
+                .with_value_generation(ValueGeneration::MaxNumber)
+                .and_then(SchemaNode::json_any)
+                .is_none()
+        );
+
+        for invalid in [
+            r#"{"name":"*","json_any":true,"nullable":true,"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"*","json_any":true,"fixed":"value","kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"*","json_any":true,"default":"value","kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"*","json_any":true,"value_generation":"max_number","kind":{"kind":"scalar","ty":"string"}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
+        Ok(())
     }
 
     #[test]

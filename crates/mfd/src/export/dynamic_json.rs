@@ -529,7 +529,9 @@ impl NestedTarget {
     }
 }
 
-pub(super) fn render_target(args: RenderTargetArgs<'_>) -> RenderedSchemaComponent {
+pub(super) fn render_target(
+    args: RenderTargetArgs<'_>,
+) -> Result<RenderedSchemaComponent, MfdError> {
     let entries = match &args.plan.kind {
         TargetKind::Root(root) => render_root_target_entries(root, 10),
         TargetKind::Nested(targets) => {
@@ -551,13 +553,15 @@ pub(super) fn render_target(args: RenderTargetArgs<'_>) -> RenderedSchemaCompone
     })
 }
 
-pub(super) fn render_source(args: RenderSourceArgs<'_>) -> Option<RenderedSchemaComponent> {
+pub(super) fn render_source(
+    args: RenderSourceArgs<'_>,
+) -> Result<Option<RenderedSchemaComponent>, MfdError> {
     let sites = args.plan.sites_for(args.source_index);
     if sites.is_empty() {
-        return None;
+        return Ok(None);
     }
     let entries = render_source_entries(args.schema, args.ports, 10, &[], &sites);
-    Some(render_json_component(JsonComponentArgs {
+    render_json_component(JsonComponentArgs {
         schema: args.schema,
         entries,
         side: JsonSide::Source,
@@ -567,7 +571,8 @@ pub(super) fn render_source(args: RenderSourceArgs<'_>) -> Option<RenderedSchema
         component_name: args.component_name,
         component_uid: args.component_uid,
         sibling_suffix: args.sibling_suffix,
-    }))
+    })
+    .map(Some)
 }
 
 fn build_root_target(

@@ -18,6 +18,11 @@ public static class FerruleJson
     private const int MaximumJsonFormats = 64;
     private const int MaximumJsonFormatBytes = 1024;
     private const int MaximumJsonFormatTotalBytes = 16 * 1024;
+    private const int MaximumJsonPatternAlternatives = 32;
+    private const int MaximumJsonPatternTerms = 64;
+    private const int MaximumDistinctJsonPatterns = 64;
+    private const int MaximumJsonPatternSourceBytes = 256 * 1024;
+    private const int MaximumJsonPatternInstructions = 65_536;
 
     private static readonly JsonSerializerOptions CanonicalJsonOptions = new()
     {
@@ -163,7 +168,8 @@ public static class FerruleJson
                     AllowTrailingCommas = false,
                 });
             var budget = new NodeBudget();
-            return ReadSchemaNode(parsed.RootElement, budget, 0);
+            var patterns = new JsonPatternSchemaContext();
+            return ReadSchemaNode(parsed.RootElement, budget, patterns, 0);
         }
         catch (FerruleRuntimeException)
         {
@@ -179,6 +185,7 @@ public static class FerruleJson
     private static JsonSchemaNode ReadSchemaNode(
         JsonElement element,
         NodeBudget budget,
+        JsonPatternSchemaContext patternContext,
         int depth)
     {
         budget.Visit(depth);
@@ -223,6 +230,13 @@ public static class FerruleJson
             scalarDomain,
             jsonAny,
             fixedValue);
+        var jsonPatterns = ReadJsonPatterns(
+            name,
+            element,
+            scalarDomain,
+            jsonAny,
+            fixedValue,
+            patternContext);
         var itemCountRange = ReadItemCountRange(name, element, repeating);
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
@@ -235,14 +249,14 @@ public static class FerruleJson
                 RequireKind(childElements, JsonValueKind.Array, $"schema node '{name}' children", "array");
                 foreach (var child in childElements.EnumerateArray())
                 {
-                    children.Add(ReadSchemaNode(child, budget, depth + 1));
+                    children.Add(ReadSchemaNode(child, budget, patternContext, depth + 1));
                 }
             }
 
             if (kindElement.TryGetProperty("dynamic", out var dynamicElement) &&
                 dynamicElement.ValueKind != JsonValueKind.Null)
             {
-                dynamic = ReadSchemaNode(dynamicElement, budget, depth + 1);
+                dynamic = ReadSchemaNode(dynamicElement, budget, patternContext, depth + 1);
             }
 
             if (kindElement.TryGetProperty("alternatives", out var alternativeElements))
@@ -299,6 +313,7 @@ public static class FerruleJson
             fixedValue,
             numericRange,
             stringLengthRange,
+            jsonPatterns,
             itemCountRange,
             children,
             dynamic,
@@ -450,6 +465,171 @@ public static class FerruleJson
                 $"Embedded JSON schema node '{name}' has a fixed string outside its string-length range.");
         }
         return range;
+    }
+
+    private static JsonPatternConstraints? ReadJsonPatterns(
+        string name,
+        JsonElement element,
+        JsonScalarDomain scalarDomain,
+        bool jsonAny,
+        FerruleValue? fixedValue,
+        JsonPatternSchemaContext context)
+    {
+        JsonElement? declaredPatterns = null;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "json_patterns", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            if (declaredPatterns is not null)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has duplicate JSON pattern metadata.");
+            }
+            declaredPatterns = property.Value;
+        }
+        if (declaredPatterns is not { } patternsElement ||
+            patternsElement.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+        RequireKind(
+            patternsElement,
+            JsonValueKind.Object,
+            $"schema node '{name}' JSON patterns",
+            "object");
+
+        var sawAnyOf = false;
+        foreach (var property in patternsElement.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "any_of", StringComparison.Ordinal) ||
+                sawAnyOf)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' JSON patterns have an unknown or duplicate field '{property.Name}'.");
+            }
+            sawAnyOf = true;
+        }
+        if (!sawAnyOf)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' JSON patterns are missing field 'any_of'.");
+        }
+        if (!scalarDomain.HasFlag(JsonScalarDomain.String) || jsonAny)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has JSON patterns without a declared string domain or on json_any.");
+        }
+
+        var alternativesElement = RequiredProperty(patternsElement, "any_of");
+        RequireKind(
+            alternativesElement,
+            JsonValueKind.Array,
+            $"schema node '{name}' JSON pattern alternatives",
+            "array");
+        var alternatives = new List<JsonPatternAlternative>();
+        var canonicalSources = new List<string[]>();
+        var distinctSources = new HashSet<string>(StringComparer.Ordinal);
+        var sourceBytes = 0;
+        var instructions = 0;
+        var terms = 0;
+        foreach (var alternativeElement in alternativesElement.EnumerateArray())
+        {
+            if (alternatives.Count == MaximumJsonPatternAlternatives)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonPatternAlternatives} JSON pattern alternatives.");
+            }
+            RequireKind(
+                alternativeElement,
+                JsonValueKind.Array,
+                $"schema node '{name}' JSON pattern alternative",
+                "array");
+
+            var sources = new List<string>();
+            var compiledTerms = new List<FerruleJsonPattern>();
+            foreach (var termElement in alternativeElement.EnumerateArray())
+            {
+                terms = checked(terms + 1);
+                if (terms > MaximumJsonPatternTerms)
+                {
+                    throw Boundary(
+                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonPatternTerms} JSON pattern terms.");
+                }
+                if (termElement.ValueKind != JsonValueKind.String)
+                {
+                    throw Boundary(
+                        $"Embedded JSON schema node '{name}' JSON pattern terms must be strings.");
+                }
+
+                var source = termElement.GetString() ?? string.Empty;
+                if (sources.Contains(source, StringComparer.Ordinal))
+                {
+                    throw Boundary(
+                        $"Embedded JSON schema node '{name}' has a duplicate JSON pattern term.");
+                }
+
+                var compiled = context.GetOrCompile(name, source);
+                if (distinctSources.Add(source))
+                {
+                    sourceBytes = checked(sourceBytes + StrictUtf8.GetByteCount(source));
+                    instructions = checked(instructions + compiled.InstructionCount);
+                    if (distinctSources.Count > MaximumDistinctJsonPatterns ||
+                        sourceBytes > MaximumJsonPatternSourceBytes ||
+                        instructions > MaximumJsonPatternInstructions)
+                    {
+                        throw Boundary(
+                            $"Embedded JSON schema node '{name}' exceeds a local JSON pattern metadata limit.");
+                    }
+                }
+                sources.Add(source);
+                compiledTerms.Add(compiled);
+            }
+            if (sources.Count == 0)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has an empty JSON pattern alternative.");
+            }
+            if (sources.Count != 1 &&
+                sources.Contains(string.Empty, StringComparer.Ordinal))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has a noncanonical tautological JSON pattern alternative.");
+            }
+            if (canonicalSources.Any(previous =>
+                    previous.SequenceEqual(sources, StringComparer.Ordinal)))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has a duplicate JSON pattern alternative.");
+            }
+
+            canonicalSources.Add(sources.ToArray());
+            alternatives.Add(new JsonPatternAlternative(compiledTerms));
+        }
+        if (alternatives.Count == 0)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has empty JSON pattern constraints.");
+        }
+        if (canonicalSources.Count != 1 &&
+            canonicalSources.Any(sources =>
+                sources.Length == 1 && sources[0].Length == 0))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has noncanonical tautological JSON pattern constraints.");
+        }
+
+        var constraints = new JsonPatternConstraints(alternatives);
+        if (fixedValue is { Kind: FerruleValueKind.String } fixedString)
+        {
+            if (!context.FixedMatches(constraints, fixedString.StringValue))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has a fixed string outside its JSON pattern constraints.");
+            }
+        }
+        return constraints;
     }
 
     private static JsonNumericRange? ReadNumericRange(
@@ -706,7 +886,7 @@ public static class FerruleJson
 
         if (schema.IsScalar)
         {
-            return new FerruleScalar(ReadScalar(schema, element));
+            return new FerruleScalar(ReadScalar(schema, element, budget));
         }
 
         RequireKind(element, JsonValueKind.Object, schema.Name, "object");
@@ -754,7 +934,8 @@ public static class FerruleJson
 
     private static FerruleValue ReadScalar(
         JsonSchemaNode schema,
-        JsonElement element)
+        JsonElement element,
+        NodeBudget budget)
     {
         FerruleValue value;
         if (element.ValueKind == JsonValueKind.Null && schema.Nullable)
@@ -806,6 +987,7 @@ public static class FerruleJson
                 $"JSON scalar '{schema.Name}' is outside its numeric range: {element.GetRawText()}.");
         }
         ValidateStringLength(schema, value);
+        ValidateJsonPatterns(schema, value, budget);
         return value;
     }
 
@@ -933,11 +1115,16 @@ public static class FerruleJson
 
             if (schema.IsScalarUnion)
             {
-                WriteScalarUnion(writer, schema, value.Value);
+                WriteScalarUnion(writer, schema, value.Value, budget);
             }
             else
             {
-                WriteScalar(writer, schema, SingleScalar(schema.ScalarDomain), value.Value);
+                WriteScalar(
+                    writer,
+                    schema,
+                    SingleScalar(schema.ScalarDomain),
+                    value.Value,
+                    budget);
             }
             return;
         }
@@ -1037,7 +1224,8 @@ public static class FerruleJson
         Utf8JsonWriter writer,
         JsonSchemaNode schema,
         JsonScalarType scalar,
-        FerruleValue value)
+        FerruleValue value,
+        NodeBudget budget)
     {
         ValidateFixedOutput(schema, scalar, value);
         ValidateNumericRangeOutput(schema, scalar, value);
@@ -1046,27 +1234,20 @@ public static class FerruleJson
             writer.WriteNullValue();
             return;
         }
-        if (scalar == JsonScalarType.String &&
-            TryOutputString(value, out var outputString))
+        if (scalar == JsonScalarType.String)
         {
+            if (!TryOutputString(value, out var outputString))
+            {
+                throw Shape(schema.Name, "string", value.Kind.ToString());
+            }
             ValidateStringLength(schema, outputString);
+            ValidateJsonPatterns(schema, outputString, budget);
+            writer.WriteStringValue(outputString);
+            return;
         }
 
         switch (scalar, value.Kind)
         {
-            case (JsonScalarType.String, FerruleValueKind.String):
-                writer.WriteStringValue(value.StringValue);
-                return;
-            case (JsonScalarType.String, FerruleValueKind.Bool):
-                writer.WriteStringValue(value.BooleanValue ? "true" : "false");
-                return;
-            case (JsonScalarType.String, FerruleValueKind.Int64):
-                writer.WriteStringValue(value.Int64Value.ToString(CultureInfo.InvariantCulture));
-                return;
-            case (JsonScalarType.String, FerruleValueKind.Double)
-                when double.IsFinite(value.DoubleValue):
-                writer.WriteStringValue(value.DoubleValue.ToString("R", CultureInfo.InvariantCulture));
-                return;
             case (JsonScalarType.Int64, FerruleValueKind.Int64):
                 writer.WriteNumberValue(value.Int64Value);
                 return;
@@ -1222,7 +1403,8 @@ public static class FerruleJson
     private static void WriteScalarUnion(
         Utf8JsonWriter writer,
         JsonSchemaNode schema,
-        FerruleValue value)
+        FerruleValue value,
+        NodeBudget budget)
     {
         if (value.Kind == FerruleValueKind.Int64 &&
             !schema.ScalarDomain.HasFlag(JsonScalarDomain.Int64) &&
@@ -1240,6 +1422,7 @@ public static class FerruleJson
             return;
         }
         ValidateStringLength(schema, normalized);
+        ValidateJsonPatterns(schema, normalized, budget);
 
         WriteAdmittedScalar(writer, schema, normalized);
     }
@@ -1263,6 +1446,30 @@ public static class FerruleJson
         {
             throw Boundary(
                 $"JSON string '{schema.Name}' is outside its declared string-length range.");
+        }
+    }
+
+    private static void ValidateJsonPatterns(
+        JsonSchemaNode schema,
+        FerruleValue value,
+        NodeBudget budget)
+    {
+        if (value.Kind == FerruleValueKind.String)
+        {
+            ValidateJsonPatterns(schema, value.StringValue, budget);
+        }
+    }
+
+    private static void ValidateJsonPatterns(
+        JsonSchemaNode schema,
+        string value,
+        NodeBudget budget)
+    {
+        if (schema.JsonPatterns is { } patterns &&
+            !budget.Matches(patterns, value))
+        {
+            throw Boundary(
+                $"JSON string '{schema.Name}' does not match its declared JSON patterns.");
         }
     }
 
@@ -1612,7 +1819,7 @@ public static class FerruleJson
             FerruleValueKind.Bool => value.BooleanValue ? "true" : "false",
             FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
             FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
-                value.DoubleValue.ToString("R", CultureInfo.InvariantCulture),
+                FerruleValueMaps.RustFloatText(value.DoubleValue),
             _ => string.Empty,
         };
         return value.Kind is FerruleValueKind.String or
@@ -2020,6 +2227,76 @@ public static class FerruleJson
         }
     }
 
+    private sealed record JsonPatternAlternative(
+        IReadOnlyList<FerruleJsonPattern> Terms);
+
+    private sealed record JsonPatternConstraints(
+        IReadOnlyList<JsonPatternAlternative> AnyOf)
+    {
+        public bool IsMatch(string value, ref ulong remainingWork)
+        {
+            foreach (var alternative in AnyOf)
+            {
+                var matches = true;
+                foreach (var pattern in alternative.Terms)
+                {
+                    if (!pattern.IsMatch(value, ref remainingWork))
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+                if (matches)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    private sealed class JsonPatternSchemaContext
+    {
+        private readonly Dictionary<string, FerruleJsonPattern> _compiled =
+            new(StringComparer.Ordinal);
+        private int _sourceBytes;
+        private int _instructions;
+        private ulong _remainingFixedPatternWork = FerruleJsonPattern.MaximumBoundaryWork;
+
+        public FerruleJsonPattern GetOrCompile(string nodeName, string source)
+        {
+            if (_compiled.TryGetValue(source, out var existing))
+            {
+                return existing;
+            }
+            if (_compiled.Count == MaximumDistinctJsonPatterns)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema exceeds the {MaximumDistinctJsonPatterns}-distinct-pattern limit at node '{nodeName}'.");
+            }
+
+            var compiled = FerruleJsonPattern.Compile(source);
+            _sourceBytes = checked(_sourceBytes + StrictUtf8.GetByteCount(source));
+            _instructions = checked(_instructions + compiled.InstructionCount);
+            if (_sourceBytes > MaximumJsonPatternSourceBytes)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema JSON pattern sources exceed the {MaximumJsonPatternSourceBytes}-byte limit.");
+            }
+            if (_instructions > MaximumJsonPatternInstructions)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema JSON patterns exceed the {MaximumJsonPatternInstructions}-instruction limit.");
+            }
+
+            _compiled.Add(source, compiled);
+            return compiled;
+        }
+
+        public bool FixedMatches(JsonPatternConstraints constraints, string value) =>
+            constraints.IsMatch(value, ref _remainingFixedPatternWork);
+    }
+
     private sealed class JsonSchemaNode
     {
         public JsonSchemaNode(
@@ -2033,6 +2310,7 @@ public static class FerruleJson
             FerruleValue? fixedValue,
             JsonNumericRange? numericRange,
             JsonStringLengthRange? stringLengthRange,
+            JsonPatternConstraints? jsonPatterns,
             JsonItemCountRange? itemCountRange,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
@@ -2050,6 +2328,7 @@ public static class FerruleJson
             Fixed = fixedValue;
             NumericRange = numericRange;
             StringLengthRange = stringLengthRange;
+            JsonPatterns = jsonPatterns;
             ItemCountRange = itemCountRange;
             Children = children;
             Dynamic = dynamic;
@@ -2078,6 +2357,8 @@ public static class FerruleJson
 
         public JsonStringLengthRange? StringLengthRange { get; }
 
+        public JsonPatternConstraints? JsonPatterns { get; }
+
         public JsonItemCountRange? ItemCountRange { get; }
 
         public bool IsScalar => ScalarDomain != JsonScalarDomain.None;
@@ -2102,6 +2383,7 @@ public static class FerruleJson
     private sealed class NodeBudget
     {
         private int _nodes;
+        private ulong _remainingPatternWork = FerruleJsonPattern.MaximumBoundaryWork;
 
         public void Visit(int depth)
         {
@@ -2116,5 +2398,8 @@ public static class FerruleJson
                 throw Boundary($"JSON document exceeds the {MaximumNodes}-node limit.");
             }
         }
+
+        public bool Matches(JsonPatternConstraints constraints, string value) =>
+            constraints.IsMatch(value, ref _remainingPatternWork);
     }
 }

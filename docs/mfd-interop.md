@@ -146,7 +146,14 @@ Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
 intervals measured in Unicode scalar values, including nullable fields, array
 items, typed dynamic properties, and compatible compositions. The constraints
 remain executable on imported source and target boundaries and round-trip
-alongside opaque `format` annotations.
+alongside opaque `format` annotations. Referenced `pattern` assertions use
+Ferrule's bounded Unicode-scalar pattern language, survive dialect-aware
+references, conjunctive `allOf`, exact disjunctive `anyOf`, and disjoint scalar
+`oneOf`, and export canonically. Null bypasses string assertions in nullable
+domains; native and generated Rust/C# boundaries apply them identically to
+input and normalized output. Nonportable regex constructs reject during schema
+import and trigger the component's existing actionable schema-fallback
+diagnostic rather than changing meaning between runtimes.
 Expanded-name identity for ordinary elements and attributes is preserved;
 foreign declarations export as an atomic graph of local XSD siblings.
 Compatible strict-wildcard declarations that share one local name across

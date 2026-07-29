@@ -980,6 +980,7 @@ dependencies = [
  "format-xml",
  "functions",
  "ir",
+ "json-pattern",
  "regex",
  "serde_json",
 ]
@@ -1840,6 +1841,7 @@ name = "format-json"
 version = "0.1.0"
 dependencies = [
  "ir",
+ "json-pattern",
  "serde_json",
  "thiserror 2.0.18",
 ]
@@ -2509,6 +2511,7 @@ dependencies = [
 name = "ir"
 version = "0.1.0"
 dependencies = [
+ "json-pattern",
  "serde",
  "serde_json",
 ]
@@ -2660,6 +2663,10 @@ dependencies = [
  "futures-util",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "json-pattern"
+version = "0.1.0"
 
 [[package]]
 name = "khronos-egl"

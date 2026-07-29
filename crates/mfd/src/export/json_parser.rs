@@ -104,7 +104,14 @@ pub(super) fn render(
             }
             continue;
         }
-        render_group(group, keys, uid, mfd_path, &mut exports);
+        let nodes = group.fields.values().flatten().copied().collect::<Vec<_>>();
+        if let Err(reason) = render_group(group, keys, uid, mfd_path, &mut exports) {
+            for node in nodes {
+                warnings.push(format!(
+                    "JSON string parser node {node} is unsupported: {reason}; skipped"
+                ));
+            }
+        }
     }
     exports
 }
@@ -164,7 +171,9 @@ fn render_group(
     uid: &mut u32,
     mfd_path: &Path,
     exports: &mut Exports,
-) {
+) -> Result<(), String> {
+    let schema_contents =
+        format_json::json_schema::export(&group.schema).map_err(|error| error.to_string())?;
     let input = keys.next();
     exports.inputs.push((group.input, input));
     let mut ports = BTreeMap::new();
@@ -186,7 +195,7 @@ fn render_group(
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join(&schema_file),
-        contents: format_json::json_schema::export(&group.schema),
+        contents: schema_contents,
     });
     *uid += 1;
     let _ = write!(
@@ -206,6 +215,7 @@ fn render_group(
         xml_escape(&group.schema.name),
         xml_escape(&schema_file),
     );
+    Ok(())
 }
 
 fn literal_string<'a>(graph: &'a Graph, node: NodeId, label: &str) -> Result<&'a str, String> {

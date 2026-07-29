@@ -4,6 +4,7 @@ use std::path::Path;
 use ir::SchemaNode;
 
 use super::super::schema::{GeneratedSibling, RenderedSchemaComponent, xml_escape};
+use crate::MfdError;
 
 pub(super) enum JsonSide {
     Source,
@@ -22,7 +23,10 @@ pub(super) struct JsonComponentArgs<'a> {
     pub(super) sibling_suffix: &'a str,
 }
 
-pub(super) fn render_json_component(args: JsonComponentArgs<'_>) -> RenderedSchemaComponent {
+pub(super) fn render_json_component(
+    args: JsonComponentArgs<'_>,
+) -> Result<RenderedSchemaComponent, MfdError> {
+    let schema_contents = format_json::json_schema::export(args.schema)?;
     let stem = args
         .mfd_path
         .file_stem()
@@ -82,11 +86,11 @@ pub(super) fn render_json_component(args: JsonComponentArgs<'_>) -> RenderedSche
         args.entries,
         xml_escape(&schema_file),
     );
-    RenderedSchemaComponent {
+    Ok(RenderedSchemaComponent {
         xml,
         siblings: vec![GeneratedSibling {
             path: dir.join(&schema_file),
-            contents: format_json::json_schema::export(args.schema),
+            contents: schema_contents,
         }],
-    }
+    })
 }

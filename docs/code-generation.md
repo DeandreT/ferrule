@@ -308,9 +308,14 @@ Stored output paths and format options remain host metadata: generated libraries
 return instances or JSON documents and do not write files.
 Embedded JSON schemas are validated recursively before emission and again at
 the generated boundary. Rust and C# enforce scalar constants, numeric ranges,
-array item-count intervals, and Unicode-scalar string-length intervals on both
-input and output; malformed internal metadata fails as an embedded-schema error
-rather than being ignored.
+array item-count intervals, Unicode-scalar string-length intervals, and portable
+JSON Schema `pattern` assertions on both input and normalized output. Pattern
+constraints retain conjunctions and exact disjunctions, nullable bypass, array
+items, typed dynamic properties, and scalar-union runtime tags. Both generated
+runtimes use Ferrule's bounded Thompson-NFA matcher rather than a host regex
+engine, share one 100-million-unit work budget across each JSON document parse
+or serialization call, and report malformed or over-budget embedded metadata as a
+typed boundary error.
 
 Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable
@@ -320,13 +325,14 @@ Generated scopes, failure rules, and sequence reducers support bounded regex
 tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
 expose materially different regex dialects and Unicode behavior, so patterns
 outside the shared non-backtracking dialect can produce a backend-specific
-invalid-pattern error; exact cross-backend support needs a Ferrule-owned
-matcher. Correlated join scopes and joined-tuple aggregates without an exact
-current-owned singleton or non-empty descendant anchor, with an empty repeating
-source path, or with a source hidden behind a non-frame ancestor without a path
-rooted at an active runtime frame remain interpreter-only; their ownership and
-parent-context rules need a broader portable join model. Code generation is
-expanding incrementally toward interpreter parity; see the
+invalid-pattern error. This applies to mapping-language tokenization only;
+JSON Schema `pattern` uses Ferrule's separate portable matcher and has identical
+Rust/C# behavior. Correlated join scopes and joined-tuple aggregates without an
+exact current-owned singleton or non-empty descendant anchor, with an empty
+repeating source path, or with a source hidden behind a non-frame ancestor
+without a path rooted at an active runtime frame remain interpreter-only; their
+ownership and parent-context rules need a broader portable join model. Code
+generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
 ## Output Safety
