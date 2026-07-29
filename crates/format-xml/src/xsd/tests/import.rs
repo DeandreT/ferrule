@@ -2550,6 +2550,80 @@ fn imports_direct_local_wildcards_below_a_qualified_root() -> Result<(), Box<dyn
 }
 
 #[test]
+fn imports_local_skip_wildcards_from_named_model_groups() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_named_model_wildcard_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("content.xsd"),
+        r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:t="urn:ferrule:named-model-wildcard"
+                       targetNamespace="urn:ferrule:named-model-wildcard">
+          <xs:group name="OpenContent"><xs:sequence>
+            <xs:any namespace="##local" processContents="skip"
+                    minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence></xs:group>
+        </xs:schema>"###,
+    )?;
+    let root = dir.join("root.xsd");
+    std::fs::write(
+        &root,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:t="urn:ferrule:named-model-wildcard"
+                       targetNamespace="urn:ferrule:named-model-wildcard"
+                       elementFormDefault="qualified">
+          <xs:include schemaLocation="content.xsd"/>
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:group ref="t:OpenContent"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )?;
+
+    let schema = import_root(&root, Some("{urn:ferrule:named-model-wildcard}Root"))?;
+    let wildcard = schema
+        .child(XML_ELEMENTS_FIELD)
+        .ok_or("named model-group wildcard is missing")?;
+    assert!(wildcard.repeating);
+    assert_eq!(wildcard.xml_namespace, Some(XmlNamespace::Unqualified));
+
+    let input = r#"<Root xmlns="urn:ferrule:named-model-wildcard">
+          <First xmlns="" code="A">before<Inner>value</Inner>after</First>
+          <Second xmlns=""/>
+        </Root>"#;
+    let instance = from_str(input, &schema)?;
+    let elements = instance
+        .field(XML_ELEMENTS_FIELD)
+        .and_then(Instance::as_repeated)
+        .ok_or("named model-group wildcard values are missing")?;
+    assert_eq!(elements.len(), 2);
+    let output = to_string(&schema, &instance)?;
+    assert!(
+        output.contains(r#"<First xmlns="" code="A">before<Inner>value</Inner>after</First>"#),
+        "{output}"
+    );
+    assert_eq!(from_str(&output, &schema)?, instance);
+
+    let exported = export(&schema)?;
+    assert!(
+        exported.contains(
+            "<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>"
+        ),
+        "{exported}"
+    );
+    let normalized = dir.join("normalized.xsd");
+    std::fs::write(&normalized, exported)?;
+    let reimported = import_root(&normalized, Some("{urn:ferrule:named-model-wildcard}Root"))?;
+    std::fs::remove_dir_all(dir)?;
+    assert_eq!(reimported, schema);
+    assert_eq!(from_str(&output, &reimported)?, instance);
+    Ok(())
+}
+
+#[test]
 fn rejects_wildcards_outside_the_lossless_local_skip_profile()
 -> Result<(), Box<dyn std::error::Error>> {
     let cases = [
@@ -2623,6 +2697,50 @@ fn rejects_wildcards_outside_the_lossless_local_skip_profile()
             }
             Err(error) => error,
         };
+        std::fs::remove_file(path)?;
+        assert!(
+            matches!(
+                &error,
+                XmlFormatError::UnsupportedXmlWildcard { reason }
+                    if reason.contains(expected)
+            ),
+            "{label}: {error}"
+        );
+    }
+    for (label, members, expected) in [
+        (
+            "named-lax",
+            r###"<xs:any namespace="##local" processContents="lax"
+                         minOccurs="0" maxOccurs="unbounded"/>"###,
+            "processContents=\"skip\"",
+        ),
+        (
+            "named-sibling",
+            r###"<xs:element name="Known" type="xs:string"/>
+                 <xs:any namespace="##local" processContents="skip"
+                         minOccurs="0" maxOccurs="unbounded"/>"###,
+            "only element particle",
+        ),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_unsupported_model_group_wildcard_{label}_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:group name="OpenContent"><xs:sequence>
+                    {members}
+                  </xs:sequence></xs:group>
+                  <xs:element name="Root"><xs:complexType><xs:sequence>
+                    <xs:group ref="OpenContent"/>
+                  </xs:sequence></xs:complexType></xs:element>
+                </xs:schema>"#
+            ),
+        )?;
+        let error = import_root(&path, Some("Root"))
+            .expect_err("unsupported wildcard inside a named model group imported successfully");
         std::fs::remove_file(path)?;
         assert!(
             matches!(

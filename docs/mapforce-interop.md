@@ -111,9 +111,10 @@ branches whose scalar item domain subsumes every narrower branch are preserved,
 including required or optional typed
 `const` discriminators and JSON-null discriminators. Expanded-name identity for ordinary elements and attributes is
 preserved; foreign declarations export as an atomic graph of local XSD siblings.
-Exact optional/unbounded `##local` element wildcards and direct `##local`
-attribute wildcards with `processContents="skip"` also round-trip as recursive
-generic element groups and generic attribute collections.
+Exact optional/unbounded `##local` element wildcards declared inline or through
+named model groups, and direct or named-attribute-group `##local` attribute
+wildcards with `processContents="skip"`, also round-trip as recursive generic
+element groups and generic attribute collections.
 
 The exact supported surface evolves quickly. The
 [workflow-parity roadmap](../ROADMAP.md) records the strategic gaps, while the
