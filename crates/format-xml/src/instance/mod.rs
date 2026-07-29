@@ -7,7 +7,7 @@ use std::io::Cursor;
 use std::path::Path;
 
 use ir::{
-    Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ELEMENTS_FIELD,
+    Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
     XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD,
     XML_SUBSTITUTION_FIELD, XML_TEXT_FIELD, XML_TYPE_FIELD, XmlAlternativeKind, XmlNamespace,
 };
@@ -15,7 +15,9 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use thiserror::Error;
 
-use generic::{read_generic_element, read_group_fields, write_generic_element};
+use generic::{
+    push_generic_attributes, read_generic_element, read_group_fields, write_generic_element,
+};
 
 const MAX_XML_RECURSION_DEPTH: usize = 64;
 const MAX_XML_NODES: u32 = 1_000_000;
@@ -97,6 +99,8 @@ pub enum XmlFormatError {
     UnsupportedNestedRepeatingSequence { element_count: usize },
     #[error("xs:any wildcard cannot be represented: {reason}")]
     UnsupportedXmlWildcard { reason: &'static str },
+    #[error("xs:anyAttribute wildcard cannot be represented: {reason}")]
+    UnsupportedXmlAttributeWildcard { reason: &'static str },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
     SchemaMaterializationLimit { limit: usize },
     #[error("named xs:{kind} `{name}` contains a reference cycle")]
@@ -190,6 +194,8 @@ pub enum XmlFormatError {
     },
     #[error("generic XML element item has no non-empty LocalName or NodeName field")]
     MissingGenericElementName,
+    #[error("generic XML attribute item has no non-empty LocalName field")]
+    MissingGenericAttributeName,
     #[error("recursive schema reference `{node}` has no unique concrete group anchor `{anchor}`")]
     UnsupportedRecursiveAnchor { node: String, anchor: String },
     #[error("XML recursion exceeds the {limit}-element depth limit")]
@@ -906,6 +912,15 @@ fn write_single_node<W: std::io::Write>(
                 start.push_attribute(("xsi:type", type_name.as_str()));
             }
             let mut attribute_namespaces = Vec::<&str>::new();
+            if let Some(attribute_schema) = children
+                .iter()
+                .find(|child| child.name == XML_ATTRIBUTES_FIELD)
+                && let Some((_, attributes)) = fields
+                    .iter()
+                    .find(|(field, _)| field == XML_ATTRIBUTES_FIELD)
+            {
+                push_generic_attributes(&mut start, attribute_schema, attributes)?;
+            }
             for child_schema in children.iter().filter(|child| child.attribute) {
                 if let Some((_, child_instance)) =
                     fields.iter().find(|(name, _)| name == &child_schema.name)
@@ -1011,6 +1026,9 @@ fn write_group_child<W: std::io::Write>(
     recursion_depth: usize,
     inherited_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
+    if child_schema.name == XML_ATTRIBUTES_FIELD {
+        return Ok(());
+    }
     let Some((_, child_instance)) = fields.iter().find(|(name, _)| name == &child_schema.name)
     else {
         return Ok(());

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use ir::{
     Instance, SchemaKind, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
     XML_LOCAL_NAME_FIELD, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD,
@@ -143,7 +145,16 @@ pub(super) fn read_group_fields(
             let items = element
                 .attributes()
                 .map(|attribute| {
-                    Instance::Group(vec![
+                    if child.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+                        && attribute
+                            .namespace()
+                            .is_some_and(|namespace| !namespace.is_empty())
+                    {
+                        return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
+                            reason: "the supported ##local wildcard profile cannot retain qualified attributes",
+                        });
+                    }
+                    Ok(Instance::Group(vec![
                         (
                             XML_LOCAL_NAME_FIELD.to_string(),
                             Instance::Scalar(Value::String(attribute.name().to_string())),
@@ -152,9 +163,9 @@ pub(super) fn read_group_fields(
                             XML_TEXT_FIELD.to_string(),
                             Instance::Scalar(Value::String(attribute.value().to_string())),
                         ),
-                    ])
+                    ]))
                 })
-                .collect();
+                .collect::<Result<Vec<_>, _>>()?;
             fields.push((child.name.clone(), Instance::Repeated(items)));
         } else if child.repeating {
             let items = element
@@ -334,45 +345,11 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     if let Some(attribute_schema) = children
         .iter()
         .find(|child| child.name == XML_ATTRIBUTES_FIELD)
-        && let Some((_, Instance::Repeated(attributes))) = fields
+        && let Some((_, attributes)) = fields
             .iter()
             .find(|(field, _)| field == XML_ATTRIBUTES_FIELD)
     {
-        for attribute in attributes {
-            let Instance::Group(attribute_fields) = attribute else {
-                return Err(shape_error(
-                    attribute_schema,
-                    "a generic XML attribute group",
-                    attribute,
-                ));
-            };
-            let attribute_name = attribute_fields
-                .iter()
-                .find(|(field, _)| field == XML_LOCAL_NAME_FIELD)
-                .and_then(|(_, value)| value.as_scalar())
-                .and_then(|value| match value {
-                    Value::String(name) if !name.is_empty() => Some(name.as_str()),
-                    _ => None,
-                })
-                .ok_or(XmlFormatError::MissingGenericElementName)?;
-            if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
-                && is_qualified_name(attribute_name)
-            {
-                return Err(XmlFormatError::UnsupportedXmlWildcard {
-                    reason: "the supported ##local wildcard profile requires unqualified runtime attribute names",
-                });
-            }
-            let attribute_value = attribute_fields
-                .iter()
-                .find(|(field, _)| field == XML_TEXT_FIELD)
-                .and_then(|(_, value)| value.as_scalar())
-                .and_then(|value| match value {
-                    Value::String(value) => Some(value.as_str()),
-                    _ => None,
-                })
-                .unwrap_or_default();
-            push_attribute(&mut start, attribute_name, attribute_value);
-        }
+        push_generic_attributes(&mut start, attribute_schema, attributes)?;
     }
     let mut attribute_namespaces = Vec::<&str>::new();
     for child_schema in children.iter().filter(|child| child.attribute) {
@@ -481,6 +458,72 @@ fn generic_element_name(fields: &[(String, Instance)]) -> Result<&str, XmlFormat
                 })
         })
         .ok_or(XmlFormatError::MissingGenericElementName)
+}
+
+pub(super) fn push_generic_attributes<'a>(
+    start: &mut BytesStart<'a>,
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<(), XmlFormatError> {
+    let SchemaKind::Group {
+        children,
+        alternatives,
+        ..
+    } = &schema.kind
+    else {
+        return Err(shape_error(
+            schema,
+            "a generic XML attribute group",
+            instance,
+        ));
+    };
+    let Instance::Repeated(attributes) = instance else {
+        return Err(shape_error(schema, "generic XML attributes", instance));
+    };
+    let mut names = BTreeSet::new();
+    for attribute in attributes {
+        let Instance::Group(attribute_fields) = attribute else {
+            return Err(shape_error(
+                schema,
+                "a generic XML attribute group",
+                attribute,
+            ));
+        };
+        validate_group_fields(schema, children, alternatives, attribute_fields)?;
+        let attribute_name = attribute_fields
+            .iter()
+            .find(|(field, _)| field == XML_LOCAL_NAME_FIELD)
+            .and_then(|(_, value)| value.as_scalar())
+            .and_then(|value| match value {
+                Value::String(name) if !name.is_empty() => Some(name.as_str()),
+                _ => None,
+            })
+            .ok_or(XmlFormatError::MissingGenericAttributeName)?;
+        if schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
+            && is_qualified_name(attribute_name)
+        {
+            return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
+                reason: "the supported ##local wildcard profile requires unqualified runtime attribute names",
+            });
+        }
+        if !names.insert(attribute_name) {
+            return Err(XmlFormatError::DuplicateField {
+                group: schema.name.clone(),
+                field: attribute_name.to_string(),
+            });
+        }
+        let attribute_value = attribute_fields
+            .iter()
+            .find(|(field, _)| field == XML_TEXT_FIELD)
+            .and_then(|(_, value)| value.as_scalar())
+            .and_then(|value| match value {
+                Value::String(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        push_attribute(start, attribute_name, attribute_value);
+    }
+    Ok(())
 }
 
 fn is_qualified_name(name: &str) -> bool {

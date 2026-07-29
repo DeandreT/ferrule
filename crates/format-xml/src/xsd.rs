@@ -16,6 +16,9 @@
 //! `xs:any` imports only when it is an optional, unbounded, local-name,
 //! skip-validation wildcard that can round-trip through the recursive generic
 //! `element()` group. Other wildcard profiles fail with a typed diagnostic.
+//! `xs:anyAttribute` likewise imports only as a direct local-name,
+//! skip-validation wildcard with no other attribute declaration, using the
+//! repeating generic `attribute()` group.
 //! It does not support unions or remote schema URLs -- that's the "lite" in
 //! the name.
 
@@ -1710,6 +1713,13 @@ fn parse_complex_type(
                     parsed.extend(parse_complex_type(&content, schema_el, schema_path, state));
                 }
             }
+            "anyAttribute" => match parse_attribute_wildcard(&child) {
+                Ok(wildcard) if state.reserve_elements(schema_node_count(&wildcard)) => {
+                    parsed.children.push(wildcard);
+                }
+                Ok(_) => {}
+                Err(error) => state.reject_wildcard(error),
+            },
             _ => {}
         }
     }
@@ -2027,14 +2037,7 @@ fn parse_wildcard(wildcard: &Node<'_, '_>) -> Result<SchemaNode, XmlFormatError>
 }
 
 fn generic_wildcard_schema() -> SchemaNode {
-    let attributes = SchemaNode::group(
-        XML_ATTRIBUTES_FIELD,
-        vec![
-            SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
-            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
-        ],
-    )
-    .repeating();
+    let attributes = generic_attribute_wildcard_schema();
     let mut nested =
         SchemaNode::recursive_group(XML_ELEMENTS_FIELD, XML_ELEMENTS_FIELD).repeating();
     nested.xml_namespace = Some(XmlNamespace::Unqualified);
@@ -2052,6 +2055,41 @@ fn generic_wildcard_schema() -> SchemaNode {
     wildcard
 }
 
+fn parse_attribute_wildcard(wildcard: &Node<'_, '_>) -> Result<SchemaNode, XmlFormatError> {
+    if wildcard.attribute("namespace") != Some("##local") {
+        return Err(unsupported_attribute_wildcard(
+            "only namespace=\"##local\" is supported; qualified wildcard names require namespace-aware generic attributes",
+        ));
+    }
+    if wildcard.attribute("processContents") != Some("skip") {
+        return Err(unsupported_attribute_wildcard(
+            "only processContents=\"skip\" is supported; lax or strict validation requires resolved declarations",
+        ));
+    }
+    if wildcard
+        .attributes()
+        .any(|attribute| matches!(attribute.name(), "notNamespace" | "notQName"))
+    {
+        return Err(unsupported_attribute_wildcard(
+            "XSD 1.1 wildcard exclusions are not supported",
+        ));
+    }
+    Ok(generic_attribute_wildcard_schema())
+}
+
+fn generic_attribute_wildcard_schema() -> SchemaNode {
+    let mut attributes = SchemaNode::group(
+        XML_ATTRIBUTES_FIELD,
+        vec![
+            SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+        ],
+    )
+    .repeating();
+    attributes.xml_namespace = Some(XmlNamespace::Unqualified);
+    attributes
+}
+
 fn validate_wildcard_ownership(parsed: &ParsedComplexType, state: &mut ParseState) {
     let elements = parsed
         .children
@@ -2062,12 +2100,24 @@ fn validate_wildcard_ownership(parsed: &ParsedComplexType, state: &mut ParseStat
         .iter()
         .filter(|child| child.name == XML_ELEMENTS_FIELD)
         .count();
-    if wildcard_count == 0 {
-        return;
-    }
-    if wildcard_count != 1 || elements.len() != 1 {
+    if wildcard_count != 0 && (wildcard_count != 1 || elements.len() != 1) {
         state.reject_wildcard(unsupported_wildcard(
             "a wildcard must be the only element particle in its complex type",
+        ));
+    }
+    let attribute_wildcards = parsed
+        .children
+        .iter()
+        .filter(|child| child.name == XML_ATTRIBUTES_FIELD)
+        .count();
+    let declared_attributes = parsed
+        .children
+        .iter()
+        .filter(|child| child.attribute)
+        .count();
+    if attribute_wildcards > 1 || (attribute_wildcards == 1 && declared_attributes != 0) {
+        state.reject_wildcard(unsupported_attribute_wildcard(
+            "an attribute wildcard must be the only attribute declaration in its complex type",
         ));
     }
 }
@@ -2094,6 +2144,10 @@ fn is_single_occurrence(particle: &Node<'_, '_>) -> bool {
 
 fn unsupported_wildcard(reason: &'static str) -> XmlFormatError {
     XmlFormatError::UnsupportedXmlWildcard { reason }
+}
+
+fn unsupported_attribute_wildcard(reason: &'static str) -> XmlFormatError {
+    XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
 }
 
 fn is_disabled_particle(particle: &Node) -> bool {
