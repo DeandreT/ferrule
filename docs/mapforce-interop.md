@@ -149,6 +149,9 @@ Referenced JSON arrays likewise retain exact `minItems`/`maxItems` intervals
 through references, nullable wrappers, and compatible compositions. Invalid or
 nonrepresentable item-count unions use the same actionable schema fallback;
 valid constraints remain executable after MFD import.
+Referenced array `uniqueItems: true` assertions also remain executable across
+MFD import and generated-schema export, with exact structural comparison on
+native and generated Rust/C# JSON boundaries.
 Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
 intervals measured in Unicode scalar values, including nullable fields, array
 items, typed dynamic properties, and compatible compositions. The constraints

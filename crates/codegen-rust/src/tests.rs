@@ -27,6 +27,7 @@ mod joins;
 mod json_allowed_values;
 mod json_multiple_of;
 mod json_patterns;
+mod json_unique_items;
 mod recursive_filter;
 mod scalar_functions;
 mod scalar_union;

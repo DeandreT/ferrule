@@ -195,6 +195,7 @@ public static partial class FerruleJson
         RequireKind(kindElement, JsonValueKind.Object, $"schema node '{name}' kind", "object");
         var kind = RequiredString(kindElement, "kind");
         var repeating = OptionalBoolean(element, "repeating");
+        var jsonUniqueItems = ReadJsonUniqueItems(name, element, repeating);
         var scalarDomain = kind switch
         {
             "scalar" => ScalarDomain(
@@ -331,6 +332,7 @@ public static partial class FerruleJson
             stringLengthRange,
             jsonPatterns,
             itemCountRange,
+            jsonUniqueItems,
             children,
             dynamic,
             required,
@@ -871,6 +873,7 @@ public static partial class FerruleJson
         {
             RequireKind(element, JsonValueKind.Array, schema.Name, "array");
             ValidateItemCount(schema, element.GetArrayLength());
+            ValidateUniqueInputItems(schema, element);
             var items = new List<FerruleInstance>();
             foreach (var item in element.EnumerateArray())
             {
@@ -1080,9 +1083,16 @@ public static partial class FerruleJson
             ValidateItemCount(schema, repeated.Items.Count);
 
             writer.WriteStartArray();
-            foreach (var item in repeated.Items)
+            if (schema.JsonUniqueItems)
             {
-                WriteSingleNode(writer, schema, item, budget, depth + 1);
+                WriteUniqueOutputItems(writer, schema, repeated.Items, budget, depth + 1);
+            }
+            else
+            {
+                foreach (var item in repeated.Items)
+                {
+                    WriteSingleNode(writer, schema, item, budget, depth + 1);
+                }
             }
 
             writer.WriteEndArray();
@@ -2338,6 +2348,7 @@ public static partial class FerruleJson
             JsonStringLengthRange? stringLengthRange,
             JsonPatternConstraints? jsonPatterns,
             JsonItemCountRange? itemCountRange,
+            bool jsonUniqueItems,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
             IReadOnlyList<string> required,
@@ -2358,6 +2369,7 @@ public static partial class FerruleJson
             StringLengthRange = stringLengthRange;
             JsonPatterns = jsonPatterns;
             ItemCountRange = itemCountRange;
+            JsonUniqueItems = jsonUniqueItems;
             Children = children;
             Dynamic = dynamic;
             Required = required;
@@ -2392,6 +2404,8 @@ public static partial class FerruleJson
         public JsonPatternConstraints? JsonPatterns { get; }
 
         public JsonItemCountRange? ItemCountRange { get; }
+
+        public bool JsonUniqueItems { get; }
 
         public bool IsScalar => ScalarDomain != JsonScalarDomain.None;
 

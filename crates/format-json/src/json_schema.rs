@@ -24,8 +24,9 @@
 //! finite scalar `anyOf`/`oneOf` composition. General composition remains outside this subset;
 //! bounded portable `pattern` constraints are enforced while string `format`
 //! annotations are retained without asserting their vocabulary-specific
-//! semantics. Other shape-neutral validation keywords are accepted but are not
-//! enforced by the mapping schema.
+//! semantics. Exact structural `uniqueItems` assertions are enforced on
+//! concrete arrays. Other shape-neutral validation keywords are accepted but
+//! are not enforced by the mapping schema.
 
 use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
 
@@ -43,6 +44,7 @@ mod patterns;
 pub(crate) mod ranges;
 mod render;
 pub(crate) mod string_lengths;
+pub mod unique_items;
 
 use all_of::parse_all_of;
 use alternatives::{
@@ -187,6 +189,7 @@ fn parse(
             ranges::apply(name, schema, &mut nullable, false)?;
             multiples::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
+            unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
             formats::apply_first(name, schema, &mut nullable)?;
@@ -202,6 +205,7 @@ fn parse(
         if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
             let mut scalar = scalar;
             multiples::apply(name, schema, &mut scalar, false)?;
+            unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
             formats::apply(name, schema, &mut scalar)?;
@@ -218,6 +222,7 @@ fn parse(
         string_lengths::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)?;
+        unique_items::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
     }
@@ -240,6 +245,7 @@ fn parse(
             ranges::apply(name, schema, &mut nullable, false)?;
             multiples::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
+            unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
             formats::apply_first(name, schema, &mut nullable)?;
@@ -255,6 +261,7 @@ fn parse(
         if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
             let mut scalar = scalar;
             multiples::apply(name, schema, &mut scalar, false)?;
+            unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
             formats::apply(name, schema, &mut scalar)?;
@@ -267,6 +274,7 @@ fn parse(
             string_lengths::validate_ignored(name, schema)?;
             multiples::validate_ignored(name, schema)?;
             patterns::validate_ignored(name, schema)?;
+            unique_items::apply(name, schema, &mut array, false)?;
             formats::apply(name, schema, &mut array)?;
             return Ok(array);
         }
@@ -281,6 +289,7 @@ fn parse(
         string_lengths::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)?;
+        unique_items::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
     }
@@ -347,6 +356,7 @@ fn parse(
                     ranges::validate_ignored(name, schema)?;
                     multiples::validate_ignored(name, schema)?;
                     item_counts::apply(name, schema, &mut node, false)?;
+                    unique_items::apply(name, schema, &mut node, false)?;
                     string_lengths::validate_ignored(name, schema)?;
                     patterns::validate_ignored(name, schema)?;
                     formats::validate(name, schema)?;
@@ -359,11 +369,13 @@ fn parse(
                         || item.json_allowed_values.is_some()
                         || item.string_length_range.is_some()
                         || item.json_patterns.is_some()
-                        || item_counts::has_keywords(schema))
+                        || item.json_unique_items
+                        || item_counts::has_keywords(schema)
+                        || unique_items::selected(name, schema)?)
                 {
                     return Err(unsupported_union(
                         name,
-                        "nested arrays with item-count, allowed-value, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
+                        "nested arrays with item-count, unique-items, allowed-value, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
                     ));
                 }
                 let mut node = item.repeating();
@@ -371,6 +383,7 @@ fn parse(
                 ranges::validate_ignored(name, schema)?;
                 multiples::validate_ignored(name, schema)?;
                 item_counts::apply(name, schema, &mut node, false)?;
+                unique_items::apply(name, schema, &mut node, false)?;
                 string_lengths::validate_ignored(name, schema)?;
                 patterns::validate_ignored(name, schema)?;
                 formats::validate(name, schema)?;
@@ -430,6 +443,12 @@ fn parse(
         &mut node,
         type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
+    unique_items::apply(
+        name,
+        schema,
+        &mut node,
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
+    )?;
     string_lengths::apply(
         name,
         schema,
@@ -464,12 +483,14 @@ fn apply_known_shape_constraints(
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         item_counts::apply(name, schema, node, false)?;
+        unique_items::apply(name, schema, node, false)?;
         string_lengths::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)
     } else {
         ranges::apply(name, schema, node, false)?;
         multiples::apply(name, schema, node, false)?;
         item_counts::validate_ignored(name, schema)?;
+        unique_items::validate_ignored(name, schema)?;
         string_lengths::apply(name, schema, node, false)?;
         patterns::apply(name, schema, node, false)
     }
@@ -484,6 +505,7 @@ fn reject_unresolved_ref_constraints(
         || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
             && item_counts::is_effectively_constrained(name, schema)?
+        || unique_items::selected(name, schema)?
         || formats::has_keyword(schema)
         || string_lengths::has_keywords(schema)
             && string_lengths::is_effectively_constrained(name, schema)?
@@ -506,6 +528,7 @@ pub(super) fn reject_unsupported_ref_siblings(
     string_lengths::validate_ignored(name, schema)?;
     multiples::validate_ignored(name, schema)?;
     patterns::validate_ignored(name, schema)?;
+    unique_items::selected(name, schema)?;
     let Some(object) = schema.as_object() else {
         return Ok(());
     };
@@ -534,7 +557,6 @@ fn unsupported_ref_sibling(keyword: &str) -> bool {
             | "required"
             | "dependencies"
             | "dependentRequired"
-            | "uniqueItems"
             | "contains"
             | "maxContains"
             | "minContains"
@@ -821,6 +843,11 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
             reason:
                 "multipleOf constraints are incompatible with their numeric domains or fixed values"
                     .to_string(),
+        });
+    }
+    if !schema.json_unique_items_tree_is_valid() {
+        return Err(JsonFormatError::InvalidUniqueItemsMetadata {
+            reason: "uniqueItems constraints must belong to repeating array nodes".to_string(),
         });
     }
     if !schema.json_pattern_budget_is_valid() {
