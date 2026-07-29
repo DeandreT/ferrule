@@ -70,6 +70,11 @@ fn collect_owners(
     for child in &scope.children {
         collect_owners(child, owners)?;
     }
+    if let crate::TargetConstruction::DynamicGroup { children, .. } = &scope.construction {
+        for child in children {
+            collect_owners(&child.scope, owners)?;
+        }
+    }
     Ok(())
 }
 

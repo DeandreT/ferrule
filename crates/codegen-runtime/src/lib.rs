@@ -10,6 +10,7 @@ mod adjacency_tree;
 mod aggregate;
 mod context;
 mod dynamic_document;
+mod dynamic_target;
 mod failure;
 mod generated_sequence;
 mod iteration;
@@ -31,6 +32,7 @@ pub use context::{
     ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
 pub use dynamic_document::dynamic_document;
+pub use dynamic_target::{dynamic_property_name, insert_dynamic_field, merge_dynamic_fragments};
 pub use failure::mapping_failure;
 pub use functions::FunctionError;
 pub use generated_sequence::{
@@ -192,6 +194,12 @@ pub enum RuntimeError {
     EmptyDynamicTargetPath {
         node: u32,
     },
+    DynamicPropertyName {
+        node: u32,
+        found: &'static str,
+    },
+    DuplicateDynamicProperty(String),
+    InvalidDynamicPropertyFragment,
     UserFunctionType {
         function: u64,
         parameter: Option<u64>,
@@ -377,6 +385,16 @@ impl fmt::Display for RuntimeError {
                     "node {node}: dynamic target path must not be empty"
                 )
             }
+            Self::DynamicPropertyName { node, found } => write!(
+                formatter,
+                "node {node}: dynamic target property name must be a string, got {found}"
+            ),
+            Self::DuplicateDynamicProperty(name) => write!(
+                formatter,
+                "dynamic target object contains duplicate or fixed-colliding property {name:?}"
+            ),
+            Self::InvalidDynamicPropertyFragment => formatter
+                .write_str("a dynamic object merge can contain only object property fragments"),
             Self::UserFunctionType {
                 function,
                 parameter,
@@ -445,6 +463,9 @@ impl std::error::Error for RuntimeError {
             | Self::InvalidBlockSize { .. }
             | Self::DynamicTargetPath { .. }
             | Self::EmptyDynamicTargetPath { .. }
+            | Self::DynamicPropertyName { .. }
+            | Self::DuplicateDynamicProperty(_)
+            | Self::InvalidDynamicPropertyFragment
             | Self::UserFunctionType { .. }
             | Self::XmlSerialization { .. } => None,
         }
@@ -1137,7 +1158,7 @@ mod tests {
     }
 
     #[test]
-    fn lookup_is_direct_strict_first_match_and_outward() {
+    fn lookup_is_strict_first_match_outward_and_flattens_repeated_ancestors() {
         let row = |key: Value, value: Option<Value>| {
             let mut fields = vec![field("Key", scalar(key))];
             if let Some(value) = value {
@@ -1185,7 +1206,7 @@ mod tests {
         );
         assert_eq!(
             rows[1].lookup(&["Catalog"], &["Key"], &integer(1), &["Value"]),
-            Ok(string("outer"))
+            Ok(Value::Null)
         );
         let scalars = repeated([scalar(string("first")), scalar(string("second"))]);
         assert_eq!(
@@ -1195,10 +1216,16 @@ mod tests {
 
         let multi_hop = group([field(
             "Groups",
-            repeated([group([field(
-                "Catalog",
-                repeated([row(string("A"), Some(string("flattened")))]),
-            )])]),
+            repeated([
+                group([field(
+                    "Catalog",
+                    repeated([row(string("B"), Some(string("first ancestor")))]),
+                )]),
+                group([field(
+                    "Catalog",
+                    repeated([row(string("A"), Some(string("flattened")))]),
+                )]),
+            ]),
         )]);
         assert_eq!(
             ScopeContext::new(&multi_hop).lookup(
@@ -1207,9 +1234,31 @@ mod tests {
                 &string("A"),
                 &["Value"]
             ),
-            Err(SourcePathError::MissingCollection {
-                path: vec!["Groups".into(), "Catalog".into()],
-            })
+            Ok(string("flattened"))
+        );
+
+        let nested_shadowing = group([
+            field(
+                "Directory",
+                group([field(
+                    "Catalog",
+                    repeated([row(string("A"), Some(string("outer nested")))]),
+                )]),
+            ),
+            field(
+                "Rows",
+                repeated([group([field("Directory", group(Vec::new()))])]),
+            ),
+        ]);
+        let inner_context = ScopeContext::new(&nested_shadowing).walk_source(&["Rows"]);
+        assert_eq!(
+            inner_context[0].lookup(
+                &["Directory", "Catalog"],
+                &["Key"],
+                &string("A"),
+                &["Value"]
+            ),
+            Ok(Value::Null)
         );
     }
 

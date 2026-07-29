@@ -4,12 +4,13 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::{FunctionId, Graph, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
-    Binding, Diagnostic, DynamicDocumentIteration, Expression, ExpressionNode, FailureIteration,
-    FailureRule, FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan,
-    IterationSource, JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
-    ProgramValidationError, ScalarFunction, ScopeFeature, SequenceWindow, SortKey, SortPlan,
-    SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
-    XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
+    Binding, Diagnostic, DynamicDocumentIteration, DynamicTargetBinding, DynamicTargetChild,
+    Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection, GeneratedSequence,
+    GroupingPlan, InnerJoin, IterationPlan, IterationSource, JoinId, JoinPlan, LowerError,
+    NamedSourceProgram, NamedTargetProgram, Program, ProgramValidationError, ScalarFunction,
+    ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration, TargetScope,
+    UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram, XmlMixedContentElement,
+    XmlMixedContentReplacement, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -171,7 +172,6 @@ fn lower_scope(
     diagnostics: &mut Vec<Diagnostic>,
     root_context: bool,
 ) -> TargetScope {
-    inspect_scope_features(scope, target_path, diagnostics);
     let iteration = if let Some(sequence) = scope.concatenated() {
         let mut segments = sequence
             .iter()
@@ -219,7 +219,7 @@ fn lower_scope(
         roots.push(sequence.item());
     }
     roots.extend(scope.output_path());
-    let construction = match &scope.construction {
+    let base_construction = match &scope.construction {
         ScopeConstruction::Scalar { value } => {
             roots.push(*value);
             crate::TargetConstruction::Scalar { expression: *value }
@@ -329,6 +329,88 @@ fn lower_scope(
             Some(lowered)
         })
         .collect();
+    let dynamic_target = target.dynamic_fields();
+    let dynamic_bindings = scope
+        .dynamic_bindings
+        .iter()
+        .filter_map(|binding| {
+            roots.extend([binding.key, binding.value]);
+            let Some(dynamic_target) = dynamic_target else {
+                diagnostics.push(Diagnostic::Validation {
+                    location: display_target_scope(target_path),
+                    message: "validated computed property target is not open".into(),
+                });
+                return None;
+            };
+            let SchemaKind::Scalar { ty } = dynamic_target.kind else {
+                diagnostics.push(Diagnostic::Validation {
+                    location: display_target_scope(target_path),
+                    message: "validated computed scalar property target is not scalar".into(),
+                });
+                return None;
+            };
+            Some(DynamicTargetBinding {
+                key: binding.key,
+                value: binding.value,
+                target_type: ty,
+            })
+        })
+        .collect::<Vec<_>>();
+    let dynamic_children = scope
+        .dynamic_children
+        .iter()
+        .filter_map(|child| {
+            roots.push(child.key);
+            let Some(dynamic_target) = dynamic_target else {
+                diagnostics.push(Diagnostic::Validation {
+                    location: display_target_scope(target_path),
+                    message: "validated computed child target is not open".into(),
+                });
+                return None;
+            };
+            target_path.push("*".into());
+            let lowered = lower_scope(
+                &child.scope,
+                dynamic_target,
+                target_path,
+                roots,
+                diagnostics,
+                child_root_context,
+            );
+            target_path.pop();
+            Some(DynamicTargetChild {
+                key: child.key,
+                scope: lowered,
+            })
+        })
+        .collect::<Vec<_>>();
+    let construction = if dynamic_bindings.is_empty()
+        && dynamic_children.is_empty()
+        && !scope.merge_dynamic_fields
+    {
+        base_construction
+    } else {
+        if !matches!(base_construction, crate::TargetConstruction::Group) {
+            diagnostics.push(Diagnostic::Validation {
+                location: display_target_scope(target_path),
+                message:
+                    "computed target properties cannot be combined with specialized construction"
+                        .into(),
+            });
+        }
+        let fixed_fields = match &target.kind {
+            SchemaKind::Group { children, .. } => {
+                children.iter().map(|child| child.name.clone()).collect()
+            }
+            SchemaKind::Scalar { .. } => Vec::new(),
+        };
+        crate::TargetConstruction::DynamicGroup {
+            fixed_fields,
+            bindings: dynamic_bindings,
+            children: dynamic_children,
+            merge: scope.merge_dynamic_fields,
+        }
+    };
 
     TargetScope {
         target_field: scope.target_field.clone(),
@@ -473,36 +555,6 @@ fn display_target_path(path: &[String], field: &str) -> String {
         format!("target field `{field}`")
     } else {
         format!("target field `{}/{field}`", path.join("/"))
-    }
-}
-
-fn inspect_scope_features(
-    scope: &Scope,
-    target_path: &[String],
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    let mut report = |feature| {
-        diagnostics.push(Diagnostic::UnsupportedScope {
-            target_path: target_path.to_vec(),
-            feature,
-        });
-    };
-    match &scope.iteration {
-        ScopeIteration::None
-        | ScopeIteration::Source(_)
-        | ScopeIteration::Sequence(_)
-        | ScopeIteration::InnerJoin { .. } => {}
-        ScopeIteration::DynamicDocuments { .. } => {}
-        ScopeIteration::Concatenate(_) => {}
-    }
-    if !scope.dynamic_bindings.is_empty() {
-        report(ScopeFeature::DynamicBindings);
-    }
-    if !scope.dynamic_children.is_empty() {
-        report(ScopeFeature::DynamicChildren);
-    }
-    if scope.merge_dynamic_fields {
-        report(ScopeFeature::DynamicFieldMerge);
     }
 }
 

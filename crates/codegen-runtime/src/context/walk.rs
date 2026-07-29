@@ -174,9 +174,9 @@ impl<'a> ScopeContext<'a> {
             .unwrap_or(Value::Null)
     }
 
-    /// Scans one directly resolved repeated collection in source order.
-    /// Lookup paths never flatten an intermediate repetition and row fields
-    /// never fall back to an enclosing source frame.
+    /// Scans one resolved repeated collection in source order.
+    /// Repeated ancestors are flattened left-to-right, while row fields never
+    /// fall back to an enclosing source frame.
     pub fn lookup(
         &self,
         collection: &[&str],
@@ -184,26 +184,44 @@ impl<'a> ScopeContext<'a> {
         needle: &Value,
         value: &[&str],
     ) -> Result<Value, SourcePathError> {
-        let items = self
+        let items = self.lookup_items(collection)?;
+        Ok(items
+            .iter()
+            .find_map(|item| {
+                direct_scalar(item, key)
+                    .is_some_and(|candidate| candidate == needle)
+                    .then(|| direct_scalar(item, value).cloned().unwrap_or(Value::Null))
+            })
+            .unwrap_or(Value::Null))
+    }
+
+    fn lookup_items(&self, path: &[&str]) -> Result<Vec<&Instance>, SourcePathError> {
+        if let Some((first, rest)) = path.split_first() {
+            for frame in self.frames.iter().rev() {
+                let Some(base) = frame.instance.field(first) else {
+                    continue;
+                };
+                let mut items = Vec::new();
+                visit_lookup_items(base, rest, &mut items);
+                return Ok(items);
+            }
+            if let Some(input) = self.named_input(first) {
+                let mut items = Vec::new();
+                visit_lookup_items(input, rest, &mut items);
+                return Ok(items);
+            }
+        } else if let Some(Instance::Repeated(items)) = self
             .frames
             .iter()
             .rev()
-            .find_map(|frame| direct_repeated(frame.instance, collection))
-            .or_else(|| {
-                let (name, rest) = collection.split_first()?;
-                direct_repeated(self.named_input(name)?, rest)
-            })
-            .ok_or_else(|| SourcePathError::MissingCollection {
-                path: collection
-                    .iter()
-                    .map(|segment| (*segment).to_string())
-                    .collect(),
-            })?;
-        Ok(items
-            .iter()
-            .find(|item| direct_scalar(item, key).is_some_and(|candidate| candidate == needle))
-            .and_then(|item| direct_scalar(item, value).cloned())
-            .unwrap_or(Value::Null))
+            .map(|frame| frame.instance)
+            .find(|instance| matches!(instance, Instance::Repeated(_)))
+        {
+            return Ok(items.iter().collect());
+        }
+        Err(SourcePathError::MissingCollection {
+            path: path.iter().map(|segment| (*segment).to_string()).collect(),
+        })
     }
 
     fn extend(&self, extension: Vec<ScopeFrame<'a>>) -> Self {
@@ -214,6 +232,24 @@ impl<'a> ScopeContext<'a> {
             named_inputs: self.named_inputs,
             execution: self.execution,
         }
+    }
+}
+
+fn visit_lookup_items<'a>(current: &'a Instance, path: &[&str], output: &mut Vec<&'a Instance>) {
+    if let Instance::Repeated(items) = current {
+        if path.is_empty() {
+            output.extend(items);
+        } else {
+            for item in items {
+                visit_lookup_items(item, path, output);
+            }
+        }
+        return;
+    }
+    if let Some((first, rest)) = path.split_first()
+        && let Some(next) = current.field(first)
+    {
+        visit_lookup_items(next, rest, output);
     }
 }
 
@@ -382,12 +418,4 @@ fn direct_scalar<'a>(source: &'a Instance, path: &[&str]) -> Option<&'a Value> {
         current = current.field(segment)?;
     }
     current.as_scalar()
-}
-
-fn direct_repeated<'a>(source: &'a Instance, path: &[&str]) -> Option<&'a [Instance]> {
-    let mut current = source;
-    for segment in path {
-        current = current.field(segment)?;
-    }
-    current.as_repeated()
 }

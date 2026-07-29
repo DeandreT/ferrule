@@ -148,7 +148,8 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              SequenceWindow, SortDirection, Value, adapt_target_value, aggregate,\n\
              adapt_user_function_value, apply_sequence_windows, call,\n\
              collection_find_selected, field, generate_sequence,\n\
-             dynamic_document, group, item_count, repeated,\n\
+             dynamic_document, dynamic_property_name, group, insert_dynamic_field,\n\
+             item_count, merge_dynamic_fragments, repeated,\n\
              recursive_collect, recursive_filter, recursive_sequence_parameter, require_bool, scalar,\n\
              parse_json, serialize_json, serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
              adjacency_tree, path_hierarchy,\n\
@@ -999,6 +1000,19 @@ fn collect_scopes<'a>(
         .enumerate()
         .map(|(index, _)| format!("{name}_{index}"))
         .collect::<Vec<_>>();
+    let dynamic_child_names = match &scope.construction {
+        TargetConstruction::DynamicGroup { children, .. } => children
+            .iter()
+            .enumerate()
+            .map(|(index, _)| format!("{name}_dynamic_{index}"))
+            .collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    let all_child_names = child_names
+        .iter()
+        .chain(&dynamic_child_names)
+        .cloned()
+        .collect::<Vec<_>>();
     let segment_names = scope
         .iteration
         .as_ref()
@@ -1011,7 +1025,7 @@ fn collect_scopes<'a>(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    output.push((name, scope, child_names.clone(), segment_names.clone()));
+    output.push((name, scope, all_child_names, segment_names.clone()));
     if let Some(sequence) = scope
         .iteration
         .as_ref()
@@ -1023,6 +1037,11 @@ fn collect_scopes<'a>(
     }
     for (child, child_name) in scope.children.iter().zip(child_names) {
         collect_scopes(child, child_name, output);
+    }
+    if let TargetConstruction::DynamicGroup { children, .. } = &scope.construction {
+        for (child, child_name) in children.iter().zip(dynamic_child_names) {
+            collect_scopes(&child.scope, child_name, output);
+        }
     }
 }
 
@@ -1169,6 +1188,13 @@ fn render_iteration_scope(
     output.push_str("    }\n");
     if iteration.dynamic_document_iteration().is_some() {
         output.push_str("    Ok(Instance::DocumentSet(outputs))\n");
+        return output;
+    }
+    if matches!(
+        &scope.construction,
+        TargetConstruction::DynamicGroup { merge: true, .. }
+    ) {
+        output.push_str("    merge_dynamic_fragments(outputs)\n");
         return output;
     }
     match iteration.output() {
@@ -1639,20 +1665,72 @@ fn render_scope_item(
             fields.push(format!("field({name}, scalar(value_{index}))"));
         }
     }
-    for (child, child_name) in scope.children.iter().zip(child_names) {
-        fields.push(format!(
-            "field({}, {child_name}({context})?)",
-            rust_string(&child.target_field)
-        ));
-    }
-    if fields.is_empty() {
-        output.push_str(&format!("{indent}let output = group(Vec::new());\n"));
-    } else {
-        output.push_str(&format!("{indent}let output = group([\n"));
+    if matches!(&scope.construction, TargetConstruction::DynamicGroup { .. }) {
+        output.push_str(&format!("{indent}let mut fields = vec![\n"));
         for field in fields {
             output.push_str(&format!("{indent}    {field},\n"));
         }
-        output.push_str(&format!("{indent}]);\n"));
+        output.push_str(&format!("{indent}];\n"));
+        let TargetConstruction::DynamicGroup {
+            fixed_fields,
+            bindings,
+            children,
+            ..
+        } = &scope.construction
+        else {
+            unreachable!("matched dynamic group")
+        };
+        let fixed_fields = fixed_fields
+            .iter()
+            .map(|name| rust_string(name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        for (index, binding) in bindings.iter().enumerate() {
+            output.push_str(&format!(
+                "{indent}let dynamic_key_{index} = dynamic_property_name({}, expression_{}({context})?)?;\n{indent}let dynamic_value_{index} = adapt_target_value(expression_{}({context})?, ScalarType::{});\n{indent}insert_dynamic_field(\n{indent}    &mut fields,\n{indent}    &[{fixed_fields}],\n{indent}    dynamic_key_{index},\n{indent}    scalar(dynamic_value_{index}),\n{indent})?;\n",
+                binding.key,
+                binding.key,
+                binding.value,
+                scalar_type_name(binding.target_type),
+            ));
+        }
+        for (child, child_name) in scope
+            .children
+            .iter()
+            .zip(&child_names[..scope.children.len()])
+        {
+            output.push_str(&format!(
+                "{indent}fields.push(field({}, {child_name}({context})?));\n",
+                rust_string(&child.target_field)
+            ));
+        }
+        for (index, (child, child_name)) in children
+            .iter()
+            .zip(&child_names[scope.children.len()..])
+            .enumerate()
+        {
+            output.push_str(&format!(
+                "{indent}let dynamic_child_key_{index} = dynamic_property_name({}, expression_{}({context})?)?;\n{indent}let dynamic_child_value_{index} = {child_name}({context})?;\n{indent}insert_dynamic_field(\n{indent}    &mut fields,\n{indent}    &[{fixed_fields}],\n{indent}    dynamic_child_key_{index},\n{indent}    dynamic_child_value_{index},\n{indent})?;\n",
+                child.key, child.key,
+            ));
+        }
+        output.push_str(&format!("{indent}let output = group(fields);\n"));
+    } else {
+        for (child, child_name) in scope.children.iter().zip(child_names) {
+            fields.push(format!(
+                "field({}, {child_name}({context})?)",
+                rust_string(&child.target_field)
+            ));
+        }
+        if fields.is_empty() {
+            output.push_str(&format!("{indent}let output = group(Vec::new());\n"));
+        } else {
+            output.push_str(&format!("{indent}let output = group([\n"));
+            for field in fields {
+                output.push_str(&format!("{indent}    {field},\n"));
+            }
+            output.push_str(&format!("{indent}]);\n"));
+        }
     }
     if let TargetConstruction::XmlMixedContent { elements } = &scope.construction {
         output.push_str(&format!(

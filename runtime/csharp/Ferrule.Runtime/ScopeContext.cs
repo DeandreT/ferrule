@@ -279,7 +279,8 @@ public sealed partial class ScopeContext
     /// <summary>
     /// Finds the first item whose exact scalar key equals <paramref name="matches"/>
     /// and returns its exact scalar value. Collection resolution falls back from
-    /// innermost to outermost source frames but never flattens repeated path segments.
+    /// innermost to outermost source frames. Repeated ancestors are flattened
+    /// left-to-right.
     /// </summary>
     public FerruleValue Lookup(
         IReadOnlyList<string> collection,
@@ -294,16 +295,7 @@ public sealed partial class ScopeContext
         ValidatePath(key);
         ValidatePath(value);
 
-        var items = FindLookupCollection(collection);
-        if (items is null)
-        {
-            var display = collection.Count == 0 ? "<current>" : string.Join('/', collection);
-            throw new FerruleRuntimeException(
-                FerruleRuntimeError.MissingSourceField,
-                $"Source collection '{display}' does not exist in the active scope context.");
-        }
-
-        foreach (var item in items)
+        foreach (var item in FindLookupItems(collection))
         {
             if (!TryResolveExactScalar(item, key, out var candidate) || candidate != matches)
             {
@@ -316,6 +308,66 @@ public sealed partial class ScopeContext
         }
 
         return FerruleValue.Null;
+    }
+
+    private IReadOnlyList<FerruleInstance> FindLookupItems(IReadOnlyList<string> path)
+    {
+        if (path.Count == 0)
+        {
+            for (var frameIndex = _frames.Count - 1; frameIndex >= 0; frameIndex--)
+            {
+                if (_frames[frameIndex] is FerruleRepeated repeated)
+                {
+                    return repeated.Items;
+                }
+            }
+        }
+        for (var frameIndex = _frames.Count - 1; frameIndex >= 0; frameIndex--)
+        {
+            if (path.Count == 0 ||
+                !TryGetField(_frames[frameIndex], path[0], out var baseInstance))
+            {
+                continue;
+            }
+            var items = new List<FerruleInstance>();
+            VisitLookupItems(baseInstance, path, 1, items);
+            return items;
+        }
+
+        var display = path.Count == 0 ? "<current>" : string.Join('/', path);
+        throw new FerruleRuntimeException(
+            FerruleRuntimeError.MissingSourceField,
+            $"Source collection '{display}' does not exist in the active scope context.");
+    }
+
+    private static void VisitLookupItems(
+        FerruleInstance current,
+        IReadOnlyList<string> path,
+        int consumed,
+        ICollection<FerruleInstance> output)
+    {
+        if (current is FerruleRepeated repeated)
+        {
+            if (consumed == path.Count)
+            {
+                foreach (var item in repeated.Items)
+                {
+                    output.Add(item);
+                }
+                return;
+            }
+
+            foreach (var item in repeated.Items)
+            {
+                VisitLookupItems(item, path, consumed, output);
+            }
+            return;
+        }
+        if (consumed < path.Count &&
+            TryGetField(current, path[consumed], out var next))
+        {
+            VisitLookupItems(next, path, consumed + 1, output);
+        }
     }
 
     /// <summary>
@@ -567,31 +619,6 @@ public sealed partial class ScopeContext
                 return _frames[index];
             }
         }
-        return null;
-    }
-
-    private IReadOnlyList<FerruleInstance>? FindLookupCollection(IReadOnlyList<string> path)
-    {
-        for (var frameIndex = _frames.Count - 1; frameIndex >= 0; frameIndex--)
-        {
-            var current = _frames[frameIndex];
-            var found = true;
-            for (var pathIndex = 0; pathIndex < path.Count; pathIndex++)
-            {
-                if (!TryGetField(current, path[pathIndex], out var next))
-                {
-                    found = false;
-                    break;
-                }
-                current = next;
-            }
-
-            if (found && current is FerruleRepeated repeated)
-            {
-                return repeated.Items;
-            }
-        }
-
         return null;
     }
 
