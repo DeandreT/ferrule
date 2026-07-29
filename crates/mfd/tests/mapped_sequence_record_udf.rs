@@ -96,6 +96,101 @@ fn target_with_extra(design: &str, prefix: &str) -> String {
     )
 }
 
+fn second_sequence_call() -> &'static str {
+    r#"<component name="MapExtra" library="user" kind="19"><data>
+    <root><entry name="Item" inpkey="31" componentid="301"/></root>
+    <root rootindex="1"><entry name="Line" outkey="50" componentid="302"><entry name="Extra" outkey="51"/></entry></root>
+  </data></component>"#
+}
+
+fn second_sequence_definition() -> &'static str {
+    r#"<component name="MapExtra" library="user" editable="1"><structure><children>
+  <component name="Item" library="xml" uid="301" kind="14"><properties UsageKind="input"/><data><root><entry name="Item" outkey="401"><entry name="Qty" outkey="402"/></entry></root><document schema="source.xsd" instanceroot="{}Source/{}Item"/><parameter usageKind="input" name="Items" sequence="1"/></data></component>
+  <component name="Line" library="xml" uid="302" kind="14"><properties UsageKind="output"/><data><root><entry name="Line" inpkey="403"><entry name="Extra" inpkey="404"/></entry></root><document schema="target.xsd" instanceroot="{}Target/{}Line"/><parameter usageKind="output" name="Lines" sequence="1"/></data></component>
+</children><graph><vertices>
+  <vertex vertexkey="401"><edges><edge vertexkey="403"/></edges></vertex>
+  <vertex vertexkey="402"><edges><edge vertexkey="404"/></edges></vertex>
+</vertices></graph></structure></component>"#
+}
+
+fn third_sequence_call() -> &'static str {
+    r#"<component name="MapExtraAgain" library="user" kind="19"><data>
+    <root><entry name="Item" inpkey="32" componentid="501"/></root>
+    <root rootindex="1"><entry name="Line" outkey="60" componentid="502"><entry name="Extra" outkey="61"/></entry></root>
+  </data></component>"#
+}
+
+fn third_sequence_definition() -> &'static str {
+    r#"<component name="MapExtraAgain" library="user" editable="1"><structure><children>
+  <component name="Item" library="xml" uid="501" kind="14"><properties UsageKind="input"/><data><root><entry name="Item" outkey="701"><entry name="Qty" outkey="702"/></entry></root><document schema="source.xsd" instanceroot="{}Source/{}Item"/><parameter usageKind="input" name="Items" sequence="1"/></data></component>
+  <component name="multiply" library="core" uid="503" kind="5"><sources><datapoint key="703"/><datapoint key="704"/></sources><targets><datapoint key="705"/></targets></component>
+  <component name="constant" library="core" uid="504" kind="2"><targets><datapoint key="706"/></targets><data><constant value="10" datatype="integer"/></data></component>
+  <component name="Line" library="xml" uid="502" kind="14"><properties UsageKind="output"/><data><root><entry name="Line" inpkey="707"><entry name="Extra" inpkey="708"/></entry></root><document schema="target.xsd" instanceroot="{}Target/{}Line"/><parameter usageKind="output" name="Lines" sequence="1"/></data></component>
+</children><graph><vertices>
+  <vertex vertexkey="701"><edges><edge vertexkey="707"/></edges></vertex>
+  <vertex vertexkey="702"><edges><edge vertexkey="703"/></edges></vertex>
+  <vertex vertexkey="706"><edges><edge vertexkey="704"/></edges></vertex>
+  <vertex vertexkey="705"><edges><edge vertexkey="708"/></edges></vertex>
+</vertices></graph></structure></component>"#
+}
+
+fn composed_sequence_mapping() -> String {
+    target_with_extra(mapping(), second_sequence_call())
+        .replacen(
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex>"#,
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="31"/></edges></vertex>"#,
+            1,
+        )
+        .replacen(
+            r#"<vertex vertexkey="42"><edges><edge vertexkey="22"/></edges></vertex>"#,
+            r#"<vertex vertexkey="42"><edges><edge vertexkey="22"/></edges></vertex><vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex>"#,
+            1,
+        )
+        .replacen(
+            "</mapping>",
+            &format!("{}</mapping>", second_sequence_definition()),
+            1,
+        )
+}
+
+fn colliding_projection_mapping() -> String {
+    composed_sequence_mapping()
+        .replacen(
+            second_sequence_call(),
+            &format!("{}{}", second_sequence_call(), third_sequence_call()),
+            1,
+        )
+        .replacen(
+            r#"<entry name="Extra" inpkey="23"/>"#,
+            r#"<entry name="Extra" inpkey="23"/><entry name="Extra" inpkey="24"/>"#,
+            1,
+        )
+        .replacen(
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="31"/></edges></vertex>"#,
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="31"/><edge vertexkey="32"/></edges></vertex>"#,
+            1,
+        )
+        .replacen(
+            r#"<vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex>"#,
+            r#"<vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex><vertex vertexkey="61"><edges><edge vertexkey="24"/></edges></vertex>"#,
+            1,
+        )
+        .replacen(
+            "</mapping>",
+            &format!("{}</mapping>", third_sequence_definition()),
+            1,
+        )
+}
+
+fn use_integer_extra(dir: &TempDir) -> std::io::Result<()> {
+    let path = dir.0.join("target.xsd");
+    let schema = std::fs::read_to_string(&path)?.replace(
+        r#"<xs:element name="Extra" type="xs:string" minOccurs="0"/>"#,
+        r#"<xs:element name="Extra" type="xs:integer" minOccurs="0"/>"#,
+    );
+    std::fs::write(path, schema)
+}
+
 fn item(code: &str, qty: i64) -> Instance {
     Instance::Group(vec![
         (
@@ -115,6 +210,13 @@ fn source(items: Vec<Instance>) -> Instance {
 
 fn scalar<'a>(instance: &'a Instance, field: &str) -> &'a Value {
     instance.field(field).and_then(Instance::as_scalar).unwrap()
+}
+
+fn repeated_field<'a>(instance: &'a Instance, field: &str) -> std::io::Result<&'a [Instance]> {
+    instance
+        .field(field)
+        .and_then(Instance::as_repeated)
+        .ok_or_else(|| std::io::Error::other(format!("missing repeated field `{field}`")))
 }
 
 #[test]
@@ -193,47 +295,239 @@ fn mapped_sequence_record_preserves_an_ordinary_extra_scalar_binding() {
 }
 
 #[test]
-fn mapped_sequence_record_rejects_a_descendant_owned_by_another_call() {
-    let extra_call = r#"<component name="MapExtra" library="user" kind="19"><data>
-    <root><entry name="Item" inpkey="31" componentid="301"/></root>
-    <root rootindex="1"><entry name="Line" outkey="50" componentid="302"><entry name="Extra" outkey="51"/></entry></root>
-  </data></component>"#;
-    let extra_definition = r#"<component name="MapExtra" library="user" editable="1"><structure><children>
-  <component name="Item" library="xml" uid="301" kind="14"><properties UsageKind="input"/><data><root><entry name="Item" outkey="401"><entry name="Qty" outkey="402"/></entry></root><document schema="source.xsd" instanceroot="{}Source/{}Item"/><parameter usageKind="input" name="Items" sequence="1"/></data></component>
-  <component name="Line" library="xml" uid="302" kind="14"><properties UsageKind="output"/><data><root><entry name="Line" inpkey="403"><entry name="Extra" inpkey="404"/></entry></root><document schema="target.xsd" instanceroot="{}Target/{}Line"/><parameter usageKind="output" name="Lines" sequence="1"/></data></component>
-</children><graph><vertices>
-  <vertex vertexkey="401"><edges><edge vertexkey="403"/></edges></vertex>
-  <vertex vertexkey="402"><edges><edge vertexkey="404"/></edges></vertex>
-</vertices></graph></structure></component>"#;
-    let design = target_with_extra(mapping(), extra_call)
+fn mapped_sequence_record_composes_disjoint_outputs_from_calls_sharing_driver()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = setup(&composed_sequence_mapping());
+    add_optional_extra_field(&dir);
+    use_integer_extra(&dir)?;
+    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let line = imported
+        .project
+        .root
+        .children
+        .first()
+        .ok_or_else(|| std::io::Error::other("missing Line scope"))?;
+    assert_eq!(line.target_field, "Line");
+    assert_eq!(line.source(), Some(["Item".to_string()].as_slice()));
+    assert_eq!(line.bindings.len(), 3);
+
+    let empty = engine::run(&imported.project, &source(Vec::new()))?;
+    assert!(
+        empty
+            .field("Line")
+            .and_then(Instance::as_repeated)
+            .is_some_and(<[Instance]>::is_empty)
+    );
+
+    let one = engine::run(&imported.project, &source(vec![item("A", 2)]))?;
+    let lines = repeated_field(&one, "Line")?;
+    assert_eq!(lines.len(), 1);
+    assert_eq!(scalar(&lines[0], "Label"), &Value::String("A!".into()));
+    assert_eq!(scalar(&lines[0], "Doubled"), &Value::Int(4));
+    assert_eq!(scalar(&lines[0], "Extra"), &Value::Int(2));
+
+    let input = source(vec![item("A", 2), item("A", 5), item("B", 1)]);
+    let output = engine::run(&imported.project, &input)?;
+    let lines = repeated_field(&output, "Line")?;
+    assert_eq!(lines.len(), 3);
+    assert_eq!(scalar(&lines[0], "Extra"), &Value::Int(2));
+    assert_eq!(scalar(&lines[1], "Label"), &Value::String("A!".into()));
+    assert_eq!(scalar(&lines[1], "Extra"), &Value::Int(5));
+    assert_eq!(scalar(&lines[2], "Label"), &Value::String("B!".into()));
+    assert_eq!(scalar(&lines[2], "Extra"), &Value::Int(1));
+
+    let exported = dir.0.join("composed-roundtrip.mfd");
+    assert!(mfd::export(&imported.project, &exported)?.is_empty());
+    let reimported = mfd::import(&exported)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let rerun = engine::run(&reimported.project, &input)?;
+    let rerun_lines = repeated_field(&rerun, "Line")?;
+    assert_eq!(rerun_lines.len(), lines.len());
+    for (actual, expected) in rerun_lines.iter().zip(lines) {
+        for field in ["Label", "Doubled", "Extra"] {
+            assert_eq!(scalar(actual, field), scalar(expected, field));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mapped_sequence_record_composition_is_component_and_edge_order_independent()
+-> Result<(), Box<dyn std::error::Error>> {
+    let call = second_sequence_call();
+    let design = composed_sequence_mapping()
+        .replacen(call, "", 1)
         .replacen(
-            r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex>"#,
+            r#"<component name="MapItems" library="user" kind="19">"#,
+            &format!("{call}<component name=\"MapItems\" library=\"user\" kind=\"19\">"),
+            1,
+        )
+        .replacen(
             r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="31"/></edges></vertex>"#,
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="31"/><edge vertexkey="30"/></edges></vertex>"#,
             1,
         )
         .replacen(
-            r#"<vertex vertexkey="42"><edges><edge vertexkey="22"/></edges></vertex>"#,
             r#"<vertex vertexkey="42"><edges><edge vertexkey="22"/></edges></vertex><vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex>"#,
-            1,
-        )
-        .replacen(
-            "</mapping>",
-            &format!("{extra_definition}</mapping>"),
+            r#"<vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex><vertex vertexkey="42"><edges><edge vertexkey="22"/></edges></vertex>"#,
             1,
         );
     let dir = setup(&design);
     add_optional_extra_field(&dir);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    use_integer_extra(&dir)?;
 
+    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let output = engine::run(
+        &imported.project,
+        &source(vec![item("A", 3), item("A", 3), item("B", 4)]),
+    )?;
+    let lines = repeated_field(&output, "Line")?;
+    assert_eq!(lines.len(), 3);
+    assert_eq!(scalar(&lines[0], "Extra"), &Value::Int(3));
+    assert_eq!(scalar(&lines[1], "Doubled"), &Value::Int(6));
+    assert_eq!(scalar(&lines[2], "Label"), &Value::String("B!".into()));
+    assert_eq!(scalar(&lines[2], "Extra"), &Value::Int(4));
+    Ok(())
+}
+
+#[test]
+fn mapped_sequence_record_projection_collisions_use_stable_output_pin_precedence()
+-> Result<(), Box<dyn std::error::Error>> {
+    let design = colliding_projection_mapping();
+    let calls = format!("{}{}", second_sequence_call(), third_sequence_call());
+    let reversed_calls = format!("{}{}", third_sequence_call(), second_sequence_call());
+    let permuted = design
+        .replacen(&calls, &reversed_calls, 1)
+        .replacen(
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="31"/><edge vertexkey="32"/></edges></vertex>"#,
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="32"/><edge vertexkey="31"/><edge vertexkey="30"/></edges></vertex>"#,
+            1,
+        )
+        .replacen(
+            r#"<vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex><vertex vertexkey="61"><edges><edge vertexkey="24"/></edges></vertex>"#,
+            r#"<vertex vertexkey="61"><edges><edge vertexkey="24"/></edges></vertex><vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex>"#,
+            1,
+        );
+
+    for design in [design, permuted] {
+        let dir = setup(&design);
+        add_optional_extra_field(&dir);
+        use_integer_extra(&dir)?;
+        let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+        assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+        assert!(
+            imported.warnings[0].contains("lowest output-pin projection was retained"),
+            "{:?}",
+            imported.warnings
+        );
+        assert!(engine::validate(&imported.project).is_empty());
+        let line = imported
+            .project
+            .root
+            .children
+            .first()
+            .ok_or_else(|| std::io::Error::other("missing owner Line scope"))?;
+        assert_eq!(line.bindings.len(), 3);
+
+        let output = engine::run(&imported.project, &source(vec![item("A", 2)]))?;
+        let lines = repeated_field(&output, "Line")?;
+        assert_eq!(lines.len(), 1);
+        assert_eq!(scalar(&lines[0], "Extra"), &Value::Int(2));
+    }
+    Ok(())
+}
+
+#[test]
+fn mapped_sequence_record_composition_rejects_different_control_on_the_same_collection()
+-> Result<(), Box<dyn std::error::Error>> {
+    let design = composed_sequence_mapping()
+        .replacen(
+            r#"<component name="target" library="xml" kind="14">"#,
+            r#"<component name="selected-items" library="core" kind="3"><sources><datapoint pos="0" key="70"/><datapoint pos="1" key="71"/></sources><targets><datapoint pos="0" key="72"/><datapoint/></targets></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="73"/></targets><data><constant value="true" datatype="boolean"/></data></component>
+  <component name="target" library="xml" kind="14">"#,
+            1,
+        )
+        .replacen(
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="31"/></edges></vertex>"#,
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="70"/></edges></vertex><vertex vertexkey="73"><edges><edge vertexkey="71"/></edges></vertex><vertex vertexkey="72"><edges><edge vertexkey="31"/></edges></vertex>"#,
+            1,
+        );
+    let dir = setup(&design);
+    add_optional_extra_field(&dir);
+    use_integer_extra(&dir)?;
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
-        imported
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("iteration into `Line` comes from an unsupported feed")),
+        imported.warnings[0].contains("does not use the structural owner's collection feed"),
         "{:?}",
         imported.warnings
     );
-    assert!(imported.project.root.children.is_empty());
+    assert!(engine::validate(&imported.project).is_empty());
+    let line = imported
+        .project
+        .root
+        .children
+        .first()
+        .ok_or_else(|| std::io::Error::other("missing owner Line scope"))?;
+    assert_eq!(line.target_field, "Line");
+    assert_eq!(line.bindings.len(), 2);
+
+    let output = engine::run(&imported.project, &source(vec![item("A", 2)]))?;
+    let lines = repeated_field(&output, "Line")?;
+    assert_eq!(lines.len(), 1);
+    assert_eq!(scalar(&lines[0], "Label"), &Value::String("A!".into()));
+    assert_eq!(scalar(&lines[0], "Doubled"), &Value::Int(4));
+    Ok(())
+}
+
+#[test]
+fn mapped_sequence_record_composition_retains_owner_for_duplicate_field()
+-> Result<(), Box<dyn std::error::Error>> {
+    let design = composed_sequence_mapping()
+        .replace(
+            r#"<entry name="Extra" outkey="51"/>"#,
+            r#"<entry name="Label" outkey="51"/>"#,
+        )
+        .replace(
+            r#"<entry name="Extra" inpkey="404"/>"#,
+            r#"<entry name="Label" inpkey="404"/>"#,
+        )
+        .replace(
+            r#"<vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex>"#,
+            r#"<vertex vertexkey="51"><edges><edge vertexkey="21"/></edges></vertex>"#,
+        );
+    let dir = setup(&design);
+    add_optional_extra_field(&dir);
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(
+        imported.warnings[0].contains("the structural owner was retained"),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(engine::validate(&imported.project).is_empty());
+    let line = imported
+        .project
+        .root
+        .children
+        .first()
+        .ok_or_else(|| std::io::Error::other("missing owner Line scope"))?;
+    assert_eq!(line.bindings.len(), 2);
+
+    let output = engine::run(&imported.project, &source(vec![item("A", 2)]))?;
+    let lines = repeated_field(&output, "Line")?;
+    assert_eq!(scalar(&lines[0], "Label"), &Value::String("A!".into()));
+    assert_eq!(scalar(&lines[0], "Doubled"), &Value::Int(4));
+    Ok(())
 }
 
 #[test]
