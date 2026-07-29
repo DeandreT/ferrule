@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace Ferrule.Runtime;
 
 /// <summary>Bounded schema-shaped JSON parsing and serialization for generated mappings.</summary>
-public static class FerruleJson
+public static partial class FerruleJson
 {
     public const int MaximumSchemaBytes = 1024 * 1024;
     public const int MaximumDocumentBytes = 64 * 1024 * 1024;
@@ -224,6 +224,12 @@ public static class FerruleJson
             scalarDomain,
             jsonAny,
             fixedValue);
+        var jsonMultipleOf = ReadJsonMultipleOf(
+            name,
+            element,
+            scalarDomain,
+            jsonAny,
+            fixedValue);
         var stringLengthRange = ReadStringLengthRange(
             name,
             element,
@@ -312,6 +318,7 @@ public static class FerruleJson
             scalarDomain,
             fixedValue,
             numericRange,
+            jsonMultipleOf,
             stringLengthRange,
             jsonPatterns,
             itemCountRange,
@@ -986,6 +993,7 @@ public static class FerruleJson
             throw Boundary(
                 $"JSON scalar '{schema.Name}' is outside its numeric range: {element.GetRawText()}.");
         }
+        ValidateJsonMultipleOf(schema, value);
         ValidateStringLength(schema, value);
         ValidateJsonPatterns(schema, value, budget);
         return value;
@@ -1229,6 +1237,7 @@ public static class FerruleJson
     {
         ValidateFixedOutput(schema, scalar, value);
         ValidateNumericRangeOutput(schema, scalar, value);
+        ValidateJsonMultipleOfOutput(schema, scalar, value);
         if (value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
         {
             writer.WriteNullValue();
@@ -1409,8 +1418,9 @@ public static class FerruleJson
         if (value.Kind == FerruleValueKind.Int64 &&
             !schema.ScalarDomain.HasFlag(JsonScalarDomain.Int64) &&
             schema.ScalarDomain.HasFlag(JsonScalarDomain.Double) &&
-            TryExactDouble(value.Int64Value, out _))
+            TryExactDouble(value.Int64Value, out var converted))
         {
+            ValidateJsonMultipleOf(schema, FerruleValue.FromDouble(converted));
             writer.WriteNumberValue(value.Int64Value);
             return;
         }
@@ -1421,6 +1431,7 @@ public static class FerruleJson
             writer.WriteNullValue();
             return;
         }
+        ValidateJsonMultipleOf(schema, normalized);
         ValidateStringLength(schema, normalized);
         ValidateJsonPatterns(schema, normalized, budget);
 
@@ -2309,6 +2320,7 @@ public static class FerruleJson
             JsonScalarDomain scalarDomain,
             FerruleValue? fixedValue,
             JsonNumericRange? numericRange,
+            JsonMultipleOfConstraints? jsonMultipleOf,
             JsonStringLengthRange? stringLengthRange,
             JsonPatternConstraints? jsonPatterns,
             JsonItemCountRange? itemCountRange,
@@ -2327,6 +2339,7 @@ public static class FerruleJson
             ScalarDomain = scalarDomain;
             Fixed = fixedValue;
             NumericRange = numericRange;
+            JsonMultipleOf = jsonMultipleOf;
             StringLengthRange = stringLengthRange;
             JsonPatterns = jsonPatterns;
             ItemCountRange = itemCountRange;
@@ -2354,6 +2367,8 @@ public static class FerruleJson
         public FerruleValue? Fixed { get; }
 
         public JsonNumericRange? NumericRange { get; }
+
+        public JsonMultipleOfConstraints? JsonMultipleOf { get; }
 
         public JsonStringLengthRange? StringLengthRange { get; }
 

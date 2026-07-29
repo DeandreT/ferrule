@@ -133,6 +133,12 @@ fn program_validation_rejects_invalid_schema_metadata_on_every_boundary() {
     let Ok(patterns) = ir::JsonPatternConstraints::new([["^A$"]]) else {
         panic!("test JSON pattern is valid");
     };
+    let Some(divisor) = ir::JsonMultipleOf::from_decimal_lexical("2") else {
+        panic!("test multipleOf divisor is valid");
+    };
+    let Ok(multiples) = ir::JsonMultipleOfConstraints::new([[divisor]]) else {
+        panic!("test multipleOf constraints are valid");
+    };
 
     let mut primary_source = program.clone();
     primary_source.source.numeric_range = Some(numeric);
@@ -181,6 +187,16 @@ fn program_validation_rejects_invalid_schema_metadata_on_every_boundary() {
     pattern_source.source.json_patterns = Some(patterns);
     assert!(matches!(
         validate_program(&pattern_source),
+        Err(ProgramValidationError::InvalidSchemaMetadata {
+            ref boundary,
+            ..
+        }) if boundary == "source"
+    ));
+
+    let mut multiple_source = program.clone();
+    multiple_source.source.json_multiple_of = Some(multiples);
+    assert!(matches!(
+        validate_program(&multiple_source),
         Err(ProgramValidationError::InvalidSchemaMetadata {
             ref boundary,
             ..

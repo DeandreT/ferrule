@@ -4,8 +4,8 @@ use ir::{
 };
 
 use super::{
-    files, formats, item_counts, parse, patterns, ranges, reject_unsupported_ref_siblings,
-    resolve_ref, string_lengths, unsupported_union,
+    files, formats, item_counts, multiples, parse, patterns, ranges,
+    reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -27,6 +27,8 @@ enum ExactScalarAlternative {
         ty: ScalarType,
         nullable: bool,
         formats: ir::JsonFormatAnnotations,
+        numeric_range: Option<ir::NumericRange>,
+        multiple_of: Option<ir::JsonMultipleOfConstraints>,
         string_length: Option<ir::StringLengthRange>,
         patterns: Option<ir::JsonPatternConstraints>,
     },
@@ -84,6 +86,9 @@ fn parse_scalar_composition(
     let mut scalar_types = Vec::new();
     let mut nullable = false;
     let mut format_annotations = ir::JsonFormatAnnotations::default();
+    let mut numeric_types = Vec::new();
+    let mut numeric_ranges = Vec::new();
+    let mut numeric_multiples = Vec::new();
     let mut string_lengths = Vec::new();
     let mut string_patterns = Vec::new();
     if let Some(format) = formats::validate(name, schema)? {
@@ -105,6 +110,8 @@ fn parse_scalar_composition(
                 ty,
                 nullable: branch_nullable,
                 formats: branch_formats,
+                numeric_range,
+                multiple_of,
                 string_length,
                 patterns: branch_patterns,
             } => {
@@ -128,6 +135,11 @@ fn parse_scalar_composition(
                     string_lengths.push(string_length);
                     string_patterns.push(branch_patterns);
                 }
+                if matches!(ty, ScalarType::Int | ScalarType::Float) {
+                    numeric_types.push(ty);
+                    numeric_ranges.push(numeric_range);
+                    numeric_multiples.push(multiple_of);
+                }
             }
             ExactScalarAlternative::Other => return Ok(None),
         }
@@ -148,6 +160,52 @@ fn parse_scalar_composition(
         SchemaNode::scalar_union(name, types)
     };
     node.nullable = nullable;
+    if !numeric_ranges.is_empty() {
+        let ranges_are_independent = numeric_ranges
+            .first()
+            .is_none_or(|first| numeric_ranges.iter().all(|candidate| candidate == first));
+        let multiples_are_independent = numeric_multiples
+            .first()
+            .is_none_or(|first| numeric_multiples.iter().all(|candidate| candidate == first));
+        if !ranges_are_independent && !multiples_are_independent {
+            return Err(unsupported_union(
+                name,
+                &format!(
+                    "scalar {keyword} correlates different numeric-range and multipleOf constraints"
+                ),
+            ));
+        }
+        let heterogeneous_numeric_types =
+            numeric_types.contains(&ScalarType::Int) && numeric_types.contains(&ScalarType::Float);
+        if heterogeneous_numeric_types && !multiples_are_independent {
+            return Err(unsupported_union(
+                name,
+                &format!(
+                    "scalar {keyword} correlates different numeric types and multipleOf constraints"
+                ),
+            ));
+        }
+        if matches!(node.kind, SchemaKind::ScalarUnion { .. })
+            && numeric_ranges.iter().any(Option::is_some)
+        {
+            return Err(unsupported_union(
+                name,
+                &format!(
+                    "scalar {keyword} numeric ranges cannot be attached to a heterogeneous scalar union"
+                ),
+            ));
+        }
+        node.numeric_range = if ranges_are_independent {
+            numeric_ranges.first().copied().flatten()
+        } else {
+            ranges::union(name, numeric_ranges)?
+        };
+        node.json_multiple_of = if multiples_are_independent {
+            numeric_multiples.first().cloned().flatten()
+        } else {
+            multiples::union(name, numeric_multiples)?
+        };
+    }
     if node.accepts_scalar_type(ScalarType::String) {
         let lengths_are_independent = string_lengths
             .first()
@@ -518,7 +576,6 @@ fn without_ignored_scalar_validation(schema: &serde_json::Value) -> serde_json::
         for keyword in [
             "const",
             "enum",
-            "multipleOf",
             "contentEncoding",
             "contentMediaType",
             "contentSchema",
@@ -579,6 +636,7 @@ pub(super) fn parse_nullable_composition(
             "maximum",
             "exclusiveMinimum",
             "exclusiveMaximum",
+            "multipleOf",
             "minItems",
             "maxItems",
             "minLength",
@@ -697,24 +755,7 @@ fn classify_exact_scalar_alternative(
 ) -> Result<ExactScalarAlternative, JsonFormatError> {
     if schema.get("allOf").is_some() {
         let parsed = parse(union_name, schema, doc, active_refs)?;
-        if parsed.repeating
-            || parsed.json_any
-            || parsed.fixed.is_some()
-            || parsed.numeric_range.is_some()
-            || parsed.item_count_range.is_some()
-        {
-            return Ok(ExactScalarAlternative::Other);
-        }
-        let SchemaKind::Scalar { ty } = parsed.kind else {
-            return Ok(ExactScalarAlternative::Other);
-        };
-        return Ok(ExactScalarAlternative::Scalar {
-            ty,
-            nullable: parsed.nullable,
-            formats: parsed.json_formats,
-            string_length: parsed.string_length_range,
-            patterns: parsed.json_patterns,
-        });
+        return Ok(exact_scalar_from_node(parsed));
     }
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
         let apply_siblings = files::ref_siblings_apply(schema);
@@ -733,92 +774,47 @@ fn classify_exact_scalar_alternative(
         active_refs.push(reference.to_string());
         let classified = classify_exact_scalar_alternative(union_name, resolved, doc, active_refs);
         active_refs.pop();
-        let mut classified = classified?;
+        let classified = classified?;
         if apply_siblings && !matches!(classified, ExactScalarAlternative::Other) {
             ensure_annotation_or_format_only(union_name, schema, "$ref")?;
-            let sibling_format = formats::validate(union_name, schema)?;
-            if let ExactScalarAlternative::Scalar {
-                ty: ScalarType::String,
-                nullable: _,
-                formats: annotations,
-                string_length,
-                patterns: branch_patterns,
-            } = &mut classified
-            {
-                if let Some(format) = sibling_format {
-                    formats::accumulate(
-                        union_name,
-                        annotations,
-                        core::iter::once(format.to_string()),
-                    )?;
-                }
-                *string_length = string_lengths::intersect(
-                    union_name,
-                    *string_length,
-                    string_lengths::parse(union_name, schema)?,
-                )?;
-                *branch_patterns = patterns::intersect(
-                    union_name,
-                    branch_patterns.take(),
-                    patterns::parse(union_name, schema)?,
-                )?;
-            } else {
-                string_lengths::validate_ignored(union_name, schema)?;
-                patterns::validate_ignored(union_name, schema)?;
-            }
+            return parse(union_name, schema, doc, active_refs).map(exact_scalar_from_node);
         }
         return Ok(classified);
     }
     let Some(ty) = schema.get("type").and_then(serde_json::Value::as_str) else {
         return Ok(ExactScalarAlternative::Other);
     };
-    let format = formats::validate(union_name, schema)?;
-    let string_length = string_lengths::parse(union_name, schema)?;
-    let pattern_constraints = patterns::parse(union_name, schema)?;
-    let classified = match ty {
-        "null" => ExactScalarAlternative::Null,
-        "string" => {
-            let mut annotations = ir::JsonFormatAnnotations::default();
-            if let Some(format) = format {
-                formats::accumulate(
-                    union_name,
-                    &mut annotations,
-                    core::iter::once(format.to_string()),
-                )?;
-            }
-            ExactScalarAlternative::Scalar {
-                ty: ScalarType::String,
-                nullable: false,
-                formats: annotations,
-                string_length,
-                patterns: pattern_constraints,
-            }
-        }
-        "integer" => ExactScalarAlternative::Scalar {
-            ty: ScalarType::Int,
-            nullable: false,
-            formats: Default::default(),
-            string_length: None,
-            patterns: None,
-        },
-        "number" => ExactScalarAlternative::Scalar {
-            ty: ScalarType::Float,
-            nullable: false,
-            formats: Default::default(),
-            string_length: None,
-            patterns: None,
-        },
-        "boolean" => ExactScalarAlternative::Scalar {
-            ty: ScalarType::Bool,
-            nullable: false,
-            formats: Default::default(),
-            string_length: None,
-            patterns: None,
-        },
-        _ => return Ok(ExactScalarAlternative::Other),
-    };
+    if ty == "null" {
+        ensure_exact_scalar_shape(union_name, schema)?;
+        return Ok(ExactScalarAlternative::Null);
+    }
+    if !matches!(ty, "string" | "integer" | "number" | "boolean") {
+        return Ok(ExactScalarAlternative::Other);
+    }
     ensure_exact_scalar_shape(union_name, schema)?;
-    Ok(classified)
+    parse(union_name, schema, doc, active_refs).map(exact_scalar_from_node)
+}
+
+fn exact_scalar_from_node(parsed: SchemaNode) -> ExactScalarAlternative {
+    if parsed.repeating
+        || parsed.json_any
+        || parsed.fixed.is_some()
+        || parsed.item_count_range.is_some()
+    {
+        return ExactScalarAlternative::Other;
+    }
+    let SchemaKind::Scalar { ty } = parsed.kind else {
+        return ExactScalarAlternative::Other;
+    };
+    ExactScalarAlternative::Scalar {
+        ty,
+        nullable: parsed.nullable,
+        formats: parsed.json_formats,
+        numeric_range: parsed.numeric_range,
+        multiple_of: parsed.json_multiple_of,
+        string_length: parsed.string_length_range,
+        patterns: parsed.json_patterns,
+    }
 }
 
 fn classify_exact_array_alternative(
@@ -889,6 +885,11 @@ fn ensure_exact_scalar_shape(
             && keyword.as_str() != "minLength"
             && keyword.as_str() != "maxLength"
             && keyword.as_str() != "pattern"
+            && keyword.as_str() != "minimum"
+            && keyword.as_str() != "maximum"
+            && keyword.as_str() != "exclusiveMinimum"
+            && keyword.as_str() != "exclusiveMaximum"
+            && keyword.as_str() != "multipleOf"
             && !is_annotation_keyword(keyword.as_str())
     }) {
         return Err(unsupported_union(
@@ -996,6 +997,11 @@ fn ensure_annotation_or_format_only(
             && keyword.as_str() != "minLength"
             && keyword.as_str() != "maxLength"
             && keyword.as_str() != "pattern"
+            && keyword.as_str() != "minimum"
+            && keyword.as_str() != "maximum"
+            && keyword.as_str() != "exclusiveMinimum"
+            && keyword.as_str() != "exclusiveMaximum"
+            && keyword.as_str() != "multipleOf"
             && !files::is_internal_ref_keyword(keyword)
             && !is_annotation_keyword(keyword.as_str())
     }) {
@@ -1028,6 +1034,7 @@ fn ensure_annotation_or_range_only(
                     | "maximum"
                     | "exclusiveMinimum"
                     | "exclusiveMaximum"
+                    | "multipleOf"
                     | "minItems"
                     | "maxItems"
                     | "minLength"
