@@ -209,6 +209,55 @@ fn payload_run_returns_dynamic_primary_then_extra_artifacts() -> anyhow::Result<
     Ok(())
 }
 
+#[test]
+fn payload_run_can_select_one_named_target_without_evaluating_primary() -> anyhow::Result<()> {
+    let source = br#"{"Rows":[{"Value":"primary path is intentionally absent"}]}"#;
+    let catalog = br#"{"Label":"selected"}"#;
+    let primary = cli::PayloadDocument::new(Path::new("input.json"), source)?;
+    let catalog = cli::PayloadDocument::new(Path::new("catalog.json"), catalog)?;
+    let named = [cli::NamedPayloadInput::new("catalog", catalog)?];
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("correlation_id", Value::String("txn-selected".into()))?;
+    let project = dynamic_output_project();
+
+    let all_error = cli::run_project_value_payloads(
+        &project,
+        Path::new("/virtual/project.json"),
+        &cli::PayloadRunOptions::new(primary)
+            .with_extra_sources(&named)
+            .with_runtime_parameters(&parameters),
+    )
+    .expect_err("all-target execution must evaluate the invalid primary path");
+    assert!(
+        all_error
+            .to_string()
+            .contains("dynamic target path produced null"),
+        "{all_error:#}"
+    );
+
+    let outcome = cli::run_project_value_payloads(
+        &project,
+        Path::new("/virtual/project.json"),
+        &cli::PayloadRunOptions::new(primary)
+            .with_extra_sources(&named)
+            .with_output_path(Path::new("selected-audit.json"))
+            .with_target(cli::TargetSelection::Named("audit"))
+            .with_runtime_parameters(&parameters),
+    )?;
+    assert_eq!(outcome.records_written, 1);
+    assert_eq!(outcome.artifacts.len(), 1);
+    assert_eq!(outcome.artifacts[0].target, "audit");
+    assert_eq!(outcome.artifacts[0].path, Path::new("selected-audit.json"));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&outcome.artifacts[0].bytes)?,
+        serde_json::json!({
+            "Label": "selected",
+            "Correlation": "txn-selected"
+        })
+    );
+    Ok(())
+}
+
 fn dynamic_source_project() -> Project {
     Project {
         source: SchemaNode::group(
