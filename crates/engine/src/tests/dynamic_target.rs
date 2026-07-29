@@ -160,7 +160,7 @@ fn merges_computed_scalar_fragments_into_one_open_object() {
         "Availability",
         vec![
             SchemaNode::scalar("Size", ScalarType::String),
-            SchemaNode::scalar("Count", ScalarType::Float),
+            SchemaNode::scalar("Count", ScalarType::Int),
         ],
     )
     .repeating();
@@ -204,16 +204,16 @@ fn merges_computed_scalar_fragments_into_one_open_object() {
         },
     };
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
-    let item = |size: &str, count: f64| {
+    let item = |size: &str, count: i64| {
         Instance::Group(vec![
             ("Size".into(), Instance::Scalar(Value::String(size.into()))),
-            ("Count".into(), Instance::Scalar(Value::Float(count))),
+            ("Count".into(), Instance::Scalar(Value::Int(count))),
         ])
     };
 
     let output = run(
         &project,
-        &Instance::Repeated(vec![item("S", 4.0), item("M", 2.0)]),
+        &Instance::Repeated(vec![item("S", 4), item("M", 2)]),
     )
     .unwrap();
 
