@@ -40,6 +40,9 @@ internal static partial class Program
     private const string PropertyDependenciesJsonSchema =
         "{\"name\":\"Root\",\"json_property_dependencies\":{\"Mode\":[\"Payload\"]},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Mode\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Payload\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Nested\",\"json_property_dependencies\":{\"Trigger\":[\"Value\"]},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Trigger\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Value\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Rows\",\"repeating\":true,\"json_property_dependencies\":{\"Trigger\":[\"Value\"]},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Trigger\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Value\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Maybe\",\"container_nullable\":true,\"json_property_dependencies\":{\"Trigger\":[\"Value\"]},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Trigger\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}";
 
+    private const string PropertyNamesJsonSchema =
+        "{\"name\":\"Root\",\"json_property_names\":{\"kind\":\"schema\",\"patterns\":{\"any_of\":[[\"^[A-Z][A-Za-z]*$\"]]},\"formats\":[\"identifier\"]},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Valid\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Nested\",\"json_property_names\":{\"kind\":\"schema\",\"allowed\":[\"\",\"Ok\"],\"length\":{\"maximum\":2}},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Ok\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Rows\",\"repeating\":true,\"json_property_names\":{\"kind\":\"schema\",\"patterns\":{\"any_of\":[[\"^[A-Z]+$\"]]}},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"CODE\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Maybe\",\"container_nullable\":true,\"json_property_names\":{\"kind\":\"never\"},\"kind\":{\"kind\":\"group\",\"children\":[]}},{\"name\":\"Open\",\"json_property_names\":{\"kind\":\"schema\",\"length\":{\"minimum\":2,\"maximum\":5},\"patterns\":{\"any_of\":[[\"^[a-z]+$\"]]}},\"kind\":{\"kind\":\"group\",\"children\":[],\"dynamic\":{\"name\":\"*\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}]}}";
+
     private const string ObjectOpennessJsonSchema =
         "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Known\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Nested\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Name\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Rows\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Code\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Maybe\",\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Id\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}]}},{\"name\":\"Open\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Fixed\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"dynamic\":{\"name\":\"*\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}]}}";
 
@@ -141,6 +144,7 @@ internal static partial class Program
         JsonItemCountBoundaries();
         JsonPropertyCountBoundaries();
         JsonPropertyDependencyBoundaries();
+        JsonPropertyNameBoundaries();
         JsonUniqueItemsBoundaries();
         JsonFormatAnnotationBoundaries();
         JsonStringLengthBoundaries();
@@ -461,6 +465,7 @@ internal static partial class Program
                 FerruleRuntimeError.JsonBoundary,
                 () => FerruleJson.Parse(invalidSchema, "{}"));
         }
+
     }
 
     private static void JsonPropertyDependencyBoundaries()
@@ -561,6 +566,122 @@ internal static partial class Program
             () => FerruleJson.Parse(
                 $"{{\"name\":\"Value\",\"json_property_dependencies\":{{\"a\":[\"{oversizedName}\"]}},\"kind\":{{\"kind\":\"group\",\"children\":[],\"dynamic\":{{\"name\":\"*\",\"json_any\":true,\"kind\":{{\"kind\":\"scalar\",\"ty\":\"string\"}}}}}}}}",
                 "{}"));
+    }
+
+    private static void JsonPropertyNameBoundaries()
+    {
+        const string valid =
+            "{\"Valid\":\"value\",\"Nested\":{\"\":\"empty\",\"Ok\":null},\"Rows\":[{\"CODE\":\"A\"},{}],\"Maybe\":null,\"Open\":{\"ab\":1,\"valid\":{\"nested\":true}}}";
+        var parsed = FerruleJson.Parse(PropertyNamesJsonSchema, valid);
+        Equal(
+            "{\n  \"Valid\": \"value\",\n  \"Nested\": {\n    \"\": \"empty\",\n    \"Ok\": null\n  },\n  \"Rows\": [\n    {\n      \"CODE\": \"A\"\n    },\n    {}\n  ],\n  \"Maybe\": null,\n  \"Open\": {\n    \"ab\": 1,\n    \"valid\": {\n      \"nested\": true\n    }\n  }\n}\n",
+            FerruleJson.Serialize(PropertyNamesJsonSchema, parsed));
+        Equal(
+            valid,
+            System.Text.Encoding.UTF8.GetString(
+                FerruleJson.SerializeBytes(
+                    PropertyNamesJsonSchema,
+                    FerruleJson.ParseBytes(
+                        PropertyNamesJsonSchema,
+                        System.Text.Encoding.UTF8.GetBytes(valid)))).Replace(
+                "\n",
+                string.Empty,
+                StringComparison.Ordinal).Replace(
+                "  ",
+                string.Empty,
+                StringComparison.Ordinal).Replace(
+                ": ",
+                ":",
+                StringComparison.Ordinal));
+
+        foreach (var input in new[]
+                 {
+                     "{\"lower\":\"value\"}",
+                     "{\"Nested\":{\"bad\":null}}",
+                     "{\"Rows\":[{\"code\":\"A\"}]}",
+                     "{\"Maybe\":{\"Value\":1}}",
+                     "{\"Open\":{\"a\":1}}",
+                     "{\"Open\":{\"TOOLONG\":1}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(PropertyNamesJsonSchema, input));
+        }
+
+        var outputError = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                PropertyNamesJsonSchema,
+                Group(
+                    Field(
+                        "Open",
+                        Group(Field("BAD", Scalar(Text("value"))))))));
+        Equal(
+            true,
+            outputError.Message.Contains(
+                "object 'Open' has invalid property name 'BAD'",
+                StringComparison.Ordinal));
+        Equal(
+            "{\n  \"Open\": {}\n}\n",
+            FerruleJson.Serialize(
+                PropertyNamesJsonSchema,
+                Group(
+                    Field(
+                        "Open",
+                        Group(
+                            Field(
+                                "BAD",
+                                Scalar(FerruleValue.Null)))))));
+
+        const string never =
+            "{\"name\":\"Empty\",\"json_property_names\":{\"kind\":\"never\"},\"kind\":{\"kind\":\"group\",\"children\":[]}}";
+        Equal("{}\n", FerruleJson.Serialize(never, FerruleJson.Parse(never, "{}")));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"never\"},\"kind\":{\"kind\":\"group\",\"children\":[],\"dynamic\":{\"name\":\"*\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}",
+                "{\"\":null}"));
+        const string oneScalarName =
+            "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\",\"length\":{\"minimum\":1,\"maximum\":1}},\"kind\":{\"kind\":\"group\",\"children\":[],\"dynamic\":{\"name\":\"*\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}";
+        _ = FerruleJson.Parse(oneScalarName, "{\"\\uD83D\\uDE00\":1}");
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(oneScalarName, "{\"e\\u0301\":1}"));
+
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\"},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"unknown\"},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"never\",\"extra\":true},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\",\"allowed\":[]},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\",\"allowed\":[\"b\",\"a\"]},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\",\"length\":{}},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\",\"patterns\":{\"any_of\":[]}},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\",\"patterns\":{\"any_of\":[[\"\"]]}},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\",\"formats\":[\"x\",\"x\"]},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"schema\",\"allowed\":[\"a\"],\"length\":{\"minimum\":2}},\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"never\"},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_property_names\":{\"kind\":\"never\"},\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Required\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"required\":[\"Required\"]}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "{}"));
+        }
+
+        var tooManyNames = System.Text.Json.JsonSerializer.Serialize(
+            Enumerable.Range(0, 4097).Select(index => $"n{index:D4}"));
+        var oversizedName = System.Text.Json.JsonSerializer.Serialize(
+            new[] { new string('x', 256 * 1024 + 1) });
+        foreach (var invalidAllowed in new[] { tooManyNames, oversizedName })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(
+                    $"{{\"name\":\"Value\",\"json_property_names\":{{\"kind\":\"schema\",\"allowed\":{invalidAllowed}}},\"kind\":{{\"kind\":\"group\",\"children\":[],\"dynamic\":{{\"name\":\"*\",\"json_any\":true,\"kind\":{{\"kind\":\"scalar\",\"ty\":\"string\"}}}}}}}}",
+                    "{}"));
+        }
     }
 
     private static void JsonUniqueItemsBoundaries()
