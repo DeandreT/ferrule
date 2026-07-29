@@ -20,6 +20,7 @@ mod object_openness;
 mod patterns;
 mod property_counts;
 mod property_dependencies;
+mod property_names;
 mod ranges;
 mod ref_dialects;
 mod required;
@@ -27,6 +28,7 @@ mod resources;
 mod string_lengths;
 mod unconstrained;
 mod unique_items;
+mod unsupported_array_keywords;
 
 fn export(schema: &SchemaNode) -> String {
     super::export(schema)

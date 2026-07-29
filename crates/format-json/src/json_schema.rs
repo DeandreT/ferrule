@@ -44,10 +44,12 @@ pub(crate) mod multiples;
 mod patterns;
 pub(crate) mod property_counts;
 pub(crate) mod property_dependencies;
+pub(crate) mod property_names;
 pub(crate) mod ranges;
 mod render;
 pub(crate) mod string_lengths;
 pub mod unique_items;
+mod unsupported_array_keywords;
 
 use all_of::parse_all_of;
 use alternatives::{
@@ -165,12 +167,14 @@ fn parse(
         active_refs.pop();
         let mut node = parsed?;
         if apply_siblings {
-            apply_known_shape_constraints(name, schema, &mut node)?;
+            apply_known_shape_constraints(name, schema, &mut node, doc, active_refs)?;
             formats::apply(name, schema, &mut node)?;
         }
         return Ok(node);
     }
     reject_unsupported_object_keywords(name, schema)?;
+    unsupported_array_keywords::reject_active_contains(name, schema)?;
+    property_names::validate_ignored(name, schema, doc, active_refs)?;
     if let Some(composition) = schema.get("allOf") {
         return parse_all_of(name, schema, composition, doc, active_refs);
     }
@@ -178,7 +182,7 @@ fn parse(
         if let Some(mut finite) =
             parse_finite_scalar_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
         {
-            apply_known_shape_constraints(name, schema, &mut finite)?;
+            apply_known_shape_constraints(name, schema, &mut finite, doc, active_refs)?;
             formats::apply(name, schema, &mut finite)?;
             return Ok(finite);
         }
@@ -204,7 +208,7 @@ fn parse(
         if let Some(mut nullable) =
             parse_nullable_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
         {
-            apply_nullable_composition_ranges(name, schema, &mut nullable)?;
+            apply_nullable_composition_ranges(name, schema, &mut nullable, doc, active_refs)?;
             formats::apply_first(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
@@ -240,7 +244,7 @@ fn parse(
         if let Some(mut finite) =
             parse_finite_scalar_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
         {
-            apply_known_shape_constraints(name, schema, &mut finite)?;
+            apply_known_shape_constraints(name, schema, &mut finite, doc, active_refs)?;
             formats::apply(name, schema, &mut finite)?;
             return Ok(finite);
         }
@@ -266,7 +270,7 @@ fn parse(
         if let Some(mut nullable) =
             parse_nullable_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
         {
-            apply_nullable_composition_ranges(name, schema, &mut nullable)?;
+            apply_nullable_composition_ranges(name, schema, &mut nullable, doc, active_refs)?;
             formats::apply_first(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
@@ -473,6 +477,14 @@ fn parse(
         &mut node,
         type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
+    property_names::apply(
+        name,
+        schema,
+        &mut node,
+        doc,
+        active_refs,
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
+    )?;
     unique_items::apply(
         name,
         schema,
@@ -499,18 +511,23 @@ fn apply_nullable_composition_ranges(
     name: &str,
     schema: &serde_json::Value,
     node: &mut SchemaNode,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
-    apply_known_shape_constraints(name, schema, node)
+    apply_known_shape_constraints(name, schema, node, doc, active_refs)
 }
 
 fn apply_known_shape_constraints(
     name: &str,
     schema: &serde_json::Value,
     node: &mut SchemaNode,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
     allowed_values::apply(name, schema, node)?;
     property_counts::apply(name, schema, node, false)?;
     property_dependencies::apply(name, schema, node, false)?;
+    property_names::apply(name, schema, node, doc, active_refs, false)?;
     if node.repeating {
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
@@ -541,6 +558,7 @@ fn reject_unresolved_ref_constraints(
             && property_counts::is_effectively_constrained(name, schema)?
         || property_dependencies::has_keywords(schema)
             && property_dependencies::is_effectively_constrained(name, schema)?
+        || property_names::has_keyword(schema)
         || unique_items::selected(name, schema)?
         || formats::has_keyword(schema)
         || string_lengths::has_keywords(schema)
@@ -597,7 +615,6 @@ fn unsupported_ref_sibling(keyword: &str) -> bool {
             | "properties"
             | "patternProperties"
             | "additionalProperties"
-            | "propertyNames"
             | "dependentSchemas"
             | "unevaluatedProperties"
             | "items"
@@ -918,6 +935,13 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
         return Err(JsonFormatError::InvalidPropertyDependenciesMetadata {
             reason:
                 "property dependencies must belong to feasible object nodes and fit property-count constraints"
+                    .to_string(),
+        });
+    }
+    if !schema.json_property_names_tree_is_valid() {
+        return Err(JsonFormatError::InvalidPropertyNameMetadata {
+            reason:
+                "property-name constraints must belong to feasible object nodes and admit unconditional properties"
                     .to_string(),
         });
     }

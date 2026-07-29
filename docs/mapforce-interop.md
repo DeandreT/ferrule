@@ -176,6 +176,16 @@ null bypasses the rule, compatible `allOf` branches unite rules, and alternative
 must share one identical effective relation. Schema-valued legacy dependencies
 and `dependentSchemas` trigger the existing actionable schema-fallback
 diagnostic rather than being silently discarded.
+Referenced JSON objects retain supported `propertyNames` schemas as well.
+Exact false, finite `const`/`enum` names, Unicode-scalar length intervals,
+bounded portable pattern conjunctions/disjunctions, and nonasserting `format`
+annotations remain executable across import, canonical schema export, and
+re-import. Native and generated Rust/C# boundaries check every raw parsed input
+key and normalized emitted key, including runtime-named and empty-string
+properties. Unconstrained forms normalize away; general correlated name unions
+and `not` produce the existing actionable schema-fallback diagnostic. Each
+referenced schema resource retains its dialect: Draft 4 ignores
+`propertyNames`, while Draft 6 and newer resources apply it.
 Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
 intervals measured in Unicode scalar values, including nullable fields, array
 items, typed dynamic properties, and compatible compositions. The constraints

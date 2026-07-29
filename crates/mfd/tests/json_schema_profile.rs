@@ -60,6 +60,12 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         "Known":{"type":"string"},
         "LegacyPeer":{"type":"string"}
       },
+      "propertyNames":{
+        "minLength":1,
+        "maxLength":24,
+        "pattern":"^[A-Za-z]+$",
+        "format":"member-name"
+      },
       "dependencies":{"Known":["LegacyPeer"]}
     },
     "TypedOpen":{
@@ -173,6 +179,26 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .as_ref()
             .and_then(|dependencies| dependencies.requirements("Known")),
         Some(&["LegacyPeer".to_string()][..])
+    );
+    let implicit_names = implicit_open
+        .json_property_names
+        .as_ref()
+        .ok_or("missing property-name constraints")?;
+    assert!(implicit_names.accepts("Known"));
+    assert!(implicit_names.accepts("arbitrary"));
+    assert!(!implicit_names.accepts("bad-key"));
+    assert_eq!(
+        implicit_names
+            .length()
+            .map(|length| (length.minimum(), length.maximum())),
+        Some((1, Some(24)))
+    );
+    assert_eq!(
+        implicit_names
+            .formats()
+            .and_then(|formats| formats.as_slice().first())
+            .map(String::as_str),
+        Some("member-name")
     );
     let typed_open = imported
         .project
@@ -373,6 +399,16 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     ));
     assert!(matches!(
         format_json::from_str(
+            r#"{"MaybeObject":{"Code":"A"},"ImplicitOpen":{"Known":"A","LegacyPeer":"B","bad-key":"value"},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal","Tracking":"opaque"}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::InvalidPropertyName {
+            ref object,
+            ref property,
+        }) if object == "ImplicitOpen" && property == "bad-key"
+    ));
+    assert!(matches!(
+        format_json::from_str(
             r#"{"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
             &imported.project.source,
         ),
@@ -467,6 +503,16 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     assert_eq!(
         exported_schema["properties"]["ImplicitOpen"]["dependentRequired"],
         serde_json::json!({"Known":["LegacyPeer"]})
+    );
+    assert_eq!(
+        exported_schema["properties"]["ImplicitOpen"]["propertyNames"],
+        serde_json::json!({
+            "type":"string",
+            "minLength":1,
+            "maxLength":24,
+            "pattern":"^[A-Za-z]+$",
+            "format":"member-name",
+        })
     );
     assert_eq!(
         exported_schema["properties"]["TypedOpen"]["additionalProperties"]["type"],
@@ -593,6 +639,31 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .and_then(|dependencies| dependencies.requirements("Known")),
         Some(&["LegacyPeer".to_string()][..])
     );
+    let reimported_names = reimported
+        .project
+        .source
+        .child("ImplicitOpen")
+        .and_then(|object| object.json_property_names.as_ref())
+        .ok_or("missing round-tripped property-name constraints")?;
+    assert!(reimported_names.accepts("Known"));
+    assert!(!reimported_names.accepts("bad-key"));
+    assert_eq!(
+        reimported_names
+            .formats()
+            .and_then(|formats| formats.as_slice().first())
+            .map(String::as_str),
+        Some("member-name")
+    );
+    assert!(matches!(
+        format_json::from_str(
+            r#"{"MaybeObject":{"Code":"A"},"ImplicitOpen":{"Known":"A","LegacyPeer":"B","bad-key":"value"},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal","Tracking":"opaque"}"#,
+            &reimported.project.source,
+        ),
+        Err(format_json::JsonFormatError::InvalidPropertyName {
+            ref object,
+            ref property,
+        }) if object == "ImplicitOpen" && property == "bad-key"
+    ));
     Ok(())
 }
 

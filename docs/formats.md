@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -92,6 +92,25 @@ layout and dialect details that an extension cannot express.
   256 triggers, 4,096 dependency edges, and 256 KiB of property-name text per
   object. Unconditional required-property closure must remain possible under
   the object's closed shape and `maxProperties` interval.
+  Object `propertyNames` constraints apply to every actual property name,
+  including declared fields, runtime-named fields, and the empty string. Input
+  checks raw parsed keys before object decoding; output checks the normalized
+  emitted key set after absent Ferrule values are omitted. Exact `false`
+  rejects every nonempty object, while `true` and an unconstrained schema
+  normalize away. Nullable object null bypasses name assertions, and each JSON
+  Lines object row is checked independently. Supported string assertions are
+  finite `const`/`enum` name
+  sets, `minLength`/`maxLength` measured in Unicode scalar values, bounded
+  portable `pattern` conjunctions/disjunctions, and ordered `format`
+  annotations retained without vocabulary assertion. General correlated
+  property-name unions and `not` reject instead of being widened. Draft 4
+  resources ignore `propertyNames`; Draft 6 and newer resources apply it.
+  Finite name domains are limited to 4,096 names, 256 KiB per name, and 1 MiB
+  total, while name patterns share the document's bounded matcher budget.
+  Active `contains` schemas, including Draft 2019-09 and newer
+  `minContains`/`maxContains` modifiers, reject explicitly instead of being
+  silently widened. Draft 4 resources and legacy `$ref` siblings continue to
+  ignore those keywords according to their declared dialect.
   Bounded scalar `const` and `enum` constraints are enforced exactly on both
   input and normalized output and survive canonical export. Sets may combine
   strings, booleans, signed integers, exactly representable finite numbers, and

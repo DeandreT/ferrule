@@ -1,8 +1,8 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use super::{
-    allowed_values, formats, item_counts, multiples, parse, patterns, property_counts,
-    property_dependencies, ranges, string_lengths, unique_items, unsupported_union,
+    allowed_values, files, formats, item_counts, multiples, parse, patterns, property_counts,
+    property_dependencies, property_names, ranges, string_lengths, unique_items, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -76,7 +76,8 @@ pub(super) fn parse_all_of(
         no_op_constraint_fallback &= (patterns::has_keyword(constraints)
             || unique_items::has_keyword(constraints)
             || property_counts::has_keywords(constraints)
-            || property_dependencies::has_keywords(constraints))
+            || property_dependencies::has_keywords(constraints)
+            || property_names::has_keyword(constraints))
             && (!patterns::has_keyword(constraints)
                 || !patterns::is_effectively_constrained(name, constraints)?)
             && (!unique_items::has_keyword(constraints)
@@ -85,6 +86,8 @@ pub(super) fn parse_all_of(
                 || !property_counts::is_effectively_constrained(name, constraints)?)
             && (!property_dependencies::has_keywords(constraints)
                 || !property_dependencies::is_effectively_constrained(name, constraints)?)
+            && (!property_names::has_keyword(constraints)
+                || property_names::selected(name, constraints, doc, active_refs)?.is_none())
             && !ranges::has_range_keywords(constraints)
             && !allowed_values::has_keyword(constraints)
             && !multiples::has_keyword(constraints)
@@ -118,6 +121,12 @@ pub(super) fn parse_all_of(
                     "property dependencies without a concrete object type also admit unconstrained non-object values",
                 ));
             }
+            if property_names::selected(name, constraints, doc, active_refs)?.is_some() {
+                return Err(unsupported_union(
+                    name,
+                    "propertyNames without a concrete object type also admits unconstrained non-object values",
+                ));
+            }
         }
     }
     let mut merged = match merged {
@@ -135,6 +144,7 @@ pub(super) fn parse_all_of(
         allowed_values::apply(name, &constraints, &mut merged)?;
         property_counts::apply(name, &constraints, &mut merged, false)?;
         property_dependencies::apply(name, &constraints, &mut merged, false)?;
+        property_names::apply(name, &constraints, &mut merged, doc, active_refs, false)?;
         if merged.repeating {
             ranges::validate_ignored(name, &constraints)?;
             multiples::validate_ignored(name, &constraints)?;
@@ -263,6 +273,7 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "dependencies"
                 | "dependentRequired"
                 | "dependentSchemas"
+                | "propertyNames"
                 | "uniqueItems"
                 | "minLength"
                 | "maxLength"
@@ -287,48 +298,51 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
         || item_counts::has_keywords(schema)
         || property_counts::has_keywords(schema)
         || property_dependencies::has_keywords(schema)
+        || property_names::has_keyword(schema)
         || unique_items::has_keyword(schema)
         || string_lengths::has_keywords(schema)
         || patterns::has_keyword(schema)
         || formats::has_keyword(schema))
         && object.keys().all(|keyword| {
-            matches!(
-                keyword.as_str(),
-                "minimum"
-                    | "const"
-                    | "enum"
-                    | "maximum"
-                    | "exclusiveMinimum"
-                    | "exclusiveMaximum"
-                    | "multipleOf"
-                    | "minItems"
-                    | "maxItems"
-                    | "minProperties"
-                    | "maxProperties"
-                    | "dependencies"
-                    | "dependentRequired"
-                    | "dependentSchemas"
-                    | "uniqueItems"
-                    | "minLength"
-                    | "maxLength"
-                    | "pattern"
-                    | "format"
-                    | "$schema"
-                    | "$id"
-                    | "id"
-                    | "$anchor"
-                    | "$dynamicAnchor"
-                    | "$comment"
-                    | "$defs"
-                    | "definitions"
-                    | "title"
-                    | "description"
-                    | "default"
-                    | "deprecated"
-                    | "readOnly"
-                    | "writeOnly"
-                    | "examples"
-            )
+            files::is_internal_ref_keyword(keyword)
+                || matches!(
+                    keyword.as_str(),
+                    "minimum"
+                        | "const"
+                        | "enum"
+                        | "maximum"
+                        | "exclusiveMinimum"
+                        | "exclusiveMaximum"
+                        | "multipleOf"
+                        | "minItems"
+                        | "maxItems"
+                        | "minProperties"
+                        | "maxProperties"
+                        | "dependencies"
+                        | "dependentRequired"
+                        | "dependentSchemas"
+                        | "propertyNames"
+                        | "uniqueItems"
+                        | "minLength"
+                        | "maxLength"
+                        | "pattern"
+                        | "format"
+                        | "$schema"
+                        | "$id"
+                        | "id"
+                        | "$anchor"
+                        | "$dynamicAnchor"
+                        | "$comment"
+                        | "$defs"
+                        | "definitions"
+                        | "title"
+                        | "description"
+                        | "default"
+                        | "deprecated"
+                        | "readOnly"
+                        | "writeOnly"
+                        | "examples"
+                )
         })
 }
 
@@ -364,6 +378,11 @@ fn intersect(
         target.json_property_dependencies.as_ref(),
         branch.json_property_dependencies.as_ref(),
     )?;
+    target.json_property_names = property_names::intersect(
+        name,
+        target.json_property_names.take(),
+        branch.json_property_names.clone(),
+    )?;
     target.json_unique_items |= branch.json_unique_items;
 
     let result = match (&target.kind, &branch.kind) {
@@ -379,7 +398,15 @@ fn intersect(
     };
     result?;
     property_counts::ensure_feasible(name, target)?;
-    property_dependencies::ensure_feasible(name, target)
+    property_dependencies::ensure_feasible(name, target)?;
+    if target.json_property_names_are_valid() && target.property_count_range_is_valid() {
+        Ok(())
+    } else {
+        Err(unsupported_union(
+            name,
+            "allOf propertyNames constraints reject an unconditionally required property or conflict with cardinality",
+        ))
+    }
 }
 
 fn intersect_scalar(

@@ -65,6 +65,61 @@ impl PatternRuntime {
             name: schema.name.clone(),
         })
     }
+
+    pub(super) fn validate_property_name(
+        &mut self,
+        schema: &SchemaNode,
+        property: &str,
+    ) -> Result<(), JsonFormatError> {
+        let Some(constraints) = &schema.json_property_names else {
+            return Ok(());
+        };
+        if matches!(constraints, ir::JsonPropertyNameConstraints::Never)
+            || constraints
+                .allowed()
+                .is_some_and(|allowed| !allowed.contains(property))
+            || constraints
+                .length()
+                .is_some_and(|length| !length.contains_str(property))
+        {
+            return Err(JsonFormatError::InvalidPropertyName {
+                object: schema.name.clone(),
+                property: property.to_string(),
+            });
+        }
+        let Some(patterns) = constraints.patterns() else {
+            return Ok(());
+        };
+        for alternative in patterns.any_of() {
+            let mut matched = true;
+            for source in alternative {
+                let Some(program) = self.programs.get(source) else {
+                    return Err(JsonFormatError::InvalidPatternMetadata {
+                        reason: format!("compiled program for `{source}` is missing"),
+                    });
+                };
+                match program.is_match_with_budget(property, &mut self.remaining_work) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        matched = false;
+                        break;
+                    }
+                    Err(_) => {
+                        return Err(JsonFormatError::PatternWorkLimit {
+                            name: schema.name.clone(),
+                        });
+                    }
+                }
+            }
+            if matched {
+                return Ok(());
+            }
+        }
+        Err(JsonFormatError::InvalidPropertyName {
+            object: schema.name.clone(),
+            property: property.to_string(),
+        })
+    }
 }
 
 fn collect_programs(
@@ -92,6 +147,21 @@ fn collect_programs(
                 })?;
                 programs.insert(source.clone(), program);
             }
+        }
+    }
+    if let Some(constraints) = &schema.json_property_names
+        && let Some(patterns) = constraints.patterns()
+    {
+        for source in patterns.any_of().iter().flatten() {
+            if programs.contains_key(source) {
+                continue;
+            }
+            let program = PortableJsonPattern::compile(source).map_err(|error| {
+                JsonFormatError::InvalidPatternMetadata {
+                    reason: error.to_string(),
+                }
+            })?;
+            programs.insert(source.clone(), program);
         }
     }
     let SchemaKind::Group { children, .. } = &schema.kind else {
