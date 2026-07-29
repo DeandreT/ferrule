@@ -9,6 +9,7 @@ use super::{export, import};
 use crate::JsonFormatError;
 
 mod all_of;
+mod resources;
 
 fn import_str(text: &str) -> SchemaNode {
     import_str_result(text).unwrap()
@@ -1167,27 +1168,24 @@ fn resolves_local_refs_including_root_and_defs() {
 }
 
 #[test]
-fn cyclic_and_external_refs_degrade_to_string_scalars() {
+fn cyclic_refs_degrade_to_string_scalars() {
     let schema = import_str(
         r##"{
   "title": "Tree",
   "type": "object",
   "properties": {
     "Label": { "type": "string" },
-    "Child": { "$ref": "#/properties/Child" },
-    "Remote": { "$ref": "other.json#/definitions/x" }
+    "Child": { "$ref": "#/properties/Child" }
   }
 }"##,
     );
 
-    for field in ["Child", "Remote"] {
-        assert!(matches!(
-            schema.child(field).unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::String
-            }
-        ));
-    }
+    assert!(matches!(
+        schema.child("Child").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::String
+        }
+    ));
 }
 
 #[test]

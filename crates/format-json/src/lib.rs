@@ -35,6 +35,14 @@ pub enum JsonFormatError {
     UnsupportedSchemaUnion { name: String, reason: String },
     #[error("JSON Schema object `{name}` is not representable: {reason}")]
     UnsupportedSchemaObject { name: String, reason: String },
+    #[error("JSON Schema resource `{reference}` from `{base}` cannot be loaded: {reason}")]
+    SchemaResource {
+        reference: String,
+        base: std::path::PathBuf,
+        reason: String,
+    },
+    #[error("JSON Schema resource graph exceeds the {limit} {kind} limit")]
+    SchemaResourceLimit { kind: &'static str, limit: usize },
     #[error("object `{name}` matches no declared schema alternative")]
     NoMatchingAlternative { name: String },
     #[error("object `{name}` matches more than one declared schema alternative")]

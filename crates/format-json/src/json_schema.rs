@@ -2,8 +2,9 @@
 //! `type: object/array/scalar` shapes into a [`SchemaNode`] tree. It reads
 //! `properties` (in document order) and `items`, maps `integer`/`number`/
 //! `boolean` to the corresponding scalar types, and resolves document-local
-//! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
-//! refs degrade to string scalars). Compatible closed-object `oneOf` and
+//! `$ref` pointers (`#/definitions/...`, `#/$defs/...`) plus bounded,
+//! traversal-confined relative local-file reference graphs. Cyclic references
+//! degrade to string scalars. Compatible closed-object `oneOf` and
 //! `anyOf` unions, their required scalar `const` or singleton-`enum`
 //! discriminators, and typed `additionalProperties` schemas are preserved.
 //! Compatible `allOf` intersections flatten across objects, scalar domains,
@@ -25,6 +26,7 @@ use crate::JsonFormatError;
 
 mod all_of;
 mod alternatives;
+mod files;
 mod render;
 
 use all_of::parse_all_of;
@@ -44,8 +46,17 @@ enum ImportedSchemaType<'a> {
 /// node is named by the schema's `title` (looked up through a root-level
 /// `$ref` too), falling back to `"root"`.
 pub fn import(path: &std::path::Path) -> Result<SchemaNode, JsonFormatError> {
-    let text = std::fs::read_to_string(path)?;
-    let value: serde_json::Value = serde_json::from_str(&text)?;
+    let package_root = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    import_with_root(path, package_root)
+}
+
+/// Imports a JSON Schema while confining relative local-file `$ref`
+/// dependencies to `package_root`.
+pub fn import_with_root(
+    path: &std::path::Path,
+    package_root: &std::path::Path,
+) -> Result<SchemaNode, JsonFormatError> {
+    let value = files::load(path, package_root)?;
     let name = value
         .get("title")
         .and_then(|t| t.as_str())
