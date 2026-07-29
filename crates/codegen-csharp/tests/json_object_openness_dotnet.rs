@@ -80,7 +80,7 @@ fn emitted_package_enforces_closed_objects_and_preserves_dynamic_fields()
 fn run_generated(program: &Program) -> Result<(), Box<dyn std::error::Error>> {
     let artifacts = codegen_csharp::emit(program)?;
     assert!(artifacts.files().iter().any(|file| {
-        file.path.as_str() == "Runtime/FerruleJson.ObjectOpenness.cs"
+        file.path.as_str() == "Runtime/Json/FerruleJson.ObjectOpenness.cs"
             && std::str::from_utf8(&file.contents)
                 .is_ok_and(|source| source.contains("ValidateDeclaredProperties"))
     }));

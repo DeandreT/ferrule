@@ -133,7 +133,7 @@ fn emitted_package_enforces_source_named_and_normalized_target_property_counts()
 fn run_generated(program: &Program) -> Result<(), Box<dyn std::error::Error>> {
     let artifacts = codegen_csharp::emit(program)?;
     assert!(artifacts.files().iter().any(|file| {
-        file.path.as_str() == "Runtime/FerruleJson.PropertyCounts.cs"
+        file.path.as_str() == "Runtime/Json/FerruleJson.PropertyCounts.cs"
             && std::str::from_utf8(&file.contents)
                 .is_ok_and(|source| source.contains("ValidateOutputPropertyCount"))
     }));
