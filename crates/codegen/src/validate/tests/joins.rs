@@ -713,7 +713,7 @@ fn validates_correlated_join_scopes_that_reach_an_immediate_parent_collection() 
 }
 
 #[test]
-fn rejects_correlated_join_scopes_that_reach_a_deeper_ancestor_collection() {
+fn validates_correlated_join_scopes_that_reach_a_deeper_runtime_ancestor() {
     let mut program = immediate_parent_correlated_program();
     let order = program.source.child("Order").expect("order source").clone();
     let line = order.child("Line").expect("line source").clone();
@@ -730,6 +730,75 @@ fn rejects_correlated_join_scopes_that_reach_a_deeper_ancestor_collection() {
     );
     program.root.children[0].iteration =
         Some(IterationPlan::source(vec!["Batch".into(), "Order".into()]));
+
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
+fn rejects_outer_correlated_sources_shadowed_by_an_inner_runtime_frame() {
+    let mut program = immediate_parent_correlated_program();
+    let order = program.source.child("Order").expect("order source").clone();
+    let line = order.child("Line").expect("line source").clone();
+    let product = order.child("Product").expect("product source").clone();
+    program.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Batch",
+                vec![
+                    SchemaNode::group(
+                        "Order",
+                        vec![
+                            line,
+                            SchemaNode::group(
+                                "Product",
+                                vec![SchemaNode::scalar("Other", ScalarType::String)],
+                            ),
+                        ],
+                    )
+                    .repeating(),
+                    product,
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    program.root.children[0].iteration =
+        Some(IterationPlan::source(vec!["Batch".into(), "Order".into()]));
+
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::JoinRequiresRootContext {
+            target_path: vec!["Order".into(), "Row".into(), "Match".into()],
+            join: JoinId::new(8),
+        })
+    );
+}
+
+#[test]
+fn rejects_correlated_join_sources_hidden_behind_a_non_frame_ancestor() {
+    let mut program = immediate_parent_correlated_program();
+    let order = program.source.child("Order").expect("order source").clone();
+    let line = order.child("Line").expect("line source").clone();
+    let product = order.child("Product").expect("product source").clone();
+    program.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Batch",
+                vec![SchemaNode::group(
+                    "Envelope",
+                    vec![SchemaNode::group("Order", vec![line]).repeating(), product],
+                )],
+            )
+            .repeating(),
+        ],
+    );
+    program.root.children[0].iteration = Some(IterationPlan::source(vec![
+        "Batch".into(),
+        "Envelope".into(),
+        "Order".into(),
+    ]));
 
     assert_eq!(
         validate_program(&program),

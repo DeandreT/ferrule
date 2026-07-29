@@ -377,38 +377,49 @@ fn is_bounded_correlated_plan(
     {
         return false;
     }
-    let runtime_parent = current_source.runtime_parent();
+    let runtime_ancestors = sources.runtime_ancestors(current_source);
     let mut has_current_singleton = false;
     let singletons_are_bounded_scalars = singleton_sources.into_iter().all(|singleton| {
-        let candidate = if let Some(candidate) = current_source.follow(singleton.collection()) {
-            has_current_singleton = true;
-            candidate.resolved()
-        } else if let Some(candidate) =
-            runtime_parent.and_then(|parent| parent.follow(singleton.collection()))
-        {
-            candidate.resolved()
-        } else {
-            sources
-                .root_schema_at(singleton.collection())
-                .and_then(SchemaCursor::resolved)
-        };
+        let candidate =
+            match runtime_candidate(current_source, &runtime_ancestors, singleton.collection()) {
+                Some((owned_by_current, candidate)) => {
+                    has_current_singleton |= owned_by_current;
+                    candidate.and_then(SchemaCursor::resolved)
+                }
+                None => sources
+                    .root_schema_at(singleton.collection())
+                    .and_then(SchemaCursor::resolved),
+            };
         candidate
             .is_some_and(|candidate| !candidate.node().repeating && candidate.node().is_scalar())
     });
     has_current_singleton
         && singletons_are_bounded_scalars
         && repeating_sources.into_iter().all(|repeating| {
-            if current_source.follow(repeating.collection()).is_some() {
-                return false;
+            match runtime_candidate(current_source, &runtime_ancestors, repeating.collection()) {
+                Some((true, _)) | Some((false, None)) => false,
+                Some((false, Some(candidate))) => candidate.node().repeating,
+                None => sources
+                    .root_schema_at(repeating.collection())
+                    .is_some_and(|candidate| candidate.node().repeating),
             }
-            if let Some(candidate) =
-                runtime_parent.and_then(|parent| parent.follow(repeating.collection()))
-            {
-                return !candidate.same_node(current_source) && candidate.node().repeating;
-            }
-            sources
-                .root_schema_at(repeating.collection())
-                .is_some_and(|candidate| candidate.node().repeating)
+        })
+}
+
+/// Finds the innermost active runtime frame owning a path's first segment.
+/// A frame that owns the prefix but not the complete path shadows every outer
+/// frame, matching generated runtime source selection.
+fn runtime_candidate<'a>(
+    current: SchemaCursor<'a>,
+    ancestors: &[SchemaCursor<'a>],
+    path: &[String],
+) -> Option<(bool, Option<SchemaCursor<'a>>)> {
+    std::iter::once((true, current))
+        .chain(ancestors.iter().copied().map(|ancestor| (false, ancestor)))
+        .find_map(|(is_current, candidate)| {
+            candidate
+                .owns_first(path)
+                .then(|| (is_current, candidate.follow(path)))
         })
 }
 
