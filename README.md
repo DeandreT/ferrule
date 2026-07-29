@@ -139,9 +139,17 @@ Emit machine-readable validation diagnostics:
 cargo +nightly run -p cli -- --diagnostics json validate --project project.json
 ```
 
+Capture a deterministic execution trace without changing stdout or diagnostic
+output:
+
+```sh
+cargo +nightly run -p cli -- run --project project.json --trace-json run.trace.jsonl
+```
+
 ## Documentation
 
 - [Mapping model and workspace architecture](docs/architecture.md)
+- [Execution trace JSON Lines contract](docs/tracing.md)
 - [Supported formats](docs/formats.md)
 - [MapForce interoperability](docs/mapforce-interop.md)
 - [Rust and C# code generation](docs/code-generation.md)
