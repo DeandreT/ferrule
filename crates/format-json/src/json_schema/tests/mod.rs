@@ -13,6 +13,7 @@ mod constraints;
 mod item_counts;
 mod nullable_composition;
 mod ranges;
+mod ref_dialects;
 mod required;
 mod resources;
 mod unconstrained;
