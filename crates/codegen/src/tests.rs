@@ -7,8 +7,8 @@ use mapping::{
 };
 
 use crate::{
-    Diagnostic, Expression, GeneratedSequence, IterationPlan, SUPPORTED_SCALAR_CALLS,
-    ScalarFunction, ScopeFeature, lower,
+    Diagnostic, Expression, GeneratedSequence, IterationPlan, ProgramValidationError,
+    SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeFeature, SourceIteration, lower, validate_program,
 };
 
 mod adjacency_tree;

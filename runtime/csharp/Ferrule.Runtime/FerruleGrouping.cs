@@ -245,7 +245,8 @@ public sealed partial class ScopeContext
             contexts[index] = new ScopeContext(
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
-                _executionContext);
+                _executionContext,
+                _dynamicSourceLoader);
         }
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }

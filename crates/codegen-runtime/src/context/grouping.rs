@@ -14,6 +14,7 @@ struct OwnedGroup<'a> {
     prefix: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
     execution: Option<crate::ExecutionContext<'a>>,
+    dynamic_source_loader: Option<&'a dyn crate::DynamicSourceLoader>,
     wrapper: Option<Instance>,
     members: Instance,
     collection: Vec<String>,
@@ -339,6 +340,7 @@ impl<'a> GroupedItems<'a> {
                     frames,
                     named_inputs: group.named_inputs,
                     execution: group.execution,
+                    dynamic_source_loader: group.dynamic_source_loader,
                 }
             })
             .collect()
@@ -364,6 +366,7 @@ impl<'a> GroupedItems<'a> {
                         prefix: group.first.frames[..prefix_len].to_vec(),
                         named_inputs: group.first.named_inputs,
                         execution: group.first.execution,
+                        dynamic_source_loader: group.first.dynamic_source_loader,
                         wrapper,
                         members,
                         collection,

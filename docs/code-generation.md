@@ -30,6 +30,12 @@ Projects with static named sources use `ExecuteWithSources` or
 `ExecuteOutputsWithSources` and pass `NamedInput` values. Inputs may arrive in
 any order; the generated boundary validates their exact ordinal names and
 normalizes them to project order before evaluating the mapping.
+Projects with per-driver dynamic sources use
+`ExecuteWithDynamicSourceLoader`,
+`ExecuteWithSourcesAndDynamicSourceLoader`, or the corresponding
+`ExecuteOutputs...` and execution-context variants. The host implements
+`IFerruleDynamicSourceLoader` and returns one schema-shaped `FerruleInstance`
+for each generated `(sourceName, logicalPath)` request.
 
 ## Rust
 
@@ -53,6 +59,31 @@ For projects with static named sources, `execute_with_sources` and
 `execute_outputs_with_sources` accept borrowed `NamedInput` values, with
 matching variants that also accept an execution context. No source instance is
 cloned while building the generated scope context.
+Per-driver sources use `execute_with_dynamic_source_loader`,
+`execute_with_sources_and_dynamic_source_loader`, or their output/context
+variants. The host implements `DynamicSourceLoader` and returns one
+schema-shaped `Instance` for each source-name/logical-path request.
+
+## Dynamic Source Host Boundary
+
+Dynamic source paths remain graph expressions evaluated once for every item in
+their declared primary-source driver iteration. Requests are issued in driver
+order. An absent or explicit JSON-null path skips that driver; a non-string path
+is a typed error. Each loaded document is paired with only the driver context
+that requested it, so fields from another driver item cannot leak into its
+mapping result.
+
+Generated code never opens a file or URL. Resolving, authorizing, confining, and
+optionally caching each logical path is the host's responsibility. The typed
+loader must return one document matching the named source's embedded schema.
+Dynamic declarations are not part of the ordinary `NamedInput` list, so static
+missing/duplicate/unexpected-name validation remains independent.
+
+Both runtimes cap a dynamic source at 1,000,000 driver requests and each UTF-8
+logical path at 4,096 bytes. Missing loaders, non-string paths, excessive paths
+or request counts, and host load failures retain distinct runtime error
+categories with the source name, expression node where applicable, and logical
+path for load failures.
 
 ## JSON Host Boundary
 
@@ -96,6 +127,13 @@ the same mapping paths, stable date-time, and typed runtime parameters as the
 instance APIs. Named inputs are exact, ordinal, duplicate-checked, and normalized
 to project order before execution.
 
+Dynamic JSON sources use `execute_json_with_dynamic_source_loader` in Rust or
+`ExecuteJsonWithDynamicSourceLoader` in C#, with source-aware, output-set, and
+execution-context variants matching the typed APIs. The host implements
+`DynamicJsonSourceLoader` or `IFerruleDynamicJsonSourceLoader` and returns
+bytes. Generated adapters require strict UTF-8, parse each document against the
+correct embedded dynamic-source schema, and then invoke the same typed mapping.
+
 Each JSON input and output document is limited to 64 MiB, and each trusted
 embedded schema is limited to 1 MiB. Invalid JSON shape, non-exact numeric
 conversion, output serialization, and size failures remain typed boundary
@@ -103,6 +141,8 @@ errors. These APIs intentionally use JSON regardless of stored project paths or
 format options; hosts needing X12, XML, database, or other physical formats
 should use the interpreter payload API or adapt a typed `Instance` at their own
 boundary.
+Dynamic JSON documents share the 64 MiB per-document limit and additionally
+have a 256 MiB combined budget per execution.
 
 ## Runnable Hosts
 
@@ -184,6 +224,9 @@ The current portable model includes:
   from the same source context and graph
 - ordered static named inputs shared by every target, including field access,
   source iteration, aggregates, lookups, and recursive collection generation
+- deterministic per-driver dynamic named sources supplied through explicit
+  typed or bounded JSON host loaders, with graph-computed paths, driver-context
+  isolation, and no generated filesystem access
 - ordered mapping failure rules over source or generated sequences, with exact
   true/false selection, first-item short-circuiting, and lazy optional messages
 - source-backed empty, nested, and multi-hop iteration
@@ -233,9 +276,7 @@ tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
 expose materially different regex dialects and Unicode behavior, so patterns
 outside the shared non-backtracking dialect can produce a backend-specific
 invalid-pattern error; exact cross-backend support needs a Ferrule-owned
-matcher. Per-item dynamic named sources remain
-interpreter-only because their graph-computed paths require a typed host loader
-contract during scope evaluation. Direct correlated join scopes and
+matcher. Direct correlated join scopes and
 joined-tuple aggregates beyond the exact active-singleton-to-repeating
 two-source shape remain interpreter-only; their ownership and parent-context
 rules need a broader portable join model. Code generation is

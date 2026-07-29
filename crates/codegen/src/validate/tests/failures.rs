@@ -29,6 +29,7 @@ fn validates_empty_primary_and_named_source_collections() {
             "CatalogDocument",
             vec![SchemaNode::group("Entries", Vec::new()).repeating()],
         ),
+        dynamic: None,
     });
     valid.failure_rules = vec![
         source_rule(&[]),
@@ -258,6 +259,7 @@ fn validates_recursive_paths_against_a_named_source_root() {
                 SchemaNode::recursive_group("children", "Directory").repeating(),
             ],
         ),
+        dynamic: None,
     });
     program.expressions.push(ExpressionNode {
         id: 3,

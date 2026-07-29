@@ -476,6 +476,17 @@ impl FailureSelection {
 pub struct NamedSourceProgram {
     pub name: String,
     pub source: SchemaNode,
+    /// Per-driver loading plan. Static sources leave this absent and are
+    /// supplied once through the generated mapping's named-input API.
+    pub dynamic: Option<DynamicSourceProgram>,
+}
+
+/// One host-loaded secondary document whose logical path is evaluated in a
+/// primary-source driver context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynamicSourceProgram {
+    pub path: NodeId,
+    pub driver: SourceIteration,
 }
 
 /// One named output lowered against the program's shared source and graph.

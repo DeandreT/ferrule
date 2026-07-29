@@ -193,6 +193,7 @@ fn emits_ordered_lazy_failures_before_every_target() {
             ],
         )
         .repeating(),
+        dynamic: None,
     });
     program.failure_rules.insert(
         1,

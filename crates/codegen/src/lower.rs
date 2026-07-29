@@ -4,13 +4,13 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::{FunctionId, Graph, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
-    Binding, Diagnostic, DynamicDocumentIteration, DynamicTargetBinding, DynamicTargetChild,
-    Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection, GeneratedSequence,
-    GroupingPlan, InnerJoin, IterationPlan, IterationSource, JoinId, JoinPlan, LowerError,
-    NamedSourceProgram, NamedTargetProgram, Program, ProgramValidationError, ScalarFunction,
-    ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration, TargetScope,
-    UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram, XmlMixedContentElement,
-    XmlMixedContentReplacement, validate_program,
+    Binding, Diagnostic, DynamicDocumentIteration, DynamicSourceProgram, DynamicTargetBinding,
+    DynamicTargetChild, Expression, ExpressionNode, FailureIteration, FailureRule,
+    FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource,
+    JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
+    ProgramValidationError, ScalarFunction, ScopeFeature, SequenceWindow, SortKey, SortPlan,
+    SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
+    XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -28,18 +28,23 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     }
 
     let mut diagnostics = Vec::new();
-    inspect_dynamic_sources(project, &mut diagnostics);
+    let mut roots = Vec::new();
     let extra_sources = project
         .extra_sources
         .iter()
-        .filter(|source| source.dynamic_path.is_none())
         .map(|source| NamedSourceProgram {
             name: source.name.clone(),
             source: source.schema.clone(),
+            dynamic: source.dynamic_path.as_ref().map(|dynamic| {
+                roots.push(dynamic.node);
+                DynamicSourceProgram {
+                    path: dynamic.node,
+                    driver: SourceIteration::new(dynamic.iteration.clone()),
+                }
+            }),
         })
         .collect();
 
-    let mut roots = Vec::new();
     let failure_rules = project
         .failure_rules
         .iter()
@@ -122,18 +127,6 @@ fn portable_context_error(error: &ProgramValidationError) -> Option<Diagnostic> 
         }
         ProgramValidationError::NamedTarget { error, .. } => portable_context_error(error),
         _ => None,
-    }
-}
-
-fn inspect_dynamic_sources(project: &Project, diagnostics: &mut Vec<Diagnostic>) {
-    for source in &project.extra_sources {
-        if let Some(dynamic) = &source.dynamic_path {
-            diagnostics.push(Diagnostic::UnsupportedDynamicSource {
-                source: source.name.clone(),
-                path_expression: dynamic.node,
-                iteration: dynamic.iteration.clone(),
-            });
-        }
     }
 }
 

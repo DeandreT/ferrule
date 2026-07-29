@@ -59,6 +59,7 @@ impl<'a> ScopeContext<'a> {
                     frames,
                     named_inputs: self.named_inputs,
                     execution: self.execution,
+                    dynamic_source_loader: self.dynamic_source_loader,
                 }
             })
             .collect())
