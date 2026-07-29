@@ -120,7 +120,7 @@ fn copy_all_recovers_a_same_named_group_lost_by_entry_tree_fallback() -> Result<
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Inbound">
     <xs:complexType><xs:sequence>
-      <xs:any namespace="##any" processContents="skip"
+      <xs:any namespace="##any" processContents="strict"
               minOccurs="0" maxOccurs="unbounded"/>
     </xs:sequence></xs:complexType>
   </xs:element>
