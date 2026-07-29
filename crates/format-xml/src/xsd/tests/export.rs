@@ -84,6 +84,29 @@ fn export_represents_generic_element_groups_as_xsd_wildcards() {
 }
 
 #[test]
+fn export_rejects_lossy_generic_attribute_groups() {
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            SchemaNode::group(
+                ir::XML_ATTRIBUTES_FIELD,
+                vec![
+                    SchemaNode::scalar(ir::XML_LOCAL_NAME_FIELD, ScalarType::String),
+                    SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+
+    assert!(matches!(
+        export(&schema),
+        Err(XmlFormatError::UnsupportedXmlAttributeWildcard { reason })
+            if reason.contains("repeating unqualified group")
+    ));
+}
+
+#[test]
 fn export_roundtrips_named_base_and_derived_group_alternatives() {
     let address = SchemaNode::group(
         "Address",
