@@ -898,7 +898,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         &mapping_el,
         target,
         &structure,
-        path,
+        resources,
         &edge_from,
         &copy_all_targets,
         &mut builder,
@@ -910,7 +910,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
             &mapping_el,
             extra,
             &structure,
-            path,
+            resources,
             &edge_from,
             &copy_all_targets,
             &mut builder,
@@ -1105,7 +1105,7 @@ fn build_target_scope(
     mapping: &roxmltree::Node<'_, '_>,
     target: &SchemaComponent,
     structure: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     edge_from: &BTreeMap<u32, u32>,
     copy_all_targets: &BTreeSet<u32>,
     builder: &mut GraphBuilder<'_>,
@@ -1303,8 +1303,8 @@ fn build_target_scope(
     dynamic_json::build_target(dynamic_target, target, builder, &mut scopes);
     compose_csv_target_rows(csv_singleton_bindings, builder, &mut scopes);
     target_node_default::install(target, structure, builder, &mut scopes);
-    target_node_function::install(mapping, target, structure, mfd_path, builder, &mut scopes);
-    target_type_cast::install(target, structure, mfd_path, builder, &mut scopes);
+    target_node_function::install(mapping, target, structure, resources, builder, &mut scopes);
+    target_type_cast::install(target, structure, resources, builder, &mut scopes);
     group_projection::install_optional_text_occurrences(target, builder, &mut scopes);
     ensure_singleton_csv_row_set(target, &mut scopes);
     scopes.root

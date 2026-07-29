@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use ir::SchemaNode;
 
-use super::{parse_u32, read_xml_schema_file, resolve_xml_schema_reference};
+use crate::resource::ResourceResolver;
+
+use super::{parse_u32, read_xml_schema_file};
 
 pub(in crate::import) struct Column {
     pub(in crate::import) path: Vec<String>,
@@ -14,7 +15,7 @@ pub(in crate::import) struct Column {
 pub(super) fn collect(
     tables: &[roxmltree::Node<'_, '_>],
     include_table_name: bool,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     component_name: &str,
     warnings: &mut Vec<String>,
 ) -> BTreeMap<u32, Column> {
@@ -28,7 +29,7 @@ pub(super) fn collect(
         collect_table(
             table,
             &mut path,
-            mfd_path,
+            resources,
             component_name,
             warnings,
             &mut columns,
@@ -40,7 +41,7 @@ pub(super) fn collect(
 fn collect_table(
     table: &roxmltree::Node<'_, '_>,
     path: &mut Vec<String>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     component_name: &str,
     warnings: &mut Vec<String>,
     columns: &mut BTreeMap<u32, Column>,
@@ -49,7 +50,7 @@ fn collect_table(
         let name = entry.attribute("name").unwrap_or_default();
         path.push(name.to_string());
         if entry.attribute("type") == Some("table") {
-            collect_table(&entry, path, mfd_path, component_name, warnings, columns);
+            collect_table(&entry, path, resources, component_name, warnings, columns);
             path.pop();
             continue;
         }
@@ -63,7 +64,7 @@ fn collect_table(
             continue;
         }
         let result = match documents.as_slice() {
-            [document] => read_column(document, path, mfd_path),
+            [document] => read_column(document, path, resources),
             _ => Err("column contains more than one XML document declaration".to_string()),
         };
         match result {
@@ -87,7 +88,7 @@ fn collect_table(
 fn read_column(
     entry: &roxmltree::Node<'_, '_>,
     path: &[String],
-    mfd_path: &Path,
+    resources: &ResourceResolver,
 ) -> Result<(u32, Column), String> {
     let metadata = entry
         .children()
@@ -121,7 +122,7 @@ fn read_column(
     if root.is_empty() {
         return Err("document root name is missing".to_string());
     }
-    let schema_path = resolve_xml_schema_reference(mfd_path, schema_file)?;
+    let schema_path = resources.resolve_file(schema_file, "database XML column schema")?;
     let schema =
         read_xml_schema_file(&schema_path, Some(root)).map_err(|error| error.to_string())?;
     let namespace = metadata
