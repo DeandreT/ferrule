@@ -389,6 +389,26 @@ fn validate_export_node(
             })
         };
     }
+    if node.name == XML_ATTRIBUTES_FIELD {
+        return if node == &generic_attribute_wildcard_schema() {
+            Ok(())
+        } else {
+            Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
+                reason: "attribute() must be one repeating unqualified group containing only string LocalName and #text fields",
+            })
+        };
+    }
+    let attribute_wildcards = children
+        .iter()
+        .filter(|child| child.name == XML_ATTRIBUTES_FIELD)
+        .count();
+    if attribute_wildcards > 1
+        || (attribute_wildcards == 1 && children.iter().any(|child| child.attribute))
+    {
+        return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
+            reason: "an attribute wildcard must be the only attribute declaration in its complex type",
+        });
+    }
     for child in children {
         validate_export_node(child, false, root_name, recursive_anchors)?;
     }
@@ -400,7 +420,9 @@ fn validate_export_node(
         });
     }
     if text_count == 1
-        && children.iter().any(|child| !child.attribute && !child.text)
+        && children
+            .iter()
+            .any(|child| !child.attribute && !child.text && child.name != XML_ATTRIBUTES_FIELD)
         && children.iter().find(|child| child.text).is_none_or(|text| {
             !matches!(
                 text.kind,
@@ -633,7 +655,17 @@ fn write_complex_type(
     };
     let pad = "  ".repeat(depth);
     let name = name.map_or_else(String::new, |name| format!(" name=\"{name}\""));
-    let (attrs, elements): (Vec<_>, Vec<_>) = children.iter().partition(|child| child.attribute);
+    let attrs = children
+        .iter()
+        .filter(|child| child.attribute)
+        .collect::<Vec<_>>();
+    let attribute_wildcard = children
+        .iter()
+        .find(|child| child.name == XML_ATTRIBUTES_FIELD);
+    let elements = children
+        .iter()
+        .filter(|child| !child.attribute && child.name != XML_ATTRIBUTES_FIELD)
+        .collect::<Vec<_>>();
     let text = elements.iter().find(|child| child.text);
     let nested_elements = elements
         .iter()
@@ -656,6 +688,9 @@ fn write_complex_type(
         ));
         for attr in attrs {
             write_attribute(attr, depth + 3, alternatives, out)?;
+        }
+        if attribute_wildcard.is_some() {
+            write_attribute_wildcard(depth + 3, out);
         }
         out.push_str(&format!(
             "{pad}    </xs:extension>\n{pad}  </xs:simpleContent>\n{pad}</xs:complexType>\n"
@@ -683,8 +718,18 @@ fn write_complex_type(
     for attr in attrs {
         write_attribute(attr, depth + 1, alternatives, out)?;
     }
+    if attribute_wildcard.is_some() {
+        write_attribute_wildcard(depth + 1, out);
+    }
     out.push_str(&format!("{pad}</xs:complexType>\n"));
     Ok(())
+}
+
+fn write_attribute_wildcard(depth: usize, out: &mut String) {
+    let pad = "  ".repeat(depth);
+    out.push_str(&format!(
+        "{pad}<xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/>\n"
+    ));
 }
 
 fn write_nested_elements(

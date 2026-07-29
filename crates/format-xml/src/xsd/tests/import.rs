@@ -2526,3 +2526,265 @@ fn rejects_qualified_content_at_a_local_wildcard_runtime_boundary()
     ));
     Ok(())
 }
+
+#[test]
+fn imports_local_skip_attribute_wildcards_without_losing_runtime_attributes()
+-> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_local_attribute_wildcard_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        concat!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                           targetNamespace="urn:ferrule:attribute-wildcard"
+                           elementFormDefault="qualified">
+              <xs:element name="Root"><xs:complexType><xs:sequence>
+                <xs:element name="Known" type="xs:string"/>
+              </xs:sequence><xs:anyAttribute namespace=""#,
+            "##local",
+            r#"" processContents="skip"/></xs:complexType></xs:element>
+            </xs:schema>"#
+        ),
+    )?;
+    let schema = import_root(&path, Some("{urn:ferrule:attribute-wildcard}Root"))?;
+    let wildcard = schema
+        .child(XML_ATTRIBUTES_FIELD)
+        .ok_or("attribute wildcard did not become an attribute() group")?;
+    assert!(wildcard.repeating);
+    assert_eq!(wildcard.xml_namespace, Some(XmlNamespace::Unqualified));
+    assert!(wildcard.child(XML_LOCAL_NAME_FIELD).is_some());
+    assert!(
+        wildcard
+            .child(XML_TEXT_FIELD)
+            .is_some_and(|child| child.text)
+    );
+
+    let input =
+        r#"<Root xmlns="urn:ferrule:attribute-wildcard" token="abc"><Known>value</Known></Root>"#;
+    let instance = from_str(input, &schema)?;
+    let attributes = instance
+        .field(XML_ATTRIBUTES_FIELD)
+        .and_then(Instance::as_repeated)
+        .ok_or("runtime wildcard attributes are missing")?;
+    assert_eq!(attributes.len(), 1);
+    assert_eq!(
+        attributes[0]
+            .field(XML_LOCAL_NAME_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("token".to_string()))
+    );
+    assert_eq!(
+        attributes[0]
+            .field(XML_TEXT_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("abc".to_string()))
+    );
+
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains(r#" token="abc""#), "{output}");
+    let reparsed = from_str(&output, &schema)?;
+    assert_eq!(
+        reparsed
+            .field(XML_ATTRIBUTES_FIELD)
+            .and_then(Instance::as_repeated)
+            .map(<[Instance]>::len),
+        Some(1)
+    );
+
+    let exported = export(&schema)?;
+    assert!(
+        exported.contains("<xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/>"),
+        "{exported}"
+    );
+    std::fs::write(&path, exported)?;
+    let reimported = import_root(&path, Some("{urn:ferrule:attribute-wildcard}Root"))?;
+    std::fs::remove_file(path)?;
+    assert_eq!(reimported, schema);
+    Ok(())
+}
+
+#[test]
+fn local_attribute_wildcards_roundtrip_simple_content() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_simple_content_attribute_wildcard_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        concat!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+              <xs:element name="Text"><xs:complexType><xs:simpleContent>
+                <xs:extension base="xs:int"><xs:anyAttribute namespace=""#,
+            "##local",
+            r#"" processContents="skip"/></xs:extension>
+              </xs:simpleContent></xs:complexType></xs:element>
+            </xs:schema>"#
+        ),
+    )?;
+    let schema = import_root(&path, Some("Text"))?;
+    let instance = from_str(r#"<Text code="A">7</Text>"#, &schema)?;
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains(r#"<Text code="A">7</Text>"#), "{output}");
+    let exported = export(&schema)?;
+    std::fs::write(&path, exported)?;
+    let reimported = import_root(&path, Some("Text"))?;
+    std::fs::remove_file(path)?;
+    assert_eq!(reimported, schema);
+    Ok(())
+}
+
+#[test]
+fn rejects_attribute_wildcards_outside_the_lossless_local_skip_profile()
+-> Result<(), Box<dyn std::error::Error>> {
+    let cases = [
+        (
+            "any-namespace",
+            r#"<xs:anyAttribute processContents="skip"/>"#,
+            "namespace=\"##local\"",
+        ),
+        (
+            "other-namespace",
+            "<xs:anyAttribute namespace=\"##other\" processContents=\"skip\"/>",
+            "namespace=\"##local\"",
+        ),
+        (
+            "lax",
+            "<xs:anyAttribute namespace=\"##local\" processContents=\"lax\"/>",
+            "processContents=\"skip\"",
+        ),
+        (
+            "strict-default",
+            "<xs:anyAttribute namespace=\"##local\"/>",
+            "processContents=\"skip\"",
+        ),
+        (
+            "exclusion",
+            "<xs:anyAttribute namespace=\"##local\" processContents=\"skip\" notQName=\"blocked\"/>",
+            "exclusions",
+        ),
+        (
+            "declared-sibling",
+            "<xs:attribute name=\"known\" type=\"xs:string\"/><xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/>",
+            "only attribute declaration",
+        ),
+        (
+            "duplicate",
+            "<xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/><xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/>",
+            "only attribute declaration",
+        ),
+    ];
+    for (label, attributes, expected) in cases {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_unsupported_attribute_wildcard_{label}_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:element name="Root"><xs:complexType><xs:sequence/>
+                    {attributes}
+                  </xs:complexType></xs:element>
+                </xs:schema>"#
+            ),
+        )?;
+        let error = match import_root(&path, Some("Root")) {
+            Ok(_) => {
+                return Err(std::io::Error::other(format!(
+                    "{label}: unsupported attribute wildcard imported successfully"
+                ))
+                .into());
+            }
+            Err(error) => error,
+        };
+        std::fs::remove_file(path)?;
+        assert!(
+            matches!(
+                &error,
+                XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
+                    if reason.contains(expected)
+            ),
+            "{label}: {error}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn rejects_qualified_runtime_attribute_wildcard_names() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = SchemaNode::group("Root", vec![generic_attribute_wildcard_schema()]);
+    let error = match from_str(
+        r#"<Root xmlns:q="urn:qualified" q:token="value"/>"#,
+        &schema,
+    ) {
+        Ok(_) => {
+            return Err(std::io::Error::other(
+                "qualified attribute was erased by a ##local wildcard",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        XmlFormatError::UnsupportedXmlAttributeWildcard {
+            reason: "the supported ##local wildcard profile cannot retain qualified attributes"
+        }
+    ));
+
+    let instance = Instance::Group(vec![(
+        XML_ATTRIBUTES_FIELD.to_string(),
+        Instance::Repeated(vec![Instance::Group(vec![(
+            XML_LOCAL_NAME_FIELD.to_string(),
+            Instance::Scalar(Value::String("q:token".to_string())),
+        )])]),
+    )]);
+    let error = match to_string(&schema, &instance) {
+        Ok(_) => {
+            return Err(std::io::Error::other(
+                "qualified dynamic attribute name was written through a ##local wildcard",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        XmlFormatError::UnsupportedXmlAttributeWildcard {
+            reason: "the supported ##local wildcard profile requires unqualified runtime attribute names"
+        }
+    ));
+
+    let attribute = || {
+        Instance::Group(vec![
+            (
+                XML_LOCAL_NAME_FIELD.to_string(),
+                Instance::Scalar(Value::String("token".to_string())),
+            ),
+            (
+                XML_TEXT_FIELD.to_string(),
+                Instance::Scalar(Value::String("value".to_string())),
+            ),
+        ])
+    };
+    let duplicate = Instance::Group(vec![(
+        XML_ATTRIBUTES_FIELD.to_string(),
+        Instance::Repeated(vec![attribute(), attribute()]),
+    )]);
+    let error = match to_string(&schema, &duplicate) {
+        Ok(_) => {
+            return Err(
+                std::io::Error::other("duplicate dynamic attribute names were written").into(),
+            );
+        }
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        XmlFormatError::DuplicateField { group, field }
+            if group == XML_ATTRIBUTES_FIELD && field == "token"
+    ));
+    Ok(())
+}
