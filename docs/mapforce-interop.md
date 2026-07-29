@@ -20,6 +20,34 @@ cargo +nightly run -p cli -- import-mfd \
   --out project.json
 ```
 
+For a relocatable package, put `ferrule-package.json` at its root and select it
+explicitly:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "ferrule.mapping-package",
+  "catalogs": [
+    { "kind": "edi-config", "root": "resources/edi" },
+    { "kind": "json-schema", "root": "resources/json-schema" }
+  ]
+}
+```
+
+```sh
+cargo +nightly run -p cli -- import-mfd \
+  --mfd package/maps/design.mfd \
+  --package-manifest package/ferrule-package.json \
+  --out package/projects/project.json
+```
+
+The manifest must be selected by the host or user; a mapping cannot grant
+itself filesystem access. Its directory is the package trust boundary, and
+catalog entries are relative, traversal-free directories inside that boundary.
+Direct catalog flags are searched before manifest catalogs. The GUI stores an
+explicitly selected manifest as a host preference, never in the mapping
+project. `--package-root` and `--package-manifest` are mutually exclusive.
+
 Resource references accept both slash styles and may contain parent components
 when their canonical target remains inside the package. Symlink escapes,
 absolute Windows paths, ambiguous case-insensitive matches, and traversal above
@@ -42,6 +70,8 @@ portable and Windows-style locators, including leading installation-relative
 parent components, but re-anchors them under the declared catalog instead of
 performing filesystem traversal. Direct files and bounded adjacent ZIP packages
 must remain canonically contained in that catalog.
+Every transitive EDI include, selected message configuration, and SWIFT common
+definition remains confined to the root that authorized the main configuration.
 
 Separately managed JSON Schema catalogs use the same explicit ordered trust
 model:
@@ -114,6 +144,11 @@ Filtered predicates and computed values can use the generated item's 1-based
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable
 source or target can be recovered.
+
+Static source, target, named-source, and named-target paths are rebased when
+the generated project is written somewhere other than the design directory.
+HTTP URLs and graph-computed paths are unchanged. Moving or using Save As on a
+project applies the same rebasing rule, including wildcard input paths.
 
 ## Export
 

@@ -136,6 +136,34 @@ fn trusted_catalog_resolves_adjacent_zip_package() -> Result<(), Box<dyn Error>>
 
 #[cfg(unix)]
 #[test]
+fn package_archive_lookup_rejects_symlink_escape() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::symlink;
+
+    let directory = TempDir::new("package-archive-symlink")?;
+    let package = directory.path().join("package");
+    let outside = directory.path().join("outside");
+    std::fs::create_dir_all(&package)?;
+    write_catalog_zip(&outside)?;
+    symlink(
+        outside.join("Custom.X12.zip"),
+        package.join("Custom.X12.zip"),
+    )?;
+    let mapping = package.join("mapping.mfd");
+    write_mapping(&mapping, "Custom.X12/Envelope.Config")?;
+
+    let options = mfd::ImportOptions::default().with_package_root(&package);
+    let imported = mfd::import_with_options(&mapping, &options)?;
+
+    assert_eq!(imported.project.runtime_dependencies().len(), 1);
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("could not compile external configuration")
+            && warning.contains("outside trusted package root")
+    }));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn catalog_lookup_rejects_symlink_escape() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 

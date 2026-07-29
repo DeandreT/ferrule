@@ -408,7 +408,10 @@ fn target_removal_rekeys_tabs_and_canvases_without_removing_graph_nodes() {
 #[test]
 fn save_and_reopen_preserve_named_targets_and_mixed_tab_order() {
     let project_path = temporary_project_path("extra-target-roundtrip");
-    let mut app = FerruleApp::default();
+    let mut app = FerruleApp {
+        document: DocumentLocation::untitled(project_path.clone()),
+        ..Default::default()
+    };
     let mut audit = named_target("audit");
     audit.path = Some("outputs/audit.jsonl".to_owned());
     audit.options.json_lines = true;
@@ -926,7 +929,10 @@ fn blank_run_paths_fall_back_to_stored_project_paths() {
     let project_path = temporary_project_path("stored-run-paths");
     let directory = project_path.parent().expect("project has parent");
     std::fs::write(directory.join("input.xml"), "<root/>").expect("input instance is written");
-    let mut app = FerruleApp::default();
+    let mut app = FerruleApp {
+        document: DocumentLocation::untitled(project_path.clone()),
+        ..Default::default()
+    };
     app.project.source_path = Some("input.xml".into());
     app.project.target_path = Some("output.xml".into());
     app.save_document_to(&project_path)
@@ -948,6 +954,55 @@ fn blank_run_paths_fall_back_to_stored_project_paths() {
     assert_eq!(report.report.outputs[0].path, directory.join("output.xml"));
     assert!(!app.is_dirty());
     std::fs::remove_dir_all(directory).expect("temporary test directory is removed");
+}
+
+#[test]
+fn first_save_rebases_relative_paths_from_the_untitled_document_base() {
+    let project_path = temporary_project_path("first-save-rebase");
+    let mut app = FerruleApp::default();
+    app.project.source_path = Some("Cargo.toml".into());
+
+    app.save_document_to(&project_path)
+        .expect("untitled project saves");
+
+    let stored = app
+        .project
+        .source_path
+        .as_deref()
+        .expect("source path remains configured");
+    let resolved = project_path
+        .parent()
+        .expect("project has a parent")
+        .join(stored);
+    assert_eq!(
+        std::fs::canonicalize(resolved).expect("rebased source exists"),
+        std::fs::canonicalize("Cargo.toml").expect("workspace manifest exists")
+    );
+    std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+        .expect("temporary test directory is removed");
+}
+
+#[test]
+fn layout_failure_keeps_saved_project_and_editor_on_the_same_base() {
+    let project_path = temporary_project_path("layout-failure");
+    std::fs::create_dir_all(layout_path(&project_path))
+        .expect("layout destination is blocked by a directory");
+    let mut app = FerruleApp::default();
+    app.project.source_path = Some("Cargo.toml".into());
+
+    let outcome = app
+        .save_document_to(&project_path)
+        .expect("project save succeeds even when layout fails");
+
+    assert!(outcome.layout_warning.is_some());
+    assert_eq!(app.document, DocumentLocation::saved(project_path.clone()));
+    let saved: Project =
+        serde_json::from_slice(&std::fs::read(&project_path).expect("saved project is readable"))
+            .expect("saved project parses");
+    assert_eq!(saved.source_path, app.project.source_path);
+    assert!(!app.is_dirty());
+    std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+        .expect("temporary test directory is removed");
 }
 
 #[test]

@@ -160,6 +160,115 @@ fn envelope_selection_finds_message_type_and_sets_trigger_qualifier() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[test]
+fn confined_import_accepts_parent_include_inside_authorization_root() {
+    let directory = temp_directory("safe_parent_include");
+    let package = directory.join("package");
+    let messages = package.join("messages");
+    let common = package.join("common");
+    std::fs::create_dir_all(&messages).unwrap();
+    std::fs::create_dir_all(&common).unwrap();
+    write(
+        &common.join("Defs.Segment"),
+        r#"<Config><Elements>
+          <Data name="F1" type="string"/>
+          <Segment name="ISA"><Data ref="F1"/></Segment>
+          <Segment name="ST"><Data ref="F1"/></Segment>
+        </Elements></Config>"#,
+    );
+    write(
+        &messages.join("Envelope.Config"),
+        r#"<Config><Format standard="X12"/><Include href="../common/Defs.Segment"/>
+          <Group name="Envelope"><Segment ref="ISA"/><Select field="ST/F1"/></Group>
+        </Config>"#,
+    );
+    let message = messages.join("850.Config");
+    write(
+        &message,
+        r#"<Config><Format standard="X12"/><Include href="../common/Defs.Segment"/>
+          <Message><MessageType>850</MessageType>
+            <Group name="Message_850"><Segment ref="ST"/></Group>
+          </Message></Config>"#,
+    );
+
+    let compiled = import_config_confined(&message, &package, &[]).unwrap();
+
+    assert_eq!(compiled.schema.name, "Envelope");
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn confined_import_rejects_definition_include_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let directory = temp_directory("include_symlink_escape");
+    let package = directory.join("package");
+    std::fs::create_dir_all(&package).unwrap();
+    let outside = directory.join("outside.Segment");
+    write(
+        &outside,
+        r#"<Config><Elements><Data name="F1" type="string"/></Elements></Config>"#,
+    );
+    symlink(&outside, package.join("Defs.Segment")).unwrap();
+    let envelope = package.join("Envelope.Config");
+    write(
+        &envelope,
+        r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
+          <Group name="Envelope"/></Config>"#,
+    );
+
+    let error = import_config_confined(&envelope, &package, &["850".into()])
+        .err()
+        .unwrap();
+    assert!(
+        error.to_string().contains("outside authorization root"),
+        "{error}"
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn confined_import_rejects_selected_message_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let directory = temp_directory("message_symlink_escape");
+    let package = directory.join("package");
+    std::fs::create_dir_all(&package).unwrap();
+    write(
+        &package.join("Defs.Segment"),
+        r#"<Config><Elements>
+          <Data name="F1" type="string"/>
+          <Segment name="ST"><Data ref="F1"/></Segment>
+        </Elements></Config>"#,
+    );
+    let envelope = package.join("Envelope.Config");
+    write(
+        &envelope,
+        r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
+          <Group name="Envelope"><Select field="ST/F1"/></Group></Config>"#,
+    );
+    let outside = directory.join("outside.Config");
+    write(
+        &outside,
+        r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
+          <Message><MessageType>850</MessageType>
+            <Group name="Message_850"><Segment ref="ST"/></Group>
+          </Message></Config>"#,
+    );
+    symlink(&outside, package.join("850.Config")).unwrap();
+
+    let error = import_config_confined(&envelope, &package, &["850".into()])
+        .err()
+        .unwrap();
+    assert!(
+        error.to_string().contains("outside authorization root"),
+        "{error}"
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
 fn at<'a>(node: &'a SchemaNode, path: &[&str]) -> &'a SchemaNode {
     path.iter().fold(node, |current, segment| {
         let SchemaKind::Group { children, .. } = &current.kind else {

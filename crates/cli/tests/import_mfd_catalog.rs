@@ -4,6 +4,82 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[test]
+fn import_mfd_accepts_a_relocatable_package_manifest() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new()?;
+    let maps = directory.path().join("maps");
+    let catalog = directory.path().join("resources/edi");
+    std::fs::create_dir_all(&maps)?;
+    write_catalog(&catalog.join("PortableEdiX12"))?;
+    let mapping = maps.join("mapping.mfd");
+    write_mapping(&mapping)?;
+    let manifest = directory.path().join("ferrule-package.json");
+    std::fs::write(
+        &manifest,
+        r#"{
+  "schemaVersion": 1,
+  "kind": "ferrule.mapping-package",
+  "catalogs": [{"kind": "edi-config", "root": "resources/edi"}]
+}"#,
+    )?;
+    let output = directory.path().join("mapping.json");
+
+    let result = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--mfd"])
+        .arg(&mapping)
+        .args(["--out"])
+        .arg(&output)
+        .args(["--package-manifest"])
+        .arg(&manifest)
+        .output()?;
+
+    assert!(
+        result.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&result.stdout).contains("(0 warning(s))"),
+        "{}",
+        String::from_utf8_lossy(&result.stdout)
+    );
+    let serialized = std::fs::read_to_string(&output)?;
+    assert!(!serialized.contains(&catalog.display().to_string()));
+    assert!(!serialized.contains(&manifest.display().to_string()));
+    std::fs::remove_dir_all(directory.path().join("resources"))?;
+    let project: mapping::Project = serde_json::from_str(&serialized)?;
+    assert_eq!(project.source_path.as_deref(), Some("maps/orders.x12"));
+    assert!(project.runtime_dependencies().is_empty());
+    assert!(engine::validate(&project).is_empty());
+    Ok(())
+}
+
+#[test]
+fn package_manifest_conflicts_with_an_explicit_package_root() -> Result<(), Box<dyn Error>> {
+    let output = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args([
+            "import-mfd",
+            "--mfd",
+            "mapping.mfd",
+            "--out",
+            "mapping.json",
+            "--package-root",
+            ".",
+            "--package-manifest",
+            "ferrule-package.json",
+        ])
+        .output()?;
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("cannot be used with"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
+
+#[test]
 fn import_mfd_accepts_repeated_trusted_edi_catalog_roots() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new()?;
     let maps = directory.path().join("maps");
