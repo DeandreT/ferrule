@@ -76,7 +76,8 @@ public static class FerruleJson
         {
             throw;
         }
-        catch (Exception error) when (error is JsonException or FormatException or OverflowException)
+        catch (Exception error) when (
+            error is JsonException or FormatException or InvalidOperationException or OverflowException)
         {
             throw Boundary("JSON input is invalid.", error);
         }
@@ -139,7 +140,8 @@ public static class FerruleJson
         {
             throw;
         }
-        catch (Exception error) when (error is JsonException or FormatException or OverflowException)
+        catch (Exception error) when (
+            error is JsonException or FormatException or InvalidOperationException or OverflowException)
         {
             throw Boundary("JSON output is invalid.", error);
         }
@@ -167,7 +169,8 @@ public static class FerruleJson
         {
             throw;
         }
-        catch (Exception error) when (error is JsonException or FormatException or OverflowException)
+        catch (Exception error) when (
+            error is JsonException or FormatException or InvalidOperationException or OverflowException)
         {
             throw Boundary("Embedded JSON schema is invalid.", error);
         }

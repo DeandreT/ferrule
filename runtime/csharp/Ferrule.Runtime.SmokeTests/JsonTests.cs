@@ -415,6 +415,9 @@ internal static partial class Program
         Error(
             FerruleRuntimeError.JsonBoundary,
             () => FerruleJson.Parse(oneOrTwo, "\"abc\""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(oneOrTwo, "\"\\uD800\""));
 
         const string exactlyTwo =
             "{\"name\":\"Value\",\"string_length_range\":{\"minimum\":2,\"maximum\":2},\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\"]}}";
