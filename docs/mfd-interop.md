@@ -114,6 +114,10 @@ Flat nullable compositions may combine null with multiple compatible object,
 scalar-union, or subsumed-array branches.
 Expanded-name identity for ordinary elements and attributes is preserved;
 foreign declarations export as an atomic graph of local XSD siblings.
+Compatible strict-wildcard declarations that share one local name across
+namespaces use one mapping port with exact expanded-name alternatives. Selected
+QName ports narrow that ambiguity before target construction; incompatible
+same-local shapes remain actionable warnings.
 Namespace-constrained optional/unbounded element wildcards with
 `processContents="skip"` round-trip as recursive generic element groups, while
 closed strict wildcards become exact singular or repeating typed choices.

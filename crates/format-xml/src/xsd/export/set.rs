@@ -196,6 +196,19 @@ impl<'a> ExportSetPlanner<'a> {
         document_root: bool,
         discover_substitution_members: bool,
     ) -> Result<(), XmlFormatError> {
+        for namespace in &node.xml_name_alternatives {
+            let mut occurrence = node.clone();
+            occurrence.xml_namespace = Some(namespace.clone());
+            occurrence.xml_name_alternatives.clear();
+            self.scan_node(
+                &occurrence,
+                target_namespace,
+                active,
+                imports,
+                false,
+                discover_substitution_members,
+            )?;
+        }
         if !document_root
             && let Some(XmlNamespace::Qualified(namespace)) = &node.xml_namespace
             && Some(namespace.as_str()) != target_namespace
@@ -392,6 +405,7 @@ impl<'a> ExportSetPlanner<'a> {
         let Some(anchor) = occurrence.recursive_ref.as_deref() else {
             let mut declaration = occurrence.clone();
             declaration.repeating = false;
+            declaration.xml_name_alternatives.clear();
             return Ok(declaration);
         };
         let mut candidates = Vec::new();
@@ -418,6 +432,9 @@ impl<'a> ExportSetPlanner<'a> {
         declaration
             .xml_namespace
             .clone_from(&occurrence.xml_namespace);
+        declaration
+            .xml_name_alternatives
+            .clone_from(&occurrence.xml_name_alternatives);
         declaration.repeating = false;
         declaration.attribute = occurrence.attribute;
         declaration.text = occurrence.text;
@@ -495,6 +512,7 @@ fn collect_concrete_anchors<'a>(
 fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bool {
     left.name == right.name
         && left.xml_namespace == right.xml_namespace
+        && left.xml_name_alternatives == right.xml_name_alternatives
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
         && left.text == right.text

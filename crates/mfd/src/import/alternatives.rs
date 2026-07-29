@@ -108,7 +108,7 @@ fn merge_selected_roots(
                                 children[index] = selected_schema;
                             }
                         }
-                        Some(_) => {
+                        Some(index) => {
                             let mismatch = entries
                                 .iter()
                                 .filter(|entry| {
@@ -117,14 +117,22 @@ fn merge_selected_roots(
                                     ) == name
                                 })
                                 .find_map(|entry| {
-                                    let exposed = super::schema::entry_tree_schema(entry);
-                                    fallback_entry_shape_fits(&exposed, &selected_schema).err()
+                                    selected_entry_shape_fits(entry, &selected_schema).err()
                                 });
                             if let Some(reason) = mismatch {
                                 warnings.push(format!(
                                     "selected XML element `{}` is incompatible with its exposed mapping ports: {reason}; the resolved schema was retained and incompatible scalar connections are non-executable",
                                     display_child_path(path, &name)
                                 ));
+                            } else if !children[index].xml_name_alternatives.is_empty()
+                                && children[index].xml_namespace_matches(
+                                    selected_schema
+                                        .xml_namespace
+                                        .as_ref()
+                                        .and_then(ir::XmlNamespace::uri),
+                                )
+                            {
+                                children[index] = selected_schema;
                             }
                         }
                         None => children.push(selected_schema),
@@ -164,6 +172,118 @@ fn merge_selected_roots(
 
 fn fallback_entry_shape_fits(fallback: &SchemaNode, selected: &SchemaNode) -> Result<(), String> {
     fallback_entry_shape_fits_inner(fallback, selected, true)
+}
+
+fn selected_entry_shape_fits(
+    entry: &roxmltree::Node<'_, '_>,
+    selected: &SchemaNode,
+) -> Result<(), String> {
+    selected_entry_shape_fits_inner(entry, selected, true)
+}
+
+fn selected_entry_shape_fits_inner(
+    entry: &roxmltree::Node<'_, '_>,
+    selected: &SchemaNode,
+    root: bool,
+) -> Result<(), String> {
+    let entries = entry
+        .children()
+        .filter(|child| child.has_tag_name("entry"))
+        .filter(|child| child.attribute("name") != Some("*"))
+        .filter(|child| {
+            child.attribute("displayselectionmode").is_none()
+                || child.attribute("inpkey").is_some()
+                || child.attribute("outkey").is_some()
+        })
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        if root || selected.is_scalar() || entry_is_whole_group_port(entry) {
+            return Ok(());
+        }
+        return Err(format!(
+            "field `{}` is exposed as a scalar but the selected declaration is structured",
+            normalized_entry_name(entry.attribute("name").unwrap_or_default())
+        ));
+    }
+    let SchemaKind::Group {
+        children: selected_children,
+        ..
+    } = &selected.kind
+    else {
+        return Err(format!(
+            "entry `{}` exposes child fields but the selected declaration is scalar",
+            normalized_entry_name(entry.attribute("name").unwrap_or_default())
+        ));
+    };
+    for child_entry in entries {
+        if child_entry.attribute("type") == Some("xml-type") {
+            selected_entry_shape_fits_inner(&child_entry, selected, true)?;
+            continue;
+        }
+        let name = normalized_entry_name(child_entry.attribute("name").unwrap_or_default());
+        let Some(selected_child) = selected_children
+            .iter()
+            .find(|selected_child| selected_child.name == name)
+        else {
+            return Err(format!(
+                "field `{name}` is not declared by the selected schema"
+            ));
+        };
+        selected_entry_shape_fits_inner(&child_entry, selected_child, false)?;
+    }
+    Ok(())
+}
+
+fn entry_is_whole_group_port(entry: &roxmltree::Node<'_, '_>) -> bool {
+    (entry.attribute("inpkey").is_some() || entry.attribute("outkey").is_some())
+        && (entry.attribute("expanded") == Some("1")
+            || conditioned_type_name(entry).is_some()
+            || entry_has_structural_connection(entry))
+}
+
+fn entry_has_structural_connection(entry: &roxmltree::Node<'_, '_>) -> bool {
+    let Some(key) = entry
+        .attribute("inpkey")
+        .or_else(|| entry.attribute("outkey"))
+    else {
+        return false;
+    };
+    let Some(structure) = entry
+        .ancestors()
+        .find(|node| node.has_tag_name("structure"))
+    else {
+        return false;
+    };
+    let structural_edges = structure
+        .descendants()
+        .filter(|node| node.has_tag_name("edge"))
+        .filter(|node| node.children().any(|child| child.has_tag_name("data")))
+        .filter(|edge| {
+            edge.descendants().any(|node| {
+                node.has_tag_name("dataconnection") && node.attribute("type") == Some("2")
+            })
+        })
+        .filter_map(|edge| edge.attribute("edgekey"))
+        .collect::<Vec<_>>();
+    structure
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex"))
+        .any(|vertex| {
+            vertex.attribute("vertexkey") == Some(key)
+                && vertex.descendants().any(|edge| {
+                    edge.has_tag_name("edge")
+                        && edge
+                            .attribute("edgekey")
+                            .is_some_and(|edge| structural_edges.contains(&edge))
+                })
+        })
+        || structure.descendants().any(|edge| {
+            edge.has_tag_name("edge")
+                && edge.attribute("vertexkey") == Some(key)
+                && edge
+                    .attribute("edgekey")
+                    .is_some_and(|edge| structural_edges.contains(&edge))
+        })
 }
 
 fn fallback_entry_shape_fits_inner(
@@ -642,6 +762,96 @@ mod tests {
         assert!(address.child("Name").is_some());
         assert!(address.child("State").is_some());
         assert!(address.child("Country").is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn selected_qname_accepts_structurally_connected_whole_group_ports()
+    -> Result<(), Box<dyn std::error::Error>> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ferrule_mfd_qname_structural_port_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir)?;
+        for (filename, namespace) in [
+            ("note-a.xsd", "urn:ferrule:qname-port:note-a"),
+            ("note-b.xsd", "urn:ferrule:qname-port:note-b"),
+        ] {
+            std::fs::write(
+                dir.join(filename),
+                format!(
+                    r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                        targetNamespace="{namespace}">
+                      <xs:element name="Note" type="xs:string"/>
+                    </xs:schema>"#
+                ),
+            )?;
+        }
+        std::fs::write(
+            dir.join("order.xsd"),
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    targetNamespace="urn:ferrule:qname-port:order">
+                  <xs:element name="Order"><xs:complexType><xs:sequence>
+                    <xs:element name="Items"><xs:complexType><xs:sequence>
+                      <xs:element name="Code" type="xs:string"/>
+                    </xs:sequence></xs:complexType></xs:element>
+                  </xs:sequence></xs:complexType></xs:element>
+                </xs:schema>"#,
+        )?;
+        let main = dir.join("message.xsd");
+        std::fs::write(
+            &main,
+            r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    targetNamespace="urn:ferrule:qname-port:message">
+                  <xs:import namespace="urn:ferrule:qname-port:note-a" schemaLocation="note-a.xsd"/>
+                  <xs:import namespace="urn:ferrule:qname-port:note-b" schemaLocation="note-b.xsd"/>
+                  <xs:import namespace="urn:ferrule:qname-port:order" schemaLocation="order.xsd"/>
+                  <xs:element name="Envelope"><xs:complexType><xs:sequence>
+                    <xs:any namespace="##other" minOccurs="0" maxOccurs="unbounded"/>
+                  </xs:sequence></xs:complexType></xs:element>
+                </xs:schema>"###,
+        )?;
+        let document = roxmltree::Document::parse(
+            r#"<structure><children><component><entry name="Envelope">
+                  <entry name="*"><selections>
+                    <qname QNameAsString="{urn:ferrule:qname-port:order}Order"/>
+                  </selections></entry>
+                  <entry name="Order"><entry name="Items" outkey="10"/></entry>
+                </entry></component></children><graph>
+                  <edges><edge edgekey="1"><data>
+                    <dataconnection type="2"/>
+                  </data></edge></edges>
+                  <vertices><vertex vertexkey="10"><edges>
+                    <edge vertexkey="20" edgekey="1"/>
+                  </edges></vertex></vertices>
+                </graph></structure>"#,
+        )?;
+        let entry = document
+            .descendants()
+            .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Envelope"))
+            .ok_or("missing self-authored Envelope entry")?;
+        let mut schema =
+            format_xml::xsd::import_root(&main, Some("{urn:ferrule:qname-port:message}Envelope"))?;
+        let mut warnings = Vec::new();
+        merge_conditioned_xml_types(&entry, &mut schema, &main, false, &mut warnings);
+        std::fs::remove_dir_all(dir)?;
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(
+            schema
+                .child("Note")
+                .map(|note| note.xml_name_alternatives.len()),
+            Some(1)
+        );
+        assert!(
+            schema
+                .child("Order")
+                .and_then(|order| order.child("Items"))
+                .is_some_and(|items| !items.is_scalar())
+        );
         Ok(())
     }
 }

@@ -8,8 +8,9 @@ use std::path::Path;
 
 use ir::{
     Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
-    XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD,
-    XML_SUBSTITUTION_FIELD, XML_TEXT_FIELD, XML_TYPE_FIELD, XmlAlternativeKind, XmlNamespace,
+    XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NAMESPACE_URI_FIELD,
+    XML_NODE_NAME_FIELD, XML_SUBSTITUTION_FIELD, XML_TEXT_FIELD, XML_TYPE_FIELD,
+    XmlAlternativeKind, XmlNamespace,
 };
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
@@ -76,6 +77,10 @@ pub enum XmlFormatError {
     NoMatchingAlternative { name: String },
     #[error("element `{name}` matches more than one declared schema alternative")]
     AmbiguousAlternative { name: String },
+    #[error("element `{name}` has multiple expanded XML names and no retained occurrence identity")]
+    AmbiguousXmlName { name: String },
+    #[error("schema node `{node}` has invalid expanded XML name alternatives")]
+    InvalidXmlNameAlternatives { node: String },
     #[error("element `{name}` uses xsi:nil but its schema is not nillable")]
     UnexpectedXmlNil { name: String },
     #[error("element `{name}` with xsi:nil cannot contain a value")]
@@ -293,7 +298,10 @@ fn read_node(
                 children,
                 false,
                 !schema.xml_repeating_sequences.is_empty()
-                    || !schema.xml_repeating_choices.is_empty(),
+                    || !schema.xml_repeating_choices.is_empty()
+                    || children
+                        .iter()
+                        .any(|child| !child.xml_name_alternatives.is_empty()),
                 root_schema,
                 recursion_depth,
             )?;
@@ -429,6 +437,9 @@ fn resolve_recursive_schema(
     resolved.name.clone_from(&occurrence.name);
     resolved.xml_namespace.clone_from(&occurrence.xml_namespace);
     resolved
+        .xml_name_alternatives
+        .clone_from(&occurrence.xml_name_alternatives);
+    resolved
         .xml_wildcard_namespace
         .clone_from(&occurrence.xml_wildcard_namespace);
     resolved.repeating = occurrence.repeating;
@@ -448,10 +459,8 @@ pub(super) fn element_matches_schema(
             .any(|alternative| alternative.name == identity);
     }
     element.tag_name().name() == schema.name
-        && schema
-            .xml_namespace
-            .as_ref()
-            .is_none_or(|namespace| namespace.matches(element.tag_name().namespace()))
+        && (schema.xml_namespace.is_none()
+            || schema.xml_namespace_matches(element.tag_name().namespace()))
 }
 
 pub(super) fn attribute_value<'a>(
@@ -680,14 +689,20 @@ pub fn to_string_with_options(
 
 pub(crate) fn validate_namespace_siblings(schema: &SchemaNode) -> Result<(), XmlFormatError> {
     validate_schema_default(schema)?;
+    if !schema.xml_name_alternatives_are_valid() {
+        return Err(XmlFormatError::InvalidXmlNameAlternatives {
+            node: schema.name.clone(),
+        });
+    }
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return Ok(());
     };
     for (index, child) in children.iter().enumerate() {
-        if let Some(other) = children[..index]
-            .iter()
-            .find(|other| other.name == child.name && other.xml_namespace != child.xml_namespace)
-        {
+        if let Some(other) = children[..index].iter().find(|other| {
+            other.name == child.name
+                && (other.xml_namespace != child.xml_namespace
+                    || other.xml_name_alternatives != child.xml_name_alternatives)
+        }) {
             return Err(XmlFormatError::AmbiguousNamespaceSiblings {
                 group: schema.name.clone(),
                 name: child.name.clone(),
@@ -868,6 +883,11 @@ fn write_single_node<W: std::io::Write>(
     inherited_namespace: Option<&str>,
     legacy_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
+    if !schema.xml_name_alternatives.is_empty() {
+        return Err(XmlFormatError::AmbiguousXmlName {
+            name: schema.name.clone(),
+        });
+    }
     let default_namespace = match &schema.xml_namespace {
         Some(XmlNamespace::Qualified(namespace)) => Some(namespace.as_str()),
         Some(XmlNamespace::Unqualified) => None,
@@ -1384,6 +1404,57 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                     format!("item {index} names undeclared child `{name}`"),
                 )
             })?;
+        let exact_child;
+        let child_schema = if child_schema.xml_name_alternatives.is_empty() {
+            child_schema
+        } else {
+            let namespace = item_fields
+                .iter()
+                .find(|(name, _)| name == XML_NAMESPACE_URI_FIELD)
+                .and_then(|(_, instance)| instance.as_scalar())
+                .ok_or_else(|| {
+                    invalid_mixed_content(
+                        schema,
+                        format!(
+                            "element item {index} has no retained namespace for ambiguous child `{name}`"
+                        ),
+                    )
+                })?;
+            let namespace = match namespace {
+                Value::Null => XmlNamespace::Unqualified,
+                Value::String(namespace) => XmlNamespace::qualified(namespace.clone()).ok_or_else(
+                    || {
+                        invalid_mixed_content(
+                            schema,
+                            format!(
+                                "element item {index} has an empty retained namespace for child `{name}`"
+                            ),
+                        )
+                    },
+                )?,
+                _ => {
+                    return Err(invalid_mixed_content(
+                        schema,
+                        format!(
+                            "element item {index} has a non-string retained namespace for child `{name}`"
+                        ),
+                    ));
+                }
+            };
+            if !child_schema.xml_namespace_matches(namespace.uri()) {
+                return Err(invalid_mixed_content(
+                    schema,
+                    format!("element item {index} uses an undeclared namespace for child `{name}`"),
+                ));
+            }
+            exact_child = {
+                let mut child = child_schema.clone();
+                child.xml_namespace = Some(namespace);
+                child.xml_name_alternatives.clear();
+                child
+            };
+            &exact_child
+        };
         let child_instance = item_fields
             .iter()
             .find(|(name, _)| name == XML_MIXED_CONTENT_VALUE_FIELD)
@@ -1664,7 +1735,10 @@ fn validate_group_fields(
         let mixed_content_marker = name == XML_MIXED_CONTENT_FIELD
             && (children.iter().any(|child| child.text)
                 || !schema.xml_repeating_sequences.is_empty()
-                || !schema.xml_repeating_choices.is_empty());
+                || !schema.xml_repeating_choices.is_empty()
+                || children
+                    .iter()
+                    .any(|child| !child.xml_name_alternatives.is_empty()));
         if !xml_alternative_marker
             && !mixed_content_marker
             && !children.iter().any(|child| child.name == *name)
