@@ -147,7 +147,7 @@ mod tests {
             first
                 .files()
                 .iter()
-                .any(|file| file.path.as_str() == "Runtime/FerruleJson.Patterns.cs")
+                .any(|file| file.path.as_str() == "Runtime/Json/FerruleJson.Patterns.cs")
         );
         assert!(
             first

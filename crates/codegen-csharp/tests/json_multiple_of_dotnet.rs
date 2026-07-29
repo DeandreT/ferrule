@@ -170,7 +170,7 @@ fn multiple_of_corpus() -> Result<Vec<MultipleOfCase>, Box<dyn std::error::Error
 fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::error::Error>> {
     let artifacts = codegen_csharp::emit(program)?;
     assert!(artifacts.files().iter().any(|file| {
-        file.path.as_str() == "Runtime/FerruleJson.MultipleOf.cs"
+        file.path.as_str() == "Runtime/Json/FerruleJson.MultipleOf.cs"
             && std::str::from_utf8(&file.contents)
                 .is_ok_and(|source| source.contains("JsonMultipleOfConstraints"))
     }));
