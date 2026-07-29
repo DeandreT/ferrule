@@ -205,20 +205,20 @@ The current portable model includes:
 - ordered XML mixed-content reconstruction with graph-computed direct-child
   replacements evaluated in each original occurrence context
 - root-context static inner joins across two or more primary or named-source
-  collections plus bounded per-item scopes anchored by one or more current-item
-  singleton scalars and optionally augmented with independent primary/named
-  singleton scalars and repeating sources, non-empty repeating descendants of
-  the current item, or sources owned by any exact lexically enclosing repeated
+  collections plus bounded per-item scopes anchored by at least one exact
+  current-item singleton scalar or non-empty repeating descendant, and
+  optionally augmented with independent primary/named singleton scalars and
+  repeating sources or sources owned by any exact lexically enclosing repeated
   runtime frame, with left-deep composite equality,
   scalar coercion, stable duplicate-preserving order, Null/XML-nil exclusion,
   exact joined fields, raw source positions, compacted tuple positions,
   ordinary scope controls, and nested target construction
 - root-context inner-join aggregates plus bounded per-item correlated reductions
-  anchored by one or more current-item singleton scalars and optionally
-  augmented with independent primary/named singleton scalars and repeating
-  sources, non-empty repeating descendants of the current item, or sources
-  owned by any exact lexically enclosing repeated runtime frame, with direct
-  tuple counts, computed per-tuple values, and parent-context scalar arguments
+  anchored by at least one exact current-item singleton scalar or non-empty
+  repeating descendant, and optionally augmented with independent primary/named
+  singleton scalars and repeating sources or sources owned by any exact
+  lexically enclosing repeated runtime frame, with direct tuple counts, computed
+  per-tuple values, and parent-context scalar arguments
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, scalar-union, and exact
   whole-current-group target construction with exact numeric target adaptation
@@ -287,11 +287,11 @@ expose materially different regex dialects and Unicode behavior, so patterns
 outside the shared non-backtracking dialect can produce a backend-specific
 invalid-pattern error; exact cross-backend support needs a Ferrule-owned
 matcher. Correlated join scopes and joined-tuple aggregates without an exact
-current-item singleton anchor, with an empty repeating source path, or with a
-source hidden behind a non-frame ancestor without a path rooted at an active
-runtime frame remain interpreter-only; their ownership and parent-context rules
-need a broader portable join model. Code generation is expanding incrementally
-toward interpreter parity; see the
+current-owned singleton or non-empty descendant anchor, with an empty repeating
+source path, or with a source hidden behind a non-frame ancestor without a path
+rooted at an active runtime frame remain interpreter-only; their ownership and
+parent-context rules need a broader portable join model. Code generation is
+expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
 ## Output Safety

@@ -489,6 +489,22 @@ fn descendant_join() -> InnerJoin {
     )
 }
 
+fn descendant_anchored_join() -> InnerJoin {
+    InnerJoin::new(
+        JoinId::new(8),
+        JoinPlan::new(
+            JoinSource::new(vec!["Allocation".into()]),
+            JoinSource::new(vec!["Catalog".into(), "Product".into()]),
+            JoinConditions::new(JoinKey::new(
+                vec!["Allocation".into()],
+                vec!["Sku".into()],
+                vec!["Sku".into()],
+            )),
+        )
+        .expect("descendant-anchored join plan"),
+    )
+}
+
 #[test]
 fn validates_root_join_controls_and_static_descendants() {
     assert_eq!(validate_program(&join_program()), Ok(()));
@@ -602,6 +618,18 @@ fn validates_correlated_join_aggregates_over_a_repeating_current_descendant() {
 }
 
 #[test]
+fn validates_correlated_join_aggregates_anchored_only_by_a_repeating_descendant() {
+    let mut program = correlated_join_aggregate_program();
+    add_allocation_descendant(&mut program);
+    let Expression::JoinAggregate { join, .. } = &mut program.expressions[1].expression else {
+        panic!("join aggregate");
+    };
+    *join = descendant_anchored_join();
+
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
 fn validates_correlated_join_aggregate_with_only_active_singletons() {
     let mut program = correlated_join_aggregate_program();
     program.expressions = vec![ExpressionNode {
@@ -705,6 +733,22 @@ fn validates_correlated_join_scopes_over_a_repeating_current_descendant() {
 }
 
 #[test]
+fn validates_correlated_join_scopes_anchored_only_by_a_repeating_descendant() {
+    let mut program = correlated_join_scope_program();
+    add_allocation_descendant(&mut program);
+    let Some(iteration) = program.root.children[0].children[0].iteration.as_mut() else {
+        panic!("correlated join iteration");
+    };
+    let filter = iteration.filter();
+    let sort = iteration.sort().cloned();
+    let windows = iteration.windows().to_vec();
+    let output = iteration.output();
+    *iteration = IterationPlan::new(descendant_anchored_join(), filter, sort, windows, output);
+
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
 fn rejects_an_empty_repeating_path_as_the_current_items_collection() {
     let mut program = correlated_join_scope_program();
     let Some(iteration) = program.root.children[0].children[0].iteration.as_mut() else {
@@ -718,11 +762,11 @@ fn rejects_an_empty_repeating_path_as_the_current_items_collection() {
         InnerJoin::new(
             JoinId::new(8),
             JoinPlan::new(
-                JoinSource::singleton(vec!["Sku".into()]),
                 JoinSource::new(Vec::new()),
+                JoinSource::new(vec!["Catalog".into(), "Product".into()]),
                 JoinConditions::new(JoinKey::new(
-                    vec!["Sku".into()],
                     Vec::new(),
+                    vec!["Sku".into()],
                     vec!["Sku".into()],
                 )),
             )
