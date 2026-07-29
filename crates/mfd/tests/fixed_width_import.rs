@@ -110,7 +110,7 @@ fn unsupported_text_modes_have_specific_warnings() {
     assert_eq!(imported.warnings.len(), 3, "{:?}", imported.warnings);
     assert!(imported.warnings.iter().any(|warning| {
         warning.contains("FlexText component `legacy-flex`")
-            && warning.contains("configuration `legacy.mft` was not found")
+            && warning.contains("could not resolve FlexText configuration `legacy.mft`")
     }));
     assert!(imported.warnings.iter().any(|warning| {
         warning.contains("fixed-length string parser `parse-record`")

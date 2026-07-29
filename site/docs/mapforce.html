@@ -68,6 +68,22 @@
           live in sibling package directories.
         </p>
         <p>
+          Protocol Buffers components also resolve through the package boundary,
+          including Windows separators and safe parent traversal. The selected
+          package root is their virtual include root; exported
+          <code>*-protobuf</code> directories remain narrower self-contained
+          roots. Every reachable <code>.proto</code> is bounded, canonically
+          confined, and embedded under a portable logical path, so runtime
+          execution does not reopen the package.
+        </p>
+        <p>
+          Typed HTTP response XSDs, HTTP POST request JSON Schemas, and WSDL
+          message XSDs also resolve from the package boundary. Local HTTP
+          request schema references remain confined to their authorizing root,
+          while endpoint URLs, preview instance paths, and WSDL service
+          contract locators remain host metadata.
+        </p>
+        <p>
           A mapping cannot grant itself access to a manifest. The CLI flag or
           the GUI's MFD package selector provides host trust explicitly.
           Manifest catalogs must be relative, traversal-free directories inside

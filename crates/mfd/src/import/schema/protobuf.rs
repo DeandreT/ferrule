@@ -3,6 +3,8 @@ use std::path::Path;
 
 use mapping::{FormatOptions, ProtobufOptions, ProtobufSchemaFile};
 
+use crate::resource::ResourceResolver;
+
 use super::{
     ComponentFormat, SchemaComponent, collect_entry_ports, entry_key_sets, entry_tree_schema,
     is_default_output, parse_u32, schema_node_at,
@@ -26,7 +28,7 @@ impl Direction {
 /// Imports MapForce binary boundaries backed by a proto2/proto3 schema.
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     let name = component.attribute("name").unwrap_or_default().to_string();
@@ -72,7 +74,7 @@ pub(super) fn read(
     };
 
     let fallback = || entry_tree_schema(&payload);
-    let (schema, options) = match load_typed_layout(&document, &payload, mfd_path) {
+    let (schema, options) = match load_typed_layout(&document, &payload, resources) {
         Ok(typed) => typed,
         Err(reason) => {
             warnings.push(format!(
@@ -145,17 +147,13 @@ pub(super) fn read(
 fn load_typed_layout(
     document: &roxmltree::Node<'_, '_>,
     payload: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
 ) -> Result<(ir::SchemaNode, FormatOptions), String> {
     let schema_file = document
         .attribute("schemafile")
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "document metadata has no schemafile".to_string())?;
-    let base = mfd_path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let bundle = load_schema_bundle(base, schema_file)
+    let bundle = load_schema_bundle(resources, schema_file)
         .map_err(|error| format!("could not load protobuf schema `{schema_file}` ({error})"))?;
     let layout = bundle
         .layout()
@@ -193,23 +191,77 @@ fn load_typed_layout(
 }
 
 fn load_schema_bundle(
-    base: &Path,
+    resources: &ResourceResolver,
     schema_file: &str,
 ) -> Result<format_protobuf::SchemaBundle, format_protobuf::ProtobufError> {
-    if let Some((directory, root_path)) = schema_file.split_once('/')
-        && directory.ends_with("-protobuf")
-        && !root_path.is_empty()
-    {
-        let confined_base = std::fs::canonicalize(base)?;
-        let bundle_base = std::fs::canonicalize(base.join(directory))?;
-        if !bundle_base.starts_with(&confined_base) {
-            return Err(format_protobuf::ProtobufError::InvalidSchema(format!(
-                "protobuf bundle directory `{directory}` escapes the mapping directory"
-            )));
-        }
-        return format_protobuf::SchemaBundle::read_relative(&bundle_base, root_path);
+    let resolved = resources
+        .resolve_file(schema_file, "Protocol Buffers schema")
+        .map_err(format_protobuf::ProtobufError::InvalidSchema)?;
+    let mapping_directory = resources.mapping_path().parent().ok_or_else(|| {
+        format_protobuf::ProtobufError::InvalidSchema(
+            "mapping has no directory for Protocol Buffers resolution".to_string(),
+        )
+    })?;
+    if let Some((bundle_base, root_path)) = exported_bundle_root(mapping_directory, &resolved)? {
+        return format_protobuf::SchemaBundle::read_relative(&bundle_base, &root_path);
     }
-    format_protobuf::SchemaBundle::read_relative(base, schema_file)
+    let root_path = portable_relative_path(resources.package_root(), &resolved)?;
+    format_protobuf::SchemaBundle::read_relative(resources.package_root(), &root_path)
+}
+
+fn exported_bundle_root(
+    mapping_directory: &Path,
+    resolved: &Path,
+) -> Result<Option<(std::path::PathBuf, String)>, format_protobuf::ProtobufError> {
+    let relative = match resolved.strip_prefix(mapping_directory) {
+        Ok(relative) => relative,
+        Err(_) => return Ok(None),
+    };
+    let Some(directory) = relative
+        .components()
+        .next()
+        .and_then(|component| match component {
+            std::path::Component::Normal(value) => value.to_str(),
+            _ => None,
+        })
+    else {
+        return Ok(None);
+    };
+    if !directory.ends_with("-protobuf") {
+        return Ok(None);
+    }
+    let bundle_base = std::fs::canonicalize(mapping_directory.join(directory))?;
+    let root_path = portable_relative_path(&bundle_base, resolved)?;
+    Ok(Some((bundle_base, root_path)))
+}
+
+fn portable_relative_path(
+    base: &Path,
+    path: &Path,
+) -> Result<String, format_protobuf::ProtobufError> {
+    let relative = path.strip_prefix(base).map_err(|_| {
+        format_protobuf::ProtobufError::InvalidSchema(format!(
+            "protobuf schema `{}` escapes include root `{}`",
+            path.display(),
+            base.display()
+        ))
+    })?;
+    let mut segments = Vec::new();
+    for component in relative.components() {
+        let std::path::Component::Normal(segment) = component else {
+            return Err(format_protobuf::ProtobufError::InvalidSchema(format!(
+                "protobuf schema `{}` has a non-portable logical path",
+                path.display()
+            )));
+        };
+        segments.push(segment.to_str().ok_or_else(|| {
+            format_protobuf::ProtobufError::InvalidSchema(format!(
+                "protobuf schema `{}` has a non-UTF-8 logical path",
+                path.display()
+            ))
+        })?);
+    }
+    format_protobuf::canonical_schema_path(&segments.join("/"))
 }
 
 fn resolve_root(
@@ -314,9 +366,39 @@ fn boundary_ports(
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{normalize_root_name, read};
+    use crate::resource::ResourceResolver;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Result<Self, std::io::Error> {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "ferrule_mfd_protobuf_unit_{}_{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path)?;
+            Ok(Self(path))
+        }
+
+        fn resolver(&self) -> Result<ResourceResolver, std::io::Error> {
+            let mapping = self.0.join("mapping.mfd");
+            std::fs::write(&mapping, "<mapping/>")?;
+            ResourceResolver::new(&mapping, None).map_err(std::io::Error::other)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn expands_mapforce_namespace_root_notation() {
@@ -329,7 +411,8 @@ mod tests {
     }
 
     #[test]
-    fn unreadable_schema_keeps_a_non_executable_entry_tree_target() {
+    fn unreadable_schema_keeps_a_non_executable_entry_tree_target()
+    -> Result<(), Box<dyn std::error::Error>> {
         let document = roxmltree::Document::parse(
             r#"<component name="fallback" library="binary" kind="33">
                 <properties XSLTDefaultOutput="1"/>
@@ -341,15 +424,12 @@ mod tests {
                     <binary outputinstance="message.bin"/>
                 </data>
             </component>"#,
-        )
-        .unwrap();
+        )?;
+        let directory = TempDir::new()?;
+        let resources = directory.resolver()?;
         let mut warnings = Vec::new();
-        let component = read(
-            &document.root_element(),
-            Path::new("/definitely/missing/mapping.mfd"),
-            &mut warnings,
-        )
-        .unwrap();
+        let component = read(&document.root_element(), &resources, &mut warnings)
+            .map_err(std::io::Error::other)?;
 
         assert!(component.options.protobuf.is_none());
         assert!(component.schema.child("value").is_some());
@@ -357,10 +437,12 @@ mod tests {
             warning.contains("could not load protobuf schema")
                 && warning.contains("without executable protobuf metadata")
         }));
+        Ok(())
     }
 
     #[test]
-    fn unreadable_schema_keeps_a_non_executable_entry_tree_source() {
+    fn unreadable_schema_keeps_a_non_executable_entry_tree_source()
+    -> Result<(), Box<dyn std::error::Error>> {
         let document = roxmltree::Document::parse(
             r#"<component name="fallback" library="binary" kind="33">
                 <data>
@@ -371,15 +453,12 @@ mod tests {
                     <binary inputinstance="message.bin"/>
                 </data>
             </component>"#,
-        )
-        .unwrap();
+        )?;
+        let directory = TempDir::new()?;
+        let resources = directory.resolver()?;
         let mut warnings = Vec::new();
-        let component = read(
-            &document.root_element(),
-            Path::new("/definitely/missing/mapping.mfd"),
-            &mut warnings,
-        )
-        .unwrap();
+        let component = read(&document.root_element(), &resources, &mut warnings)
+            .map_err(std::io::Error::other)?;
 
         assert!(component.is_source);
         assert_eq!(component.input_instance.as_deref(), Some("message.bin"));
@@ -390,5 +469,6 @@ mod tests {
             warning.contains("visible entry-tree source shape")
                 && warning.contains("without executable protobuf metadata")
         }));
+        Ok(())
     }
 }

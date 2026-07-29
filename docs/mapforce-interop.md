@@ -56,6 +56,17 @@ External FlexText `.mft`, visual PDF `.pxt`, and XBRL `.sps` compiler inputs
 use this same package boundary. Their compiled layouts or fact metadata are
 embedded in the imported project, and FlexText data paths remain portable
 relative to the mapping even when the configuration is in a sibling directory.
+Protocol Buffers components likewise resolve their declared root through the
+package boundary, accepting Windows separators and safe parent traversal. The
+selected package root is the virtual include root; exported `*-protobuf`
+directories remain narrower self-contained include roots. Every reachable
+`.proto` is loaded with bounded canonical containment and embedded under its
+portable logical path, so execution and later export do not reopen the package.
+Typed HTTP response XSDs, HTTP POST request JSON Schemas, and WSDL message XSDs
+also resolve from the package boundary. Local references below an HTTP request
+JSON Schema remain confined to the root that authorized the schema; endpoint
+URLs, preview instance paths, and retained WSDL service contract locators are
+host metadata and are not rewritten as package resources.
 
 If EDI configurations live in a separately managed release catalog, declare
 each trusted catalog in search order:
