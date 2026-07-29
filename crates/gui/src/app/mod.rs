@@ -38,25 +38,25 @@ use crate::scope_editor::{
 use crate::theme::{Palette, ThemeState};
 use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVisibility};
 
-#[path = "app_auto_connect.rs"]
+#[path = "auto_connect.rs"]
 mod auto_connect_ui;
-#[path = "app_canvas.rs"]
+#[path = "canvas.rs"]
 mod canvas_build;
-#[path = "app_extra_sources.rs"]
+#[path = "extra_sources.rs"]
 mod extra_source_ui;
-#[path = "app_extra_targets.rs"]
+#[path = "extra_targets.rs"]
 mod extra_target_ui;
-#[path = "workspace/functions.rs"]
+#[path = "../workspace/functions.rs"]
 mod function_workspace;
-#[path = "app_new_mapping.rs"]
+#[path = "new_mapping.rs"]
 mod new_mapping_ui;
-#[path = "app_preview.rs"]
+#[path = "preview.rs"]
 mod preview_ui;
-#[path = "app_run.rs"]
+#[path = "run.rs"]
 mod run_ui;
-#[path = "app_scopes.rs"]
+#[path = "scopes.rs"]
 mod scope_ui;
-#[path = "app_workspace.rs"]
+#[path = "workspace.rs"]
 mod workspace_ui;
 
 use canvas_build::{build_function_snarl, build_snarl, build_snarl_with_layout};
@@ -1326,5 +1326,5 @@ impl eframe::App for FerruleApp {
 }
 
 #[cfg(test)]
-#[path = "app_tests.rs"]
+#[path = "tests.rs"]
 mod tests;
