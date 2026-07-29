@@ -14,6 +14,105 @@ use super::{ComponentFormat, SchemaComponent};
 #[path = "edi/config_source.rs"]
 mod config_source;
 
+/// Adds design-only ports exposed through transparent components after the
+/// reachable graph is known. The unresolved configuration reference remains
+/// the runtime gate; inferred descendants carry no executable EDI metadata.
+pub(super) fn enrich_unresolved_source_schemas(project: &mut mapping::Project) {
+    let mut paths = vec![BTreeMap::<Vec<String>, bool>::new(); project.extra_sources.len() + 1];
+    for node in project.graph.nodes.values() {
+        let mapping::Node::SourceField { path, frame } = node else {
+            continue;
+        };
+        let mut absolute = frame.clone().unwrap_or_default();
+        absolute.extend(path.iter().cloned());
+        if absolute.is_empty() {
+            continue;
+        }
+        let (owner, local) = absolute
+            .first()
+            .and_then(|name| {
+                project
+                    .extra_sources
+                    .iter()
+                    .position(|source| source.name == *name)
+                    .map(|index| (index + 1, absolute[1..].to_vec()))
+            })
+            .unwrap_or((0, absolute));
+        if local.is_empty() {
+            continue;
+        }
+        paths[owner]
+            .entry(local)
+            .and_modify(|pinned| *pinned |= frame.is_some())
+            .or_insert(frame.is_some());
+    }
+
+    if project.source_options.edi_config_reference.is_some() {
+        enrich_schema(&mut project.source, &paths[0]);
+    }
+    for (index, source) in project.extra_sources.iter_mut().enumerate() {
+        if source.options.edi_config_reference.is_some() {
+            enrich_schema(&mut source.schema, &paths[index + 1]);
+        }
+    }
+}
+
+fn enrich_schema(schema: &mut SchemaNode, paths: &BTreeMap<Vec<String>, bool>) {
+    for (path, pinned) in paths {
+        if schema_node_at(schema, path).is_some() || (!pinned && schema_has_suffix(schema, path)) {
+            continue;
+        }
+        insert_opaque_string_path(schema, path);
+    }
+}
+
+fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+    path.iter()
+        .try_fold(schema, |node, segment| node.child(segment))
+}
+
+fn schema_has_suffix(schema: &SchemaNode, suffix: &[String]) -> bool {
+    fn walk(node: &SchemaNode, path: &mut Vec<String>, suffix: &[String]) -> bool {
+        let SchemaKind::Group { children, .. } = &node.kind else {
+            return false;
+        };
+        children.iter().any(|child| {
+            path.push(child.name.clone());
+            let matches = path.ends_with(suffix) || walk(child, path, suffix);
+            path.pop();
+            matches
+        })
+    }
+    walk(schema, &mut Vec::new(), suffix)
+}
+
+fn insert_opaque_string_path(schema: &mut SchemaNode, path: &[String]) {
+    let Some((name, rest)) = path.split_first() else {
+        return;
+    };
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return;
+    };
+    let index = children.iter().position(|child| child.name == *name);
+    let child = match index {
+        Some(index) => &mut children[index],
+        None => {
+            children.push(if rest.is_empty() {
+                SchemaNode::scalar(name, ir::ScalarType::String)
+            } else {
+                SchemaNode::group(name, Vec::new())
+            });
+            let Some(child) = children.last_mut() else {
+                return;
+            };
+            child
+        }
+    };
+    if !rest.is_empty() {
+        insert_opaque_string_path(child, rest);
+    }
+}
+
 pub(super) fn read(
     component: &roxmltree::Node,
     mfd_path: &Path,
