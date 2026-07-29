@@ -518,3 +518,105 @@ fn grouped_dynamic_item_fields_preserve_position_on_export() {
     assert!(engine::validate(&roundtrip.project).is_empty());
     assert_eq!(expected, engine::run(&roundtrip.project, &source).unwrap());
 }
+
+#[test]
+fn grouped_dynamic_property_names_preserve_group_position_on_export() {
+    let dir = TempDir::new("grouped_property_position_export");
+    let mut project = mfd::import(&write_fixture(&dir.0)).unwrap().project;
+    let position = project
+        .graph
+        .nodes
+        .keys()
+        .next_back()
+        .copied()
+        .map_or(0, |id| id + 1);
+    project.graph.nodes.insert(
+        position,
+        Node::Position {
+            collection: vec!["Department".into()],
+        },
+    );
+    let property_name = position + 1;
+    project.graph.nodes.insert(
+        property_name,
+        Node::Call {
+            function: "string".into(),
+            args: vec![position],
+        },
+    );
+    project.root.dynamic_children[0].key = property_name;
+    assert!(engine::validate(&project).is_empty());
+
+    let source = format_json::read(&dir.0.join("departments.json"), &project.source).unwrap();
+    let expected = engine::run(&project, &source).unwrap();
+    let expected_path = dir.0.join("grouped-property-position.json");
+    format_json::write(&expected_path, &project.target, &expected).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(expected_path).unwrap()).unwrap();
+    assert_eq!(
+        value.as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["1", "2"],
+        "computed property names use the 1-based group position"
+    );
+
+    let output = dir.0.join("grouped-property-position-export.mfd");
+    let warnings = mfd::export(&project, &output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    let roundtrip = mfd::import(&output).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    let property_key = roundtrip.project.root.dynamic_children[0].key;
+    let Some(Node::Call { function, args }) = roundtrip.project.graph.nodes.get(&property_key)
+    else {
+        panic!("computed property name did not re-import as a scalar call");
+    };
+    assert_eq!(function, "string");
+    assert!(matches!(
+        args.as_slice(),
+        [position]
+            if matches!(
+                roundtrip.project.graph.nodes.get(position),
+                Some(Node::Position { collection })
+                    if collection == &["Department".to_string()]
+            )
+    ));
+    assert_eq!(expected, engine::run(&roundtrip.project, &source).unwrap());
+}
+
+#[test]
+fn grouped_dynamic_group_keys_preserve_source_position_on_export() {
+    let dir = TempDir::new("grouped_key_position_export");
+    let mut project = mfd::import(&write_fixture(&dir.0)).unwrap().project;
+    let position = project
+        .graph
+        .nodes
+        .keys()
+        .next_back()
+        .copied()
+        .map_or(0, |id| id + 1);
+    project.graph.nodes.insert(
+        position,
+        Node::Position {
+            collection: vec!["Department".into()],
+        },
+    );
+    project.root.group_by = Some(position);
+    assert!(engine::validate(&project).is_empty());
+
+    let source = format_json::read(&dir.0.join("departments.json"), &project.source).unwrap();
+    let expected = engine::run(&project, &source).unwrap();
+    let output = dir.0.join("grouped-key-position-export.mfd");
+    let warnings = mfd::export(&project, &output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    let roundtrip = mfd::import(&output).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    let group_by = roundtrip.project.root.group_by.unwrap();
+    assert!(matches!(
+        roundtrip.project.graph.nodes.get(&group_by),
+        Some(Node::Position { collection }) if collection == &["Department".to_string()]
+    ));
+    assert_eq!(expected, engine::run(&roundtrip.project, &source).unwrap());
+}
