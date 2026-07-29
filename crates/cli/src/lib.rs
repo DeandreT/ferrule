@@ -716,10 +716,13 @@ pub fn import_mfd(
     mfd_path: &Path,
     out_path: &Path,
     package_root: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
 ) -> anyhow::Result<Vec<String>> {
-    let options = package_root
-        .map(|root| mfd::ImportOptions::default().with_package_root(root))
-        .unwrap_or_default();
+    let mut options =
+        mfd::ImportOptions::default().with_edi_catalog_roots(edi_catalog_roots.iter().cloned());
+    if let Some(root) = package_root {
+        options = options.with_package_root(root);
+    }
     let imported = mfd::import_with_options(mfd_path, &options)
         .with_context(|| format!("importing {}", mfd_path.display()))?;
     let json = serde_json::to_string_pretty(&imported.project)?;
