@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use super::output_support::compare_execution_outputs;
 use super::{
     FIXED_CURRENT_DATETIME, SAMPLES_DIR, StageOutcome, Status, SurveyDynamicSourceLoader,
-    SurveyWorkspace, discover_sample_paths, load_sources,
+    SurveyResourceProvenance, SurveyResourceSelection, SurveyWorkspace, discover_sample_paths,
+    load_sources,
 };
 
 const JSON_REPORT_ENV: &str = "FERRULE_ROUNDTRIP_EXECUTION_SURVEY_JSON";
@@ -211,10 +212,10 @@ fn survey_roundtrip_file(
     mfd_path: &Path,
     samples_root: &Path,
     workspace: &SurveyWorkspace,
+    options: &mfd::ImportOptions,
 ) -> RoundtripOutcome {
     let mut outcome = RoundtripOutcome::pending(mfd_path, samples_root);
-    let options = mfd::ImportOptions::default().with_package_root(samples_root);
-    let imported = match mfd::import_with_options(mfd_path, &options) {
+    let imported = match mfd::import_with_options(mfd_path, options) {
         Ok(imported) => imported,
         Err(error) => {
             outcome.import = StageOutcome::failed(error.to_string());
@@ -352,6 +353,7 @@ fn survey_roundtrip_file(
 fn write_json_report(
     report_path: &Path,
     samples_root: &Path,
+    resource_configuration: &SurveyResourceProvenance,
     summary: &RoundtripSummary,
     outcomes: &[RoundtripOutcome],
 ) -> Result<(), Box<dyn Error>> {
@@ -368,6 +370,7 @@ fn write_json_report(
         "schema_version": REPORT_SCHEMA_VERSION,
         "kind": "ferrule.mfd_roundtrip_execution",
         "samples_dir": samples_root,
+        "resource_configuration": resource_configuration.to_json(),
         "safety": {
             "network_access": false,
             "inputs_restricted_to_samples_dir": true,
@@ -415,13 +418,22 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
         );
         return Ok(());
     }
+    let import_context = SurveyResourceSelection::from_environment().resolve(&samples_root)?;
     let paths = discover_sample_paths(&samples_root)?;
 
     let workspace = SurveyWorkspace::new()?;
     let outcomes = paths
         .iter()
         .enumerate()
-        .map(|(index, path)| survey_roundtrip_file(index, path, &samples_root, &workspace))
+        .map(|(index, path)| {
+            survey_roundtrip_file(
+                index,
+                path,
+                &samples_root,
+                &workspace,
+                &import_context.options,
+            )
+        })
         .collect::<Vec<_>>();
     let summary = RoundtripSummary::from_outcomes(&outcomes);
     println!(
@@ -443,7 +455,13 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
     );
     print_drifts(&outcomes);
     if let Some(report_path) = std::env::var_os(JSON_REPORT_ENV).map(PathBuf::from) {
-        write_json_report(&report_path, &samples_root, &summary, &outcomes)?;
+        write_json_report(
+            &report_path,
+            &samples_root,
+            &import_context.provenance,
+            &summary,
+            &outcomes,
+        )?;
         println!("json report: {}", report_path.display());
     }
     Ok(())
@@ -515,8 +533,9 @@ fn self_authored_roundtrip_executes_without_writing_to_inputs() -> Result<(), Bo
         .map(|entry| entry.map(|entry| entry.file_name()))
         .collect::<Result<Vec<_>, _>>()?;
     let workspace = SurveyWorkspace::new()?;
+    let options = mfd::ImportOptions::default().with_package_root(&samples.0);
 
-    let outcome = survey_roundtrip_file(0, &design, &samples.0, &workspace);
+    let outcome = survey_roundtrip_file(0, &design, &samples.0, &workspace, &options);
 
     assert_eq!(outcome.original_execution.status, Status::Passed);
     assert_eq!(
