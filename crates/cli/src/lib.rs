@@ -1317,6 +1317,12 @@ fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
 }
 
 fn reject_edi_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if let Some(reference) = &options.edi_config_reference {
+        bail!(
+            "{side} requires unresolved external EDI configuration `{reference}`; \
+             import from a package containing the exact configuration or a matching release pack"
+        );
+    }
     let kind = options
         .edi_kind
         .context("missing EDI boundary kind during runtime dispatch")?;

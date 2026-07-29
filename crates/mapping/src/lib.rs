@@ -17,6 +17,7 @@ mod pdf;
 mod protobuf;
 mod reachable;
 mod recursive;
+mod runtime_dependency;
 mod scope_serde;
 mod swift;
 mod tabular;
@@ -69,6 +70,7 @@ pub use pdf::{
 };
 pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;
+pub use runtime_dependency::{RuntimeBoundary, RuntimeDependency};
 pub use swift::{
     SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
     SwiftValueExpr,
