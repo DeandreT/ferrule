@@ -95,6 +95,8 @@ pub enum XmlFormatError {
         "repeating xs:sequence contains a nested repeating sequence with {element_count} members, whose tuple identity cannot be preserved"
     )]
     UnsupportedNestedRepeatingSequence { element_count: usize },
+    #[error("xs:any wildcard cannot be represented: {reason}")]
+    UnsupportedXmlWildcard { reason: &'static str },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
     SchemaMaterializationLimit { limit: usize },
     #[error("named xs:{kind} `{name}` contains a reference cycle")]
@@ -1347,29 +1349,29 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                     format!("element item {index} has no typed child value"),
                 )
             })?;
+        let child_depth = recursion_depth + usize::from(child_schema.recursive_ref.is_some());
+        let resolved_child;
+        let child_schema = if let Some(anchor) = &child_schema.recursive_ref {
+            if child_depth >= MAX_XML_RECURSION_DEPTH {
+                return Err(XmlFormatError::RecursionLimit {
+                    limit: MAX_XML_RECURSION_DEPTH,
+                });
+            }
+            resolved_child = resolve_recursive_schema(child_schema, root_schema, anchor)?;
+            &resolved_child
+        } else {
+            child_schema
+        };
         if child_schema.name == XML_ELEMENTS_FIELD {
             write_generic_element(
                 writer,
                 child_schema,
                 root_schema,
                 child_instance,
-                recursion_depth,
+                child_depth,
                 inherited_namespace,
             )?;
         } else {
-            let child_depth = recursion_depth + usize::from(child_schema.recursive_ref.is_some());
-            let resolved_child;
-            let child_schema = if let Some(anchor) = &child_schema.recursive_ref {
-                if child_depth >= MAX_XML_RECURSION_DEPTH {
-                    return Err(XmlFormatError::RecursionLimit {
-                        limit: MAX_XML_RECURSION_DEPTH,
-                    });
-                }
-                resolved_child = resolve_recursive_schema(child_schema, root_schema, anchor)?;
-                &resolved_child
-            } else {
-                child_schema
-            };
             write_single_node(
                 writer,
                 child_schema,

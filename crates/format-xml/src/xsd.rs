@@ -13,15 +13,18 @@
 //! metadata and input order while projecting repeating named ports, allowing
 //! exact read/write/export roundtrips and rejecting ambiguous newly constructed
 //! tuples. `xs:simpleContent` becomes a `#text` scalar plus attribute scalars.
-//! It does not support unions, `xs:any`, or
-//! remote schema URLs -- that's the "lite" in the name.
+//! `xs:any` imports only when it is an optional, unbounded, local-name,
+//! skip-validation wildcard that can round-trip through the recursive generic
+//! `element()` group. Other wildcard profiles fail with a typed diagnostic.
+//! It does not support unions or remote schema URLs -- that's the "lite" in
+//! the name.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use ir::{
-    ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD, XmlNamespace,
-    XmlRepeatingSequence, XmlSequenceMember,
+    ScalarType, SchemaKind, SchemaNode, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
+    XML_LOCAL_NAME_FIELD, XML_TEXT_FIELD, XmlNamespace, XmlRepeatingSequence, XmlSequenceMember,
 };
 use roxmltree::Node;
 
@@ -66,6 +69,7 @@ struct ParseState {
     unsupported_schema_group: Option<XmlFormatError>,
     unsupported_restriction: Option<XmlFormatError>,
     unsupported_substitution: Option<XmlFormatError>,
+    unsupported_wildcard: Option<XmlFormatError>,
     substitutions: substitution::SubstitutionIndex,
 }
 
@@ -182,6 +186,9 @@ impl ParseState {
         if let Some(error) = self.unsupported_substitution {
             return Err(error);
         }
+        if let Some(error) = self.unsupported_wildcard {
+            return Err(error);
+        }
         if self.materialization_limit_reached {
             return Err(XmlFormatError::SchemaMaterializationLimit {
                 limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
@@ -214,6 +221,10 @@ impl ParseState {
 
     fn reject_substitution(&mut self, error: XmlFormatError) {
         self.unsupported_substitution.get_or_insert(error);
+    }
+
+    fn reject_wildcard(&mut self, error: XmlFormatError) {
+        self.unsupported_wildcard.get_or_insert(error);
     }
 }
 
@@ -1720,6 +1731,7 @@ fn parse_complex_type(
             _ => {}
         }
     }
+    validate_wildcard_ownership(&parsed, state);
     parsed
 }
 
@@ -1921,6 +1933,16 @@ fn collect_sequence(
     if is_disabled_particle(sequence) {
         return;
     }
+    if particle_contains_wildcard(sequence)
+        && (sequence.tag_name().name() != "sequence"
+            || inherited_repeating
+            || !is_single_occurrence(sequence))
+    {
+        state.reject_wildcard(unsupported_wildcard(
+            "wildcards may be nested only in single-occurrence xs:sequence particles",
+        ));
+        return;
+    }
     for child in sequence.children().filter(|n| n.is_element()) {
         if is_disabled_particle(&child) {
             continue;
@@ -1934,7 +1956,29 @@ fn collect_sequence(
                 node.repeating = inherited_repeating || is_repeating(&child);
                 out.push(node);
             }
-            "sequence" | "choice" | "all" => {
+            "any" => match parse_wildcard(&child) {
+                Ok(wildcard) if state.reserve_elements(schema_node_count(&wildcard)) => {
+                    out.push(wildcard);
+                }
+                Ok(_) => {}
+                Err(error) => state.reject_wildcard(error),
+            },
+            "sequence" => {
+                collect_sequence(
+                    &child,
+                    inherited_repeating || is_repeating(&child),
+                    schema_el,
+                    schema_path,
+                    state,
+                    out,
+                );
+            }
+            "choice" | "all" if particle_contains_wildcard(&child) => {
+                state.reject_wildcard(unsupported_wildcard(
+                    "xs:any inside xs:choice or xs:all cannot become one ordered generic element sequence",
+                ));
+            }
+            "choice" | "all" => {
                 collect_sequence(
                     &child,
                     inherited_repeating || is_repeating(&child),
@@ -1951,6 +1995,105 @@ fn collect_sequence(
             _ => {}
         }
     }
+}
+
+fn parse_wildcard(wildcard: &Node<'_, '_>) -> Result<SchemaNode, XmlFormatError> {
+    if wildcard.attribute("namespace") != Some("##local") {
+        return Err(unsupported_wildcard(
+            "only namespace=\"##local\" is supported; qualified wildcard names require namespace-aware generic fields",
+        ));
+    }
+    if wildcard.attribute("processContents") != Some("skip") {
+        return Err(unsupported_wildcard(
+            "only processContents=\"skip\" is supported; lax or strict validation requires resolved declarations",
+        ));
+    }
+    if wildcard.attribute("minOccurs") != Some("0")
+        || wildcard.attribute("maxOccurs") != Some("unbounded")
+    {
+        return Err(unsupported_wildcard(
+            "supported wildcards require minOccurs=\"0\" and maxOccurs=\"unbounded\"",
+        ));
+    }
+    if wildcard
+        .attributes()
+        .any(|attribute| matches!(attribute.name(), "notNamespace" | "notQName"))
+    {
+        return Err(unsupported_wildcard(
+            "XSD 1.1 wildcard exclusions are not supported",
+        ));
+    }
+    Ok(generic_wildcard_schema())
+}
+
+fn generic_wildcard_schema() -> SchemaNode {
+    let attributes = SchemaNode::group(
+        XML_ATTRIBUTES_FIELD,
+        vec![
+            SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+        ],
+    )
+    .repeating();
+    let mut nested =
+        SchemaNode::recursive_group(XML_ELEMENTS_FIELD, XML_ELEMENTS_FIELD).repeating();
+    nested.xml_namespace = Some(XmlNamespace::Unqualified);
+    let mut wildcard = SchemaNode::group(
+        XML_ELEMENTS_FIELD,
+        vec![
+            SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+            attributes,
+            nested,
+        ],
+    )
+    .repeating();
+    wildcard.xml_namespace = Some(XmlNamespace::Unqualified);
+    wildcard
+}
+
+fn validate_wildcard_ownership(parsed: &ParsedComplexType, state: &mut ParseState) {
+    let elements = parsed
+        .children
+        .iter()
+        .filter(|child| !child.attribute && !child.text)
+        .collect::<Vec<_>>();
+    let wildcard_count = elements
+        .iter()
+        .filter(|child| child.name == XML_ELEMENTS_FIELD)
+        .count();
+    if wildcard_count == 0 {
+        return;
+    }
+    if wildcard_count != 1 || elements.len() != 1 {
+        state.reject_wildcard(unsupported_wildcard(
+            "a wildcard must be the only element particle in its complex type",
+        ));
+    }
+}
+
+fn particle_contains_wildcard(particle: &Node<'_, '_>) -> bool {
+    particle
+        .children()
+        .filter(|node| node.is_element())
+        .any(|child| {
+            child.tag_name().name() == "any"
+                || (matches!(child.tag_name().name(), "sequence" | "choice" | "all")
+                    && particle_contains_wildcard(&child))
+        })
+}
+
+fn is_single_occurrence(particle: &Node<'_, '_>) -> bool {
+    particle
+        .attribute("minOccurs")
+        .is_none_or(|value| value == "1")
+        && particle
+            .attribute("maxOccurs")
+            .is_none_or(|value| value == "1")
+}
+
+fn unsupported_wildcard(reason: &'static str) -> XmlFormatError {
+    XmlFormatError::UnsupportedXmlWildcard { reason }
 }
 
 fn is_disabled_particle(particle: &Node) -> bool {

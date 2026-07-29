@@ -10,12 +10,15 @@ pub(super) fn merge_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) {
         let (name, _) = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
         if name == XML_ELEMENTS_FIELD {
             match &mut schema.kind {
-                SchemaKind::Group { children, .. }
-                    if !children
-                        .iter()
-                        .any(|child| child.name == XML_ELEMENTS_FIELD) =>
-                {
-                    children.push(generic_entry_schema(&child));
+                SchemaKind::Group { children, .. } => {
+                    if let Some(generic) = children
+                        .iter_mut()
+                        .find(|child| child.name == XML_ELEMENTS_FIELD)
+                    {
+                        merge_generic_entry_children(&child, generic);
+                    } else {
+                        children.push(generic_entry_schema(&child));
+                    }
                 }
                 SchemaKind::Scalar { .. } => {
                     schema.kind = SchemaKind::Group {
@@ -34,6 +37,27 @@ pub(super) fn merge_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) {
         {
             merge_entries(&child, schema_child);
         }
+    }
+}
+
+fn merge_generic_entry_children(entry: &roxmltree::Node<'_, '_>, schema: &mut SchemaNode) {
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return;
+    };
+    for child in entry_children(entry) {
+        if children.iter().any(|existing| existing.name == child.name) {
+            continue;
+        }
+        let index = children
+            .iter()
+            .position(|existing| {
+                matches!(
+                    existing.name.as_str(),
+                    XML_TEXT_FIELD | XML_ATTRIBUTES_FIELD | XML_ELEMENTS_FIELD
+                )
+            })
+            .unwrap_or(children.len());
+        children.insert(index, child);
     }
 }
 

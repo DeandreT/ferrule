@@ -279,6 +279,9 @@ fn collect_recursive_references(
     root_name: &str,
     references: &mut BTreeMap<String, String>,
 ) {
+    if node.name == XML_ELEMENTS_FIELD {
+        return;
+    }
     if let Some(anchor) = &node.recursive_ref {
         if anchor != root_name {
             references
@@ -452,7 +455,7 @@ fn write_element_required(
     let pad = "  ".repeat(depth);
     if node.name == XML_ELEMENTS_FIELD {
         out.push_str(&format!(
-            "{pad}<xs:any minOccurs=\"0\" maxOccurs=\"unbounded\" processContents=\"lax\"/>\n"
+            "{pad}<xs:any namespace=\"##local\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>\n"
         ));
         return Ok(());
     }
