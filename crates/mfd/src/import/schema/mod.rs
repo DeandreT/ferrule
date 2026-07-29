@@ -56,6 +56,22 @@ pub(super) fn restore_connected_structural_ports(
     xml_ports::restore_connected_structural_ports(components, edge_from);
 }
 
+pub(super) fn refine_copied_fallback_source_groups(
+    components: &mut [SchemaComponent],
+    edge_from: &BTreeMap<u32, u32>,
+    copy_all_targets: &BTreeSet<u32>,
+    fallback_source_outputs: &BTreeSet<u32>,
+    fallback_target_inputs: &BTreeSet<u32>,
+) {
+    xml_ports::refine_copied_fallback_source_groups(
+        components,
+        edge_from,
+        copy_all_targets,
+        fallback_source_outputs,
+        fallback_target_inputs,
+    );
+}
+
 pub(super) fn read_xlsx_component(
     component: &roxmltree::Node<'_, '_>,
     warnings: &mut Vec<String>,
@@ -223,7 +239,7 @@ pub(super) fn read_schema_component(
     mfd_path: &Path,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    read_schema_component_resolved(component, mfd_path, None, warnings)
+    read_schema_component_resolved(component, mfd_path, None, warnings).map(|read| read.component)
 }
 
 pub(super) fn read_schema_component_in_package(
@@ -237,6 +253,25 @@ pub(super) fn read_schema_component_in_package(
         Some(resources),
         warnings,
     )
+    .map(|read| read.component)
+}
+
+pub(super) fn read_schema_component_in_package_with_provenance(
+    component: &roxmltree::Node,
+    resources: &ResourceResolver,
+    warnings: &mut Vec<String>,
+) -> Option<XmlSchemaComponentRead> {
+    read_schema_component_resolved(
+        component,
+        resources.mapping_path(),
+        Some(resources),
+        warnings,
+    )
+}
+
+pub(super) struct XmlSchemaComponentRead {
+    pub(super) component: SchemaComponent,
+    pub(super) entry_tree_fallback: bool,
 }
 
 fn read_schema_component_resolved(
@@ -244,7 +279,7 @@ fn read_schema_component_resolved(
     mfd_path: &Path,
     resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
-) -> Option<SchemaComponent> {
+) -> Option<XmlSchemaComponentRead> {
     let name = component.attribute("name").unwrap_or_default().to_string();
     let data = component
         .children()
@@ -432,39 +467,42 @@ fn read_schema_component_resolved(
     let is_pass_through = component
         .children()
         .any(|node| node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1"));
-    Some(SchemaComponent {
-        name,
-        format: ComponentFormat::Xml,
-        schema,
-        input_instance,
-        output_instance: document
-            .and_then(|d| d.attribute("outputinstance"))
-            .map(str::to_string)
-            .or_else(|| nested_file_instance(&root_el, "outputinstance")),
-        options: FormatOptions {
-            xml_document: true,
-            local_xml_file_set,
-            ..FormatOptions::default()
+    Some(XmlSchemaComponentRead {
+        component: SchemaComponent {
+            name,
+            format: ComponentFormat::Xml,
+            schema,
+            input_instance,
+            output_instance: document
+                .and_then(|d| d.attribute("outputinstance"))
+                .map(str::to_string)
+                .or_else(|| nested_file_instance(&root_el, "outputinstance")),
+            options: FormatOptions {
+                xml_document: true,
+                local_xml_file_set,
+                ..FormatOptions::default()
+            },
+            is_source,
+            is_default_output: is_default_output(component),
+            is_variable: data.descendants().any(|node| {
+                node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
+            }) || is_pass_through,
+            is_pass_through,
+            compute_when_key: root_el
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("entry") && node.attribute("name") == Some("compute-when")
+                })
+                .and_then(|entry| parse_u32(entry.attribute("inpkey"))),
+            ports,
+            input_ancestors,
+            input_keys,
+            output_keys,
+            db_queries: Vec::new(),
+            db_xml_columns: BTreeMap::new(),
+            dynamic_json: None,
         },
-        is_source,
-        is_default_output: is_default_output(component),
-        is_variable: data.descendants().any(|node| {
-            node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
-        }) || is_pass_through,
-        is_pass_through,
-        compute_when_key: root_el
-            .descendants()
-            .find(|node| {
-                node.has_tag_name("entry") && node.attribute("name") == Some("compute-when")
-            })
-            .and_then(|entry| parse_u32(entry.attribute("inpkey"))),
-        ports,
-        input_ancestors,
-        input_keys,
-        output_keys,
-        db_queries: Vec::new(),
-        db_xml_columns: BTreeMap::new(),
-        dynamic_json: None,
+        entry_tree_fallback: schema_from_entry_tree,
     })
 }
 

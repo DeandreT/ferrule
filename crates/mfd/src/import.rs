@@ -66,8 +66,9 @@ use schema::{
     read_csv_component, read_db_component_in_package, read_edi_component,
     read_fixed_width_component, read_flextext_component, read_http_get_component,
     read_json_component_in_package, read_pdf_component, read_protobuf_component,
-    read_schema_component_in_package, read_wsdl_component, read_xbrl_component,
-    read_xlsx_component, refine_wsdl_target_schemas, schema_node_at,
+    read_schema_component_in_package, read_schema_component_in_package_with_provenance,
+    read_wsdl_component, read_xbrl_component, read_xlsx_component,
+    refine_copied_fallback_source_groups, refine_wsdl_target_schemas, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
@@ -226,6 +227,8 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
     let mut exception_recipes = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
+    let mut fallback_xml_source_outputs = BTreeSet::new();
+    let mut fallback_xml_target_inputs = BTreeSet::new();
     let source_node_functions = source_node_function::read(&mapping_el);
 
     if let Some(children) = structure
@@ -240,17 +243,36 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
             let name = component.attribute("name").unwrap_or_default().to_string();
             match library {
                 "xml" => {
-                    match read_schema_component_in_package(&component, resources, &mut warnings) {
-                        Some(sc) => match xml_serializer::read(&component, &sc) {
-                            Ok(Some(serializer)) => xml_serializers.push(serializer),
-                            Ok(None) => schema_components.push(sc),
-                            Err(reason) => {
-                                warnings.push(format!(
-                                    "XML string serializer `{name}` is unsupported: {reason}"
-                                ));
+                    match read_schema_component_in_package_with_provenance(
+                        &component,
+                        resources,
+                        &mut warnings,
+                    ) {
+                        Some(read) => {
+                            let sc = read.component;
+                            let mut retain = |sc: SchemaComponent| {
+                                if read.entry_tree_fallback {
+                                    if sc.is_source {
+                                        fallback_xml_source_outputs
+                                            .extend(sc.output_keys.iter().copied());
+                                    } else {
+                                        fallback_xml_target_inputs
+                                            .extend(sc.input_keys.iter().copied());
+                                    }
+                                }
                                 schema_components.push(sc);
+                            };
+                            match xml_serializer::read(&component, &sc) {
+                                Ok(Some(serializer)) => xml_serializers.push(serializer),
+                                Ok(None) => retain(sc),
+                                Err(reason) => {
+                                    warnings.push(format!(
+                                        "XML string serializer `{name}` is unsupported: {reason}"
+                                    ));
+                                    retain(sc);
+                                }
                             }
-                        },
+                        }
                         None => warnings.push(format!("skipped xml component `{name}`")),
                     }
                 }
@@ -579,8 +601,15 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         &edge_from,
     );
     refine_wsdl_target_schemas(&mut schema_components, &fn_components, &edge_from);
-    schema::restore_connected_structural_ports(&mut schema_components, &edge_from);
     let copy_all_targets = read_copy_all_targets(&structure, Some(&wrapper));
+    refine_copied_fallback_source_groups(
+        &mut schema_components,
+        &edge_from,
+        &copy_all_targets,
+        &fallback_xml_source_outputs,
+        &fallback_xml_target_inputs,
+    );
+    schema::restore_connected_structural_ports(&mut schema_components, &edge_from);
     refine_copied_json_root_schemas(&mut schema_components, &edge_from, &copy_all_targets);
 
     let output_failed = output_parameter::install_fallback(
