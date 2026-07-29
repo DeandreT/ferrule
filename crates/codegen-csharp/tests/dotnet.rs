@@ -57,10 +57,10 @@ fn generated_library_builds_and_executes_without_packages() {
 }
 
 fn fixture() -> Program {
-    let binding = |target_field: &str, expression, target_type, repeating| Binding {
+    let binding = |target_field: &str, expression, target_type: ScalarType, repeating| Binding {
         target_field: target_field.into(),
         expression,
-        target_type,
+        target_domain: target_type.into(),
         repeating,
     };
     Program {

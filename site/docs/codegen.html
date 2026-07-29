@@ -78,6 +78,13 @@
           named-target schemas, so a host does not need to manually construct
           ferrule instance trees for a JSON workflow.
         </p>
+        <p>
+          Heterogeneous scalar unions retain their string, integer,
+          floating-point, or boolean runtime tag. Numeric adaptation is allowed
+          only when the value is exactly representable; ambiguous coercions and
+          lossy output fail through the same typed boundary contract in Rust
+          and C#.
+        </p>
         <div class="quick-grid">
           <section class="tile">
             <h3>Rust</h3>

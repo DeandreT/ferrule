@@ -121,7 +121,7 @@ fn fixture() -> Program {
             bindings: vec![Binding {
                 target_field: "Text".into(),
                 expression: 5,
-                target_type: ScalarType::String,
+                target_domain: ScalarType::String.into(),
                 repeating: false,
             }],
             children: Vec::new(),
@@ -184,13 +184,13 @@ fn target_fixture() -> Program {
                 Binding {
                     target_field: "Styled".into(),
                     expression: 1,
-                    target_type: ScalarType::String,
+                    target_domain: ScalarType::String.into(),
                     repeating: true,
                 },
                 Binding {
                     target_field: "Styled".into(),
                     expression: 2,
-                    target_type: ScalarType::String,
+                    target_domain: ScalarType::String.into(),
                     repeating: true,
                 },
             ],

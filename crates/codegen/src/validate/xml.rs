@@ -122,10 +122,14 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     if !schema.xml_repeating_sequences.is_empty() {
         return Some("anonymous repeating-sequence metadata");
     }
+    if matches!(schema.kind, SchemaKind::ScalarUnion { .. }) {
+        return Some("heterogeneous scalar unions");
+    }
     let SchemaKind::Group {
         children,
         alternatives,
         dynamic,
+        ..
     } = &schema.kind
     else {
         return None;

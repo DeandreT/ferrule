@@ -41,13 +41,16 @@ fn validates_aggregate_projection_and_argument_dependencies() {
 #[test]
 fn validates_aggregate_collection_and_direct_value_paths() {
     let mut program = program();
+    let Some(amount_types) = ir::ScalarTypeSet::new([ScalarType::Int, ScalarType::Float]) else {
+        panic!("test union contains distinct scalar types");
+    };
     program.source = SchemaNode::group(
         "Source",
         vec![
             SchemaNode::group(
                 "Rows",
                 vec![
-                    SchemaNode::scalar("Amount", ScalarType::Int),
+                    SchemaNode::scalar_union("Amount", amount_types),
                     SchemaNode::group("Nested", Vec::new()),
                 ],
             )
@@ -98,16 +101,22 @@ fn validates_aggregate_collection_and_direct_value_paths() {
 #[test]
 fn validates_lookup_collection_key_and_value_paths() {
     let mut program = program();
+    let Some(key_types) = ir::ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+        panic!("test union contains distinct scalar types");
+    };
+    let Some(value_types) = ir::ScalarTypeSet::new([ScalarType::String, ScalarType::Bool]) else {
+        panic!("test union contains distinct scalar types");
+    };
     program.source = SchemaNode::group(
         "Source",
         vec![
             SchemaNode::group(
                 "Rows",
                 vec![
-                    SchemaNode::scalar("Key", ScalarType::Int),
+                    SchemaNode::scalar_union("Key", key_types),
                     SchemaNode::group(
                         "Payload",
-                        vec![SchemaNode::scalar("Value", ScalarType::String)],
+                        vec![SchemaNode::scalar_union("Value", value_types)],
                     ),
                 ],
             )

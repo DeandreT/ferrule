@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use ir::SchemaKind;
 use mapping::NodeId;
 
 use super::{Expression, ProgramValidationError, sources::SourceCatalog};
@@ -33,8 +32,7 @@ pub(super) fn validate(
             candidates.iter().any(|candidate| {
                 candidate.node().repeating
                     && candidate.follow_direct(path).is_some_and(|leaf| {
-                        matches!(leaf.node().kind, SchemaKind::Scalar { .. })
-                            && (path.is_empty() || !leaf.node().repeating)
+                        leaf.node().is_scalar() && (path.is_empty() || !leaf.node().repeating)
                     })
             })
         };

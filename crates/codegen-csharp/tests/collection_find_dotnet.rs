@@ -155,13 +155,13 @@ fn fixture() -> Program {
                 Binding {
                     target_field: "Details".into(),
                     expression: 12,
-                    target_type: ScalarType::String,
+                    target_domain: ScalarType::String.into(),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Catalog".into(),
                     expression: 22,
-                    target_type: ScalarType::String,
+                    target_domain: ScalarType::String.into(),
                     repeating: false,
                 },
             ],

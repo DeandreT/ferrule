@@ -7,7 +7,7 @@ use mapping::{
 };
 
 use crate::{
-    Diagnostic, Expression, GeneratedSequence, IterationPlan, LowerError, ProgramValidationError,
+    Diagnostic, Expression, GeneratedSequence, IterationPlan, ProgramValidationError,
     SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeFeature, SourceIteration, lower, validate_program,
 };
 
@@ -116,7 +116,7 @@ fn scalar_union(name: &str) -> SchemaNode {
 }
 
 #[test]
-fn lowering_rejects_scalar_union_boundaries_before_building_a_program() {
+fn lowering_preserves_scalar_union_boundaries_and_target_domains() {
     let mut project = supported_project();
     let SchemaKind::Group { children, .. } = &mut project.source.kind else {
         panic!("supported project source is a group");
@@ -127,20 +127,16 @@ fn lowering_rejects_scalar_union_boundaries_before_building_a_program() {
     };
     children[1] = scalar_union("FirstOut");
 
+    let program = lower(&project).expect("scalar union boundaries lower");
+    let SchemaKind::Group { children, .. } = &program.target.kind else {
+        panic!("lowered target is a group");
+    };
+    let SchemaKind::ScalarUnion { types } = children[1].kind else {
+        panic!("lowered target field retains its scalar union");
+    };
     assert_eq!(
-        lower(&project).map_err(LowerError::into_diagnostics),
-        Err(vec![
-            Diagnostic::Validation {
-                location: "source schema `First`".into(),
-                message: "code generation does not support heterogeneous scalar-union fields"
-                    .into(),
-            },
-            Diagnostic::Validation {
-                location: "target schema `FirstOut`".into(),
-                message: "code generation does not support heterogeneous scalar-union fields"
-                    .into(),
-            },
-        ])
+        program.root.bindings[1].target_domain,
+        crate::ScalarTargetDomain::Union(types)
     );
 }
 
@@ -169,9 +165,15 @@ fn lowers_static_constructed_scopes_in_declaration_order() {
             .collect::<Vec<_>>(),
         vec![("SecondOut", 10), ("FirstOut", 20)]
     );
-    assert_eq!(program.root.bindings[0].target_type, ScalarType::Int);
+    assert_eq!(
+        program.root.bindings[0].target_domain,
+        crate::ScalarTargetDomain::Single(ScalarType::Int)
+    );
     assert!(program.root.bindings[0].repeating);
-    assert_eq!(program.root.bindings[1].target_type, ScalarType::String);
+    assert_eq!(
+        program.root.bindings[1].target_domain,
+        crate::ScalarTargetDomain::Single(ScalarType::String)
+    );
     assert!(!program.root.bindings[1].repeating);
     assert_eq!(program.root.children[0].target_field, "Details");
     assert!(!program.root.repeating);

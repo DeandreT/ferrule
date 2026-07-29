@@ -40,12 +40,12 @@ fn lowers_ordered_computed_properties_and_nested_open_objects() {
             DynamicTargetBinding {
                 key: 1,
                 value: 2,
-                target_type: ScalarType::String,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::String),
             },
             DynamicTargetBinding {
                 key: 3,
                 value: 4,
-                target_type: ScalarType::String,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::String),
             },
         ]
     );
