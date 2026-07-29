@@ -25,7 +25,17 @@ fn project() -> Project {
             vec!["Sku".into()],
         )),
     )
-    .expect("correlated join plan");
+    .and_then(|plan| {
+        plan.then(
+            MappingJoinSource::new(vec!["Inventory".into(), "Stock".into()]),
+            MappingJoinConditions::new(MappingJoinKey::new(
+                vec!["Catalog".into(), "Product".into()],
+                vec!["Sku".into()],
+                vec!["Sku".into()],
+            )),
+        )
+    })
+    .expect("multi-stage correlated join plan");
     Project {
         source: SchemaNode::group(
             "Source",
@@ -59,6 +69,7 @@ fn project() -> Project {
                                 SchemaNode::scalar("JoinPosition", ScalarType::Int),
                                 SchemaNode::scalar("ProductPosition", ScalarType::Int),
                                 SchemaNode::scalar("OuterQuantity", ScalarType::Int),
+                                SchemaNode::scalar("Warehouse", ScalarType::String),
                                 SchemaNode::group(
                                     "Details",
                                     vec![SchemaNode::scalar("Summary", ScalarType::String)],
@@ -75,27 +86,48 @@ fn project() -> Project {
         target_path: None,
         source_options: Default::default(),
         target_options: Default::default(),
-        extra_sources: vec![NamedSource {
-            name: "Catalog".into(),
-            path: "catalog.json".into(),
-            schema: SchemaNode::group(
-                "Catalog",
-                vec![
-                    SchemaNode::group(
-                        "Product",
-                        vec![
-                            SchemaNode::scalar("Sku", ScalarType::String),
-                            SchemaNode::scalar("Price", ScalarType::Int),
-                            SchemaNode::scalar("Label", ScalarType::String),
-                            SchemaNode::scalar("Rank", ScalarType::Int),
-                        ],
-                    )
-                    .repeating(),
-                ],
-            ),
-            options: Default::default(),
-            dynamic_path: None,
-        }],
+        extra_sources: vec![
+            NamedSource {
+                name: "Catalog".into(),
+                path: "catalog.json".into(),
+                schema: SchemaNode::group(
+                    "Catalog",
+                    vec![
+                        SchemaNode::group(
+                            "Product",
+                            vec![
+                                SchemaNode::scalar("Sku", ScalarType::String),
+                                SchemaNode::scalar("Price", ScalarType::Int),
+                                SchemaNode::scalar("Label", ScalarType::String),
+                                SchemaNode::scalar("Rank", ScalarType::Int),
+                            ],
+                        )
+                        .repeating(),
+                    ],
+                ),
+                options: Default::default(),
+                dynamic_path: None,
+            },
+            NamedSource {
+                name: "Inventory".into(),
+                path: "inventory.json".into(),
+                schema: SchemaNode::group(
+                    "Inventory",
+                    vec![
+                        SchemaNode::group(
+                            "Stock",
+                            vec![
+                                SchemaNode::scalar("Sku", ScalarType::String),
+                                SchemaNode::scalar("Warehouse", ScalarType::String),
+                            ],
+                        )
+                        .repeating(),
+                    ],
+                ),
+                options: Default::default(),
+                dynamic_path: None,
+            },
+        ],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
         user_functions: BTreeMap::new(),
@@ -216,6 +248,14 @@ fn project() -> Project {
                         value: Value::Int(2),
                     },
                 ),
+                (
+                    17,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Inventory".into(), "Stock".into()],
+                        path: vec!["Warehouse".into()],
+                    },
+                ),
             ]),
         },
         root: Scope {
@@ -267,6 +307,10 @@ fn project() -> Project {
                         Binding {
                             target_field: "OuterQuantity".into(),
                             node: 1,
+                        },
+                        Binding {
+                            target_field: "Warehouse".into(),
+                            node: 17,
                         },
                     ],
                     children: vec![Scope {
@@ -349,6 +393,25 @@ fn product(sku: Value, price: i64, label: &str, rank: i64) -> Instance {
     ])
 }
 
+fn inventory() -> Instance {
+    group([field(
+        "Stock",
+        repeated([
+            stock(string("1"), "east"),
+            stock(Value::Int(2), "north"),
+            stock(Value::Null, "null"),
+            stock(Value::xml_nil(), "xml-nil"),
+        ]),
+    )])
+}
+
+fn stock(sku: Value, warehouse: &str) -> Instance {
+    group([
+        field("Sku", scalar(sku)),
+        field("Warehouse", scalar(string(warehouse))),
+    ])
+}
+
 fn integer(instance: &Instance, name: &str) -> i64 {
     instance
         .field(name)
@@ -388,12 +451,13 @@ fn signature(output: &Instance) -> String {
                         .field("Details")
                         .unwrap_or_else(|| panic!("matched product details"));
                     format!(
-                        "{}:{}:{}:{}:{}:{}",
+                        "{}:{}:{}:{}:{}:{}:{}",
                         text(product, "Label"),
                         integer(product, "Price"),
                         integer(product, "JoinPosition"),
                         integer(product, "ProductPosition"),
                         integer(product, "OuterQuantity"),
+                        text(product, "Warehouse"),
                         text(details, "Summary")
                     )
                 })
@@ -415,10 +479,17 @@ fn generated_correlated_joins_match_engine_and_typed_failures() {
     let project = project();
     let source = source();
     let catalog = catalog();
-    let expected =
-        engine::run_with_sources(&project, &source, vec![("Catalog".into(), catalog.clone())])
-            .map(|output| signature(&output))
-            .expect("engine executes correlated join fixture");
+    let inventory = inventory();
+    let expected = engine::run_with_sources(
+        &project,
+        &source,
+        vec![
+            ("Catalog".into(), catalog.clone()),
+            ("Inventory".into(), inventory),
+        ],
+    )
+    .map(|output| signature(&output))
+    .expect("engine executes multi-stage correlated join fixture");
     let program = codegen::lower(&project).expect("correlated joins lower");
     let artifacts = codegen_csharp::emit(&program).expect("correlated joins emit");
     let directory = TempDirectory::new("correlated-join");
@@ -573,9 +644,18 @@ var catalog = Group(Field("Product", Repeated(
     Product(Text("2"), 5, "third", 5),
     Product(FerruleValue.Null, 100, "null", 99),
     Product(FerruleValue.XmlNil, 100, "xml-nil", 99))));
+var inventory = Group(Field("Stock", Repeated(
+    Stock(Text("1"), "east"),
+    Stock(Int(2), "north"),
+    Stock(FerruleValue.Null, "null"),
+    Stock(FerruleValue.XmlNil, "xml-nil"))));
 var output = (FerruleGroup)GeneratedMapping.ExecuteWithSources(
     source,
-    new[] { new NamedInput("Catalog", catalog) });
+    new[]
+    {
+        new NamedInput("Catalog", catalog),
+        new NamedInput("Inventory", inventory),
+    });
 var rows = (FerruleRepeated)output.Fields.Single(field => field.Name == "Row").Value;
 var signature = string.Join("\n", rows.Items.Cast<FerruleGroup>().Select(row =>
 {
@@ -589,19 +669,22 @@ var signature = string.Join("\n", rows.Items.Cast<FerruleGroup>().Select(row =>
             Value(product, "JoinPosition").Int64Value,
             Value(product, "ProductPosition").Int64Value,
             Value(product, "OuterQuantity").Int64Value,
+            Value(product, "Warehouse").StringValue,
             Value(details, "Summary").StringValue);
     }));
     return $"{Value(row, "Total").Int64Value},{Value(row, "Matches").Int64Value},{Value(row, "Labels").StringValue}[{matchSignature}]";
 }));
 Equal(Environment.GetEnvironmentVariable("EXPECTED_OUTPUT"), signature);
 
-var malformedCatalog = Group(Field("Product", Repeated(Group(
-    Field("Sku", Scalar(Int(1))),
-    Field("Price", Scalar(Int(10))),
-    Field("Label", Scalar(Text("missing-rank")))))));
+var malformedInventory = Group(Field("Stock", Repeated(Group(
+    Field("Sku", Scalar(Int(1)))))));
 var error = Error(() => GeneratedMapping.ExecuteWithSources(
     source,
-    new[] { new NamedInput("Catalog", malformedCatalog) }));
+    new[]
+    {
+        new NamedInput("Catalog", catalog),
+        new NamedInput("Inventory", malformedInventory),
+    }));
 Equal(FerruleRuntimeError.MissingSourceField, error.Error);
 Equal((ulong?)8UL, error.Join);
 
@@ -615,6 +698,10 @@ static FerruleGroup Product(FerruleValue sku, long price, string label, long ran
     Field("Price", Scalar(Int(price))),
     Field("Label", Scalar(Text(label))),
     Field("Rank", Scalar(Int(rank))));
+
+static FerruleGroup Stock(FerruleValue sku, string warehouse) => Group(
+    Field("Sku", Scalar(sku)),
+    Field("Warehouse", Scalar(Text(warehouse))));
 
 static FerruleValue Value(FerruleGroup group, string name) =>
     ((FerruleScalar)group.Fields.Single(field => field.Name == name).Value).Value;

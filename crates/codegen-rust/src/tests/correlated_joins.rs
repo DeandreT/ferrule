@@ -24,7 +24,17 @@ fn project() -> Project {
             vec!["Sku".into()],
         )),
     )
-    .expect("correlated join plan");
+    .and_then(|plan| {
+        plan.then(
+            MappingJoinSource::new(vec!["Inventory".into(), "Stock".into()]),
+            MappingJoinConditions::new(MappingJoinKey::new(
+                vec!["Catalog".into(), "Product".into()],
+                vec!["Sku".into()],
+                vec!["Sku".into()],
+            )),
+        )
+    })
+    .expect("multi-stage correlated join plan");
     Project {
         source: SchemaNode::group(
             "Source",
@@ -58,6 +68,7 @@ fn project() -> Project {
                                 SchemaNode::scalar("JoinPosition", ScalarType::Int),
                                 SchemaNode::scalar("ProductPosition", ScalarType::Int),
                                 SchemaNode::scalar("OuterQuantity", ScalarType::Int),
+                                SchemaNode::scalar("Warehouse", ScalarType::String),
                                 SchemaNode::group(
                                     "Details",
                                     vec![SchemaNode::scalar("Summary", ScalarType::String)],
@@ -74,27 +85,48 @@ fn project() -> Project {
         target_path: None,
         source_options: Default::default(),
         target_options: Default::default(),
-        extra_sources: vec![NamedSource {
-            name: "Catalog".into(),
-            path: "catalog.json".into(),
-            schema: SchemaNode::group(
-                "Catalog",
-                vec![
-                    SchemaNode::group(
-                        "Product",
-                        vec![
-                            SchemaNode::scalar("Sku", ScalarType::String),
-                            SchemaNode::scalar("Price", ScalarType::Int),
-                            SchemaNode::scalar("Label", ScalarType::String),
-                            SchemaNode::scalar("Rank", ScalarType::Int),
-                        ],
-                    )
-                    .repeating(),
-                ],
-            ),
-            options: Default::default(),
-            dynamic_path: None,
-        }],
+        extra_sources: vec![
+            NamedSource {
+                name: "Catalog".into(),
+                path: "catalog.json".into(),
+                schema: SchemaNode::group(
+                    "Catalog",
+                    vec![
+                        SchemaNode::group(
+                            "Product",
+                            vec![
+                                SchemaNode::scalar("Sku", ScalarType::String),
+                                SchemaNode::scalar("Price", ScalarType::Int),
+                                SchemaNode::scalar("Label", ScalarType::String),
+                                SchemaNode::scalar("Rank", ScalarType::Int),
+                            ],
+                        )
+                        .repeating(),
+                    ],
+                ),
+                options: Default::default(),
+                dynamic_path: None,
+            },
+            NamedSource {
+                name: "Inventory".into(),
+                path: "inventory.json".into(),
+                schema: SchemaNode::group(
+                    "Inventory",
+                    vec![
+                        SchemaNode::group(
+                            "Stock",
+                            vec![
+                                SchemaNode::scalar("Sku", ScalarType::String),
+                                SchemaNode::scalar("Warehouse", ScalarType::String),
+                            ],
+                        )
+                        .repeating(),
+                    ],
+                ),
+                options: Default::default(),
+                dynamic_path: None,
+            },
+        ],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
         user_functions: BTreeMap::new(),
@@ -215,6 +247,14 @@ fn project() -> Project {
                         value: Value::Int(2),
                     },
                 ),
+                (
+                    17,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Inventory".into(), "Stock".into()],
+                        path: vec!["Warehouse".into()],
+                    },
+                ),
             ]),
         },
         root: Scope {
@@ -266,6 +306,10 @@ fn project() -> Project {
                         MappingBinding {
                             target_field: "OuterQuantity".into(),
                             node: 1,
+                        },
+                        MappingBinding {
+                            target_field: "Warehouse".into(),
+                            node: 17,
                         },
                     ],
                     children: vec![Scope {
@@ -376,14 +420,45 @@ fn catalog() -> Instance {
     )])
 }
 
+fn inventory() -> Instance {
+    group([field(
+        "Stock",
+        repeated([
+            group([
+                field("Sku", scalar(string("1"))),
+                field("Warehouse", scalar(string("east"))),
+            ]),
+            group([
+                field("Sku", scalar(Value::Int(2))),
+                field("Warehouse", scalar(string("north"))),
+            ]),
+            group([
+                field("Sku", scalar(Value::Null)),
+                field("Warehouse", scalar(string("null"))),
+            ]),
+            group([
+                field("Sku", scalar(Value::xml_nil())),
+                field("Warehouse", scalar(string("xml-nil"))),
+            ]),
+        ]),
+    )])
+}
+
 #[test]
 fn generated_correlated_joins_match_engine_and_retain_typed_failures() {
     let project = project();
     let input = source();
     let named = catalog();
-    let expected =
-        engine::run_with_sources(&project, &input, vec![("Catalog".into(), named.clone())])
-            .expect("engine executes correlated joins");
+    let stock = inventory();
+    let expected = engine::run_with_sources(
+        &project,
+        &input,
+        vec![
+            ("Catalog".into(), named.clone()),
+            ("Inventory".into(), stock.clone()),
+        ],
+    )
+    .expect("engine executes multi-stage correlated joins");
     let program = codegen::lower(&project).expect("correlated joins lower");
     let runtime_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")
@@ -424,16 +499,26 @@ fn main() {
         row([("Sku", Value::Null), ("Price", Value::Int(100)), ("Label", string("null")), ("Rank", Value::Int(99))]),
         row([("Sku", Value::xml_nil()), ("Price", Value::Int(100)), ("Label", string("xml-nil")), ("Rank", Value::Int(99))]),
     ]))]);
-    let inputs = [NamedInput { name: "Catalog", instance: &catalog }];
+    let inventory = group([field("Stock", repeated([
+        row([("Sku", string("1")), ("Warehouse", string("east"))]),
+        row([("Sku", Value::Int(2)), ("Warehouse", string("north"))]),
+        row([("Sku", Value::Null), ("Warehouse", string("null"))]),
+        row([("Sku", Value::xml_nil()), ("Warehouse", string("xml-nil"))]),
+    ]))]);
+    let inputs = [
+        NamedInput { name: "Catalog", instance: &catalog },
+        NamedInput { name: "Inventory", instance: &inventory },
+    ];
     let output = correlated_join_map::execute_with_sources(&source, &inputs).unwrap();
     assert_eq!(format!("{output:?}"), std::env::var("EXPECTED_OUTPUT").unwrap());
 
-    let malformed_catalog = group([field("Product", repeated([row([
+    let malformed_inventory = group([field("Stock", repeated([row([
         ("Sku", Value::Int(1)),
-        ("Price", Value::Int(10)),
-        ("Label", string("missing-rank")),
     ])]))]);
-    let malformed_inputs = [NamedInput { name: "Catalog", instance: &malformed_catalog }];
+    let malformed_inputs = [
+        NamedInput { name: "Catalog", instance: &catalog },
+        NamedInput { name: "Inventory", instance: &malformed_inventory },
+    ];
     assert!(matches!(
         correlated_join_map::execute_with_sources(&source, &malformed_inputs),
         Err(RuntimeError::SourcePath(SourcePathError::MissingJoinField {

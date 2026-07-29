@@ -175,7 +175,17 @@ fn correlated_join_aggregate_program() -> Program {
                 vec!["Sku".into()],
             )),
         )
-        .expect("correlated join plan"),
+        .and_then(|plan| {
+            plan.then(
+                JoinSource::new(vec!["Inventory".into(), "Stock".into()]),
+                JoinConditions::new(JoinKey::new(
+                    vec!["Catalog".into(), "Product".into()],
+                    vec!["Sku".into()],
+                    vec!["Sku".into()],
+                )),
+            )
+        })
+        .expect("multi-stage correlated join plan"),
     );
     Program {
         source: SchemaNode::group(
@@ -191,23 +201,39 @@ fn correlated_join_aggregate_program() -> Program {
                 .repeating(),
             ],
         ),
-        extra_sources: vec![NamedSourceProgram {
-            name: "Catalog".into(),
-            source: SchemaNode::group(
-                "Catalog",
-                vec![
-                    SchemaNode::group(
-                        "Product",
-                        vec![
-                            SchemaNode::scalar("Sku", ScalarType::String),
-                            SchemaNode::scalar("Price", ScalarType::Int),
-                        ],
-                    )
-                    .repeating(),
-                ],
-            ),
-            dynamic: None,
-        }],
+        extra_sources: vec![
+            NamedSourceProgram {
+                name: "Catalog".into(),
+                source: SchemaNode::group(
+                    "Catalog",
+                    vec![
+                        SchemaNode::group(
+                            "Product",
+                            vec![
+                                SchemaNode::scalar("Sku", ScalarType::String),
+                                SchemaNode::scalar("Price", ScalarType::Int),
+                            ],
+                        )
+                        .repeating(),
+                    ],
+                ),
+                dynamic: None,
+            },
+            NamedSourceProgram {
+                name: "Inventory".into(),
+                source: SchemaNode::group(
+                    "Inventory",
+                    vec![
+                        SchemaNode::group(
+                            "Stock",
+                            vec![SchemaNode::scalar("Sku", ScalarType::String)],
+                        )
+                        .repeating(),
+                    ],
+                ),
+                dynamic: None,
+            },
+        ],
         target: SchemaNode::group(
             "Target",
             vec![
@@ -402,6 +428,10 @@ fn validates_root_join_controls_and_static_descendants() {
 #[test]
 fn validates_only_bounded_correlated_join_aggregates() {
     let program = correlated_join_aggregate_program();
+    assert!(matches!(
+        &program.expressions[1].expression,
+        Expression::JoinAggregate { join, .. } if join.plan().sources().count() == 3
+    ));
     assert_eq!(validate_program(&program), Ok(()));
 
     let mut grouped = program.clone();
@@ -489,6 +519,14 @@ fn validates_only_bounded_correlated_join_aggregates() {
 #[test]
 fn validates_bounded_correlated_join_scopes_with_tuple_controls_and_children() {
     let program = correlated_join_scope_program();
+    assert_eq!(
+        program.root.children[0].children[0]
+            .iteration
+            .as_ref()
+            .and_then(IterationPlan::inner_join)
+            .map(|join| join.plan().sources().count()),
+        Some(3)
+    );
     assert_eq!(validate_program(&program), Ok(()));
 
     let mut unbounded = program;
