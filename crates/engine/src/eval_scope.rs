@@ -987,6 +987,13 @@ impl ItemEvaluator<'_> {
                 output_positions,
                 &mut in_progress,
             )?;
+            let value = match target
+                .and_then(ir::SchemaNode::dynamic_fields)
+                .map(|field| &field.kind)
+            {
+                Some(SchemaKind::Scalar { ty }) => adapt_numeric_target(value, *ty),
+                Some(SchemaKind::Group { .. }) | None => value,
+            };
             dynamic_target::insert_dynamic_target_field(
                 &mut fields,
                 key,
