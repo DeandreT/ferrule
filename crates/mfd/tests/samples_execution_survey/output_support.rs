@@ -161,6 +161,7 @@ fn write_document_set(
 ) -> Result<PathBuf, String> {
     let relative_paths = validate_document_paths(documents)?;
     let stage = base.join(format!(".{label}-documents"));
+    let target_base = base.join(label);
     std::fs::create_dir(&stage)
         .map_err(|error| format!("creating dynamic output stage failed: {error}"))?;
     let render_result =
@@ -182,7 +183,7 @@ fn write_document_set(
         return Err(error);
     }
     for relative in &relative_paths {
-        let destination = base.join(relative);
+        let destination = target_base.join(relative);
         if destination.exists() {
             let _ = std::fs::remove_dir_all(&stage);
             return Err(format!(
@@ -200,7 +201,7 @@ fn write_document_set(
     let _ = std::fs::remove_dir_all(&stage);
     Ok(relative_paths
         .first()
-        .map_or_else(|| base.to_path_buf(), |relative| base.join(relative)))
+        .map_or(target_base.clone(), |relative| target_base.join(relative)))
 }
 
 pub(super) fn validate_document_paths(
@@ -559,11 +560,16 @@ fn normalized_reference_name(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use engine::{ExecutionOutputs, NamedOutput};
-    use ir::{Instance, ScalarType, SchemaNode, Value};
-    use mapping::{FormatOptions, Graph, NamedTarget, Project, Scope};
+    use std::io;
 
-    use super::{WrittenSurveyOutputs, compare_execution_outputs, compare_generated_references};
+    use engine::{ExecutionOutputs, NamedOutput};
+    use ir::{DocumentMember, Instance, ScalarType, SchemaNode, Value};
+    use mapping::{FormatOptions, Graph, NamedTarget, Project, Scope, ScopeIteration};
+
+    use super::{
+        WrittenSurveyOutputs, compare_execution_outputs, compare_generated_references,
+        write_outputs,
+    };
 
     #[test]
     fn compares_named_execution_outputs_by_identity_and_reports_drift() {
@@ -666,5 +672,74 @@ mod tests {
 
         compare_generated_references(&project, &written, &[reference_primary, reference_extra])
             .unwrap();
+    }
+
+    #[test]
+    fn isolates_same_named_dynamic_documents_by_target() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = super::super::SurveyWorkspace::new()?;
+        let schema = SchemaNode::group(
+            "Record",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        let dynamic_scope = Scope {
+            iteration: ScopeIteration::DynamicDocuments {
+                source: vec!["Rows".into()],
+                output_path: 0,
+            },
+            ..Scope::default()
+        };
+        let project = Project {
+            source: SchemaNode::group("Source", Vec::new()),
+            target: schema.clone(),
+            source_path: None,
+            target_path: None,
+            source_options: FormatOptions::default(),
+            target_options: FormatOptions::default(),
+            extra_sources: Vec::new(),
+            extra_targets: vec![NamedTarget {
+                name: "second".into(),
+                path: None,
+                schema: schema.clone(),
+                options: FormatOptions::default(),
+                root: dynamic_scope.clone(),
+            }],
+            failure_rules: Vec::new(),
+            user_functions: Default::default(),
+            graph: Graph::default(),
+            root: dynamic_scope,
+        };
+        let document = || {
+            Ok::<_, io::Error>(Instance::DocumentSet(vec![
+                DocumentMember::new(
+                    "shared.xml",
+                    Instance::Group(vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String("same path".into())),
+                    )]),
+                )
+                .ok_or_else(|| io::Error::other("test document path must be non-empty"))?,
+            ]))
+        };
+        let outputs = ExecutionOutputs {
+            primary: document()?,
+            extras: vec![NamedOutput {
+                name: "second".into(),
+                instance: document()?,
+            }],
+        };
+
+        let written = write_outputs(&project, &outputs, &workspace.0, &workspace.0, &workspace.0)
+            .map_err(io::Error::other)?;
+        assert_eq!(
+            written.primary,
+            workspace.0.join("primary-output/shared.xml")
+        );
+        assert_eq!(
+            written.extras,
+            vec![workspace.0.join("extra-output-0/shared.xml")]
+        );
+        assert!(written.primary.is_file());
+        assert!(written.extras[0].is_file());
+        Ok(())
     }
 }
