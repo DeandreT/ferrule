@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mapping::{FunctionId, Graph, Node, NodeId, Project, UserFunction};
 
-use super::{ValidationIssue, validate_builtin_call};
+use super::{ValidationIssue, validate_builtin_call, validate_runtime_parameter_name};
 use crate::user_function::MAX_USER_FUNCTION_DEPTH;
 
 pub(super) fn validate_user_functions(project: &Project, issues: &mut Vec<ValidationIssue>) {
@@ -120,6 +120,9 @@ fn validate_body(
             | Node::RuntimeValue { .. }
             | Node::If { .. }
             | Node::ValueMap { .. } => {}
+            Node::RuntimeParameter { name, .. } => {
+                validate_runtime_parameter_name(&node_location, name, issues);
+            }
             Node::FunctionParameter { parameter } => {
                 if !parameter_ids.contains(parameter) {
                     issues.push(ValidationIssue::new(

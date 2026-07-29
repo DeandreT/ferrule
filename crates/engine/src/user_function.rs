@@ -4,7 +4,7 @@ use ir::{Instance, ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, Node, NodeId, UserFunction};
 
 use crate::EngineError;
-use crate::context::runtime_field;
+use crate::context::{runtime_field, runtime_parameter_field};
 
 pub(super) const MAX_USER_FUNCTION_DEPTH: usize = 64;
 
@@ -122,6 +122,21 @@ fn evaluate_body_node(
             .and_then(Instance::as_scalar)
             .cloned()
             .ok_or(EngineError::MissingRuntimeValue(*value)),
+        Node::RuntimeParameter { name, ty } => {
+            let value = runtime
+                .and_then(|frame| frame.field(&runtime_parameter_field(name)))
+                .and_then(Instance::as_scalar)
+                .ok_or_else(|| EngineError::MissingRuntimeParameter {
+                    node: node_id,
+                    name: name.clone(),
+                })?;
+            adapt_scalar(value.clone(), *ty).ok_or_else(|| EngineError::RuntimeParameterType {
+                node: node_id,
+                name: name.clone(),
+                expected: *ty,
+                found: value.type_name(),
+            })
+        }
         Node::Call {
             function: name,
             args,

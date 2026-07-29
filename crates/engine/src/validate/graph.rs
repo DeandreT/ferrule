@@ -8,7 +8,7 @@ use mapping::{
 use super::schema::{
     display_path, follow_schema, source_path_matches, source_path_matches_resolved,
 };
-use super::{ValidationIssue, validate_builtin_call};
+use super::{ValidationIssue, validate_builtin_call, validate_runtime_parameter_name};
 
 pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
     let mut sequence_item_scopes = BTreeMap::new();
@@ -101,25 +101,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                 }
             }
             Node::RuntimeParameter { name, .. } => {
-                if name.is_empty() {
-                    issues.push(ValidationIssue::new(
-                        &location,
-                        "runtime parameter name cannot be empty",
-                    ));
-                } else if name.contains('\0') {
-                    issues.push(ValidationIssue::new(
-                        &location,
-                        "runtime parameter name cannot contain NUL",
-                    ));
-                } else if name.len() > mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES {
-                    issues.push(ValidationIssue::new(
-                        &location,
-                        format!(
-                            "runtime parameter name exceeds {} UTF-8 bytes",
-                            mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES
-                        ),
-                    ));
-                }
+                validate_runtime_parameter_name(&location, name, issues);
             }
             Node::Position { collection } if !collection.is_empty() => {
                 validate_collection_path(project, &location, collection, "position", issues);
