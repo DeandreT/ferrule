@@ -29,6 +29,7 @@ internal static partial class Program
             ("runtime parameters", RuntimeParameters),
             ("source document path", SourceDocumentPath),
             ("JSON document boundaries", JsonDocumentBoundaries),
+            ("XML type alternatives", XmlTypeAlternatives),
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),
             ("scalar functions", ScalarFunctions),

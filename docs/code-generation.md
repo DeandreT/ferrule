@@ -200,8 +200,10 @@ The current portable model includes:
 - complete structured XML source serialization from ordinary or frame-pinned
   paths, with an embedded closed schema, document declaration/indent/default-
   namespace controls, attributes, text, repetition, Null omission, recursive
-  groups, and XML nil; advanced alternative/generic/mixed schemas reject before
-  artifact creation
+  groups, XML nil, and closed exclusive `xsi:type` group alternatives with
+  exact namespace-qualified identities and required-member validation;
+  substitution-group, inclusive/value-constrained, generic-element, and mixed
+  schemas reject before artifact creation
 - ordered XML mixed-content reconstruction with graph-computed direct-child
   replacements evaluated in each original occurrence context
 - root-context static inner joins across two or more primary or named-source

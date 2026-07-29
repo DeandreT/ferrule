@@ -24,7 +24,7 @@ fn lowers_xml_serialization_with_exact_schema_and_document_policy() {
         Node::XmlSerialize {
             path: vec!["Item".into()],
             frame: Some(vec!["Rows".into()]),
-            schema: item.clone(),
+            schema: Box::new(item.clone()),
             declaration: true,
             indent: false,
             namespace: Some("urn:ferrule:test".into()),
@@ -48,7 +48,7 @@ fn lowers_xml_serialization_with_exact_schema_and_document_policy() {
             expression: Expression::XmlSerialize {
                 frame: Some(vec!["Rows".into()]),
                 path: vec!["Item".into()],
-                schema: item,
+                schema: Box::new(item),
                 declaration: true,
                 indent: false,
                 namespace: Some("urn:ferrule:test".into()),

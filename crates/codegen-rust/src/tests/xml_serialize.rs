@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ir::Instance;
+use ir::{Instance, XML_TYPE_FIELD};
 use mapping::{
     Binding as MappingBinding, Graph, Node, Project, Scope, ScopeConstruction, ScopeIteration,
 };
@@ -42,9 +42,40 @@ fn item_schema() -> SchemaNode {
             SchemaNode::scalar("Optional", ScalarType::String),
             SchemaNode::scalar("Nil", ScalarType::String).nillable(),
             SchemaNode::scalar("Tag", ScalarType::String).repeating(),
+            address_schema(),
             child,
         ],
     )
+}
+
+fn address_schema() -> SchemaNode {
+    let alternatives = vec![
+        ir::GroupAlternative {
+            name: "{urn:ferrule:types}Domestic".into(),
+            members: vec!["Name".into(), "State".into(), "Zip".into()],
+            required: vec!["State".into(), "Zip".into()],
+            constraints: Vec::new(),
+        },
+        ir::GroupAlternative {
+            name: "{urn:ferrule:types}International".into(),
+            members: vec!["Name".into(), "Postcode".into()],
+            required: vec!["Postcode".into()],
+            constraints: Vec::new(),
+        },
+    ];
+    let Some(schema) = SchemaNode::group(
+        "Address",
+        vec![
+            SchemaNode::scalar("Name", ScalarType::String),
+            SchemaNode::scalar("State", ScalarType::String),
+            SchemaNode::scalar("Zip", ScalarType::Int),
+            SchemaNode::scalar("Postcode", ScalarType::String),
+        ],
+    )
+    .with_alternatives(alternatives) else {
+        panic!("test XML type alternatives are valid");
+    };
+    schema
 }
 
 fn project() -> Project {
@@ -82,7 +113,7 @@ fn project() -> Project {
                     Node::XmlSerialize {
                         path: vec!["Item".into()],
                         frame: Some(vec!["Rows".into()]),
-                        schema: item.clone(),
+                        schema: Box::new(item.clone()),
                         declaration: true,
                         indent: true,
                         namespace: Some("urn:ferrule:test".into()),
@@ -93,7 +124,7 @@ fn project() -> Project {
                     Node::XmlSerialize {
                         path: vec!["Item".into()],
                         frame: Some(vec!["Rows".into()]),
-                        schema: item,
+                        schema: Box::new(item),
                         declaration: false,
                         indent: false,
                         namespace: None,
@@ -138,6 +169,19 @@ fn source() -> Instance {
                     "Tag",
                     repeated([scalar(string("one")), scalar(string("two"))]),
                 ),
+                field(
+                    "Address",
+                    group([
+                        field(
+                            XML_TYPE_FIELD,
+                            scalar(string("{urn:ferrule:types}Domestic")),
+                        ),
+                        field("Name", scalar(string("Ada"))),
+                        field("State", scalar(string("WA"))),
+                        field("Zip", scalar(Value::Int(98101))),
+                        field("Postcode", scalar(Value::Null)),
+                    ]),
+                ),
                 field("Child", group([field("Name", scalar(string("Nested")))])),
             ]),
         )])]),
@@ -167,6 +211,11 @@ fn generated_xml_serialization_matches_engine_and_retains_typed_errors() {
     let compact = expected(&engine_output, "Compact");
     assert!(pretty.contains("\n    <Code>D&lt;1</Code>"), "{pretty}");
     assert!(pretty.contains("<Child>"), "{pretty}");
+    assert!(pretty.contains("xsi:type=\"ft:Domestic\""), "{pretty}");
+    assert!(
+        pretty.contains("xmlns:ft=\"urn:ferrule:types\""),
+        "{pretty}"
+    );
     assert!(!pretty.contains("<Item>\n    <Name>Nested"), "{pretty}");
 
     let program = codegen::lower(&project).expect("XML project lowers");
@@ -202,6 +251,13 @@ fn source() -> Instance {
                 field("Optional", scalar(Value::Null)),
                 field("Nil", scalar(Value::xml_nil())),
                 field("Tag", repeated([scalar(string("one")), scalar(string("two"))])),
+                field("Address", group([
+                    field("\u{1f}ferrule-xml-type", scalar(string("{urn:ferrule:types}Domestic"))),
+                    field("Name", scalar(string("Ada"))),
+                    field("State", scalar(string("WA"))),
+                    field("Zip", scalar(Value::Int(98101))),
+                    field("Postcode", scalar(Value::Null)),
+                ])),
                 field("Child", group([field("Name", scalar(string("Nested")))])),
             ]),
         )])]),

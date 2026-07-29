@@ -109,6 +109,7 @@ public static class FerruleXml
     private const int MaximumSchemaDepth = 256;
     private const int MaximumRecursiveDepth = 64;
     private const string XsiNamespace = "http://www.w3.org/2001/XMLSchema-instance";
+    private const string XmlTypeField = "\u001fferrule-xml-type";
 
     public static FerruleValue Serialize(
         uint node,
@@ -190,6 +191,21 @@ public static class FerruleXml
                 detail: detail);
     }
 
+    private static (string? Namespace, string LocalName) SplitExpandedName(string name)
+    {
+        if (!name.StartsWith('{'))
+        {
+            return (null, name);
+        }
+        var close = name.IndexOf('}');
+        if (close <= 1 || close == name.Length - 1)
+        {
+            throw new InvalidOperationException(
+                $"invalid expanded XML name '{name}'");
+        }
+        return (name[1..close], name[(close + 1)..]);
+    }
+
     private enum XmlScalarType
     {
         String,
@@ -197,6 +213,11 @@ public static class FerruleXml
         Float,
         Bool,
     }
+
+    private sealed record XmlAlternative(
+        string Name,
+        IReadOnlyList<string> Members,
+        IReadOnlyList<string> Required);
 
     private sealed record XmlSchemaNode(
         string Name,
@@ -207,7 +228,8 @@ public static class FerruleXml
         bool Nillable,
         string? Fixed,
         XmlScalarType? ScalarType,
-        IReadOnlyList<XmlSchemaNode> Children)
+        IReadOnlyList<XmlSchemaNode> Children,
+        IReadOnlyList<XmlAlternative> Alternatives)
     {
         internal static XmlSchemaNode Parse(JsonElement element, int depth)
         {
@@ -225,6 +247,7 @@ public static class FerruleXml
             var kindName = RequiredString(kind, "kind");
             XmlScalarType? scalarType = null;
             var children = Array.Empty<XmlSchemaNode>();
+            var alternatives = Array.Empty<XmlAlternative>();
             if (kindName == "scalar")
             {
                 scalarType = RequiredString(kind, "ty") switch
@@ -248,6 +271,22 @@ public static class FerruleXml
                     .EnumerateArray()
                     .Select(child => Parse(child, depth + 1))
                     .ToArray();
+                alternatives = ParseAlternatives(kind);
+                if (alternatives.Length != 0)
+                {
+                    if (OptionalString(element, "alternative_mode") is { } mode &&
+                        mode != "exclusive")
+                    {
+                        throw new InvalidOperationException(
+                            $"unsupported XML alternative mode '{mode}'");
+                    }
+                    if (OptionalString(element, "xml_alternative_kind") is { } alternativeKind &&
+                        alternativeKind != "xsi_type")
+                    {
+                        throw new InvalidOperationException(
+                            $"unsupported XML alternative kind '{alternativeKind}'");
+                    }
+                }
             }
             else
             {
@@ -262,7 +301,75 @@ public static class FerruleXml
                 OptionalBoolean(element, "nillable"),
                 OptionalString(element, "fixed"),
                 scalarType,
-                children);
+                children,
+                alternatives);
+        }
+
+        private static XmlAlternative[] ParseAlternatives(JsonElement kind)
+        {
+            if (!kind.TryGetProperty("alternatives", out var alternatives))
+            {
+                return Array.Empty<XmlAlternative>();
+            }
+            if (alternatives.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException(
+                    "XML group alternatives must be an array");
+            }
+            return alternatives
+                .EnumerateArray()
+                .Select(ParseAlternative)
+                .ToArray();
+        }
+
+        private static XmlAlternative ParseAlternative(JsonElement element)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidOperationException(
+                    "XML group alternative must be an object");
+            }
+            var name = RequiredString(element, "name");
+            var (_, localName) = SplitExpandedName(name);
+            _ = XmlConvert.VerifyName(localName);
+            if (element.TryGetProperty("constraints", out var constraints) &&
+                (constraints.ValueKind != JsonValueKind.Array ||
+                 constraints.GetArrayLength() != 0))
+            {
+                throw new InvalidOperationException(
+                    "value-constrained XML alternatives are unsupported");
+            }
+            return new XmlAlternative(
+                name,
+                RequiredStrings(element, "members"),
+                OptionalStrings(element, "required"));
+        }
+
+        private static string[] RequiredStrings(JsonElement element, string name)
+        {
+            var values = Required(element, name);
+            return ParseStrings(values, name);
+        }
+
+        private static string[] OptionalStrings(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var values)
+                ? ParseStrings(values, name)
+                : Array.Empty<string>();
+
+        private static string[] ParseStrings(JsonElement values, string name)
+        {
+            if (values.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException(
+                    $"embedded XML schema '{name}' must be an array");
+            }
+            return values
+                .EnumerateArray()
+                .Select(value => value.ValueKind == JsonValueKind.String
+                    ? value.GetString() ?? string.Empty
+                    : throw new InvalidOperationException(
+                        $"embedded XML schema '{name}' values must be strings"))
+                .ToArray();
         }
 
         private static JsonElement Required(JsonElement element, string name) =>
@@ -411,7 +518,21 @@ public static class FerruleXml
                 throw Shape(schema, "an element group", instance);
             }
             ValidateFields(schema, group);
+            var alternative = SelectAlternative(schema, group);
             Start(schema.Name, defaultNamespace);
+            if (alternative is not null)
+            {
+                Attribute("xmlns:xsi", XsiNamespace);
+                var (alternativeNamespace, alternativeName) =
+                    SplitExpandedName(alternative.Name);
+                var typeName = alternativeName;
+                if (alternativeNamespace is not null)
+                {
+                    Attribute("xmlns:ft", alternativeNamespace);
+                    typeName = $"ft:{alternativeName}";
+                }
+                Attribute("xsi:type", typeName);
+            }
             foreach (var attribute in schema.Children.Where(child => child.Attribute))
             {
                 if (!group.TryGetField(attribute.Name, out var field))
@@ -528,6 +649,92 @@ public static class FerruleXml
             return null;
         }
 
+        private static XmlAlternative? SelectAlternative(
+            XmlSchemaNode schema,
+            FerruleGroup group)
+        {
+            if (schema.Alternatives.Count == 0)
+            {
+                return null;
+            }
+            if (group.TryGetField(XmlTypeField, out var marker))
+            {
+                if (marker is not FerruleScalar
+                    {
+                        Value.Kind: FerruleValueKind.String,
+                    } scalar)
+                {
+                    throw new InvalidOperationException(
+                        $"element '{schema.Name}' has a non-string XML type marker");
+                }
+                var selected = schema.Alternatives.FirstOrDefault(
+                    alternative => alternative.Name == scalar.Value.StringValue) ??
+                    throw new InvalidOperationException(
+                        $"element '{schema.Name}' has unknown XML type '{scalar.Value.StringValue}'");
+                ValidateAlternativeFields(schema, selected, group);
+                return selected;
+            }
+
+            var populated = group.Fields
+                .Where(field =>
+                    field.Name != XmlTypeField && InstanceHasValue(field.Value))
+                .Select(field => field.Name)
+                .ToArray();
+            var matches = schema.Alternatives
+                .Where(alternative =>
+                    populated.All(field => alternative.Members.Contains(field)))
+                .ToArray();
+            if (matches.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"element '{schema.Name}' does not match an XML type alternative");
+            }
+            var memberCount = matches.Min(alternative => alternative.Members.Count);
+            var narrowest = matches
+                .Where(alternative => alternative.Members.Count == memberCount)
+                .ToArray();
+            if (narrowest.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    $"element '{schema.Name}' matches more than one XML type alternative");
+            }
+            return narrowest[0];
+        }
+
+        private static void ValidateAlternativeFields(
+            XmlSchemaNode schema,
+            XmlAlternative alternative,
+            FerruleGroup group)
+        {
+            var unexpected = group.Fields.Any(field =>
+                field.Name != XmlTypeField &&
+                InstanceHasValue(field.Value) &&
+                !alternative.Members.Contains(field.Name));
+            var missing = alternative.Required.Any(required =>
+                !group.TryGetField(required, out var field) ||
+                !InstanceHasValue(field));
+            if (unexpected || missing)
+            {
+                throw new InvalidOperationException(
+                    $"element '{schema.Name}' does not match XML type '{alternative.Name}'");
+            }
+        }
+
+        private static bool InstanceHasValue(FerruleInstance instance) => instance switch
+        {
+            FerruleScalar
+            {
+                Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull,
+            } => false,
+            FerruleScalar => true,
+            FerruleGroup group => group.Fields.Any(field => InstanceHasValue(field.Value)),
+            FerruleRepeated repeated => repeated.Items.Any(InstanceHasValue),
+            FerruleMappedSequence mapped => mapped.Items.Any(InstanceHasValue),
+            FerruleDocumentSet documents =>
+                documents.Documents.Any(document => InstanceHasValue(document.Value)),
+            _ => false,
+        };
+
         private void Start(string name, string? defaultNamespace)
         {
             _output.Append('<').Append(name);
@@ -626,7 +833,8 @@ public static class FerruleXml
         {
             foreach (var field in group.Fields)
             {
-                if (!schema.Children.Any(child => child.Name == field.Name))
+                if (!(schema.Alternatives.Count != 0 && field.Name == XmlTypeField) &&
+                    !schema.Children.Any(child => child.Name == field.Name))
                 {
                     throw new InvalidOperationException(
                         $"group '{schema.Name}' contains unexpected field '{field.Name}'");
