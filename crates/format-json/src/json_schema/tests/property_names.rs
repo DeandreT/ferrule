@@ -198,6 +198,78 @@ fn all_of_and_representable_unions_compose_without_widening() {
 }
 
 #[test]
+fn finite_property_name_exclusions_execute_compose_and_roundtrip() -> Result<(), JsonFormatError> {
+    let schema = import_str(
+        r#"{
+  "type":"object",
+  "properties":{
+    "allowed":{"type":"integer"},
+    "blocked":{"type":"integer"},
+    "also-blocked":{"type":"integer"}
+  },
+  "propertyNames":{
+    "allOf":[
+      {"not":{"enum":["blocked","also-blocked"]}},
+      {"minLength":2}
+    ]
+  },
+  "additionalProperties":true
+}"#,
+    );
+    let constraints = schema
+        .json_property_names
+        .as_ref()
+        .unwrap_or_else(|| panic!("finite exclusions should be retained"));
+    assert_eq!(
+        constraints
+            .excluded()
+            .map(ir::JsonPropertyNameSet::as_slice),
+        Some(["also-blocked".to_string(), "blocked".to_string()].as_slice())
+    );
+    assert!(crate::from_str(r#"{"allowed":1,"other":2}"#, &schema).is_ok());
+    let blocked = crate::from_str(r#"{"blocked":1}"#, &schema);
+    assert!(
+        matches!(
+            &blocked,
+            Err(JsonFormatError::InvalidPropertyName { property, .. })
+                if property == "blocked"
+        ),
+        "{blocked:?}"
+    );
+
+    let rendered = export(&schema);
+    assert!(rendered.contains(r#""not""#));
+    assert_eq!(import_str(&rendered), schema);
+
+    let any_of = import_str(
+        r#"{
+  "type":"object",
+  "propertyNames":{
+    "anyOf":[
+      {"not":{"enum":["a","shared"]}},
+      {"not":{"enum":["b","shared"]}}
+    ]
+  },
+  "additionalProperties":true
+}"#,
+    );
+    assert!(crate::from_str(r#"{"a":1,"b":2}"#, &any_of).is_ok());
+    assert!(crate::from_str(r#"{"shared":1}"#, &any_of).is_err());
+    assert_eq!(import_str(&export(&any_of)), any_of);
+
+    let double_negative = import_str(
+        r#"{
+  "type":"object",
+  "propertyNames":{"not":{"not":{"enum":["a","b"]}}},
+  "additionalProperties":true
+}"#,
+    );
+    assert!(crate::from_str(r#"{"a":1,"b":2}"#, &double_negative).is_ok());
+    assert!(crate::from_str(r#"{"c":1}"#, &double_negative).is_err());
+    Ok(())
+}
+
+#[test]
 fn malformed_ambiguous_and_unsupported_name_schemas_reject_exactly() {
     for invalid in [
         r#"{"type":"object","propertyNames":1}"#,
@@ -206,7 +278,7 @@ fn malformed_ambiguous_and_unsupported_name_schemas_reject_exactly() {
         r#"{"type":"object","propertyNames":{"enum":[]}}"#,
         r#"{"type":"object","propertyNames":{"minLength":2,"maxLength":1}}"#,
         r#"{"type":"object","propertyNames":{"pattern":"(?=x)"}}"#,
-        r#"{"type":"object","propertyNames":{"not":{"const":"x"}}}"#,
+        r#"{"type":"object","propertyNames":{"not":{"pattern":"^x"}}}"#,
         r#"{"propertyNames":{"const":"x"}}"#,
     ] {
         assert!(import_str_result(invalid).is_err(), "{invalid}");

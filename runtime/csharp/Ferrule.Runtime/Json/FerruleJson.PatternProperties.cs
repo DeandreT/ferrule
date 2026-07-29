@@ -282,6 +282,7 @@ public static partial class FerruleJson
         right is not null &&
         left.RejectAll == right.RejectAll &&
         OptionalStringsEqual(left.Allowed, right.Allowed) &&
+        OptionalStringsEqual(left.Excluded, right.Excluded) &&
         Equals(left.Length, right.Length) &&
         PatternConstraintsEqual(left.Patterns, right.Patterns) &&
         left.Formats.SequenceEqual(right.Formats, StringComparer.Ordinal);

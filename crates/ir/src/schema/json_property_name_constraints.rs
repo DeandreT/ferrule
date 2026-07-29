@@ -49,6 +49,10 @@ impl JsonPropertyNameSet {
         (!names.is_empty()).then_some(Self(names))
     }
 
+    pub fn union(&self, other: &Self) -> Result<Self, JsonPropertyNameSetError> {
+        Self::new(self.0.iter().chain(&other.0).cloned())
+    }
+
     fn from_canonical(names: Vec<String>) -> Result<Self, JsonPropertyNameSetError> {
         validate_names(&names)?;
         Ok(Self(names))
@@ -113,6 +117,8 @@ pub enum JsonPropertyNameConstraints {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         allowed: Option<JsonPropertyNameSet>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        excluded: Option<JsonPropertyNameSet>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         length: Option<StringLengthRange>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         patterns: Option<JsonPatternConstraints>,
@@ -128,8 +134,23 @@ impl JsonPropertyNameConstraints {
         patterns: Option<JsonPatternConstraints>,
         formats: JsonFormatAnnotations,
     ) -> Option<Self> {
+        Self::schema_excluding(allowed, None, length, patterns, formats)
+    }
+
+    pub fn schema_excluding(
+        allowed: Option<JsonPropertyNameSet>,
+        excluded: Option<JsonPropertyNameSet>,
+        length: Option<StringLengthRange>,
+        patterns: Option<JsonPatternConstraints>,
+        formats: JsonFormatAnnotations,
+    ) -> Option<Self> {
         let patterns = patterns.filter(|patterns| !patterns.is_tautology());
-        if allowed.is_none() && length.is_none() && patterns.is_none() && formats.is_empty() {
+        if allowed.is_none()
+            && excluded.is_none()
+            && length.is_none()
+            && patterns.is_none()
+            && formats.is_empty()
+        {
             return None;
         }
         let had_finite_domain = allowed.is_some();
@@ -142,6 +163,9 @@ impl JsonPropertyNameConstraints {
                         && patterns
                             .as_ref()
                             .is_none_or(|constraints| constraints.matches(name))
+                        && excluded
+                            .as_ref()
+                            .is_none_or(|excluded| !excluded.contains(name))
                 })
                 .cloned()
                 .collect::<Vec<_>>();
@@ -150,8 +174,10 @@ impl JsonPropertyNameConstraints {
         if had_finite_domain && allowed.is_none() {
             return Some(Self::Never);
         }
+        let excluded = allowed.is_none().then_some(excluded).flatten();
         Some(Self::Schema {
             allowed,
+            excluded,
             length,
             patterns,
             formats,
@@ -166,6 +192,13 @@ impl JsonPropertyNameConstraints {
         match self {
             Self::Never => None,
             Self::Schema { allowed, .. } => allowed.as_ref(),
+        }
+    }
+
+    pub fn excluded(&self) -> Option<&JsonPropertyNameSet> {
+        match self {
+            Self::Never => None,
+            Self::Schema { excluded, .. } => excluded.as_ref(),
         }
     }
 
@@ -195,6 +228,7 @@ impl JsonPropertyNameConstraints {
             Self::Never => false,
             Self::Schema {
                 allowed,
+                excluded,
                 length,
                 patterns,
                 ..
@@ -202,6 +236,9 @@ impl JsonPropertyNameConstraints {
                 allowed
                     .as_ref()
                     .is_none_or(|allowed| allowed.contains(name))
+                    && excluded
+                        .as_ref()
+                        .is_none_or(|excluded| !excluded.contains(name))
                     && length.is_none_or(|length| length.contains_str(name))
                     && patterns
                         .as_ref()
@@ -215,13 +252,17 @@ impl JsonPropertyNameConstraints {
             && match self {
                 Self::Never => true,
                 Self::Schema {
-                    allowed, patterns, ..
+                    allowed,
+                    excluded,
+                    patterns,
+                    ..
                 } => allowed.as_ref().is_none_or(|allowed| {
-                    allowed.as_slice().iter().all(|name| {
-                        patterns
-                            .as_ref()
-                            .is_none_or(|patterns| patterns.matches(name))
-                    })
+                    excluded.is_none()
+                        && allowed.as_slice().iter().all(|name| {
+                            patterns
+                                .as_ref()
+                                .is_none_or(|patterns| patterns.matches(name))
+                        })
                 }),
             }
     }
@@ -231,12 +272,20 @@ impl JsonPropertyNameConstraints {
             Self::Never => true,
             Self::Schema {
                 allowed,
+                excluded,
                 length,
                 patterns,
                 formats,
             } => {
-                if allowed.is_none() && length.is_none() && patterns.is_none() && formats.is_empty()
+                if allowed.is_none()
+                    && excluded.is_none()
+                    && length.is_none()
+                    && patterns.is_none()
+                    && formats.is_empty()
                 {
+                    return false;
+                }
+                if allowed.is_some() && excluded.is_some() {
                     return false;
                 }
                 if patterns
@@ -259,11 +308,17 @@ impl JsonPropertyNameConstraints {
         match self {
             Self::Never => false,
             Self::Schema {
-                allowed, length, ..
+                allowed,
+                excluded,
+                length,
+                ..
             } => {
                 allowed
                     .as_ref()
                     .is_none_or(|allowed| allowed.contains(name))
+                    && excluded
+                        .as_ref()
+                        .is_none_or(|excluded| !excluded.contains(name))
                     && length.is_none_or(|length| length.contains_str(name))
             }
         }
@@ -294,6 +349,8 @@ impl<'de> Deserialize<'de> for JsonPropertyNameConstraints {
                 #[serde(default)]
                 allowed: Option<JsonPropertyNameSet>,
                 #[serde(default)]
+                excluded: Option<JsonPropertyNameSet>,
+                #[serde(default)]
                 length: Option<StringLengthRange>,
                 #[serde(default)]
                 patterns: Option<JsonPatternConstraints>,
@@ -306,12 +363,14 @@ impl<'de> Deserialize<'de> for JsonPropertyNameConstraints {
             Repr::Never => Ok(Self::Never),
             Repr::Schema {
                 allowed,
+                excluded,
                 length,
                 patterns,
                 formats,
             } => {
                 let constraints = Self::Schema {
                     allowed,
+                    excluded,
                     length,
                     patterns,
                     formats,
@@ -389,6 +448,35 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&JsonPropertyNameConstraints::never()).unwrap_or_default(),
             r#"{"kind":"never"}"#
+        );
+        let excluded = JsonPropertyNameSet::new(["blocked".to_string()])
+            .unwrap_or_else(|error| panic!("{error}"));
+        let constraints = JsonPropertyNameConstraints::schema_excluding(
+            None,
+            Some(excluded),
+            None,
+            None,
+            JsonFormatAnnotations::default(),
+        )
+        .unwrap_or_else(|| panic!("a finite exclusion is not tautological"));
+        assert!(!constraints.accepts("blocked"));
+        assert!(constraints.accepts("allowed"));
+        assert_eq!(
+            serde_json::to_string(&constraints).unwrap_or_default(),
+            r#"{"kind":"schema","excluded":["blocked"]}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<JsonPropertyNameConstraints>(
+                r#"{"kind":"schema","excluded":["blocked"]}"#
+            )
+            .unwrap_or_else(|error| panic!("{error}")),
+            constraints
+        );
+        assert!(
+            serde_json::from_str::<JsonPropertyNameConstraints>(
+                r#"{"kind":"schema","allowed":["a"],"excluded":["b"]}"#
+            )
+            .is_err()
         );
     }
 }
