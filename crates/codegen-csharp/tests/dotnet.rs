@@ -750,7 +750,8 @@ fn write_harness(root: &Path) {
     .expect("harness project is written");
     std::fs::write(
         directory.join("Program.cs"),
-        r#"using System.Text.Json;
+        r#"using System.Text;
+using System.Text.Json;
 using Ferrule.Generated;
 using Ferrule.Runtime;
 
@@ -847,6 +848,11 @@ var jsonInputs = new NamedJsonInput[]
         }
         """),
 };
+var jsonBytesInputs = jsonInputs
+    .Select(input => new NamedJsonBytesInput(
+        input.Name,
+        Encoding.UTF8.GetBytes(input.Document)))
+    .ToArray();
 var jsonOutputs = GeneratedMapping.ExecuteJsonOutputsWithSources(
     sourceJson,
     jsonInputs,
@@ -866,6 +872,33 @@ using (var auditJson = JsonDocument.Parse(jsonOutputs.Extras[0].Document))
     Assert(auditJson.RootElement.GetProperty("AccountName").GetString() == "Ada");
     Assert(auditJson.RootElement.GetProperty("FirstCatalogName").GetString() == "Ada Lovelace");
 }
+var sourceJsonBytes = Encoding.UTF8.GetBytes(sourceJson);
+var jsonBytesOutputs = GeneratedMapping.ExecuteJsonBytesOutputsWithSources(
+    sourceJsonBytes,
+    jsonBytesInputs,
+    executionContext);
+Assert(jsonBytesOutputs.Primary.SequenceEqual(Encoding.UTF8.GetBytes(jsonOutputs.Primary)));
+Assert(jsonBytesOutputs.Extras.Select(output => output.Name).SequenceEqual(new[] { "audit", "archive" }));
+Assert(jsonBytesOutputs.Extras[0].Document.SequenceEqual(
+    Encoding.UTF8.GetBytes(jsonOutputs.Extras[0].Document)));
+Assert(GeneratedMapping.ExecuteJsonBytesWithSources(
+    sourceJsonBytes,
+    jsonBytesInputs,
+    executionContext).SequenceEqual(jsonBytesOutputs.Primary));
+Error(
+    FerruleRuntimeError.JsonBoundary,
+    () => GeneratedMapping.ExecuteJsonBytesWithSources(
+        new byte[] { 0xFF },
+        jsonBytesInputs));
+NamedSourceError(
+    FerruleRuntimeError.UnexpectedNamedSource,
+    "unknown",
+    () => GeneratedMapping.ExecuteJsonBytesWithSources(
+        new byte[] { 0xFF },
+        new[]
+        {
+            new NamedJsonBytesInput("unknown", new byte[] { 0xFF }),
+        }));
 Error(
     FerruleRuntimeError.JsonBoundary,
     () => GeneratedMapping.ExecuteJsonWithSources(

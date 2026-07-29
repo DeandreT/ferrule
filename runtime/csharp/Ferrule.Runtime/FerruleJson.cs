@@ -20,6 +20,31 @@ public static class FerruleJson
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    public static FerruleInstance ParseBytes(string schemaJson, byte[] document)
+    {
+        ArgumentNullException.ThrowIfNull(schemaJson);
+        ArgumentNullException.ThrowIfNull(document);
+        if (document.Length > MaximumDocumentBytes)
+        {
+            throw Boundary(
+                $"JSON input is {document.Length} bytes; maximum is {MaximumDocumentBytes}.");
+        }
+
+        string text;
+        try
+        {
+            text = StrictUtf8.GetString(document);
+        }
+        catch (DecoderFallbackException error)
+        {
+            throw Boundary("JSON input is not UTF-8.", error);
+        }
+
+        return Parse(schemaJson, text);
+    }
+
     public static FerruleInstance Parse(string schemaJson, string document)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
@@ -115,6 +140,9 @@ public static class FerruleJson
             throw Boundary("JSON output is invalid.", error);
         }
     }
+
+    public static byte[] SerializeBytes(string schemaJson, FerruleInstance instance) =>
+        StrictUtf8.GetBytes(Serialize(schemaJson, instance));
 
     private static JsonSchemaNode ParseSchema(string schemaJson)
     {

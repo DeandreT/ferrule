@@ -51,7 +51,7 @@ pub use iteration::{
 };
 pub use json::{
     JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,
-    serialize_json,
+    parse_json_bytes, serialize_json, serialize_json_bytes,
 };
 pub use path_hierarchy::{MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, path_hierarchy};
 pub use recursive_filter::{RecursiveFilterPredicate, recursive_filter};

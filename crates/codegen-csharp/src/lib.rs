@@ -337,10 +337,23 @@ mod tests {
         let source = generated_source(&artifacts);
         assert!(source.contains("public sealed record NamedInput("));
         assert!(source.contains("public sealed record NamedJsonInput("));
+        assert!(source.contains("public sealed record NamedJsonBytesInput("));
         assert!(source.contains("public sealed record JsonExecutionOutputs("));
+        assert!(source.contains("public sealed record JsonBytesExecutionOutputs("));
         assert!(
             source.contains("public static JsonExecutionOutputs ExecuteJsonOutputsWithSources(")
         );
+        assert!(source.contains(
+            "public static JsonBytesExecutionOutputs ExecuteJsonBytesOutputsWithSources("
+        ));
+        assert!(
+            source.contains(
+                "global::Ferrule.Runtime.FerruleJson.ParseBytes(SourceJsonSchema, source)"
+            )
+        );
+        assert!(source.contains(
+            "global::Ferrule.Runtime.FerruleJson.SerializeBytes(\n                TargetJsonSchema"
+        ));
         assert!(source.contains("private const string SourceJsonSchema"));
         assert_eq!(
             source

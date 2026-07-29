@@ -151,7 +151,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              dynamic_document, dynamic_property_name, group, insert_dynamic_field,\n\
              item_count, merge_dynamic_fragments, repeated,\n\
              recursive_collect, recursive_filter, recursive_sequence_parameter, require_bool, scalar,\n\
-             parse_json, serialize_json, serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
+             parse_json, parse_json_bytes, serialize_json, serialize_json_bytes, serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
              adjacency_tree, path_hierarchy,\n\
              preserve_xml_mixed_content, xml_mixed_content, XmlMixedContentElement,\n\
              XmlMixedContentReplacement,\n\
@@ -420,15 +420,30 @@ fn render_json_api(program: &Program) -> Result<String, EmitError> {
              pub name: &'a str,\n\
              pub document: &'a str,\n\
          }}\n\n\
+         #[derive(Clone, Copy, Debug, PartialEq, Eq)]\n\
+         pub struct NamedJsonBytesInput<'a> {{\n\
+             pub name: &'a str,\n\
+             pub document: &'a [u8],\n\
+         }}\n\n\
          #[derive(Clone, Debug, PartialEq, Eq)]\n\
          pub struct NamedJsonOutput {{\n\
              pub name: &'static str,\n\
              pub document: String,\n\
          }}\n\n\
          #[derive(Clone, Debug, PartialEq, Eq)]\n\
+         pub struct NamedJsonBytesOutput {{\n\
+             pub name: &'static str,\n\
+             pub document: Vec<u8>,\n\
+         }}\n\n\
+         #[derive(Clone, Debug, PartialEq, Eq)]\n\
          pub struct JsonExecutionOutputs {{\n\
              pub primary: String,\n\
              pub extras: Vec<NamedJsonOutput>,\n\
+         }}\n\n\
+         #[derive(Clone, Debug, PartialEq, Eq)]\n\
+         pub struct JsonBytesExecutionOutputs {{\n\
+             pub primary: Vec<u8>,\n\
+             pub extras: Vec<NamedJsonBytesOutput>,\n\
          }}\n\n\
          const SOURCE_JSON_SCHEMA: &str = {};\n\
          const TARGET_JSON_SCHEMA: &str = {};\n\
@@ -509,6 +524,70 @@ fn render_json_api(program: &Program) -> Result<String, EmitError> {
                  .map(|(name, instance)| NamedInput { name, instance })\n\
                  .collect::<Vec<_>>();\n\
              serialize_json_outputs(execute_outputs_with_sources_and_context(\n\
+                 &source,\n\
+                 &inputs,\n\
+                 execution,\n\
+             )?)\n\
+         }\n\n\
+         pub fn execute_json_bytes(source: &[u8]) -> Result<Vec<u8>, JsonBoundaryError> {\n\
+             Ok(execute_json_bytes_outputs(source)?.primary)\n\
+         }\n\n\
+         pub fn execute_json_bytes_with_context(\n\
+             source: &[u8],\n\
+             execution: &ExecutionContext<'_>,\n\
+         ) -> Result<Vec<u8>, JsonBoundaryError> {\n\
+             Ok(execute_json_bytes_outputs_with_context(source, execution)?.primary)\n\
+         }\n\n\
+         pub fn execute_json_bytes_with_sources(\n\
+             source: &[u8],\n\
+             inputs: &[NamedJsonBytesInput<'_>],\n\
+         ) -> Result<Vec<u8>, JsonBoundaryError> {\n\
+             Ok(execute_json_bytes_outputs_with_sources(source, inputs)?.primary)\n\
+         }\n\n\
+         pub fn execute_json_bytes_with_sources_and_context(\n\
+             source: &[u8],\n\
+             inputs: &[NamedJsonBytesInput<'_>],\n\
+             execution: &ExecutionContext<'_>,\n\
+         ) -> Result<Vec<u8>, JsonBoundaryError> {\n\
+             Ok(execute_json_bytes_outputs_with_sources_and_context(source, inputs, execution)?.primary)\n\
+         }\n\n\
+         pub fn execute_json_bytes_outputs(\n\
+             source: &[u8],\n\
+         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
+             execute_json_bytes_outputs_with_sources(source, &[])\n\
+         }\n\n\
+         pub fn execute_json_bytes_outputs_with_context(\n\
+             source: &[u8],\n\
+             execution: &ExecutionContext<'_>,\n\
+         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
+             execute_json_bytes_outputs_with_sources_and_context(source, &[], execution)\n\
+         }\n\n\
+         pub fn execute_json_bytes_outputs_with_sources(\n\
+             source: &[u8],\n\
+             inputs: &[NamedJsonBytesInput<'_>],\n\
+         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
+             validate_named_json_bytes_input_names(inputs)?;\n\
+             let source = parse_json_bytes(SOURCE_JSON_SCHEMA, source)?;\n\
+             let parsed = parse_named_json_bytes_inputs(inputs)?;\n\
+             let inputs = parsed\n\
+                 .iter()\n\
+                 .map(|(name, instance)| NamedInput { name, instance })\n\
+                 .collect::<Vec<_>>();\n\
+             serialize_json_bytes_outputs(execute_outputs_with_sources(&source, &inputs)?)\n\
+         }\n\n\
+         pub fn execute_json_bytes_outputs_with_sources_and_context(\n\
+             source: &[u8],\n\
+             inputs: &[NamedJsonBytesInput<'_>],\n\
+             execution: &ExecutionContext<'_>,\n\
+         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
+             validate_named_json_bytes_input_names(inputs)?;\n\
+             let source = parse_json_bytes(SOURCE_JSON_SCHEMA, source)?;\n\
+             let parsed = parse_named_json_bytes_inputs(inputs)?;\n\
+             let inputs = parsed\n\
+                 .iter()\n\
+                 .map(|(name, instance)| NamedInput { name, instance })\n\
+                 .collect::<Vec<_>>();\n\
+             serialize_json_bytes_outputs(execute_outputs_with_sources_and_context(\n\
                  &source,\n\
                  &inputs,\n\
                  execution,\n\
@@ -652,6 +731,23 @@ fn render_json_api(program: &Program) -> Result<String, EmitError> {
              ) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> {\n\
                  let _ = inputs;\n\
                  Ok(Vec::new())\n\
+             }\n\n\
+             fn validate_named_json_bytes_input_names(\n\
+                 inputs: &[NamedJsonBytesInput<'_>],\n\
+             ) -> Result<(), JsonBoundaryError> {\n\
+                 if let Some(input) = inputs.first() {\n\
+                     return Err(RuntimeError::UnexpectedNamedSource {\n\
+                         name: input.name.to_string(),\n\
+                     }\n\
+                     .into());\n\
+                 }\n\
+                 Ok(())\n\
+             }\n\n\
+             fn parse_named_json_bytes_inputs<'a>(\n\
+                 inputs: &[NamedJsonBytesInput<'a>],\n\
+             ) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> {\n\
+                 let _ = inputs;\n\
+                 Ok(Vec::new())\n\
              }\n\n",
         );
     } else {
@@ -716,6 +812,67 @@ fn render_json_api(program: &Program) -> Result<String, EmitError> {
                      parsed.push((input.name, parse_json(schema, input.document)?));\n\
                  }\n\
                  Ok(parsed)\n\
+             }\n\n\
+             fn validate_named_json_bytes_input_names(\n\
+                 inputs: &[NamedJsonBytesInput<'_>],\n\
+             ) -> Result<(), JsonBoundaryError> {\n\
+                 let mut matched = vec![false; EXTRA_SOURCE_NAMES.len()];\n\
+                 for input in inputs {\n\
+                     let index = match input.name {\n",
+        );
+        for (index, source) in static_sources.iter().enumerate() {
+            output.push_str(&format!(
+                "            {} => {index},\n",
+                rust_string(&source.name)
+            ));
+        }
+        output.push_str(
+            "            _ => {\n\
+                             return Err(RuntimeError::UnexpectedNamedSource {\n\
+                                 name: input.name.to_string(),\n\
+                             }\n\
+                             .into());\n\
+                         }\n\
+                     };\n\
+                     if matched[index] {\n\
+                         return Err(RuntimeError::DuplicateNamedSource {\n\
+                             name: EXTRA_SOURCE_NAMES[index],\n\
+                         }\n\
+                         .into());\n\
+                     }\n\
+                     matched[index] = true;\n\
+                 }\n\
+                 for (index, name) in EXTRA_SOURCE_NAMES.iter().copied().enumerate() {\n\
+                     if !matched[index] {\n\
+                         return Err(RuntimeError::MissingNamedSource { name }.into());\n\
+                     }\n\
+                 }\n\
+                 Ok(())\n\
+             }\n\n\
+             fn parse_named_json_bytes_inputs<'a>(\n\
+                 inputs: &[NamedJsonBytesInput<'a>],\n\
+             ) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> {\n\
+                 let mut parsed = Vec::with_capacity(inputs.len());\n\
+                 for input in inputs {\n\
+                     let schema = match input.name {\n",
+        );
+        for (index, source) in static_sources.iter().enumerate() {
+            output.push_str(&format!(
+                "            {} => EXTRA_SOURCE_JSON_SCHEMAS[{index}],\n",
+                rust_string(&source.name)
+            ));
+        }
+        output.push_str(
+            "            _ => {\n\
+                             return Err(RuntimeError::UnexpectedNamedSource {\n\
+                                 name: input.name.to_string(),\n\
+                             }\n\
+                             .into());\n\
+                         }\n\
+                     };\n\
+                     parsed.push((input.name, parse_json_bytes(schema, input.document)?));\n\
+                 }\n\
+                 Ok(parsed)\n\
              }\n\n",
         );
     }
@@ -741,6 +898,28 @@ fn render_json_api(program: &Program) -> Result<String, EmitError> {
                  })\n\
                  .collect::<Result<Vec<_>, _>>()?;\n\
              Ok(JsonExecutionOutputs { primary, extras })\n\
+         }\n\n\
+         fn serialize_json_bytes_outputs(\n\
+             outputs: ExecutionOutputs,\n\
+         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
+             if outputs.extras.len() != EXTRA_TARGET_JSON_SCHEMAS.len() {\n\
+                 return Err(JsonBoundaryError::InvalidOutput {\n\
+                     message: \"generated mapping returned an unexpected number of named targets\".to_string(),\n\
+                 });\n\
+             }\n\
+             let primary = serialize_json_bytes(TARGET_JSON_SCHEMA, &outputs.primary)?;\n\
+             let extras = outputs\n\
+                 .extras\n\
+                 .into_iter()\n\
+                 .zip(EXTRA_TARGET_JSON_SCHEMAS.iter().copied())\n\
+                 .map(|(output, schema)| {\n\
+                     serialize_json_bytes(schema, &output.instance).map(|document| NamedJsonBytesOutput {\n\
+                         name: output.name,\n\
+                         document,\n\
+                     })\n\
+                 })\n\
+                 .collect::<Result<Vec<_>, _>>()?;\n\
+             Ok(JsonBytesExecutionOutputs { primary, extras })\n\
          }\n\n",
     );
     Ok(output)

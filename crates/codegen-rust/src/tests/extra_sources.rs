@@ -289,8 +289,11 @@ fn emits_exact_named_input_contract_in_declaration_order() {
     assert!(source.contains("pub fn execute_outputs_with_sources("));
     assert!(source.contains("pub fn execute_outputs_with_sources_and_context("));
     assert!(source.contains("pub struct NamedJsonInput<'a>"));
+    assert!(source.contains("pub struct NamedJsonBytesInput<'a>"));
     assert!(source.contains("pub struct JsonExecutionOutputs"));
+    assert!(source.contains("pub struct JsonBytesExecutionOutputs"));
     assert!(source.contains("pub fn execute_json_outputs_with_sources("));
+    assert!(source.contains("pub fn execute_json_bytes_outputs_with_sources("));
     assert!(source.contains("const SOURCE_JSON_SCHEMA: &str"));
     assert!(source.contains("execute_outputs_with_sources(source, &[])"));
     assert!(source.contains("execute_outputs_with_sources_and_context(source, &[], execution)"));
@@ -322,7 +325,7 @@ use codegen_runtime::{
     ExecutionContext, Instance, RuntimeError, SourcePathError, Value, field, group, repeated,
     scalar,
 };
-use named_input_map::{NamedInput, NamedJsonInput};
+use named_input_map::{NamedInput, NamedJsonBytesInput, NamedJsonInput};
 
 fn main() {
     let source = primary(true);
@@ -355,6 +358,10 @@ fn main() {
             document: "[{\"Key\":1,\"Name\":\"one\"},{\"Key\":2,\"Name\":\"two\"}]",
         },
     ];
+    let json_bytes_inputs = json_inputs.map(|input| NamedJsonBytesInput {
+        name: input.name,
+        document: input.document.as_bytes(),
+    });
 
     let expected = group([
         field("LookupName", scalar(text("two"))),
@@ -379,11 +386,10 @@ fn main() {
     let outputs = named_input_map::execute_outputs_with_sources(&source, &inputs).unwrap();
     assert_eq!(outputs.primary, expected);
     assert!(outputs.extras.is_empty());
-    let json_outputs = named_input_map::execute_json_outputs_with_sources(
-        "{\"Customer\":2,\"Required\":\"present\",\"Settings\":{\"Label\":\"primary\"}}",
-        &json_inputs,
-    )
-    .unwrap();
+    let source_json =
+        "{\"Customer\":2,\"Required\":\"present\",\"Settings\":{\"Label\":\"primary\"}}";
+    let json_outputs =
+        named_input_map::execute_json_outputs_with_sources(source_json, &json_inputs).unwrap();
     assert_eq!(
         json_outputs.primary,
         concat!(
@@ -412,6 +418,30 @@ fn main() {
         ),
     );
     assert!(json_outputs.extras.is_empty());
+    let json_bytes_outputs = named_input_map::execute_json_bytes_outputs_with_sources(
+        source_json.as_bytes(),
+        &json_bytes_inputs,
+    )
+    .unwrap();
+    assert_eq!(json_bytes_outputs.primary, json_outputs.primary.as_bytes());
+    assert!(json_bytes_outputs.extras.is_empty());
+    assert!(matches!(
+        named_input_map::execute_json_bytes_with_sources(b"\xFF", &json_bytes_inputs),
+        Err(codegen_runtime::JsonBoundaryError::InvalidInput { message })
+            if message.contains("not UTF-8")
+    ));
+    assert!(matches!(
+        named_input_map::execute_json_bytes_with_sources(
+            b"\xFF",
+            &[NamedJsonBytesInput {
+                name: "Unknown",
+                document: b"\xFF",
+            }],
+        ),
+        Err(codegen_runtime::JsonBoundaryError::Execution(
+            RuntimeError::UnexpectedNamedSource { name }
+        )) if name == "Unknown"
+    ));
     assert!(matches!(
         named_input_map::execute_json_with_sources(
             "{}",
@@ -446,6 +476,15 @@ fn main() {
     ));
 
     let execution = ExecutionContext::new(Path::new("mapping.ferrule.json"));
+    assert_eq!(
+        named_input_map::execute_json_bytes_with_sources_and_context(
+            source_json.as_bytes(),
+            &json_bytes_inputs,
+            &execution,
+        )
+        .unwrap(),
+        json_outputs.primary.as_bytes(),
+    );
     assert_eq!(
         named_input_map::execute_with_sources_and_context(&source, &inputs, &execution).unwrap(),
         expected,
