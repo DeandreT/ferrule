@@ -129,6 +129,7 @@ internal static partial class Program
         JsonRangeBoundaries();
         JsonMultipleOfBoundaries();
         JsonItemCountBoundaries();
+        JsonUniqueItemsBoundaries();
         JsonFormatAnnotationBoundaries();
         JsonStringLengthBoundaries();
         JsonPatternBoundaries();
@@ -312,6 +313,92 @@ internal static partial class Program
                 FerruleRuntimeError.JsonBoundary,
                 () => FerruleJson.Parse(invalidSchema, "[]"));
         }
+    }
+
+    private static void JsonUniqueItemsBoundaries()
+    {
+        const string numbers =
+            "{\"name\":\"Numbers\",\"repeating\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";
+        var parsed = FerruleJson.Parse(numbers, "[1,2.5,-0]");
+        Equal(
+            "[\n  1.0,\n  2.5,\n  0.0\n]\n",
+            FerruleJson.Serialize(numbers, parsed));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(numbers, "[1,1.0]"));
+        var signedZero = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(numbers, "[-0,0.0]"));
+        Equal(
+            true,
+            signedZero.Message.Contains("uniqueItems", StringComparison.Ordinal));
+        var exactDecimals = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                numbers,
+                "[0.100000000000000000000000000001,100000000000000000000000000001e-30]"));
+        Equal(
+            true,
+            exactDecimals.Message.Contains("uniqueItems", StringComparison.Ordinal));
+        var maximumExponent = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                numbers,
+                "[1e9223372036854775807,10e9223372036854775806]"));
+        Equal(
+            true,
+            maximumExponent.Message.Contains("uniqueItems", StringComparison.Ordinal));
+
+        const string records =
+            "{\"name\":\"Records\",\"repeating\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Code\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}},{\"name\":\"Text\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
+        var reorderedObject = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                records,
+                "[{\"Code\":1,\"Text\":\"same\"},{\"Text\":\"same\",\"Code\":1.0}]"));
+        Equal(
+            true,
+            reorderedObject.Message.Contains("uniqueItems", StringComparison.Ordinal));
+
+        const string nestedArrays =
+            "{\"name\":\"Rows\",\"repeating\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Values\",\"repeating\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}]}}";
+        var orderedArrays = FerruleJson.Parse(
+            nestedArrays,
+            "[{\"Values\":[1,2]},{\"Values\":[2,1]}]");
+        Equal(
+            "[\n  {\n    \"Values\": [\n      1,\n      2\n    ]\n  },\n  {\n    \"Values\": [\n      2,\n      1\n    ]\n  }\n]\n",
+            FerruleJson.Serialize(nestedArrays, orderedArrays));
+
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                numbers,
+                Repeated(
+                    Scalar(FerruleValue.FromInt64(1)),
+                    Scalar(FerruleValue.FromDouble(1.0)))));
+
+        const string strings =
+            "{\"name\":\"Strings\",\"repeating\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        var caseSensitive = FerruleJson.Parse(strings, "[\"A\",\"a\"]");
+        Equal("[\n  \"A\",\n  \"a\"\n]\n", FerruleJson.Serialize(strings, caseSensitive));
+
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Value\",\"json_unique_items\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Value\",\"repeating\":true,\"json_unique_items\":null,\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Value\",\"repeating\":true,\"json_unique_items\":\"yes\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Value\",\"repeating\":true,\"json_unique_items\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "[]"));
+        }
+        Equal(
+            FerruleValue.FromInt64(1),
+            ((FerruleScalar)FerruleJson.Parse(
+                "{\"name\":\"Value\",\"json_unique_items\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                "1")).Value);
     }
 
     private static void JsonMultipleOfBoundaries()

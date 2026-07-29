@@ -405,6 +405,7 @@ fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> b
         || !subset.repeating
         || (subset.nullable && !superset.nullable)
         || superset.container_nullable != subset.container_nullable
+        || (superset.json_unique_items && !subset.json_unique_items)
         || !item_count_domain_contains(superset.item_count_range, subset.item_count_range)
     {
         return false;
@@ -1057,6 +1058,7 @@ fn ensure_exact_array_shape(
                 | "items"
                 | "minItems"
                 | "maxItems"
+                | "uniqueItems"
                 | "minLength"
                 | "maxLength"
                 | "pattern"
@@ -1173,6 +1175,7 @@ fn ensure_annotation_or_range_only(
                     | "multipleOf"
                     | "minItems"
                     | "maxItems"
+                    | "uniqueItems"
                     | "minLength"
                     | "maxLength"
                     | "pattern"

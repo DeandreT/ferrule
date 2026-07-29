@@ -540,6 +540,10 @@ pub struct SchemaNode {
     /// Exact cardinality bounds for a repeating JSON array node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_count_range: Option<ItemCountRange>,
+    /// Whether one repeating JSON array requires pairwise-distinct items
+    /// under JSON Schema's structural equality rules.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub json_unique_items: bool,
     /// Exact length bounds for a JSON string scalar in Unicode scalar values.
     ///
     /// On a repeating scalar node these bounds apply to each array item.
@@ -633,6 +637,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             item_count_range: Option<ItemCountRange>,
             #[serde(default)]
+            json_unique_items: bool,
+            #[serde(default)]
             string_length_range: Option<StringLengthRange>,
             #[serde(default)]
             json_patterns: Option<JsonPatternConstraints>,
@@ -675,6 +681,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             numeric_range: repr.numeric_range,
             json_multiple_of: repr.json_multiple_of,
             item_count_range: repr.item_count_range,
+            json_unique_items: repr.json_unique_items,
             string_length_range: repr.string_length_range,
             json_patterns: repr.json_patterns,
             json_formats: repr.json_formats,
@@ -689,7 +696,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count range, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -770,6 +777,15 @@ pub enum SchemaKind {
         dynamic: Option<Box<SchemaNode>>,
     },
 }
+
+/// Maximum number of items inspected by one exact JSON `uniqueItems`
+/// assertion.
+pub const MAX_JSON_UNIQUE_ITEMS: usize = 1_000_000;
+/// Maximum number of scalar/container nodes canonicalized by one exact JSON
+/// `uniqueItems` assertion.
+pub const MAX_JSON_UNIQUE_KEY_NODES: usize = 1_000_000;
+/// Maximum cumulative UTF-8 bytes retained in canonical unique-item keys.
+pub const MAX_JSON_UNIQUE_KEY_BYTES: usize = 64 * 1024 * 1024;
 
 /// One structurally compatible alternative of a group projection.
 ///
@@ -907,6 +923,7 @@ impl SchemaNode {
             && self.numeric_range_is_valid()
             && self.json_multiple_of_is_valid()
             && self.item_count_range_is_valid()
+            && self.json_unique_items_is_valid()
             && self.string_length_range_is_valid()
             && self.json_patterns_are_valid()
             && self.json_formats_are_valid()
@@ -944,6 +961,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            json_unique_items: false,
             string_length_range: None,
             json_patterns: None,
             json_formats: JsonFormatAnnotations::default(),
@@ -984,6 +1002,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            json_unique_items: false,
             string_length_range: None,
             json_patterns: None,
             json_formats: JsonFormatAnnotations::default(),
@@ -1033,6 +1052,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            json_unique_items: false,
             string_length_range: None,
             json_patterns: None,
             json_formats: JsonFormatAnnotations::default(),
@@ -1326,6 +1346,30 @@ impl SchemaNode {
         self.item_count_range.is_none() || self.repeating
     }
 
+    /// Checks that JSON `uniqueItems` metadata remains attached to an array
+    /// wrapper rather than its item shape.
+    pub fn json_unique_items_is_valid(&self) -> bool {
+        !self.json_unique_items || self.repeating
+    }
+
+    /// Recursively checks JSON `uniqueItems` placement for one schema tree.
+    pub fn json_unique_items_tree_is_valid(&self) -> bool {
+        self.json_unique_items_is_valid()
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children
+                        .iter()
+                        .all(SchemaNode::json_unique_items_tree_is_valid)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::json_unique_items_tree_is_valid)
+                }
+            }
+    }
+
     /// Checks that string-length metadata matches a string-capable scalar
     /// domain and that an optional fixed lexical value lies inside the interval.
     pub fn string_length_range_is_valid(&self) -> bool {
@@ -1520,6 +1564,7 @@ impl SchemaNode {
                 && self.numeric_range.is_none()
                 && self.json_multiple_of.is_none()
                 && self.item_count_range.is_none()
+                && !self.json_unique_items
                 && self.string_length_range.is_none()
                 && self.json_patterns.is_none()
                 && self.json_formats.is_empty()
@@ -2005,6 +2050,12 @@ impl SchemaNode {
     pub fn with_item_count_range(mut self, range: ItemCountRange) -> Option<Self> {
         self.item_count_range = Some(range);
         self.item_count_range_is_valid().then_some(self)
+    }
+
+    /// Requires pairwise-distinct JSON array items under JSON Schema equality.
+    pub fn with_json_unique_items(mut self) -> Option<Self> {
+        self.json_unique_items = true;
+        self.json_unique_items_is_valid().then_some(self)
     }
 
     pub fn with_string_length_range(mut self, range: StringLengthRange) -> Option<Self> {
@@ -2690,6 +2741,30 @@ mod tests {
         }
         let permissive_null_maximum = r#"{"name":"x","repeating":true,"item_count_range":{"minimum":1,"maximum":null},"kind":{"kind":"scalar","ty":"string"}}"#;
         assert!(serde_json::from_str::<SchemaNode>(permissive_null_maximum).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn unique_items_require_repeating_nodes_and_roundtrip() -> Result<(), Box<dyn std::error::Error>>
+    {
+        assert!(
+            SchemaNode::scalar("Item", ScalarType::String)
+                .with_json_unique_items()
+                .is_none()
+        );
+        let schema = SchemaNode::group("Item", vec![SchemaNode::scalar("value", ScalarType::Int)])
+            .repeating()
+            .with_json_unique_items()
+            .ok_or_else(|| std::io::Error::other("repeating unique-items test schema is valid"))?;
+        let encoded = serde_json::to_string(&schema)?;
+        assert!(encoded.contains(r#""json_unique_items":true"#));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, schema);
+
+        let legacy = r#"{"name":"x","repeating":true,"kind":{"kind":"scalar","ty":"string"}}"#;
+        assert!(!serde_json::from_str::<SchemaNode>(legacy)?.json_unique_items);
+        let invalid =
+            r#"{"name":"x","json_unique_items":true,"kind":{"kind":"scalar","ty":"string"}}"#;
+        assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
         Ok(())
     }
 

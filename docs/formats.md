@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count and Unicode string-length intervals, bounded portable string `pattern` assertions, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -93,6 +93,12 @@ layout and dialect details that an extension cannot express.
   schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
   item-count, string-length, and annotation metadata. Concrete string-capable scalar
   domains retain exact non-negative `minLength` and `maxLength` intervals.
+  Concrete array wrappers also retain `uniqueItems: true` through supported
+  references and compatible composition. Native and generated Rust/C#
+  boundaries compare complete raw input values and normalized output values:
+  object member order is irrelevant, nested array order is significant, and
+  mathematically equal JSON numbers are duplicates before typed input
+  normalization.
   Ferrule measures them in Unicode scalar values, applies them only when a
   scalar union's runtime value is a string, and enforces them on native and
   generated input and output boundaries. They survive nullable wrappers,
@@ -137,8 +143,8 @@ layout and dialect details that an extension cannot express.
   General heterogeneous array composition, heterogeneous or correlated
   numeric-range scalar unions,
   and mixed structural unions remain unsupported.
-  Shape-neutral validation keywords are
-  accepted for schema recovery but are not enforced by the mapping runtime.
+  Other shape-neutral validation keywords are accepted for schema recovery but
+  are not enforced by the mapping runtime.
 - Database execution is SQLite-specific and does not yet provide a general SQL
   mutation or multi-database connector model.
 - Complex XLSX, PDF, EDI, and FlexText layouts depend on an embedded validated

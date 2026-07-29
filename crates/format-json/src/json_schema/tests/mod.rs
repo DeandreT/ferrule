@@ -23,6 +23,7 @@ mod required;
 mod resources;
 mod string_lengths;
 mod unconstrained;
+mod unique_items;
 
 fn export(schema: &SchemaNode) -> String {
     super::export(schema)
