@@ -2009,7 +2009,9 @@ impl SchemaNode {
 
     fn json_property_name_pattern_inputs(&self) -> Option<std::collections::BTreeSet<String>> {
         let constraints = self.json_property_names.as_ref()?;
-        constraints.patterns()?;
+        if constraints.patterns().is_none() && constraints.excluded_patterns().is_none() {
+            return None;
+        }
         let SchemaKind::Group {
             alternatives,
             required,
@@ -2198,29 +2200,41 @@ impl SchemaNode {
                 }
             }
         }
-        if let Some(constraints) = &self.json_property_names
-            && let Some(patterns) = constraints.patterns()
-        {
-            if !accumulate_pattern_sources(patterns, programs, source_bytes, instructions) {
-                return false;
-            }
-            if let Some(allowed) = constraints.allowed() {
-                for name in allowed.as_slice() {
-                    if patterns_match_with_programs(patterns, name, programs, fixed_work)
-                        != Some(true)
-                    {
-                        return false;
-                    }
+        if let Some(constraints) = &self.json_property_names {
+            let included_patterns = constraints.patterns();
+            let excluded_patterns = constraints.excluded_patterns();
+            for patterns in [included_patterns, excluded_patterns].into_iter().flatten() {
+                if !accumulate_pattern_sources(patterns, programs, source_bytes, instructions) {
+                    return false;
                 }
             }
-            let Some(inputs) = self.json_property_name_pattern_inputs() else {
-                return false;
-            };
-            for input in inputs {
-                if patterns_match_with_programs(patterns, &input, programs, fixed_work)
-                    != Some(true)
-                {
+            if included_patterns.is_some() || excluded_patterns.is_some() {
+                if let Some(allowed) = constraints.allowed() {
+                    for name in allowed.as_slice() {
+                        if included_patterns.is_some_and(|patterns| {
+                            patterns_match_with_programs(patterns, name, programs, fixed_work)
+                                != Some(true)
+                        }) || excluded_patterns.is_some_and(|patterns| {
+                            patterns_match_with_programs(patterns, name, programs, fixed_work)
+                                != Some(false)
+                        }) {
+                            return false;
+                        }
+                    }
+                }
+                let Some(inputs) = self.json_property_name_pattern_inputs() else {
                     return false;
+                };
+                for input in inputs {
+                    if included_patterns.is_some_and(|patterns| {
+                        patterns_match_with_programs(patterns, &input, programs, fixed_work)
+                            != Some(true)
+                    }) || excluded_patterns.is_some_and(|patterns| {
+                        patterns_match_with_programs(patterns, &input, programs, fixed_work)
+                            != Some(false)
+                    }) {
+                        return false;
+                    }
                 }
             }
         }

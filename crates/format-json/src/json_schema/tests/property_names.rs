@@ -270,6 +270,76 @@ fn finite_property_name_exclusions_execute_compose_and_roundtrip() -> Result<(),
 }
 
 #[test]
+fn pattern_property_name_exclusions_execute_compose_and_roundtrip() -> Result<(), JsonFormatError> {
+    let schema = import_str(
+        r#"{
+  "type":"object",
+  "propertyNames":{
+    "allOf":[
+      {"not":{"pattern":"^private-"}},
+      {"not":{"pattern":"-internal$"}}
+    ]
+  },
+  "additionalProperties":true
+}"#,
+    );
+    let constraints = schema
+        .json_property_names
+        .as_ref()
+        .unwrap_or_else(|| panic!("pattern exclusions should be retained"));
+    let excluded_patterns = vec![
+        vec!["^private-".to_string()],
+        vec!["-internal$".to_string()],
+    ];
+    assert_eq!(
+        constraints
+            .excluded_patterns()
+            .map(ir::JsonPatternConstraints::any_of),
+        Some(excluded_patterns.as_slice())
+    );
+    assert!(crate::from_str(r#"{"public":1}"#, &schema).is_ok());
+    assert!(crate::from_str(r#"{"private-token":1}"#, &schema).is_err());
+    assert!(crate::from_str(r#"{"token-internal":1}"#, &schema).is_err());
+    let invalid_output = Instance::Group(vec![(
+        "private-token".to_string(),
+        Instance::Scalar(Value::String("1".to_string())),
+    )]);
+    assert!(matches!(
+        crate::to_string(&schema, &invalid_output),
+        Err(JsonFormatError::InvalidPropertyName { .. })
+    ));
+    assert_eq!(import_str(&export(&schema)), schema);
+
+    let any_of = import_str(
+        r#"{
+  "type":"object",
+  "propertyNames":{
+    "anyOf":[
+      {"not":{"pattern":"^x-"}},
+      {"not":{"pattern":"-hidden$"}}
+    ]
+  },
+  "additionalProperties":true
+}"#,
+    );
+    assert!(crate::from_str(r#"{"x-public":1,"public-hidden":2}"#, &any_of).is_ok());
+    assert!(crate::from_str(r#"{"x-secret-hidden":1}"#, &any_of).is_err());
+    assert_eq!(import_str(&export(&any_of)), any_of);
+
+    let double_negative = import_str(
+        r#"{
+  "type":"object",
+  "propertyNames":{"not":{"not":{"pattern":"^[a-z]+$"}}},
+  "additionalProperties":true
+}"#,
+    );
+    assert!(crate::from_str(r#"{"lower":1}"#, &double_negative).is_ok());
+    assert!(crate::from_str(r#"{"UPPER":1}"#, &double_negative).is_err());
+    assert_eq!(import_str(&export(&double_negative)), double_negative);
+    Ok(())
+}
+
+#[test]
 fn malformed_ambiguous_and_unsupported_name_schemas_reject_exactly() {
     for invalid in [
         r#"{"type":"object","propertyNames":1}"#,
@@ -278,7 +348,6 @@ fn malformed_ambiguous_and_unsupported_name_schemas_reject_exactly() {
         r#"{"type":"object","propertyNames":{"enum":[]}}"#,
         r#"{"type":"object","propertyNames":{"minLength":2,"maxLength":1}}"#,
         r#"{"type":"object","propertyNames":{"pattern":"(?=x)"}}"#,
-        r#"{"type":"object","propertyNames":{"not":{"pattern":"^x"}}}"#,
         r#"{"propertyNames":{"const":"x"}}"#,
     ] {
         assert!(import_str_result(invalid).is_err(), "{invalid}");
@@ -334,6 +403,17 @@ fn property_name_patterns_share_the_document_work_budget() {
     let input = format!("{{\"{}\":1}}", "a".repeat(8000));
     assert!(matches!(
         crate::from_str(&input, &schema),
+        Err(JsonFormatError::PatternWorkLimit { .. })
+    ));
+    let excluded = import_str(
+        r#"{
+  "type":"object",
+  "propertyNames":{"not":{"pattern":"^(a?){8000}$"}},
+  "additionalProperties":true
+}"#,
+    );
+    assert!(matches!(
+        crate::from_str(&input, &excluded),
         Err(JsonFormatError::PatternWorkLimit { .. })
     ));
 }

@@ -122,6 +122,8 @@ pub enum JsonPropertyNameConstraints {
         length: Option<StringLengthRange>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         patterns: Option<JsonPatternConstraints>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        excluded_patterns: Option<JsonPatternConstraints>,
         #[serde(default, skip_serializing_if = "JsonFormatAnnotations::is_empty")]
         formats: JsonFormatAnnotations,
     },
@@ -144,11 +146,33 @@ impl JsonPropertyNameConstraints {
         patterns: Option<JsonPatternConstraints>,
         formats: JsonFormatAnnotations,
     ) -> Option<Self> {
+        Self::schema_with_exclusions(allowed, excluded, length, patterns, None, formats)
+    }
+
+    pub fn schema_with_exclusions(
+        allowed: Option<JsonPropertyNameSet>,
+        excluded: Option<JsonPropertyNameSet>,
+        length: Option<StringLengthRange>,
+        patterns: Option<JsonPatternConstraints>,
+        excluded_patterns: Option<JsonPatternConstraints>,
+        formats: JsonFormatAnnotations,
+    ) -> Option<Self> {
         let patterns = patterns.filter(|patterns| !patterns.is_tautology());
+        if excluded_patterns
+            .as_ref()
+            .is_some_and(JsonPatternConstraints::is_tautology)
+            || patterns
+                .as_ref()
+                .zip(excluded_patterns.as_ref())
+                .is_some_and(|(included, excluded)| included == excluded)
+        {
+            return Some(Self::Never);
+        }
         if allowed.is_none()
             && excluded.is_none()
             && length.is_none()
             && patterns.is_none()
+            && excluded_patterns.is_none()
             && formats.is_empty()
         {
             return None;
@@ -163,6 +187,9 @@ impl JsonPropertyNameConstraints {
                         && patterns
                             .as_ref()
                             .is_none_or(|constraints| constraints.matches(name))
+                        && excluded_patterns
+                            .as_ref()
+                            .is_none_or(|constraints| !constraints.matches(name))
                         && excluded
                             .as_ref()
                             .is_none_or(|excluded| !excluded.contains(name))
@@ -175,11 +202,13 @@ impl JsonPropertyNameConstraints {
             return Some(Self::Never);
         }
         let excluded = allowed.is_none().then_some(excluded).flatten();
+        let excluded_patterns = allowed.is_none().then_some(excluded_patterns).flatten();
         Some(Self::Schema {
             allowed,
             excluded,
             length,
             patterns,
+            excluded_patterns,
             formats,
         })
     }
@@ -216,6 +245,15 @@ impl JsonPropertyNameConstraints {
         }
     }
 
+    pub fn excluded_patterns(&self) -> Option<&JsonPatternConstraints> {
+        match self {
+            Self::Never => None,
+            Self::Schema {
+                excluded_patterns, ..
+            } => excluded_patterns.as_ref(),
+        }
+    }
+
     pub fn formats(&self) -> Option<&JsonFormatAnnotations> {
         match self {
             Self::Never => None,
@@ -231,6 +269,7 @@ impl JsonPropertyNameConstraints {
                 excluded,
                 length,
                 patterns,
+                excluded_patterns,
                 ..
             } => {
                 allowed
@@ -243,6 +282,9 @@ impl JsonPropertyNameConstraints {
                     && patterns
                         .as_ref()
                         .is_none_or(|patterns| patterns.matches(name))
+                    && excluded_patterns
+                        .as_ref()
+                        .is_none_or(|patterns| !patterns.matches(name))
             }
         }
     }
@@ -255,9 +297,11 @@ impl JsonPropertyNameConstraints {
                     allowed,
                     excluded,
                     patterns,
+                    excluded_patterns,
                     ..
                 } => allowed.as_ref().is_none_or(|allowed| {
                     excluded.is_none()
+                        && excluded_patterns.is_none()
                         && allowed.as_slice().iter().all(|name| {
                             patterns
                                 .as_ref()
@@ -275,12 +319,14 @@ impl JsonPropertyNameConstraints {
                 excluded,
                 length,
                 patterns,
+                excluded_patterns,
                 formats,
             } => {
                 if allowed.is_none()
                     && excluded.is_none()
                     && length.is_none()
                     && patterns.is_none()
+                    && excluded_patterns.is_none()
                     && formats.is_empty()
                 {
                     return false;
@@ -288,9 +334,22 @@ impl JsonPropertyNameConstraints {
                 if allowed.is_some() && excluded.is_some() {
                     return false;
                 }
+                if allowed.is_some() && excluded_patterns.is_some() {
+                    return false;
+                }
                 if patterns
                     .as_ref()
                     .is_some_and(JsonPatternConstraints::is_tautology)
+                {
+                    return false;
+                }
+                if excluded_patterns
+                    .as_ref()
+                    .is_some_and(JsonPatternConstraints::is_tautology)
+                    || patterns
+                        .as_ref()
+                        .zip(excluded_patterns.as_ref())
+                        .is_some_and(|(included, excluded)| included == excluded)
                 {
                     return false;
                 }
@@ -355,6 +414,8 @@ impl<'de> Deserialize<'de> for JsonPropertyNameConstraints {
                 #[serde(default)]
                 patterns: Option<JsonPatternConstraints>,
                 #[serde(default)]
+                excluded_patterns: Option<JsonPatternConstraints>,
+                #[serde(default)]
                 formats: JsonFormatAnnotations,
             },
         }
@@ -366,6 +427,7 @@ impl<'de> Deserialize<'de> for JsonPropertyNameConstraints {
                 excluded,
                 length,
                 patterns,
+                excluded_patterns,
                 formats,
             } => {
                 let constraints = Self::Schema {
@@ -373,6 +435,7 @@ impl<'de> Deserialize<'de> for JsonPropertyNameConstraints {
                     excluded,
                     length,
                     patterns,
+                    excluded_patterns,
                     formats,
                 };
                 let canonical = if crate::schema_deserialization_is_active() {
@@ -478,5 +541,39 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn excluded_patterns_are_canonical_and_enforced() -> Result<(), Box<dyn std::error::Error>> {
+        let patterns = JsonPatternConstraints::new([["^private-".to_string()]])?;
+        let constraints = JsonPropertyNameConstraints::schema_with_exclusions(
+            None,
+            None,
+            None,
+            None,
+            Some(patterns),
+            JsonFormatAnnotations::default(),
+        )
+        .ok_or("a pattern exclusion must not be tautological")?;
+
+        assert!(constraints.accepts("public"));
+        assert!(!constraints.accepts("private-token"));
+        assert_eq!(
+            serde_json::to_string(&constraints)?,
+            r#"{"kind":"schema","excluded_patterns":{"any_of":[["^private-"]]}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<JsonPropertyNameConstraints>(
+                r#"{"kind":"schema","excluded_patterns":{"any_of":[["^private-"]]}}"#
+            )?,
+            constraints
+        );
+        assert!(
+            serde_json::from_str::<JsonPropertyNameConstraints>(
+                r#"{"kind":"schema","allowed":["public"],"excluded_patterns":{"any_of":[["^private-"]]}}"#
+            )
+            .is_err()
+        );
+        Ok(())
     }
 }

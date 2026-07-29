@@ -54,7 +54,7 @@ public static partial class FerruleJson
         {
             var known = string.Equals(kind, "never", StringComparison.Ordinal)
                 ? property.Name is "kind"
-                : property.Name is "kind" or "allowed" or "excluded" or "length" or "patterns" or "formats";
+                : property.Name is "kind" or "allowed" or "excluded" or "length" or "patterns" or "excluded_patterns" or "formats";
             if (!known || !fields.Add(property.Name))
             {
                 throw Boundary(
@@ -88,6 +88,12 @@ public static partial class FerruleJson
                        patternsElement.ValueKind != JsonValueKind.Null
             ? ReadPropertyNamePatterns(name, patternsElement, patternContext)
             : null;
+        var excludedPatterns = constraintsElement.TryGetProperty(
+                                   "excluded_patterns",
+                                   out var excludedPatternsElement) &&
+                               excludedPatternsElement.ValueKind != JsonValueKind.Null
+            ? ReadPropertyNamePatterns(name, excludedPatternsElement, patternContext)
+            : null;
         var formats = constraintsElement.TryGetProperty("formats", out var formatsElement)
             ? ReadPropertyNameFormats(name, formatsElement)
             : Array.Empty<string>();
@@ -95,6 +101,7 @@ public static partial class FerruleJson
             excluded is null &&
             length is null &&
             patterns is null &&
+            excludedPatterns is null &&
             formats.Count == 0)
         {
             throw Boundary(
@@ -102,10 +109,17 @@ public static partial class FerruleJson
         }
 
         if (allowed is not null &&
-            excluded is not null)
+            (excluded is not null || excludedPatterns is not null))
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has both allowed and excluded JSON property-name sets.");
+                $"Embedded JSON schema node '{name}' combines finite allowed names with excluded JSON property-name predicates.");
+        }
+        if (patterns is not null &&
+            excludedPatterns is not null &&
+            SamePatternSources(patterns, excludedPatterns))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has identical included and excluded JSON property-name patterns.");
         }
         if (allowed is not null &&
             allowed.Any(candidate =>
@@ -121,6 +135,7 @@ public static partial class FerruleJson
             excluded,
             length,
             patterns,
+            excludedPatterns,
             formats);
     }
 
@@ -381,6 +396,26 @@ public static partial class FerruleJson
         return formats;
     }
 
+    private static bool SamePatternSources(
+        JsonPatternConstraints left,
+        JsonPatternConstraints right)
+    {
+        if (left.AnyOf.Count != right.AnyOf.Count)
+        {
+            return false;
+        }
+        for (var index = 0; index < left.AnyOf.Count; index++)
+        {
+            if (!left.AnyOf[index].Sources.SequenceEqual(
+                    right.AnyOf[index].Sources,
+                    StringComparer.Ordinal))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static void ValidatePropertyNameSchema(
         string name,
         JsonPropertyNameConstraints? constraints,
@@ -512,10 +547,11 @@ public static partial class FerruleJson
         IReadOnlyList<string>? Excluded,
         JsonStringLengthRange? Length,
         JsonPatternConstraints? Patterns,
+        JsonPatternConstraints? ExcludedPatterns,
         IReadOnlyList<string> Formats)
     {
         public static JsonPropertyNameConstraints Never { get; } =
-            new(true, null, null, null, null, Array.Empty<string>());
+            new(true, null, null, null, null, null, Array.Empty<string>());
 
         public bool AcceptsWithoutBudget(string name) =>
             !RejectAll &&
@@ -527,11 +563,14 @@ public static partial class FerruleJson
         {
             var remainingWork = FerruleJsonPattern.MaximumBoundaryWork;
             return AcceptsWithoutBudget(name) &&
-                (Patterns is null || Patterns.IsMatch(name, ref remainingWork));
+                (Patterns is null || Patterns.IsMatch(name, ref remainingWork)) &&
+                (ExcludedPatterns is null ||
+                    !ExcludedPatterns.IsMatch(name, ref remainingWork));
         }
 
         public bool Accepts(string name, NodeBudget budget) =>
             AcceptsWithoutBudget(name) &&
-            (Patterns is null || budget.Matches(Patterns, name));
+            (Patterns is null || budget.Matches(Patterns, name)) &&
+            (ExcludedPatterns is null || !budget.Matches(ExcludedPatterns, name));
     }
 }

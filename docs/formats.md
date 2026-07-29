@@ -160,12 +160,13 @@ layout and dialect details that an extension cannot express.
   Lines object row is checked independently. Supported string assertions are
   finite `const`/`enum` name sets, their exact finite complements through
   `not`, `minLength`/`maxLength` measured in Unicode scalar values, bounded
-  portable `pattern` conjunctions/disjunctions, and ordered `format`
-  annotations retained without vocabulary assertion. Finite complements
-  intersect by excluding the union of their sets; compatible `anyOf` branches
-  exclude only names common to every branch, and a double complement restores
-  the finite allowed set. Pattern, length, correlated, and other infinite
-  complements reject instead of being widened. Draft 4
+  portable `pattern` conjunctions/disjunctions and their exact complements,
+  and ordered `format` annotations retained without vocabulary assertion.
+  Finite complements intersect by excluding the union of their sets;
+  compatible `anyOf` branches exclude only names common to every branch, and
+  a double complement restores the positive finite or pattern predicate.
+  Correlated predicates and complements involving length, format, or mixed
+  assertions reject instead of being widened. Draft 4
   resources ignore `propertyNames`; Draft 6 and newer resources apply it.
   Finite name domains are limited to 4,096 names, 256 KiB per name, and 1 MiB
   total, while name patterns share the document's bounded matcher budget.

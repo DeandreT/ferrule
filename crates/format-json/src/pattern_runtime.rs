@@ -91,9 +91,31 @@ impl PatternRuntime {
                 property: property.to_string(),
             });
         }
-        let Some(patterns) = constraints.patterns() else {
-            return Ok(());
-        };
+        if let Some(patterns) = constraints.patterns()
+            && !self.property_name_patterns_match(schema, property, patterns)?
+        {
+            return Err(JsonFormatError::InvalidPropertyName {
+                object: schema.name.clone(),
+                property: property.to_string(),
+            });
+        }
+        if let Some(patterns) = constraints.excluded_patterns()
+            && self.property_name_patterns_match(schema, property, patterns)?
+        {
+            return Err(JsonFormatError::InvalidPropertyName {
+                object: schema.name.clone(),
+                property: property.to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn property_name_patterns_match(
+        &mut self,
+        schema: &SchemaNode,
+        property: &str,
+        patterns: &ir::JsonPatternConstraints,
+    ) -> Result<bool, JsonFormatError> {
         for alternative in patterns.any_of() {
             let mut matched = true;
             for source in alternative {
@@ -116,13 +138,10 @@ impl PatternRuntime {
                 }
             }
             if matched {
-                return Ok(());
+                return Ok(true);
             }
         }
-        Err(JsonFormatError::InvalidPropertyName {
-            object: schema.name.clone(),
-            property: property.to_string(),
-        })
+        Ok(false)
     }
 
     pub(super) fn validate_dynamic_property_name(
@@ -183,19 +202,22 @@ fn collect_programs(
             }
         }
     }
-    if let Some(constraints) = &schema.json_property_names
-        && let Some(patterns) = constraints.patterns()
-    {
-        for source in patterns.any_of().iter().flatten() {
-            if programs.contains_key(source) {
-                continue;
-            }
-            let program = PortableJsonPattern::compile(source).map_err(|error| {
-                JsonFormatError::InvalidPatternMetadata {
-                    reason: error.to_string(),
+    if let Some(constraints) = &schema.json_property_names {
+        for patterns in [constraints.patterns(), constraints.excluded_patterns()]
+            .into_iter()
+            .flatten()
+        {
+            for source in patterns.any_of().iter().flatten() {
+                if programs.contains_key(source) {
+                    continue;
                 }
-            })?;
-            programs.insert(source.clone(), program);
+                let program = PortableJsonPattern::compile(source).map_err(|error| {
+                    JsonFormatError::InvalidPatternMetadata {
+                        reason: error.to_string(),
+                    }
+                })?;
+                programs.insert(source.clone(), program);
+            }
         }
     }
     if !schema.json_pattern_property_names_are_valid() {
