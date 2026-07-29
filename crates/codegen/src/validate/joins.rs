@@ -362,9 +362,6 @@ fn is_bounded_correlated_plan(
     join: &InnerJoin,
 ) -> bool {
     let join_sources = join.plan().sources().collect::<Vec<_>>();
-    if join_sources.len() != 2 {
-        return false;
-    }
     let mut singleton_sources = join_sources
         .iter()
         .copied()
@@ -375,14 +372,12 @@ fn is_bounded_correlated_plan(
     if singleton_sources.next().is_some() {
         return false;
     }
-    let mut repeating_sources = join_sources
+    let repeating_sources = join_sources
         .iter()
         .copied()
-        .filter(|source| source.cardinality() == JoinSourceCardinality::Repeating);
-    let Some(repeating) = repeating_sources.next() else {
-        return false;
-    };
-    if repeating_sources.next().is_some() {
+        .filter(|source| source.cardinality() == JoinSourceCardinality::Repeating)
+        .collect::<Vec<_>>();
+    if repeating_sources.len() + 1 != join_sources.len() {
         return false;
     }
     let singleton_is_current_scalar = current_source
@@ -390,10 +385,12 @@ fn is_bounded_correlated_plan(
         .and_then(SchemaCursor::resolved)
         .is_some_and(|candidate| !candidate.node().repeating && candidate.node().is_scalar());
     singleton_is_current_scalar
-        && current_source.follow(repeating.collection()).is_none()
-        && sources
-            .root_schema_at(repeating.collection())
-            .is_some_and(|candidate| candidate.node().repeating)
+        && repeating_sources.into_iter().all(|repeating| {
+            current_source.follow(repeating.collection()).is_none()
+                && sources
+                    .root_schema_at(repeating.collection())
+                    .is_some_and(|candidate| candidate.node().repeating)
+        })
 }
 
 fn scalar_below(sources: SourceCatalog<'_>, collection: &[String], path: &[String]) -> bool {
