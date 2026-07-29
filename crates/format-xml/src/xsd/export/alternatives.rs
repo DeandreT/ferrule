@@ -115,6 +115,10 @@ impl<'a> AlternativeExportPlan<'a> {
         self.export_namespace = namespace;
     }
 
+    pub(super) fn export_namespace(&self) -> Option<&str> {
+        self.export_namespace.as_deref()
+    }
+
     pub(super) fn needs_legacy_name_markers(&self) -> bool {
         self.export_namespace.is_some()
     }

@@ -2897,18 +2897,237 @@ fn imports_local_skip_wildcards_from_named_model_groups() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn namespace_aware_skip_wildcards_roundtrip_expanded_names_and_constraints()
+-> Result<(), Box<dyn std::error::Error>> {
+    const TARGET: &str = "urn:ferrule:wildcard-owner";
+    const EXTERNAL: &str = "urn:ferrule:wildcard-external";
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_namespace_wildcards_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+
+    for (label, namespace, expected_export, input, denied) in [
+        (
+            "any",
+            String::new(),
+            "##any".to_string(),
+            format!(
+                r#"<Root xmlns="{TARGET}" xmlns:e="{EXTERNAL}">
+                  <Local xmlns=""><e:Nested e:flag="yes"><Leaf xmlns="">value</Leaf></e:Nested></Local>
+                  <Owned/>
+                  <e:External/>
+                </Root>"#
+            ),
+            None,
+        ),
+        (
+            "other",
+            " namespace=\"##other\"".to_string(),
+            "##other".to_string(),
+            format!(
+                r#"<Root xmlns="{TARGET}" xmlns:e="{EXTERNAL}">
+                  <e:External e:flag="yes"><Local xmlns=""/></e:External>
+                </Root>"#
+            ),
+            Some(format!(r#"<Root xmlns="{TARGET}"><Owned/></Root>"#)),
+        ),
+        (
+            "list",
+            format!(r###" namespace="##local ##targetNamespace {EXTERNAL}""###),
+            format!("##local ##targetNamespace {EXTERNAL}"),
+            format!(
+                r#"<Root xmlns="{TARGET}" xmlns:e="{EXTERNAL}">
+                  <Local xmlns=""/>
+                  <Owned/>
+                  <e:External e:flag="yes"><Nested xmlns="urn:ferrule:nested"/></e:External>
+                </Root>"#
+            ),
+            Some(format!(
+                r#"<Root xmlns="{TARGET}" xmlns:b="urn:ferrule:blocked"><b:Blocked/></Root>"#
+            )),
+        ),
+    ] {
+        let schema_path = dir.join(format!("{label}.xsd"));
+        std::fs::write(
+            &schema_path,
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                        xmlns:t="{TARGET}" targetNamespace="{TARGET}"
+                        elementFormDefault="qualified">
+                  <xs:element name="Root"><xs:complexType><xs:sequence>
+                    <xs:any{namespace} processContents="skip"
+                            minOccurs="0" maxOccurs="unbounded"/>
+                  </xs:sequence></xs:complexType></xs:element>
+                </xs:schema>"#
+            ),
+        )?;
+        let schema = import_root(&schema_path, Some(&format!("{{{TARGET}}}Root")))?;
+        let wildcard = schema.child(XML_ELEMENTS_FIELD).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "missing wildcard field")
+        })?;
+        let constraint = wildcard
+            .xml_wildcard_namespace
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("missing wildcard namespace constraint"))?;
+        assert!(wildcard.child(ir::XML_NAMESPACE_URI_FIELD).is_some());
+        assert_eq!(constraint.allows(None), label != "other");
+        assert_eq!(constraint.allows(Some(TARGET)), label != "other");
+        assert!(constraint.allows(Some(EXTERNAL)));
+        assert_eq!(
+            constraint.allows(Some("urn:ferrule:blocked")),
+            label == "any" || label == "other"
+        );
+
+        let instance = from_str(&input, &schema)?;
+        let output = to_string(&schema, &instance)?;
+        let reparsed = from_str(&output, &schema)?;
+        assert!(
+            output.contains(&format!("xmlns=\"{EXTERNAL}\"")),
+            "{label}: {output}"
+        );
+        assert!(
+            output.contains(&format!("=\"{EXTERNAL}\" fga1:flag=\"yes\""))
+                || !input.contains("flag="),
+            "{label}: {output}"
+        );
+        if label != "other" {
+            let external = instance
+                .field(XML_ELEMENTS_FIELD)
+                .and_then(Instance::as_repeated)
+                .and_then(|items| {
+                    items.iter().find(|item| {
+                        item.field(XML_LOCAL_NAME_FIELD)
+                            .and_then(Instance::as_scalar)
+                            == Some(&Value::String("External".into()))
+                    })
+                })
+                .ok_or_else(|| std::io::Error::other("missing external wildcard item"))?;
+            assert_eq!(
+                external
+                    .field(ir::XML_NAMESPACE_URI_FIELD)
+                    .and_then(Instance::as_scalar),
+                Some(&Value::String(EXTERNAL.into()))
+            );
+        }
+
+        if let Some(denied) = denied {
+            assert!(matches!(
+                from_str(&denied, &schema),
+                Err(XmlFormatError::XmlWildcardNamespaceMismatch { .. })
+            ));
+        }
+        if label == "other" {
+            assert!(matches!(
+                from_str(
+                    &format!(r#"<Root xmlns="{TARGET}"><Local xmlns=""/></Root>"#),
+                    &schema
+                ),
+                Err(XmlFormatError::XmlWildcardNamespaceMismatch { namespace, .. })
+                    if namespace == "##local"
+            ));
+            let mut moved = schema.clone();
+            moved.xml_namespace = XmlNamespace::qualified("urn:ferrule:moved");
+            assert!(matches!(
+                export(&moved),
+                Err(XmlFormatError::UnsupportedXmlWildcard { reason })
+                    if reason.contains("different target namespace")
+            ));
+        }
+
+        let exported = export(&schema)?;
+        assert!(
+            exported.contains(&format!(
+                r#"<xs:any namespace="{expected_export}" processContents="skip" minOccurs="0" maxOccurs="unbounded"/>"#
+            )),
+            "{label}: {exported}"
+        );
+        let normalized = dir.join(format!("{label}-normalized.xsd"));
+        std::fs::write(&normalized, &exported)?;
+        let reimported = import_root(&normalized, Some(&format!("{{{TARGET}}}Root")))?;
+        assert_eq!(reimported, schema, "{label}");
+        assert_eq!(
+            reparsed
+                .field(XML_ELEMENTS_FIELD)
+                .and_then(Instance::as_repeated)
+                .map(<[Instance]>::len),
+            from_str(&output, &reimported)?
+                .field(XML_ELEMENTS_FIELD)
+                .and_then(Instance::as_repeated)
+                .map(<[Instance]>::len),
+            "{label}"
+        );
+    }
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
+fn wildcard_target_namespace_uses_chameleon_include_namespace()
+-> Result<(), Box<dyn std::error::Error>> {
+    const TARGET: &str = "urn:ferrule:chameleon-wildcard";
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_chameleon_wildcard_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("root.xsd"),
+        format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    xmlns:t="{TARGET}" targetNamespace="{TARGET}"
+                    elementFormDefault="qualified">
+              <xs:include schemaLocation="payload.xsd"/>
+              <xs:element name="Root" type="t:Payload"/>
+            </xs:schema>"#
+        ),
+    )?;
+    std::fs::write(
+        dir.join("payload.xsd"),
+        r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                elementFormDefault="qualified">
+          <xs:complexType name="Payload"><xs:sequence>
+            <xs:any namespace="##targetNamespace" processContents="skip"
+                    minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence></xs:complexType>
+        </xs:schema>"###,
+    )?;
+
+    let schema = import_root(&dir.join("root.xsd"), Some(&format!("{{{TARGET}}}Root")))?;
+    let constraint = schema
+        .child(XML_ELEMENTS_FIELD)
+        .and_then(|wildcard| wildcard.xml_wildcard_namespace.as_ref())
+        .ok_or_else(|| std::io::Error::other("missing wildcard constraint"))?;
+    assert!(constraint.allows(Some(TARGET)));
+    assert!(!constraint.allows(None));
+    assert!(!constraint.allows(Some("urn:ferrule:other")));
+
+    let input = format!(r#"<Root xmlns="{TARGET}"><Owned/></Root>"#);
+    let instance = from_str(&input, &schema)?;
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains("<Owned"), "{output}");
+    assert!(export(&schema)?.contains(r###"namespace="##targetNamespace""###));
+
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
+#[test]
 fn rejects_wildcards_outside_the_lossless_local_skip_profile()
 -> Result<(), Box<dyn std::error::Error>> {
     let cases = [
         (
-            "any-namespace",
-            r#"<xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>"#,
-            "namespace=\"##local\"",
+            "mixed-any",
+            r###"<xs:any namespace="##any urn:extra" processContents="skip" minOccurs="0" maxOccurs="unbounded"/>"###,
+            "cannot be combined",
         ),
         (
-            "other-namespace",
-            "<xs:any namespace=\"##other\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>",
-            "namespace=\"##local\"",
+            "unknown-token",
+            r###"<xs:any namespace="##unknown" processContents="skip" minOccurs="0" maxOccurs="unbounded"/>"###,
+            "unsupported special token",
         ),
         (
             "lax",
@@ -3045,9 +3264,10 @@ fn rejects_qualified_content_at_a_local_wildcard_runtime_boundary()
     };
     assert!(matches!(
         error,
-        XmlFormatError::UnsupportedXmlWildcard {
-            reason: "the supported ##local wildcard profile cannot retain qualified descendant elements"
-        }
+        XmlFormatError::XmlWildcardNamespaceMismatch {
+            name,
+            namespace
+        } if name == "Foreign" && namespace == "urn:qualified"
     ));
 
     let instance = Instance::Group(vec![(
