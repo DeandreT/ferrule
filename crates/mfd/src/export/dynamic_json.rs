@@ -68,6 +68,7 @@ struct RootTarget {
 struct NestedTarget {
     owner: Vec<String>,
     driver: DynamicDriver,
+    filter: Option<NodeId>,
     property_input: u32,
     field: DynamicTargetField,
     value_type: ScalarType,
@@ -462,7 +463,7 @@ impl RootTarget {
 
 impl NestedTarget {
     fn connect(&self, args: &mut ConnectArgs<'_>) -> Result<(), MfdError> {
-        let (driver, source_collection) = match &self.driver {
+        let (mut driver, source_collection) = match &self.driver {
             DynamicDriver::Source(path) => (
                 args.sources.key_for_abs(path).ok_or_else(|| {
                     MfdError::Unsupported(format!(
@@ -477,6 +478,40 @@ impl NestedTarget {
                 None,
             ),
         };
+        if let Some(filter) = self.filter {
+            let predicate = required_node_output(
+                args.node_out_key,
+                filter,
+                "dynamic property sequence filter",
+            )?;
+            connect_position_roots(
+                [filter],
+                source_collection,
+                true,
+                driver,
+                args.graph,
+                args.position_inputs,
+                args.position_contexts,
+                args.edges,
+                args.warnings,
+            );
+            let input = args.keys.next();
+            let predicate_input = args.keys.next();
+            let output = args.keys.next();
+            *args.uid += 1;
+            let _ = write!(
+                args.components,
+                "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{}\" kind=\"3\">\n\
+                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{input}\"/><datapoint pos=\"1\" key=\"{predicate_input}\"/></sources>\n\
+                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{output}\"/><datapoint/></targets>\n\
+                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                 \t\t\t\t</component>\n",
+                *args.uid
+            );
+            args.edges
+                .extend([(driver, input), (predicate, predicate_input)]);
+            driver = output;
+        }
         args.edges.push((driver, self.property_input));
         connect_field(&self.field, args.node_out_key, args.edges)?;
         connect_position_roots(
@@ -550,6 +585,7 @@ fn build_root_target(
         ));
     };
     if root.construction != ScopeConstruction::Constructed
+        || root.iteration_output != mapping::IterationOutput::Repeated
         || root.source().is_none()
         || root.sequence().is_some()
         || root.join().is_some()
@@ -571,6 +607,7 @@ fn build_root_target(
     }
     let item_scope = &child.scope;
     if item_scope.construction != ScopeConstruction::Constructed
+        || item_scope.iteration_output != mapping::IterationOutput::Repeated
         || item_scope.source().is_none()
         || item_scope.sequence().is_some()
         || item_scope.join().is_some()
@@ -680,12 +717,12 @@ fn collect_nested_targets(
     if scope.merge_dynamic_fields || !scope.dynamic_bindings.is_empty() {
         if path.is_empty()
             || scope.construction != ScopeConstruction::Constructed
+            || scope.iteration_output != mapping::IterationOutput::Repeated
             || !scope.merge_dynamic_fields
             || scope.dynamic_bindings.len() != 1
             || !scope.bindings.is_empty()
             || !scope.children.is_empty()
             || !scope.dynamic_children.is_empty()
-            || scope.filter.is_some()
             || scope.post_group_filter.is_some()
             || scope.group_by.is_some()
             || scope.group_starting_with.is_some()
@@ -697,11 +734,11 @@ fn collect_nested_targets(
             || scope.join().is_some()
         {
             return Err(dynamic_target_error(
-                "nested mappings require one plain iteration and one computed scalar property",
+                "nested mappings require one plain or filtered source iteration (or one plain generated sequence), repeated output, and one computed scalar property",
             ));
         }
         let driver = match &scope.iteration {
-            ScopeIteration::Source(_) | ScopeIteration::DynamicDocuments { .. } => {
+            ScopeIteration::Source(_) => {
                 if sources.schema_node_at(&current_anchor).is_none() {
                     return Err(dynamic_target_error(
                         "nested computed property source collection is missing",
@@ -709,7 +746,19 @@ fn collect_nested_targets(
                 }
                 DynamicDriver::Source(current_anchor)
             }
-            ScopeIteration::Sequence(sequence) => DynamicDriver::Sequence(sequence.item()),
+            ScopeIteration::Sequence(sequence) if scope.filter.is_none() => {
+                DynamicDriver::Sequence(sequence.item())
+            }
+            ScopeIteration::Sequence(_) => {
+                return Err(dynamic_target_error(
+                    "filtered nested computed properties require a source collection",
+                ));
+            }
+            ScopeIteration::DynamicDocuments { .. } => {
+                return Err(dynamic_target_error(
+                    "nested computed properties cannot iterate dynamic documents",
+                ));
+            }
             ScopeIteration::None
             | ScopeIteration::InnerJoin { .. }
             | ScopeIteration::Concatenate(_) => {
@@ -740,6 +789,7 @@ fn collect_nested_targets(
         targets.push(NestedTarget {
             owner: path.clone(),
             driver,
+            filter: scope.filter,
             property_input: keys.next(),
             field: DynamicTargetField {
                 key: binding.key,
