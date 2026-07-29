@@ -35,8 +35,8 @@ clean-room interoperability, and extensible adapters.
   constructions, and an expanding scalar function library.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
-  undo/redo, and persisted canvas layout; plus a WASM XML/JSON/CSV/XBRL
-  playground.
+  undo/redo, persisted primary/function/named-target canvases, and deterministic
+  JSON Lines execution traces; plus a WASM XML/JSON/CSV/XBRL playground.
 - `.mfd` survey: all 187 designs in the local ReferenceSamples corpus import,
   and all 187 export warning-free. Of those, 173 are dependency-complete,
   warning-free, and engine-valid; fourteen retain typed unresolved external
@@ -48,15 +48,15 @@ clean-room interoperability, and extensible adapters.
   references match exactly.
   These measurements describe the local sample profile, not commercial-product parity.
 - Known architectural constraints: one primary driver input per run, scalar graph
-  outputs, no general endpoint/stage DAG, node-value traces without full
-  scope/control history, and reusable functions limited to the currently typed
-  scalar, record, sequence, recursive, hierarchy, and adjacency profiles.
+  outputs, no general endpoint/stage DAG, no connector history or interactive
+  stepping, and reusable functions limited to the currently typed scalar, record,
+  sequence, recursive, hierarchy, and adjacency profiles.
 
 ## Capability Matrix
 
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
-| XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes, simple and ordered mixed content, `xsi:nil`, generic elements, bounded same-namespace substitution groups, and bounded transitive derived-type input/output | Remaining derived-type input shapes, cross-namespace substitution export, and namespace-dependent wildcards |
+| XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes, simple and ordered mixed content, `xsi:nil`, generic elements, bounded cross-namespace substitution groups, and bounded transitive derived-type input/output | Remaining derived-type input shapes and namespace-dependent wildcards |
 | JSON | JSON Schema subset, local refs, exact nullable scalar/object/array wrappers, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null `const` discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties | General multi-type scalar/array unions, overlapping cross-mode or incompatible typed-wrapper union composition, untyped discriminator shapes, mixed arrays, validation-keyword enforcement |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
@@ -65,10 +65,10 @@ clean-room interoperability, and extensible adapters.
 | Dataflow | One primary driver plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, and dynamic per-document output paths | Fully general named N-to-M endpoints and an ordered stage DAG |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
-| Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
-| Debugging | Static validation, runtime errors, node-value traces, and a bounded searchable GUI run report | Scope/control history, connector history, context/row inspection, stepping, breakpoints |
+| Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, undo, and layout | Complete schema/format wizards and preview |
+| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, and a bounded searchable GUI run report | Connector history, context/row inspection, stepping, breakpoints |
 | `.mfd` | 187/187 imports, warning-free export for all 187, 173 dependency-complete warning-free/engine-valid designs, fourteen typed missing EDI-catalog dependencies preserved across round trips, 166/166 safe-input executions, 166/166 semantically exact export/re-import executions, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and executable package resolution for externally supplied configuration catalogs |
-| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs, 75 scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; 169/173 dependency-complete survey designs emit in both languages | Dynamic JSON target construction, dynamic extra-source loading, publish the Rust runtime, and consider optional XML-specific XSLT |
+| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs, 75 scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 173 dependency-complete survey designs emit in both languages | Publish the Rust runtime and consider optional XML-specific XSLT |
 
 ## Workstreams
 
@@ -234,9 +234,10 @@ Exit criteria:
 - A nested filtered/grouped fixture produces a deterministic trace.
 - A breakpoint can pause before a target write and expose partial output.
 
-Progress: node-value events are exposed through the engine and CLI, and the GUI
-shows a bounded, searchable run report. Scope candidates, control decisions,
-partial writes, and interactive debugging remain.
+Progress: node, scope-candidate, filter, sort, grouping, window, and successful
+target-field events are exposed through the engine and versioned CLI JSONL.
+The GUI shows a bounded, searchable run report. Connector history, context/row
+inspection, and interactive debugging remain.
 
 #### B4. Shared Native and Browser Editor
 
@@ -328,7 +329,7 @@ Update these numbers with each parity increment:
   unavailable.
 - `.mfd` execution round trips: all 166 safe projects export, re-import,
   validate, execute, and produce semantically identical outputs.
-- Code generation: 169/173 dependency-complete designs lower and emit for both
+- Code generation: 173/173 dependency-complete designs lower and emit for both
   Rust and C#.
 - Behavioral references: 79/79 available deterministic outputs across the current
   isolated manifests match exactly; these are not inferred from structural success.

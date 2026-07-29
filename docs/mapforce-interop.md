@@ -98,13 +98,13 @@ expected to re-import and validate as ferrule projects.
 
 ## Current Boundaries
 
-The main remaining gaps are some XML derived-type input shapes, cross-namespace
-substitution export, namespace-dependent wildcards, general scalar/array,
+The main remaining gaps are some XML derived-type input shapes,
+namespace-dependent wildcards, general scalar/array,
 overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
 first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
 direct execution of unrecognized or external-service user components. Bounded
-same-namespace substitution groups and exact nullable scalar JSON unions are
+cross-namespace substitution groups and exact nullable scalar JSON unions are
 preserved, including required or optional typed `const` discriminators and
 JSON-null discriminators. Expanded-name identity for ordinary elements and attributes is
 preserved; foreign declarations export as an atomic graph of local XSD siblings.
