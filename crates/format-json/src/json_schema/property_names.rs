@@ -102,6 +102,14 @@ pub(super) fn intersect(
         (Some(allowed), None) | (None, Some(allowed)) => Some(allowed.clone()),
         (None, None) => None,
     };
+    let excluded = match (left.excluded(), right.excluded()) {
+        (Some(left), Some(right)) => Some(
+            left.union(right)
+                .map_err(|error| property_set_error(name, error))?,
+        ),
+        (Some(excluded), None) | (None, Some(excluded)) => Some(excluded.clone()),
+        (None, None) => None,
+    };
     let length = match (left.length(), right.length()) {
         (Some(left), Some(right)) => {
             let Some(intersection) = left.intersection(right) else {
@@ -113,8 +121,8 @@ pub(super) fn intersect(
     };
     let patterns = patterns::intersect(name, left.patterns().cloned(), right.patterns().cloned())?;
     let formats = merge_formats(name, [&left, &right])?;
-    Ok(JsonPropertyNameConstraints::schema(
-        allowed, length, patterns, formats,
+    Ok(JsonPropertyNameConstraints::schema_excluding(
+        allowed, excluded, length, patterns, formats,
     ))
 }
 
@@ -136,6 +144,13 @@ pub(super) fn render(node: &ir::SchemaNode, out: &mut serde_json::Map<String, se
                         schema.insert("enum".into(), values.to_vec().into());
                     }
                 }
+            }
+            if let Some(excluded) = constraints.excluded() {
+                let excluded = match excluded.as_slice() {
+                    [value] => serde_json::json!({"const":value}),
+                    values => serde_json::json!({"enum":values}),
+                };
+                schema.insert("not".into(), excluded);
             }
             if let Some(length) = constraints.length() {
                 if length.minimum() > 0 {
@@ -237,14 +252,14 @@ fn parse_constraint(
         };
         direct = intersect(name, direct, composed)?;
     }
-    if schema.get("not").is_some()
-        || schema.get("if").is_some()
-        || schema.get("then").is_some()
-        || schema.get("else").is_some()
-    {
+    if let Some(negated) = schema.get("not") {
+        let negated = parse_constraint(name, negated, doc, active_refs)?;
+        direct = intersect(name, direct, complement(name, negated)?)?;
+    }
+    if schema.get("if").is_some() || schema.get("then").is_some() || schema.get("else").is_some() {
         return Err(unsupported(
             name,
-            "propertyNames not/if/then/else composition is not supported",
+            "propertyNames if/then/else composition is not supported",
         ));
     }
     Ok(direct)
@@ -397,8 +412,13 @@ fn union_any_of(
     let patterns_equal = branches
         .iter()
         .all(|branch| branch.patterns() == first.patterns());
-    let differences =
-        usize::from(!allowed_equal) + usize::from(!length_equal) + usize::from(!patterns_equal);
+    let excluded_equal = branches
+        .iter()
+        .all(|branch| branch.excluded() == first.excluded());
+    let differences = usize::from(!allowed_equal)
+        + usize::from(!excluded_equal)
+        + usize::from(!length_equal)
+        + usize::from(!patterns_equal);
     if differences > 1 {
         return Err(unsupported(
             name,
@@ -418,6 +438,23 @@ fn union_any_of(
             )
             .map_err(|error| property_set_error(name, error))?,
         )
+    } else {
+        None
+    };
+    let excluded = if excluded_equal {
+        first.excluded().cloned()
+    } else if branches.iter().all(|branch| branch.excluded().is_some()) {
+        let mut intersection = branches[0].excluded().cloned();
+        for branch in &branches[1..] {
+            let Some(branch_excluded) = branch.excluded() else {
+                return Err(unsupported(
+                    name,
+                    "propertyNames anyOf has an inconsistent finite exclusion",
+                ));
+            };
+            intersection = intersection.and_then(|current| current.intersection(branch_excluded));
+        }
+        intersection
     } else {
         None
     };
@@ -443,8 +480,8 @@ fn union_any_of(
             branches.iter().map(|branch| branch.patterns().cloned()),
         )?
     };
-    Ok(JsonPropertyNameConstraints::schema(
-        allowed, length, patterns, formats,
+    Ok(JsonPropertyNameConstraints::schema_excluding(
+        allowed, excluded, length, patterns, formats,
     ))
 }
 
@@ -478,6 +515,12 @@ fn union_one_of(
         if matches!(branch, JsonPropertyNameConstraints::Never) {
             continue;
         }
+        if branch.excluded().is_some() {
+            return Err(unsupported(
+                name,
+                "propertyNames oneOf cannot represent complements of finite name sets",
+            ));
+        }
         let Some(allowed) = branch.allowed() else {
             return Err(unsupported(
                 name,
@@ -505,6 +548,49 @@ fn union_one_of(
         None,
         None,
         formats,
+    ))
+}
+
+fn complement(
+    name: &str,
+    constraints: Option<JsonPropertyNameConstraints>,
+) -> Result<Option<JsonPropertyNameConstraints>, JsonFormatError> {
+    let Some(constraints) = constraints else {
+        return Ok(Some(JsonPropertyNameConstraints::never()));
+    };
+    if matches!(constraints, JsonPropertyNameConstraints::Never) {
+        return Ok(None);
+    }
+    if let Some(allowed) = constraints.allowed() {
+        return Ok(JsonPropertyNameConstraints::schema_excluding(
+            None,
+            Some(allowed.clone()),
+            None,
+            None,
+            JsonFormatAnnotations::default(),
+        ));
+    }
+    if let Some(excluded) = constraints.excluded()
+        && constraints.length().is_none()
+        && constraints.patterns().is_none()
+    {
+        return Ok(JsonPropertyNameConstraints::schema(
+            Some(excluded.clone()),
+            None,
+            None,
+            JsonFormatAnnotations::default(),
+        ));
+    }
+    if constraints.allowed().is_none()
+        && constraints.excluded().is_none()
+        && constraints.length().is_none()
+        && constraints.patterns().is_none()
+    {
+        return Ok(Some(JsonPropertyNameConstraints::never()));
+    }
+    Err(unsupported(
+        name,
+        "propertyNames `not` must complement a finite const or enum name set",
     ))
 }
 

@@ -80,6 +80,9 @@ impl PatternRuntime {
                 .allowed()
                 .is_some_and(|allowed| !allowed.contains(property))
             || constraints
+                .excluded()
+                .is_some_and(|excluded| excluded.contains(property))
+            || constraints
                 .length()
                 .is_some_and(|length| !length.contains_str(property))
         {

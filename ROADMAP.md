@@ -189,12 +189,14 @@ heterogeneous tails remain unsupported.
 
 Object `propertyNames` assertions validate every actual key, including declared,
 runtime-named, and empty-string properties. Exact `false`, finite
-`const`/`enum` name sets, Unicode-scalar length intervals, bounded portable
-pattern conjunctions/disjunctions, and retained nonasserting `format`
-annotations execute on raw parsed input keys and normalized emitted keys in
-native and generated Rust/C# boundaries. `true` and an unconstrained schema
-normalize away. General correlated name unions and `not` remain outside the
-subset rather than being approximated.
+`const`/`enum` name sets and finite `not` complements, Unicode-scalar length
+intervals, bounded portable pattern conjunctions/disjunctions, and retained
+nonasserting `format` annotations execute on raw parsed input keys and
+normalized emitted keys in native and generated Rust/C# boundaries. Finite
+complements compose through intersections, compatible unions, references, and
+double negation. `true` and an unconstrained schema normalize away. General
+correlated name unions and infinite pattern/length complements remain outside
+the subset rather than being approximated.
 Array `contains` assertions retain a bounded conjunction of schema-shaped item
 predicates with exact match-count intervals. A plain assertion requires at
 least one match; Draft 2019-09 and newer `minContains`/`maxContains` modifiers
