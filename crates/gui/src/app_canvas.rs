@@ -183,8 +183,29 @@ pub(super) fn build_snarl_with_layout(
     saved_layout: Option<&CanvasLayout>,
 ) -> Snarl<CanvasNode> {
     let saved_layout = saved_layout.filter(|layout| layout.matches_project(project));
+    build_boundary_snarl(
+        project,
+        &project.target,
+        &project.root,
+        saved_layout.map(|layout| layout.nodes.as_slice()),
+    )
+}
+
+pub(super) fn build_named_target_snarl(project: &Project, target: usize) -> Snarl<CanvasNode> {
+    let Some(target) = project.extra_targets.get(target) else {
+        return Snarl::new();
+    };
+    build_boundary_snarl(project, &target.schema, &target.root, None)
+}
+
+fn build_boundary_snarl(
+    project: &Project,
+    target_schema: &ir::SchemaNode,
+    root_scope: &Scope,
+    saved_nodes: Option<&[super::CanvasNodeLayout]>,
+) -> Snarl<CanvasNode> {
     let source_blocks = source_blocks(&project.source);
-    let target_blocks = target_blocks(&project.target);
+    let target_blocks = target_blocks(target_schema);
 
     let mut snarl = Snarl::new();
     for block in 0..source_blocks.len() {
@@ -204,9 +225,9 @@ pub(super) fn build_snarl_with_layout(
         })
         .collect();
 
-    let placeholders: std::collections::BTreeSet<NodeId> = saved_layout
+    let placeholders: std::collections::BTreeSet<NodeId> = saved_nodes
         .into_iter()
-        .flat_map(|layout| &layout.nodes)
+        .flatten()
         .filter_map(|entry| match entry.node {
             PersistedCanvasNode::Placeholder { id }
                 if matches!(
@@ -261,7 +282,7 @@ pub(super) fn build_snarl_with_layout(
 
     sync_endpoint_wires(
         &project.graph,
-        &project.root,
+        root_scope,
         &source_blocks,
         &target_blocks,
         &EndpointScrollState::default(),
@@ -286,8 +307,8 @@ pub(super) fn build_snarl_with_layout(
         &initial_sizes,
         crate::appearance::WireAppearance::default(),
     );
-    if let Some(layout) = saved_layout {
-        layout.apply(&mut snarl);
+    if let Some(nodes) = saved_nodes {
+        CanvasLayout::apply_nodes(nodes, &mut snarl);
     }
     snarl
 }

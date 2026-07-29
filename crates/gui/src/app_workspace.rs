@@ -410,6 +410,15 @@ impl FerruleApp {
         let wire = *self.appearance.wire();
         let canvas = match document {
             MappingDocument::Main => &mut self.main_canvas,
+            MappingDocument::Target(target) => {
+                if !self.ensure_target_canvas(target) {
+                    return false;
+                }
+                let Some(canvas) = self.mapping_workspace.target_canvases.get_mut(&target) else {
+                    return false;
+                };
+                canvas
+            }
             MappingDocument::Function(function) => {
                 if !self.ensure_function_canvas(function) {
                     return false;
@@ -442,6 +451,15 @@ impl FerruleApp {
     pub(super) fn fit_document(&mut self, document: MappingDocument) -> bool {
         let canvas = match document {
             MappingDocument::Main => &mut self.main_canvas,
+            MappingDocument::Target(target) => {
+                if !self.ensure_target_canvas(target) {
+                    return false;
+                }
+                let Some(canvas) = self.mapping_workspace.target_canvases.get_mut(&target) else {
+                    return false;
+                };
+                canvas
+            }
             MappingDocument::Function(function) => {
                 if !self.ensure_function_canvas(function) {
                     return false;
@@ -459,6 +477,9 @@ impl FerruleApp {
 
     pub(super) fn reset_canvas_view(&mut self) {
         self.main_canvas.reset_view();
+        for canvas in self.mapping_workspace.target_canvases.values_mut() {
+            canvas.reset_view();
+        }
     }
 
     fn validate_now(&mut self) {
@@ -580,27 +601,116 @@ impl FerruleApp {
     }
 
     pub(super) fn show_inspector(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
-        let target_x12 = crate::x12_tooltips::boundary_has_x12(
-            &self.project.target,
-            self.project.target_path.as_deref(),
-            &self.project.target_options,
-        );
-        let source_paths =
-            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
+        let mut activate = None;
+        let active_target = match self.mapping_workspace.active {
+            MappingDocument::Target(index) => Some(index),
+            MappingDocument::Main | MappingDocument::Function(_) => None,
+        };
+        ui.horizontal(|ui| {
+            ui.strong("Target");
+            egui::ComboBox::from_id_salt("active_target")
+                .selected_text(active_target.map_or("Primary", |index| {
+                    self.project
+                        .extra_targets
+                        .get(index)
+                        .map(|target| target.name.as_str())
+                        .unwrap_or("Missing target")
+                }))
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(active_target.is_none(), "Primary")
+                        .clicked()
+                    {
+                        activate = Some(MappingDocument::Main);
+                    }
+                    for (index, target) in self.project.extra_targets.iter().enumerate() {
+                        if ui
+                            .selectable_label(active_target == Some(index), &target.name)
+                            .clicked()
+                        {
+                            activate = Some(MappingDocument::Target(index));
+                        }
+                    }
+                });
+            if crate::icons::button(
+                ui,
+                editing_enabled,
+                lucide_icons::Icon::CirclePlus,
+                "Add target",
+            )
+            .clicked()
+            {
+                self.begin_extra_target();
+            }
+            if let Some(index) = active_target {
+                if crate::icons::button(
+                    ui,
+                    editing_enabled,
+                    lucide_icons::Icon::Pencil,
+                    "Edit target",
+                )
+                .clicked()
+                {
+                    self.edit_extra_target(index);
+                }
+                if crate::icons::button(
+                    ui,
+                    editing_enabled,
+                    lucide_icons::Icon::Trash2,
+                    "Remove target",
+                )
+                .clicked()
+                {
+                    self.pending_extra_target_removal = Some(index);
+                }
+            }
+        });
+        if let Some(document) = activate {
+            match document {
+                MappingDocument::Main => {
+                    self.mapping_workspace.active = MappingDocument::Main;
+                    self.mapping_workspace.focused = MappingDocument::Main;
+                    self.selected_scope.clear();
+                }
+                MappingDocument::Target(index) => self.open_target_tab(index),
+                MappingDocument::Function(_) => {}
+            }
+        }
+        let active_target = match self.mapping_workspace.active {
+            MappingDocument::Target(index) => Some(index),
+            MappingDocument::Main | MappingDocument::Function(_) => None,
+        };
         ui.add_enabled_ui(editing_enabled, |ui| {
+            let (schema, root, path, options) = active_target
+                .and_then(|index| self.project.extra_targets.get(index))
+                .map_or(
+                    (
+                        &self.project.target,
+                        &self.project.root,
+                        self.project.target_path.as_deref(),
+                        &self.project.target_options,
+                    ),
+                    |target| {
+                        (
+                            &target.schema,
+                            &target.root,
+                            target.path.as_deref(),
+                            &target.options,
+                        )
+                    },
+                );
+            let target_x12 = crate::x12_tooltips::boundary_has_x12(schema, path, options);
             ui.strong("Target schema");
             show_schema_search_input(ui, "target_schema_search", &mut self.target_schema_explorer);
-            let target_matches = self
-                .target_schema_explorer
-                .match_count(&self.project.target);
+            let target_matches = self.target_schema_explorer.match_count(schema);
             show_schema_result_count(
                 ui,
                 &self.target_schema_explorer,
                 target_matches,
-                schema_field_count(&self.project.target),
+                schema_field_count(schema),
             );
             egui::ScrollArea::both()
-                .id_salt("target_schema_scroll")
+                .id_salt(("target_schema_scroll", active_target))
                 .max_height(200.0)
                 .show(ui, |ui| {
                     if target_matches == 0 && self.target_schema_explorer.is_filtering() {
@@ -608,9 +718,9 @@ impl FerruleApp {
                     } else {
                         show_schema_tree(
                             ui,
-                            &self.project.target,
+                            schema,
                             &self.target_schema_explorer,
-                            "target_schema",
+                            ("target_schema", active_target),
                             target_x12,
                         );
                     }
@@ -619,35 +729,57 @@ impl FerruleApp {
             ui.separator();
             ui.strong("Scopes");
             egui::ScrollArea::both()
-                .id_salt("scope_tree_scroll")
+                .id_salt(("scope_tree_scroll", active_target))
                 .max_height(200.0)
                 .show(ui, |ui| {
-                    if let Some(new_selection) =
-                        show_scope_tree(ui, &self.project.root, &self.selected_scope)
-                    {
+                    if let Some(new_selection) = show_scope_tree(ui, root, &self.selected_scope) {
                         self.selected_scope = new_selection;
                     }
                 });
-            self.show_scope_controls(ui);
-
-            ui.separator();
-            egui::ScrollArea::both()
-                .id_salt("scope_editor_scroll")
-                .show(ui, |ui| {
-                    let nested = !self.selected_scope.is_empty();
-                    let target_chain = scope_target_chain(&self.project.root, &self.selected_scope);
-                    let target_fields = binding_target_fields(&self.project.target, &target_chain);
-                    let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
-                    show_scope_editor(
-                        ui,
-                        scope,
-                        &self.project.graph,
-                        &source_paths,
-                        &target_fields,
-                        nested,
-                    );
-                });
         });
+        ui.add_enabled_ui(editing_enabled, |ui| self.show_scope_controls(ui));
+
+        ui.separator();
+        let source_paths =
+            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
+        egui::ScrollArea::both()
+            .id_salt(("scope_editor_scroll", active_target))
+            .show(ui, |ui| {
+                let nested = !self.selected_scope.is_empty();
+                match active_target {
+                    Some(index) => {
+                        let Some(target) = self.project.extra_targets.get_mut(index) else {
+                            return;
+                        };
+                        let target_chain = scope_target_chain(&target.root, &self.selected_scope);
+                        let target_fields = binding_target_fields(&target.schema, &target_chain);
+                        let scope = scope_at_mut(&mut target.root, &self.selected_scope);
+                        show_scope_editor(
+                            ui,
+                            scope,
+                            &self.project.graph,
+                            &source_paths,
+                            &target_fields,
+                            nested,
+                        );
+                    }
+                    None => {
+                        let target_chain =
+                            scope_target_chain(&self.project.root, &self.selected_scope);
+                        let target_fields =
+                            binding_target_fields(&self.project.target, &target_chain);
+                        let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
+                        show_scope_editor(
+                            ui,
+                            scope,
+                            &self.project.graph,
+                            &source_paths,
+                            &target_fields,
+                            nested,
+                        );
+                    }
+                }
+            });
     }
 
     pub(super) fn show_main_canvas(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
