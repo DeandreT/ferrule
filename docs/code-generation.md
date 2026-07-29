@@ -175,6 +175,8 @@ The current portable model includes:
   supplied by the execution host
 - bounded named host parameters with declared string, integer, floating-point,
   or boolean types, scalar coercion, and distinct missing/type failures
+- typed reusable scalar user functions, including nested calls and access to
+  the same stable runtime values and bounded host parameters as the main graph
 - heterogeneous scalar-union source and target fields at JSON boundaries, with
   runtime tag preservation, exact-only numeric adaptation, and matching
   ambiguity or invalid-output failures in Rust and C#
