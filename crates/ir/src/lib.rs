@@ -500,6 +500,11 @@ pub struct SchemaNode {
     /// to retain document order and recreate the original compositor.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub xml_repeating_sequences: Vec<XmlRepeatingSequence>,
+    /// Repeating XML choices flattened into independently addressable named
+    /// children. XML adapters retain the original cross-member occurrence
+    /// order and export the fields under one repeating `xs:choice`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub xml_repeating_choices: Vec<XmlRepeatingChoice>,
     /// Explicit join endpoints for a nested repeating database relation.
     /// When absent, database adapters resolve the relation from physical FK
     /// metadata. Non-database adapters ignore this field.
@@ -549,6 +554,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_repeating_sequences: Vec<XmlRepeatingSequence>,
             #[serde(default)]
+            xml_repeating_choices: Vec<XmlRepeatingChoice>,
+            #[serde(default)]
             database_relation: Option<DatabaseRelation>,
             kind: SchemaKind,
         }
@@ -572,6 +579,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             alternative_mode: repr.alternative_mode,
             xml_alternative_kind: repr.xml_alternative_kind,
             xml_repeating_sequences: repr.xml_repeating_sequences,
+            xml_repeating_choices: repr.xml_repeating_choices,
             database_relation: repr.database_relation,
             kind: repr.kind,
         };
@@ -583,6 +591,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.alternative_mode_is_valid()
             || !node.xml_alternative_kind_is_valid()
             || !node.xml_repeating_sequences_are_valid()
+            || !node.xml_repeating_choices_are_valid()
             || !node.database_relation_is_valid()
             || !node.nullable_is_valid()
             || !node.container_nullable_is_valid()
@@ -590,7 +599,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.xml_wildcard_namespace_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences, XML wildcard namespace, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences or choices, XML wildcard namespace, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -605,6 +614,15 @@ pub struct XmlRepeatingSequence {
     #[serde(default)]
     pub required: bool,
     pub members: Vec<XmlSequenceMember>,
+}
+
+/// One `xs:choice` whose occurrences are projected onto repeating named
+/// child ports. Each occurrence selects exactly one member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XmlRepeatingChoice {
+    #[serde(default)]
+    pub required: bool,
+    pub members: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -787,6 +805,7 @@ impl SchemaNode {
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
             xml_repeating_sequences: Vec::new(),
+            xml_repeating_choices: Vec::new(),
             database_relation: None,
             kind: SchemaKind::Scalar { ty },
         }
@@ -817,6 +836,7 @@ impl SchemaNode {
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
             xml_repeating_sequences: Vec::new(),
+            xml_repeating_choices: Vec::new(),
             database_relation: None,
             kind: SchemaKind::ScalarUnion { types },
         }
@@ -856,6 +876,7 @@ impl SchemaNode {
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
             xml_repeating_sequences: Vec::new(),
+            xml_repeating_choices: Vec::new(),
             database_relation: None,
             kind: SchemaKind::Group {
                 children,
@@ -1271,6 +1292,50 @@ impl SchemaNode {
             true
         } else {
             self.xml_repeating_sequences = previous;
+            false
+        }
+    }
+
+    pub fn xml_repeating_choices_are_valid(&self) -> bool {
+        let SchemaKind::Group { children, .. } = &self.kind else {
+            return self.xml_repeating_choices.is_empty();
+        };
+        let sequence_members = self
+            .xml_repeating_sequences
+            .iter()
+            .flat_map(|sequence| sequence.members.iter().map(|member| member.name.as_str()))
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut used = std::collections::BTreeSet::new();
+        self.xml_repeating_choices.iter().all(|choice| {
+            let positions = choice
+                .members
+                .iter()
+                .map(|member| {
+                    let mut matches = children.iter().enumerate().filter(|(_, child)| {
+                        child.name == *member && child.repeating && !child.attribute && !child.text
+                    });
+                    let position = matches.next().map(|(position, _)| position)?;
+                    matches.next().is_none().then_some(position)
+                })
+                .collect::<Option<Vec<_>>>();
+            choice.members.len() > 1
+                && choice.members.iter().all(|member| {
+                    !member.is_empty()
+                        && !sequence_members.contains(member.as_str())
+                        && used.insert(member.as_str())
+                })
+                && positions.is_some_and(|positions| {
+                    positions.windows(2).all(|pair| pair[1] == pair[0] + 1)
+                })
+        })
+    }
+
+    pub fn set_xml_repeating_choices(&mut self, choices: Vec<XmlRepeatingChoice>) -> bool {
+        let previous = std::mem::replace(&mut self.xml_repeating_choices, choices);
+        if self.xml_repeating_choices_are_valid() {
+            true
+        } else {
+            self.xml_repeating_choices = previous;
             false
         }
     }

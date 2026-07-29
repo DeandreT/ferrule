@@ -6,8 +6,8 @@ use roxmltree::Node;
 use crate::XmlFormatError;
 
 use super::{
-    ParseState, collect_sequence, is_local_qname, is_repeating, local_name, parse_attribute,
-    parse_attribute_wildcard, read_xml_text, schema_node_count, top_level,
+    ParseState, ParsedComplexType, collect_sequence, is_local_qname, is_repeating, local_name,
+    parse_attribute, parse_attribute_wildcard, read_xml_text, schema_node_count, top_level,
 };
 
 pub(super) fn resolve_model_group(
@@ -15,7 +15,7 @@ pub(super) fn resolve_model_group(
     schema: &Node<'_, '_>,
     schema_path: &Path,
     state: &mut ParseState,
-) -> Result<Vec<SchemaNode>, XmlFormatError> {
+) -> Result<ParsedComplexType, XmlFormatError> {
     let reference = occurrence.attribute("ref").ok_or_else(|| {
         unsupported(
             "group",
@@ -24,7 +24,7 @@ pub(super) fn resolve_model_group(
         )
     })?;
     let local = local_name(reference);
-    let mut children = if is_local_qname(schema, reference)
+    let mut group = if is_local_qname(schema, reference)
         && let Some(declaration) = top_level(schema, "group", local)
     {
         parse_model_group(&declaration, schema, schema_path, local, state)?
@@ -42,8 +42,8 @@ pub(super) fn resolve_model_group(
         })?;
         parse_model_group(&declaration, &external_schema, &path, local, state)?
     };
-    apply_model_group_occurrence(occurrence, reference, &mut children)?;
-    Ok(children)
+    apply_model_group_occurrence(occurrence, reference, &mut group)?;
+    Ok(group)
 }
 
 pub(super) fn resolve_attribute_group(
@@ -85,7 +85,7 @@ fn parse_model_group(
     schema_path: &Path,
     name: &str,
     state: &mut ParseState,
-) -> Result<Vec<SchemaNode>, XmlFormatError> {
+) -> Result<ParsedComplexType, XmlFormatError> {
     if !state.enter(schema_path, "group", name) {
         return Err(XmlFormatError::SchemaGroupCycle {
             kind: "group",
@@ -123,9 +123,17 @@ fn parse_model_group(
         if let Some(reason) = unsupported_sequence_member(sequence) {
             return Err(unsupported("group", name, reason));
         }
-        let mut children = Vec::new();
-        collect_sequence(sequence, false, schema, schema_path, state, &mut children);
-        Ok(children)
+        let mut parsed = ParsedComplexType::default();
+        collect_sequence(
+            sequence,
+            false,
+            schema,
+            schema_path,
+            state,
+            &mut parsed.children,
+            &mut parsed.repeating_choices,
+        );
+        Ok(parsed)
     })();
     state.leave();
     result
@@ -191,10 +199,17 @@ fn parse_attribute_group(
 fn apply_model_group_occurrence(
     occurrence: &Node<'_, '_>,
     reference: &str,
-    children: &mut [SchemaNode],
+    group: &mut ParsedComplexType,
 ) -> Result<(), XmlFormatError> {
     if !is_repeating(occurrence) {
         return Ok(());
+    }
+    if !group.repeating_choices.is_empty() || !group.repeating_sequences.is_empty() {
+        return Err(unsupported(
+            "group",
+            reference,
+            "a repeated group cannot contain a repeating compositor",
+        ));
     }
     if occurrence.attribute("minOccurs") != Some("0")
         || occurrence.attribute("maxOccurs") != Some("unbounded")
@@ -205,7 +220,7 @@ fn apply_model_group_occurrence(
             "repeating xs:group references are not supported",
         ));
     }
-    let [child] = children else {
+    let [child] = group.children.as_mut_slice() else {
         return Err(unsupported(
             "group",
             reference,

@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use ir::{Instance, SchemaNode, Value};
+use ir::{Instance, Value};
 
 struct TempDir(PathBuf);
 
@@ -122,12 +122,7 @@ fn selected_qname_replaces_an_existing_fallback_placeholder_and_executes()
     )?;
 
     let imported = mfd::import(&design)?;
-    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(
-        imported.warnings[0].contains("xs:any wildcard cannot be represented"),
-        "{:?}",
-        imported.warnings
-    );
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let order_schema = imported
         .project
@@ -261,7 +256,7 @@ fn structured_selected_field_does_not_replace_an_exposed_fallback_scalar()
     assert!(
         imported.warnings.iter().any(|warning| {
             warning.contains("field `Code` is exposed as a scalar")
-                && warning.contains("fallback retained")
+                && warning.contains("incompatible scalar connections are non-executable")
         }),
         "{:?}",
         imported.warnings
@@ -271,12 +266,19 @@ fn structured_selected_field_does_not_replace_an_exposed_fallback_scalar()
         .source
         .child("Body")
         .and_then(|body| body.child("Order"))
-        .ok_or("fallback order schema is missing")?;
-    assert!(!order_schema.repeating);
+        .ok_or("resolved order schema is missing")?;
+    assert!(order_schema.repeating);
     assert!(
         order_schema
             .child("Code")
-            .is_some_and(SchemaNode::is_scalar)
+            .is_some_and(|code| !code.is_scalar())
+    );
+    let validation = engine::validate(&imported.project);
+    assert!(
+        validation
+            .iter()
+            .any(|issue| issue.to_string().contains("matches no scalar")),
+        "{validation:?}"
     );
     Ok(())
 }

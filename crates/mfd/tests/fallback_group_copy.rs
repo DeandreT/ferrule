@@ -110,6 +110,64 @@ fn write_target_schema(path: &Path, group_name: &str) -> Result<(), std::io::Err
     )
 }
 
+fn write_group_schema(path: &Path, root: &str) -> Result<(), std::io::Error> {
+    write(
+        path,
+        &format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="{root}"><xs:complexType><xs:sequence>
+    <xs:element name="Line" minOccurs="0" maxOccurs="unbounded">
+      <xs:complexType><xs:sequence>
+        <xs:element name="Code" type="xs:string"/>
+        <xs:element name="Quantity" type="xs:integer"/>
+      </xs:sequence></xs:complexType>
+    </xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#
+        ),
+    )
+}
+
+fn reverse_mapping(source_name: &str, target_name: &str) -> String {
+    format!(
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="xml" kind="14"><data><root>
+    <entry name="FileInstance"><entry name="document">
+      <entry name="{source_name}" outkey="10"/>
+    </entry></entry>
+  </root><document schema="source.xsd" inputinstance="input.xml"
+      instanceroot="{{}}{source_name}"/></data></component>
+  <component name="target" library="xml" kind="14">
+    <properties XSLTDefaultOutput="1"/><data><root>
+      <entry name="FileInstance"><entry name="document"><entry name="Output">
+        <entry name="Container"><entry name="{target_name}" inpkey="20"/></entry>
+      </entry></entry></entry>
+    </root><document schema="target.xsd" outputinstance="output.xml"
+        instanceroot="{{}}Output"/></data>
+  </component>
+</children><graph directed="1">
+  <edges><edge edgekey="1"><data><dataconnection type="2"/></data></edge></edges>
+  <vertices><vertex vertexkey="10"><edges>
+    <edge vertexkey="20" edgekey="1"/>
+  </edges></vertex></vertices>
+</graph></structure></component></mapping>"#
+    )
+}
+
+fn write_fallback_target_schema(path: &Path) -> Result<(), std::io::Error> {
+    write(
+        path,
+        r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Output"><xs:complexType><xs:sequence>
+    <xs:element name="Container"><xs:complexType><xs:sequence>
+      <xs:any namespace="##any" processContents="strict"
+              minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"###,
+    )
+}
+
 #[test]
 fn copy_all_recovers_a_same_named_group_lost_by_entry_tree_fallback() -> Result<(), Box<dyn Error>>
 {
@@ -186,6 +244,69 @@ fn mismatched_fallback_leaf_to_group_keeps_the_unsupported_warning() -> Result<(
         }),
         "{:?}",
         imported.warnings
+    );
+    Ok(())
+}
+
+#[test]
+fn copy_all_recovers_a_fallback_target_group_from_an_exact_source() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new("target-copy")?;
+    write_group_schema(&directory.path("source.xsd"), "Items")?;
+    write_fallback_target_schema(&directory.path("target.xsd"))?;
+    let design = directory.path("mapping.mfd");
+    write(&design, &reverse_mapping("Items", "Items"))?;
+
+    let imported = mfd::import(&design)?;
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(
+        imported.warnings[0].contains("xs:any wildcard cannot be represented"),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(engine::validate(&imported.project).is_empty());
+    assert!(imported.project.graph.nodes.values().all(|node| {
+        !matches!(node, mapping::Node::SourceField { path, .. } if path.is_empty())
+    }));
+
+    let input_xml = "<Items>\
+                     <Line><Code>A</Code><Quantity>2</Quantity></Line>\
+                     <Line><Code>B</Code><Quantity>5</Quantity></Line>\
+                     </Items>";
+    let output_xml = "<Output><Container><Items>\
+                      <Line><Code>A</Code><Quantity>2</Quantity></Line>\
+                      <Line><Code>B</Code><Quantity>5</Quantity></Line>\
+                      </Items></Container></Output>";
+    let source = format_xml::from_str(input_xml, &imported.project.source)?;
+    let expected = format_xml::from_str(output_xml, &imported.project.target)?;
+    assert_eq!(engine::run(&imported.project, &source)?, expected);
+    Ok(())
+}
+
+#[test]
+fn mismatched_exact_source_cannot_define_a_fallback_target_group() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new("target-mismatch")?;
+    write_group_schema(&directory.path("source.xsd"), "Payload")?;
+    write_fallback_target_schema(&directory.path("target.xsd"))?;
+    let design = directory.path("mapping.mfd");
+    write(&design, &reverse_mapping("Payload", "Items"))?;
+
+    let imported = mfd::import(&design)?;
+    assert!(
+        imported.warnings.iter().any(|warning| {
+            warning.contains(
+                "fallback XML target group at `target/Container/Items` could not be recovered exactly",
+            )
+        }),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(
+        imported
+            .project
+            .target
+            .child("Container")
+            .and_then(|container| container.child("Items"))
+            .is_some_and(ir::SchemaNode::is_scalar)
     );
     Ok(())
 }
