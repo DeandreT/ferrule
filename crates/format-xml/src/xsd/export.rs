@@ -191,6 +191,22 @@ fn validate_namespace_tree(
     alternatives: &AlternativeExportPlan<'_>,
     partition_cross_substitutions: bool,
 ) -> Result<(), XmlFormatError> {
+    for namespace in &node.xml_name_alternatives {
+        if let XmlNamespace::Qualified(namespace) = namespace
+            && Some(namespace.as_str()) != target_namespace
+        {
+            let mut occurrence = node.clone();
+            occurrence.xml_namespace = Some(XmlNamespace::Qualified(namespace.clone()));
+            occurrence.xml_name_alternatives.clear();
+            if alternatives.external_prefix(&occurrence).is_none() {
+                return Err(namespace_export_error(
+                    &occurrence,
+                    namespace.as_str(),
+                    target_namespace.unwrap_or_default(),
+                ));
+            }
+        }
+    }
     if let Some(XmlNamespace::Qualified(namespace)) = &node.xml_namespace
         && Some(namespace.as_str()) != target_namespace
     {
@@ -262,6 +278,7 @@ fn recursive_export_anchors(
 fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bool {
     left.name == right.name
         && left.xml_namespace == right.xml_namespace
+        && left.xml_name_alternatives == right.xml_name_alternatives
         && left.xml_wildcard_namespace == right.xml_wildcard_namespace
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
@@ -823,7 +840,7 @@ fn write_nested_elements(
                     })?;
                 let mut occurrence = (*child).clone();
                 occurrence.repeating = false;
-                write_element_required(
+                write_element_name_alternatives(
                     &occurrence,
                     depth + 1,
                     ElementOccurrence::Required,
@@ -901,9 +918,60 @@ fn write_nested_elements(
         }) {
             continue;
         }
+        if !child.xml_name_alternatives.is_empty() {
+            let pad = "  ".repeat(depth);
+            let occurs = if child.repeating {
+                " minOccurs=\"0\" maxOccurs=\"unbounded\""
+            } else {
+                ""
+            };
+            out.push_str(&format!("{pad}<xs:choice{occurs}>\n"));
+            let mut occurrence = (*child).clone();
+            occurrence.repeating = false;
+            write_element_name_alternatives(
+                &occurrence,
+                depth + 1,
+                ElementOccurrence::Required,
+                root_name,
+                recursive_anchors,
+                alternatives,
+                out,
+            )?;
+            out.push_str(&format!("{pad}</xs:choice>\n"));
+            continue;
+        }
         write_element(
             child,
             depth,
+            root_name,
+            recursive_anchors,
+            alternatives,
+            out,
+        )?;
+    }
+    Ok(())
+}
+
+fn write_element_name_alternatives(
+    node: &SchemaNode,
+    depth: usize,
+    occurrence: ElementOccurrence,
+    root_name: &str,
+    recursive_anchors: &BTreeMap<String, &SchemaNode>,
+    alternatives: &AlternativeExportPlan<'_>,
+    out: &mut String,
+) -> Result<(), XmlFormatError> {
+    let mut exact = node.clone();
+    let namespaces = std::iter::once(node.xml_namespace.clone())
+        .chain(node.xml_name_alternatives.iter().cloned().map(Some))
+        .collect::<Vec<_>>();
+    exact.xml_name_alternatives.clear();
+    for namespace in namespaces {
+        exact.xml_namespace = namespace;
+        write_element_required(
+            &exact,
+            depth,
+            occurrence,
             root_name,
             recursive_anchors,
             alternatives,

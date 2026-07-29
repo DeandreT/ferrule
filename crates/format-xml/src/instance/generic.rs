@@ -296,10 +296,11 @@ fn mixed_content_items(
             if node.is_text() && !include_text {
                 return None;
             }
-            let (name, text, value) = if node.is_text() {
+            let (name, text, namespace, value) = if node.is_text() {
                 (
                     String::new(),
                     node.text().unwrap_or_default().to_string(),
+                    None,
                     Instance::Scalar(Value::String(node.text().unwrap_or_default().to_string())),
                 )
             } else if node.is_element() {
@@ -309,9 +310,19 @@ fn mixed_content_items(
                 } else {
                     String::new()
                 };
-                let value = children
+                let matched = children
                     .iter()
-                    .find(|child| child.name == name && element_matches_schema(&node, child))
+                    .find(|child| child.name == name && element_matches_schema(&node, child));
+                let namespace = matched
+                    .filter(|child| !child.xml_name_alternatives.is_empty())
+                    .map(|_| {
+                        node.tag_name()
+                            .namespace()
+                            .map_or(Value::Null, |namespace| {
+                                Value::String(namespace.to_string())
+                            })
+                    });
+                let value = matched
                     .and_then(|child| {
                         let instance = fields
                             .iter()
@@ -340,11 +351,11 @@ fn mixed_content_items(
                         Some(value)
                     })
                     .unwrap_or_else(|| Instance::Scalar(Value::String(text.clone())));
-                (name, text, value)
+                (name, text, namespace, value)
             } else {
                 return None;
             };
-            Some(Instance::Group(vec![
+            let mut fields = vec![
                 (
                     XML_NODE_NAME_FIELD.to_string(),
                     Instance::Scalar(Value::String(name)),
@@ -353,8 +364,15 @@ fn mixed_content_items(
                     XML_TEXT_FIELD.to_string(),
                     Instance::Scalar(Value::String(text)),
                 ),
-                (XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value),
-            ]))
+            ];
+            if let Some(namespace) = namespace {
+                fields.push((
+                    XML_NAMESPACE_URI_FIELD.to_string(),
+                    Instance::Scalar(namespace),
+                ));
+            }
+            fields.push((XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value));
+            Some(Instance::Group(fields))
         })
         .collect()
 }

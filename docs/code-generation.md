@@ -205,8 +205,9 @@ The current portable model includes:
   groups, XML nil, and closed exclusive `xsi:type` group alternatives with
   exact namespace-qualified identities and required-member validation, plus
   singular exclusivity and ordered occurrences from closed XML choices;
-  substitution-group, inclusive/value-constrained, generic-element, and mixed
-  schemas reject before artifact creation
+  substitution-group, unresolved expanded-name alternatives,
+  inclusive/value-constrained, generic-element, and mixed schemas reject before
+  artifact creation
 - ordered XML mixed-content reconstruction with graph-computed direct-child
   replacements evaluated in each original occurrence context
 - root-context static inner joins across two or more primary or named-source

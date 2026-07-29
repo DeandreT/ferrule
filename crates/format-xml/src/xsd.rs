@@ -1927,17 +1927,14 @@ fn repeating_choice(choice: &Node<'_, '_>) -> Option<XmlRepeatingChoice> {
         {
             return None;
         }
-        members.push(
-            node.attribute("name")
-                .or_else(|| node.attribute("ref").map(local_name))?
-                .to_string(),
-        );
+        let name = node
+            .attribute("name")
+            .or_else(|| node.attribute("ref").map(local_name))?;
+        if !members.iter().any(|member| member == name) {
+            members.push(name.to_string());
+        }
     }
     if members.len() < 2 {
-        return None;
-    }
-    let mut unique = BTreeSet::new();
-    if !members.iter().all(|member| unique.insert(member.as_str())) {
         return None;
     }
     Some(XmlRepeatingChoice {
@@ -1945,6 +1942,37 @@ fn repeating_choice(choice: &Node<'_, '_>) -> Option<XmlRepeatingChoice> {
         repeating,
         members,
     })
+}
+
+fn collapse_compatible_xml_names(nodes: &mut Vec<SchemaNode>) {
+    let mut index = 0;
+    while index < nodes.len() {
+        let Some(previous) = nodes[..index]
+            .iter()
+            .position(|node| node.name == nodes[index].name)
+        else {
+            index += 1;
+            continue;
+        };
+        if !same_xml_element_shape(&nodes[previous], &nodes[index]) {
+            index += 1;
+            continue;
+        }
+        let Some(namespace) = nodes[index].xml_namespace.clone() else {
+            index += 1;
+            continue;
+        };
+        let original_len = nodes[previous].xml_name_alternatives.len();
+        let mut alternatives = vec![namespace];
+        alternatives.extend(nodes[index].xml_name_alternatives.iter().cloned());
+        nodes[previous].xml_name_alternatives.extend(alternatives);
+        if nodes[previous].xml_name_alternatives_are_valid() {
+            nodes.remove(index);
+        } else {
+            nodes[previous].xml_name_alternatives.truncate(original_len);
+            index += 1;
+        }
+    }
 }
 
 fn nested_non_sequence_compositor(particle: &Node<'_, '_>) -> Option<String> {
@@ -2103,15 +2131,20 @@ fn collect_sequence(
                 {
                     repeating_choices.push(choice);
                 }
+                let mut choice_children = Vec::new();
+                let mut nested_choices = Vec::new();
                 collect_sequence(
                     &child,
                     inherited_repeating || is_repeating(&child),
                     schema_el,
                     schema_path,
                     state,
-                    out,
-                    repeating_choices,
+                    &mut choice_children,
+                    &mut nested_choices,
                 );
+                collapse_compatible_xml_names(&mut choice_children);
+                out.extend(choice_children);
+                repeating_choices.extend(nested_choices);
             }
             "group" => match groups::resolve_model_group(&child, schema_el, schema_path, state) {
                 Ok(group) => {
@@ -2238,13 +2271,7 @@ fn parse_strict_wildcard(
         ));
     }
     let mut children = Vec::with_capacity(declarations.len());
-    let mut names = BTreeSet::new();
     for declaration in declarations {
-        if !names.insert(declaration.local.clone()) {
-            return Err(unsupported_wildcard(
-                "resolved strict wildcard declarations have colliding local names and cannot become unique mapping ports",
-            ));
-        }
         let text = read_xml_text(&declaration.path)?;
         let document = roxmltree::Document::parse(&text)?;
         let declaration_schema = document.root_element();
@@ -2269,7 +2296,29 @@ fn parse_strict_wildcard(
             ));
         }
         child.repeating = occurrence.repeating;
-        children.push(child);
+        if let Some(existing) = children
+            .iter_mut()
+            .find(|existing: &&mut SchemaNode| existing.name == child.name)
+        {
+            if !same_xml_element_shape(existing, &child) {
+                return Err(unsupported_wildcard(
+                    "resolved strict wildcard declarations with the same local name have incompatible typed shapes",
+                ));
+            }
+            let Some(namespace) = child.xml_namespace else {
+                return Err(unsupported_wildcard(
+                    "resolved strict wildcard declarations with the same local name require exact namespace identities",
+                ));
+            };
+            existing.xml_name_alternatives.push(namespace);
+            if !existing.xml_name_alternatives_are_valid() {
+                return Err(unsupported_wildcard(
+                    "resolved strict wildcard declarations have invalid expanded-name alternatives",
+                ));
+            }
+        } else {
+            children.push(child);
+        }
     }
     let choice = (children.len() > 1).then(|| XmlRepeatingChoice {
         required: occurrence.required,
@@ -2277,6 +2326,16 @@ fn parse_strict_wildcard(
         members: children.iter().map(|child| child.name.clone()).collect(),
     });
     Ok(ParsedWildcard::StrictChoice { children, choice })
+}
+
+fn same_xml_element_shape(left: &SchemaNode, right: &SchemaNode) -> bool {
+    let mut left = left.clone();
+    let mut right = right.clone();
+    left.xml_namespace = None;
+    right.xml_namespace = None;
+    left.xml_name_alternatives.clear();
+    right.xml_name_alternatives.clear();
+    left == right
 }
 
 fn parse_wildcard_namespace(
