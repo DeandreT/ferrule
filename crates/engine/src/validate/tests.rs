@@ -517,6 +517,26 @@ fn rejects_programmatically_invalid_item_count_metadata() {
 }
 
 #[test]
+fn rejects_programmatically_invalid_json_format_metadata() {
+    let mut project = valid_project();
+    let Ok(formats) = ir::JsonFormatAnnotations::new(["email".to_string()]) else {
+        panic!("test format annotation is bounded");
+    };
+    let target = target_name(&mut project);
+    target.kind = SchemaKind::Scalar {
+        ty: ScalarType::Int,
+    };
+    target.json_formats = formats;
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("JSON format metadata")
+            && issue.message.contains("name")
+    }));
+}
+
+#[test]
 fn rejects_every_programmatically_invalid_schema_metadata_family() {
     let mut cases = Vec::new();
 

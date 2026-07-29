@@ -10,6 +10,7 @@ use crate::JsonFormatError;
 
 mod all_of;
 mod constraints;
+mod formats;
 mod item_counts;
 mod nullable_composition;
 mod ranges;

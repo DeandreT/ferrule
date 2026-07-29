@@ -4,7 +4,7 @@ use ir::{
 };
 
 use super::{
-    files, item_counts, parse, ranges, reject_unsupported_ref_siblings, resolve_ref,
+    files, formats, item_counts, parse, ranges, reject_unsupported_ref_siblings, resolve_ref,
     unsupported_union,
 };
 use crate::JsonFormatError;
@@ -18,6 +18,15 @@ enum WrapperAdditional {
 enum ScalarAlternative {
     Null,
     Scalar(ScalarType),
+    Other,
+}
+
+enum ExactScalarAlternative {
+    Null,
+    Scalar {
+        ty: ScalarType,
+        formats: ir::JsonFormatAnnotations,
+    },
     Other,
 }
 
@@ -71,15 +80,26 @@ fn parse_scalar_composition(
     };
     let mut scalar_types = Vec::new();
     let mut nullable = false;
+    let mut format_annotations = ir::JsonFormatAnnotations::default();
+    if let Some(format) = formats::validate(name, schema)? {
+        formats::accumulate(
+            name,
+            &mut format_annotations,
+            core::iter::once(format.to_string()),
+        )?;
+    }
     for alternative in alternatives {
         match classify_exact_scalar_alternative(name, alternative, doc, active_refs)? {
-            ScalarAlternative::Null => {
+            ExactScalarAlternative::Null => {
                 if exclusive && nullable {
                     return Err(overlapping_scalar_one_of(name));
                 }
                 nullable = true;
             }
-            ScalarAlternative::Scalar(ty) => {
+            ExactScalarAlternative::Scalar {
+                ty,
+                formats: branch_formats,
+            } => {
                 if exclusive
                     && scalar_types
                         .iter()
@@ -91,14 +111,15 @@ fn parse_scalar_composition(
                 if !scalar_types.contains(&ty) {
                     scalar_types.push(ty);
                 }
+                formats::accumulate(name, &mut format_annotations, branch_formats.into_vec())?;
             }
-            ScalarAlternative::Other => return Ok(None),
+            ExactScalarAlternative::Other => return Ok(None),
         }
     }
     let Some(first) = scalar_types.first().copied() else {
         return Ok(None);
     };
-    ensure_annotation_only(name, schema, keyword)?;
+    ensure_annotation_or_format_only(name, schema, keyword)?;
     let mut node = if scalar_types.len() == 1 {
         SchemaNode::scalar(name, first)
     } else {
@@ -111,6 +132,9 @@ fn parse_scalar_composition(
         SchemaNode::scalar_union(name, types)
     };
     node.nullable = nullable;
+    if node.accepts_scalar_type(ScalarType::String) {
+        node.json_formats = format_annotations;
+    }
     Ok(Some(node))
 }
 
@@ -200,13 +224,22 @@ fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> b
     .all(|ty| !scalar_domain_contains(subset, ty) || scalar_domain_contains(superset, ty))
 }
 
-fn reduce_array_any_of(name: &str, arrays: Vec<SchemaNode>) -> Result<SchemaNode, JsonFormatError> {
+fn reduce_array_any_of(
+    name: &str,
+    mut arrays: Vec<SchemaNode>,
+) -> Result<SchemaNode, JsonFormatError> {
+    let mut annotations = ir::JsonFormatAnnotations::default();
+    for array in &mut arrays {
+        annotations
+            .extend(core::mem::take(&mut array.json_formats).into_vec())
+            .map_err(|error| unsupported_union(name, &error.to_string()))?;
+    }
     if let Some(superset) = arrays.iter().find(|candidate| {
         arrays
             .iter()
             .all(|other| scalar_array_domain_contains(candidate, other))
     }) {
-        return Ok(superset.clone());
+        return Ok(with_array_formats(superset.clone(), annotations));
     }
 
     let mut groups: Vec<Vec<SchemaNode>> = Vec::new();
@@ -235,7 +268,7 @@ fn reduce_array_any_of(name: &str, arrays: Vec<SchemaNode>) -> Result<SchemaNode
             .iter()
             .all(|other| scalar_array_domain_contains(candidate, other))
     }) {
-        return Ok(superset.clone());
+        return Ok(with_array_formats(superset.clone(), annotations));
     }
     Err(unsupported_union(
         name,
@@ -243,11 +276,20 @@ fn reduce_array_any_of(name: &str, arrays: Vec<SchemaNode>) -> Result<SchemaNode
     ))
 }
 
+fn with_array_formats(mut node: SchemaNode, annotations: ir::JsonFormatAnnotations) -> SchemaNode {
+    if !node.json_any && node.accepts_scalar_type(ScalarType::String) {
+        node.json_formats = annotations;
+    }
+    node
+}
+
 fn array_item_shapes_equal(left: &SchemaNode, right: &SchemaNode) -> bool {
     let mut left = left.clone();
     let mut right = right.clone();
     left.item_count_range = None;
     right.item_count_range = None;
+    left.json_formats = Default::default();
+    right.json_formats = Default::default();
     left == right
 }
 
@@ -256,6 +298,7 @@ fn has_unconstrained_scalar_item_domain(node: &SchemaNode) -> bool {
     actual.repeating = false;
     actual.container_nullable = false;
     actual.item_count_range = None;
+    actual.json_formats = Default::default();
     let mut expected = match &actual.kind {
         SchemaKind::Scalar { ty } => SchemaNode::scalar(&actual.name, *ty),
         SchemaKind::ScalarUnion { types } => SchemaNode::scalar_union(&actual.name, *types),
@@ -359,7 +402,6 @@ fn without_ignored_scalar_validation(schema: &serde_json::Value) -> serde_json::
         for keyword in [
             "const",
             "enum",
-            "format",
             "pattern",
             "minLength",
             "maxLength",
@@ -537,7 +579,7 @@ fn classify_exact_scalar_alternative(
     schema: &serde_json::Value,
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
-) -> Result<ScalarAlternative, JsonFormatError> {
+) -> Result<ExactScalarAlternative, JsonFormatError> {
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
         let apply_siblings = files::ref_siblings_apply(schema);
         if active_refs.iter().any(|active| active == reference) {
@@ -555,25 +597,58 @@ fn classify_exact_scalar_alternative(
         active_refs.push(reference.to_string());
         let classified = classify_exact_scalar_alternative(union_name, resolved, doc, active_refs);
         active_refs.pop();
-        if apply_siblings
-            && classified
-                .as_ref()
-                .is_ok_and(|classified| !matches!(classified, ScalarAlternative::Other))
-        {
-            ensure_annotation_only(union_name, schema, "$ref")?;
+        let mut classified = classified?;
+        if apply_siblings && !matches!(classified, ExactScalarAlternative::Other) {
+            ensure_annotation_or_format_only(union_name, schema, "$ref")?;
+            let sibling_format = formats::validate(union_name, schema)?;
+            if let ExactScalarAlternative::Scalar {
+                ty: ScalarType::String,
+                formats: annotations,
+            } = &mut classified
+                && let Some(format) = sibling_format
+            {
+                formats::accumulate(
+                    union_name,
+                    annotations,
+                    core::iter::once(format.to_string()),
+                )?;
+            }
         }
-        return classified;
+        return Ok(classified);
     }
     let Some(ty) = schema.get("type").and_then(serde_json::Value::as_str) else {
-        return Ok(ScalarAlternative::Other);
+        return Ok(ExactScalarAlternative::Other);
     };
+    let format = formats::validate(union_name, schema)?;
     let classified = match ty {
-        "null" => ScalarAlternative::Null,
-        "string" => ScalarAlternative::Scalar(ScalarType::String),
-        "integer" => ScalarAlternative::Scalar(ScalarType::Int),
-        "number" => ScalarAlternative::Scalar(ScalarType::Float),
-        "boolean" => ScalarAlternative::Scalar(ScalarType::Bool),
-        _ => return Ok(ScalarAlternative::Other),
+        "null" => ExactScalarAlternative::Null,
+        "string" => {
+            let mut annotations = ir::JsonFormatAnnotations::default();
+            if let Some(format) = format {
+                formats::accumulate(
+                    union_name,
+                    &mut annotations,
+                    core::iter::once(format.to_string()),
+                )?;
+            }
+            ExactScalarAlternative::Scalar {
+                ty: ScalarType::String,
+                formats: annotations,
+            }
+        }
+        "integer" => ExactScalarAlternative::Scalar {
+            ty: ScalarType::Int,
+            formats: Default::default(),
+        },
+        "number" => ExactScalarAlternative::Scalar {
+            ty: ScalarType::Float,
+            formats: Default::default(),
+        },
+        "boolean" => ExactScalarAlternative::Scalar {
+            ty: ScalarType::Bool,
+            formats: Default::default(),
+        },
+        _ => return Ok(ExactScalarAlternative::Other),
     };
     ensure_exact_scalar_shape(union_name, schema)?;
     Ok(classified)
@@ -641,10 +716,11 @@ fn ensure_exact_scalar_shape(
             "homogeneous scalar alternatives must be schema objects",
         ));
     };
-    if let Some(keyword) = object
-        .keys()
-        .find(|keyword| keyword.as_str() != "type" && !is_annotation_keyword(keyword.as_str()))
-    {
+    if let Some(keyword) = object.keys().find(|keyword| {
+        keyword.as_str() != "type"
+            && keyword.as_str() != "format"
+            && !is_annotation_keyword(keyword.as_str())
+    }) {
         return Err(unsupported_union(
             union_name,
             &format!("homogeneous scalar alternatives cannot preserve `{keyword}` validation"),
@@ -724,7 +800,7 @@ fn is_scalar_validation_keyword(keyword: &str) -> bool {
     )
 }
 
-fn ensure_annotation_only(
+fn ensure_annotation_or_format_only(
     union_name: &str,
     schema: &serde_json::Value,
     shape_keyword: &str,
@@ -732,17 +808,18 @@ fn ensure_annotation_only(
     let Some(object) = schema.as_object() else {
         return Err(unsupported_union(
             union_name,
-            "nullable scalar alternatives must be schema objects",
+            "scalar alternatives must be schema objects",
         ));
     };
     if let Some(keyword) = object.keys().find(|keyword| {
         keyword.as_str() != shape_keyword
+            && keyword.as_str() != "format"
             && !files::is_internal_ref_keyword(keyword)
             && !is_annotation_keyword(keyword.as_str())
     }) {
         return Err(unsupported_union(
             union_name,
-            &format!("nullable composition cannot preserve `{keyword}` validation"),
+            &format!("scalar composition cannot preserve `{keyword}` validation"),
         ));
     }
     Ok(())
@@ -764,7 +841,8 @@ fn ensure_annotation_or_range_only(
             && !is_annotation_keyword(keyword.as_str())
             && !matches!(
                 keyword.as_str(),
-                "minimum"
+                "format"
+                    | "minimum"
                     | "maximum"
                     | "exclusiveMinimum"
                     | "exclusiveMaximum"
@@ -850,11 +928,21 @@ pub(super) fn parse_object_alternatives(
         {
             reject_unsupported_ref_siblings(name, alternative_schema)?;
         }
+        if alternative_schema
+            .get("$ref")
+            .and_then(serde_json::Value::as_str)
+            .is_none()
+        {
+            formats::validate(name, alternative_schema)?;
+        }
         let resolved = alternative_schema
             .get("$ref")
             .and_then(serde_json::Value::as_str)
             .and_then(|reference| resolve_ref(doc, reference))
             .unwrap_or(alternative_schema);
+        if !core::ptr::eq(resolved, alternative_schema) {
+            formats::validate(name, resolved)?;
+        }
         let alternative_name = files::ref_siblings_apply(alternative_schema)
             .then(|| {
                 alternative_schema

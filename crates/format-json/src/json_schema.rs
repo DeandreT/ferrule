@@ -20,8 +20,9 @@
 //! `additionalProperties` values are retained as canonical JSON text in the
 //! graph's string domain. An omitted or false `additionalProperties` is
 //! treated as closed. General composition remains outside this subset;
-//! shape-neutral validation keywords are accepted but are not enforced by the
-//! mapping schema.
+//! bounded string `format` annotations are retained without asserting their
+//! vocabulary-specific semantics. Other shape-neutral validation keywords are
+//! accepted but are not enforced by the mapping schema.
 
 use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
 
@@ -31,6 +32,7 @@ mod all_of;
 mod alternatives;
 pub(crate) mod constraints;
 mod files;
+mod formats;
 pub(crate) mod item_counts;
 pub(crate) mod ranges;
 mod render;
@@ -120,13 +122,21 @@ fn parse(
             if apply_siblings {
                 reject_unresolved_ref_constraints(name, schema)?;
             }
-            return Ok(SchemaNode::scalar(name, ScalarType::String));
+            let mut node = SchemaNode::scalar(name, ScalarType::String);
+            if apply_siblings {
+                formats::apply(name, schema, &mut node)?;
+            }
+            return Ok(node);
         }
         let Some(resolved) = resolve_ref(doc, r) else {
             if apply_siblings {
                 reject_unresolved_ref_constraints(name, schema)?;
             }
-            return Ok(SchemaNode::scalar(name, ScalarType::String));
+            let mut node = SchemaNode::scalar(name, ScalarType::String);
+            if apply_siblings {
+                formats::apply(name, schema, &mut node)?;
+            }
+            return Ok(node);
         };
         active_refs.push(r.to_string());
         let parsed = parse(name, resolved, doc, active_refs);
@@ -134,6 +144,7 @@ fn parse(
         let mut node = parsed?;
         if apply_siblings {
             apply_known_shape_constraints(name, schema, &mut node)?;
+            formats::apply(name, schema, &mut node)?;
         }
         return Ok(node);
     }
@@ -151,25 +162,31 @@ fn parse(
         )? {
             ranges::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
+            formats::apply_first(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
         if let Some(mut nullable) =
             parse_nullable_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
         {
             apply_nullable_composition_ranges(name, schema, &mut nullable)?;
+            formats::apply_first(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
         if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
+            let mut scalar = scalar;
+            formats::apply(name, schema, &mut scalar)?;
             return Ok(scalar);
         }
-        return parse_object_alternatives(
+        let mut node = parse_object_alternatives(
             name,
             schema,
             alternatives,
             GroupAlternativeMode::Exclusive,
             doc,
             active_refs,
-        );
+        )?;
+        formats::apply(name, schema, &mut node)?;
+        return Ok(node);
     }
     if let Some(alternatives) = schema.get("anyOf") {
         if let Some(mut nullable) = parse_nullable_scalar_alternatives(
@@ -182,30 +199,38 @@ fn parse(
         )? {
             ranges::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
+            formats::apply_first(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
         if let Some(mut nullable) =
             parse_nullable_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
         {
             apply_nullable_composition_ranges(name, schema, &mut nullable)?;
+            formats::apply_first(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
         if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
+            let mut scalar = scalar;
+            formats::apply(name, schema, &mut scalar)?;
             return Ok(scalar);
         }
         if let Some(array) =
             parse_scalar_domain_array_any_of(name, schema, alternatives, doc, active_refs)?
         {
+            let mut array = array;
+            formats::apply(name, schema, &mut array)?;
             return Ok(array);
         }
-        return parse_object_alternatives(
+        let mut node = parse_object_alternatives(
             name,
             schema,
             alternatives,
             GroupAlternativeMode::Inclusive,
             doc,
             active_refs,
-        );
+        )?;
+        formats::apply(name, schema, &mut node)?;
+        return Ok(node);
     }
     let (ty, nullable) = schema_type(name, schema)?;
     let type_was_absent = matches!(&ty, ImportedSchemaType::Absent);
@@ -264,6 +289,7 @@ fn parse(
                     node.container_nullable = nullable;
                     ranges::validate_ignored(name, schema)?;
                     item_counts::apply(name, schema, &mut node, false)?;
+                    formats::validate(name, schema)?;
                     return Ok(node);
                 };
                 let item = parse(name, items, doc, active_refs)?;
@@ -279,6 +305,7 @@ fn parse(
                 node.container_nullable = nullable;
                 ranges::validate_ignored(name, schema)?;
                 item_counts::apply(name, schema, &mut node, false)?;
+                formats::validate(name, schema)?;
                 return Ok(node);
             }
             ImportedSchemaType::Single("string") => {
@@ -323,6 +350,7 @@ fn parse(
         &mut node,
         type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
     )?;
+    formats::apply(name, schema, &mut node)?;
     Ok(node)
 }
 
@@ -355,6 +383,7 @@ fn reject_unresolved_ref_constraints(
     if ranges::has_range_keywords(schema)
         || item_counts::has_keywords(schema)
             && item_counts::is_effectively_constrained(name, schema)?
+        || formats::has_keyword(schema)
     {
         return Err(unsupported_union(
             name,
@@ -368,6 +397,7 @@ pub(super) fn reject_unsupported_ref_siblings(
     name: &str,
     schema: &serde_json::Value,
 ) -> Result<(), JsonFormatError> {
+    formats::validate(name, schema)?;
     let Some(object) = schema.as_object() else {
         return Ok(());
     };

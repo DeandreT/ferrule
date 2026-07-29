@@ -59,7 +59,8 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
       ],
       "exclusiveMaximum":20
     },
-    "Status":{"type":"string","const":"ready"}
+    "Status":{"type":"string","const":"ready","format":"workflow-status"},
+    "Tracking":{"type":"string","format":""}
   }
 }"#,
     )?;
@@ -140,6 +141,24 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .child("Status")
             .and_then(|status| status.fixed.as_deref()),
         Some("ready")
+    );
+    assert_eq!(
+        imported
+            .project
+            .source
+            .child("Status")
+            .and_then(|status| status.json_formats.as_slice().first())
+            .map(String::as_str),
+        Some("workflow-status")
+    );
+    assert_eq!(
+        imported
+            .project
+            .source
+            .child("Tracking")
+            .and_then(|tracking| tracking.json_formats.as_slice().first())
+            .map(String::as_str),
+        Some("")
     );
 
     let input = format_json::read(&directory.0.join("input.json"), &imported.project.source)?;

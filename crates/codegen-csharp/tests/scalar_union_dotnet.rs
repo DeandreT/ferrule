@@ -6,7 +6,7 @@ use codegen::{
     Binding, Expression, ExpressionNode, Program, ScalarTargetDomain, TargetConstruction,
     TargetScope,
 };
-use ir::{ScalarType, ScalarTypeSet, SchemaNode};
+use ir::{JsonFormatAnnotations, ScalarType, ScalarTypeSet, SchemaNode};
 
 #[test]
 fn generated_union_targets_preserve_tags_and_adapt_exact_numbers() {
@@ -20,6 +20,10 @@ fn generated_union_targets_preserve_tags_and_adapt_exact_numbers() {
     assert!(generated.contains("TargetScalarDomain.String | TargetScalarDomain.Int64"));
     assert!(generated.contains("TargetScalarDomain.Double | TargetScalarDomain.Bool"));
     assert!(generated.contains(r#"\"kind\":\"scalar_union\""#));
+    assert!(generated.contains(r#"\"json_formats\":[\"source-union\"]"#));
+    assert!(generated.contains(r#"\"json_formats\":[\"source-string\"]"#));
+    assert!(generated.contains(r#"\"json_formats\":[\"target-union\"]"#));
+    assert!(generated.contains(r#"\"json_formats\":[\"target-string\"]"#));
 
     let directory = TempDirectory::new();
     for file in artifacts.files() {
@@ -108,15 +112,26 @@ fn scalar_root_construction_renders_union_adaptation() {
 
 fn union_program() -> Program {
     let (value_source, value_types) = scalar_union("Value", [ScalarType::String, ScalarType::Int]);
+    let value_source = annotated(value_source, &["source-union"]);
     let (value_target, _) = scalar_union("Value", [ScalarType::String, ScalarType::Int]);
+    let value_target = annotated(value_target, &["target-union"]);
     let (number_target, number_types) =
         scalar_union("Number", [ScalarType::Float, ScalarType::Bool]);
     let (items_target, _) = scalar_union("Items", [ScalarType::Float, ScalarType::Bool]);
+    let label_source = annotated(
+        SchemaNode::scalar("Label", ScalarType::String),
+        &["source-string"],
+    );
+    let label_target = annotated(
+        SchemaNode::scalar("Label", ScalarType::String),
+        &["target-string"],
+    );
     Program {
         source: SchemaNode::group(
             "Source",
             vec![
                 value_source,
+                label_source,
                 SchemaNode::scalar("ExactInteger", ScalarType::Int),
                 SchemaNode::scalar("Flag", ScalarType::Bool),
             ],
@@ -124,7 +139,12 @@ fn union_program() -> Program {
         extra_sources: Vec::new(),
         target: SchemaNode::group(
             "Target",
-            vec![value_target, number_target, items_target.repeating()],
+            vec![
+                value_target,
+                label_target,
+                number_target,
+                items_target.repeating(),
+            ],
         ),
         expressions: vec![
             ExpressionNode {
@@ -138,11 +158,18 @@ fn union_program() -> Program {
                 id: 2,
                 expression: Expression::SourceField {
                     frame: None,
-                    path: vec!["ExactInteger".into()],
+                    path: vec!["Label".into()],
                 },
             },
             ExpressionNode {
                 id: 3,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["ExactInteger".into()],
+                },
+            },
+            ExpressionNode {
+                id: 4,
                 expression: Expression::SourceField {
                     frame: None,
                     path: vec!["Flag".into()],
@@ -164,20 +191,26 @@ fn union_program() -> Program {
                     repeating: false,
                 },
                 Binding {
-                    target_field: "Number".into(),
+                    target_field: "Label".into(),
                     expression: 2,
+                    target_domain: ScalarTargetDomain::Single(ScalarType::String),
+                    repeating: false,
+                },
+                Binding {
+                    target_field: "Number".into(),
+                    expression: 3,
                     target_domain: ScalarTargetDomain::Union(number_types),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Items".into(),
-                    expression: 2,
+                    expression: 3,
                     target_domain: ScalarTargetDomain::Union(number_types),
                     repeating: true,
                 },
                 Binding {
                     target_field: "Items".into(),
-                    expression: 3,
+                    expression: 4,
                     target_domain: ScalarTargetDomain::Union(number_types),
                     repeating: true,
                 },
@@ -191,6 +224,13 @@ fn union_program() -> Program {
 fn scalar_union(name: &str, types: [ScalarType; 2]) -> (SchemaNode, ScalarTypeSet) {
     let types = ScalarTypeSet::new(types).expect("test union contains distinct scalar types");
     (SchemaNode::scalar_union(name, types), types)
+}
+
+fn annotated(node: SchemaNode, formats: &[&str]) -> SchemaNode {
+    let formats = JsonFormatAnnotations::new(formats.iter().map(|format| (*format).to_string()))
+        .expect("test JSON format annotations are bounded");
+    node.with_json_formats(formats)
+        .expect("test JSON formats match the string-capable scalar")
 }
 
 fn write_harness(root: &Path) {
@@ -237,6 +277,7 @@ static FerruleGroup Group(params FerruleField[] fields) => new(fields);
 var exact = (1L << 53) + 2;
 var source = Group(
     Field("Value", Scalar(FerruleValue.FromInt64(7))),
+    Field("Label", Scalar(FerruleValue.FromString("not-a-format"))),
     Field("ExactInteger", Scalar(FerruleValue.FromInt64(exact))),
     Field("Flag", Scalar(FerruleValue.FromBoolean(true))));
 var output = GeneratedMapping.Execute(source);
@@ -244,6 +285,9 @@ if (output is not FerruleGroup group ||
     !group.TryGetField("Value", out var value) ||
     value is not FerruleScalar valueScalar ||
     valueScalar.Value != FerruleValue.FromInt64(7) ||
+    !group.TryGetField("Label", out var label) ||
+    label is not FerruleScalar labelScalar ||
+    labelScalar.Value != FerruleValue.FromString("not-a-format") ||
     !group.TryGetField("Number", out var number) ||
     number is not FerruleScalar numberScalar ||
     numberScalar.Value != FerruleValue.FromDouble(exact) ||
@@ -262,6 +306,7 @@ var inexact = (1L << 53) + 1;
 var inexactOutput = GeneratedMapping.Execute(
     Group(
         Field("Value", Scalar(FerruleValue.FromString("inexact"))),
+        Field("Label", Scalar(FerruleValue.FromString("still-not-a-format"))),
         Field("ExactInteger", Scalar(FerruleValue.FromInt64(inexact))),
         Field("Flag", Scalar(FerruleValue.FromBoolean(false)))));
 if (inexactOutput is not FerruleGroup inexactGroup ||
@@ -273,11 +318,12 @@ if (inexactOutput is not FerruleGroup inexactGroup ||
 }
 
 var json = GeneratedMapping.ExecuteJson(
-    "{\"Value\":\"external\",\"ExactInteger\":9007199254740994,\"Flag\":true}");
+    "{\"Value\":\"external\",\"Label\":\"annotation-only\",\"ExactInteger\":9007199254740994,\"Flag\":true}");
 using var document = JsonDocument.Parse(json);
 var root = document.RootElement;
 var jsonItems = root.GetProperty("Items");
 if (root.GetProperty("Value").GetString() != "external" ||
+    root.GetProperty("Label").GetString() != "annotation-only" ||
     root.GetProperty("Number").GetRawText() != "9007199254740994.0" ||
     jsonItems[0].GetRawText() != "9007199254740994.0" ||
     !jsonItems[1].GetBoolean())
@@ -288,7 +334,7 @@ if (root.GetProperty("Value").GetString() != "external" ||
 try
 {
     _ = GeneratedMapping.ExecuteJson(
-        "{\"Value\":\"inexact\",\"ExactInteger\":9007199254740993,\"Flag\":false}");
+        "{\"Value\":\"inexact\",\"Label\":\"annotation-only\",\"ExactInteger\":9007199254740993,\"Flag\":false}");
     throw new Exception("inexact union JSON output should fail");
 }
 catch (FerruleRuntimeException error)

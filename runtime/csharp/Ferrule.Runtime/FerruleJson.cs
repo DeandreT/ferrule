@@ -15,6 +15,10 @@ public static class FerruleJson
     public const int MaximumDepth = 256;
     public const int MaximumNodes = 1_000_000;
 
+    private const int MaximumJsonFormats = 64;
+    private const int MaximumJsonFormatBytes = 1024;
+    private const int MaximumJsonFormatTotalBytes = 16 * 1024;
+
     private static readonly JsonSerializerOptions CanonicalJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
@@ -191,11 +195,13 @@ public static class FerruleJson
             _ => throw Boundary(
                 $"Embedded JSON schema node '{name}' has unknown kind '{kind}'."),
         };
+        var jsonAny = OptionalBoolean(element, "json_any");
+        var jsonFormats = ReadJsonFormats(name, element, scalarDomain, jsonAny);
         var fixedLexical = OptionalString(element, "fixed");
         FerruleValue? fixedValue = null;
         if (fixedLexical is not null)
         {
-            if (!IsSingleScalar(scalarDomain) || OptionalBoolean(element, "json_any"))
+            if (!IsSingleScalar(scalarDomain) || jsonAny)
             {
                 throw Boundary(
                     $"Embedded JSON schema node '{name}' has a fixed value without one concrete scalar type.");
@@ -206,7 +212,7 @@ public static class FerruleJson
             name,
             element,
             scalarDomain,
-            OptionalBoolean(element, "json_any"),
+            jsonAny,
             fixedValue);
         var itemCountRange = ReadItemCountRange(name, element, repeating);
         var children = new List<JsonSchemaNode>();
@@ -278,7 +284,8 @@ public static class FerruleJson
             repeating,
             OptionalBoolean(element, "nullable"),
             OptionalBoolean(element, "container_nullable"),
-            OptionalBoolean(element, "json_any"),
+            jsonAny,
+            jsonFormats,
             scalarDomain,
             fixedValue,
             numericRange,
@@ -290,6 +297,66 @@ public static class FerruleJson
             element.TryGetProperty("alternative_mode", out var mode) &&
             mode.ValueKind == JsonValueKind.String &&
             string.Equals(mode.GetString(), "inclusive", StringComparison.Ordinal));
+    }
+
+    private static string[] ReadJsonFormats(
+        string name,
+        JsonElement element,
+        JsonScalarDomain scalarDomain,
+        bool jsonAny)
+    {
+        if (!element.TryGetProperty("json_formats", out var formatsElement))
+        {
+            return Array.Empty<string>();
+        }
+        RequireKind(
+            formatsElement,
+            JsonValueKind.Array,
+            $"schema node '{name}' JSON formats",
+            "array");
+        var formats = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var totalBytes = 0;
+        foreach (var formatElement in formatsElement.EnumerateArray())
+        {
+            if (formatElement.ValueKind != JsonValueKind.String)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' JSON formats must contain strings.");
+            }
+            if (formats.Count == MaximumJsonFormats)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonFormats} JSON format annotations.");
+            }
+
+            var format = formatElement.GetString() ?? string.Empty;
+            var bytes = Encoding.UTF8.GetByteCount(format);
+            if (bytes > MaximumJsonFormatBytes)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' JSON format annotation is {bytes} UTF-8 bytes; maximum is {MaximumJsonFormatBytes}.");
+            }
+            totalBytes = checked(totalBytes + bytes);
+            if (totalBytes > MaximumJsonFormatTotalBytes)
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' JSON format annotations total {totalBytes} UTF-8 bytes; maximum is {MaximumJsonFormatTotalBytes}.");
+            }
+            if (!seen.Add(format))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has duplicate JSON format annotation '{format}'.");
+            }
+            formats.Add(format);
+        }
+        if (formats.Count != 0 &&
+            (!scalarDomain.HasFlag(JsonScalarDomain.String) || jsonAny))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has JSON format annotations without a declared string domain or on json_any.");
+        }
+        return formats.ToArray();
     }
 
     private static JsonItemCountRange? ReadItemCountRange(
@@ -1850,6 +1917,7 @@ public static class FerruleJson
             bool nullable,
             bool containerNullable,
             bool jsonAny,
+            IReadOnlyList<string> jsonFormats,
             JsonScalarDomain scalarDomain,
             FerruleValue? fixedValue,
             JsonNumericRange? numericRange,
@@ -1865,6 +1933,7 @@ public static class FerruleJson
             Nullable = nullable;
             ContainerNullable = containerNullable;
             JsonAny = jsonAny;
+            JsonFormats = jsonFormats;
             ScalarDomain = scalarDomain;
             Fixed = fixedValue;
             NumericRange = numericRange;
@@ -1885,6 +1954,8 @@ public static class FerruleJson
         public bool ContainerNullable { get; }
 
         public bool JsonAny { get; }
+
+        public IReadOnlyList<string> JsonFormats { get; }
 
         public JsonScalarDomain ScalarDomain { get; }
 

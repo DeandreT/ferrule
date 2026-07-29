@@ -148,6 +148,19 @@ fn program_validation_rejects_invalid_schema_metadata_on_every_boundary() {
         }) if boundary == "target"
     ));
 
+    let Ok(formats) = ir::JsonFormatAnnotations::new(["email".to_string()]) else {
+        panic!("test format annotation is bounded");
+    };
+    let mut format_source = program.clone();
+    format_source.source.json_formats = formats;
+    assert!(matches!(
+        validate_program(&format_source),
+        Err(ProgramValidationError::InvalidSchemaMetadata {
+            ref boundary,
+            ..
+        }) if boundary == "source"
+    ));
+
     let mut named_source = program.clone();
     let mut invalid_source = SchemaNode::scalar("Value", ScalarType::String);
     invalid_source.item_count_range = Some(items);

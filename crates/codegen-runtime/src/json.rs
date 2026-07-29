@@ -245,6 +245,45 @@ mod tests {
     }
 
     #[test]
+    fn embedded_format_annotations_are_validated_but_not_asserted() {
+        let Ok(formats) = ir::JsonFormatAnnotations::new([String::new(), "email".to_string()])
+        else {
+            panic!("test format annotations are bounded");
+        };
+        let Some(schema) =
+            SchemaNode::scalar("Contact", ScalarType::String).with_json_formats(formats)
+        else {
+            panic!("format annotations match a string scalar");
+        };
+        let encoded = serde_json::to_string(&schema).unwrap_or_default();
+        assert_eq!(
+            parse_json(&encoded, r#""not an email""#),
+            Ok(Instance::Scalar(Value::String("not an email".into())))
+        );
+        assert_eq!(
+            serialize_json(
+                &encoded,
+                &Instance::Scalar(Value::String("also not an email".into()))
+            )
+            .as_deref(),
+            Ok("\"also not an email\"\n")
+        );
+
+        let invalid_type = encoded.replace(r#""ty":"string""#, r#""ty":"int""#);
+        assert!(matches!(
+            parse_json(&invalid_type, "1"),
+            Err(JsonBoundaryError::InvalidEmbeddedSchema { ref message })
+                if message.contains("JSON format annotations")
+        ));
+        let invalid_any = encoded.replace(r#""kind":"#, r#""json_any":true,"kind":"#);
+        assert!(matches!(
+            parse_json(&invalid_any, r#""value""#),
+            Err(JsonBoundaryError::InvalidEmbeddedSchema { ref message })
+                if message.contains("JSON format annotations")
+        ));
+    }
+
+    #[test]
     fn parses_and_serializes_utf8_payloads() {
         let (_, schema) = schema();
         let parsed = parse_json_bytes(

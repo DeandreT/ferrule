@@ -12,7 +12,11 @@ use serde::{Deserialize, Serialize};
 
 mod schema;
 
-pub use schema::{IntegerRange, ItemCountRange, NumberBound, NumberRange, NumericRange};
+pub use schema::{
+    IntegerRange, ItemCountRange, JsonFormatAnnotations, JsonFormatAnnotationsError,
+    MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
+    MAX_JSON_FORMAT_ANNOTATIONS, NumberBound, NumberRange, NumericRange,
+};
 
 /// Instance-field name used for an XML element's simple text content.
 pub const XML_TEXT_FIELD: &str = "#text";
@@ -520,6 +524,10 @@ pub struct SchemaNode {
     /// Exact cardinality bounds for a repeating JSON array node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_count_range: Option<ItemCountRange>,
+    /// Ordered JSON Schema `format` annotations for this string-capable scalar
+    /// value, or for each item when this node is repeating.
+    #[serde(default, skip_serializing_if = "JsonFormatAnnotations::is_empty")]
+    pub json_formats: JsonFormatAnnotations,
     /// An XML Schema default lexical value for a scalar element, simple
     /// content value, or ordinary attribute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -593,6 +601,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             item_count_range: Option<ItemCountRange>,
             #[serde(default)]
+            json_formats: JsonFormatAnnotations,
+            #[serde(default)]
             default: Option<String>,
             #[serde(default)]
             value_generation: Option<ValueGeneration>,
@@ -627,6 +637,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             fixed: repr.fixed,
             numeric_range: repr.numeric_range,
             item_count_range: repr.item_count_range,
+            json_formats: repr.json_formats,
             default: repr.default,
             value_generation: repr.value_generation,
             alternative_mode: repr.alternative_mode,
@@ -638,7 +649,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, item-count range, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, item-count range, JSON format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -854,6 +865,7 @@ impl SchemaNode {
             && self.fixed_is_valid()
             && self.numeric_range_is_valid()
             && self.item_count_range_is_valid()
+            && self.json_formats_are_valid()
             && self.value_generation_is_valid()
             && self.default_is_valid()
             && self.alternative_mode_is_valid()
@@ -886,6 +898,7 @@ impl SchemaNode {
             fixed: None,
             numeric_range: None,
             item_count_range: None,
+            json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -921,6 +934,7 @@ impl SchemaNode {
             fixed: None,
             numeric_range: None,
             item_count_range: None,
+            json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -965,6 +979,7 @@ impl SchemaNode {
             fixed: None,
             numeric_range: None,
             item_count_range: None,
+            json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -1163,6 +1178,13 @@ impl SchemaNode {
     /// Checks that item-count metadata remains attached to an array wrapper.
     pub fn item_count_range_is_valid(&self) -> bool {
         self.item_count_range.is_none() || self.repeating
+    }
+
+    /// Checks that JSON format annotations describe a string-capable scalar
+    /// value or each scalar item of a repeating node.
+    pub fn json_formats_are_valid(&self) -> bool {
+        self.json_formats.is_empty()
+            || (!self.json_any && self.accepts_scalar_type(ScalarType::String))
     }
 
     /// Checks that generated-value metadata remains scalar-only and cannot
@@ -1657,6 +1679,11 @@ impl SchemaNode {
     pub fn with_item_count_range(mut self, range: ItemCountRange) -> Option<Self> {
         self.item_count_range = Some(range);
         self.item_count_range_is_valid().then_some(self)
+    }
+
+    pub fn with_json_formats(mut self, formats: JsonFormatAnnotations) -> Option<Self> {
+        self.json_formats = formats;
+        self.json_formats_are_valid().then_some(self)
     }
 
     pub fn with_default(mut self, value: impl Into<String>) -> Option<Self> {
@@ -2177,6 +2204,51 @@ mod tests {
         }
         let permissive_null_maximum = r#"{"name":"x","repeating":true,"item_count_range":{"minimum":1,"maximum":null},"kind":{"kind":"scalar","ty":"string"}}"#;
         assert!(serde_json::from_str::<SchemaNode>(permissive_null_maximum).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn json_format_annotations_require_string_capable_non_arbitrary_domains()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let formats =
+            JsonFormatAnnotations::new([String::new(), "email".to_string(), "custom".to_string()])?;
+        let Some(string) =
+            SchemaNode::scalar("Value", ScalarType::String).with_json_formats(formats.clone())
+        else {
+            panic!("string format metadata is valid");
+        };
+        assert_eq!(string.json_formats.as_slice(), ["", "email", "custom"]);
+        let encoded = serde_json::to_string(&string)?;
+        assert!(encoded.contains(r#""json_formats":["","email","custom"]"#));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, string);
+        assert!(
+            SchemaNode::scalar("Value", ScalarType::Int)
+                .with_json_formats(formats.clone())
+                .is_none()
+        );
+
+        let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+            panic!("test union contains distinct types");
+        };
+        assert!(
+            SchemaNode::scalar_union("Value", types)
+                .repeating()
+                .with_json_formats(formats.clone())
+                .is_some()
+        );
+        let mut arbitrary = SchemaNode::scalar("Value", ScalarType::String);
+        arbitrary.json_any = true;
+        arbitrary.json_formats = formats;
+        assert!(!arbitrary.metadata_is_valid());
+
+        for invalid in [
+            r#"{"name":"x","json_formats":["email"],"kind":{"kind":"scalar","ty":"int"}}"#,
+            r#"{"name":"x","json_any":true,"json_formats":["email"],"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","json_formats":["email","email"],"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","json_formats":"email","kind":{"kind":"scalar","ty":"string"}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
         Ok(())
     }
 

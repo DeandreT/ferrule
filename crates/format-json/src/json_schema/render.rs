@@ -54,6 +54,7 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                 out.insert("const".into(), value);
             }
             super::ranges::render(node, out);
+            super::formats::render(node, out);
         }
         SchemaKind::ScalarUnion { types } => {
             let mut types = types
@@ -65,6 +66,7 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                 types.push("null".into());
             }
             out.insert("type".into(), types.into());
+            super::formats::render(node, out);
         }
         SchemaKind::Group {
             children,

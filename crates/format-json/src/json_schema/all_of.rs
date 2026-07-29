@@ -1,7 +1,12 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
-use super::{constraints, item_counts, parse, ranges, unsupported_union};
+use super::{constraints, formats, item_counts, parse, ranges, unsupported_union};
 use crate::JsonFormatError;
+
+enum FormatEvent {
+    Retained(ir::JsonFormatAnnotations),
+    Direct(String),
+}
 
 /// Flattens representable intersections into one structural projection.
 ///
@@ -28,12 +33,16 @@ pub(super) fn parse_all_of(
     }
 
     let mut pending_constraints = Vec::new();
+    let mut format_events = Vec::new();
     let mut merged = None;
     if let Some(base) = composition_base(schema) {
         if is_constraint_only_branch(&base) {
+            collect_direct_format(name, &base, &mut format_events)?;
             pending_constraints.push(base);
         } else {
-            merged = Some(parse(name, &base, doc, active_refs)?);
+            let mut base = parse(name, &base, doc, active_refs)?;
+            collect_retained_formats(&mut base, &mut format_events);
+            merged = Some(base);
         }
     }
 
@@ -48,17 +57,29 @@ pub(super) fn parse_all_of(
             ));
         }
         if is_constraint_only_branch(branch) {
+            collect_direct_format(name, branch, &mut format_events)?;
             pending_constraints.push(branch.clone());
             continue;
         }
-        let branch = parse(name, branch, doc, active_refs)?;
+        let mut branch = parse(name, branch, doc, active_refs)?;
+        collect_retained_formats(&mut branch, &mut format_events);
         match &mut merged {
             Some(current) => intersect(name, current, branch)?,
             None => merged = Some(branch),
         }
     }
-    let mut merged = merged
-        .ok_or_else(|| unsupported_union(name, "allOf did not produce a structural schema"))?;
+    let mut merged = match merged {
+        Some(merged) => merged,
+        None if pending_constraints.iter().any(formats::has_keyword) => {
+            SchemaNode::scalar(name, ScalarType::String)
+        }
+        None => {
+            return Err(unsupported_union(
+                name,
+                "allOf did not produce a structural schema",
+            ));
+        }
+    };
     for constraints in pending_constraints {
         if merged.repeating {
             ranges::validate_ignored(name, &constraints)?;
@@ -68,7 +89,48 @@ pub(super) fn parse_all_of(
             item_counts::validate_ignored(name, &constraints)?;
         }
     }
+    apply_format_events(name, &mut merged, format_events)?;
     Ok(merged)
+}
+
+fn collect_direct_format(
+    name: &str,
+    schema: &serde_json::Value,
+    events: &mut Vec<FormatEvent>,
+) -> Result<(), JsonFormatError> {
+    if let Some(format) = formats::validate(name, schema)? {
+        events.push(FormatEvent::Direct(format.to_string()));
+    }
+    Ok(())
+}
+
+fn collect_retained_formats(node: &mut SchemaNode, events: &mut Vec<FormatEvent>) {
+    let formats = core::mem::take(&mut node.json_formats);
+    if !formats.is_empty() {
+        events.push(FormatEvent::Retained(formats));
+    }
+}
+
+fn apply_format_events(
+    name: &str,
+    node: &mut SchemaNode,
+    events: Vec<FormatEvent>,
+) -> Result<(), JsonFormatError> {
+    if node.json_any || !node.accepts_scalar_type(ScalarType::String) {
+        return Ok(());
+    }
+    for event in events {
+        match event {
+            FormatEvent::Retained(formats) => {
+                formats::extend(name, node, formats.into_vec())?;
+            }
+            FormatEvent::Direct(format) if !node.repeating => {
+                formats::extend(name, node, core::iter::once(format))?;
+            }
+            FormatEvent::Direct(_) => {}
+        }
+    }
+    Ok(())
 }
 
 fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
@@ -88,6 +150,7 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "exclusiveMaximum"
                 | "minItems"
                 | "maxItems"
+                | "format"
         )
     }) {
         return None;
@@ -101,7 +164,9 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
     let Some(object) = schema.as_object() else {
         return false;
     };
-    (ranges::has_range_keywords(schema) || item_counts::has_keywords(schema))
+    (ranges::has_range_keywords(schema)
+        || item_counts::has_keywords(schema)
+        || formats::has_keyword(schema))
         && object.keys().all(|keyword| {
             matches!(
                 keyword.as_str(),
@@ -111,6 +176,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
                     | "exclusiveMaximum"
                     | "minItems"
                     | "maxItems"
+                    | "format"
                     | "$schema"
                     | "$id"
                     | "id"
@@ -248,6 +314,7 @@ fn intersect_scalar(
             "allOf fixed numeric value falls outside the intersected range",
         ));
     }
+    formats::merge_scalar(name, target, branch)?;
     Ok(())
 }
 
