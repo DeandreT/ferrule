@@ -12,7 +12,7 @@ use crate::context::{runtime_field, runtime_parameter_field};
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
 use crate::resolve::{
     dynamic_scalar, field_scalar, instance_in_active_collection, instance_in_frame, join_scalar,
-    repeated, scalar_in_active_collection, scalar_in_frame, source_document_path,
+    scalar_in_active_collection, scalar_in_frame, source_document_path,
 };
 use crate::sequence::{eval_sequence_aggregate, eval_sequence_exists, eval_sequence_item_at};
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
@@ -23,7 +23,7 @@ use crate::user_function;
 pub(crate) struct EvalProgram<'a> {
     pub(crate) graph: &'a Graph,
     pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
-    trace_sink: Option<&'a dyn TraceSink>,
+    pub(crate) trace_sink: Option<&'a dyn TraceSink>,
 }
 
 impl<'a> EvalProgram<'a> {
@@ -173,10 +173,11 @@ pub(crate) fn eval_expr(
             value,
         } => {
             let needle = eval_expr(program, *matches, context, positions, in_progress)?;
-            let items = repeated(context, collection)
+            let items = collection_items(context, collection)
                 .ok_or_else(|| EngineError::MissingSourceField(collection.join("/")))?;
             Ok(items
                 .iter()
+                .filter_map(|item| item.instances.last().copied())
                 .find(|item| field_scalar(item, key).is_some_and(|key| *key == needle))
                 .and_then(|item| field_scalar(item, value).cloned())
                 .unwrap_or(Value::Null))
@@ -432,6 +433,13 @@ fn eval_xml_mixed_content(
 }
 
 fn aggregate_items<'a>(context: &[&'a Instance], collection: &[String]) -> Vec<WalkExtension<'a>> {
+    collection_items(context, collection).unwrap_or_default()
+}
+
+fn collection_items<'a>(
+    context: &[&'a Instance],
+    collection: &[String],
+) -> Option<Vec<WalkExtension<'a>>> {
     let base = if let Some(first) = collection.first() {
         context
             .iter()
@@ -445,7 +453,7 @@ fn aggregate_items<'a>(context: &[&'a Instance], collection: &[String]) -> Vec<W
             .copied()
             .find(|item| matches!(item, Instance::Repeated(_) | Instance::DocumentSet(_)))
     };
-    base.map_or_else(Vec::new, |base| walk(base, collection, &[], &[], &[]))
+    base.map(|base| walk(base, collection, &[], &[], &[]))
 }
 
 fn eval_collection_find(
@@ -607,4 +615,67 @@ fn position(positions: &[PositionFrame], collection: &[String]) -> usize {
         })
         .map(|position| position.index)
         .unwrap_or(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lookup_flattens_repeating_collection_ancestors() {
+        let record = |code: i64, name: &str| {
+            Instance::Group(vec![
+                ("Code".into(), Instance::Scalar(Value::Int(code))),
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+            ])
+        };
+        let branch = |record| {
+            Instance::Group(vec![(
+                "Cube".into(),
+                Instance::Repeated(vec![Instance::Group(vec![(
+                    "Cube".into(),
+                    Instance::Repeated(vec![record]),
+                )])]),
+            )])
+        };
+        let source = Instance::Group(vec![(
+            "Cube".into(),
+            Instance::Repeated(vec![
+                branch(record(1, "first")),
+                branch(record(42, "second")),
+            ]),
+        )]);
+        let graph = Graph {
+            nodes: [
+                (
+                    0,
+                    Node::Const {
+                        value: Value::Int(42),
+                    },
+                ),
+                (
+                    1,
+                    Node::Lookup {
+                        collection: vec!["Cube".into(), "Cube".into(), "Cube".into()],
+                        key: vec!["Code".into()],
+                        matches: 0,
+                        value: vec!["Name".into()],
+                    },
+                ),
+            ]
+            .into(),
+        };
+        let user_functions = BTreeMap::new();
+
+        let value = eval_expr(
+            EvalProgram::new(&graph, &user_functions, None),
+            1,
+            &[&source],
+            &[],
+            &mut HashSet::new(),
+        )
+        .expect("nested lookup should evaluate");
+
+        assert_eq!(value, Value::String("second".into()));
+    }
 }
