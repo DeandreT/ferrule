@@ -73,6 +73,16 @@ pub fn parse_json(schema: &str, document: &str) -> Result<Instance, JsonBoundary
     })
 }
 
+/// Parses one bounded UTF-8 JSON payload using an emitter-owned schema.
+pub fn parse_json_bytes(schema: &str, document: &[u8]) -> Result<Instance, JsonBoundaryError> {
+    check_input_size(document.len())?;
+    let document =
+        std::str::from_utf8(document).map_err(|error| JsonBoundaryError::InvalidInput {
+            message: format!("document is not UTF-8: {error}"),
+        })?;
+    parse_json(schema, document)
+}
+
 fn check_input_size(bytes: usize) -> Result<(), JsonBoundaryError> {
     if bytes > MAX_JSON_DOCUMENT_BYTES {
         return Err(JsonBoundaryError::InputTooLarge {
@@ -98,6 +108,14 @@ pub fn serialize_json(schema: &str, instance: &Instance) -> Result<String, JsonB
         });
     }
     Ok(document)
+}
+
+/// Serializes one instance as a bounded pretty-printed UTF-8 JSON payload.
+pub fn serialize_json_bytes(
+    schema: &str,
+    instance: &Instance,
+) -> Result<Vec<u8>, JsonBoundaryError> {
+    serialize_json(schema, instance).map(String::into_bytes)
 }
 
 fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
@@ -149,6 +167,35 @@ mod tests {
             rendered.as_deref(),
             Ok("{\n  \"Name\": \"sample\",\n  \"Count\": 3\n}\n")
         );
+    }
+
+    #[test]
+    fn parses_and_serializes_utf8_payloads() {
+        let (_, schema) = schema();
+        let parsed = parse_json_bytes(
+            &schema,
+            b"\xEF\xBB\xBF{\"Name\":\"caf\xC3\xA9\",\"Count\":3}",
+        );
+        assert_eq!(
+            parsed,
+            Ok(Instance::Group(vec![
+                (
+                    "Name".into(),
+                    Instance::Scalar(Value::String("café".into()))
+                ),
+                ("Count".into(), Instance::Scalar(Value::Int(3))),
+            ]))
+        );
+        let rendered = parsed.and_then(|instance| serialize_json_bytes(&schema, &instance));
+        assert_eq!(
+            rendered.as_deref(),
+            Ok(&b"{\n  \"Name\": \"caf\xC3\xA9\",\n  \"Count\": 3\n}\n"[..])
+        );
+        assert!(matches!(
+            parse_json_bytes(&schema, b"{\"Name\":\"\xFF\"}"),
+            Err(JsonBoundaryError::InvalidInput { ref message })
+                if message.contains("not UTF-8")
+        ));
     }
 
     #[test]

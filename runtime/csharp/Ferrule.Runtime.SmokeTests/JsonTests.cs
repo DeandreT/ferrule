@@ -37,6 +37,32 @@ internal static partial class Program
         Equal(FerruleValue.FromInt64(3), ((FerruleScalar)parsed.Fields[1].Value).Value);
         Equal(FerruleValue.JsonNull, ((FerruleScalar)parsed.Fields[2].Value).Value);
 
+        var byteInput = new byte[]
+        {
+            0xEF, 0xBB, 0xBF,
+            (byte)'{', (byte)'"', (byte)'N', (byte)'a', (byte)'m', (byte)'e', (byte)'"',
+            (byte)':', (byte)'"', (byte)'c', (byte)'a', (byte)'f', 0xC3, 0xA9,
+            (byte)'"', (byte)',', (byte)'"', (byte)'C', (byte)'o', (byte)'u', (byte)'n',
+            (byte)'t', (byte)'"', (byte)':', (byte)'3', (byte)'}',
+        };
+        var parsedBytes = (FerruleGroup)FerruleJson.ParseBytes(BasicJsonSchema, byteInput);
+        Equal(Text("caf\u00E9"), ((FerruleScalar)parsedBytes.Fields[0].Value).Value);
+        Equal(
+            "{\n  \"Name\": \"caf\u00E9\",\n  \"Count\": 3\n}\n",
+            System.Text.Encoding.UTF8.GetString(
+                FerruleJson.SerializeBytes(BasicJsonSchema, parsedBytes)));
+        var utf8Error = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.ParseBytes(BasicJsonSchema, new byte[] { 0xFF }));
+        Equal(true, utf8Error.Message.Contains("UTF-8", StringComparison.Ordinal));
+        var oversized = new byte[FerruleJson.MaximumDocumentBytes + 1];
+        oversized[0] = 0xFF;
+        var sizeError = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.ParseBytes(BasicJsonSchema, oversized));
+        Equal(true, sizeError.Message.Contains("maximum", StringComparison.Ordinal));
+        Equal(false, sizeError.Message.Contains("UTF-8", StringComparison.Ordinal));
+
         var rendered = FerruleJson.Serialize(
             BasicJsonSchema,
             Group(
