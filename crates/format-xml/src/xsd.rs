@@ -15,6 +15,8 @@
 //! tuples. `xs:simpleContent` becomes a `#text` scalar plus attribute scalars;
 //! named attribute-only extensions and restrictions participate in executable
 //! `xsi:type` alternatives.
+//! Optional, unbounded named model-group references that expand to exactly one
+//! nonrepeating member flatten losslessly by making that member repeating.
 //! `xs:any` imports only when it is an optional, unbounded, local-name,
 //! skip-validation wildcard declared inline or through a named model group
 //! and can round-trip through the recursive generic `element()` group. Other

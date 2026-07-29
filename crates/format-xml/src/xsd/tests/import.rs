@@ -2312,6 +2312,68 @@ fn imports_named_sequence_and_attribute_groups_across_an_include() {
 }
 
 #[test]
+fn flattens_repeated_single_member_model_groups_losslessly()
+-> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_repeated_single_member_group_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:group name="Items"><xs:sequence>
+            <xs:element name="Item"><xs:complexType><xs:sequence>
+              <xs:element name="Name" type="xs:string"/>
+              <xs:element name="Count" type="xs:integer"/>
+            </xs:sequence></xs:complexType></xs:element>
+          </xs:sequence></xs:group>
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:group ref="Items" minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )?;
+
+    let schema = import_root(&path, Some("Root"))?;
+    let item = schema
+        .child("Item")
+        .ok_or("repeated model-group member is missing")?;
+    assert!(item.repeating);
+    assert!(matches!(
+        item.child("Count").map(|child| &child.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::Int
+        })
+    ));
+
+    let input = r#"<Root>
+          <Item><Name>First</Name><Count>2</Count></Item>
+          <Item><Name>Second</Name><Count>3</Count></Item>
+        </Root>"#;
+    let instance = from_str(input, &schema)?;
+    assert_eq!(
+        instance
+            .field("Item")
+            .and_then(Instance::as_repeated)
+            .map(<[Instance]>::len),
+        Some(2)
+    );
+    let output = to_string(&schema, &instance)?;
+    assert_eq!(from_str(&output, &schema)?, instance);
+
+    let exported = export(&schema)?;
+    assert!(
+        exported.contains(r#"<xs:element name="Item" minOccurs="0" maxOccurs="unbounded">"#),
+        "{exported}"
+    );
+    std::fs::write(&path, exported)?;
+    let reimported = import_root(&path, Some("Root"))?;
+    std::fs::remove_file(path)?;
+    assert_eq!(reimported, schema);
+    assert_eq!(from_str(&output, &reimported)?, instance);
+    Ok(())
+}
+
+#[test]
 fn named_schema_groups_reject_unrepresentable_shapes_explicitly() {
     let cases = [
         (
@@ -2329,6 +2391,17 @@ fn named_schema_groups_reject_unrepresentable_shapes_explicitly() {
                  <xs:group ref="Fields"/>
                </xs:sequence></xs:complexType></xs:element>"#,
             "xs:choice and xs:all model groups are not supported",
+        ),
+        (
+            "repeated-tuple",
+            r#"<xs:group name="Fields"><xs:sequence>
+                 <xs:element name="Left" type="xs:string"/>
+                 <xs:element name="Right" type="xs:string"/>
+               </xs:sequence></xs:group>
+               <xs:element name="Root"><xs:complexType><xs:sequence>
+                 <xs:group ref="Fields" minOccurs="0" maxOccurs="unbounded"/>
+               </xs:sequence></xs:complexType></xs:element>"#,
+            "a repeated group must contain exactly one nonrepeating member",
         ),
         (
             "prohibited-attribute",
