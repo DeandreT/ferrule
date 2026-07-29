@@ -1247,6 +1247,11 @@ fn take_branch_marker(input_keys: &BTreeSet<u32>, next_branch: &mut u32) -> u32 
 /// children, string scalars at the leaves (attribute entries flagged as
 /// such), no repeating flags.
 fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
+    if entry.attribute("ferrule-kind").is_some()
+        && let Some(schema) = typed_xml_entry_tree_schema(entry)
+    {
+        return schema;
+    }
     let raw_name = entry.attribute("name").unwrap_or("root");
     let (name, legacy_attribute) = normalize_xml_entry_name(raw_name);
     if name == XML_ELEMENTS_FIELD {
@@ -1279,6 +1284,50 @@ fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
     } else {
         SchemaNode::group(name, children)
     }
+}
+
+fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<SchemaNode> {
+    let raw_name = entry.attribute("name")?;
+    let (name, legacy_attribute) = normalize_xml_entry_name(raw_name);
+    if name.is_empty() {
+        return None;
+    }
+    let repeating = match entry.attribute("ferrule-repeating")? {
+        "0" => false,
+        "1" => true,
+        _ => return None,
+    };
+    let children = entry
+        .children()
+        .filter(|node| node.has_tag_name("entry"))
+        .collect::<Vec<_>>();
+    let mut schema = match entry.attribute("ferrule-kind")? {
+        "group" if entry.attribute("datatype").is_none() => SchemaNode::group(
+            name,
+            children
+                .iter()
+                .map(typed_xml_entry_tree_schema)
+                .collect::<Option<Vec<_>>>()?,
+        ),
+        "scalar" if children.is_empty() => {
+            let scalar_type = match entry.attribute("datatype")? {
+                "string" => ScalarType::String,
+                "integer" => ScalarType::Int,
+                "decimal" => ScalarType::Float,
+                "boolean" => ScalarType::Bool,
+                _ => return None,
+            };
+            SchemaNode::scalar(name, scalar_type)
+        }
+        _ => return None,
+    };
+    schema.repeating = repeating;
+    schema.attribute = legacy_attribute || entry.attribute("type") == Some("attribute");
+    schema.text = entry.attribute("ferrule-text") == Some("1");
+    schema.nillable = entry.attribute("ferrule-nillable") == Some("1");
+    schema.fixed = entry.attribute("ferrule-fixed").map(str::to_string);
+    schema.default = entry.attribute("ferrule-default").map(str::to_string);
+    Some(schema)
 }
 
 /// Older `.mfd` entry trees prefix XML names with a decimal namespace-slot

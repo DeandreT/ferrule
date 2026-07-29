@@ -15,6 +15,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) instance_path: Option<&'a str>,
     pub(super) options: &'a FormatOptions,
     pub(super) target_branches: Option<&'a TargetBranches>,
+    pub(super) component_name: &'a str,
     pub(super) component_uid: u32,
     pub(super) force_root_port: bool,
     pub(super) default_output: bool,
@@ -61,7 +62,7 @@ pub(super) fn render(arguments: RenderArgs<'_>) -> Result<RenderedSchemaComponen
     let mut xml = String::new();
     let _ = write!(
         xml,
-        "\t\t\t\t<component name=\"wsdl\" library=\"wsdl\" uid=\"{}\" kind=\"17\">\n\
+        "\t\t\t\t<component name=\"{}\" library=\"wsdl\" uid=\"{}\" kind=\"17\">\n\
          \t\t\t\t\t{properties}{view}\n\
          \t\t\t\t\t<data>\n\
          \t\t\t\t\t\t<root>\n\
@@ -71,8 +72,9 @@ pub(super) fn render(arguments: RenderArgs<'_>) -> Result<RenderedSchemaComponen
          \t\t\t\t\t\t{role}\n\
          \t\t\t\t\t</data>\n\
          \t\t\t\t</component>\n",
+        xml_escape(arguments.component_name),
         arguments.component_uid,
-        arguments.ports.entries_xml(
+        arguments.ports.typed_entries_xml(
             arguments.schema,
             attr,
             7,

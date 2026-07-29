@@ -226,6 +226,7 @@ pub(super) fn render_schema_component(
                     instance_path,
                     options,
                     target_branches,
+                    component_name,
                     component_uid,
                     force_root_port,
                     default_output,
@@ -997,6 +998,37 @@ pub(super) const fn db_type_name(ty: ScalarType) -> &'static str {
     }
 }
 
+fn entry_schema_metadata(node: &SchemaNode) -> String {
+    let kind = match node.kind {
+        SchemaKind::Scalar { .. } => "scalar",
+        SchemaKind::Group { .. } => "group",
+    };
+    let mut metadata = format!(
+        " ferrule-kind=\"{kind}\" ferrule-repeating=\"{}\"",
+        u8::from(node.repeating)
+    );
+    if let SchemaKind::Scalar { ty } = node.kind {
+        let _ = write!(
+            metadata,
+            " datatype=\"{}\"",
+            super::function::scalar_type_name(ty)
+        );
+    }
+    if node.text {
+        metadata.push_str(" ferrule-text=\"1\"");
+    }
+    if node.nillable {
+        metadata.push_str(" ferrule-nillable=\"1\"");
+    }
+    if let Some(fixed) = &node.fixed {
+        let _ = write!(metadata, " ferrule-fixed=\"{}\"", xml_escape(fixed));
+    }
+    if let Some(default) = &node.default {
+        let _ = write!(metadata, " ferrule-default=\"{}\"", xml_escape(default));
+    }
+    metadata
+}
+
 pub(super) fn db_selections_xml(layout: &DbLayout<'_>) -> String {
     fn collect(table: &SchemaNode, names: &mut std::collections::BTreeSet<String>) {
         names.insert(
@@ -1336,6 +1368,52 @@ impl PortTree {
         root_attr: Option<&str>,
         target_branches: Option<&TargetBranches>,
     ) -> String {
+        self.entries_xml_impl(
+            schema,
+            attr,
+            indent,
+            force_root_port,
+            root_attr,
+            target_branches,
+            false,
+        )
+    }
+
+    /// Entry-tree XML carrying Ferrule's portable schema metadata. WSDL
+    /// message components have no generated XSD sibling, so the ordinary
+    /// visual entry tree is otherwise unable to retain cardinality and scalar
+    /// types across export and re-import.
+    pub(super) fn typed_entries_xml(
+        &self,
+        schema: &SchemaNode,
+        attr: &str,
+        indent: usize,
+        force_root_port: bool,
+        root_attr: Option<&str>,
+        target_branches: Option<&TargetBranches>,
+    ) -> String {
+        self.entries_xml_impl(
+            schema,
+            attr,
+            indent,
+            force_root_port,
+            root_attr,
+            target_branches,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn entries_xml_impl(
+        &self,
+        schema: &SchemaNode,
+        attr: &str,
+        indent: usize,
+        force_root_port: bool,
+        root_attr: Option<&str>,
+        target_branches: Option<&TargetBranches>,
+        typed: bool,
+    ) -> String {
         let mut out = String::new();
         let anchors = concrete_group_anchors(schema);
         // The recursive renderer carries explicit immutable allocation state so
@@ -1351,6 +1429,7 @@ impl PortTree {
             target_branches: Option<&TargetBranches>,
             active_branch: Option<(&[String], usize)>,
             anchors: &BTreeMap<&'a str, Option<&'a SchemaNode>>,
+            typed: bool,
             out: &mut String,
         ) {
             if let SchemaKind::Group { children, .. } = &node.kind {
@@ -1392,10 +1471,15 @@ impl PortTree {
                         } else {
                             ""
                         };
+                        let metadata = if typed {
+                            entry_schema_metadata(child)
+                        } else {
+                            String::new()
+                        };
                         let _ = write!(
                             out,
-                            "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{key}\" expanded=\"1\"{clone}",
-                            xml_escape(&child.name)
+                            "{pad}<entry name=\"{}\"{type_attr}{metadata} {attr}=\"{key}\" expanded=\"1\"{clone}",
+                            xml_escape(&child.name),
                         );
                         if matches!(child.kind, SchemaKind::Scalar { .. }) {
                             out.push_str("/>\n");
@@ -1403,8 +1487,8 @@ impl PortTree {
                                 for clone_key in branches.binding_clone_keys(branch, path) {
                                     let _ = writeln!(
                                         out,
-                                        "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{clone_key}\" expanded=\"1\" clone=\"1\"/>",
-                                        xml_escape(&child.name)
+                                        "{pad}<entry name=\"{}\"{type_attr}{metadata} {attr}=\"{clone_key}\" expanded=\"1\" clone=\"1\"/>",
+                                        xml_escape(&child.name),
                                     );
                                 }
                             }
@@ -1430,6 +1514,7 @@ impl PortTree {
                                 target_branches,
                                 branch,
                                 anchors,
+                                typed,
                                 out,
                             );
                             let _ = writeln!(out, "{pad}</entry>");
@@ -1469,10 +1554,15 @@ impl PortTree {
         } else {
             String::new()
         };
+        let root_metadata = if typed {
+            entry_schema_metadata(schema)
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             out,
-            "{pad}<entry name=\"{}\"{root_port} expanded=\"1\">",
-            xml_escape(&schema.name)
+            "{pad}<entry name=\"{}\"{root_metadata}{root_port} expanded=\"1\">",
+            xml_escape(&schema.name),
         );
         walk(
             schema,
@@ -1484,6 +1574,7 @@ impl PortTree {
             target_branches,
             None,
             &anchors,
+            typed,
             &mut out,
         );
         let _ = writeln!(out, "{pad}</entry>");
