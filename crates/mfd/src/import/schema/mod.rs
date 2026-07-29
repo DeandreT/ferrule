@@ -297,6 +297,15 @@ fn read_schema_component_resolved(
         warnings.push(format!("component `{name}` has no connected ports"));
     }
     let is_source = out_count >= in_count;
+    let has_typed_entry_schema = entry.attribute("ferrule-kind").is_some();
+    let typed_entry_schema = has_typed_entry_schema
+        .then(|| typed_xml_entry_tree_schema(&entry))
+        .flatten();
+    if has_typed_entry_schema && typed_entry_schema.is_none() {
+        warnings.push(format!(
+            "component `{name}` has invalid Ferrule typed entry-schema metadata; metadata ignored"
+        ));
+    }
 
     // Schema: prefer the referenced XSD (types + repeating info), picking
     // the top-level element the design says the document uses -- an XSD
@@ -340,6 +349,10 @@ fn read_schema_component_resolved(
                 Err(XmlSchemaReadError::Xsd(
                     format_xml::XmlFormatError::SchemaMaterializationLimit { .. },
                 )) if !is_source => None,
+                Err(XmlSchemaReadError::Xsd(
+                    format_xml::XmlFormatError::UnsupportedXmlWildcard { .. }
+                    | format_xml::XmlFormatError::UnsupportedXmlAttributeWildcard { .. },
+                )) if typed_entry_schema.is_some() => None,
                 Err(e) => {
                     warnings.push(format!(
                         "component `{name}`: could not read schema `{rel}` ({e}); \
@@ -349,8 +362,10 @@ fn read_schema_component_resolved(
                 }
             }
         });
-    let schema_from_entry_tree = schema_from_file.is_none();
-    let mut schema = schema_from_file.unwrap_or_else(|| entry_tree_schema(&entry));
+    let schema_from_entry_tree = schema_from_file.is_none() && typed_entry_schema.is_none();
+    let mut schema = schema_from_file
+        .or(typed_entry_schema)
+        .unwrap_or_else(|| entry_tree_schema(&entry));
     if let Some(rel) = document.and_then(|document| document.attribute("schema"))
         && let Ok(schema_path) = resolve_resource_reference(mfd_path, resources, rel, "XML Schema")
         && !schema_path
@@ -1303,6 +1318,27 @@ fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<Schema
         "1" => true,
         _ => return None,
     };
+    if name == XML_ELEMENTS_FIELD {
+        if entry.attribute("ferrule-kind") != Some("group") || !repeating {
+            return None;
+        }
+        let mut schema = generic_entry_schema(entry);
+        if let Some(index) = entry.attribute("ferrule-text-index") {
+            let index = index.parse::<usize>().ok()?;
+            let SchemaKind::Group { children, .. } = &mut schema.kind else {
+                return None;
+            };
+            let current = children
+                .iter()
+                .position(|child| child.name == XML_TEXT_FIELD)?;
+            let text = children.remove(current);
+            if index > children.len() {
+                return None;
+            }
+            children.insert(index, text);
+        }
+        return Some(schema);
+    }
     let children = entry
         .children()
         .filter(|node| node.has_tag_name("entry"))
