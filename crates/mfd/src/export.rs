@@ -115,8 +115,7 @@ impl<'a> TargetExport<'a> {
         let copy_document_root = spec.root.construction == ScopeConstruction::CopyCurrentSource;
         let force_root_port = copy_document_root
             || recursive::requires_root_port(spec.root)
-            || spec.root.iteration_output == IterationOutput::First
-                && spec.root.source() == Some(&[]);
+            || spec.root.iteration_output == IterationOutput::First;
         let mut explicit_text_ports = explicit_scope_text_ports(spec.schema, spec.root);
         explicit_text_ports.extend(mapped_scope_plans.explicit_text_ports());
         explicit_text_ports.extend(xbrl::explicit_text_ports(spec.schema, spec.options));

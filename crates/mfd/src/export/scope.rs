@@ -619,7 +619,12 @@ fn append_scope_controls(
         edges.extend(bound_sources.into_iter().zip(in_bounds));
         from = out_nodes;
     }
-    if scope.iteration_output == mapping::IterationOutput::First && chain.is_empty() {
+    if scope.iteration_output == mapping::IterationOutput::First
+        && !matches!(
+            scope.construction,
+            ScopeConstruction::XmlMixedContent { .. }
+        )
+    {
         let in_nodes = keys.next();
         let out_nodes = keys.next();
         *uid += 1;

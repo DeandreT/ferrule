@@ -976,10 +976,26 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
         Some(JoinSourceCardinality::Singleton)
     );
     assert_eq!(
-        engine::run_with_sources(&imported.project, &primary, extras).unwrap(),
+        engine::run_with_sources(&imported.project, &primary, extras.clone()).unwrap(),
         expected
     );
 
+    project.root.children[0].iteration_output = IterationOutput::First;
+    let expected_first = engine::run_with_sources(&project, &primary, extras.clone()).unwrap();
+    let first_output = dir.path("first.mfd");
+    let warnings = mfd::export(&project, &first_output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let first = import_exported(&first_output);
+    assert_eq!(
+        first.project.root.children[0].iteration_output,
+        IterationOutput::First
+    );
+    assert_eq!(
+        engine::run_with_sources(&first.project, &primary, extras).unwrap(),
+        expected_first
+    );
+
+    project.root.children[0].iteration_output = IterationOutput::MappedSequence;
     project.graph.nodes.clear();
     project.root.children[0].bindings.clear();
     let structural_output = dir.path("structural.mfd");

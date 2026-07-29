@@ -106,10 +106,11 @@ impl IterationFeed {
         !self.windows.is_empty()
     }
 
-    pub(super) fn has_default_first(&self) -> bool {
-        self.windows
-            .iter()
-            .any(|window| matches!(window, SequenceWindowFeed::First { count: None }))
+    pub(super) fn has_terminal_default_first(&self) -> bool {
+        matches!(
+            self.windows.last(),
+            Some(SequenceWindowFeed::First { count: None })
+        )
     }
 }
 

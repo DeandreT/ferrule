@@ -156,10 +156,10 @@ fn all_columns_descending_limit_one_imports_the_winner() {
 }
 
 #[test]
-fn root_first_export_rejects_more_than_one_item_atomically() {
+fn root_first_export_preserves_an_explicit_window_before_cardinality_selection() {
     let dir = TempDir::new();
     let design = prepare(&dir.0, true);
-    let (mut project, _) = run(&dir.0, &design);
+    let (mut project, expected) = run(&dir.0, &design);
     let [SequenceWindow::First { count }] = project.root.windows.as_slice() else {
         panic!("standalone LIMIT 1 query should import one first-items window")
     };
@@ -170,16 +170,26 @@ fn root_first_export_rejects_more_than_one_item_atomically() {
         },
     );
 
-    let exported = dir.0.join("rejected.mfd");
-    std::fs::write(&exported, "existing design").unwrap();
-    assert!(matches!(
-        mfd::export(&project, &exported),
-        Err(mfd::MfdError::Unsupported(message)) if message.contains("first-item")
-    ));
+    let exported = dir.0.join("windowed.mfd");
+    assert!(mfd::export(&project, &exported).unwrap().is_empty());
+    let exported_xml = std::fs::read_to_string(&exported).unwrap();
     assert_eq!(
-        std::fs::read_to_string(exported).unwrap(),
-        "existing design"
+        exported_xml
+            .matches("component name=\"first-items\"")
+            .count(),
+        2
     );
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(
+        reimported.project.root.iteration_output,
+        IterationOutput::First
+    );
+    assert_eq!(reimported.project.root.windows.len(), 1);
+    let source =
+        format_db::read_instance(&dir.0.join("inventory.sqlite"), &reimported.project.source)
+            .unwrap();
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), expected);
 }
 
 #[test]
