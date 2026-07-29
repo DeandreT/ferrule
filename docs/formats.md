@@ -7,7 +7,7 @@ layout and dialect details that an extension cannot express.
 
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
-| XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` restrictions, and exact `##local` skip element/attribute wildcards; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
+| XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, and exact `##local` skip element/attribute wildcards; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
 | JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; JSON Schema local references, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
@@ -29,8 +29,9 @@ layout and dialect details that an extension cannot express.
 - XML preserves declared expanded-name identity for elements and attributes.
   MFD export partitions foreign declarations into deterministic local XSD
   siblings and publishes the complete graph atomically. Bounded local-graph
-  substitution groups and compatible `complexContent` extension/restriction
-  `xsi:type` hierarchies, exact optional/unbounded `##local`
+  substitution groups, compatible `complexContent` extension/restriction
+  `xsi:type` hierarchies, scalar-text/attribute-only `simpleContent` derivations,
+  exact optional/unbounded `##local`
   `processContents="skip"` element wildcards, and direct `##local` skip
   attribute wildcards are supported; other derived-type, namespace-aware, and
   validating wildcard shapes remain outside the subset.
