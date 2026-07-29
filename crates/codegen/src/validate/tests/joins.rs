@@ -187,6 +187,16 @@ fn correlated_join_aggregate_program() -> Program {
         })
         .and_then(|plan| {
             plan.then(
+                JoinSource::singleton(vec!["Policy".into(), "Tenant".into()]),
+                JoinConditions::new(JoinKey::new(
+                    vec!["Catalog".into(), "Product".into()],
+                    vec!["Tenant".into()],
+                    Vec::new(),
+                )),
+            )
+        })
+        .and_then(|plan| {
+            plan.then(
                 JoinSource::new(vec!["Inventory".into(), "Stock".into()]),
                 JoinConditions::new(JoinKey::new(
                     vec!["Catalog".into(), "Product".into()],
@@ -223,11 +233,20 @@ fn correlated_join_aggregate_program() -> Program {
                             vec![
                                 SchemaNode::scalar("Sku", ScalarType::String),
                                 SchemaNode::scalar("Region", ScalarType::String),
+                                SchemaNode::scalar("Tenant", ScalarType::String),
                                 SchemaNode::scalar("Price", ScalarType::Int),
                             ],
                         )
                         .repeating(),
                     ],
+                ),
+                dynamic: None,
+            },
+            NamedSourceProgram {
+                name: "Policy".into(),
+                source: SchemaNode::group(
+                    "Policy",
+                    vec![SchemaNode::scalar("Tenant", ScalarType::String)],
                 ),
                 dynamic: None,
             },
@@ -442,7 +461,7 @@ fn validates_only_bounded_correlated_join_aggregates() {
     let program = correlated_join_aggregate_program();
     assert!(matches!(
         &program.expressions[1].expression,
-        Expression::JoinAggregate { join, .. } if join.plan().sources().count() == 4
+        Expression::JoinAggregate { join, .. } if join.plan().sources().count() == 5
     ));
     assert_eq!(validate_program(&program), Ok(()));
 
@@ -561,7 +580,7 @@ fn validates_bounded_correlated_join_scopes_with_tuple_controls_and_children() {
             .as_ref()
             .and_then(IterationPlan::inner_join)
             .map(|join| join.plan().sources().count()),
-        Some(4)
+        Some(5)
     );
     assert_eq!(validate_program(&program), Ok(()));
 

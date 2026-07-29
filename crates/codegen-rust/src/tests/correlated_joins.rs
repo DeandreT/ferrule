@@ -36,6 +36,16 @@ fn project() -> Project {
     })
     .and_then(|plan| {
         plan.then(
+            MappingJoinSource::singleton(vec!["Policy".into(), "Tenant".into()]),
+            MappingJoinConditions::new(MappingJoinKey::new(
+                vec!["Catalog".into(), "Product".into()],
+                vec!["Tenant".into()],
+                Vec::new(),
+            )),
+        )
+    })
+    .and_then(|plan| {
+        plan.then(
             MappingJoinSource::new(vec!["Inventory".into(), "Stock".into()]),
             MappingJoinConditions::new(MappingJoinKey::new(
                 vec!["Catalog".into(), "Product".into()],
@@ -80,6 +90,7 @@ fn project() -> Project {
                                 SchemaNode::scalar("ProductPosition", ScalarType::Int),
                                 SchemaNode::scalar("OuterQuantity", ScalarType::Int),
                                 SchemaNode::scalar("Region", ScalarType::String),
+                                SchemaNode::scalar("Tenant", ScalarType::String),
                                 SchemaNode::scalar("Warehouse", ScalarType::String),
                                 SchemaNode::group(
                                     "Details",
@@ -109,6 +120,7 @@ fn project() -> Project {
                             vec![
                                 SchemaNode::scalar("Sku", ScalarType::String),
                                 SchemaNode::scalar("Region", ScalarType::String),
+                                SchemaNode::scalar("Tenant", ScalarType::String),
                                 SchemaNode::scalar("Price", ScalarType::Int),
                                 SchemaNode::scalar("Label", ScalarType::String),
                                 SchemaNode::scalar("Rank", ScalarType::Int),
@@ -116,6 +128,16 @@ fn project() -> Project {
                         )
                         .repeating(),
                     ],
+                ),
+                options: Default::default(),
+                dynamic_path: None,
+            },
+            NamedSource {
+                name: "Policy".into(),
+                path: "policy.json".into(),
+                schema: SchemaNode::group(
+                    "Policy",
+                    vec![SchemaNode::scalar("Tenant", ScalarType::String)],
                 ),
                 options: Default::default(),
                 dynamic_path: None,
@@ -276,6 +298,14 @@ fn project() -> Project {
                         path: Vec::new(),
                     },
                 ),
+                (
+                    19,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Policy".into(), "Tenant".into()],
+                        path: Vec::new(),
+                    },
+                ),
             ]),
         },
         root: Scope {
@@ -331,6 +361,10 @@ fn project() -> Project {
                         MappingBinding {
                             target_field: "Region".into(),
                             node: 18,
+                        },
+                        MappingBinding {
+                            target_field: "Tenant".into(),
+                            node: 19,
                         },
                         MappingBinding {
                             target_field: "Warehouse".into(),
@@ -419,6 +453,7 @@ fn catalog() -> Instance {
             group([
                 field("Sku", scalar(Value::Int(1))),
                 field("Region", scalar(string("west"))),
+                field("Tenant", scalar(string("A"))),
                 field("Price", scalar(Value::Int(10))),
                 field("Label", scalar(string("first"))),
                 field("Rank", scalar(Value::Int(10))),
@@ -426,13 +461,23 @@ fn catalog() -> Instance {
             group([
                 field("Sku", scalar(string("1"))),
                 field("Region", scalar(string("east"))),
+                field("Tenant", scalar(string("A"))),
                 field("Price", scalar(Value::Int(20))),
                 field("Label", scalar(string("second"))),
                 field("Rank", scalar(Value::Int(30))),
             ]),
             group([
+                field("Sku", scalar(string("1"))),
+                field("Region", scalar(string("west"))),
+                field("Tenant", scalar(string("B"))),
+                field("Price", scalar(Value::Int(40))),
+                field("Label", scalar(string("other-tenant"))),
+                field("Rank", scalar(Value::Int(50))),
+            ]),
+            group([
                 field("Sku", scalar(string("2"))),
                 field("Region", scalar(string("north"))),
+                field("Tenant", scalar(string("A"))),
                 field("Price", scalar(Value::Int(5))),
                 field("Label", scalar(string("third"))),
                 field("Rank", scalar(Value::Int(5))),
@@ -440,6 +485,7 @@ fn catalog() -> Instance {
             group([
                 field("Sku", scalar(Value::Null)),
                 field("Region", scalar(string("west"))),
+                field("Tenant", scalar(string("A"))),
                 field("Price", scalar(Value::Int(100))),
                 field("Label", scalar(string("null"))),
                 field("Rank", scalar(Value::Int(99))),
@@ -447,12 +493,17 @@ fn catalog() -> Instance {
             group([
                 field("Sku", scalar(Value::xml_nil())),
                 field("Region", scalar(string("west"))),
+                field("Tenant", scalar(string("A"))),
                 field("Price", scalar(Value::Int(100))),
                 field("Label", scalar(string("xml-nil"))),
                 field("Rank", scalar(Value::Int(99))),
             ]),
         ]),
     )])
+}
+
+fn policy() -> Instance {
+    group([field("Tenant", scalar(string("A")))])
 }
 
 fn inventory() -> Instance {
@@ -484,12 +535,14 @@ fn generated_correlated_joins_match_engine_and_retain_typed_failures() {
     let project = project();
     let input = source();
     let named = catalog();
+    let policy = policy();
     let stock = inventory();
     let expected = engine::run_with_sources(
         &project,
         &input,
         vec![
             ("Catalog".into(), named.clone()),
+            ("Policy".into(), policy.clone()),
             ("Inventory".into(), stock.clone()),
         ],
     )
@@ -528,12 +581,14 @@ fn main() {
         row([("Sku", string("9")), ("Region", string("west")), ("Quantity", Value::Int(6)), ("Separator", string("-"))]),
     ]))]);
     let catalog = group([field("Product", repeated([
-        row([("Sku", Value::Int(1)), ("Region", string("west")), ("Price", Value::Int(10)), ("Label", string("first")), ("Rank", Value::Int(10))]),
-        row([("Sku", string("1")), ("Region", string("east")), ("Price", Value::Int(20)), ("Label", string("second")), ("Rank", Value::Int(30))]),
-        row([("Sku", string("2")), ("Region", string("north")), ("Price", Value::Int(5)), ("Label", string("third")), ("Rank", Value::Int(5))]),
-        row([("Sku", Value::Null), ("Region", string("west")), ("Price", Value::Int(100)), ("Label", string("null")), ("Rank", Value::Int(99))]),
-        row([("Sku", Value::xml_nil()), ("Region", string("west")), ("Price", Value::Int(100)), ("Label", string("xml-nil")), ("Rank", Value::Int(99))]),
+        row([("Sku", Value::Int(1)), ("Region", string("west")), ("Tenant", string("A")), ("Price", Value::Int(10)), ("Label", string("first")), ("Rank", Value::Int(10))]),
+        row([("Sku", string("1")), ("Region", string("east")), ("Tenant", string("A")), ("Price", Value::Int(20)), ("Label", string("second")), ("Rank", Value::Int(30))]),
+        row([("Sku", string("1")), ("Region", string("west")), ("Tenant", string("B")), ("Price", Value::Int(40)), ("Label", string("other-tenant")), ("Rank", Value::Int(50))]),
+        row([("Sku", string("2")), ("Region", string("north")), ("Tenant", string("A")), ("Price", Value::Int(5)), ("Label", string("third")), ("Rank", Value::Int(5))]),
+        row([("Sku", Value::Null), ("Region", string("west")), ("Tenant", string("A")), ("Price", Value::Int(100)), ("Label", string("null")), ("Rank", Value::Int(99))]),
+        row([("Sku", Value::xml_nil()), ("Region", string("west")), ("Tenant", string("A")), ("Price", Value::Int(100)), ("Label", string("xml-nil")), ("Rank", Value::Int(99))]),
     ]))]);
+    let policy = group([field("Tenant", scalar(string("A")))]);
     let inventory = group([field("Stock", repeated([
         row([("Sku", string("1")), ("Warehouse", string("east"))]),
         row([("Sku", Value::Int(2)), ("Warehouse", string("north"))]),
@@ -542,16 +597,27 @@ fn main() {
     ]))]);
     let inputs = [
         NamedInput { name: "Catalog", instance: &catalog },
+        NamedInput { name: "Policy", instance: &policy },
         NamedInput { name: "Inventory", instance: &inventory },
     ];
     let output = correlated_join_map::execute_with_sources(&source, &inputs).unwrap();
     assert_eq!(format!("{output:?}"), std::env::var("EXPECTED_OUTPUT").unwrap());
+
+    let missing_policy_inputs = [
+        NamedInput { name: "Catalog", instance: &catalog },
+        NamedInput { name: "Inventory", instance: &inventory },
+    ];
+    assert!(matches!(
+        correlated_join_map::execute_with_sources(&source, &missing_policy_inputs),
+        Err(RuntimeError::MissingNamedSource { name: "Policy" })
+    ));
 
     let malformed_inventory = group([field("Stock", repeated([row([
         ("Sku", Value::Int(1)),
     ])]))]);
     let malformed_inputs = [
         NamedInput { name: "Catalog", instance: &catalog },
+        NamedInput { name: "Policy", instance: &policy },
         NamedInput { name: "Inventory", instance: &malformed_inventory },
     ];
     assert!(matches!(
