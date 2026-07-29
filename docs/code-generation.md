@@ -137,10 +137,12 @@ correct embedded dynamic-source schema, and then invoke the same typed mapping.
 Each JSON input and output document is limited to 64 MiB, and each trusted
 embedded schema is limited to 1 MiB. Invalid JSON shape, non-exact numeric
 conversion, output serialization, and size failures remain typed boundary
-errors. These APIs intentionally use JSON regardless of stored project paths or
-format options; hosts needing X12, XML, database, or other physical formats
-should use the interpreter payload API or adapt a typed `Instance` at their own
-boundary.
+errors. Embedded object-property requirements are enforced on input and
+generated output: explicit JSON null satisfies presence when nullable, while an
+omitted property or Ferrule `Null` does not. These APIs intentionally use JSON
+regardless of stored project paths or format options; hosts needing X12, XML,
+database, or other physical formats should use the interpreter payload API or
+adapt a typed `Instance` at their own boundary.
 Dynamic JSON documents share the 64 MiB per-document limit and additionally
 have a 256 MiB combined budget per execution.
 

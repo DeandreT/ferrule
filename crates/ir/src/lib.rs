@@ -584,6 +584,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             kind: repr.kind,
         };
         if !node.alternatives_are_valid()
+            || !node.required_fields_are_valid()
             || !node.recursive_ref_is_valid()
             || !node.fixed_is_valid()
             || !node.value_generation_is_valid()
@@ -599,7 +600,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.xml_wildcard_namespace_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences or choices, XML wildcard namespace, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences or choices, XML wildcard namespace, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -661,6 +662,12 @@ pub enum SchemaKind {
         /// merged `children` projection. Empty for ordinary groups.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         alternatives: Vec<GroupAlternative>,
+        /// JSON object property names whose presence is mandatory.
+        ///
+        /// Names must identify a declared child unless `dynamic` is present,
+        /// in which case a required runtime-named property is also valid.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        required: Vec<String>,
         /// `xsi:type` alternatives declared through `xs:restriction`.
         ///
         /// Names are exact alternative identities. Keeping this distinction
@@ -895,6 +902,7 @@ impl SchemaNode {
             kind: SchemaKind::Group {
                 children,
                 alternatives: Vec::new(),
+                required: Vec::new(),
                 xml_restricted_alternatives: Vec::new(),
                 dynamic: None,
             },
@@ -921,10 +929,12 @@ impl SchemaNode {
                 SchemaKind::Group {
                     children,
                     alternatives,
+                    required,
                     xml_restricted_alternatives,
                     dynamic,
                 } if children.is_empty()
                     && alternatives.is_empty()
+                    && required.is_empty()
                     && xml_restricted_alternatives.is_empty()
                     && dynamic.is_none()
             )
@@ -1078,7 +1088,9 @@ impl SchemaNode {
 
     pub fn set_dynamic_fields(&mut self, value: Option<SchemaNode>) -> bool {
         let SchemaKind::Group {
+            children,
             alternatives,
+            required,
             dynamic,
             ..
         } = &mut self.kind
@@ -1086,6 +1098,13 @@ impl SchemaNode {
             return false;
         };
         if value.is_some() && !alternatives.is_empty() {
+            return false;
+        }
+        if value.is_none()
+            && required
+                .iter()
+                .any(|name| !children.iter().any(|child| child.name == *name))
+        {
             return false;
         }
         *dynamic = value.map(Box::new);
@@ -1096,6 +1115,48 @@ impl SchemaNode {
         match &self.kind {
             SchemaKind::Group { dynamic, .. } => dynamic.as_deref(),
             SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
+        }
+    }
+
+    /// Attaches exact JSON object-property presence requirements.
+    pub fn with_required_fields(mut self, required: Vec<String>) -> Option<Self> {
+        self.set_required_fields(required).then_some(self)
+    }
+
+    pub fn set_required_fields(&mut self, required: Vec<String>) -> bool {
+        let SchemaKind::Group {
+            children,
+            required: target,
+            dynamic,
+            ..
+        } = &mut self.kind
+        else {
+            return false;
+        };
+        if !valid_required_fields(children, dynamic.as_deref(), &required) {
+            return false;
+        }
+        *target = required;
+        true
+    }
+
+    pub fn required_fields(&self) -> &[String] {
+        match &self.kind {
+            SchemaKind::Group { required, .. } => required,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => &[],
+        }
+    }
+
+    /// Checks ordinary JSON object-property presence metadata.
+    pub fn required_fields_are_valid(&self) -> bool {
+        match &self.kind {
+            SchemaKind::Group {
+                children,
+                required,
+                dynamic,
+                ..
+            } => valid_required_fields(children, dynamic.as_deref(), required),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
         }
     }
 
@@ -1156,6 +1217,7 @@ impl SchemaNode {
         let SchemaKind::Group {
             children,
             alternatives: target,
+            required: _,
             xml_restricted_alternatives,
             dynamic,
         } = &mut self.kind
@@ -1212,6 +1274,7 @@ impl SchemaNode {
             SchemaKind::Group {
                 children,
                 alternatives,
+                required: _,
                 xml_restricted_alternatives,
                 dynamic,
             } => {
@@ -1488,6 +1551,18 @@ fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAltern
                     },
                 )
         })
+}
+
+fn valid_required_fields(
+    children: &[SchemaNode],
+    dynamic: Option<&SchemaNode>,
+    required: &[String],
+) -> bool {
+    required.iter().enumerate().all(|(index, name)| {
+        !name.is_empty()
+            && !required[..index].contains(name)
+            && (dynamic.is_some() || children.iter().any(|child| child.name == *name))
+    })
 }
 
 /// An actual value tree, shaped by some [`SchemaNode`].
@@ -2253,6 +2328,60 @@ mod tests {
                 .repeating
         );
         assert!(schema.child("missing").is_none());
+    }
+
+    #[test]
+    fn required_fields_are_validated_and_roundtrip() {
+        let schema = SchemaNode::group(
+            "Order",
+            vec![
+                SchemaNode::scalar("id", ScalarType::Int),
+                SchemaNode::scalar("note", ScalarType::String),
+            ],
+        )
+        .with_required_fields(vec!["id".into(), "note".into()])
+        .unwrap();
+        assert_eq!(schema.required_fields(), ["id", "note"]);
+        let encoded = serde_json::to_string(&schema).unwrap();
+        assert!(encoded.contains(r#""required":["id","note"]"#));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            schema
+        );
+
+        assert!(
+            SchemaNode::group("Closed", Vec::new())
+                .with_required_fields(vec!["missing".into()])
+                .is_none()
+        );
+        let open = SchemaNode::group("Open", Vec::new())
+            .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+            .unwrap()
+            .with_required_fields(vec!["runtime-name".into()])
+            .unwrap();
+        assert_eq!(open.required_fields(), ["runtime-name"]);
+        let mut cannot_close = open.clone();
+        assert!(!cannot_close.set_dynamic_fields(None));
+        assert!(cannot_close.dynamic_fields().is_some());
+        assert!(
+            open.clone()
+                .with_required_fields(vec!["same".into(), "same".into()])
+                .is_none()
+        );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"Broken","kind":{"kind":"group","children":[],"required":["missing"]}}"#
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"Legacy","kind":{"kind":"group","children":[]}}"#
+            )
+            .unwrap()
+            .required_fields()
+            .is_empty()
+        );
     }
 
     #[test]

@@ -64,10 +64,14 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
         SchemaKind::Group {
             children,
             alternatives,
+            required,
             dynamic,
             ..
         } => {
             out.insert("type".into(), "object".into());
+            if !required.is_empty() {
+                out.insert("required".into(), required.clone().into());
+            }
             if !alternatives.is_empty() {
                 let variants = alternatives
                     .iter()

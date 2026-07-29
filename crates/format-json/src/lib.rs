@@ -49,6 +49,8 @@ pub enum JsonFormatError {
     AmbiguousAlternative { name: String },
     #[error("object `{object}` contains duplicate property `{property}`")]
     DuplicateProperty { object: String, property: String },
+    #[error("object `{object}` requires property `{property}`")]
+    MissingRequiredProperty { object: String, property: String },
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
@@ -181,6 +183,7 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
         SchemaKind::Group {
             children,
             alternatives,
+            required,
             dynamic,
             ..
         } => {
@@ -191,6 +194,7 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
                     got: json_type_name(value),
                 });
             };
+            validate_required_fields(schema, required, |name| fields.contains_key(name))?;
             validate_alternative_fields(schema, alternatives, fields)?;
             if dynamic.is_some() && !alternatives.is_empty() {
                 return Err(JsonFormatError::UnsupportedSchemaUnion {
@@ -443,6 +447,7 @@ fn write_single_node(
             SchemaKind::Group {
                 children,
                 alternatives,
+                required,
                 dynamic,
                 ..
             },
@@ -472,6 +477,7 @@ fn write_single_node(
                     }
                     out.insert(name.clone(), write_node(child_schema, child_instance)?);
                 }
+                validate_required_fields(schema, required, |name| out.contains_key(name))?;
                 return Ok(serde_json::Value::Object(out));
             }
             for child_schema in children {
@@ -489,6 +495,7 @@ fn write_single_node(
                     );
                 }
             }
+            validate_required_fields(schema, required, |name| out.contains_key(name))?;
             validate_alternative_fields(schema, alternatives, &out)?;
             Ok(serde_json::Value::Object(out))
         }
@@ -508,6 +515,20 @@ fn write_single_node(
             instance_type_name(other),
         )),
     }
+}
+
+fn validate_required_fields(
+    schema: &SchemaNode,
+    required: &[String],
+    contains: impl Fn(&str) -> bool,
+) -> Result<(), JsonFormatError> {
+    if let Some(property) = required.iter().find(|property| !contains(property)) {
+        return Err(JsonFormatError::MissingRequiredProperty {
+            object: schema.name.clone(),
+            property: property.clone(),
+        });
+    }
+    Ok(())
 }
 
 fn write_json_any(

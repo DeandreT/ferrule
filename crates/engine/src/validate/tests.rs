@@ -453,6 +453,20 @@ fn rejects_inconsistent_deserialized_group_alternatives() {
 }
 
 #[test]
+fn rejects_inconsistent_required_field_metadata() {
+    let mut project = valid_project();
+    let SchemaKind::Group { required, .. } = &mut project.target.kind else {
+        panic!("test target must be a group");
+    };
+    required.push("missing".into());
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema" && issue.message.contains("required-field metadata")
+    }));
+}
+
+#[test]
 fn rejects_programmatically_invalid_fixed_union_metadata() {
     let mut project = valid_project();
     let Some(types) = ir::ScalarTypeSet::new([ir::ScalarType::String, ir::ScalarType::Int]) else {

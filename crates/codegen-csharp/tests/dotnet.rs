@@ -94,7 +94,9 @@ fn fixture() -> Program {
                     vec![SchemaNode::scalar("Prefix", ScalarType::String)],
                 ),
             ],
-        ),
+        )
+        .with_required_fields(vec!["Condition".into()])
+        .expect("source requirement is valid"),
         extra_sources: vec![
             NamedSourceProgram {
                 name: "catalog".into(),
@@ -149,6 +151,8 @@ fn fixture() -> Program {
                 .repeating(),
             ],
         )
+        .with_required_fields(vec!["RootInt".into()])
+        .expect("target requirement is valid")
         .repeating(),
         expressions: vec![
             ExpressionNode {
@@ -867,6 +871,9 @@ Error(
     () => GeneratedMapping.ExecuteJsonWithSources(
         """{"Condition":"true"}""",
         jsonInputs));
+Error(
+    FerruleRuntimeError.JsonBoundary,
+    () => GeneratedMapping.ExecuteJsonWithSources("{}", jsonInputs));
 NamedSourceError(
     FerruleRuntimeError.DuplicateNamedSource,
     "catalog",
