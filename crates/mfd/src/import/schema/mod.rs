@@ -74,6 +74,24 @@ pub(super) fn refine_copied_fallback_source_shapes(
     );
 }
 
+pub(super) fn refine_copied_fallback_target_groups(
+    components: &mut [SchemaComponent],
+    edge_from: &BTreeMap<u32, u32>,
+    copy_all_targets: &BTreeSet<u32>,
+    fallback_source_outputs: &BTreeSet<u32>,
+    fallback_target_inputs: &BTreeSet<u32>,
+    warnings: &mut Vec<String>,
+) {
+    xml_ports::refine_copied_fallback_target_groups(
+        components,
+        edge_from,
+        copy_all_targets,
+        fallback_source_outputs,
+        fallback_target_inputs,
+        warnings,
+    );
+}
+
 pub(super) fn read_xlsx_component(
     component: &roxmltree::Node<'_, '_>,
     warnings: &mut Vec<String>,
@@ -707,7 +725,14 @@ fn read_json_component_resolved(
                         return None;
                     }
                 };
-            match format_json::json_schema::import(&schema_path) {
+            let imported = match resources {
+                Some(resources) => format_json::json_schema::import_with_root(
+                    &schema_path,
+                    resources.package_root(),
+                ),
+                None => format_json::json_schema::import(&schema_path),
+            };
+            match imported {
                 Ok(schema) => Some(schema),
                 Err(e) => {
                     warnings.push(format!(
@@ -1307,7 +1332,7 @@ fn take_branch_marker(input_keys: &BTreeSet<u32>, next_branch: &mut u32) -> u32 
 /// Fallback schema straight from the entry tree: groups where there are
 /// children, string scalars at the leaves (attribute entries flagged as
 /// such), no repeating flags.
-fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
+pub(super) fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
     if entry.attribute("ferrule-kind").is_some()
         && let Some(schema) = typed_xml_entry_tree_schema(entry)
     {

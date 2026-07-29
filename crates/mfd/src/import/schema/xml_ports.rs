@@ -177,6 +177,119 @@ pub(super) fn refine_copied_fallback_source_shapes(
     }
 }
 
+/// A failed target XML Schema import can likewise leave a structural input as
+/// a plain string. An exact copy-all edge from one typed source group supplies
+/// that target shape when the target has no independently connected content.
+pub(super) fn refine_copied_fallback_target_groups(
+    components: &mut [SchemaComponent],
+    edge_from: &BTreeMap<u32, u32>,
+    copy_all_targets: &BTreeSet<u32>,
+    fallback_source_outputs: &BTreeSet<u32>,
+    fallback_target_inputs: &BTreeSet<u32>,
+    warnings: &mut Vec<String>,
+) {
+    let mut inferred = BTreeMap::<(usize, Vec<String>), Option<SchemaNode>>::new();
+    let mut rejected = BTreeSet::<(usize, Vec<String>)>::new();
+    for (target_index, target) in components
+        .iter()
+        .enumerate()
+        .filter(|(_, component)| component.format == ComponentFormat::Xml && component.is_target())
+    {
+        for (input, target_path) in &target.ports {
+            if target_path.is_empty()
+                || !copy_all_targets.contains(input)
+                || !fallback_target_inputs.contains(input)
+            {
+                continue;
+            }
+            let Some(feed) = edge_from
+                .get(input)
+                .filter(|feed| !fallback_source_outputs.contains(feed))
+            else {
+                continue;
+            };
+            let Some(target_node) = schema_node_at(&target.schema, target_path)
+                .filter(|node| plain_entry_tree_leaf(node))
+            else {
+                continue;
+            };
+            if target.ports.iter().any(|(descendant, path)| {
+                path.len() > target_path.len()
+                    && path.starts_with(target_path)
+                    && edge_from.contains_key(descendant)
+            }) {
+                continue;
+            }
+            let key = (target_index, target_path.clone());
+            let mut owners = components.iter().filter(|source| {
+                source.format == ComponentFormat::Xml
+                    && source.is_source
+                    && source.output_keys.contains(feed)
+            });
+            let Some(source) = owners.next() else {
+                rejected.insert(key);
+                continue;
+            };
+            if owners.next().is_some() {
+                rejected.insert(key);
+                continue;
+            }
+            let Some(source_path) = source.ports.get(feed) else {
+                rejected.insert(key);
+                continue;
+            };
+            let Some(source_group) = schema_node_at(&source.schema, source_path)
+                .filter(|node| !node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+            else {
+                rejected.insert(key);
+                continue;
+            };
+            if source_group.name != target_node.name
+                || source_path.last() != target_path.last()
+                    && !(source_path.is_empty() && source_group.name == target_node.name)
+            {
+                rejected.insert(key);
+                continue;
+            }
+            let mut replacement = source_group.clone();
+            replacement.xml_namespace = target_node.xml_namespace.clone();
+            inferred
+                .entry(key.clone())
+                .and_modify(|candidate| {
+                    if candidate.as_ref() != Some(&replacement) {
+                        *candidate = None;
+                        rejected.insert(key.clone());
+                    }
+                })
+                .or_insert(Some(replacement));
+        }
+    }
+    for ((target_index, target_path), replacement) in inferred {
+        if rejected.contains(&(target_index, target_path.clone())) {
+            continue;
+        }
+        let Some(replacement) = replacement else {
+            continue;
+        };
+        if let Some(target) = components
+            .get_mut(target_index)
+            .and_then(|component| schema_node_at_mut(&mut component.schema, &target_path))
+        {
+            *target = replacement;
+        }
+    }
+    for (target_index, target_path) in rejected {
+        let component = components
+            .get(target_index)
+            .map(|component| component.name.as_str())
+            .unwrap_or("<unknown>");
+        warnings.push(format!(
+            "fallback XML target group at `{component}/{}` could not be recovered exactly from its copy-all source; scalar placeholder retained",
+            target_path.join("/")
+        ));
+    }
+}
+
 fn plain_entry_tree_leaf(node: &SchemaNode) -> bool {
     node.xml_namespace.is_none()
         && !node.repeating

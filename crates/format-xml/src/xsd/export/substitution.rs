@@ -464,6 +464,12 @@ fn projection(head: &SchemaNode, members: &[String]) -> SchemaNode {
             .iter()
             .all(|member| selected.contains(member.name.as_str()))
     });
+    projected.xml_repeating_choices.retain(|choice| {
+        choice
+            .members
+            .iter()
+            .all(|member| selected.contains(member.as_str()))
+    });
     projected.xml_alternative_kind = XmlAlternativeKind::XsiType;
     projected.repeating = false;
     projected

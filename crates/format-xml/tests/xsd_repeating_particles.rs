@@ -1,5 +1,5 @@
-use format_xml::xsd;
-use ir::{ScalarType, SchemaKind};
+use format_xml::{from_str, to_string, xsd};
+use ir::{Instance, ScalarType, SchemaKind, Value};
 
 #[test]
 fn projects_repeating_multi_element_particles_as_repeated_named_fields() {
@@ -120,7 +120,7 @@ fn ignores_disabled_particles_when_checking_a_repeating_sequence() {
 }
 
 #[test]
-fn keeps_repeating_choice_import_best_effort() {
+fn preserves_repeating_choice_order_and_export_shape() {
     let path = std::env::temp_dir().join(format!(
         "ferrule_xsd_repeating_choice_test_{}.xsd",
         std::process::id()
@@ -143,13 +143,41 @@ fn keeps_repeating_choice_import_best_effort() {
     .unwrap();
 
     let schema = xsd::import(&path).unwrap();
-    std::fs::remove_file(&path).unwrap();
 
-    let SchemaKind::Group { children, .. } = schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         panic!("expected imported root group");
     };
     assert_eq!(children.len(), 2);
     assert!(children.iter().all(|child| child.repeating));
+    assert_eq!(schema.xml_repeating_choices.len(), 1);
+    assert_eq!(schema.xml_repeating_choices[0].members, ["Code", "Amount"]);
+
+    let instance = from_str(
+        "<Values><Code>A</Code><Amount>12.5</Amount><Code>B</Code></Values>",
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        instance.field("Code"),
+        Some(&Instance::Repeated(vec![
+            Instance::Scalar(Value::String("A".into())),
+            Instance::Scalar(Value::String("B".into())),
+        ]))
+    );
+    let rendered = to_string(&schema, &instance).unwrap();
+    assert!(rendered.find("<Code>A</Code>") < rendered.find("<Amount>12.5</Amount>"));
+    assert!(rendered.find("<Amount>12.5</Amount>") < rendered.find("<Code>B</Code>"));
+
+    let exported = xsd::export(&schema).unwrap();
+    assert!(exported.contains("<xs:choice maxOccurs=\"unbounded\">"));
+    assert!(!exported.contains("<xs:element name=\"Code\" type=\"xs:string\" minOccurs"));
+    std::fs::write(&path, exported).unwrap();
+    let reimported = xsd::import(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(
+        reimported.xml_repeating_choices,
+        schema.xml_repeating_choices
+    );
 }
 
 #[test]

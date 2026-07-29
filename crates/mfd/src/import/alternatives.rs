@@ -108,7 +108,25 @@ fn merge_selected_roots(
                                 children[index] = selected_schema;
                             }
                         }
-                        Some(_) => {}
+                        Some(_) => {
+                            let mismatch = entries
+                                .iter()
+                                .filter(|entry| {
+                                    normalized_entry_name(
+                                        entry.attribute("name").unwrap_or_default(),
+                                    ) == name
+                                })
+                                .find_map(|entry| {
+                                    let exposed = super::schema::entry_tree_schema(entry);
+                                    fallback_entry_shape_fits(&exposed, &selected_schema).err()
+                                });
+                            if let Some(reason) = mismatch {
+                                warnings.push(format!(
+                                    "selected XML element `{}` is incompatible with its exposed mapping ports: {reason}; the resolved schema was retained and incompatible scalar connections are non-executable",
+                                    display_child_path(path, &name)
+                                ));
+                            }
+                        }
                         None => children.push(selected_schema),
                     }
                 }
