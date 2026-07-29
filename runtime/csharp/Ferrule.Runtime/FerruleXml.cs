@@ -110,6 +110,9 @@ public static class FerruleXml
     private const int MaximumRecursiveDepth = 64;
     private const string XsiNamespace = "http://www.w3.org/2001/XMLSchema-instance";
     private const string XmlTypeField = "\u001fferrule-xml-type";
+    private const string XmlMixedContentField = "\u001fferrule-xml-mixed-content";
+    private const string XmlMixedContentValueField = "\u001fferrule-xml-mixed-value";
+    private const string XmlNodeNameField = "NodeName";
 
     public static FerruleValue Serialize(
         uint node,
@@ -219,6 +222,11 @@ public static class FerruleXml
         IReadOnlyList<string> Members,
         IReadOnlyList<string> Required);
 
+    private sealed record XmlRepeatingChoice(
+        bool Required,
+        bool Repeating,
+        IReadOnlyList<string> Members);
+
     private sealed record XmlSchemaNode(
         string Name,
         bool Repeating,
@@ -229,7 +237,8 @@ public static class FerruleXml
         string? Fixed,
         XmlScalarType? ScalarType,
         IReadOnlyList<XmlSchemaNode> Children,
-        IReadOnlyList<XmlAlternative> Alternatives)
+        IReadOnlyList<XmlAlternative> Alternatives,
+        IReadOnlyList<XmlRepeatingChoice> RepeatingChoices)
     {
         internal static XmlSchemaNode Parse(JsonElement element, int depth)
         {
@@ -248,8 +257,14 @@ public static class FerruleXml
             XmlScalarType? scalarType = null;
             var children = Array.Empty<XmlSchemaNode>();
             var alternatives = Array.Empty<XmlAlternative>();
+            var repeatingChoices = Array.Empty<XmlRepeatingChoice>();
             if (kindName == "scalar")
             {
+                if (element.TryGetProperty("xml_repeating_choices", out _))
+                {
+                    throw new InvalidOperationException(
+                        "XML repeating choices require a group schema");
+                }
                 scalarType = RequiredString(kind, "ty") switch
                 {
                     "string" => XmlScalarType.String,
@@ -272,6 +287,7 @@ public static class FerruleXml
                     .Select(child => Parse(child, depth + 1))
                     .ToArray();
                 alternatives = ParseAlternatives(kind);
+                repeatingChoices = ParseRepeatingChoices(element, children);
                 if (alternatives.Length != 0)
                 {
                     if (OptionalString(element, "alternative_mode") is { } mode &&
@@ -302,7 +318,8 @@ public static class FerruleXml
                 OptionalString(element, "fixed"),
                 scalarType,
                 children,
-                alternatives);
+                alternatives,
+                repeatingChoices);
         }
 
         private static XmlAlternative[] ParseAlternatives(JsonElement kind)
@@ -343,6 +360,67 @@ public static class FerruleXml
                 name,
                 RequiredStrings(element, "members"),
                 OptionalStrings(element, "required"));
+        }
+
+        private static XmlRepeatingChoice[] ParseRepeatingChoices(
+            JsonElement element,
+            IReadOnlyList<XmlSchemaNode> children)
+        {
+            if (!element.TryGetProperty("xml_repeating_choices", out var choices))
+            {
+                return Array.Empty<XmlRepeatingChoice>();
+            }
+            if (choices.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException(
+                    "XML repeating choices must be an array");
+            }
+            var used = new HashSet<string>(StringComparer.Ordinal);
+            var parsed = new List<XmlRepeatingChoice>();
+            foreach (var choice in choices.EnumerateArray())
+            {
+                if (choice.ValueKind != JsonValueKind.Object)
+                {
+                    throw new InvalidOperationException(
+                        "XML repeating choice must be an object");
+                }
+                var members = RequiredStrings(choice, "members");
+                var repeating =
+                    !choice.TryGetProperty("repeating", out var repeatingValue) ||
+                    repeatingValue.GetBoolean();
+                if (members.Length < 2 ||
+                    members.Any(string.IsNullOrEmpty) ||
+                    members.Any(member => !used.Add(member)))
+                {
+                    throw new InvalidOperationException(
+                        "XML repeating choice members must be unique non-empty names");
+                }
+                var positions = members
+                    .Select(member => children
+                        .Select((child, index) => (child, index))
+                        .Where(candidate =>
+                            candidate.child.Name == member &&
+                            candidate.child.Repeating == repeating &&
+                            !candidate.child.Attribute &&
+                            !candidate.child.Text)
+                        .Select(candidate => candidate.index)
+                        .ToArray())
+                    .ToArray();
+                if (positions.Any(matches => matches.Length != 1) ||
+                    positions
+                        .Select(matches => matches[0])
+                        .Zip(positions.Select(matches => matches[0]).Skip(1))
+                        .Any(pair => pair.Second != pair.First + 1))
+                {
+                    throw new InvalidOperationException(
+                        "XML repeating choice members must name consecutive repeating child elements");
+                }
+                parsed.Add(new XmlRepeatingChoice(
+                    OptionalBoolean(choice, "required"),
+                    repeating,
+                    members));
+            }
+            return parsed.ToArray();
         }
 
         private static string[] RequiredStrings(JsonElement element, string name)
@@ -577,32 +655,104 @@ public static class FerruleXml
             }
 
             var wroteElement = false;
-            foreach (var child in schema.Children.Where(child => !child.Attribute && !child.Text))
+            var wroteOrderedContent = false;
+            if (schema.RepeatingChoices.Count != 0 &&
+                group.TryGetField(XmlMixedContentField, out var orderedContent))
             {
-                if (!group.TryGetField(child.Name, out var field) || !WillWrite(child, field))
-                {
-                    continue;
-                }
-                var childDepth = recursionDepth + (child.RecursiveReference is null ? 0 : 1);
-                if (_indent)
-                {
-                    NewLine(outputDepth + 1);
-                }
-                WriteNode(
-                    child,
+                wroteElement = WriteOrderedChoiceContent(
+                    schema,
                     rootSchema,
-                    field,
-                    false,
-                    childDepth,
-                    outputDepth + 1,
-                    null);
-                wroteElement = true;
+                    orderedContent,
+                    recursionDepth,
+                    outputDepth);
+                wroteOrderedContent = wroteElement;
             }
-            if (_indent && wroteElement)
+            else
+            {
+                foreach (var child in schema.Children.Where(
+                    child => !child.Attribute && !child.Text))
+                {
+                    if (!group.TryGetField(child.Name, out var field) ||
+                        !WillWrite(child, field))
+                    {
+                        continue;
+                    }
+                    var childDepth =
+                        recursionDepth + (child.RecursiveReference is null ? 0 : 1);
+                    if (_indent)
+                    {
+                        NewLine(outputDepth + 1);
+                    }
+                    WriteNode(
+                        child,
+                        rootSchema,
+                        field,
+                        false,
+                        childDepth,
+                        outputDepth + 1,
+                        null);
+                    wroteElement = true;
+                }
+            }
+            if (_indent && wroteElement && !wroteOrderedContent)
             {
                 NewLine(outputDepth);
             }
             End(schema.Name);
+        }
+
+        private bool WriteOrderedChoiceContent(
+            XmlSchemaNode schema,
+            XmlSchemaNode rootSchema,
+            FerruleInstance orderedContent,
+            int recursionDepth,
+            int outputDepth)
+        {
+            if (orderedContent is not FerruleRepeated repeated)
+            {
+                throw new InvalidOperationException(
+                    $"group '{schema.Name}' ordered XML content must be repeated");
+            }
+            for (var index = 0; index < repeated.Items.Count; index++)
+            {
+                if (repeated.Items[index] is not FerruleGroup item ||
+                    !item.TryGetField(XmlNodeNameField, out var nodeName) ||
+                    nodeName is not FerruleScalar
+                    {
+                        Value.Kind: FerruleValueKind.String,
+                    } name ||
+                    name.Value.StringValue.Length == 0)
+                {
+                    throw new InvalidOperationException(
+                        $"group '{schema.Name}' ordered XML item {index} has no element name");
+                }
+                var child = schema.Children.FirstOrDefault(candidate =>
+                    !candidate.Attribute &&
+                    !candidate.Text &&
+                    candidate.Name == name.Value.StringValue) ??
+                    throw new InvalidOperationException(
+                        $"group '{schema.Name}' ordered XML item {index} names undeclared child '{name.Value.StringValue}'");
+                if (!item.TryGetField(XmlMixedContentValueField, out var value))
+                {
+                    throw new InvalidOperationException(
+                        $"group '{schema.Name}' ordered XML item {index} has no typed child value");
+                }
+                var childDepth =
+                    recursionDepth + (child.RecursiveReference is null ? 0 : 1);
+                var resolved = Resolve(child, rootSchema, childDepth);
+                if (_indent)
+                {
+                    NewLine(outputDepth + 1);
+                }
+                WriteSingle(
+                    resolved,
+                    rootSchema,
+                    value,
+                    childDepth,
+                    outputDepth + 1,
+                    null);
+            }
+            return repeated.Items.Count != 0;
         }
 
         private static XmlSchemaNode Resolve(
@@ -735,6 +885,19 @@ public static class FerruleXml
             _ => false,
         };
 
+        private static bool InstanceOccurs(FerruleInstance instance) => instance switch
+        {
+            FerruleScalar
+            {
+                Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull,
+            } => false,
+            FerruleScalar or FerruleGroup => true,
+            FerruleRepeated repeated => repeated.Items.Count != 0,
+            FerruleMappedSequence mapped => mapped.Items.Count != 0,
+            FerruleDocumentSet documents => documents.Documents.Count != 0,
+            _ => false,
+        };
+
         private void Start(string name, string? defaultNamespace)
         {
             _output.Append('<').Append(name);
@@ -800,6 +963,12 @@ public static class FerruleXml
 
         private static bool HasSerializedContent(XmlSchemaNode schema, FerruleGroup group)
         {
+            if (schema.RepeatingChoices.Count != 0 &&
+                group.TryGetField(XmlMixedContentField, out var ordered) &&
+                ordered is FerruleRepeated { Items.Count: > 0 })
+            {
+                return true;
+            }
             foreach (var child in schema.Children.Where(child => !child.Attribute))
             {
                 if (!group.TryGetField(child.Name, out var field))
@@ -834,10 +1003,22 @@ public static class FerruleXml
             foreach (var field in group.Fields)
             {
                 if (!(schema.Alternatives.Count != 0 && field.Name == XmlTypeField) &&
+                    !(schema.RepeatingChoices.Count != 0 &&
+                      field.Name == XmlMixedContentField) &&
                     !schema.Children.Any(child => child.Name == field.Name))
                 {
                     throw new InvalidOperationException(
                         $"group '{schema.Name}' contains unexpected field '{field.Name}'");
+                }
+            }
+            foreach (var choice in schema.RepeatingChoices.Where(choice => !choice.Repeating))
+            {
+                var selected = choice.Members.Count(member =>
+                    group.TryGetField(member, out var field) && InstanceOccurs(field));
+                if (selected > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"group '{schema.Name}' has more than one singular XML choice member");
                 }
             }
         }

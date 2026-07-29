@@ -340,7 +340,7 @@ fn validate_export_node(
     }
     if !node.xml_wildcard_namespace_is_valid() {
         return Err(XmlFormatError::UnsupportedXmlWildcard {
-            reason: "wildcard namespace metadata requires a repeating element() group with string LocalName and NamespaceURI fields",
+            reason: "wildcard namespace metadata requires an element() group with string LocalName and NamespaceURI fields",
         });
     }
     if node.attribute && node.text {
@@ -391,15 +391,7 @@ fn validate_export_node(
         return Ok(());
     };
     if node.name == XML_ELEMENTS_FIELD {
-        return if node.repeating {
-            Ok(())
-        } else {
-            Err(XmlFormatError::UnsupportedSchemaRole {
-                node: node.name.clone(),
-                role: "generic elements",
-                kind: "non-repeating group",
-            })
-        };
+        return Ok(());
     }
     if node.name == XML_ATTRIBUTES_FIELD {
         return if node == &generic_attribute_wildcard_schema() {
@@ -489,8 +481,15 @@ fn write_element_required(
     let pad = "  ".repeat(depth);
     if node.name == XML_ELEMENTS_FIELD {
         let namespace = wildcard_namespace_attribute(node, alternatives)?;
+        let occurs = if node.repeating {
+            " minOccurs=\"0\" maxOccurs=\"unbounded\""
+        } else if occurrence == ElementOccurrence::Optional {
+            " minOccurs=\"0\""
+        } else {
+            ""
+        };
         out.push_str(&format!(
-            "{pad}<xs:any namespace=\"{namespace}\" processContents=\"skip\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>\n"
+            "{pad}<xs:any namespace=\"{namespace}\" processContents=\"skip\"{occurs}/>\n"
         ));
         return Ok(());
     }
@@ -807,9 +806,12 @@ fn write_nested_elements(
             } else {
                 " minOccurs=\"0\""
             };
-            out.push_str(&format!(
-                "{pad}<xs:choice{min_occurs} maxOccurs=\"unbounded\">\n"
-            ));
+            let max_occurs = if choice.repeating {
+                " maxOccurs=\"unbounded\""
+            } else {
+                ""
+            };
+            out.push_str(&format!("{pad}<xs:choice{min_occurs}{max_occurs}>\n"));
             for member in &choice.members {
                 let child = children
                     .iter()

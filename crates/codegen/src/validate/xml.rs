@@ -125,9 +125,6 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     if !schema.xml_repeating_sequences.is_empty() {
         return Some("anonymous repeating-sequence metadata");
     }
-    if !schema.xml_repeating_choices.is_empty() {
-        return Some("repeating-choice order metadata");
-    }
     if matches!(schema.kind, SchemaKind::ScalarUnion { .. }) {
         return Some("heterogeneous scalar unions");
     }

@@ -4,13 +4,16 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{Expression, ProgramValidationError};
-use ir::{Instance, ScalarType, SchemaNode, Value, XML_TYPE_FIELD};
+use ir::{
+    Instance, ScalarType, SchemaNode, Value, XML_MIXED_CONTENT_FIELD,
+    XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD, XML_TYPE_FIELD, XmlRepeatingChoice,
+};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeConstruction, ScopeIteration};
 
 fn item_schema() -> SchemaNode {
     let mut child = SchemaNode::recursive_group("Child", "Item");
     child.nillable = true;
-    SchemaNode::group(
+    let mut schema = SchemaNode::group(
         "Item",
         vec![
             SchemaNode::scalar("id", ScalarType::String).attribute(),
@@ -23,9 +26,17 @@ fn item_schema() -> SchemaNode {
             SchemaNode::scalar("Nil", ScalarType::String).nillable(),
             SchemaNode::scalar("Tag", ScalarType::String).repeating(),
             address_schema(),
+            SchemaNode::scalar("ChoiceCode", ScalarType::String).repeating(),
+            SchemaNode::scalar("ChoiceAmount", ScalarType::Int).repeating(),
             child,
         ],
-    )
+    );
+    assert!(schema.set_xml_repeating_choices(vec![XmlRepeatingChoice {
+        required: false,
+        repeating: true,
+        members: vec!["ChoiceCode".into(), "ChoiceAmount".into()],
+    }]));
+    schema
 }
 
 fn address_schema() -> SchemaNode {
@@ -182,6 +193,77 @@ fn source() -> Instance {
                         field("Postcode", scalar(Value::Null)),
                     ]),
                 ),
+                field(
+                    "ChoiceCode",
+                    repeated([scalar(string("A")), scalar(string("B"))]),
+                ),
+                field("ChoiceAmount", repeated([scalar(Value::Int(2))])),
+                field(
+                    XML_MIXED_CONTENT_FIELD,
+                    repeated([
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Name"))),
+                            field(
+                                XML_MIXED_CONTENT_VALUE_FIELD,
+                                scalar(string("Alpha & \"Beta\"")),
+                            ),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Details"))),
+                            field(
+                                XML_MIXED_CONTENT_VALUE_FIELD,
+                                group([field("Code", scalar(string("D<1")))]),
+                            ),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Nil"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(Value::xml_nil())),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Tag"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(string("one"))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Tag"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(string("two"))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Address"))),
+                            field(
+                                XML_MIXED_CONTENT_VALUE_FIELD,
+                                group([
+                                    field(
+                                        XML_TYPE_FIELD,
+                                        scalar(string("{urn:ferrule:types}Domestic")),
+                                    ),
+                                    field("Name", scalar(string("Ada"))),
+                                    field("State", scalar(string("WA"))),
+                                    field("Zip", scalar(Value::Int(98101))),
+                                    field("Postcode", scalar(Value::Null)),
+                                ]),
+                            ),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("ChoiceCode"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(string("A"))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("ChoiceAmount"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(Value::Int(2))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("ChoiceCode"))),
+                            field(XML_MIXED_CONTENT_VALUE_FIELD, scalar(string("B"))),
+                        ]),
+                        group([
+                            field(XML_NODE_NAME_FIELD, scalar(string("Child"))),
+                            field(
+                                XML_MIXED_CONTENT_VALUE_FIELD,
+                                group([field("Name", scalar(string("Nested")))]),
+                            ),
+                        ]),
+                    ]),
+                ),
                 field("Child", group([field("Name", scalar(string("Nested")))])),
             ]),
         )])]),
@@ -217,6 +299,12 @@ fn generated_xml_serializer_matches_engine_output_and_typed_failures() {
     assert!(pretty.contains("xsi:type=\"ft:Domestic\""), "{pretty}");
     assert!(
         pretty.contains("xmlns:ft=\"urn:ferrule:types\""),
+        "{pretty}"
+    );
+    assert!(
+        pretty.find("<ChoiceCode>A</ChoiceCode>") < pretty.find("<ChoiceAmount>2</ChoiceAmount>")
+            && pretty.find("<ChoiceAmount>2</ChoiceAmount>")
+                < pretty.find("<ChoiceCode>B</ChoiceCode>"),
         "{pretty}"
     );
 
@@ -321,6 +409,48 @@ var source = Group(Field("Rows", Repeated(Group(Field("Item", Group(
         Field("State", Scalar(Text("WA"))),
         Field("Zip", Scalar(FerruleValue.FromInt64(98101))),
         Field("Postcode", Scalar(FerruleValue.Null)))),
+    Field("ChoiceCode", Repeated(Scalar(Text("A")), Scalar(Text("B")))),
+    Field("ChoiceAmount", Repeated(Scalar(FerruleValue.FromInt64(2)))),
+    Field("\u001fferrule-xml-mixed-content", Repeated(
+        Group(
+            Field("NodeName", Scalar(Text("Name"))),
+            Field("\u001fferrule-xml-mixed-value", Scalar(Text("Alpha & \"Beta\"")))),
+        Group(
+            Field("NodeName", Scalar(Text("Details"))),
+            Field(
+                "\u001fferrule-xml-mixed-value",
+                Group(Field("Code", Scalar(Text("D<1")))))),
+        Group(
+            Field("NodeName", Scalar(Text("Nil"))),
+            Field("\u001fferrule-xml-mixed-value", Scalar(FerruleValue.XmlNil))),
+        Group(
+            Field("NodeName", Scalar(Text("Tag"))),
+            Field("\u001fferrule-xml-mixed-value", Scalar(Text("one")))),
+        Group(
+            Field("NodeName", Scalar(Text("Tag"))),
+            Field("\u001fferrule-xml-mixed-value", Scalar(Text("two")))),
+        Group(
+            Field("NodeName", Scalar(Text("Address"))),
+            Field("\u001fferrule-xml-mixed-value", Group(
+                Field("\u001fferrule-xml-type", Scalar(Text("{urn:ferrule:types}Domestic"))),
+                Field("Name", Scalar(Text("Ada"))),
+                Field("State", Scalar(Text("WA"))),
+                Field("Zip", Scalar(FerruleValue.FromInt64(98101))),
+                Field("Postcode", Scalar(FerruleValue.Null))))),
+        Group(
+            Field("NodeName", Scalar(Text("ChoiceCode"))),
+            Field("\u001fferrule-xml-mixed-value", Scalar(Text("A")))),
+        Group(
+            Field("NodeName", Scalar(Text("ChoiceAmount"))),
+            Field("\u001fferrule-xml-mixed-value", Scalar(FerruleValue.FromInt64(2)))),
+        Group(
+            Field("NodeName", Scalar(Text("ChoiceCode"))),
+            Field("\u001fferrule-xml-mixed-value", Scalar(Text("B")))),
+        Group(
+            Field("NodeName", Scalar(Text("Child"))),
+            Field(
+                "\u001fferrule-xml-mixed-value",
+                Group(Field("Name", Scalar(Text("Nested")))))))),
     Field("Child", Group(Field("Name", Scalar(Text("Nested")))))))))));
 var output = (FerruleGroup)GeneratedMapping.Execute(source);
 var row = (FerruleGroup)((FerruleRepeated)output.Fields.Single(field => field.Name == "Row").Value).Items[0];

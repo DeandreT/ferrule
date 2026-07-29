@@ -424,8 +424,8 @@ pub struct SchemaNode {
     /// current default namespace. Non-XML formats ignore this metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xml_namespace: Option<XmlNamespace>,
-    /// Exact namespace predicate for a repeating generic `element()` group
-    /// imported from `xs:any`. Other schema nodes leave this unset.
+    /// Exact namespace predicate for a generic `element()` group imported
+    /// from `xs:any`. Other schema nodes leave this unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xml_wildcard_namespace: Option<XmlWildcardNamespaceConstraint>,
     #[serde(default)]
@@ -616,12 +616,26 @@ pub struct XmlRepeatingSequence {
     pub members: Vec<XmlSequenceMember>,
 }
 
-/// One `xs:choice` whose occurrences are projected onto repeating named
-/// child ports. Each occurrence selects exactly one member.
+fn default_xml_choice_repeating() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+/// One `xs:choice` whose occurrences are projected onto named child ports.
+/// Each occurrence selects exactly one member. Repeating choices project
+/// repeating children; singular choices project non-repeating children.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XmlRepeatingChoice {
     #[serde(default)]
     pub required: bool,
+    #[serde(
+        default = "default_xml_choice_repeating",
+        skip_serializing_if = "is_true"
+    )]
+    pub repeating: bool,
     pub members: Vec<String>,
 }
 
@@ -941,7 +955,6 @@ impl SchemaNode {
     pub fn xml_wildcard_namespace_is_valid(&self) -> bool {
         self.xml_wildcard_namespace.is_none()
             || (self.name == XML_ELEMENTS_FIELD
-                && self.repeating
                 && self.recursive_ref.is_none()
                 && !self.attribute
                 && !self.text
@@ -1312,7 +1325,10 @@ impl SchemaNode {
                 .iter()
                 .map(|member| {
                     let mut matches = children.iter().enumerate().filter(|(_, child)| {
-                        child.name == *member && child.repeating && !child.attribute && !child.text
+                        child.name == *member
+                            && child.repeating == choice.repeating
+                            && !child.attribute
+                            && !child.text
                     });
                     let position = matches.next().map(|(position, _)| position)?;
                     matches.next().is_none().then_some(position)
