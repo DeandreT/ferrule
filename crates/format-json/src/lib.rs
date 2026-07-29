@@ -54,6 +54,8 @@ pub enum JsonFormatError {
     DuplicateProperty { object: String, property: String },
     #[error("object `{object}` requires property `{property}`")]
     MissingRequiredProperty { object: String, property: String },
+    #[error("closed object `{object}` does not declare property `{property}`")]
+    UndeclaredProperty { object: String, property: String },
     #[error("`{name}` requires constant {expected}, got {got}")]
     ConstantMismatch {
         name: String,
@@ -297,6 +299,18 @@ fn read_node_with_patterns(
                 return Err(JsonFormatError::UnsupportedSchemaUnion {
                     name: schema.name.clone(),
                     reason: "open objects cannot use closed object alternatives".to_string(),
+                });
+            }
+            if dynamic.is_none()
+                && let Some(property) = fields.keys().find(|name| {
+                    !children
+                        .iter()
+                        .any(|child| child.name.as_str() == name.as_str())
+                })
+            {
+                return Err(JsonFormatError::UndeclaredProperty {
+                    object: schema.name.clone(),
+                    property: property.clone(),
                 });
             }
             if let Some(dynamic) = dynamic {

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{Instance, Value};
+use ir::{Instance, ScalarType, SchemaKind, Value};
 
 struct TempDir(PathBuf);
 
@@ -106,7 +106,16 @@ fn equality_selected_dynamic_boolean_source_fields_filter_objects()
     let imported = mfd::import(&write_fixture(&dir.0)?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    assert!(imported.project.source.dynamic_fields().is_some());
+    assert!(matches!(
+        imported
+            .project
+            .source
+            .dynamic_fields()
+            .map(|dynamic| &dynamic.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::Bool
+        })
+    ));
 
     let input = format_json::read(&dir.0.join("source.json"), &imported.project.source)?;
     let output = engine::run(&imported.project, &input)?;

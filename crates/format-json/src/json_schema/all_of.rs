@@ -37,7 +37,7 @@ pub(super) fn parse_all_of(
 
     let mut pending_constraints = Vec::new();
     let mut format_events = Vec::new();
-    let mut merged = None;
+    let mut structural = Vec::new();
     if let Some(base) = composition_base(schema) {
         if is_constraint_only_branch(&base) && !allowed_values::has_keyword(&base) {
             collect_direct_format(name, &base, &mut format_events)?;
@@ -45,7 +45,7 @@ pub(super) fn parse_all_of(
         } else {
             let mut base = parse(name, &base, doc, active_refs)?;
             collect_retained_formats(&mut base, &mut format_events);
-            merged = Some(base);
+            structural.push(base);
         }
     }
 
@@ -66,11 +66,9 @@ pub(super) fn parse_all_of(
         }
         let mut branch = parse(name, branch, doc, active_refs)?;
         collect_retained_formats(&mut branch, &mut format_events);
-        match &mut merged {
-            Some(current) => intersect(name, current, branch)?,
-            None => merged = Some(branch),
-        }
+        structural.push(branch);
     }
+    let merged = merge_structural_branches(name, structural)?;
     let format_only_fallback =
         merged.is_none() && pending_constraints.iter().any(formats::has_keyword);
     let mut no_op_constraint_fallback = merged.is_none() && !pending_constraints.is_empty();
@@ -135,6 +133,51 @@ pub(super) fn parse_all_of(
     }
     apply_format_events(name, &mut merged, format_events)?;
     Ok(merged)
+}
+
+fn merge_structural_branches(
+    name: &str,
+    mut branches: Vec<SchemaNode>,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
+    if branches.is_empty() {
+        return Ok(None);
+    }
+    let closing_pair = branches.iter().enumerate().find_map(|(left_index, left)| {
+        let left = left.dynamic_fields()?;
+        branches[left_index + 1..]
+            .iter()
+            .position(|right| {
+                right
+                    .dynamic_fields()
+                    .is_some_and(|right| schemas_are_provably_disjoint(left, right))
+            })
+            .map(|offset| (left_index, left_index + 1 + offset))
+    });
+    let closed_pivot = branches.iter().position(is_closed_object);
+    let selected_pair = closed_pivot.is_none().then_some(closing_pair).flatten();
+    let pivot = closed_pivot.unwrap_or_else(|| {
+        selected_pair
+            .map(|(left_index, _)| left_index)
+            .unwrap_or_default()
+    });
+    let mut merged = branches.remove(pivot);
+    if let Some((left_index, right_index)) = selected_pair {
+        let other_index = if pivot == left_index {
+            right_index - 1
+        } else {
+            left_index
+        };
+        let branch = branches.remove(other_index);
+        intersect(name, &mut merged, branch)?;
+    }
+    for branch in branches {
+        intersect(name, &mut merged, branch)?;
+    }
+    Ok(Some(merged))
+}
+
+fn is_closed_object(node: &SchemaNode) -> bool {
+    matches!(&node.kind, SchemaKind::Group { dynamic: None, .. })
 }
 
 fn collect_direct_format(
@@ -466,7 +509,7 @@ fn merge_object(
         ));
     };
     let SchemaKind::Group {
-        children,
+        mut children,
         required,
         dynamic,
         ..
@@ -478,28 +521,76 @@ fn merge_object(
         ));
     };
 
-    for child in children {
-        if let Some(existing) = target_children
-            .iter_mut()
-            .find(|existing| existing.name == child.name)
+    let target_additional = target_dynamic.as_deref().cloned();
+    let branch_additional = dynamic.as_deref().cloned();
+    let merged_dynamic = match (target_dynamic.take(), dynamic) {
+        (None, _) | (Some(_), None) => None,
+        (Some(mut existing), Some(candidate)) => {
+            let disjoint = schemas_are_provably_disjoint(&existing, &candidate);
+            match intersect(name, &mut existing, *candidate) {
+                Ok(()) => Some(existing),
+                Err(_) if disjoint => None,
+                Err(error) => return Err(error),
+            }
+        }
+    };
+    let result_is_open = merged_dynamic.is_some();
+    let mut merged_children = Vec::with_capacity(target_children.len() + children.len());
+    for child in core::mem::take(target_children) {
+        let required_property =
+            target_required.contains(&child.name) || required.contains(&child.name);
+        if let Some(index) = children
+            .iter()
+            .position(|candidate| candidate.name == child.name)
         {
-            intersect(name, existing, child)?;
-        } else {
-            target_children.push(child);
+            let candidate = children.remove(index);
+            if let Some(child) =
+                intersect_named_property(name, child, candidate, required_property, result_is_open)?
+            {
+                merged_children.push(child);
+            }
+        } else if let Some(candidate) = branch_additional.as_ref() {
+            let mut candidate = candidate.clone();
+            candidate.name = child.name.clone();
+            if let Some(child) =
+                intersect_named_property(name, child, candidate, required_property, result_is_open)?
+            {
+                merged_children.push(child);
+            }
+        } else if required_property {
+            return Err(unsupported_union(
+                name,
+                "allOf requires a property forbidden by a closed object branch",
+            ));
         }
     }
+    for child in children {
+        let required_property =
+            target_required.contains(&child.name) || required.contains(&child.name);
+        if let Some(candidate) = target_additional.as_ref() {
+            let mut candidate = candidate.clone();
+            candidate.name = child.name.clone();
+            if let Some(child) =
+                intersect_named_property(name, child, candidate, required_property, result_is_open)?
+            {
+                merged_children.push(child);
+            }
+        } else if required_property {
+            return Err(unsupported_union(
+                name,
+                "allOf requires a property forbidden by a closed object branch",
+            ));
+        }
+    }
+    *target_children = merged_children;
+    *target_dynamic = merged_dynamic;
+
     for field in required {
         if !target_required.contains(&field) {
             target_required.push(field);
         }
     }
 
-    match (target_dynamic.as_mut(), dynamic) {
-        // A closed branch makes the intersection closed under Ferrule's
-        // existing additionalProperties contract.
-        (None, _) | (Some(_), None) => *target_dynamic = None,
-        (Some(existing), Some(candidate)) => intersect(name, existing, *candidate)?,
-    }
     if !target.required_fields_are_valid() {
         return Err(unsupported_union(
             name,
@@ -507,6 +598,41 @@ fn merge_object(
         ));
     }
     Ok(())
+}
+
+fn intersect_named_property(
+    object_name: &str,
+    mut property: SchemaNode,
+    candidate: SchemaNode,
+    required: bool,
+    result_is_open: bool,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
+    let disjoint = schemas_are_provably_disjoint(&property, &candidate);
+    match intersect(object_name, &mut property, candidate) {
+        Ok(()) => Ok(Some(property)),
+        Err(_) if disjoint && !required && !result_is_open => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn schemas_are_provably_disjoint(left: &SchemaNode, right: &SchemaNode) -> bool {
+    if (left.nullable || left.container_nullable) && (right.nullable || right.container_nullable) {
+        return false;
+    }
+    if left.json_any || right.json_any {
+        return false;
+    }
+    if left.repeating != right.repeating {
+        return true;
+    }
+    match (&left.kind, &right.kind) {
+        (
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. },
+        ) => scalar_domain(left) & scalar_domain(right) == 0,
+        (SchemaKind::Group { .. }, SchemaKind::Group { .. }) => false,
+        _ => true,
+    }
 }
 
 fn is_unconstrained_branch(schema: &serde_json::Value) -> bool {
