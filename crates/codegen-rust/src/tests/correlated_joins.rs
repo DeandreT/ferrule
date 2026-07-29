@@ -26,6 +26,16 @@ fn project() -> Project {
     )
     .and_then(|plan| {
         plan.then(
+            MappingJoinSource::singleton(vec!["Region".into()]),
+            MappingJoinConditions::new(MappingJoinKey::new(
+                vec!["Catalog".into(), "Product".into()],
+                vec!["Region".into()],
+                Vec::new(),
+            )),
+        )
+    })
+    .and_then(|plan| {
+        plan.then(
             MappingJoinSource::new(vec!["Inventory".into(), "Stock".into()]),
             MappingJoinConditions::new(MappingJoinKey::new(
                 vec!["Catalog".into(), "Product".into()],
@@ -43,6 +53,7 @@ fn project() -> Project {
                     "Line",
                     vec![
                         SchemaNode::scalar("Sku", ScalarType::String),
+                        SchemaNode::scalar("Region", ScalarType::String),
                         SchemaNode::scalar("Quantity", ScalarType::Int),
                         SchemaNode::scalar("Separator", ScalarType::String),
                     ],
@@ -68,6 +79,7 @@ fn project() -> Project {
                                 SchemaNode::scalar("JoinPosition", ScalarType::Int),
                                 SchemaNode::scalar("ProductPosition", ScalarType::Int),
                                 SchemaNode::scalar("OuterQuantity", ScalarType::Int),
+                                SchemaNode::scalar("Region", ScalarType::String),
                                 SchemaNode::scalar("Warehouse", ScalarType::String),
                                 SchemaNode::group(
                                     "Details",
@@ -96,6 +108,7 @@ fn project() -> Project {
                             "Product",
                             vec![
                                 SchemaNode::scalar("Sku", ScalarType::String),
+                                SchemaNode::scalar("Region", ScalarType::String),
                                 SchemaNode::scalar("Price", ScalarType::Int),
                                 SchemaNode::scalar("Label", ScalarType::String),
                                 SchemaNode::scalar("Rank", ScalarType::Int),
@@ -255,6 +268,14 @@ fn project() -> Project {
                         path: vec!["Warehouse".into()],
                     },
                 ),
+                (
+                    18,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Region".into()],
+                        path: Vec::new(),
+                    },
+                ),
             ]),
         },
         root: Scope {
@@ -308,6 +329,10 @@ fn project() -> Project {
                             node: 1,
                         },
                         MappingBinding {
+                            target_field: "Region".into(),
+                            node: 18,
+                        },
+                        MappingBinding {
                             target_field: "Warehouse".into(),
                             node: 17,
                         },
@@ -355,26 +380,31 @@ fn source() -> Instance {
         repeated([
             group([
                 field("Sku", scalar(string("1"))),
+                field("Region", scalar(string("west"))),
                 field("Quantity", scalar(Value::Int(2))),
                 field("Separator", scalar(string("|"))),
             ]),
             group([
                 field("Sku", scalar(string("2"))),
+                field("Region", scalar(string("north"))),
                 field("Quantity", scalar(Value::Int(3))),
                 field("Separator", scalar(string("/"))),
             ]),
             group([
                 field("Sku", scalar(Value::Null)),
+                field("Region", scalar(string("west"))),
                 field("Quantity", scalar(Value::Int(4))),
                 field("Separator", scalar(string("-"))),
             ]),
             group([
                 field("Sku", scalar(Value::xml_nil())),
+                field("Region", scalar(string("west"))),
                 field("Quantity", scalar(Value::Int(5))),
                 field("Separator", scalar(string("-"))),
             ]),
             group([
                 field("Sku", scalar(string("9"))),
+                field("Region", scalar(string("west"))),
                 field("Quantity", scalar(Value::Int(6))),
                 field("Separator", scalar(string("-"))),
             ]),
@@ -388,30 +418,35 @@ fn catalog() -> Instance {
         repeated([
             group([
                 field("Sku", scalar(Value::Int(1))),
+                field("Region", scalar(string("west"))),
                 field("Price", scalar(Value::Int(10))),
                 field("Label", scalar(string("first"))),
                 field("Rank", scalar(Value::Int(10))),
             ]),
             group([
                 field("Sku", scalar(string("1"))),
+                field("Region", scalar(string("east"))),
                 field("Price", scalar(Value::Int(20))),
                 field("Label", scalar(string("second"))),
                 field("Rank", scalar(Value::Int(30))),
             ]),
             group([
                 field("Sku", scalar(string("2"))),
+                field("Region", scalar(string("north"))),
                 field("Price", scalar(Value::Int(5))),
                 field("Label", scalar(string("third"))),
                 field("Rank", scalar(Value::Int(5))),
             ]),
             group([
                 field("Sku", scalar(Value::Null)),
+                field("Region", scalar(string("west"))),
                 field("Price", scalar(Value::Int(100))),
                 field("Label", scalar(string("null"))),
                 field("Rank", scalar(Value::Int(99))),
             ]),
             group([
                 field("Sku", scalar(Value::xml_nil())),
+                field("Region", scalar(string("west"))),
                 field("Price", scalar(Value::Int(100))),
                 field("Label", scalar(string("xml-nil"))),
                 field("Rank", scalar(Value::Int(99))),
@@ -486,18 +521,18 @@ fn row(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Instance {
 
 fn main() {
     let source = group([field("Line", repeated([
-        row([("Sku", string("1")), ("Quantity", Value::Int(2)), ("Separator", string("|"))]),
-        row([("Sku", string("2")), ("Quantity", Value::Int(3)), ("Separator", string("/"))]),
-        row([("Sku", Value::Null), ("Quantity", Value::Int(4)), ("Separator", string("-"))]),
-        row([("Sku", Value::xml_nil()), ("Quantity", Value::Int(5)), ("Separator", string("-"))]),
-        row([("Sku", string("9")), ("Quantity", Value::Int(6)), ("Separator", string("-"))]),
+        row([("Sku", string("1")), ("Region", string("west")), ("Quantity", Value::Int(2)), ("Separator", string("|"))]),
+        row([("Sku", string("2")), ("Region", string("north")), ("Quantity", Value::Int(3)), ("Separator", string("/"))]),
+        row([("Sku", Value::Null), ("Region", string("west")), ("Quantity", Value::Int(4)), ("Separator", string("-"))]),
+        row([("Sku", Value::xml_nil()), ("Region", string("west")), ("Quantity", Value::Int(5)), ("Separator", string("-"))]),
+        row([("Sku", string("9")), ("Region", string("west")), ("Quantity", Value::Int(6)), ("Separator", string("-"))]),
     ]))]);
     let catalog = group([field("Product", repeated([
-        row([("Sku", Value::Int(1)), ("Price", Value::Int(10)), ("Label", string("first")), ("Rank", Value::Int(10))]),
-        row([("Sku", string("1")), ("Price", Value::Int(20)), ("Label", string("second")), ("Rank", Value::Int(30))]),
-        row([("Sku", string("2")), ("Price", Value::Int(5)), ("Label", string("third")), ("Rank", Value::Int(5))]),
-        row([("Sku", Value::Null), ("Price", Value::Int(100)), ("Label", string("null")), ("Rank", Value::Int(99))]),
-        row([("Sku", Value::xml_nil()), ("Price", Value::Int(100)), ("Label", string("xml-nil")), ("Rank", Value::Int(99))]),
+        row([("Sku", Value::Int(1)), ("Region", string("west")), ("Price", Value::Int(10)), ("Label", string("first")), ("Rank", Value::Int(10))]),
+        row([("Sku", string("1")), ("Region", string("east")), ("Price", Value::Int(20)), ("Label", string("second")), ("Rank", Value::Int(30))]),
+        row([("Sku", string("2")), ("Region", string("north")), ("Price", Value::Int(5)), ("Label", string("third")), ("Rank", Value::Int(5))]),
+        row([("Sku", Value::Null), ("Region", string("west")), ("Price", Value::Int(100)), ("Label", string("null")), ("Rank", Value::Int(99))]),
+        row([("Sku", Value::xml_nil()), ("Region", string("west")), ("Price", Value::Int(100)), ("Label", string("xml-nil")), ("Rank", Value::Int(99))]),
     ]))]);
     let inventory = group([field("Stock", repeated([
         row([("Sku", string("1")), ("Warehouse", string("east"))]),

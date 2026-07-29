@@ -177,6 +177,16 @@ fn correlated_join_aggregate_program() -> Program {
         )
         .and_then(|plan| {
             plan.then(
+                JoinSource::singleton(vec!["Region".into()]),
+                JoinConditions::new(JoinKey::new(
+                    vec!["Catalog".into(), "Product".into()],
+                    vec!["Region".into()],
+                    Vec::new(),
+                )),
+            )
+        })
+        .and_then(|plan| {
+            plan.then(
                 JoinSource::new(vec!["Inventory".into(), "Stock".into()]),
                 JoinConditions::new(JoinKey::new(
                     vec!["Catalog".into(), "Product".into()],
@@ -195,6 +205,7 @@ fn correlated_join_aggregate_program() -> Program {
                     "Line",
                     vec![
                         SchemaNode::scalar("Sku", ScalarType::String),
+                        SchemaNode::scalar("Region", ScalarType::String),
                         SchemaNode::scalar("Quantity", ScalarType::Int),
                     ],
                 )
@@ -211,6 +222,7 @@ fn correlated_join_aggregate_program() -> Program {
                             "Product",
                             vec![
                                 SchemaNode::scalar("Sku", ScalarType::String),
+                                SchemaNode::scalar("Region", ScalarType::String),
                                 SchemaNode::scalar("Price", ScalarType::Int),
                             ],
                         )
@@ -430,7 +442,7 @@ fn validates_only_bounded_correlated_join_aggregates() {
     let program = correlated_join_aggregate_program();
     assert!(matches!(
         &program.expressions[1].expression,
-        Expression::JoinAggregate { join, .. } if join.plan().sources().count() == 3
+        Expression::JoinAggregate { join, .. } if join.plan().sources().count() == 4
     ));
     assert_eq!(validate_program(&program), Ok(()));
 
@@ -517,6 +529,30 @@ fn validates_only_bounded_correlated_join_aggregates() {
 }
 
 #[test]
+fn validates_correlated_join_aggregate_with_only_active_singletons() {
+    let mut program = correlated_join_aggregate_program();
+    program.expressions = vec![ExpressionNode {
+        id: 21,
+        expression: Expression::JoinAggregate {
+            function: AggregateFunction::Count,
+            join: InnerJoin::new(
+                JoinId::new(8),
+                JoinPlan::new(
+                    JoinSource::singleton(vec!["Sku".into()]),
+                    JoinSource::singleton(vec!["Region".into()]),
+                    JoinConditions::new(JoinKey::new(vec!["Sku".into()], Vec::new(), Vec::new())),
+                )
+                .expect("active-singleton join plan"),
+            ),
+            expression: None,
+            arg: None,
+        },
+    }];
+
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
 fn validates_bounded_correlated_join_scopes_with_tuple_controls_and_children() {
     let program = correlated_join_scope_program();
     assert_eq!(
@@ -525,7 +561,7 @@ fn validates_bounded_correlated_join_scopes_with_tuple_controls_and_children() {
             .as_ref()
             .and_then(IterationPlan::inner_join)
             .map(|join| join.plan().sources().count()),
-        Some(3)
+        Some(4)
     );
     assert_eq!(validate_program(&program), Ok(()));
 

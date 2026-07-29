@@ -203,15 +203,16 @@ The current portable model includes:
 - ordered XML mixed-content reconstruction with graph-computed direct-child
   replacements evaluated in each original occurrence context
 - root-context static inner joins across two or more primary or named-source
-  collections plus bounded per-item scopes joining one active singleton scalar
-  to one or more independent primary/named repeating sources, with left-deep
-  composite equality, scalar coercion, stable duplicate-preserving order,
-  Null/XML-nil exclusion, exact joined fields, raw source positions, compacted
-  tuple positions, ordinary scope controls, and nested target construction
+  collections plus bounded per-item scopes joining one or more active singleton
+  scalars, optionally with independent primary/named repeating sources, with
+  left-deep composite equality, scalar coercion, stable duplicate-preserving
+  order, Null/XML-nil exclusion, exact joined fields, raw source positions,
+  compacted tuple positions, ordinary scope controls, and nested target
+  construction
 - root-context inner-join aggregates plus bounded per-item correlated reductions
-  joining one active singleton scalar to one or more independent primary/named
-  repeating sources, with direct tuple counts, computed per-tuple values, and
-  parent-context scalar arguments
+  joining one or more active singleton scalars, optionally with independent
+  primary/named repeating sources, with direct tuple counts, computed per-tuple
+  values, and parent-context scalar arguments
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, scalar-union, and exact
   whole-current-group target construction with exact numeric target adaptation
@@ -280,8 +281,8 @@ expose materially different regex dialects and Unicode behavior, so patterns
 outside the shared non-backtracking dialect can produce a backend-specific
 invalid-pattern error; exact cross-backend support needs a Ferrule-owned
 matcher. Correlated join scopes and joined-tuple aggregates that reach
-ancestor-relative repeating sources or require more than one active singleton
-remain interpreter-only; their ownership and parent-context rules need a
+ancestor-relative repeating sources or singleton sources outside the current
+item remain interpreter-only; their ownership and parent-context rules need a
 broader portable join model. Code generation is
 expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
