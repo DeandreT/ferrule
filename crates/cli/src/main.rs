@@ -44,6 +44,9 @@ enum Command {
         /// Output instance; defaults to the project's target_path.
         #[arg(long)]
         output: Option<PathBuf>,
+        /// Evaluate and write only the primary target or one named target.
+        #[arg(long, value_name = "primary|NAME")]
+        target: Option<String>,
         /// Named host scalar in NAME=VALUE form. Repeat for multiple
         /// parameters; declared mapping types apply during execution.
         #[arg(long = "param", value_name = "NAME=VALUE")]
@@ -239,14 +242,23 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             project,
             input,
             output,
+            target,
             parameters,
         } => {
             let parameters = parse_runtime_parameters(&parameters)?;
+            let target = target.as_deref().map(|target| {
+                if target == "primary" {
+                    cli::TargetSelection::Primary
+                } else {
+                    cli::TargetSelection::Named(target)
+                }
+            });
             let outcome = cli::run_project_with_options(
                 &project,
                 &cli::RunOptions {
                     input_path: input.as_deref(),
                     output_path: output.as_deref(),
+                    target,
                     runtime_parameters: Some(&parameters),
                     trace_sink: None,
                 },

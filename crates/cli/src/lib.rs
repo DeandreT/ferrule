@@ -33,7 +33,7 @@ mod output_documents;
 mod payload;
 
 pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
-pub use engine::{TraceEvent, TracePosition, TraceSink};
+pub use engine::{TargetSelection, TraceEvent, TracePosition, TraceSink};
 use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 pub use payload::{
     MAX_PAYLOAD_ARTIFACTS, MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_NAME_BYTES,
@@ -69,6 +69,7 @@ pub struct WrittenOutput {
 pub struct RunOptions<'a> {
     pub input_path: Option<&'a Path>,
     pub output_path: Option<&'a Path>,
+    pub target: Option<TargetSelection<'a>>,
     pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
     pub trace_sink: Option<&'a dyn TraceSink>,
 }
@@ -85,6 +86,11 @@ impl<'a> RunOptions<'a> {
 
     pub fn with_output_path(mut self, path: &'a Path) -> Self {
         self.output_path = Some(path);
+        self
+    }
+
+    pub fn with_target(mut self, target: TargetSelection<'a>) -> Self {
+        self.target = Some(target);
         self
     }
 
@@ -217,52 +223,11 @@ pub fn run_project_value_with_options(
         "source_path",
         true,
     )?;
-    let primary_destination = if project.root.output_path().is_some() {
-        OutputDestination::DynamicBase(options.output_path.map(Path::to_path_buf).unwrap_or_else(
-            || {
-                project_path
-                    .parent()
-                    .unwrap_or(Path::new("."))
-                    .to_path_buf()
-            },
-        ))
-    } else {
-        OutputDestination::Static(resolve_run_path(
-            project_path,
-            options.output_path,
-            project.target_path.as_deref(),
-            "output",
-            "target_path",
-            false,
-        )?)
-    };
-    let output_path = match &primary_destination {
-        OutputDestination::Static(path) | OutputDestination::DynamicBase(path) => path.clone(),
-    };
-    let extra_output_paths = project
-        .extra_targets
-        .iter()
-        .map(|target| {
-            if target.root.output_path().is_some() {
-                return Ok(OutputDestination::DynamicBase(
-                    project_path
-                        .parent()
-                        .unwrap_or(Path::new("."))
-                        .to_path_buf(),
-                ));
-            }
-            let stored = target
-                .path
-                .as_deref()
-                .filter(|path| !path.trim().is_empty())
-                .with_context(|| {
-                    format!("extra target `{}` has no stored output path", target.name)
-                })?;
-            resolve_stored_path(project_path, stored, false)
-                .map(OutputDestination::Static)
-                .with_context(|| format!("resolving extra target `{}` output", target.name))
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
+    let targets = plan_project_targets(project, project_path, options.output_path, options.target)?;
+    let output_path = targets
+        .first()
+        .map(|target| target.destination.path().to_path_buf())
+        .context("project run selected no targets")?;
 
     let source_instance = read_instance(&input_path, &project.source, &project.source_options)?;
 
@@ -300,70 +265,256 @@ pub fn run_project_value_with_options(
     if let Some(trace_sink) = options.trace_sink {
         execution = execution.with_trace_sink(trace_sink);
     }
-    let outputs = engine::run_outputs_with_sources_and_context(
-        project,
-        &source_instance,
-        extras,
-        &execution,
-    )?;
+    let written = if let Some(selection) = options.target {
+        let output = engine::run_selected_target_with_sources_and_context(
+            project,
+            &source_instance,
+            extras,
+            &execution,
+            selection,
+        )?;
+        write_selected_target(&targets[0], &output, &current_datetime)?
+    } else {
+        let outputs = engine::run_outputs_with_sources_and_context(
+            project,
+            &source_instance,
+            extras,
+            &execution,
+        )?;
+        write_all_targets(&targets, &outputs, &current_datetime)?
+    };
 
-    let engine::ExecutionOutputs {
-        primary,
-        extras: target_outputs,
-    } = outputs;
-    if target_outputs.len() != project.extra_targets.len() {
-        bail!("engine returned an unexpected number of additional target values");
+    Ok(RunOutcome {
+        records_written: written.records,
+        input_path,
+        output_path,
+        primary_outputs: written.primary_outputs,
+        extra_outputs: written.extra_outputs,
+        artifacts: written.artifacts,
+    })
+}
+
+struct PlannedProjectTarget<'a> {
+    name: &'a str,
+    schema: &'a SchemaNode,
+    options: &'a FormatOptions,
+    destination: OutputDestination,
+    primary: bool,
+}
+
+struct WrittenTargets {
+    records: usize,
+    primary_outputs: Vec<WrittenOutput>,
+    extra_outputs: Vec<WrittenOutput>,
+    artifacts: Vec<WrittenOutput>,
+}
+
+impl OutputDestination {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Static(path) | Self::DynamicBase(path) => path,
+        }
     }
+}
 
-    let mut target_writes = Vec::with_capacity(1 + project.extra_targets.len());
-    target_writes.push(TargetOutput {
-        destination: &primary_destination,
+fn plan_project_targets<'a>(
+    project: &'a mapping::Project,
+    project_path: &Path,
+    output_path: Option<&Path>,
+    selection: Option<TargetSelection<'_>>,
+) -> anyhow::Result<Vec<PlannedProjectTarget<'a>>> {
+    match selection {
+        None => {
+            let mut targets = Vec::with_capacity(1 + project.extra_targets.len());
+            targets.push(plan_primary_target(project, project_path, output_path)?);
+            for target in &project.extra_targets {
+                targets.push(plan_named_target(target, project_path, None)?);
+            }
+            Ok(targets)
+        }
+        Some(TargetSelection::Primary) => Ok(vec![plan_primary_target(
+            project,
+            project_path,
+            output_path,
+        )?]),
+        Some(TargetSelection::Named(name)) => {
+            let mut matches = project
+                .extra_targets
+                .iter()
+                .filter(|target| target.name == name);
+            let target = matches
+                .next()
+                .ok_or_else(|| engine::EngineError::UnknownTarget {
+                    name: name.to_string(),
+                })?;
+            if matches.next().is_some() {
+                return Err(engine::EngineError::AmbiguousTarget {
+                    name: name.to_string(),
+                }
+                .into());
+            }
+            Ok(vec![plan_named_target(target, project_path, output_path)?])
+        }
+    }
+}
+
+fn plan_primary_target<'a>(
+    project: &'a mapping::Project,
+    project_path: &Path,
+    output_path: Option<&Path>,
+) -> anyhow::Result<PlannedProjectTarget<'a>> {
+    let destination = if project.root.output_path().is_some() {
+        OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
+            project_path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_path_buf()
+        }))
+    } else {
+        OutputDestination::Static(resolve_run_path(
+            project_path,
+            output_path,
+            project.target_path.as_deref(),
+            "output",
+            "target_path",
+            false,
+        )?)
+    };
+    Ok(PlannedProjectTarget {
         name: &project.target.name,
         schema: &project.target,
-        instance: &primary,
         options: &project.target_options,
-        current_datetime: &current_datetime,
-        additional: false,
-    });
-    for ((target, destination), output) in project
-        .extra_targets
-        .iter()
-        .zip(&extra_output_paths)
-        .zip(&target_outputs)
-    {
-        target_writes.push(TargetOutput {
-            destination,
-            name: &output.name,
-            schema: &target.schema,
-            instance: &output.instance,
-            options: &target.options,
-            current_datetime: &current_datetime,
-            additional: true,
-        });
+        destination,
+        primary: true,
+    })
+}
+
+fn plan_named_target<'a>(
+    target: &'a mapping::NamedTarget,
+    project_path: &Path,
+    output_path: Option<&Path>,
+) -> anyhow::Result<PlannedProjectTarget<'a>> {
+    let destination = if target.root.output_path().is_some() {
+        OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
+            project_path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_path_buf()
+        }))
+    } else {
+        let path = match output_path {
+            Some(path) => path.to_path_buf(),
+            None => {
+                let stored = target
+                    .path
+                    .as_deref()
+                    .filter(|path| !path.trim().is_empty())
+                    .with_context(|| {
+                        format!("extra target `{}` has no stored output path", target.name)
+                    })?;
+                resolve_stored_path(project_path, stored, false)
+                    .with_context(|| format!("resolving extra target `{}` output", target.name))?
+            }
+        };
+        OutputDestination::Static(path)
+    };
+    Ok(PlannedProjectTarget {
+        name: &target.name,
+        schema: &target.schema,
+        options: &target.options,
+        destination,
+        primary: false,
+    })
+}
+
+fn write_all_targets(
+    targets: &[PlannedProjectTarget<'_>],
+    outputs: &engine::ExecutionOutputs,
+    current_datetime: &str,
+) -> anyhow::Result<WrittenTargets> {
+    if outputs.extras.len() + 1 != targets.len() {
+        bail!("engine returned an unexpected number of target values");
     }
-    let mut written = write_target_outputs(&target_writes)?.into_iter();
+    let mut writes = Vec::with_capacity(targets.len());
+    writes.push(target_write(
+        &targets[0],
+        &outputs.primary,
+        current_datetime,
+    ));
+    for (target, output) in targets.iter().skip(1).zip(&outputs.extras) {
+        writes.push(target_write(target, &output.instance, current_datetime));
+    }
+    let mut written = write_target_outputs(&writes)?.into_iter();
     let primary_result = written
         .next()
         .context("output batch did not return a primary target result")?;
     let row_count = primary_result.records_written;
     let mut primary_outputs = primary_result.outputs;
     let mut artifacts = primary_outputs.clone();
-    if matches!(primary_destination, OutputDestination::Static(_)) {
+    if matches!(targets[0].destination, OutputDestination::Static(_)) {
         primary_outputs.clear();
     }
     let extra_outputs = written
         .flat_map(|target| target.outputs)
         .collect::<Vec<_>>();
     artifacts.extend(extra_outputs.iter().cloned());
-
-    Ok(RunOutcome {
-        records_written: row_count,
-        input_path,
-        output_path,
+    Ok(WrittenTargets {
+        records: row_count,
         primary_outputs,
         extra_outputs,
         artifacts,
     })
+}
+
+fn write_selected_target(
+    target: &PlannedProjectTarget<'_>,
+    output: &engine::SelectedTargetOutput,
+    current_datetime: &str,
+) -> anyhow::Result<WrittenTargets> {
+    let instance = match (target.primary, output) {
+        (true, engine::SelectedTargetOutput::Primary(instance)) => instance,
+        (false, engine::SelectedTargetOutput::Named(output)) if output.name == target.name => {
+            &output.instance
+        }
+        _ => bail!("engine returned a different target than requested"),
+    };
+    let mut written =
+        write_target_outputs(&[target_write(target, instance, current_datetime)])?.into_iter();
+    let result = written
+        .next()
+        .context("output batch did not return the selected target result")?;
+    let records_written = result.records_written;
+    let artifacts = result.outputs;
+    let (primary_outputs, extra_outputs) = if target.primary {
+        let dynamic = matches!(target.destination, OutputDestination::DynamicBase(_))
+            .then(|| artifacts.clone())
+            .unwrap_or_default();
+        (dynamic, Vec::new())
+    } else {
+        (Vec::new(), artifacts.clone())
+    };
+    Ok(WrittenTargets {
+        records: records_written,
+        primary_outputs,
+        extra_outputs,
+        artifacts,
+    })
+}
+
+fn target_write<'a>(
+    target: &'a PlannedProjectTarget<'_>,
+    instance: &'a Instance,
+    current_datetime: &'a str,
+) -> TargetOutput<'a> {
+    TargetOutput {
+        destination: &target.destination,
+        name: target.name,
+        schema: target.schema,
+        instance,
+        options: target.options,
+        current_datetime,
+        additional: !target.primary,
+    }
 }
 
 fn absolute_mapping_path(project_path: &Path) -> anyhow::Result<Cow<'_, Path>> {
