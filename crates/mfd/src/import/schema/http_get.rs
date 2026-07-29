@@ -6,16 +6,31 @@ use mapping::{
     FormatOptions, HttpGetOptions, HttpTimeoutSeconds,
 };
 
+use crate::resource::ResourceResolver;
+
 use super::{
     ComponentFormat, SchemaComponent, collect_entry_ports, collect_json_ports, entry_key_sets,
     entry_tree_schema, is_default_output, json_entry_value_schema, merge_generic_xml_entries,
-    normalize_xml_text_ports, read_xml_schema_file, record_entry_keys,
-    resolve_xml_schema_reference,
+    normalize_xml_text_ports, read_xml_schema_file, record_entry_keys, resolve_resource_reference,
 };
 
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+    warnings: &mut Vec<String>,
+) -> Result<SchemaComponent, String> {
+    read_resolved(
+        component,
+        resources.mapping_path(),
+        Some(resources),
+        warnings,
+    )
+}
+
+fn read_resolved(
+    component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     let call = component
@@ -25,10 +40,10 @@ pub(super) fn read(
         .ok_or_else(|| "HTTP component has no call metadata".to_string())?;
     match call.attribute("httpmethod") {
         Some(method) if method.eq_ignore_ascii_case("GET") => {
-            read_get(component, mfd_path, warnings)
+            read_get(component, mfd_path, resources, warnings)
         }
         Some(method) if method.eq_ignore_ascii_case("POST") => {
-            read_post(component, mfd_path, warnings)
+            read_post(component, mfd_path, resources, warnings)
         }
         _ => Err("only HTTP GET and captured-response POST calls are supported".to_string()),
     }
@@ -38,6 +53,7 @@ pub(super) fn read(
 fn read_get(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     let name = component.attribute("name").unwrap_or_default().to_string();
@@ -143,11 +159,12 @@ fn read_get(
         .and_then(|root| root.rsplit('}').next())
         .filter(|root| !root.is_empty())
         .unwrap_or_else(|| payload.attribute("name").unwrap_or("root"));
-    let schema = resolve_xml_schema_reference(mfd_path, schema_file)
-        .map_err(|error| error.to_string())
-        .and_then(|schema_path| {
-            read_xml_schema_file(&schema_path, Some(root_name)).map_err(|error| error.to_string())
-        });
+    let schema =
+        resolve_resource_reference(mfd_path, resources, schema_file, "HTTP response XML Schema")
+            .and_then(|schema_path| {
+                read_xml_schema_file(&schema_path, Some(root_name))
+                    .map_err(|error| error.to_string())
+            });
     let mut schema = match schema {
         Ok(schema) => schema,
         Err(error) => {
@@ -210,6 +227,7 @@ fn read_get(
 fn read_post(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     let name = component.attribute("name").unwrap_or_default().to_string();
@@ -300,7 +318,7 @@ fn read_post(
             (
                 Some(ExternalPayloadFormat::Json),
                 Some(read_json_request_schema(
-                    &name, document, payload, mfd_path, warnings,
+                    &name, document, payload, mfd_path, resources, warnings,
                 )),
             )
         }
@@ -390,16 +408,42 @@ fn read_json_request_schema(
     document: &roxmltree::Node<'_, '_>,
     payload: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> ir::SchemaNode {
     document
         .attribute("schemafile")
         .and_then(|relative| {
-            let path = mfd_path
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .join(relative);
-            match format_json::json_schema::import(&path) {
+            let resolved = match resources {
+                Some(resources) => resources.resolve_json_schema(relative),
+                None => resolve_resource_reference(
+                    mfd_path,
+                    None,
+                    relative,
+                    "HTTP request JSON Schema",
+                )
+                .map(|path| {
+                    let root = path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .to_path_buf();
+                    (path, root)
+                }),
+            };
+            let (path, root) = match resolved {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    warnings.push(format!(
+                        "HTTP component `{component_name}`: could not read request schema `{relative}` ({error}); falling back to the entry tree"
+                    ));
+                    return None;
+                }
+            };
+            let imported = match resources {
+                Some(_) => format_json::json_schema::import_with_root(&path, &root),
+                None => format_json::json_schema::import(&path),
+            };
+            match imported {
                 Ok(schema) => Some(schema),
                 Err(error) => {
                     warnings.push(format!(
@@ -444,9 +488,39 @@ fn valid_http_url(url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
 
-    use super::{read, valid_http_url};
+    use ir::{ScalarType, SchemaKind};
+
+    use super::{read, read_resolved, valid_http_url};
+    use crate::resource::ResourceResolver;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Result<Self, std::io::Error> {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "ferrule-mfd-http-package-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+            std::fs::create_dir_all(&path)?;
+            Ok(Self(path))
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     fn component(method: &str, request_entry: &str, response_extra: &str) -> String {
         format!(
@@ -473,9 +547,10 @@ mod tests {
 
     fn rejection(xml: &str) -> String {
         let document = roxmltree::Document::parse(xml).unwrap();
-        match read(
+        match read_resolved(
             &document.root_element(),
             Path::new("/tmp/mapping.mfd"),
+            None,
             &mut Vec::new(),
         ) {
             Ok(_) => panic!("component should be rejected"),
@@ -530,9 +605,10 @@ mod tests {
           </data>
         </component>"#;
         let document = roxmltree::Document::parse(xml).unwrap();
-        let boundary = read(
+        let boundary = read_resolved(
             &document.root_element(),
             Path::new("/tmp/mapping.mfd"),
+            None,
             &mut Vec::new(),
         )
         .unwrap();
@@ -542,5 +618,162 @@ mod tests {
         let encoded = serde_json::to_string(&boundary.options).unwrap();
         assert!(encoded.contains("Token"));
         assert!(!encoded.contains("must-not-be-retained"));
+    }
+
+    #[test]
+    fn safe_parent_response_schema_resolves_after_package_relocation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let original = temp.0.join("original");
+        let maps = original.join("maps");
+        let schemas = original.join("resources");
+        std::fs::create_dir_all(&maps)?;
+        std::fs::create_dir_all(&schemas)?;
+        std::fs::write(maps.join("mapping.mfd"), "<mapping/>")?;
+        std::fs::write(
+            schemas.join("Feed.XSD"),
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Feed"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:int" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+        )?;
+
+        let relocated = temp.0.join("relocated");
+        std::fs::rename(&original, &relocated)?;
+        let mapping = relocated.join("maps/mapping.mfd");
+        let resolver = ResourceResolver::new(&mapping, Some(&relocated))?;
+        let xml = component("GET", "", "").replace("missing.xsd", r"..\resources\feed.xsd");
+        let document = roxmltree::Document::parse(&xml)?;
+        let mut warnings = Vec::new();
+
+        let imported = read(&document.root_element(), &resolver, &mut warnings)
+            .map_err(std::io::Error::other)?;
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let value = imported
+            .schema
+            .child("Value")
+            .ok_or("HTTP response schema lost Value")?;
+        assert!(value.repeating);
+        assert!(matches!(
+            value.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
+            }
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn post_request_schema_keeps_transitive_references_inside_package()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let package = TempDir::new()?;
+        let maps = package.0.join("maps");
+        let schemas = package.0.join("resources");
+        let definitions = schemas.join("definitions");
+        std::fs::create_dir_all(&maps)?;
+        std::fs::create_dir_all(&definitions)?;
+        let mapping = maps.join("mapping.mfd");
+        std::fs::write(&mapping, "<mapping/>")?;
+        std::fs::write(
+            schemas.join("request.schema.json"),
+            r#"{"$ref":"definitions/request.json"}"#,
+        )?;
+        std::fs::write(
+            definitions.join("request.json"),
+            r#"{"type":"object","properties":{"query":{"type":"integer"}}}"#,
+        )?;
+        let resolver = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let xml = r#"<component name="post" library="webservice" kind="20">
+          <data>
+            <root><entry name="HTTPMessage"><entry name="HTTPBody">
+              <entry name="document" type="doc-json">
+                <document schemafile="../resources/request.schema.json" encoding="UTF-8"/>
+                <entry name="root"><entry name="object">
+                  <entry name="query" type="json-property"><entry name="integer" inpkey="3"/></entry>
+                </entry></entry>
+              </entry>
+            </entry></entry></root>
+            <root rootindex="1"><entry name="HTTPMessage"><entry name="HTTPBody">
+              <entry name="document" type="doc-json"><document encoding="UTF-8"/>
+                <entry name="root"><entry name="object">
+                  <entry name="answer" type="json-property"><entry name="string" outkey="10"/></entry>
+                </entry></entry>
+              </entry>
+            </entry></entry></root>
+            <wsdl kind="call" sourceMode="manual" url="https://example.test/api"
+              timeout="20" httpmethod="POST"/>
+          </data>
+        </component>"#;
+        let document = roxmltree::Document::parse(xml)?;
+        let mut warnings = Vec::new();
+
+        let imported = read(&document.root_element(), &resolver, &mut warnings)
+            .map_err(std::io::Error::other)?;
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let boundary = imported
+            .options
+            .external_source
+            .as_ref()
+            .ok_or("HTTP POST lost its external source metadata")?;
+        let mapping::ExternalSourceOrigin::HttpPost {
+            request_schema: Some(request_schema),
+            ..
+        } = boundary.origin()
+        else {
+            return Err("HTTP POST lost its request schema".into());
+        };
+        let query = request_schema
+            .child("query")
+            .ok_or("HTTP request schema lost query")?;
+        assert!(matches!(
+            query.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
+            }
+        ));
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn response_schema_symlink_escape_falls_back_with_a_package_warning()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::symlink;
+
+        let package = TempDir::new()?;
+        let outside = TempDir::new()?;
+        let maps = package.0.join("maps");
+        let schemas = package.0.join("resources");
+        std::fs::create_dir_all(&maps)?;
+        std::fs::create_dir_all(&schemas)?;
+        let mapping = maps.join("mapping.mfd");
+        std::fs::write(&mapping, "<mapping/>")?;
+        let external = outside.0.join("feed.xsd");
+        std::fs::write(
+            &external,
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Feed"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:int" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+        )?;
+        symlink(&external, schemas.join("feed.xsd"))?;
+        let resolver = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let xml = component("GET", "", "").replace("missing.xsd", "../resources/feed.xsd");
+        let document = roxmltree::Document::parse(&xml)?;
+        let mut warnings = Vec::new();
+
+        let imported = read(&document.root_element(), &resolver, &mut warnings)
+            .map_err(std::io::Error::other)?;
+
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings[0].contains("resolves outside package root"));
+        let value = imported
+            .schema
+            .child("Value")
+            .ok_or("HTTP fallback schema lost Value")?;
+        assert!(!value.repeating);
+        assert!(matches!(
+            value.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::String
+            }
+        ));
+        Ok(())
     }
 }

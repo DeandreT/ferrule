@@ -115,18 +115,18 @@ pub(super) fn read_flextext_component(
 
 pub(super) fn read_http_get_component(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
-    http_get::read(component, mfd_path, warnings)
+    http_get::read(component, resources, warnings)
 }
 
 pub(super) fn read_wsdl_component(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
-    wsdl::read(component, mfd_path, warnings)
+    wsdl::read(component, resources, warnings)
 }
 
 pub(super) fn refine_wsdl_target_schemas(
@@ -139,10 +139,10 @@ pub(super) fn refine_wsdl_target_schemas(
 
 pub(super) fn read_protobuf_component(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
-    protobuf::read(component, mfd_path, warnings)
+    protobuf::read(component, resources, warnings)
 }
 
 pub(super) fn read_pdf_component(
