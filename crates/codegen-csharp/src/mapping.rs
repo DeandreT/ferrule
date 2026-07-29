@@ -1522,16 +1522,52 @@ fn render_delimited_text_field(
     input: &str,
     output: &mut String,
 ) {
-    output.push_str("global::Ferrule.Runtime.FerruleDelimitedText.ParseField(");
-    output.push_str(input);
-    output.push_str(", ");
-    output.push_str(&literal::string(parser.field_separator()));
-    output.push_str(", ");
-    output.push_str(&literal::string(parser.record_separator()));
-    output.push_str(", ");
-    output.push_str(&literal::string(parser.quote()));
-    output.push_str(", ");
-    output.push_str(&literal::string(parser.escape()));
+    match parser.profile() {
+        codegen::FlexTextFieldProfile::Delimited {
+            field_separator,
+            record_separator,
+            quote,
+            escape,
+        } => {
+            output.push_str("global::Ferrule.Runtime.FerruleDelimitedText.ParseField(");
+            output.push_str(input);
+            output.push_str(", ");
+            output.push_str(&literal::string(field_separator));
+            output.push_str(", ");
+            output.push_str(&literal::string(record_separator));
+            output.push_str(", ");
+            output.push_str(&literal::string(quote));
+            output.push_str(", ");
+            output.push_str(&literal::string(escape));
+        }
+        codegen::FlexTextFieldProfile::FixedWidth {
+            widths,
+            fill_char,
+            record_delimiters,
+            treat_empty_as_absent,
+        } => {
+            output.push_str("global::Ferrule.Runtime.FerruleDelimitedText.ParseFixedWidthField(");
+            output.push_str(input);
+            output.push_str(", ");
+            output.push_str(&literal::string(&fill_char.to_string()));
+            output.push_str(", ");
+            output.push_str(if *record_delimiters { "true" } else { "false" });
+            output.push_str(", ");
+            output.push_str(if *treat_empty_as_absent {
+                "true"
+            } else {
+                "false"
+            });
+            output.push_str(", new uint[] { ");
+            for (index, width) in widths.iter().enumerate() {
+                if index != 0 {
+                    output.push_str(", ");
+                }
+                output.push_str(&format!("{width}U"));
+            }
+            output.push_str(" }");
+        }
+    }
     output.push_str(", new global::Ferrule.Runtime.FerruleScalarType[] { ");
     for (index, field) in parser.fields().iter().enumerate() {
         if index != 0 {
