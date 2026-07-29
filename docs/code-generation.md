@@ -205,15 +205,17 @@ The current portable model includes:
 - root-context static inner joins across two or more primary or named-source
   collections plus bounded per-item scopes anchored by one or more current-item
   singleton scalars and optionally augmented with independent primary/named
-  singleton scalars and repeating sources, with left-deep composite equality,
+  singleton scalars and repeating sources or direct sibling sources from the
+  immediately enclosing repeated record, with left-deep composite equality,
   scalar coercion, stable duplicate-preserving order, Null/XML-nil exclusion,
   exact joined fields, raw source positions, compacted tuple positions,
   ordinary scope controls, and nested target construction
 - root-context inner-join aggregates plus bounded per-item correlated reductions
   anchored by one or more current-item singleton scalars and optionally
   augmented with independent primary/named singleton scalars and repeating
-  sources, with direct tuple counts, computed per-tuple values, and
-  parent-context scalar arguments
+  sources or direct sibling sources from the immediately enclosing repeated
+  record, with direct tuple counts, computed per-tuple values, and parent-context
+  scalar arguments
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, scalar-union, and exact
   whole-current-group target construction with exact numeric target adaptation
@@ -282,9 +284,10 @@ expose materially different regex dialects and Unicode behavior, so patterns
 outside the shared non-backtracking dialect can produce a backend-specific
 invalid-pattern error; exact cross-backend support needs a Ferrule-owned
 matcher. Correlated join scopes and joined-tuple aggregates that reach
-ancestor-relative repeating or singleton sources remain interpreter-only; their
-ownership and parent-context rules need a broader portable join model. Code generation is
-expanding incrementally toward interpreter parity; see the
+sources more than one runtime frame above the current item remain
+interpreter-only; their ownership and parent-context rules need a broader
+portable join model. Code generation is expanding incrementally toward
+interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
 ## Output Safety
