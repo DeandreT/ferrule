@@ -181,7 +181,12 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         .options
         .edi_config_reference
         .as_deref()
-        .map(|config| format!(" config=\"{}\"", xml_escape(config)))
+        .map(|config| {
+            format!(
+                " config=\"{}\" ferrule-unresolved-config=\"1\"",
+                xml_escape(config)
+            )
+        })
         .unwrap_or_default();
     let mut out = String::new();
     let _ = write!(

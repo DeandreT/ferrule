@@ -71,10 +71,13 @@ fn unresolved_edi_record_parameter_ports_survive_export_and_reimport() -> Result
         mfd::export(&imported.project, &roundtrip)?.is_empty(),
         "the enriched opaque ports must make every connection exportable"
     );
+    assert!(
+        std::fs::read_to_string(&roundtrip)?.contains("ferrule-unresolved-config=\"1\""),
+        "the canonical design must retain typed unresolved-resource provenance"
+    );
 
     let reimported = mfd::import(&roundtrip)?;
-    assert_eq!(reimported.warnings.len(), 1, "{:?}", reimported.warnings);
-    assert!(reimported.warnings[0].contains("could not compile external configuration"));
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert_eq!(reimported.project.runtime_dependencies().len(), 1);
     assert_eq!(
         reimported
@@ -96,6 +99,36 @@ fn unresolved_edi_record_parameter_ports_survive_export_and_reimport() -> Result
         )?
         .is_empty()
     );
+    Ok(())
+}
+
+#[test]
+fn malformed_unresolved_config_metadata_warns_and_resolves_normally() -> Result<(), Box<dyn Error>>
+{
+    let directory = TempDir::new()?;
+    write_fixture(&directory.0)?;
+    let path = directory.0.join("mapping.mfd");
+    let design = std::fs::read_to_string(&path)?.replace(
+        "config=\"Unavailable/Envelope.Config\"",
+        "config=\"Unavailable/Envelope.Config\" ferrule-unresolved-config=\"maybe\"",
+    );
+    std::fs::write(&path, design)?;
+
+    let imported = mfd::import(&path)?;
+    assert_eq!(imported.warnings.len(), 2, "{:?}", imported.warnings);
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("invalid ferrule-unresolved-config metadata"))
+    );
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("could not compile external configuration"))
+    );
+    assert_eq!(imported.project.runtime_dependencies().len(), 1);
     Ok(())
 }
 
