@@ -57,6 +57,12 @@ pub enum JsonFormatError {
         expected: String,
         got: String,
     },
+    #[error("`{name}` requires numeric range {range}, got {got}")]
+    RangeMismatch {
+        name: String,
+        range: String,
+        got: String,
+    },
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
@@ -177,6 +183,7 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
         SchemaKind::Scalar { ty } => {
             let parsed = read_scalar(value, *ty, schema.nullable, &schema.name)?;
             json_schema::constraints::validate_json(schema, value)?;
+            json_schema::ranges::validate_json(schema, value)?;
             Ok(Instance::Scalar(parsed))
         }
         SchemaKind::ScalarUnion { types } => Ok(Instance::Scalar(read_scalar_union(
@@ -445,6 +452,7 @@ fn write_single_node(
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             let value = write_scalar(value, *ty, schema.nullable, &schema.name)?;
             json_schema::constraints::validate_json(schema, &value)?;
+            json_schema::ranges::validate_json(schema, &value)?;
             Ok(value)
         }
         (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {

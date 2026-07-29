@@ -23,7 +23,7 @@
 //! shape-neutral validation keywords are accepted but are not enforced by the
 //! mapping schema.
 
-use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
+use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use crate::JsonFormatError;
 
@@ -31,6 +31,7 @@ mod all_of;
 mod alternatives;
 pub(crate) mod constraints;
 mod files;
+pub(crate) mod ranges;
 mod render;
 
 use all_of::parse_all_of;
@@ -115,7 +116,7 @@ fn parse(
         return parse_all_of(name, schema, composition, doc, active_refs);
     }
     if let Some(alternatives) = schema.get("oneOf") {
-        if let Some(nullable) = parse_nullable_scalar_alternatives(
+        if let Some(mut nullable) = parse_nullable_scalar_alternatives(
             name,
             schema,
             alternatives,
@@ -123,11 +124,13 @@ fn parse(
             doc,
             active_refs,
         )? {
+            ranges::apply(name, schema, &mut nullable, false)?;
             return Ok(nullable);
         }
-        if let Some(nullable) =
+        if let Some(mut nullable) =
             parse_nullable_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
         {
+            apply_nullable_composition_ranges(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
         if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
@@ -143,7 +146,7 @@ fn parse(
         );
     }
     if let Some(alternatives) = schema.get("anyOf") {
-        if let Some(nullable) = parse_nullable_scalar_alternatives(
+        if let Some(mut nullable) = parse_nullable_scalar_alternatives(
             name,
             schema,
             alternatives,
@@ -151,11 +154,13 @@ fn parse(
             doc,
             active_refs,
         )? {
+            ranges::apply(name, schema, &mut nullable, false)?;
             return Ok(nullable);
         }
-        if let Some(nullable) =
+        if let Some(mut nullable) =
             parse_nullable_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
         {
+            apply_nullable_composition_ranges(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
         if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
@@ -176,7 +181,20 @@ fn parse(
         );
     }
     let (ty, nullable) = schema_type(name, schema)?;
-    if let Some(value) = constraints::selected_constraint(name, schema)? {
+    let type_was_absent = matches!(&ty, ImportedSchemaType::Absent);
+    let constant = constraints::selected_constraint(name, schema)?;
+    let narrowed_by_constant = constant.is_some();
+    if type_was_absent
+        && constant.is_none()
+        && schema.get("required").is_some()
+        && schema.get("properties").is_none()
+    {
+        return Err(unsupported_object(
+            name,
+            "required without an object type or properties conditionally constrains objects while admitting non-object values",
+        ));
+    }
+    let mut node = if let Some(value) = constant {
         let constant = match &ty {
             ImportedSchemaType::Absent => constraints::infer(name, value)?,
             ImportedSchemaType::Single("string") => {
@@ -199,65 +217,80 @@ fn parse(
                 ));
             }
         };
-        return Ok(constraints::schema(name, &constant));
-    }
-    if matches!(&ty, ImportedSchemaType::Absent)
-        && schema.get("required").is_some()
-        && schema.get("properties").is_none()
-    {
-        return Err(unsupported_object(
-            name,
-            "required without an object type or properties conditionally constrains objects while admitting non-object values",
-        ));
-    }
-    match ty {
-        ImportedSchemaType::Single("object") => {
-            let children = parse_properties(schema, doc, active_refs)?;
-            let mut node = attach_object_metadata(
-                SchemaNode::group(name, children),
-                schema,
-                doc,
-                active_refs,
-            )?;
-            node.container_nullable = nullable;
-            Ok(node)
-        }
-        ImportedSchemaType::Single("array") => {
-            let Some(items) = schema.get("items") else {
-                let mut node = arbitrary_json_schema(name)?.repeating();
+        constraints::schema(name, &constant)
+    } else {
+        match ty {
+            ImportedSchemaType::Single("object") => {
+                let children = parse_properties(schema, doc, active_refs)?;
+                let mut node = attach_object_metadata(
+                    SchemaNode::group(name, children),
+                    schema,
+                    doc,
+                    active_refs,
+                )?;
                 node.container_nullable = nullable;
+                node
+            }
+            ImportedSchemaType::Single("array") => {
+                let Some(items) = schema.get("items") else {
+                    let mut node = arbitrary_json_schema(name)?.repeating();
+                    node.container_nullable = nullable;
+                    ranges::validate_ignored(name, schema)?;
+                    return Ok(node);
+                };
+                let mut node = parse(name, items, doc, active_refs)?.repeating();
+                node.container_nullable = nullable;
+                ranges::validate_ignored(name, schema)?;
                 return Ok(node);
-            };
-            let mut node = parse(name, items, doc, active_refs)?.repeating();
-            node.container_nullable = nullable;
-            Ok(node)
+            }
+            ImportedSchemaType::Single("string") => {
+                scalar_schema(name, ScalarType::String, nullable)
+            }
+            ImportedSchemaType::Single("integer") => scalar_schema(name, ScalarType::Int, nullable),
+            ImportedSchemaType::Single("number") => {
+                scalar_schema(name, ScalarType::Float, nullable)
+            }
+            ImportedSchemaType::Single("boolean") => {
+                scalar_schema(name, ScalarType::Bool, nullable)
+            }
+            ImportedSchemaType::ScalarUnion(types) => {
+                let mut node = SchemaNode::scalar_union(name, types);
+                node.nullable = nullable;
+                node
+            }
+            ImportedSchemaType::Single("null") => {
+                return Err(unsupported_union(
+                    name,
+                    "a null-only schema has no distinct ferrule scalar value type",
+                ));
+            }
+            _ if schema.get("properties").is_some() => {
+                let children = parse_properties(schema, doc, active_refs)?;
+                attach_object_metadata(SchemaNode::group(name, children), schema, doc, active_refs)?
+            }
+            ImportedSchemaType::Absent | ImportedSchemaType::Single(_) => {
+                SchemaNode::scalar(name, ScalarType::String)
+            }
         }
-        ImportedSchemaType::Single("string") => {
-            Ok(scalar_schema(name, ScalarType::String, nullable))
-        }
-        ImportedSchemaType::Single("integer") => Ok(scalar_schema(name, ScalarType::Int, nullable)),
-        ImportedSchemaType::Single("number") => {
-            Ok(scalar_schema(name, ScalarType::Float, nullable))
-        }
-        ImportedSchemaType::Single("boolean") => {
-            Ok(scalar_schema(name, ScalarType::Bool, nullable))
-        }
-        ImportedSchemaType::ScalarUnion(types) => {
-            let mut node = SchemaNode::scalar_union(name, types);
-            node.nullable = nullable;
-            Ok(node)
-        }
-        ImportedSchemaType::Single("null") => Err(unsupported_union(
-            name,
-            "a null-only schema has no distinct ferrule scalar value type",
-        )),
-        _ if schema.get("properties").is_some() => {
-            let children = parse_properties(schema, doc, active_refs)?;
-            attach_object_metadata(SchemaNode::group(name, children), schema, doc, active_refs)
-        }
-        ImportedSchemaType::Absent | ImportedSchemaType::Single(_) => {
-            Ok(SchemaNode::scalar(name, ScalarType::String))
-        }
+    };
+    ranges::apply(
+        name,
+        schema,
+        &mut node,
+        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+    )?;
+    Ok(node)
+}
+
+fn apply_nullable_composition_ranges(
+    name: &str,
+    schema: &serde_json::Value,
+    node: &mut SchemaNode,
+) -> Result<(), JsonFormatError> {
+    if node.repeating || matches!(node.kind, SchemaKind::Group { .. }) {
+        ranges::validate_ignored(name, schema)
+    } else {
+        ranges::apply(name, schema, node, false)
     }
 }
 

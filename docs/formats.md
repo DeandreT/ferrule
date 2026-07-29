@@ -63,6 +63,15 @@ layout and dialect details that an extension cannot express.
   a larger `enum` is supported when the constant is a member; general
   multi-value enums remain unsupported until the IR can retain an allowed-value
   set without widening the boundary.
+  Ordinary `minimum`, `maximum`, `exclusiveMinimum`, and `exclusiveMaximum`
+  constraints are likewise enforced for concrete integer and finite-number
+  scalars, including nullable scalar wrappers. Integer constraints normalize to
+  one exact inclusive `i64` interval; number constraints retain inclusive or
+  exclusive finite endpoints and reject intervals containing no representable
+  finite value. Import accepts both modern numeric exclusive bounds and Draft 4
+  boolean exclusives regardless of the declared dialect for interoperability;
+  export emits the canonical normalized form. Range-bearing general scalar
+  unions and `multipleOf` remain unsupported.
   General heterogeneous array composition, validation-bearing scalar unions,
   and mixed structural unions remain unsupported.
   Shape-neutral validation keywords are

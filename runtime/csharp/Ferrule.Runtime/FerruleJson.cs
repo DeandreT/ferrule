@@ -201,6 +201,12 @@ public static class FerruleJson
             }
             fixedValue = ParseFixed(name, SingleScalar(scalarDomain), fixedLexical);
         }
+        var numericRange = ReadNumericRange(
+            name,
+            element,
+            scalarDomain,
+            OptionalBoolean(element, "json_any"),
+            fixedValue);
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
         var alternatives = new List<JsonAlternative>();
@@ -273,6 +279,7 @@ public static class FerruleJson
             OptionalBoolean(element, "json_any"),
             scalarDomain,
             fixedValue,
+            numericRange,
             children,
             dynamic,
             required,
@@ -280,6 +287,118 @@ public static class FerruleJson
             element.TryGetProperty("alternative_mode", out var mode) &&
             mode.ValueKind == JsonValueKind.String &&
             string.Equals(mode.GetString(), "inclusive", StringComparison.Ordinal));
+    }
+
+    private static JsonNumericRange? ReadNumericRange(
+        string name,
+        JsonElement element,
+        JsonScalarDomain scalarDomain,
+        bool jsonAny,
+        FerruleValue? fixedValue)
+    {
+        if (!element.TryGetProperty("numeric_range", out var rangeElement) ||
+            rangeElement.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+        RequireKind(
+            rangeElement,
+            JsonValueKind.Object,
+            $"schema node '{name}' numeric range",
+            "object");
+        if (!IsSingleScalar(scalarDomain) || jsonAny)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has a numeric range without one concrete numeric scalar type.");
+        }
+
+        var kind = RequiredString(rangeElement, "kind");
+        var bounds = RequiredProperty(rangeElement, "bounds");
+        RequireKind(bounds, JsonValueKind.Object, $"schema node '{name}' numeric bounds", "object");
+        JsonNumericRange range = kind switch
+        {
+            "integer" when scalarDomain == JsonScalarDomain.Int64 =>
+                ReadIntegerRange(name, bounds),
+            "number" when scalarDomain == JsonScalarDomain.Double =>
+                ReadNumberRange(name, bounds),
+            "integer" or "number" => throw Boundary(
+                $"Embedded JSON schema node '{name}' numeric range does not match its scalar type."),
+            _ => throw Boundary(
+                $"Embedded JSON schema node '{name}' has unknown numeric range kind '{kind}'."),
+        };
+        if (fixedValue is { } constrained && !range.Contains(constrained))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has a fixed value outside its numeric range.");
+        }
+        return range;
+    }
+
+    private static JsonIntegerRange ReadIntegerRange(string name, JsonElement bounds)
+    {
+        var minimum = OptionalInt64(bounds, "minimum");
+        var maximum = OptionalInt64(bounds, "maximum");
+        if (minimum is null && maximum is null ||
+            minimum is { } lower && maximum is { } upper && lower > upper)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has an empty or unordered integer range.");
+        }
+        return new JsonIntegerRange(minimum, maximum);
+    }
+
+    private static JsonNumberRange ReadNumberRange(string name, JsonElement bounds)
+    {
+        var minimum = OptionalNumberBound(name, bounds, "minimum");
+        var maximum = OptionalNumberBound(name, bounds, "maximum");
+        if (minimum is null && maximum is null)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has an empty number range declaration.");
+        }
+        var first = minimum switch
+        {
+            { Exclusive: true, Value: double.MaxValue } => double.PositiveInfinity,
+            { Exclusive: true } bound => double.BitIncrement(bound.Value),
+            { } bound => bound.Value,
+            null => -double.MaxValue,
+        };
+        var last = maximum switch
+        {
+            { Exclusive: true, Value: -double.MaxValue } => double.NegativeInfinity,
+            { Exclusive: true } bound => double.BitDecrement(bound.Value),
+            { } bound => bound.Value,
+            null => double.MaxValue,
+        };
+        if (!double.IsFinite(first) || !double.IsFinite(last) || first > last)
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has an empty number range.");
+        }
+        return new JsonNumberRange(minimum, maximum);
+    }
+
+    private static JsonNumberBound? OptionalNumberBound(
+        string name,
+        JsonElement bounds,
+        string property)
+    {
+        if (!bounds.TryGetProperty(property, out var element))
+        {
+            return null;
+        }
+        RequireKind(
+            element,
+            JsonValueKind.Object,
+            $"schema node '{name}' number {property}",
+            "object");
+        var valueElement = RequiredProperty(element, "value");
+        if (!TryReadExactDouble(valueElement, out var value) || !double.IsFinite(value))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' number {property} must be finite.");
+        }
+        return new JsonNumberBound(value, OptionalBoolean(element, "exclusive"));
     }
 
     private static JsonScalarDomain ReadScalarDomain(
@@ -515,6 +634,13 @@ public static class FerruleJson
             throw Boundary(
                 $"JSON scalar '{schema.Name}' requires constant {FixedDisplay(expected)}, got {element.GetRawText()}.");
         }
+        if (value.Kind != FerruleValueKind.JsonNull &&
+            schema.NumericRange is { } range &&
+            !range.Contains(value))
+        {
+            throw Boundary(
+                $"JSON scalar '{schema.Name}' is outside its numeric range: {element.GetRawText()}.");
+        }
         return value;
     }
 
@@ -739,6 +865,7 @@ public static class FerruleJson
         FerruleValue value)
     {
         ValidateFixedOutput(schema, scalar, value);
+        ValidateNumericRangeOutput(schema, scalar, value);
         if (value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
         {
             writer.WriteNullValue();
@@ -801,6 +928,36 @@ public static class FerruleJson
                 return;
             default:
                 throw Shape(schema.Name, ScalarName(scalar), value.Kind.ToString());
+        }
+    }
+
+    private static void ValidateNumericRangeOutput(
+        JsonSchemaNode schema,
+        JsonScalarType scalar,
+        FerruleValue value)
+    {
+        if (schema.NumericRange is not { } range ||
+            value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
+        {
+            return;
+        }
+        FerruleValue normalized;
+        if (scalar == JsonScalarType.Int64 && TryOutputInt64(value, out var integer))
+        {
+            normalized = FerruleValue.FromInt64(integer);
+        }
+        else if (scalar == JsonScalarType.Double && TryOutputDouble(value, out var number))
+        {
+            normalized = FerruleValue.FromDouble(number);
+        }
+        else
+        {
+            return;
+        }
+        if (!range.Contains(normalized))
+        {
+            throw Boundary(
+                $"JSON scalar '{schema.Name}' is outside its numeric range: {value}.");
         }
     }
 
@@ -1435,6 +1592,17 @@ public static class FerruleJson
             : throw Boundary($"Embedded JSON schema field '{name}' must be a string.");
     }
 
+    private static long? OptionalInt64(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+        return value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var integer)
+            ? integer
+            : throw Boundary($"Embedded JSON schema field '{name}' must be a signed integer.");
+    }
+
     private static bool OptionalBoolean(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) &&
         value.ValueKind switch
@@ -1555,6 +1723,41 @@ public static class FerruleJson
         IReadOnlyList<string> Required,
         IReadOnlyList<JsonConstraint> Constraints);
 
+    private abstract record JsonNumericRange
+    {
+        public abstract bool Contains(FerruleValue value);
+    }
+
+    private sealed record JsonIntegerRange(long? Minimum, long? Maximum) : JsonNumericRange
+    {
+        public override bool Contains(FerruleValue value) =>
+            value.Kind == FerruleValueKind.Int64 &&
+            (Minimum is null || value.Int64Value >= Minimum) &&
+            (Maximum is null || value.Int64Value <= Maximum);
+    }
+
+    private sealed record JsonNumberBound(double Value, bool Exclusive);
+
+    private sealed record JsonNumberRange(
+        JsonNumberBound? Minimum,
+        JsonNumberBound? Maximum) : JsonNumericRange
+    {
+        public override bool Contains(FerruleValue value)
+        {
+            if (value.Kind != FerruleValueKind.Double || !double.IsFinite(value.DoubleValue))
+            {
+                return false;
+            }
+            var number = value.DoubleValue;
+            return (Minimum is null ||
+                    number > Minimum.Value ||
+                    !Minimum.Exclusive && number == Minimum.Value) &&
+                   (Maximum is null ||
+                    number < Maximum.Value ||
+                    !Maximum.Exclusive && number == Maximum.Value);
+        }
+    }
+
     private sealed class JsonSchemaNode
     {
         public JsonSchemaNode(
@@ -1565,6 +1768,7 @@ public static class FerruleJson
             bool jsonAny,
             JsonScalarDomain scalarDomain,
             FerruleValue? fixedValue,
+            JsonNumericRange? numericRange,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
             IReadOnlyList<string> required,
@@ -1578,6 +1782,7 @@ public static class FerruleJson
             JsonAny = jsonAny;
             ScalarDomain = scalarDomain;
             Fixed = fixedValue;
+            NumericRange = numericRange;
             Children = children;
             Dynamic = dynamic;
             Required = required;
@@ -1598,6 +1803,8 @@ public static class FerruleJson
         public JsonScalarDomain ScalarDomain { get; }
 
         public FerruleValue? Fixed { get; }
+
+        public JsonNumericRange? NumericRange { get; }
 
         public bool IsScalar => ScalarDomain != JsonScalarDomain.None;
 

@@ -10,6 +10,10 @@
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
+mod schema;
+
+pub use schema::{IntegerRange, NumberBound, NumberRange, NumericRange};
+
 /// Instance-field name used for an XML element's simple text content.
 pub const XML_TEXT_FIELD: &str = "#text";
 
@@ -507,6 +511,12 @@ pub struct SchemaNode {
     /// with an `HL` segment are told apart by `HL03` being `20` vs `22`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
+    /// An exact numeric interval for a JSON scalar.
+    ///
+    /// Integer bounds are normalized to an inclusive `i64` interval. Number
+    /// bounds retain finite values and endpoint exclusivity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub numeric_range: Option<NumericRange>,
     /// An XML Schema default lexical value for a scalar element, simple
     /// content value, or ordinary attribute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -576,6 +586,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             fixed: Option<String>,
             #[serde(default)]
+            numeric_range: Option<NumericRange>,
+            #[serde(default)]
             default: Option<String>,
             #[serde(default)]
             value_generation: Option<ValueGeneration>,
@@ -608,6 +620,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             container_nullable: repr.container_nullable,
             json_any: repr.json_any,
             fixed: repr.fixed,
+            numeric_range: repr.numeric_range,
             default: repr.default,
             value_generation: repr.value_generation,
             alternative_mode: repr.alternative_mode,
@@ -622,6 +635,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.xml_name_alternatives_are_valid()
             || !node.recursive_ref_is_valid()
             || !node.fixed_is_valid()
+            || !node.numeric_range_is_valid()
             || !node.value_generation_is_valid()
             || !node.default_is_valid()
             || !node.alternative_mode_is_valid()
@@ -636,7 +650,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.xml_wildcard_process_contents_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -777,7 +791,7 @@ impl GroupAlternativeConstraintValue {
 }
 
 /// One finite 64-bit float. Construction and deserialization reject infinities
-/// and NaN so scalar discriminator values are always JSON-serializable.
+/// and NaN so scalar constraints are always JSON-serializable.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FiniteF64(f64);
 
@@ -859,6 +873,7 @@ impl SchemaNode {
             container_nullable: false,
             json_any: false,
             fixed: None,
+            numeric_range: None,
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -892,6 +907,7 @@ impl SchemaNode {
             container_nullable: false,
             json_any: false,
             fixed: None,
+            numeric_range: None,
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -934,6 +950,7 @@ impl SchemaNode {
             container_nullable: false,
             json_any: false,
             fixed: None,
+            numeric_range: None,
             default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
@@ -1096,6 +1113,37 @@ impl SchemaNode {
     /// Checks that fixed-value metadata remains limited to one scalar type.
     pub fn fixed_is_valid(&self) -> bool {
         self.fixed.is_none() || matches!(self.kind, SchemaKind::Scalar { .. })
+    }
+
+    /// Checks that numeric-range metadata matches one concrete numeric scalar
+    /// and that an optional fixed lexical value lies inside the interval.
+    pub fn numeric_range_is_valid(&self) -> bool {
+        let Some(range) = self.numeric_range else {
+            return true;
+        };
+        match (range, &self.kind) {
+            (
+                NumericRange::Integer(range),
+                SchemaKind::Scalar {
+                    ty: ScalarType::Int,
+                },
+            ) => self.fixed.as_deref().is_none_or(|fixed| {
+                fixed
+                    .parse::<i64>()
+                    .is_ok_and(|value| range.contains(value))
+            }),
+            (
+                NumericRange::Number(range),
+                SchemaKind::Scalar {
+                    ty: ScalarType::Float,
+                },
+            ) => self.fixed.as_deref().is_none_or(|fixed| {
+                fixed
+                    .parse::<f64>()
+                    .is_ok_and(|value| range.contains(value))
+            }),
+            _ => false,
+        }
     }
 
     /// Checks that generated-value metadata remains scalar-only and cannot
@@ -1575,8 +1623,16 @@ impl SchemaNode {
     /// Requires this scalar to hold `value` (builder-style).
     pub fn with_fixed(mut self, value: impl Into<String>) -> Option<Self> {
         self.fixed = Some(value.into());
-        (self.fixed_is_valid() && self.default_is_valid() && self.value_generation_is_valid())
-            .then_some(self)
+        (self.fixed_is_valid()
+            && self.numeric_range_is_valid()
+            && self.default_is_valid()
+            && self.value_generation_is_valid())
+        .then_some(self)
+    }
+
+    pub fn with_numeric_range(mut self, range: NumericRange) -> Option<Self> {
+        self.numeric_range = Some(range);
+        self.numeric_range_is_valid().then_some(self)
     }
 
     pub fn with_default(mut self, value: impl Into<String>) -> Option<Self> {
@@ -1977,6 +2033,76 @@ mod tests {
                 .with_alternatives(invalid)
                 .is_none()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn numeric_ranges_are_typed_nonempty_and_serde_validated()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(integer) = IntegerRange::new(Some(-4), Some(9)) else {
+            panic!("ordered integer range is valid");
+        };
+        assert!(integer.contains(-4));
+        assert!(integer.contains(9));
+        assert!(!integer.contains(10));
+        assert!(IntegerRange::new(None, None).is_none());
+        assert!(IntegerRange::new(Some(2), Some(1)).is_none());
+
+        let Some(zero) = FiniteF64::new(0.0) else {
+            panic!("zero is finite");
+        };
+        let Some(ten) = FiniteF64::new(10.0) else {
+            panic!("ten is finite");
+        };
+        let Some(number) = NumberRange::new(
+            Some(NumberBound::exclusive(zero)),
+            Some(NumberBound::inclusive(ten)),
+        ) else {
+            panic!("ordered number range is valid");
+        };
+        assert!(!number.contains(0.0));
+        assert!(number.contains(0.5));
+        assert!(number.contains(10.0));
+        assert!(
+            NumberRange::new(
+                Some(NumberBound::exclusive(zero)),
+                Some(NumberBound::inclusive(zero)),
+            )
+            .is_none()
+        );
+
+        let Some(schema) = SchemaNode::scalar_fixed("Count", ScalarType::Int, "7")
+            .with_numeric_range(NumericRange::Integer(integer))
+        else {
+            panic!("fixed integer inside its range is valid");
+        };
+        let encoded = serde_json::to_string(&schema)?;
+        assert!(
+            encoded.contains(
+                r#""numeric_range":{"kind":"integer","bounds":{"minimum":-4,"maximum":9}}"#
+            )
+        );
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, schema);
+        assert!(
+            SchemaNode::scalar_fixed("Count", ScalarType::Int, "10")
+                .with_numeric_range(NumericRange::Integer(integer))
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Count", ScalarType::String)
+                .with_numeric_range(NumericRange::Integer(integer))
+                .is_none()
+        );
+
+        for invalid in [
+            r#"{"name":"x","numeric_range":{"kind":"integer","bounds":{}},"kind":{"kind":"scalar","ty":"int"}}"#,
+            r#"{"name":"x","numeric_range":{"kind":"integer","bounds":{"minimum":2,"maximum":1}},"kind":{"kind":"scalar","ty":"int"}}"#,
+            r#"{"name":"x","numeric_range":{"kind":"integer","bounds":{"minimum":1}},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","fixed":"0","numeric_range":{"kind":"integer","bounds":{"minimum":1}},"kind":{"kind":"scalar","ty":"int"}}"#,
+            r#"{"name":"x","numeric_range":{"kind":"number","bounds":{"minimum":{"value":1.0,"exclusive":true},"maximum":{"value":1.0}}},"kind":{"kind":"scalar","ty":"float"}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
         Ok(())
     }
 

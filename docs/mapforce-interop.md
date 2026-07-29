@@ -113,6 +113,12 @@ including required or optional typed
 `const` or singleton-`enum` discriminators and JSON-null discriminators.
 Flat nullable compositions may combine null with multiple compatible object,
 scalar-union, or subsumed-array branches.
+JSON components retain exact ordinary integer and finite-number ranges from
+their referenced schemas, including nullable numeric fields and compatible
+`allOf` intersections. Those constraints apply when imported mappings read
+source documents and write targets; malformed, empty, or precision-ambiguous
+ranges trigger the component's existing schema-fallback diagnostic instead of
+silently widening the mapping boundary.
 Expanded-name identity for ordinary elements and attributes is preserved;
 foreign declarations export as an atomic graph of local XSD siblings.
 Compatible strict-wildcard declarations that share one local name across

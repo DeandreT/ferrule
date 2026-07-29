@@ -8,7 +8,7 @@ use codegen::{
     Program, RuntimeValue, ScalarFunction, SourceIteration, TargetScope, UserFunctionParameter,
     UserFunctionProgram,
 };
-use ir::{ScalarType, SchemaNode, Value};
+use ir::{IntegerRange, NumericRange, ScalarType, SchemaNode, Value};
 use mapping::{FunctionId, FunctionParameterId};
 
 #[test]
@@ -63,6 +63,24 @@ fn fixture() -> Program {
         target_domain: target_type.into(),
         repeating,
     };
+    let Some(source_count_range) = IntegerRange::new(Some(5), Some(8)).map(NumericRange::Integer)
+    else {
+        panic!("source count range is valid");
+    };
+    let Some(target_root_range) = IntegerRange::new(Some(7), Some(7)).map(NumericRange::Integer)
+    else {
+        panic!("target root range is valid");
+    };
+    let Some(source_count) =
+        SchemaNode::scalar("InputCount", ScalarType::Int).with_numeric_range(source_count_range)
+    else {
+        panic!("source range matches its scalar type");
+    };
+    let Some(target_root) = SchemaNode::scalar_fixed("RootInt", ScalarType::Int, "7")
+        .with_numeric_range(target_root_range)
+    else {
+        panic!("target range contains its fixed value");
+    };
     Program {
         source: SchemaNode::group(
             "source schema",
@@ -75,6 +93,7 @@ fn fixture() -> Program {
                 SchemaNode::scalar("ExtraCondition", ScalarType::Bool),
                 SchemaNode::scalar("GeneratedFailure", ScalarType::Bool),
                 SchemaNode::scalar("GeneratedPattern", ScalarType::String),
+                source_count,
                 SchemaNode::group(
                     "Orders",
                     vec![
@@ -128,7 +147,7 @@ fn fixture() -> Program {
         target: SchemaNode::group(
             "target schema",
             vec![
-                SchemaNode::scalar_fixed("RootInt", ScalarType::Int, "7"),
+                target_root,
                 SchemaNode::scalar("Exists", ScalarType::Bool),
                 SchemaNode::scalar("Selected", ScalarType::String),
                 SchemaNode::scalar("LengthSum", ScalarType::Int),
@@ -817,6 +836,7 @@ const string sourceJson = """
   "ExtraCondition": true,
   "GeneratedFailure": false,
   "GeneratedPattern": ",",
+  "InputCount": 5,
   "Orders": [
     {
       "Customer": "Ada",
@@ -908,6 +928,11 @@ Error(
     FerruleRuntimeError.JsonBoundary,
     () => GeneratedMapping.ExecuteJsonWithSources(
         """{"Condition":false}""",
+        jsonInputs));
+Error(
+    FerruleRuntimeError.JsonBoundary,
+    () => GeneratedMapping.ExecuteJsonWithSources(
+        sourceJson.Replace("\"InputCount\": 5", "\"InputCount\": 4"),
         jsonInputs));
 Error(
     FerruleRuntimeError.JsonBoundary,
