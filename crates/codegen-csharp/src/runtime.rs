@@ -60,32 +60,32 @@ pub(crate) const SOURCES: [(&str, &str); 41] = [
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleInstance.cs"),
     ),
     (
-        "Runtime/FerruleJson.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleJson.cs"),
+        "Runtime/Json/FerruleJson.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.cs"),
     ),
     (
-        "Runtime/FerruleJson.AllowedValues.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleJson.AllowedValues.cs"),
+        "Runtime/Json/FerruleJson.AllowedValues.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.AllowedValues.cs"),
     ),
     (
-        "Runtime/FerruleJson.MultipleOf.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleJson.MultipleOf.cs"),
+        "Runtime/Json/FerruleJson.MultipleOf.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.MultipleOf.cs"),
     ),
     (
-        "Runtime/FerruleJson.ObjectOpenness.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleJson.ObjectOpenness.cs"),
+        "Runtime/Json/FerruleJson.ObjectOpenness.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.ObjectOpenness.cs"),
     ),
     (
-        "Runtime/FerruleJson.Patterns.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleJson.Patterns.cs"),
+        "Runtime/Json/FerruleJson.Patterns.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.Patterns.cs"),
     ),
     (
-        "Runtime/FerruleJson.PropertyCounts.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleJson.PropertyCounts.cs"),
+        "Runtime/Json/FerruleJson.PropertyCounts.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.PropertyCounts.cs"),
     ),
     (
-        "Runtime/FerruleJson.UniqueItems.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleJson.UniqueItems.cs"),
+        "Runtime/Json/FerruleJson.UniqueItems.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.UniqueItems.cs"),
     ),
     (
         "Runtime/FerruleFunctions.cs",
