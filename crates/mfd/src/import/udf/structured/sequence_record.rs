@@ -16,6 +16,7 @@ use crate::import::schema::{
     read_definition_parameter_component, schema_node_at,
 };
 use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
+use crate::import::source::SourcePath;
 use crate::import::udf::{Call, Definition, OutputExpr};
 
 pub(super) fn try_read(
@@ -262,6 +263,15 @@ pub(super) fn is_public_output(call: &Call, feed: u32, output_name: &str) -> boo
         .is_some_and(|name| name == output_name)
 }
 
+pub(super) fn output_relative<'a>(
+    call: &'a Call,
+    feed: u32,
+    output_name: &str,
+) -> Option<&'a [String]> {
+    let (root, relative) = call.structured_outputs.get(&feed)?.split_first()?;
+    (root == output_name).then_some(relative)
+}
+
 fn is_schema_declaration(component: roxmltree::Node<'_, '_>) -> bool {
     match component.attribute("library") {
         Some("xml" | "db") => true,
@@ -315,7 +325,112 @@ pub(super) fn build_target(
     recipe: &Recipe,
     component_id: u32,
     input_name: &str,
+) -> Result<MappedSequenceDriver, String> {
+    let driver = resolve_driver(builder, structured_inputs, component_id, input_name)?;
+    builder.note_framed_prefixes(&driver.collection);
+    let control = builder.resolve_iteration_feed(driver.feed);
+    let mut filter = control.filter_expr.and_then(|key| builder.value_node(key));
+    if control.filter_inverted
+        && let Some(predicate) = filter
+    {
+        filter = Some(builder.alloc(mapping::Node::Call {
+            function: "not".into(),
+            args: vec![predicate],
+        }));
+    }
+    if control.has_filter && filter.is_none() {
+        return Err("its mapped sequence parameter filter is not representable".to_string());
+    }
+
+    let target_bindings = instantiate_bindings(
+        target_path,
+        target,
+        builder,
+        call_inputs,
+        recipe,
+        &driver.collection,
+        recipe.bindings.keys(),
+    )?;
+    let target_node = schema_node_at(&target.schema, target_path)
+        .ok_or("its mapped sequence target record is absent from the schema")?;
+    let output = if target_node.repeating {
+        IterationOutput::Repeated
+    } else {
+        IterationOutput::MappedSequence
+    };
+    scopes.add_iteration(
+        target_path,
+        &builder.context_path(&driver.collection),
+        IterationNodes {
+            filter,
+            post_group_filter: None,
+            group_by: None,
+            group_starting_with: None,
+            group_adjacent_by: None,
+            group_ending_with: None,
+            group_into_blocks: None,
+            sort_by: None,
+            sort_descending: false,
+            sort_then_by: Vec::new(),
+            sort_filter_order: Default::default(),
+            windows: Vec::new(),
+        },
+        output,
+    );
+    for (target, node) in target_bindings {
+        scopes.add_binding(target, node);
+    }
+    Ok(driver)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn build_projection(
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    call_inputs: &BTreeMap<u32, u32>,
+    structured_inputs: &BTreeMap<u32, Vec<(Vec<String>, u32)>>,
+    recipe: &Recipe,
+    component_id: u32,
+    input_name: &str,
+    owner: &MappedSequenceDriver,
+    fields: &BTreeSet<Vec<String>>,
 ) -> Result<(), String> {
+    let driver = resolve_driver(builder, structured_inputs, component_id, input_name)?;
+    if driver != *owner {
+        return Err(
+            "its mapped sequence parameter does not use the structural owner's collection feed"
+                .to_string(),
+        );
+    }
+    let target_bindings = instantiate_bindings(
+        target_path,
+        target,
+        builder,
+        call_inputs,
+        recipe,
+        &driver.collection,
+        fields,
+    )?;
+    for (target, node) in target_bindings {
+        scopes.add_binding(target, node);
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct MappedSequenceDriver {
+    feed: u32,
+    collection: SourcePath,
+}
+
+fn resolve_driver(
+    builder: &GraphBuilder<'_>,
+    structured_inputs: &BTreeMap<u32, Vec<(Vec<String>, u32)>>,
+    component_id: u32,
+    input_name: &str,
+) -> Result<MappedSequenceDriver, String> {
     let [(input_path, input)] = structured_inputs
         .get(&component_id)
         .map(Vec::as_slice)
@@ -362,20 +477,18 @@ pub(super) fn build_target(
     {
         return Err("its mapped sequence parameter is not a repeating group".to_string());
     }
-    builder.note_framed_prefixes(&collection);
-    let mut filter = control.filter_expr.and_then(|key| builder.value_node(key));
-    if control.filter_inverted
-        && let Some(predicate) = filter
-    {
-        filter = Some(builder.alloc(mapping::Node::Call {
-            function: "not".into(),
-            args: vec![predicate],
-        }));
-    }
-    if control.has_filter && filter.is_none() {
-        return Err("its mapped sequence parameter filter is not representable".to_string());
-    }
+    Ok(MappedSequenceDriver { feed, collection })
+}
 
+fn instantiate_bindings<'a>(
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    call_inputs: &BTreeMap<u32, u32>,
+    recipe: &Recipe,
+    collection: &SourcePath,
+    fields: impl IntoIterator<Item = &'a Vec<String>>,
+) -> Result<Vec<(TargetLeaf, mapping::NodeId)>, String> {
     let mut parameters = BTreeMap::new();
     for (&parameter, &input) in call_inputs {
         let node = builder
@@ -386,8 +499,14 @@ pub(super) fn build_target(
             .unwrap_or_else(|| builder.const_null());
         parameters.insert(parameter, node);
     }
-    let mut target_bindings = Vec::with_capacity(recipe.bindings.len());
-    for (relative, expression) in &recipe.bindings {
+    let mut target_bindings = Vec::new();
+    for relative in fields {
+        let expression = recipe.bindings.get(relative).ok_or_else(|| {
+            format!(
+                "mapped sequence output `{}` has no expression",
+                relative.join("/")
+            )
+        })?;
         let mut path = target_path.to_vec();
         path.extend(relative.iter().cloned());
         if !schema_node_at(&target.schema, &path)
@@ -400,39 +519,10 @@ pub(super) fn build_target(
         }
         let target = TargetLeaf::from_path(&path)
             .ok_or_else(|| format!("target field `{}` is invalid", path.join("/")))?;
-        let node = instantiate(expression, &collection, &parameters, None, builder)?;
+        let node = instantiate(expression, collection, &parameters, None, builder)?;
         target_bindings.push((target, node));
     }
-    let target_node = schema_node_at(&target.schema, target_path)
-        .ok_or("its mapped sequence target record is absent from the schema")?;
-    let output = if target_node.repeating {
-        IterationOutput::Repeated
-    } else {
-        IterationOutput::MappedSequence
-    };
-    scopes.add_iteration(
-        target_path,
-        &builder.context_path(&collection),
-        IterationNodes {
-            filter,
-            post_group_filter: None,
-            group_by: None,
-            group_starting_with: None,
-            group_adjacent_by: None,
-            group_ending_with: None,
-            group_into_blocks: None,
-            sort_by: None,
-            sort_descending: false,
-            sort_then_by: Vec::new(),
-            sort_filter_order: Default::default(),
-            windows: Vec::new(),
-        },
-        output,
-    );
-    for (target, node) in target_bindings {
-        scopes.add_binding(target, node);
-    }
-    Ok(())
+    Ok(target_bindings)
 }
 
 #[cfg(test)]
