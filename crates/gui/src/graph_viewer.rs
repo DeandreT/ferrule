@@ -89,6 +89,36 @@ fn compact_graph_title(label: &str) -> String {
     format!("...{suffix}")
 }
 
+fn builtin_parameter(function: &str, index: usize) -> Option<&'static functions::BuiltinParameter> {
+    let builtin = functions::builtin(function)?;
+    if let Some(parameter) = builtin.parameters.get(index) {
+        return Some(parameter);
+    }
+    let step = builtin.arity.step()?;
+    let repeated_start = builtin.parameters.len().checked_sub(step)?;
+    let repeated_offset = index.checked_sub(builtin.parameters.len())? % step;
+    builtin.parameters.get(repeated_start + repeated_offset)
+}
+
+fn call_missing_minimum_inputs(function: &str, count: usize) -> usize {
+    functions::builtin(function)
+        .map(|builtin| builtin.arity.minimum().saturating_sub(count))
+        .unwrap_or_default()
+}
+
+fn call_can_add_argument(function: &str, count: usize) -> bool {
+    functions::builtin(function).is_none_or(|builtin| {
+        builtin
+            .arity
+            .maximum()
+            .is_none_or(|maximum| count < maximum)
+    })
+}
+
+fn call_can_remove_argument(function: &str, count: usize) -> bool {
+    functions::builtin(function).map_or(count > 0, |builtin| count > builtin.arity.minimum())
+}
+
 fn show_lookup_editor(
     ui: &mut Ui,
     source_paths: &SourcePathCatalog,
@@ -393,6 +423,27 @@ impl GraphViewer<'_> {
         id
     }
 
+    fn ensure_call_minimum_inputs(&mut self, node_id: NodeId) -> usize {
+        let missing = self
+            .graph
+            .nodes
+            .get(&node_id)
+            .and_then(|node| match node {
+                Node::Call { function, args } => {
+                    Some(call_missing_minimum_inputs(function, args.len()))
+                }
+                _ => None,
+            })
+            .unwrap_or_default();
+        let inputs = (0..missing)
+            .map(|_| self.fresh_unconnected())
+            .collect::<Vec<_>>();
+        if let Some(Node::Call { args, .. }) = self.graph.nodes.get_mut(&node_id) {
+            args.extend(inputs);
+        }
+        missing
+    }
+
     fn mapping_id(node: CanvasNode) -> Option<NodeId> {
         match node {
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => Some(id),
@@ -458,14 +509,15 @@ impl GraphViewer<'_> {
                     collection: Vec::new(),
                 },
             ),
-            NodeTemplate::Call => self.insert(
-                snarl,
-                pos,
-                Node::Call {
-                    function: "concat".to_string(),
-                    args: Vec::new(),
-                },
-            ),
+            NodeTemplate::Builtin(function) => {
+                let input_count = functions::builtin(function)
+                    .map(|builtin| builtin.arity.minimum())
+                    .unwrap_or_default();
+                self.insert_with_unconnected_inputs(snarl, pos, input_count, |args| Node::Call {
+                    function: function.to_owned(),
+                    args: args.to_vec(),
+                })
+            }
             NodeTemplate::If => {
                 self.insert_with_unconnected_inputs(snarl, pos, 3, |inputs| Node::If {
                     condition: inputs[0],
@@ -1059,7 +1111,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::RuntimeParameter { name, ty }) => {
                         format!("Runtime input: {name} ({ty:?})")
                     }
-                    Some(Node::Call { function, .. }) => format!("Call: {function}"),
+                    Some(Node::Call { function, .. }) => functions::builtin(function).map_or_else(
+                        || format!("Call: {function}"),
+                        |builtin| format!("Call: {}", builtin.display_name),
+                    ),
                     Some(Node::UserFunctionCall { function, .. }) => {
                         self.function_names.get(function).map_or_else(
                             || "Call: <missing function>".to_string(),
@@ -1413,7 +1468,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::SourceBlock(_) => Some(String::new()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 Some(match self.graph.nodes.get(&id) {
-                    Some(Node::Call { .. }) => format!("arg {idx}"),
+                    Some(Node::Call { function, .. }) => builtin_parameter(function, idx)
+                        .map_or_else(
+                            || format!("arg {idx}"),
+                            |parameter| parameter.name.to_owned(),
+                        ),
                     Some(Node::UserFunctionCall { function, .. }) => self
                         .function_inputs
                         .get(function)
@@ -1613,6 +1672,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .with_wire_color(self.output_wire_color(pin));
         };
         let mut new_call_arg_needed = false;
+        let mut call_function_changed = false;
         let mut remove_call_wire = None;
         let mut new_aggregate_arg_needed = false;
         let mut remove_aggregate_wire = None;
@@ -1708,18 +1768,57 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         });
                 }
                 Node::Call { function, args } => {
+                    let previous_function = function.clone();
+                    let selected = functions::builtin(function).map_or_else(
+                        || function.clone(),
+                        |builtin| builtin.display_name.to_owned(),
+                    );
                     egui::ComboBox::from_id_salt(ui.id().with("builtin"))
-                        .selected_text(function.as_str())
+                        .selected_text(selected)
                         .show_ui(ui, |ui| {
-                            for builtin in functions::BUILTIN_NAMES {
-                                ui.selectable_value(function, (*builtin).to_string(), *builtin);
+                            for builtin in functions::builtin_catalog().iter().filter(|builtin| {
+                                builtin.exposure == functions::BuiltinExposure::Authoring
+                            }) {
+                                ui.selectable_value(
+                                    function,
+                                    builtin.native_name.to_owned(),
+                                    builtin.display_name,
+                                )
+                                .on_hover_text(builtin.documentation);
                             }
                         });
+                    call_function_changed = *function != previous_function;
+                    if let Some(builtin) = functions::builtin(function) {
+                        ui.weak(format!(
+                            "{} input{} minimum",
+                            builtin.arity.minimum(),
+                            if builtin.arity.minimum() == 1 {
+                                ""
+                            } else {
+                                "s"
+                            }
+                        ))
+                        .on_hover_text(builtin.documentation);
+                    }
+                    let effective_count =
+                        args.len() + call_missing_minimum_inputs(function, args.len());
                     ui.horizontal(|ui| {
-                        if ui.small_button("+arg").clicked() {
+                        if ui
+                            .add_enabled(
+                                call_can_add_argument(function, effective_count),
+                                egui::Button::new("+arg").small(),
+                            )
+                            .clicked()
+                        {
                             new_call_arg_needed = true;
                         }
-                        if !args.is_empty() && ui.small_button("-arg").clicked() {
+                        if ui
+                            .add_enabled(
+                                call_can_remove_argument(function, effective_count),
+                                egui::Button::new("-arg").small(),
+                            )
+                            .clicked()
+                        {
                             let input = args.len() - 1;
                             remove_call_wire = args.pop().map(|node| (input, node));
                         }
@@ -1909,6 +2008,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         });
                 }
             }
+        }
+        if call_function_changed {
+            self.ensure_call_minimum_inputs(node_id);
         }
         if new_call_arg_needed {
             let new_id = self.fresh_unconnected();

@@ -1034,10 +1034,12 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             NodeTemplate::ValueMap | NodeTemplate::Lookup => 1,
             NodeTemplate::CollectionFind => 2,
             NodeTemplate::Aggregate(AggregateOp::Join | AggregateOp::ItemAt) => 1,
+            NodeTemplate::Builtin(name) => functions::builtin(name)
+                .map(|builtin| builtin.arity.minimum())
+                .unwrap_or_default(),
             NodeTemplate::Constant
             | NodeTemplate::SourceField
             | NodeTemplate::Position
-            | NodeTemplate::Call
             | NodeTemplate::Aggregate(_) => 0,
         }
     }
@@ -1047,11 +1049,16 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             (NodeTemplate::Constant, Node::Const { value: Value::Null })
             | (NodeTemplate::SourceField, Node::SourceField { .. })
             | (NodeTemplate::Position, Node::Position { .. })
-            | (NodeTemplate::Call, Node::Call { .. })
             | (NodeTemplate::If, Node::If { .. })
             | (NodeTemplate::ValueMap, Node::ValueMap { .. })
             | (NodeTemplate::Lookup, Node::Lookup { .. })
             | (NodeTemplate::CollectionFind, Node::CollectionFind { .. }) => true,
+            (
+                NodeTemplate::Builtin(expected),
+                Node::Call {
+                    function: actual, ..
+                },
+            ) => expected == actual,
             (
                 NodeTemplate::Aggregate(expected),
                 Node::Aggregate {
@@ -1088,6 +1095,90 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             unconnected
         );
     }
+}
+
+#[test]
+fn builtin_selector_reconciliation_adds_minimum_inputs_without_removing_excess() {
+    let mut fx = fixture();
+    if let Some(Node::Call { function, args }) = fx.graph.nodes.get_mut(&0) {
+        *function = "matches".to_owned();
+        args.clear();
+    }
+    let added = fx.viewer().ensure_call_minimum_inputs(0);
+    assert_eq!(added, 2);
+    let Some(Node::Call { args, .. }) = fx.graph.nodes.get(&0) else {
+        panic!("fixture call is missing");
+    };
+    assert_eq!(args.len(), 2);
+    assert!(
+        args.iter()
+            .all(|input| matches!(fx.graph.nodes.get(input), Some(Node::Unconnected)))
+    );
+
+    fx.graph.nodes.insert(
+        20,
+        Node::Const {
+            value: Value::String("first".to_owned()),
+        },
+    );
+    fx.graph.nodes.insert(
+        21,
+        Node::Const {
+            value: Value::String("second".to_owned()),
+        },
+    );
+    fx.graph.nodes.insert(
+        22,
+        Node::Const {
+            value: Value::String("excess".to_owned()),
+        },
+    );
+    if let Some(Node::Call { function, args }) = fx.graph.nodes.get_mut(&0) {
+        *function = "upper".to_owned();
+        *args = vec![20, 21, 22];
+    }
+    assert_eq!(fx.viewer().ensure_call_minimum_inputs(0), 0);
+    let Some(Node::Call { args, .. }) = fx.graph.nodes.get(&0) else {
+        panic!("fixture call is missing");
+    };
+    assert_eq!(args, &[20, 21, 22]);
+}
+
+#[test]
+fn builtin_argument_controls_enforce_catalog_bounds_and_allow_excess_repair() {
+    assert!(call_can_add_argument("matches", 2));
+    assert!(!call_can_add_argument("matches", 3));
+    assert!(!call_can_add_argument("matches", 4));
+    assert!(!call_can_remove_argument("matches", 2));
+    assert!(call_can_remove_argument("matches", 4));
+
+    assert!(call_can_add_argument("add", 2));
+    assert!(!call_can_remove_argument("add", 2));
+    assert!(call_can_remove_argument("add", 3));
+
+    assert!(call_can_add_argument("unknown_imported_function", 0));
+    assert!(!call_can_remove_argument("unknown_imported_function", 0));
+    assert!(call_can_remove_argument("unknown_imported_function", 1));
+}
+
+#[test]
+fn variadic_parameter_labels_repeat_only_the_final_step_group() {
+    let name = |function, index| builtin_parameter(function, index).map(|parameter| parameter.name);
+
+    assert_eq!(name("add", 0), Some("left"));
+    assert_eq!(name("add", 1), Some("right"));
+    assert_eq!(name("add", 2), Some("right"));
+    assert_eq!(name("datetime_add", 0), Some("value"));
+    assert_eq!(name("datetime_add", 1), Some("duration"));
+    assert_eq!(name("datetime_add", 4), Some("duration"));
+
+    assert_eq!(name("json_serialize_object", 0), Some("path"));
+    assert_eq!(name("json_serialize_object", 1), Some("scalar_type"));
+    assert_eq!(name("json_serialize_object", 2), Some("value"));
+    assert_eq!(name("json_serialize_object", 3), Some("path"));
+    assert_eq!(name("json_serialize_object", 4), Some("scalar_type"));
+    assert_eq!(name("json_serialize_object", 5), Some("value"));
+    assert_eq!(name("upper", 1), None);
 }
 
 #[test]
