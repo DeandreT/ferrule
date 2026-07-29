@@ -563,6 +563,189 @@ fn property_dependencies_are_group_scoped_feasible_and_transactional()
 }
 
 #[test]
+fn pattern_property_names_roundtrip_and_enforce_exact_dynamic_overlap()
+-> Result<(), Box<dyn std::error::Error>> {
+    let selectors = JsonPatternPropertyNames::new(["^x-", "^meta-"])?;
+    let dependencies = JsonPropertyDependencies::new(std::collections::BTreeMap::from([(
+        "x-trigger".into(),
+        vec!["meta-required".into()],
+    )]))?;
+    let schema = SchemaNode::group(
+        "Object",
+        vec![
+            SchemaNode::scalar("x-declared", ScalarType::String),
+            SchemaNode::scalar("ordinary", ScalarType::Int),
+        ],
+    )
+    .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+    .and_then(|schema| schema.with_required_fields(vec!["x-trigger".into()]))
+    .and_then(|schema| schema.with_json_property_dependencies(dependencies))
+    .and_then(|schema| schema.with_json_pattern_property_names(selectors.clone()))
+    .ok_or("pattern-selected open object is valid")?;
+
+    assert_eq!(
+        schema
+            .json_pattern_property_names()
+            .map(JsonPatternPropertyNames::sources),
+        Some(selectors.sources())
+    );
+    assert!(schema.json_pattern_property_names_are_valid());
+    assert!(schema.json_pattern_property_names_tree_is_valid());
+    let encoded = serde_json::to_string(&schema)?;
+    assert!(encoded.contains(r#""json_pattern_property_names":{"sources":["^x-","^meta-"]}"#));
+    assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, schema);
+
+    assert!(
+        SchemaNode::group(
+            "Object",
+            vec![SchemaNode::scalar("x-declared", ScalarType::Int)],
+        )
+        .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+        .and_then(|schema| schema.with_json_pattern_property_names(selectors.clone()))
+        .is_none()
+    );
+    assert!(
+        SchemaNode::group(
+            "Object",
+            vec![SchemaNode::scalar("ordinary", ScalarType::Int)],
+        )
+        .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+        .and_then(|schema| schema.with_json_pattern_property_names(selectors.clone()))
+        .is_some()
+    );
+    assert!(
+        SchemaNode::scalar("value", ScalarType::String)
+            .with_json_pattern_property_names(selectors.clone())
+            .is_none()
+    );
+    assert!(
+        SchemaNode::group("Closed", Vec::new())
+            .with_json_pattern_property_names(selectors)
+            .is_none()
+    );
+
+    let mut alternative = schema;
+    let SchemaKind::Group { alternatives, .. } = &mut alternative.kind else {
+        return Err("test schema must remain a group".into());
+    };
+    alternatives.push(GroupAlternative {
+        name: "variant".into(),
+        members: vec!["ordinary".into()],
+        required: Vec::new(),
+        constraints: Vec::new(),
+    });
+    assert!(!alternative.json_pattern_property_names_are_valid());
+    Ok(())
+}
+
+#[test]
+fn pattern_property_name_mutations_are_transactional() -> Result<(), Box<dyn std::error::Error>> {
+    let selectors = JsonPatternPropertyNames::new(["^x-"])?;
+    let dynamic = SchemaNode::scalar("*", ScalarType::String);
+    let mut schema = SchemaNode::group(
+        "Object",
+        vec![
+            SchemaNode::scalar("x-declared", ScalarType::String),
+            SchemaNode::scalar("ordinary", ScalarType::Int),
+        ],
+    )
+    .with_dynamic_fields(dynamic.clone())
+    .and_then(|schema| schema.with_json_pattern_property_names(selectors.clone()))
+    .ok_or("initial pattern-selected object is valid")?;
+
+    assert!(!schema.set_dynamic_fields(Some(SchemaNode::scalar("*", ScalarType::Int))));
+    assert_eq!(schema.dynamic_fields(), Some(&dynamic));
+    assert!(!schema.set_dynamic_fields(None));
+    assert_eq!(schema.dynamic_fields(), Some(&dynamic));
+
+    assert!(!schema.set_required_fields(vec!["ordinary-runtime".into()]));
+    assert!(schema.required_fields().is_empty());
+    assert!(schema.set_required_fields(vec!["x-runtime".into()]));
+    assert_eq!(schema.required_fields(), ["x-runtime"]);
+
+    let invalid_dependencies =
+        JsonPropertyDependencies::new(std::collections::BTreeMap::from([(
+            "other-trigger".into(),
+            vec!["x-required".into()],
+        )]))?;
+    assert!(!schema.set_json_property_dependencies(Some(invalid_dependencies)));
+    assert!(schema.json_property_dependencies.is_none());
+
+    let valid_dependencies = JsonPropertyDependencies::new(std::collections::BTreeMap::from([(
+        "x-trigger".into(),
+        vec!["x-required".into()],
+    )]))?;
+    assert!(schema.set_json_property_dependencies(Some(valid_dependencies.clone())));
+    assert_eq!(
+        schema.json_property_dependencies.as_ref(),
+        Some(&valid_dependencies)
+    );
+
+    let rejected = JsonPatternPropertyNames::new(["^z-"])?;
+    assert!(!schema.set_json_pattern_property_names(Some(rejected)));
+    assert_eq!(schema.json_pattern_property_names(), Some(&selectors));
+    Ok(())
+}
+
+#[test]
+fn pattern_property_name_tree_and_deserialization_reject_invalid_metadata()
+-> Result<(), Box<dyn std::error::Error>> {
+    let selectors = JsonPatternPropertyNames::new(["^x-"])?;
+    let mut invalid = SchemaNode::group(
+        "Nested",
+        vec![SchemaNode::scalar("x-declared", ScalarType::Int)],
+    )
+    .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+    .ok_or("open object is valid before selector attachment")?;
+    invalid.json_pattern_property_names = Some(selectors);
+    assert!(!invalid.metadata_is_valid());
+
+    let serialized = serde_json::to_string(&invalid)?;
+    assert!(serde_json::from_str::<SchemaNode>(&serialized).is_err());
+
+    let root = SchemaNode::group("Root", vec![invalid]);
+    assert!(!root.metadata_tree_is_valid());
+    assert!(!root.json_pattern_property_names_tree_is_valid());
+    let serialized = serde_json::to_string(&root)?;
+    assert!(serde_json::from_str::<SchemaNode>(&serialized).is_err());
+    Ok(())
+}
+
+#[test]
+fn pattern_property_names_share_the_schema_wide_pattern_budget()
+-> Result<(), Box<dyn std::error::Error>> {
+    let selector_sources = (0..MAX_JSON_PATTERN_ALTERNATIVES)
+        .map(|index| format!("^selector-{index}$"))
+        .collect::<Vec<_>>();
+    let selectors = JsonPatternPropertyNames::new(selector_sources.clone())?;
+    let shared_patterns = JsonPatternConstraints::new([selector_sources])?;
+    let distinct_sources = (0..=MAX_JSON_PATTERN_ALTERNATIVES)
+        .map(|index| format!("^distinct-{index}$"))
+        .collect::<Vec<_>>();
+    let distinct_patterns = JsonPatternConstraints::new([distinct_sources])?;
+
+    let shared_child = SchemaNode::scalar("shared", ScalarType::String)
+        .with_json_patterns(shared_patterns)
+        .ok_or("shared child patterns are locally valid")?;
+    let distinct_child = SchemaNode::scalar("distinct", ScalarType::String)
+        .with_json_patterns(distinct_patterns)
+        .ok_or("distinct child pattern is locally valid")?;
+
+    let mut within_budget = SchemaNode::group("Object", vec![shared_child.clone()])
+        .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+        .ok_or("open object is valid")?;
+    assert!(within_budget.set_json_pattern_property_names(Some(selectors.clone())));
+    assert!(within_budget.json_pattern_budget_is_valid());
+
+    let mut over_budget = SchemaNode::group("Object", vec![shared_child, distinct_child])
+        .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+        .ok_or("open object is valid before root selector attachment")?;
+    assert!(!over_budget.set_json_pattern_property_names(Some(selectors)));
+    assert!(over_budget.json_pattern_property_names().is_none());
+    Ok(())
+}
+
+#[test]
 fn property_name_constraints_are_group_scoped_feasible_and_transactional()
 -> Result<(), Box<dyn std::error::Error>> {
     let allowed =
@@ -840,10 +1023,12 @@ fn json_pattern_constraints_require_string_capable_domains_and_roundtrip()
     ] {
         assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
     }
-    let mismatched: SchemaNode = serde_json::from_str(
-        r#"{"name":"x","fixed":"C","json_patterns":{"any_of":[["^A$"]]},"kind":{"kind":"scalar","ty":"string"}}"#,
-    )?;
-    assert!(!mismatched.json_pattern_budget_is_valid());
+    assert!(
+        serde_json::from_str::<SchemaNode>(
+            r#"{"name":"x","fixed":"C","json_patterns":{"any_of":[["^A$"]]},"kind":{"kind":"scalar","ty":"string"}}"#,
+        )
+        .is_err()
+    );
     Ok(())
 }
 
@@ -874,6 +1059,8 @@ fn json_pattern_plan_budgets_are_global_deduplicated_and_include_dynamic_fields(
     };
     let nested_overflow = SchemaNode::group("Envelope", vec![with_dynamic_overflow]);
     assert!(!nested_overflow.json_pattern_budget_is_valid());
+    let encoded = serde_json::to_string(&nested_overflow)?;
+    assert!(serde_json::from_str::<SchemaNode>(&encoded).is_err());
 
     let mut property_name_groups = Vec::new();
     for index in 0..=MAX_DISTINCT_JSON_PATTERNS {
@@ -958,11 +1145,84 @@ fn json_pattern_plan_budgets_are_global_deduplicated_and_include_dynamic_fields(
     };
     let within_fixed_work = SchemaNode::group("Fixed", vec![costly_fixed()?, costly_fixed()?]);
     assert!(within_fixed_work.json_pattern_budget_is_valid());
+    let encoded = serde_json::to_string(&within_fixed_work)?;
+    assert_eq!(
+        serde_json::from_str::<SchemaNode>(&encoded)?,
+        within_fixed_work
+    );
     let over_fixed_work = SchemaNode::group(
         "Fixed",
         vec![costly_fixed()?, costly_fixed()?, costly_fixed()?],
     );
     assert!(!over_fixed_work.json_pattern_budget_is_valid());
+    let encoded = serde_json::to_string(&over_fixed_work)?;
+    assert!(serde_json::from_str::<SchemaNode>(&encoded).is_err());
+    Ok(())
+}
+
+#[test]
+fn schema_deserialization_shares_pattern_work_with_private_predicates()
+-> Result<(), Box<dyn std::error::Error>> {
+    let costly_source = format!("^{}$", "a".repeat(6_000));
+    let costly_patterns = JsonPatternConstraints::new([[costly_source]])?;
+    let costly_fixed = || {
+        SchemaNode::scalar_fixed("fixed", ScalarType::String, "a".repeat(6_000))
+            .with_json_patterns(costly_patterns.clone())
+            .ok_or("costly fixed pattern remains locally valid")
+    };
+    let predicate = JsonContainsPredicate::schema(costly_fixed()?);
+    let range = ItemCountRange::new(1, None).ok_or("positive contains range is valid")?;
+    let constraints = JsonContainsConstraints::new([JsonContainsConstraint::new(predicate, range)])
+        .ok_or("one contains constraint is valid")?;
+
+    let mut schema = SchemaNode::group("Root", vec![costly_fixed()?, costly_fixed()?]).repeating();
+    schema.json_contains = Some(constraints);
+    assert!(schema.metadata_tree_is_valid());
+    assert!(!schema.json_pattern_budget_is_valid());
+
+    let encoded = serde_json::to_string(&schema)?;
+    assert!(serde_json::from_str::<SchemaNode>(&encoded).is_err());
+    Ok(())
+}
+
+#[test]
+fn schema_deserialization_shares_work_across_pattern_consumers()
+-> Result<(), Box<dyn std::error::Error>> {
+    let costly_name = "a".repeat(6_000);
+    let costly_source = format!("^{costly_name}$");
+    let patterns = JsonPatternConstraints::new([[costly_source.clone()]])?;
+
+    let fixed = SchemaNode::scalar_fixed("fixed", ScalarType::String, costly_name.clone())
+        .with_json_patterns(patterns.clone())
+        .ok_or("fixed pattern remains locally valid")?;
+    let property_names = JsonPropertyNameConstraints::schema(
+        None,
+        None,
+        Some(patterns),
+        JsonFormatAnnotations::default(),
+    )
+    .ok_or("property-name pattern is constraining")?;
+    let property_object = SchemaNode::group("property-object", Vec::new())
+        .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+        .and_then(|schema| schema.with_required_fields(vec![costly_name.clone()]))
+        .and_then(|schema| schema.with_json_property_names(property_names))
+        .ok_or("property-name match remains locally valid")?;
+    let selectors = JsonPatternPropertyNames::new([costly_source])?;
+    let selector_object = SchemaNode::group("selector-object", Vec::new())
+        .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::String))
+        .and_then(|schema| schema.with_required_fields(vec![costly_name]))
+        .and_then(|schema| schema.with_json_pattern_property_names(selectors))
+        .ok_or("pattern-property selector remains locally valid")?;
+
+    let within_budget = SchemaNode::group("Root", vec![fixed.clone(), property_object.clone()]);
+    assert!(within_budget.json_pattern_budget_is_valid());
+    let encoded = serde_json::to_string(&within_budget)?;
+    assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, within_budget);
+
+    let over_budget = SchemaNode::group("Root", vec![fixed, property_object, selector_object]);
+    assert!(!over_budget.json_pattern_budget_is_valid());
+    let encoded = serde_json::to_string(&over_budget)?;
+    assert!(serde_json::from_str::<SchemaNode>(&encoded).is_err());
     Ok(())
 }
 

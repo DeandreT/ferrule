@@ -5,7 +5,7 @@ use ir::{
     JsonSchemaPredicate, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS, SchemaKind, SchemaNode,
 };
 
-use super::{files, parse, property_dependencies, render, resolve_ref};
+use super::{files, parse, pattern_properties, property_dependencies, render, resolve_ref};
 use crate::JsonFormatError;
 
 pub(super) fn has_keywords(schema: &serde_json::Value) -> bool {
@@ -74,40 +74,31 @@ fn apply_selected(
             "dependent schemas without a concrete object type also admit unconstrained non-object values",
         ));
     }
-    let SchemaKind::Group {
-        children,
-        alternatives,
-        dynamic,
-        ..
-    } = &node.kind
-    else {
+    if !matches!(node.kind, SchemaKind::Group { .. }) {
         return Ok(());
-    };
-
-    let possible = dynamic.is_none().then(|| {
-        if alternatives.is_empty() {
-            children
-                .iter()
-                .map(|child| child.name.as_str())
-                .collect::<BTreeSet<_>>()
-        } else {
-            alternatives
-                .iter()
-                .flat_map(|alternative| alternative.members.iter().map(String::as_str))
-                .collect()
-        }
-    });
+    }
+    let possible = pattern_properties::possible_dependency_triggers(
+        name,
+        node,
+        selected
+            .dependencies
+            .as_ref()
+            .into_iter()
+            .flat_map(|dependencies| dependencies.rules().keys().cloned())
+            .chain(
+                selected
+                    .predicates
+                    .iter()
+                    .map(|constraint| constraint.trigger().to_string()),
+            ),
+    )?;
 
     if let Some(dependencies) = selected.dependencies {
-        let dependencies = if let Some(possible) = &possible {
-            property_dependencies::retain_possible_triggers(
-                name,
-                Some(&dependencies),
-                possible.iter().copied(),
-            )?
-        } else {
-            Some(dependencies)
-        };
+        let dependencies = property_dependencies::retain_possible_triggers(
+            name,
+            Some(&dependencies),
+            possible.iter().map(String::as_str),
+        )?;
         if let Some(dependencies) = dependencies {
             node.json_property_dependencies = property_dependencies::intersect(
                 name,
@@ -120,11 +111,7 @@ fn apply_selected(
     let predicates = selected
         .predicates
         .into_iter()
-        .filter(|constraint| {
-            possible
-                .as_ref()
-                .is_none_or(|possible| possible.contains(constraint.trigger()))
-        })
+        .filter(|constraint| possible.contains(constraint.trigger()))
         .collect::<Vec<_>>();
     node.json_dependent_schemas = merge(
         name,

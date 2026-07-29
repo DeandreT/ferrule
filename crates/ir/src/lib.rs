@@ -18,10 +18,11 @@ pub use schema::{
     JsonDependentSchemaConstraint, JsonDependentSchemaConstraints, JsonFormatAnnotations,
     JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
     JsonMultipleOfConstraintsError, JsonPatternConstraints, JsonPatternConstraintsError,
-    JsonPropertyDependencies, JsonPropertyDependenciesError, JsonPropertyNameConstraints,
-    JsonPropertyNameSet, JsonPropertyNameSetError, JsonSchemaPredicate, MAX_DISTINCT_JSON_PATTERNS,
-    MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
-    MAX_JSON_ALLOWED_VALUES, MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
+    JsonPatternPropertyNames, JsonPropertyDependencies, JsonPropertyDependenciesError,
+    JsonPropertyNameConstraints, JsonPropertyNameSet, JsonPropertyNameSetError,
+    JsonSchemaPredicate, MAX_DISTINCT_JSON_PATTERNS, MAX_JSON_ALLOWED_VALUE_STRING_BYTES,
+    MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES, MAX_JSON_ALLOWED_VALUES,
+    MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
     MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS,
     MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
@@ -569,6 +570,15 @@ pub struct SchemaNode {
     /// must also be present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub json_property_dependencies: Option<JsonPropertyDependencies>,
+    /// Exact portable patterns selecting runtime-named properties governed by
+    /// this object's dynamic value schema.
+    ///
+    /// Sources are ORed in declaration order. A statically declared child
+    /// whose name also matches a selector must have the same schema as the
+    /// dynamic value, ignoring only its own property name. Nonmatching
+    /// statically declared children remain independent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_pattern_property_names: Option<JsonPatternPropertyNames>,
     /// Exact portable JSON Schema assertions applied to every property name
     /// in this object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -627,6 +637,39 @@ pub struct SchemaNode {
     pub kind: SchemaKind,
 }
 
+std::thread_local! {
+    static SCHEMA_DESERIALIZE_DEPTH: std::cell::Cell<usize> = const {
+        std::cell::Cell::new(0)
+    };
+}
+
+struct SchemaDeserializeGuard {
+    is_root: bool,
+}
+
+impl SchemaDeserializeGuard {
+    fn enter() -> Self {
+        let is_root = SCHEMA_DESERIALIZE_DEPTH.with(|depth| {
+            let current = depth.get();
+            depth.set(current.saturating_add(1));
+            current == 0
+        });
+        Self { is_root }
+    }
+}
+
+impl Drop for SchemaDeserializeGuard {
+    fn drop(&mut self) {
+        SCHEMA_DESERIALIZE_DEPTH.with(|depth| {
+            depth.set(depth.get().saturating_sub(1));
+        });
+    }
+}
+
+pub(crate) fn schema_deserialization_is_active() -> bool {
+    SCHEMA_DESERIALIZE_DEPTH.with(|depth| depth.get() != 0)
+}
+
 impl<'de> Deserialize<'de> for SchemaNode {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -678,6 +721,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             json_property_dependencies: Option<JsonPropertyDependencies>,
             #[serde(default)]
+            json_pattern_property_names: Option<JsonPatternPropertyNames>,
+            #[serde(default)]
             json_property_names: Option<JsonPropertyNameConstraints>,
             #[serde(default)]
             json_unique_items: bool,
@@ -704,6 +749,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             kind: SchemaKind,
         }
 
+        let guard = SchemaDeserializeGuard::enter();
         let repr = Repr::deserialize(deserializer)?;
         let node = Self {
             name: repr.name,
@@ -728,6 +774,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             json_dependent_schemas: repr.json_dependent_schemas,
             property_count_range: repr.property_count_range,
             json_property_dependencies: repr.json_property_dependencies,
+            json_pattern_property_names: repr.json_pattern_property_names,
             json_property_names: repr.json_property_names,
             json_unique_items: repr.json_unique_items,
             string_length_range: repr.string_length_range,
@@ -742,9 +789,12 @@ impl<'de> Deserialize<'de> for SchemaNode {
             database_relation: repr.database_relation,
             kind: repr.kind,
         };
-        if !node.metadata_is_valid() {
+        if guard.is_root
+            && (!node.metadata_tree_without_pattern_evaluation_is_valid()
+                || !node.json_pattern_budget_is_valid())
+        {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget",
             ));
         }
         Ok(node)
@@ -975,7 +1025,43 @@ impl SchemaNode {
             && self.json_dependent_schemas_are_valid()
             && self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
+            && self.json_pattern_property_names_are_valid()
             && self.json_property_names_are_valid()
+            && self.json_unique_items_is_valid()
+            && self.string_length_range_is_valid()
+            && self.json_patterns_are_valid()
+            && self.json_formats_are_valid()
+            && self.value_generation_is_valid()
+            && self.default_is_valid()
+            && self.alternative_mode_is_valid()
+            && self.xml_alternative_kind_is_valid()
+            && self.xml_repeating_sequences_are_valid()
+            && self.xml_repeating_choices_are_valid()
+            && self.database_relation_is_valid()
+            && self.nullable_is_valid()
+            && self.container_nullable_is_valid()
+            && self.json_any_is_valid()
+            && self.xml_wildcard_namespace_is_valid()
+            && self.xml_wildcard_process_contents_is_valid()
+    }
+
+    fn metadata_without_pattern_evaluation_is_valid(&self) -> bool {
+        self.alternatives_are_valid()
+            && self.required_fields_are_valid()
+            && self.xml_name_alternatives_are_valid()
+            && self.recursive_ref_is_valid()
+            && self.fixed_is_valid()
+            && self.json_allowed_values_are_valid()
+            && self.numeric_range_is_valid()
+            && self.json_multiple_of_is_valid()
+            && self.item_count_range_is_valid()
+            && self.json_contains_are_structurally_valid()
+            && self.json_dependent_schemas_are_structurally_valid()
+            && self.property_count_range_is_valid()
+            && self.json_property_dependencies_are_valid()
+            && (self.json_pattern_property_names.is_none()
+                || self.json_pattern_property_name_expectations().is_some())
+            && self.json_property_names_are_structurally_valid()
             && self.json_unique_items_is_valid()
             && self.string_length_range_is_valid()
             && self.json_patterns_are_valid()
@@ -1018,6 +1104,7 @@ impl SchemaNode {
             json_dependent_schemas: None,
             property_count_range: None,
             json_property_dependencies: None,
+            json_pattern_property_names: None,
             json_property_names: None,
             json_unique_items: false,
             string_length_range: None,
@@ -1064,6 +1151,7 @@ impl SchemaNode {
             json_dependent_schemas: None,
             property_count_range: None,
             json_property_dependencies: None,
+            json_pattern_property_names: None,
             json_property_names: None,
             json_unique_items: false,
             string_length_range: None,
@@ -1119,6 +1207,7 @@ impl SchemaNode {
             json_dependent_schemas: None,
             property_count_range: None,
             json_property_dependencies: None,
+            json_pattern_property_names: None,
             json_property_names: None,
             json_unique_items: false,
             string_length_range: None,
@@ -1429,6 +1518,19 @@ impl SchemaNode {
             })
     }
 
+    fn json_contains_are_structurally_valid(&self) -> bool {
+        self.json_contains.as_ref().is_none_or(|constraints| {
+            self.repeating
+                && constraints.collection_is_canonical()
+                && constraints.as_slice().iter().all(|constraint| {
+                    constraint
+                        .predicate()
+                        .as_schema()
+                        .is_none_or(SchemaNode::private_unique_items_are_exact)
+                })
+        })
+    }
+
     /// Recursively checks JSON `contains` placement and predicate schemas.
     pub fn json_contains_tree_is_valid(&self) -> bool {
         self.json_contains_are_valid()
@@ -1465,6 +1567,21 @@ impl SchemaNode {
                 constraint.predicate().as_schema().is_none_or(|schema| {
                     schema.metadata_tree_is_valid() && schema.private_unique_items_are_exact()
                 })
+            })
+    }
+
+    fn json_dependent_schemas_are_structurally_valid(&self) -> bool {
+        self.json_dependent_schemas
+            .as_ref()
+            .is_none_or(|constraints| {
+                matches!(self.kind, SchemaKind::Group { .. })
+                    && constraints.is_canonical()
+                    && constraints.as_slice().iter().all(|constraint| {
+                        constraint
+                            .predicate()
+                            .as_schema()
+                            .is_none_or(SchemaNode::private_unique_items_are_exact)
+                    })
             })
     }
 
@@ -1556,6 +1673,41 @@ impl SchemaNode {
                         && dynamic
                             .as_deref()
                             .is_none_or(SchemaNode::metadata_tree_is_valid)
+                }
+            }
+    }
+
+    fn metadata_tree_without_pattern_evaluation_is_valid(&self) -> bool {
+        self.metadata_without_pattern_evaluation_is_valid()
+            && self.json_contains.as_ref().is_none_or(|constraints| {
+                constraints.as_slice().iter().all(|constraint| {
+                    constraint
+                        .predicate()
+                        .as_schema()
+                        .is_none_or(SchemaNode::metadata_tree_without_pattern_evaluation_is_valid)
+                })
+            })
+            && self
+                .json_dependent_schemas
+                .as_ref()
+                .is_none_or(|constraints| {
+                    constraints.as_slice().iter().all(|constraint| {
+                        constraint.predicate().as_schema().is_none_or(
+                            SchemaNode::metadata_tree_without_pattern_evaluation_is_valid,
+                        )
+                    })
+                })
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children
+                        .iter()
+                        .all(SchemaNode::metadata_tree_without_pattern_evaluation_is_valid)
+                        && dynamic.as_deref().is_none_or(
+                            SchemaNode::metadata_tree_without_pattern_evaluation_is_valid,
+                        )
                 }
             }
     }
@@ -1697,6 +1849,86 @@ impl SchemaNode {
             }
     }
 
+    /// Checks that dynamic JSON property-name selectors belong to one open
+    /// object, admit every runtime-named property referenced by ordinary
+    /// required or dependency metadata, and agree with every statically
+    /// declared child whose name also matches a selector.
+    pub fn json_pattern_property_names_are_valid(&self) -> bool {
+        let Some(selectors) = &self.json_pattern_property_names else {
+            return true;
+        };
+        let Some(expectations) = self.json_pattern_property_name_expectations() else {
+            return false;
+        };
+        selectors.matches_expected(
+            expectations
+                .iter()
+                .map(|(name, expected)| (name.as_str(), *expected)),
+        )
+    }
+
+    fn json_pattern_property_name_expectations(
+        &self,
+    ) -> Option<std::collections::BTreeMap<String, bool>> {
+        self.json_pattern_property_names.as_ref()?;
+        let SchemaKind::Group {
+            children,
+            alternatives,
+            required,
+            dynamic,
+            ..
+        } = &self.kind
+        else {
+            return None;
+        };
+        let dynamic = dynamic.as_deref()?;
+        if !alternatives.is_empty() {
+            return None;
+        }
+        let mut expectations = std::collections::BTreeMap::new();
+        for child in children {
+            if !same_schema_ignoring_name(child, dynamic) {
+                expectations.insert(child.name.clone(), false);
+            }
+        }
+        let mut require_selected = |name: &str| {
+            if !children.iter().any(|child| child.name == name) {
+                expectations.insert(name.to_string(), true);
+            }
+        };
+        for required in required {
+            require_selected(required);
+        }
+        if let Some(dependencies) = &self.json_property_dependencies {
+            for (trigger, requirements) in dependencies.rules() {
+                require_selected(trigger);
+                for required in requirements {
+                    require_selected(required);
+                }
+            }
+        }
+        Some(expectations)
+    }
+
+    /// Recursively checks dynamic JSON pattern-property selector placement
+    /// and all referenced runtime property names.
+    pub fn json_pattern_property_names_tree_is_valid(&self) -> bool {
+        self.json_pattern_property_names_are_valid()
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children
+                        .iter()
+                        .all(SchemaNode::json_pattern_property_names_tree_is_valid)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::json_pattern_property_names_tree_is_valid)
+                }
+            }
+    }
+
     /// Checks that JSON property-name constraints belong to an object and
     /// admit every property that is unconditionally required.
     pub fn json_property_names_are_valid(&self) -> bool {
@@ -1735,6 +1967,76 @@ impl SchemaNode {
                 .iter()
                 .all(|required| constraints.accepts(required))
         })
+    }
+
+    fn json_property_names_are_structurally_valid(&self) -> bool {
+        let Some(constraints) = &self.json_property_names else {
+            return true;
+        };
+        let SchemaKind::Group {
+            alternatives,
+            required,
+            ..
+        } = &self.kind
+        else {
+            return false;
+        };
+        if !constraints.is_structurally_canonical() {
+            return false;
+        }
+        let required =
+            effective_required_fields(required, self.json_property_dependencies.as_ref());
+        if required
+            .iter()
+            .any(|required| !constraints.accepts_without_patterns(required))
+        {
+            return false;
+        }
+        alternatives.iter().all(|alternative| {
+            let mut initial = required.clone();
+            for field in &alternative.required {
+                if !initial.contains(field) {
+                    initial.push(field.clone());
+                }
+            }
+            let effective =
+                effective_required_fields(&initial, self.json_property_dependencies.as_ref());
+            effective
+                .iter()
+                .all(|required| constraints.accepts_without_patterns(required))
+        })
+    }
+
+    fn json_property_name_pattern_inputs(&self) -> Option<std::collections::BTreeSet<String>> {
+        let constraints = self.json_property_names.as_ref()?;
+        constraints.patterns()?;
+        let SchemaKind::Group {
+            alternatives,
+            required,
+            ..
+        } = &self.kind
+        else {
+            return None;
+        };
+        let required =
+            effective_required_fields(required, self.json_property_dependencies.as_ref());
+        let mut inputs = required
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        for alternative in alternatives {
+            let mut initial = required.clone();
+            for field in &alternative.required {
+                if !initial.contains(field) {
+                    initial.push(field.clone());
+                }
+            }
+            inputs.extend(effective_required_fields(
+                &initial,
+                self.json_property_dependencies.as_ref(),
+            ));
+        }
+        Some(inputs)
     }
 
     /// Recursively checks JSON property-name placement and feasibility.
@@ -1866,11 +2168,35 @@ impl SchemaNode {
         fixed_work: &mut u64,
     ) -> bool {
         if !self.json_patterns_are_valid()
-            || !self.json_property_names_are_valid()
-            || !self.json_contains_are_valid()
-            || !self.json_dependent_schemas_are_valid()
+            || !self.json_property_names_are_structurally_valid()
+            || (self.json_pattern_property_names.is_some()
+                && self.json_pattern_property_name_expectations().is_none())
+            || !self.json_contains_are_structurally_valid()
+            || !self.json_dependent_schemas_are_structurally_valid()
         {
             return false;
+        }
+        if let Some(selectors) = &self.json_pattern_property_names
+            && !accumulate_pattern_sources(
+                selectors.patterns(),
+                programs,
+                source_bytes,
+                instructions,
+            )
+        {
+            return false;
+        }
+        if let Some(selectors) = &self.json_pattern_property_names {
+            let Some(expectations) = self.json_pattern_property_name_expectations() else {
+                return false;
+            };
+            for (name, expected) in expectations {
+                if patterns_match_with_programs(selectors.patterns(), &name, programs, fixed_work)
+                    != Some(expected)
+                {
+                    return false;
+                }
+            }
         }
         if let Some(constraints) = &self.json_property_names
             && let Some(patterns) = constraints.patterns()
@@ -1880,9 +2206,21 @@ impl SchemaNode {
             }
             if let Some(allowed) = constraints.allowed() {
                 for name in allowed.as_slice() {
-                    if !patterns_match_with_programs(patterns, name, programs, fixed_work) {
+                    if patterns_match_with_programs(patterns, name, programs, fixed_work)
+                        != Some(true)
+                    {
                         return false;
                     }
+                }
+            }
+            let Some(inputs) = self.json_property_name_pattern_inputs() else {
+                return false;
+            };
+            for input in inputs {
+                if patterns_match_with_programs(patterns, &input, programs, fixed_work)
+                    != Some(true)
+                {
+                    return false;
                 }
             }
         }
@@ -1891,7 +2229,7 @@ impl SchemaNode {
                 return false;
             }
             if let Some(fixed) = self.fixed.as_deref()
-                && !patterns_match_with_programs(patterns, fixed, programs, fixed_work)
+                && patterns_match_with_programs(patterns, fixed, programs, fixed_work) != Some(true)
             {
                 return false;
             }
@@ -2085,7 +2423,9 @@ impl SchemaNode {
         };
         if self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
+            && self.json_pattern_property_names_are_valid()
             && self.json_property_names_are_valid()
+            && (self.json_pattern_property_names.is_none() || self.json_pattern_budget_is_valid())
         {
             true
         } else {
@@ -2127,7 +2467,9 @@ impl SchemaNode {
         };
         if self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
+            && self.json_pattern_property_names_are_valid()
             && self.json_property_names_are_valid()
+            && (self.json_pattern_property_names.is_none() || self.json_pattern_budget_is_valid())
         {
             true
         } else {
@@ -2239,6 +2581,7 @@ impl SchemaNode {
         let previous_xml_kind = std::mem::replace(&mut self.xml_alternative_kind, xml_kind);
         if self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
+            && self.json_pattern_property_names_are_valid()
             && self.json_property_names_are_valid()
         {
             true
@@ -2562,11 +2905,51 @@ impl SchemaNode {
         mut self,
         dependencies: JsonPropertyDependencies,
     ) -> Option<Self> {
-        self.json_property_dependencies = Some(dependencies);
-        (self.json_property_dependencies_are_valid()
+        self.set_json_property_dependencies(Some(dependencies))
+            .then_some(self)
+    }
+
+    pub fn set_json_property_dependencies(
+        &mut self,
+        dependencies: Option<JsonPropertyDependencies>,
+    ) -> bool {
+        let previous = std::mem::replace(&mut self.json_property_dependencies, dependencies);
+        if self.json_property_dependencies_are_valid()
+            && self.json_pattern_property_names_are_valid()
             && self.property_count_range_is_valid()
-            && self.json_property_names_are_valid())
-        .then_some(self)
+            && self.json_property_names_are_valid()
+            && (self.json_pattern_property_names.is_none() || self.json_pattern_budget_is_valid())
+        {
+            true
+        } else {
+            self.json_property_dependencies = previous;
+            false
+        }
+    }
+
+    pub fn with_json_pattern_property_names(
+        mut self,
+        selectors: JsonPatternPropertyNames,
+    ) -> Option<Self> {
+        self.set_json_pattern_property_names(Some(selectors))
+            .then_some(self)
+    }
+
+    pub fn set_json_pattern_property_names(
+        &mut self,
+        selectors: Option<JsonPatternPropertyNames>,
+    ) -> bool {
+        let previous = std::mem::replace(&mut self.json_pattern_property_names, selectors);
+        if self.json_pattern_property_names_are_valid() && self.json_pattern_budget_is_valid() {
+            true
+        } else {
+            self.json_pattern_property_names = previous;
+            false
+        }
+    }
+
+    pub fn json_pattern_property_names(&self) -> Option<&JsonPatternPropertyNames> {
+        self.json_pattern_property_names.as_ref()
     }
 
     pub fn with_json_property_names(
@@ -2681,6 +3064,17 @@ fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAltern
         })
 }
 
+fn same_schema_ignoring_name(left: &SchemaNode, right: &SchemaNode) -> bool {
+    if left.name == right.name {
+        return left == right;
+    }
+    let mut left = left.clone();
+    let mut right = right.clone();
+    left.name.clear();
+    right.name.clear();
+    left == right
+}
+
 fn accumulate_pattern_sources<'a>(
     patterns: &'a JsonPatternConstraints,
     programs: &mut std::collections::BTreeMap<&'a str, json_pattern::PortableJsonPattern>,
@@ -2721,27 +3115,25 @@ fn patterns_match_with_programs(
     value: &str,
     programs: &std::collections::BTreeMap<&str, json_pattern::PortableJsonPattern>,
     remaining_work: &mut u64,
-) -> bool {
+) -> Option<bool> {
     for alternative in patterns.any_of() {
         let mut matched = true;
         for source in alternative {
-            let Some(program) = programs.get(source.as_str()) else {
-                return false;
-            };
+            let program = programs.get(source.as_str())?;
             match program.is_match_with_budget(value, remaining_work) {
                 Ok(true) => {}
                 Ok(false) => {
                     matched = false;
                     break;
                 }
-                Err(_) => return false,
+                Err(_) => return None,
             }
         }
         if matched {
-            return true;
+            return Some(true);
         }
     }
-    false
+    Some(false)
 }
 
 fn valid_required_fields(

@@ -70,6 +70,10 @@ pub enum JsonFormatError {
     InvalidPropertyName { object: String, property: String },
     #[error("closed object `{object}` does not declare property `{property}`")]
     UndeclaredProperty { object: String, property: String },
+    #[error(
+        "object `{object}` contains dynamic property `{property}` that matches no patternProperties selector"
+    )]
+    UnmatchedPatternProperty { object: String, property: String },
     #[error("`{name}` requires constant {expected}, got {got}")]
     ConstantMismatch {
         name: String,
@@ -370,10 +374,13 @@ fn read_node_with_patterns(
             if let Some(dynamic) = dynamic {
                 let mut out = Vec::with_capacity(fields.len().max(children.len()));
                 for (name, field_value) in fields {
-                    let field_schema = children
-                        .iter()
-                        .find(|child| child.name == *name)
-                        .unwrap_or(dynamic);
+                    let field_schema =
+                        if let Some(child) = children.iter().find(|child| child.name == *name) {
+                            child
+                        } else {
+                            patterns.validate_dynamic_property_name(schema, name)?;
+                            dynamic
+                        };
                     let field = if field_schema.repeating {
                         read_repeated(field_value, field_schema, patterns)?
                     } else {
@@ -707,12 +714,16 @@ fn write_single_node_with_patterns(
                             property: name.clone(),
                         });
                     }
-                    let child_schema = children
-                        .iter()
-                        .find(|child| child.name == *name)
-                        .unwrap_or(dynamic);
+                    let (child_schema, is_dynamic) =
+                        match children.iter().find(|child| child.name == *name) {
+                            Some(child) => (child, false),
+                            None => (dynamic.as_ref(), true),
+                        };
                     if is_boundary_absence(child_schema, child_instance) {
                         continue;
+                    }
+                    if is_dynamic {
+                        patterns.validate_dynamic_property_name(schema, name)?;
                     }
                     out.insert(
                         name.clone(),
@@ -1078,6 +1089,21 @@ fn write_shape_error(
 mod tests {
     use super::*;
 
+    fn pattern_property_schema(
+        sources: impl IntoIterator<Item = &'static str>,
+    ) -> Result<SchemaNode, Box<dyn std::error::Error>> {
+        let mut dynamic = SchemaNode::scalar("*", ScalarType::Int);
+        dynamic.nullable = true;
+        let selectors = ir::JsonPatternPropertyNames::new(sources)?;
+        SchemaNode::group(
+            "Object",
+            vec![SchemaNode::scalar("fixed", ScalarType::String)],
+        )
+        .with_dynamic_fields(dynamic)
+        .and_then(|schema| schema.with_json_pattern_property_names(selectors))
+        .ok_or_else(|| "patternProperties test schema is valid".into())
+    }
+
     fn schema() -> SchemaNode {
         SchemaNode::group(
             "Root",
@@ -1154,6 +1180,66 @@ mod tests {
             write_node(&schema, &duplicate),
             Err(JsonFormatError::DuplicateProperty { ref property, .. }) if property == "name"
         ));
+    }
+
+    #[test]
+    fn pattern_properties_select_only_dynamic_names_and_preserve_fixed_precedence()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let schema = pattern_property_schema(["^x-", "meta"])?;
+        let value = serde_json::json!({
+            "fixed": "uses its declared string schema",
+            "x-value": 1,
+            "x-meta": 2,
+            "meta-value": null
+        });
+        let instance = read_node(&value, &schema)?;
+        assert_eq!(write_node(&schema, &instance)?, value);
+
+        assert!(matches!(
+            read_node(&serde_json::json!({"other": 1}), &schema),
+            Err(JsonFormatError::UnmatchedPatternProperty { ref property, .. })
+                if property == "other"
+        ));
+        assert!(matches!(
+            write_node(
+                &schema,
+                &Instance::Group(vec![(
+                    "other".into(),
+                    Instance::Scalar(Value::Int(1)),
+                )]),
+            ),
+            Err(JsonFormatError::UnmatchedPatternProperty { ref property, .. })
+                if property == "other"
+        ));
+        assert_eq!(
+            write_node(
+                &schema,
+                &Instance::Group(vec![("other".into(), Instance::Scalar(Value::Null),)]),
+            )?,
+            serde_json::json!({})
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_properties_apply_to_json_lines_with_one_shared_work_budget()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let schema = pattern_property_schema(["^x-"])?;
+        let rows = from_lines("{\"x-a\":1}\n{\"x-b\":null}\n", &schema)?;
+        assert_eq!(to_lines(&schema, &rows)?, "{\"x-a\":1}\n{\"x-b\":null}\n");
+        assert!(matches!(
+            from_lines("{\"x-a\":1}\n{\"other\":2}\n", &schema),
+            Err(JsonFormatError::UnmatchedPatternProperty { ref property, .. })
+                if property == "other"
+        ));
+
+        let expensive = pattern_property_schema(["^(a?){8000}$"])?;
+        let key = "a".repeat(8_000);
+        assert!(matches!(
+            from_str(&format!("{{{key:?}:1}}"), &expensive),
+            Err(JsonFormatError::PatternWorkLimit { ref name }) if name == "Object"
+        ));
+        Ok(())
     }
 
     #[test]

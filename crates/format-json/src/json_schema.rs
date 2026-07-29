@@ -44,6 +44,7 @@ mod files;
 mod formats;
 pub(crate) mod item_counts;
 pub(crate) mod multiples;
+mod pattern_properties;
 mod patterns;
 mod positional_items;
 pub(crate) mod predicate;
@@ -128,6 +129,7 @@ fn parse(
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
+    let _pattern_match_scope = pattern_properties::ImportPatternMatchScope::enter();
     if schema == &serde_json::Value::Bool(true)
         || schema.as_object().is_some_and(serde_json::Map::is_empty)
     {
@@ -795,7 +797,7 @@ fn attach_object_metadata(
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let name = group.name.clone();
-    let group = attach_dynamic_fields(group, schema, doc, active_refs)?;
+    let group = pattern_properties::attach(group, schema, doc, active_refs)?;
     let required = parse_required_fields(&name, schema)?;
     group.with_required_fields(required).ok_or_else(|| {
         unsupported_object(&name, "required names must identify declared properties")
@@ -849,15 +851,7 @@ fn reject_unsupported_object_keywords(
         return Ok(());
     };
     let dialect = files::validation_dialect(schema);
-    if let Some(keyword) = ["patternProperties"]
-        .into_iter()
-        .find(|keyword| object.contains_key(*keyword))
-    {
-        return Err(unsupported_object(
-            name,
-            &format!("`{keyword}` object validation is not supported"),
-        ));
-    }
+    pattern_properties::validate_direct_schema(name, schema)?;
     if dialect.supports_unevaluated_items() && object.contains_key("unevaluatedProperties") {
         return Err(unsupported_object(
             name,

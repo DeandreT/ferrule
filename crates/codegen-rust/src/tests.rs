@@ -29,6 +29,7 @@ mod json_contains;
 mod json_dependent_schemas;
 mod json_multiple_of;
 mod json_object_openness;
+mod json_pattern_properties;
 mod json_patterns;
 mod json_property_counts;
 mod json_property_dependencies;

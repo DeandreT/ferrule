@@ -2,8 +2,8 @@ use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use super::{
     allowed_values, conditionals, contains, dependent_schemas, files, formats, item_counts,
-    multiples, parse, patterns, property_counts, property_dependencies, property_names, ranges,
-    string_lengths, unique_items, unsupported_union,
+    multiples, parse, pattern_properties, patterns, property_counts, property_dependencies,
+    property_names, ranges, string_lengths, unique_items, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -68,6 +68,9 @@ pub(super) fn parse_all_of(
         let mut branch = parse(name, branch, doc, active_refs)?;
         collect_retained_formats(&mut branch, &mut format_events);
         structural.push(branch);
+    }
+    for branch in &structural {
+        pattern_properties::reject_composed_node(name, branch, "allOf")?;
     }
     let merged = merge_structural_branches(name, structural)?;
     let format_only_fallback =
@@ -198,6 +201,7 @@ pub(super) fn parse_all_of(
         }
     }
     apply_format_events(name, &mut merged, format_events)?;
+    pattern_properties::reject_composed_node(name, &merged, "allOf")?;
     Ok(merged)
 }
 

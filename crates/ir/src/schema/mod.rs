@@ -5,6 +5,7 @@ mod json_dependent_schema_constraints;
 mod json_format_annotations;
 mod json_multiple_of;
 mod json_pattern_constraints;
+mod json_pattern_property_names;
 mod json_property_dependencies;
 mod json_property_name_constraints;
 mod json_schema_predicate;
@@ -41,6 +42,7 @@ pub use json_pattern_constraints::{
     MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
     MAX_JSON_PATTERN_TERMS,
 };
+pub use json_pattern_property_names::JsonPatternPropertyNames;
 pub use json_property_dependencies::{
     JsonPropertyDependencies, JsonPropertyDependenciesError, MAX_JSON_PROPERTY_DEPENDENCY_EDGES,
     MAX_JSON_PROPERTY_DEPENDENCY_NAME_BYTES, MAX_JSON_PROPERTY_DEPENDENCY_TRIGGERS,

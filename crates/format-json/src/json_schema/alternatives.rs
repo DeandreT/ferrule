@@ -1340,6 +1340,7 @@ pub(super) fn parse_object_alternatives(
             .unwrap_or_else(|| format!("{keyword}{index}"));
         let normalized = without_direct_property_constraints(resolved);
         let mut parsed = parse(&alternative_name, &normalized, doc, active_refs)?;
+        super::pattern_properties::reject_composed_node(name, &parsed, keyword)?;
         if !core::ptr::eq(resolved, alternative_schema)
             && files::ref_siblings_apply(alternative_schema)
         {

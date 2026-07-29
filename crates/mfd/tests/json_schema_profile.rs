@@ -75,6 +75,18 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
       "properties":{"Unit":{"type":"string"}},
       "additionalProperties":{"type":"integer"}
     },
+    "PatternOpen":{
+      "type":["object","null"],
+      "properties":{
+        "Label":{"type":"string"},
+        "x-known":{"type":"integer"}
+      },
+      "patternProperties":{
+        "^x-":{"type":"integer"},
+        "^meta-":{"type":"integer"}
+      },
+      "additionalProperties":false
+    },
     "MaybeArray":{
       "type":["array","null"],
       "minItems":1,
@@ -103,7 +115,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     )?;
     std::fs::write(
         directory.0.join("input.json"),
-        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"ImplicitOpen":{"Known":"A","LegacyPeer":"B","arbitrary":{"nested":[true,null]}},"TypedOpen":{"Unit":"count","widgets":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"urgent"}"#,
+        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"ImplicitOpen":{"Known":"A","LegacyPeer":"B","arbitrary":{"nested":[true,null]}},"TypedOpen":{"Unit":"count","widgets":3},"PatternOpen":{"Label":"extensions","x-known":1,"x-extra":2,"meta-rank":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"urgent"}"#,
     )?;
     let design = directory.0.join("mapping.mfd");
     std::fs::write(
@@ -216,6 +228,39 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .ok_or("missing typed-open property-count range")?;
     assert_eq!(typed_open_property_count.minimum(), 2);
     assert_eq!(typed_open_property_count.maximum(), Some(3));
+    let pattern_open = imported
+        .project
+        .source
+        .child("PatternOpen")
+        .ok_or("missing pattern-selected object")?;
+    assert!(pattern_open.container_nullable);
+    assert!(matches!(
+        pattern_open.dynamic_fields().map(|dynamic| &dynamic.kind),
+        Some(SchemaKind::Scalar {
+            ty: ir::ScalarType::Int
+        })
+    ));
+    assert_eq!(
+        pattern_open
+            .json_pattern_property_names()
+            .map(ir::JsonPatternPropertyNames::sources),
+        Some(&["^x-".to_string(), "^meta-".to_string()][..])
+    );
+    assert!(format_json::from_str("null", pattern_open).is_ok());
+    assert!(
+        format_json::from_str(
+            r#"{"Label":"extensions","x-known":1,"x-extra":2,"meta-rank":3}"#,
+            pattern_open,
+        )
+        .is_ok()
+    );
+    assert!(matches!(
+        format_json::from_str(r#"{"other":1}"#, pattern_open),
+        Err(format_json::JsonFormatError::UnmatchedPatternProperty {
+            ref property,
+            ..
+        }) if property == "other"
+    ));
     let array = imported
         .project
         .source
@@ -467,6 +512,17 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     );
     let output = engine::run(&imported.project, &input)?;
     assert!(output.field("Amount").is_some());
+    let program = codegen::lower(&imported.project)
+        .map_err(|diagnostics| format!("codegen lowering: {diagnostics:?}"))?;
+    codegen_rust::emit(
+        &program,
+        &codegen_rust::Options {
+            package_name: "ferrule-json-schema-profile".into(),
+            runtime_dependency: codegen_rust::RuntimeDependency::Version("0.1.0".into()),
+        },
+    )
+    .map_err(|error| format!("Rust emission: {error}"))?;
+    codegen_csharp::emit(&program).map_err(|error| format!("C# emission: {error}"))?;
 
     let roundtrip_design = directory.0.join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &roundtrip_design)?;
@@ -527,6 +583,18 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         3
     );
     assert_eq!(
+        exported_schema["properties"]["PatternOpen"]["anyOf"][0]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        exported_schema["properties"]["PatternOpen"]["anyOf"][0]["patternProperties"]["^x-"]["type"],
+        "integer"
+    );
+    assert_eq!(
+        exported_schema["properties"]["PatternOpen"]["anyOf"][0]["patternProperties"]["^meta-"]["type"],
+        "integer"
+    );
+    assert_eq!(
         exported_schema["properties"]["MaybeArray"]["anyOf"][0]["items"]["minProperties"],
         1
     );
@@ -564,6 +632,47 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             ty: ir::ScalarType::Int
         })
     ));
+    let reimported_pattern = reimported
+        .project
+        .source
+        .child("PatternOpen")
+        .ok_or("missing round-tripped pattern-selected object")?;
+    assert!(reimported_pattern.container_nullable);
+    assert_eq!(
+        reimported_pattern
+            .json_pattern_property_names()
+            .map(ir::JsonPatternPropertyNames::sources),
+        Some(&["^x-".to_string(), "^meta-".to_string()][..])
+    );
+    assert!(matches!(
+        reimported_pattern
+            .dynamic_fields()
+            .map(|dynamic| &dynamic.kind),
+        Some(SchemaKind::Scalar {
+            ty: ir::ScalarType::Int
+        })
+    ));
+    assert!(
+        format_json::from_str(
+            r#"{"Label":"extensions","x-known":1,"x-extra":2,"meta-rank":3}"#,
+            reimported_pattern,
+        )
+        .is_ok()
+    );
+    assert!(matches!(
+        format_json::from_str(r#"{"other":1}"#, reimported_pattern),
+        Err(format_json::JsonFormatError::UnmatchedPatternProperty {
+            ref property,
+            ..
+        }) if property == "other"
+    ));
+    let reimported_input =
+        format_json::read(&directory.0.join("input.json"), &reimported.project.source)?;
+    assert!(
+        engine::run(&reimported.project, &reimported_input)?
+            .field("Amount")
+            .is_some()
+    );
     let reimported_multiple_of = reimported
         .project
         .source

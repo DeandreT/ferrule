@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditionals, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact closed homogeneous `patternProperties`, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditionals, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -66,6 +66,23 @@ layout and dialect details that an extension cannot express.
   `false` for a closed object, so MFD export/re-import preserves the behavior.
   Compatible `allOf` object branches intersect their declared and dynamic
   property permissions rather than widening a closed branch.
+  A nonempty `patternProperties` map is retained exactly for an explicitly
+  typed `object` or `object | null` with `additionalProperties: false` when
+  every bounded portable selector has one identical exactly representable
+  value schema. Scalar, structured object, and homogeneous array values reuse
+  the ordinary supported JSON value profile. Selectors are ORed and retain
+  declaration order. A fixed property matched by any selector must have that
+  same schema; nonmatching fixed properties may differ. Runtime decoding
+  checks fixed properties first, then admits a remaining name when any
+  selector matches and validates its value against the common schema.
+  `propertyNames` remains an independent constraint on every key. Dependency
+  rules whose triggers are neither fixed nor selected are semantically
+  unreachable and normalize away. Nullable object null bypasses the object
+  checks. Native, generated Rust, and generated C# input, normalized output,
+  and JSON Lines boundaries share the portable matcher and one per-document
+  pattern work budget. Canonical export writes the selectors and
+  `additionalProperties: false`; re-import preserves the contract. An empty
+  `patternProperties` object is a no-op.
   Concrete objects retain exact non-negative `minProperties` and
   `maxProperties` intervals through references, nullable wrappers, compatible
   `allOf` intersections, and object alternatives that share one identical
@@ -123,10 +140,9 @@ layout and dialect details that an extension cannot express.
   Canonical export writes `required` and, when `then` retains a dependency,
   `dependentRequired` or `dependentSchemas` as appropriate. Value-sensitive,
   multi-trigger, general-`if`, and other nontrivial `else` schemas remain unsupported.
-  `patternProperties`, `unevaluatedProperties`,
-  `unevaluatedItems`, and heterogeneous positional arrays likewise reject
-  instead of being approximated. A lone validation-neutral conditional keyword
-  is ignored.
+  `unevaluatedProperties`, `unevaluatedItems`, and heterogeneous positional
+  arrays likewise reject instead of being approximated. A lone
+  validation-neutral conditional keyword is ignored.
   Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
   and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
   those schema values to use its object form, while Draft 6/7 also accept
@@ -257,8 +273,13 @@ layout and dialect details that an extension cannot express.
   escapes. Backreferences, lookaround, named groups, inline flags, Unicode
   properties, shorthand classes such as `\d`, octal/control escapes, and
   class-set operators reject rather than acquire backend-specific semantics.
-  `patternProperties` and `unevaluatedProperties` remain outside this object
-  profile and reject rather than silently weakening an otherwise typed object.
+  Distinct per-selector `patternProperties` value schemas, open or typed
+  `additionalProperties` fallbacks, general overlap intersection, value shapes
+  outside the ordinary exact JSON profile, and pattern-property objects under
+  active `allOf`, object alternatives, or structural `$ref` siblings remain
+  outside the exact homogeneous profile. `unevaluatedProperties` also remains
+  unsupported. These forms reject rather than silently weakening an otherwise
+  typed object.
   Each source is limited to 64 KiB, 256 nesting levels, 8,192 syntax nodes,
   and 16,384 compiled instructions. Each constrained node retains at most 32
   alternatives and 64 total terms; a complete schema retains at most 64

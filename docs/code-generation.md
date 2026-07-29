@@ -206,8 +206,27 @@ count distinct parsed input properties before decoding and normalized output
 members after Ferrule `Null` omission. Duplicate input names use the parser's
 last value and count once. Nullable object null bypasses the interval; nested,
 repeated, primary, and named documents apply the same rule. Embedded object
-property dependencies are enforced as well. Whenever a trigger property is
-present, every dependent property must be present. Explicit JSON null counts as
+schemas may also carry exact closed homogeneous `patternProperties`. A
+nonempty selector map requires an explicit `object` or `object | null`,
+`additionalProperties: false`, and one identical exactly representable value
+schema for every bounded portable selector. Scalar, structured object, and
+homogeneous array values reuse the ordinary supported JSON value profile.
+Selectors are ORed in declaration order. Matching fixed properties must use
+that schema; nonmatching fixed properties remain independent. Generated
+decoding checks fixed properties first and uses the selectors only for
+remaining names. An independent `propertyNames` constraint still checks every
+key. Dependency rules whose triggers are neither fixed nor selected normalize
+away as semantically unreachable, and nullable null bypasses the object rules.
+Rust and C# enforce selectors on input, normalized output, and JSON Lines with
+the same shared per-document pattern work budget as ordinary string patterns.
+Canonical JSON Schema export/re-import retains the selector map and closed
+fallback. An empty map has no effect. Distinct selector schemas, open or typed
+fallbacks, general overlap intersection, value shapes outside the ordinary
+exact JSON profile, and active `allOf`, object-alternative, or structural
+`$ref`-sibling composition remain outside the generated profile.
+Embedded object property dependencies are enforced as well. Whenever a
+trigger property is present, every dependent property must be present.
+Explicit JSON null counts as
 presence on input; generated output is checked after absent Ferrule values are
 omitted. Nullable object null bypasses the relation, while nested, repeated,
 primary, and named documents all use the same rule. Embedded whole-object
@@ -385,8 +404,8 @@ the generated boundary. Rust and C# enforce scalar constants, exact scalar
 allowed-value sets, numeric ranges, exact decimal `multipleOf` constraints,
 array item-count and `contains` match-count intervals, object property-count
 intervals, object property dependencies and dependent-schema predicates,
-property-name constraints, exact
-structural `uniqueItems`,
+property-name constraints, exact closed homogeneous pattern-property
+selectors, exact structural `uniqueItems`,
 Unicode-scalar string-length intervals, and portable JSON Schema `pattern`
 assertions on both input and normalized output.
 Pattern constraints retain conjunctions and exact disjunctions, nullable
