@@ -66,7 +66,7 @@ fn rejects_recursive_filter_content_and_mismatched_targets() {
     content.root.bindings.push(Binding {
         target_field: "name".into(),
         expression: 7,
-        target_type: ScalarType::String,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::String),
         repeating: false,
     });
     assert_eq!(

@@ -25,7 +25,7 @@ fn emits_ordered_named_outputs_with_unique_scope_names() {
                 bindings: vec![Binding {
                     target_field: "Name".into(),
                     expression: 1,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 }],
                 children: vec![TargetScope {
@@ -36,7 +36,7 @@ fn emits_ordered_named_outputs_with_unique_scope_names() {
                     bindings: vec![Binding {
                         target_field: "Name".into(),
                         expression: 1,
-                        target_type: ScalarType::String,
+                        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                         repeating: false,
                     }],
                     children: Vec::new(),
@@ -57,7 +57,7 @@ fn emits_ordered_named_outputs_with_unique_scope_names() {
                 bindings: vec![Binding {
                     target_field: "Name".into(),
                     expression: 1,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 }],
                 children: Vec::new(),

@@ -39,7 +39,7 @@ fn rejects_invalid_target_scope_states() {
     duplicate_binding.root.bindings.push(Binding {
         target_field: "Value".into(),
         expression: 1,
-        target_type: ScalarType::Int,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
         repeating: false,
     });
     assert!(matches!(
@@ -71,6 +71,13 @@ fn rejects_invalid_target_scope_states() {
     ));
 
     let mut collision = program();
+    collision.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::Int),
+            SchemaNode::group("Child", Vec::new()),
+        ],
+    );
     collision.root.bindings[0].target_field = "Child".into();
     collision.root.children.push(child);
     assert!(matches!(
@@ -80,5 +87,40 @@ fn rejects_invalid_target_scope_states() {
             child: 0,
             ..
         })
+    ));
+}
+
+#[test]
+fn rejects_binding_targets_with_missing_fields_wrong_domains_or_cardinality() {
+    let mut missing = program();
+    missing.root.bindings[0].target_field = "Missing".into();
+    assert!(matches!(
+        validate_program(&missing),
+        Err(ProgramValidationError::InvalidBindingTarget {
+            binding: 0,
+            target_field,
+            ..
+        }) if target_field == "Missing"
+    ));
+
+    let Some(types) = ir::ScalarTypeSet::new([ScalarType::Int, ScalarType::Float]) else {
+        panic!("test union contains distinct scalar types");
+    };
+    let mut wrong_domain = program();
+    wrong_domain.target =
+        SchemaNode::group("Target", vec![SchemaNode::scalar_union("Value", types)]);
+    assert!(matches!(
+        validate_program(&wrong_domain),
+        Err(ProgramValidationError::InvalidBindingTarget { binding: 0, .. })
+    ));
+
+    let mut wrong_cardinality = program();
+    wrong_cardinality.target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::scalar("Value", ScalarType::Int).repeating()],
+    );
+    assert!(matches!(
+        validate_program(&wrong_cardinality),
+        Err(ProgramValidationError::InvalidBindingTarget { binding: 0, .. })
     ));
 }

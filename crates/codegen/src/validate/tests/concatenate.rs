@@ -16,7 +16,7 @@ fn segment(output: IterationOutput) -> TargetScope {
         bindings: vec![Binding {
             target_field: "Value".into(),
             expression: 1,
-            target_type: ScalarType::Int,
+            target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
             repeating: false,
         }],
         children: Vec::new(),
@@ -74,7 +74,7 @@ fn accepts_a_single_group_segment_in_a_repeated_root_sequence() {
         bindings: vec![Binding {
             target_field: "Value".into(),
             expression: 1,
-            target_type: ScalarType::Int,
+            target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
             repeating: false,
         }],
         children: Vec::new(),
@@ -103,7 +103,7 @@ fn rejects_scope_sequence_wrapper_content() {
     program.root.children[0].bindings.push(Binding {
         target_field: "Value".into(),
         expression: 1,
-        target_type: ScalarType::Int,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
         repeating: false,
     });
 

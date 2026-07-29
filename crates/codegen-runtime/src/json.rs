@@ -114,7 +114,7 @@ fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
 
 #[cfg(test)]
 mod tests {
-    use ir::{ScalarType, Value};
+    use ir::{ScalarType, ScalarTypeSet, Value};
 
     use super::*;
 
@@ -161,5 +161,39 @@ mod tests {
             check_input_size(MAX_JSON_DOCUMENT_BYTES.saturating_add(1)),
             Err(JsonBoundaryError::InputTooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn preserves_heterogeneous_scalar_union_tags_at_json_boundaries() {
+        let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+            panic!("test union must contain distinct scalar types");
+        };
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar_union("Value", types),
+                SchemaNode::scalar_union("Items", types).repeating(),
+            ],
+        );
+        let encoded = serde_json::to_string(&schema).unwrap_or_default();
+        let parsed = parse_json(&encoded, r#"{"Value":7,"Items":["A",8]}"#);
+        assert_eq!(
+            parsed,
+            Ok(Instance::Group(vec![
+                ("Value".into(), Instance::Scalar(Value::Int(7))),
+                (
+                    "Items".into(),
+                    Instance::Repeated(vec![
+                        Instance::Scalar(Value::String("A".into())),
+                        Instance::Scalar(Value::Int(8)),
+                    ]),
+                ),
+            ]))
+        );
+        let rendered = parsed.and_then(|instance| serialize_json(&encoded, &instance));
+        assert_eq!(
+            rendered.as_deref(),
+            Ok("{\n  \"Value\": 7,\n  \"Items\": [\n    \"A\",\n    8\n  ]\n}\n")
+        );
     }
 }

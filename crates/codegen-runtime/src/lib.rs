@@ -652,6 +652,30 @@ pub fn adapt_target_value(value: Value, expected: ScalarType) -> Value {
     }
 }
 
+/// Applies target-boundary numeric adaptation for a heterogeneous scalar
+/// domain while preserving every already-admitted runtime scalar tag.
+pub fn adapt_union_target_value(value: Value, expected: &[ScalarType]) -> Value {
+    let actual = match value {
+        Value::String(_) => Some(ScalarType::String),
+        Value::Int(_) => Some(ScalarType::Int),
+        Value::Float(_) => Some(ScalarType::Float),
+        Value::Bool(_) => Some(ScalarType::Bool),
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => None,
+    };
+    if actual.is_some_and(|ty| expected.contains(&ty)) {
+        return value;
+    }
+    match value {
+        value @ Value::Int(_) if expected.contains(&ScalarType::Float) => {
+            adapt_target_value(value, ScalarType::Float)
+        }
+        value @ Value::Float(_) if expected.contains(&ScalarType::Int) => {
+            adapt_target_value(value, ScalarType::Int)
+        }
+        value => value,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1097,6 +1121,45 @@ mod tests {
         assert_eq!(
             adapt_target_value(Value::Int(imprecise), ScalarType::Float),
             Value::Int(imprecise)
+        );
+    }
+
+    #[test]
+    fn union_target_adaptation_preserves_admitted_tags_and_requires_exact_numbers() {
+        let numeric = [ScalarType::Int, ScalarType::Float];
+        assert_eq!(
+            adapt_union_target_value(Value::Int(7), &numeric),
+            Value::Int(7)
+        );
+        assert_eq!(
+            adapt_union_target_value(Value::Float(7.0), &numeric),
+            Value::Float(7.0)
+        );
+
+        let float_or_bool = [ScalarType::Float, ScalarType::Bool];
+        let exact_above_two_to_53 = (1_i64 << 53) + 2;
+        assert_eq!(
+            adapt_union_target_value(Value::Int(exact_above_two_to_53), &float_or_bool),
+            Value::Float(exact_above_two_to_53 as f64)
+        );
+        let inexact_above_two_to_53 = (1_i64 << 53) + 1;
+        assert_eq!(
+            adapt_union_target_value(Value::Int(inexact_above_two_to_53), &float_or_bool),
+            Value::Int(inexact_above_two_to_53)
+        );
+
+        let int_or_string = [ScalarType::Int, ScalarType::String];
+        assert_eq!(
+            adapt_union_target_value(Value::Float(42.0), &int_or_string),
+            Value::Int(42)
+        );
+        assert_eq!(
+            adapt_union_target_value(Value::Float(42.5), &int_or_string),
+            Value::Float(42.5)
+        );
+        assert_eq!(
+            adapt_union_target_value(Value::Bool(true), &int_or_string),
+            Value::Bool(true)
         );
     }
 

@@ -152,7 +152,7 @@ fn failure_program() -> Program {
             bindings: vec![Binding {
                 target_field: "Status".into(),
                 expression: 9,
-                target_type: ScalarType::String,
+                target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                 repeating: false,
             }],
             children: Vec::new(),
@@ -171,7 +171,7 @@ fn failure_program() -> Program {
                 bindings: vec![Binding {
                     target_field: "Value".into(),
                     expression: 8,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 }],
                 children: Vec::new(),

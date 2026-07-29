@@ -167,30 +167,31 @@ pub(crate) const SOURCES: [(&str, &str); 35] = [
 
 pub(crate) const TARGET_BUILDER: &str = r#"namespace Ferrule.Generated;
 
-internal enum TargetScalarType
+[global::System.Flags]
+internal enum TargetScalarDomain
 {
-    String,
-    Int64,
-    Double,
-    Bool,
+    String = 1 << 0,
+    Int64 = 1 << 1,
+    Double = 1 << 2,
+    Bool = 1 << 3,
 }
 
 internal static class TargetBuilder
 {
     internal static global::Ferrule.Runtime.FerruleInstance Scalar(
         global::Ferrule.Runtime.FerruleValue value,
-        TargetScalarType targetType) =>
-        new global::Ferrule.Runtime.FerruleScalar(AdaptNumeric(value, targetType));
+        TargetScalarDomain targetDomain) =>
+        new global::Ferrule.Runtime.FerruleScalar(Adapt(value, targetDomain));
 
     internal static global::Ferrule.Runtime.FerruleInstance RepeatedScalar(
         global::System.Collections.Generic.IEnumerable<global::Ferrule.Runtime.FerruleValue> values,
-        TargetScalarType targetType)
+        TargetScalarDomain targetDomain)
     {
         global::System.ArgumentNullException.ThrowIfNull(values);
         var items = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();
         foreach (var sourceValue in values)
         {
-            var value = AdaptNumeric(sourceValue, targetType);
+            var value = Adapt(sourceValue, targetDomain);
             if (value.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)
             {
                 items.Add(new global::Ferrule.Runtime.FerruleScalar(value));
@@ -200,11 +201,18 @@ internal static class TargetBuilder
         return new global::Ferrule.Runtime.FerruleRepeated(items);
     }
 
-    private static global::Ferrule.Runtime.FerruleValue AdaptNumeric(
+    private static global::Ferrule.Runtime.FerruleValue Adapt(
         global::Ferrule.Runtime.FerruleValue value,
-        TargetScalarType targetType)
+        TargetScalarDomain targetDomain)
     {
-        if (targetType == TargetScalarType.Int64 &&
+        var actualDomain = ValueDomain(value.Kind);
+        if (actualDomain.HasValue &&
+            (targetDomain & actualDomain.Value) != 0)
+        {
+            return value;
+        }
+
+        if ((targetDomain & TargetScalarDomain.Int64) != 0 &&
             value.Kind == global::Ferrule.Runtime.FerruleValueKind.Double)
         {
             var number = value.DoubleValue;
@@ -215,7 +223,7 @@ internal static class TargetBuilder
                 return global::Ferrule.Runtime.FerruleValue.FromInt64((long)number);
             }
         }
-        else if (targetType == TargetScalarType.Double &&
+        else if ((targetDomain & TargetScalarDomain.Double) != 0 &&
                  value.Kind == global::Ferrule.Runtime.FerruleValueKind.Int64)
         {
             var integer = value.Int64Value;
@@ -230,5 +238,16 @@ internal static class TargetBuilder
 
         return value;
     }
+
+    private static TargetScalarDomain? ValueDomain(
+        global::Ferrule.Runtime.FerruleValueKind kind) =>
+        kind switch
+        {
+            global::Ferrule.Runtime.FerruleValueKind.String => TargetScalarDomain.String,
+            global::Ferrule.Runtime.FerruleValueKind.Int64 => TargetScalarDomain.Int64,
+            global::Ferrule.Runtime.FerruleValueKind.Double => TargetScalarDomain.Double,
+            global::Ferrule.Runtime.FerruleValueKind.Bool => TargetScalarDomain.Bool,
+            _ => null,
+        };
 }
 "#;

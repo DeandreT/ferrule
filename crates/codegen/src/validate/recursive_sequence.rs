@@ -48,7 +48,7 @@ pub(super) fn validate(
     groups.retain(|group| {
         group
             .follow(descent_value)
-            .is_some_and(|node| matches!(node.node().kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|node| node.node().is_scalar())
     });
     if groups.is_empty() {
         return invalid_path(
@@ -67,7 +67,7 @@ pub(super) fn validate(
     }
     if !value_roots.into_iter().any(|root| {
         root.follow(value)
-            .is_some_and(|node| matches!(node.node().kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|node| node.node().is_scalar())
     }) {
         return invalid_path(owner, RecursiveSequencePathRole::Value, value);
     }

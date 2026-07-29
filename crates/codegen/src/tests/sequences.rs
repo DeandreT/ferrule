@@ -317,7 +317,10 @@ fn lowers_recursive_collect_into_a_repeating_scalar_scope() {
     let scope = &program.root.children[0];
     assert_eq!(
         scope.construction,
-        TargetConstruction::Scalar { expression: 5 }
+        TargetConstruction::Scalar {
+            expression: 5,
+            target_domain: crate::ScalarTargetDomain::Single(ScalarType::String),
+        }
     );
     assert!(matches!(scope.iteration, Some(IterationPlan { .. })));
     assert_eq!(

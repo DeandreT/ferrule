@@ -15,7 +15,10 @@ fn grouped_program(grouping: GroupingPlan) -> Program {
     );
     program.target = SchemaNode::group(
         "Target",
-        vec![SchemaNode::group("Group", Vec::new()).repeating()],
+        vec![
+            SchemaNode::scalar("Value", ScalarType::Int),
+            SchemaNode::group("Group", Vec::new()).repeating(),
+        ],
     );
     program.expressions.push(ExpressionNode {
         id: 3,
@@ -177,6 +180,7 @@ fn rejects_grouping_with_copy_current_source_construction() {
     program.target = SchemaNode::group(
         "Target",
         vec![
+            SchemaNode::scalar("Value", ScalarType::Int),
             SchemaNode::group("Group", vec![SchemaNode::scalar("Key", ScalarType::String)])
                 .repeating(),
         ],

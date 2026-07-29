@@ -12,7 +12,7 @@ fn binding(target_field: &str, expression: u32, target_type: ScalarType) -> Bind
     Binding {
         target_field: target_field.into(),
         expression,
-        target_type,
+        target_domain: codegen::ScalarTargetDomain::Single(target_type),
         repeating: false,
     }
 }
@@ -209,13 +209,13 @@ fn target_fixture() -> Program {
                 Binding {
                     target_field: "Styled".into(),
                     expression: 1,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: true,
                 },
                 Binding {
                     target_field: "Styled".into(),
                     expression: 2,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: true,
                 },
             ],

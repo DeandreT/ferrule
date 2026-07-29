@@ -41,10 +41,7 @@ pub(super) fn validate(
     if schemas
         .sources
         .schema_at(schemas.current_source, collection)
-        .is_none_or(|collection| {
-            !collection.node().repeating
-                || !matches!(collection.node().kind, SchemaKind::Scalar { .. })
-        })
+        .is_none_or(|collection| !collection.node().repeating || !collection.node().is_scalar())
     {
         return Err(ProgramValidationError::InvalidPathHierarchyCollection {
             target_path: target_path.to_vec(),
@@ -60,7 +57,7 @@ pub(super) fn validate(
     }
     if target
         .child(name)
-        .is_none_or(|name| name.repeating || !matches!(name.kind, SchemaKind::Scalar { .. }))
+        .is_none_or(|name| name.repeating || !name.is_scalar())
     {
         return Err(ProgramValidationError::InvalidPathHierarchyName {
             target_path: target_path.to_vec(),
@@ -70,9 +67,9 @@ pub(super) fn validate(
     if target.child(files).is_none_or(|files| {
         !files.repeating
             || !matches!(files.kind, SchemaKind::Group { .. })
-            || files.child(name).is_none_or(|name| {
-                name.repeating || !matches!(name.kind, SchemaKind::Scalar { .. })
-            })
+            || files
+                .child(name)
+                .is_none_or(|name| name.repeating || !name.is_scalar())
     }) {
         return Err(ProgramValidationError::InvalidPathHierarchyFiles {
             target_path: target_path.to_vec(),

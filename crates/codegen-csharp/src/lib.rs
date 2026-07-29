@@ -58,7 +58,13 @@ mod tests {
             extra_sources: Vec::new(),
             target: SchemaNode::group(
                 "schema target",
-                vec![SchemaNode::group("child group", Vec::new())],
+                vec![
+                    SchemaNode::scalar("root value", ScalarType::String),
+                    SchemaNode::group(
+                        "child group",
+                        vec![SchemaNode::scalar("copied value", ScalarType::String)],
+                    ),
+                ],
             ),
             expressions: vec![
                 ExpressionNode {
@@ -85,7 +91,7 @@ mod tests {
                 bindings: vec![Binding {
                     target_field: "root value".into(),
                     expression: 9,
-                    target_type: ScalarType::String,
+                    target_domain: ScalarType::String.into(),
                     repeating: false,
                 }],
                 children: vec![TargetScope {
@@ -96,7 +102,7 @@ mod tests {
                     bindings: vec![Binding {
                         target_field: "copied value".into(),
                         expression: 2,
-                        target_type: ScalarType::String,
+                        target_domain: ScalarType::String.into(),
                         repeating: false,
                     }],
                     children: Vec::new(),
@@ -265,7 +271,7 @@ mod tests {
                 bindings: vec![Binding {
                     target_field: "value".into(),
                     expression,
-                    target_type: ScalarType::String,
+                    target_domain: ScalarType::String.into(),
                     repeating: false,
                 }],
                 children: Vec::new(),
@@ -512,23 +518,34 @@ mod tests {
     #[test]
     fn repeated_bindings_coalesce_at_the_first_field_position() {
         let mut program = program();
+        program.target = SchemaNode::group(
+            "schema target",
+            vec![
+                SchemaNode::scalar("line", ScalarType::String).repeating(),
+                SchemaNode::scalar("other", ScalarType::String),
+                SchemaNode::group(
+                    "child group",
+                    vec![SchemaNode::scalar("copied value", ScalarType::String)],
+                ),
+            ],
+        );
         program.root.bindings = vec![
             Binding {
                 target_field: "line".into(),
                 expression: 9,
-                target_type: ScalarType::String,
+                target_domain: ScalarType::String.into(),
                 repeating: true,
             },
             Binding {
                 target_field: "other".into(),
                 expression: 2,
-                target_type: ScalarType::String,
+                target_domain: ScalarType::String.into(),
                 repeating: false,
             },
             Binding {
                 target_field: "line".into(),
                 expression: 2,
-                target_type: ScalarType::String,
+                target_domain: ScalarType::String.into(),
                 repeating: true,
             },
         ];
@@ -557,7 +574,14 @@ mod tests {
         let mut program = program();
         program.target = SchemaNode::group(
             "schema target",
-            vec![SchemaNode::group("child group", Vec::new()).repeating()],
+            vec![
+                SchemaNode::scalar("root value", ScalarType::String),
+                SchemaNode::group(
+                    "child group",
+                    vec![SchemaNode::scalar("copied value", ScalarType::String)],
+                )
+                .repeating(),
+            ],
         )
         .repeating();
         program.root.repeating = true;
@@ -573,6 +597,19 @@ mod tests {
     #[test]
     fn source_iterating_scopes_flatten_context_candidates() {
         let mut program = program();
+        program.target = SchemaNode::group(
+            "schema target",
+            vec![
+                SchemaNode::scalar("root value", ScalarType::String),
+                SchemaNode::group(
+                    "child group",
+                    vec![
+                        SchemaNode::scalar("copied value", ScalarType::String),
+                        SchemaNode::scalar("position", ScalarType::Int),
+                    ],
+                ),
+            ],
+        );
         program.source = SchemaNode::group(
             "source",
             vec![
@@ -615,7 +652,7 @@ mod tests {
         program.root.children[0].bindings.push(Binding {
             target_field: "position".into(),
             expression: 11,
-            target_type: ScalarType::Int,
+            target_domain: ScalarType::Int.into(),
             repeating: false,
         });
 
@@ -969,7 +1006,17 @@ mod tests {
             },
         ]);
         program.root.bindings[0].expression = 15;
-        program.root.bindings[0].target_type = ScalarType::Bool;
+        program.root.bindings[0].target_domain = ScalarType::Bool.into();
+        program.target = SchemaNode::group(
+            "schema target",
+            vec![
+                SchemaNode::scalar("root value", ScalarType::Bool),
+                SchemaNode::group(
+                    "child group",
+                    vec![SchemaNode::scalar("copied value", ScalarType::String)],
+                ),
+            ],
+        );
         program.root.children[0].iteration =
             Some(IterationPlan::generated(GeneratedSequence::TokenizeRegex {
                 input: 11,
@@ -1107,9 +1154,19 @@ mod tests {
         program.root.bindings[0] = Binding {
             target_field: "root value".into(),
             expression: 16,
-            target_type: ScalarType::Int,
+            target_domain: ScalarType::Int.into(),
             repeating: false,
         };
+        program.target = SchemaNode::group(
+            "schema target",
+            vec![
+                SchemaNode::scalar("root value", ScalarType::Int),
+                SchemaNode::group(
+                    "child group",
+                    vec![SchemaNode::scalar("copied value", ScalarType::String)],
+                ),
+            ],
+        );
 
         let artifacts = emit(&program).expect("generated sequence aggregate emits");
         let source = generated_source(&artifacts);

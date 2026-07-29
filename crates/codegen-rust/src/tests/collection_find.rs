@@ -67,7 +67,7 @@ fn collection_find_program(named: bool) -> Program {
             bindings: vec![Binding {
                 target_field: "Found".into(),
                 expression: 3,
-                target_type: ScalarType::String,
+                target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                 repeating: false,
             }],
             children: Vec::new(),

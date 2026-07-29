@@ -186,7 +186,7 @@ fn binding(target_field: &str, expression: u32, target_type: ScalarType) -> Bind
     Binding {
         target_field: target_field.into(),
         expression,
-        target_type,
+        target_domain: target_type.into(),
         repeating: false,
     }
 }

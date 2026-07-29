@@ -257,13 +257,13 @@ fn generated_fixed_width_flextext_projection_executes_the_embedded_layout() {
                 Binding {
                     target_field: "Code".into(),
                     expression: 2,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Count".into(),
                     expression: 3,
-                    target_type: ScalarType::Int,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: false,
                 },
             ],

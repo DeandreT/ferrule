@@ -8,17 +8,12 @@ use crate::{
     DynamicTargetChild, Expression, ExpressionNode, FailureIteration, FailureRule,
     FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource,
     JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
-    ProgramValidationError, ScalarFunction, ScopeFeature, SequenceWindow, SortKey, SortPlan,
-    SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
-    XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
+    ProgramValidationError, ScalarFunction, ScalarTargetDomain, ScopeFeature, SequenceWindow,
+    SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter,
+    UserFunctionProgram, XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
-    let schema_diagnostics = crate::validate::project_schema_diagnostics(project);
-    if !schema_diagnostics.is_empty() {
-        return Err(LowerError::new(schema_diagnostics));
-    }
-
     let validation = engine::validate(project);
     if !validation.is_empty() {
         return Err(LowerError::new(
@@ -220,7 +215,20 @@ fn lower_scope(
     let base_construction = match &scope.construction {
         ScopeConstruction::Scalar { value } => {
             roots.push(*value);
-            crate::TargetConstruction::Scalar { expression: *value }
+            let target_domain = match scalar_target_domain(target) {
+                Some(target_domain) => target_domain,
+                None => {
+                    diagnostics.push(Diagnostic::Validation {
+                        location: display_target_scope(target_path),
+                        message: "validated scalar construction target is not scalar".into(),
+                    });
+                    ScalarTargetDomain::Single(ir::ScalarType::String)
+                }
+            };
+            crate::TargetConstruction::Scalar {
+                expression: *value,
+                target_domain,
+            }
         }
         ScopeConstruction::CopyCurrentSource => crate::TargetConstruction::CopyCurrentSource,
         ScopeConstruction::XmlMixedContent { elements } => {
@@ -275,7 +283,7 @@ fn lower_scope(
                 return Some(Binding {
                     target_field: binding.target_field.clone(),
                     expression: binding.node,
-                    target_type: ir::ScalarType::String,
+                    target_domain: ScalarTargetDomain::Single(ir::ScalarType::String),
                     repeating: false,
                 });
             }
@@ -286,7 +294,7 @@ fn lower_scope(
                 });
                 return None;
             };
-            let SchemaKind::Scalar { ty } = target.kind else {
+            let Some(target_domain) = scalar_target_domain(target) else {
                 diagnostics.push(Diagnostic::Validation {
                     location: display_target_path(target_path, &binding.target_field),
                     message: "validated binding target is not a scalar".into(),
@@ -296,7 +304,7 @@ fn lower_scope(
             Some(Binding {
                 target_field: binding.target_field.clone(),
                 expression: binding.node,
-                target_type: ty,
+                target_domain,
                 repeating: target.repeating,
             })
         })
@@ -340,7 +348,7 @@ fn lower_scope(
                 });
                 return None;
             };
-            let SchemaKind::Scalar { ty } = dynamic_target.kind else {
+            let Some(target_domain) = scalar_target_domain(dynamic_target) else {
                 diagnostics.push(Diagnostic::Validation {
                     location: display_target_scope(target_path),
                     message: "validated computed scalar property target is not scalar".into(),
@@ -350,7 +358,7 @@ fn lower_scope(
             Some(DynamicTargetBinding {
                 key: binding.key,
                 value: binding.value,
-                target_type: ty,
+                target_domain,
             })
         })
         .collect::<Vec<_>>();
@@ -417,6 +425,14 @@ fn lower_scope(
         construction,
         bindings,
         children,
+    }
+}
+
+fn scalar_target_domain(schema: &SchemaNode) -> Option<ScalarTargetDomain> {
+    match schema.kind {
+        SchemaKind::Scalar { ty } => Some(ScalarTargetDomain::Single(ty)),
+        SchemaKind::ScalarUnion { types } => Some(ScalarTargetDomain::Union(types)),
+        SchemaKind::Group { .. } => None,
     }
 }
 

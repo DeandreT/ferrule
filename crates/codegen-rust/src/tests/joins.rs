@@ -69,7 +69,7 @@ fn join_program() -> Program {
         .map(|(target_field, expression, target_type)| Binding {
             target_field: target_field.into(),
             expression,
-            target_type,
+            target_domain: codegen::ScalarTargetDomain::Single(target_type),
             repeating: false,
         })
         .collect(),
@@ -81,7 +81,7 @@ fn join_program() -> Program {
             bindings: vec![Binding {
                 target_field: "Summary".into(),
                 expression: 11,
-                target_type: ScalarType::String,
+                target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                 repeating: false,
             }],
             children: Vec::new(),
@@ -204,19 +204,19 @@ fn join_program() -> Program {
                 Binding {
                     target_field: "Count".into(),
                     expression: 15,
-                    target_type: ScalarType::Int,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Total".into(),
                     expression: 14,
-                    target_type: ScalarType::Int,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Joined".into(),
                     expression: 17,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 },
             ],

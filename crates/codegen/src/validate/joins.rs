@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::SchemaKind;
 use mapping::NodeId;
 
 use crate::{
@@ -91,10 +90,9 @@ pub(super) fn validate_plan(
                         .iter()
                         .any(|candidate| candidate.node().repeating)
             }
-            JoinSourceCardinality::Singleton => candidates.iter().any(|candidate| {
-                !candidate.node().repeating
-                    && matches!(candidate.node().kind, SchemaKind::Scalar { .. })
-            }),
+            JoinSourceCardinality::Singleton => candidates
+                .iter()
+                .any(|candidate| !candidate.node().repeating && candidate.node().is_scalar()),
         };
         if !valid {
             return Err(ProgramValidationError::InvalidJoinSource {
@@ -390,10 +388,7 @@ fn is_bounded_correlated_plan(
     let singleton_is_current_scalar = current_source
         .follow(singleton.collection())
         .and_then(SchemaCursor::resolved)
-        .is_some_and(|candidate| {
-            !candidate.node().repeating
-                && matches!(candidate.node().kind, SchemaKind::Scalar { .. })
-        });
+        .is_some_and(|candidate| !candidate.node().repeating && candidate.node().is_scalar());
     singleton_is_current_scalar
         && current_source.follow(repeating.collection()).is_none()
         && sources
@@ -405,6 +400,6 @@ fn scalar_below(sources: SourceCatalog<'_>, collection: &[String], path: &[Strin
     sources.path_targets(collection).iter().any(|candidate| {
         candidate
             .follow(path)
-            .is_some_and(|leaf| matches!(leaf.node().kind, SchemaKind::Scalar { .. }))
+            .is_some_and(|leaf| leaf.node().is_scalar())
     })
 }

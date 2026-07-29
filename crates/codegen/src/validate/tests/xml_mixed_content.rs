@@ -40,7 +40,7 @@ fn mixed_program() -> Program {
         },
     ];
     program.root.bindings[0].expression = 2;
-    program.root.bindings[0].target_type = ScalarType::String;
+    program.root.bindings[0].target_domain = crate::ScalarTargetDomain::Single(ScalarType::String);
     program
 }
 
@@ -119,7 +119,7 @@ fn mixed_construction_program() -> Program {
     program.root.bindings = vec![Binding {
         target_field: "Italic".into(),
         expression: 1,
-        target_type: ScalarType::String,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::String),
         repeating: true,
     }];
     program

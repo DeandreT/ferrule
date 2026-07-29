@@ -128,13 +128,13 @@ fn join_program() -> Program {
                 Binding {
                     target_field: "Value".into(),
                     expression: 1,
-                    target_type: ScalarType::String,
+                    target_domain: crate::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Position".into(),
                     expression: 2,
-                    target_type: ScalarType::Int,
+                    target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: false,
                 },
             ],
@@ -146,7 +146,7 @@ fn join_program() -> Program {
                 bindings: vec![Binding {
                     target_field: "Echo".into(),
                     expression: 1,
-                    target_type: ScalarType::String,
+                    target_domain: crate::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 }],
                 children: Vec::new(),
@@ -250,7 +250,7 @@ fn correlated_join_aggregate_program() -> Program {
                 bindings: vec![Binding {
                     target_field: "Total".into(),
                     expression: 21,
-                    target_type: ScalarType::Int,
+                    target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: false,
                 }],
                 children: Vec::new(),
@@ -355,25 +355,25 @@ fn correlated_join_scope_program() -> Program {
             Binding {
                 target_field: "Price".into(),
                 expression: 25,
-                target_type: ScalarType::Int,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                 repeating: false,
             },
             Binding {
                 target_field: "JoinPosition".into(),
                 expression: 26,
-                target_type: ScalarType::Int,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                 repeating: false,
             },
             Binding {
                 target_field: "ProductPosition".into(),
                 expression: 27,
-                target_type: ScalarType::Int,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                 repeating: false,
             },
             Binding {
                 target_field: "Quantity".into(),
                 expression: 28,
-                target_type: ScalarType::Int,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                 repeating: false,
             },
         ],
@@ -385,7 +385,7 @@ fn correlated_join_scope_program() -> Program {
             bindings: vec![Binding {
                 target_field: "Summary".into(),
                 expression: 25,
-                target_type: ScalarType::Int,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                 repeating: false,
             }],
             children: Vec::new(),
@@ -796,7 +796,7 @@ fn validates_root_join_aggregate_plan_tuple_expression_and_parent_argument() {
     program.root.bindings.push(Binding {
         target_field: "Total".into(),
         expression: 12,
-        target_type: ScalarType::Int,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
         repeating: false,
     });
     assert_eq!(validate_program(&program), Ok(()));

@@ -29,7 +29,7 @@ fn program() -> Program {
             vec![SchemaNode::group("Rows", Vec::new()).repeating()],
         ),
         extra_sources: Vec::new(),
-        target: SchemaNode::group("Target", Vec::new()),
+        target: SchemaNode::group("Target", vec![SchemaNode::scalar("Value", ScalarType::Int)]),
         expressions: vec![
             ExpressionNode {
                 id: 1,
@@ -55,7 +55,7 @@ fn program() -> Program {
             bindings: vec![Binding {
                 target_field: "Value".into(),
                 expression: 2,
-                target_type: ScalarType::Int,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                 repeating: false,
             }],
             children: Vec::new(),
@@ -65,6 +65,8 @@ fn program() -> Program {
 }
 
 fn set_target_fields(program: &mut Program, fields: Vec<SchemaNode>) {
+    let mut fields = fields;
+    fields.insert(0, SchemaNode::scalar("Value", ScalarType::Int));
     program.target = SchemaNode::group("Target", fields);
 }
 
@@ -87,19 +89,13 @@ fn scalar_union(name: &str) -> SchemaNode {
 }
 
 #[test]
-fn rejects_scalar_unions_in_embedded_boundary_schemas() {
+fn accepts_scalar_unions_in_embedded_boundary_schemas() {
     let mut source = program();
     source.source = SchemaNode::group(
         "Source",
         vec![SchemaNode::group("Envelope", vec![scalar_union("Value")])],
     );
-    assert_eq!(
-        validate_program(&source),
-        Err(ProgramValidationError::UnsupportedScalarUnionSchema {
-            boundary: "source schema".into(),
-            path: vec!["Envelope".into(), "Value".into()],
-        })
-    );
+    assert_eq!(validate_program(&source), Ok(()));
 
     let mut target = program();
     target.extra_targets.push(NamedTargetProgram {
@@ -107,13 +103,7 @@ fn rejects_scalar_unions_in_embedded_boundary_schemas() {
         target: SchemaNode::group("Audit", vec![scalar_union("Payload")]),
         root: empty_target_scope(),
     });
-    assert_eq!(
-        validate_program(&target),
-        Err(ProgramValidationError::UnsupportedScalarUnionSchema {
-            boundary: "named target `Audit` schema".into(),
-            path: vec!["Payload".into()],
-        })
-    );
+    assert_eq!(validate_program(&target), Ok(()));
 }
 
 #[test]
@@ -224,17 +214,21 @@ fn named_target_sequence_diagnostics_retain_the_target_name() {
 #[test]
 fn accepts_valid_repeating_duplicate_bindings() {
     let mut program = program();
+    program.target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::scalar("Values", ScalarType::Int).repeating()],
+    );
     program.root.bindings = vec![
         Binding {
             target_field: "Values".into(),
             expression: 1,
-            target_type: ScalarType::Int,
+            target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
             repeating: true,
         },
         Binding {
             target_field: "Values".into(),
             expression: 2,
-            target_type: ScalarType::Int,
+            target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
             repeating: true,
         },
     ];
@@ -452,12 +446,18 @@ fn validates_every_recursive_sequence_schema_path() {
 fn validates_scalar_scope_construction() {
     let mut valid = program();
     valid.target = SchemaNode::scalar("Target", ScalarType::Int);
-    valid.root.construction = TargetConstruction::Scalar { expression: 1 };
+    valid.root.construction = TargetConstruction::Scalar {
+        expression: 1,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
+    };
     valid.root.bindings.clear();
     assert_eq!(validate_program(&valid), Ok(()));
 
     let mut missing = valid.clone();
-    missing.root.construction = TargetConstruction::Scalar { expression: 99 };
+    missing.root.construction = TargetConstruction::Scalar {
+        expression: 99,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
+    };
     assert_eq!(
         validate_program(&missing),
         Err(ProgramValidationError::MissingScalarExpression {
@@ -477,11 +477,23 @@ fn validates_scalar_scope_construction() {
         )
     );
 
+    let mut wrong_domain = valid.clone();
+    wrong_domain.root.construction = TargetConstruction::Scalar {
+        expression: 1,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Float),
+    };
+    assert_eq!(
+        validate_program(&wrong_domain),
+        Err(ProgramValidationError::InvalidScalarTargetDomain {
+            target_path: Vec::new(),
+        })
+    );
+
     let mut content = valid;
     content.root.bindings.push(Binding {
         target_field: "Value".into(),
         expression: 1,
-        target_type: ScalarType::Int,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
         repeating: false,
     });
     assert_eq!(
@@ -543,7 +555,7 @@ fn validates_copy_current_source_construction() {
     content.root.bindings.push(Binding {
         target_field: "Value".into(),
         expression: 1,
-        target_type: ScalarType::Int,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
         repeating: false,
     });
     assert_eq!(
@@ -646,7 +658,7 @@ fn generated_items_are_unique_and_lexically_scoped() {
             .map(|expression| Binding {
                 target_field: "Value".into(),
                 expression,
-                target_type: ScalarType::Int,
+                target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
                 repeating: false,
             })
             .collect(),
@@ -664,8 +676,10 @@ fn generated_items_are_unique_and_lexically_scoped() {
     set_target_fields(
         &mut duplicate,
         vec![
-            SchemaNode::group("First", Vec::new()).repeating(),
-            SchemaNode::group("Second", Vec::new()).repeating(),
+            SchemaNode::group("First", vec![SchemaNode::scalar("Value", ScalarType::Int)])
+                .repeating(),
+            SchemaNode::group("Second", vec![SchemaNode::scalar("Value", ScalarType::Int)])
+                .repeating(),
         ],
     );
     duplicate.expressions.push(item(3));
@@ -686,8 +700,10 @@ fn generated_items_are_unique_and_lexically_scoped() {
     set_target_fields(
         &mut sibling_leak,
         vec![
-            SchemaNode::group("First", Vec::new()).repeating(),
-            SchemaNode::group("Second", Vec::new()).repeating(),
+            SchemaNode::group("First", vec![SchemaNode::scalar("Value", ScalarType::Int)])
+                .repeating(),
+            SchemaNode::group("Second", vec![SchemaNode::scalar("Value", ScalarType::Int)])
+                .repeating(),
         ],
     );
     sibling_leak.expressions.extend([item(3), item(4)]);
@@ -719,7 +735,10 @@ fn generated_items_are_unique_and_lexically_scoped() {
     let mut nested = program();
     set_target_fields(
         &mut nested,
-        vec![SchemaNode::group("Nested", Vec::new()).repeating()],
+        vec![
+            SchemaNode::group("Nested", vec![SchemaNode::scalar("Value", ScalarType::Int)])
+                .repeating(),
+        ],
     );
     nested.expressions.extend([item(3), item(4)]);
     nested.root.iteration = Some(sequence(1, 3));
@@ -789,7 +808,7 @@ fn reducer_items_are_private_unique_and_boundary_aware() {
     leaked.root.bindings.push(Binding {
         target_field: "Leaked".into(),
         expression: 3,
-        target_type: ScalarType::Int,
+        target_domain: crate::ScalarTargetDomain::Single(ScalarType::Int),
         repeating: false,
     });
     assert_eq!(
@@ -1127,7 +1146,10 @@ fn validates_sort_window_and_iteration_output_controls() {
     let mut scalar_first = program();
     scalar_first.target = SchemaNode::group(
         "Target",
-        vec![SchemaNode::scalar("Child", ScalarType::String)],
+        vec![
+            SchemaNode::scalar("Value", ScalarType::Int),
+            SchemaNode::scalar("Child", ScalarType::String),
+        ],
     );
     scalar_first.root.children.push(child(
         IterationPlan::new(
@@ -1148,7 +1170,13 @@ fn validates_sort_window_and_iteration_output_controls() {
     );
 
     let mut group_first = scalar_first;
-    group_first.target = SchemaNode::group("Target", vec![SchemaNode::group("Child", Vec::new())]);
+    group_first.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::Int),
+            SchemaNode::group("Child", Vec::new()),
+        ],
+    );
     assert_eq!(validate_program(&group_first), Ok(()));
 }
 

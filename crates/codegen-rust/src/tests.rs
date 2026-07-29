@@ -26,6 +26,7 @@ mod grouping;
 mod joins;
 mod recursive_filter;
 mod scalar_functions;
+mod scalar_union;
 mod xml_mixed_content;
 mod xml_serialize;
 
@@ -198,31 +199,31 @@ fn program() -> Program {
                 Binding {
                     target_field: "Copied".to_string(),
                     expression: 1,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Numbers".to_string(),
                     expression: 2,
-                    target_type: ScalarType::Int,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: true,
                 },
                 Binding {
                     target_field: "Numbers".to_string(),
                     expression: 3,
-                    target_type: ScalarType::Int,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: true,
                 },
                 Binding {
                     target_field: "Sum".to_string(),
                     expression: 7,
-                    target_type: ScalarType::Int,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Selected".to_string(),
                     expression: 11,
-                    target_type: ScalarType::Int,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: false,
                 },
             ],
@@ -235,7 +236,7 @@ fn program() -> Program {
                     bindings: vec![Binding {
                         target_field: "Constant".to_string(),
                         expression: 4,
-                        target_type: ScalarType::String,
+                        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                         repeating: false,
                     }],
                     children: Vec::new(),
@@ -255,19 +256,19 @@ fn program() -> Program {
                         Binding {
                             target_field: "ParentId".to_string(),
                             expression: 12,
-                            target_type: ScalarType::Int,
+                            target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                             repeating: false,
                         },
                         Binding {
                             target_field: "ChildName".to_string(),
                             expression: 13,
-                            target_type: ScalarType::String,
+                            target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                             repeating: false,
                         },
                         Binding {
                             target_field: "ChildPosition".to_string(),
                             expression: 14,
-                            target_type: ScalarType::Int,
+                            target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                             repeating: false,
                         },
                     ],
@@ -469,7 +470,7 @@ fn rejects_static_target_name_collisions_before_emission() {
     binding_child.root.bindings.push(Binding {
         target_field: "Nested".to_string(),
         expression: 1,
-        target_type: ScalarType::String,
+        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
         repeating: false,
     });
     assert!(matches!(
@@ -633,7 +634,7 @@ fn generated_project_builds_and_matches_the_static_mapping() {
                 bindings: vec![Binding {
                     target_field: "Name".into(),
                     expression: 1,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 }],
                 children: Vec::new(),
@@ -653,7 +654,7 @@ fn generated_project_builds_and_matches_the_static_mapping() {
                 bindings: vec![Binding {
                     target_field: "Status".into(),
                     expression: 17,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 }],
                 children: Vec::new(),
@@ -966,19 +967,19 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
                     Binding {
                         target_field: "Value".into(),
                         expression: 3,
-                        target_type: ScalarType::Int,
+                        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                         repeating: false,
                     },
                     Binding {
                         target_field: "Position".into(),
                         expression: 4,
-                        target_type: ScalarType::Int,
+                        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                         repeating: false,
                     },
                     Binding {
                         target_field: "Parent".into(),
                         expression: 5,
-                        target_type: ScalarType::String,
+                        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                         repeating: false,
                     },
                 ],
@@ -1268,19 +1269,19 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                 Binding {
                     target_field: "Selected".into(),
                     expression: 15,
-                    target_type: ScalarType::String,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                     repeating: false,
                 },
                 Binding {
                     target_field: "Exists".into(),
                     expression: 10,
-                    target_type: ScalarType::Bool,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Bool),
                     repeating: false,
                 },
                 Binding {
                     target_field: "LengthSum".into(),
                     expression: 20,
-                    target_type: ScalarType::Int,
+                    target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                     repeating: false,
                 },
             ],
@@ -1298,13 +1299,13 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                     Binding {
                         target_field: "Value".into(),
                         expression: 17,
-                        target_type: ScalarType::String,
+                        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
                         repeating: false,
                     },
                     Binding {
                         target_field: "Position".into(),
                         expression: 18,
-                        target_type: ScalarType::Int,
+                        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::Int),
                         repeating: false,
                     },
                 ],

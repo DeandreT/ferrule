@@ -4,8 +4,8 @@ use ::mapping::{FunctionId, FunctionParameterId, NodeId};
 use codegen::{
     AggregateFunction, AggregateValue, Binding, Expression, GeneratedSequence, GroupingPlan,
     InnerJoin, IterationOutput, IterationPlan, IterationSource, JoinSource, JoinSourceCardinality,
-    Program, ProgramValidationError, SequenceWindow, SortFilterOrder, TargetConstruction,
-    TargetScope, UserFunctionProgram,
+    Program, ProgramValidationError, ScalarTargetDomain, SequenceWindow, SortFilterOrder,
+    TargetConstruction, TargetScope, UserFunctionProgram,
 };
 use ir::ScalarType;
 
@@ -26,7 +26,7 @@ struct ScopePlan<'a> {
 
 struct BindingPlan<'a> {
     target_field: &'a str,
-    target_type: ScalarType,
+    target_domain: ScalarTargetDomain,
     repeating: bool,
     values: Vec<usize>,
 }
@@ -477,9 +477,14 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         output.push_str(&format!(
             "    private static global::Ferrule.Runtime.FerruleInstance ScopeItem_{scope_index}(\n        global::Ferrule.Runtime.ScopeContext context)\n    {{\n"
         ));
-        if let TargetConstruction::Scalar { expression } = scope.construction {
+        if let TargetConstruction::Scalar {
+            expression,
+            target_domain,
+        } = scope.construction
+        {
             output.push_str(&format!(
-                "        return new global::Ferrule.Runtime.FerruleScalar(Node_{expression}(context));\n    }}\n"
+                "        return TargetBuilder.Scalar(Node_{expression}(context), {});\n    }}\n",
+                render_target_domain(*target_domain)
             ));
             continue;
         }
@@ -586,7 +591,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                     binding.values[0]
                 ));
             }
-            output.push_str(target_type(binding.target_type));
+            output.push_str(&render_target_domain(binding.target_domain));
             output.push_str(")),\n");
         }
         output.push_str("        };\n");
@@ -612,7 +617,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                     binding.key,
                     binding.key,
                     binding.value,
-                    target_type(binding.target_type),
+                    render_target_domain(binding.target_domain),
                 ));
             }
         }
@@ -1814,7 +1819,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
 fn binding_plan(binding: &Binding, binding_index: usize) -> BindingPlan<'_> {
     BindingPlan {
         target_field: &binding.target_field,
-        target_type: binding.target_type,
+        target_domain: binding.target_domain,
         repeating: binding.repeating,
         values: vec![binding_index],
     }
@@ -1897,12 +1902,23 @@ fn render_delimited_text_field(
     output.push_str(&format!(" }}, {}U)", parser.selected()));
 }
 
+fn render_target_domain(domain: ScalarTargetDomain) -> String {
+    match domain {
+        ScalarTargetDomain::Single(ty) => target_type(ty).to_string(),
+        ScalarTargetDomain::Union(types) => types
+            .iter()
+            .map(target_type)
+            .collect::<Vec<_>>()
+            .join(" | "),
+    }
+}
+
 fn target_type(target_type: ScalarType) -> &'static str {
     match target_type {
-        ScalarType::String => "TargetScalarType.String",
-        ScalarType::Int => "TargetScalarType.Int64",
-        ScalarType::Float => "TargetScalarType.Double",
-        ScalarType::Bool => "TargetScalarType.Bool",
+        ScalarType::String => "TargetScalarDomain.String",
+        ScalarType::Int => "TargetScalarDomain.Int64",
+        ScalarType::Float => "TargetScalarDomain.Double",
+        ScalarType::Bool => "TargetScalarDomain.Bool",
     }
 }
 

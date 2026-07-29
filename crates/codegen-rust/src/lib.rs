@@ -10,8 +10,8 @@ use codegen::{
     AggregateFunction, AggregateValue, ArtifactPath, ArtifactPathError, ArtifactSet,
     ArtifactSetError, Binding, Expression, GeneratedFile, GeneratedSequence, GroupingPlan,
     InnerJoin, IterationOutput, IterationPlan, IterationSource, Program, ProgramValidationError,
-    RuntimeValue, SequenceWindow, SortFilterOrder, TargetConstruction, TargetScope,
-    UserFunctionProgram, validate_program,
+    RuntimeValue, ScalarTargetDomain, SequenceWindow, SortFilterOrder, TargetConstruction,
+    TargetScope, UserFunctionProgram, validate_program,
 };
 use ir::{ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, NodeId};
@@ -145,7 +145,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              InnerJoinStage, Instance, JsonBoundaryError, RecursiveCollectPaths,\n\
              RuntimeError, RuntimeValue,\n\
              ScalarType, ScopeContext,\n\
-             SequenceWindow, SortDirection, Value, adapt_target_value, aggregate,\n\
+             SequenceWindow, SortDirection, Value, adapt_target_value, adapt_union_target_value, aggregate,\n\
              adapt_user_function_value, apply_sequence_windows, call,\n\
              collection_find_selected, field, generate_sequence,\n\
              dynamic_document, dynamic_property_name, group, insert_dynamic_field,\n\
@@ -1802,10 +1802,16 @@ fn render_scope_item(
     context: &str,
 ) -> String {
     let mut output = String::new();
-    if let TargetConstruction::Scalar { expression } = &scope.construction {
-        output.push_str(&format!(
-            "{indent}let output = scalar(expression_{expression}({context})?);\n"
-        ));
+    if let TargetConstruction::Scalar {
+        expression,
+        target_domain,
+    } = &scope.construction
+    {
+        let value = render_target_adaptation(
+            &format!("expression_{expression}({context})?"),
+            *target_domain,
+        );
+        output.push_str(&format!("{indent}let output = scalar({value});\n"));
         return output;
     }
     if let TargetConstruction::RecursiveFilter {
@@ -1868,11 +1874,11 @@ fn render_scope_item(
         return output;
     }
     for (index, binding) in scope.bindings.iter().enumerate() {
-        output.push_str(&format!(
-            "{indent}let value_{index} = adapt_target_value(expression_{}({context})?, ScalarType::{});\n",
-            binding.expression,
-            scalar_type_name(binding.target_type)
-        ));
+        let value = render_target_adaptation(
+            &format!("expression_{}({context})?", binding.expression),
+            binding.target_domain,
+        );
+        output.push_str(&format!("{indent}let value_{index} = {value};\n"));
     }
 
     let groups = binding_groups(&scope.bindings);
@@ -1921,12 +1927,14 @@ fn render_scope_item(
             .collect::<Vec<_>>()
             .join(", ");
         for (index, binding) in bindings.iter().enumerate() {
+            let value = render_target_adaptation(
+                &format!("expression_{}({context})?", binding.value),
+                binding.target_domain,
+            );
             output.push_str(&format!(
-                "{indent}let dynamic_key_{index} = dynamic_property_name({}, expression_{}({context})?)?;\n{indent}let dynamic_value_{index} = adapt_target_value(expression_{}({context})?, ScalarType::{});\n{indent}insert_dynamic_field(\n{indent}    &mut fields,\n{indent}    &[{fixed_fields}],\n{indent}    dynamic_key_{index},\n{indent}    scalar(dynamic_value_{index}),\n{indent})?;\n",
+                "{indent}let dynamic_key_{index} = dynamic_property_name({}, expression_{}({context})?)?;\n{indent}let dynamic_value_{index} = {value};\n{indent}insert_dynamic_field(\n{indent}    &mut fields,\n{indent}    &[{fixed_fields}],\n{indent}    dynamic_key_{index},\n{indent}    scalar(dynamic_value_{index}),\n{indent})?;\n",
                 binding.key,
                 binding.key,
-                binding.value,
-                scalar_type_name(binding.target_type),
             ));
         }
         for (child, child_name) in scope
@@ -2014,6 +2022,23 @@ fn scalar_type_name(value: ScalarType) -> &'static str {
         ScalarType::Int => "Int",
         ScalarType::Float => "Float",
         ScalarType::Bool => "Bool",
+    }
+}
+
+fn render_target_adaptation(value: &str, domain: ScalarTargetDomain) -> String {
+    match domain {
+        ScalarTargetDomain::Single(ty) => format!(
+            "adapt_target_value({value}, ScalarType::{})",
+            scalar_type_name(ty)
+        ),
+        ScalarTargetDomain::Union(types) => {
+            let types = types
+                .iter()
+                .map(|ty| format!("ScalarType::{}", scalar_type_name(ty)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("adapt_union_target_value({value}, &[{types}])")
+        }
     }
 }
 
