@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -8,6 +8,8 @@ use mapping::{
     FlexTextLayout, FormatOptions, MAX_FLEXTEXT_LAYOUT_DEPTH, MAX_FLEXTEXT_LAYOUT_NODES,
     ManySplitter, OnceSplitter, StoreTrim, SwitchArm, SwitchMode, TrimSide,
 };
+
+use crate::resource::ResourceResolver;
 
 use super::{
     ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32, schema_node_at,
@@ -18,8 +20,9 @@ const MAX_MFT_ELEMENTS: usize = 16_384;
 
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
 ) -> Result<SchemaComponent, String> {
+    let mfd_path = resources.mapping_path();
     let name = component.attribute("name").unwrap_or_default().to_string();
     let data = child(component, "data").ok_or_else(|| "component has no data".to_string())?;
     let text = child(&data, "text")
@@ -29,7 +32,7 @@ pub(super) fn read(
         .attribute("config")
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "component has no external configuration path".to_string())?;
-    let config_path = resolve_config(mfd_path, config)?;
+    let config_path = resources.resolve_file(config, "FlexText configuration")?;
     let bytes = std::fs::read(&config_path)
         .map_err(|error| format!("could not read configuration `{config}` ({error})"))?;
     if bytes.len() > MAX_MFT_BYTES {
@@ -464,45 +467,6 @@ fn record_port(
     Ok(())
 }
 
-fn resolve_config(mfd_path: &Path, relative: &str) -> Result<PathBuf, String> {
-    let portable = relative.replace('\\', "/");
-    let base = mfd_path.parent().unwrap_or_else(|| Path::new("."));
-    let direct = base.join(&portable);
-    if direct.is_file() {
-        return Ok(direct);
-    }
-    let file_name = direct
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| format!("configuration path `{relative}` has no file name"))?;
-    let directory = direct.parent().unwrap_or(base);
-    let entries = std::fs::read_dir(directory)
-        .map_err(|error| format!("could not resolve configuration `{relative}` ({error})"))?;
-    let mut matches = Vec::new();
-    for entry in entries {
-        let entry = entry
-            .map_err(|error| format!("could not resolve configuration `{relative}` ({error})"))?;
-        if entry
-            .file_name()
-            .to_str()
-            .is_some_and(|name| name.eq_ignore_ascii_case(file_name))
-            && entry
-                .file_type()
-                .map_err(|error| format!("could not inspect configuration `{relative}` ({error})"))?
-                .is_file()
-        {
-            matches.push(entry.path());
-        }
-    }
-    match matches.as_slice() {
-        [path] => Ok(path.clone()),
-        [] => Err(format!("configuration `{relative}` was not found")),
-        _ => Err(format!(
-            "configuration `{relative}` has multiple case-insensitive sibling matches"
-        )),
-    }
-}
-
 fn rebase_instance_path(mfd_path: &Path, config_path: &Path, file_name: String) -> String {
     let portable = file_name.replace('\\', "/");
     let file_path = Path::new(&portable);
@@ -511,12 +475,54 @@ fn rebase_instance_path(mfd_path: &Path, config_path: &Path, file_name: String) 
     }
     let mfd_parent = mfd_path.parent().unwrap_or_else(|| Path::new("."));
     let config_parent = config_path.parent().unwrap_or(mfd_parent);
-    let resolved = config_parent.join(file_path);
-    resolved
-        .strip_prefix(mfd_parent)
-        .unwrap_or(&resolved)
+    let resolved = normalize_path(&config_parent.join(file_path));
+    relative_path(mfd_parent, &resolved)
+        .unwrap_or(resolved)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+                normalized.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+        }
+    }
+    normalized
+}
+
+fn relative_path(from: &Path, target: &Path) -> Option<PathBuf> {
+    let from = from.components().collect::<Vec<_>>();
+    let target = target.components().collect::<Vec<_>>();
+    let common = from
+        .iter()
+        .zip(&target)
+        .take_while(|(left, right)| left == right)
+        .count();
+    if common == 0 {
+        return None;
+    }
+
+    let mut relative = PathBuf::new();
+    for component in &from[common..] {
+        if matches!(component, Component::Normal(_)) {
+            relative.push("..");
+        }
+    }
+    for component in &target[common..] {
+        relative.push(component.as_os_str());
+    }
+    if relative.as_os_str().is_empty() {
+        relative.push(".");
+    }
+    Some(relative)
 }
 
 fn connected_commands<'a, 'input>(
@@ -686,8 +692,37 @@ fn child<'a, 'input>(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
     use super::*;
+    use crate::resource::ResourceResolver;
     use ir::{Instance, Value};
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Result<Self, std::io::Error> {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "ferrule-mfd-flextext-package-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+            std::fs::create_dir_all(&path)?;
+            Ok(Self(path))
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn parses_line_delimiter_and_column_splitters() {
@@ -774,5 +809,66 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("does not exist"));
+    }
+
+    #[test]
+    fn resolves_parent_configuration_inside_package_and_keeps_data_path_portable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let package = TempDir::new()?;
+        let maps = package.0.join("maps");
+        let resources = package.0.join("resources");
+        std::fs::create_dir_all(&maps)?;
+        std::fs::create_dir_all(&resources)?;
+        let mapping = maps.join("mapping.mfd");
+        std::fs::write(&mapping, "<mapping/>")?;
+        std::fs::write(
+            resources.join("layout.mft"),
+            r#"<FlexText><Commands><Project FileName="input.txt"><RootName Value="Root"/><Connections><Connection><Store Type="string"><Name Value="Value"/></Store></Connection></Connections></Project></Commands></FlexText>"#,
+        )?;
+        let resolver = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let document = roxmltree::Document::parse(
+            r#"<component name="Text" library="text" kind="16"><data><text type="txt" config="..\resources\layout.mft"/><root><entry name="Root"><entry name="Value" outkey="1"/></entry></root></data></component>"#,
+        )?;
+
+        let component = read(&document.root_element(), &resolver).map_err(std::io::Error::other)?;
+
+        assert_eq!(
+            component.input_instance.as_deref(),
+            Some("../resources/input.txt")
+        );
+        assert!(component.options.flextext.is_some());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_flextext_configuration_symlink_escape() -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::symlink;
+
+        let package = TempDir::new()?;
+        let outside = TempDir::new()?;
+        let maps = package.0.join("maps");
+        let resources = package.0.join("resources");
+        std::fs::create_dir_all(&maps)?;
+        std::fs::create_dir_all(&resources)?;
+        let mapping = maps.join("mapping.mfd");
+        std::fs::write(&mapping, "<mapping/>")?;
+        let external = outside.0.join("layout.mft");
+        std::fs::write(
+            &external,
+            r#"<FlexText><Commands><Project><RootName Value="Root"/><Connections><Connection><Store Type="string"><Name Value="Value"/></Store></Connection></Connections></Project></Commands></FlexText>"#,
+        )?;
+        symlink(&external, resources.join("layout.mft"))?;
+        let resolver = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let document = roxmltree::Document::parse(
+            r#"<component name="Text" library="text" kind="16"><data><text type="txt" config="../resources/layout.mft"/><root><entry name="Root"><entry name="Value" outkey="1"/></entry></root></data></component>"#,
+        )?;
+
+        let Err(error) = read(&document.root_element(), &resolver) else {
+            return Err("package-escaping FlexText configuration was accepted".into());
+        };
+
+        assert!(error.contains("resolves outside package root"), "{error}");
+        Ok(())
     }
 }

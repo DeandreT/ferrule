@@ -1,20 +1,20 @@
-use std::collections::BTreeMap;
-use std::path::{Component, Path, PathBuf};
-
 use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
 use mapping::{XbrlFactBinding, XbrlFactType, XbrlNamespaceBinding};
+use std::collections::BTreeMap;
+
+use crate::resource::ResourceResolver;
 
 use super::super::schema_node_at;
 
 const MAX_SPS_BYTES: u64 = 32 * 1024 * 1024;
 
 pub(super) fn fact_bindings(
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     declared: &str,
     schema: &SchemaNode,
     namespaces: &[XbrlNamespaceBinding],
 ) -> Result<Vec<XbrlFactBinding>, String> {
-    let path = resolve_sibling(mfd_path, declared)?;
+    let path = resources.resolve_file(declared, "XBRL presentation")?;
     let metadata = std::fs::metadata(&path)
         .map_err(|error| format!("could not read `{}` ({error})", path.display()))?;
     if metadata.len() > MAX_SPS_BYTES {
@@ -42,24 +42,6 @@ pub(super) fn fact_bindings(
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("invalid XBRL fact binding ({error})"))
-}
-
-fn resolve_sibling(mfd_path: &Path, declared: &str) -> Result<PathBuf, String> {
-    let portable = declared.replace('\\', "/");
-    let relative = Path::new(&portable);
-    if relative.as_os_str().is_empty()
-        || relative
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
-    {
-        return Err(format!(
-            "presentation path `{declared}` is not a bounded relative path"
-        ));
-    }
-    Ok(mfd_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(relative))
 }
 
 fn concept_types<'a>(
@@ -142,9 +124,13 @@ mod tests {
             std::process::id(),
             NEXT_FILE.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::create_dir_all(&directory)?;
-        let mfd_path = directory.join("mapping.mfd");
-        let sps_path = directory.join("report.sps");
+        let maps = directory.join("maps");
+        let resources = directory.join("resources");
+        std::fs::create_dir_all(&maps)?;
+        std::fs::create_dir_all(&resources)?;
+        let mfd_path = maps.join("mapping.mfd");
+        let sps_path = resources.join("report.sps");
+        std::fs::write(&mfd_path, "<mapping/>")?;
         std::fs::write(
             &sps_path,
             r#"<structure><schemasources><namespaces><nspair prefix="ex" uri="urn:example"/></namespaces></schemasources><template subtype="xbrl-concept-aspect" match="ex:Amount"><children><calltemplate subtype="named" match="monetaryItemType"/></children></template><template subtype="xbrl-concept-aspect" match="ex:Ratio"><children><calltemplate subtype="named" match="perShareItemType2"/></children></template></structure>"#,
@@ -169,7 +155,8 @@ mod tests {
                 "urn:example",
             )?,
         ];
-        let bindings = fact_bindings(&mfd_path, "report.sps", &schema, &namespaces)?;
+        let resolver = ResourceResolver::new(&mfd_path, Some(&directory))?;
+        let bindings = fact_bindings(&resolver, "../resources/report.sps", &schema, &namespaces)?;
         assert_eq!(bindings.len(), 2);
         assert!(bindings.iter().any(|binding| {
             binding.path().last().map(String::as_str) == Some("Amount")

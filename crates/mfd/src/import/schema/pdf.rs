@@ -8,6 +8,8 @@ use mapping::{
     PdfPageSelection, PdfPages, PdfReference, PdfRegion, PdfVerticalBoundaryFind,
 };
 
+use crate::resource::ResourceResolver;
+
 use super::{
     ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32, schema_node_at,
 };
@@ -24,9 +26,10 @@ const MAX_PXT_ELEMENTS: usize = 4096;
 
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
+    let mfd_path = resources.mapping_path();
     if component.attribute("kind") != Some("34") {
         return Err("only kind=34 PDF components are supported".to_string());
     }
@@ -68,7 +71,7 @@ pub(super) fn read(
         .attribute("schemafile")
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "PDF document metadata has no schemafile".to_string())?;
-    let schema_path = resolve_reference(mfd_path, schema_file, "PDF template")?;
+    let schema_path = resources.resolve_file(schema_file, "PDF template")?;
     let (layout, layout_warnings) = parse_layout(&schema_path, declared_root)?;
     let schema = layout.schema();
     let ports = collect_ports(&root, document_entry, &payload, &declared_outputs, &schema)?;
