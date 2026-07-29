@@ -281,6 +281,36 @@ fn edi_boundary_kind_roundtrips() {
 }
 
 #[test]
+fn edi_configuration_dependencies_preserve_legacy_references_and_typed_missing_state()
+-> Result<(), Box<dyn std::error::Error>> {
+    let legacy: FormatOptions =
+        serde_json::from_str(r#"{"edi_config_reference":"EDI/Envelope.Config"}"#)?;
+    assert_eq!(
+        legacy
+            .edi_config_reference
+            .as_ref()
+            .and_then(EdiConfigDependency::reference),
+        Some("EDI/Envelope.Config")
+    );
+    assert_eq!(
+        serde_json::to_value(&legacy)?["edi_config_reference"],
+        "EDI/Envelope.Config"
+    );
+
+    let missing = FormatOptions {
+        edi_config_reference: Some(EdiConfigDependency::MissingConfiguration),
+        ..FormatOptions::default()
+    };
+    let encoded = serde_json::to_value(&missing)?;
+    assert_eq!(
+        encoded["edi_config_reference"]["kind"],
+        "missing_configuration"
+    );
+    assert_eq!(serde_json::from_value::<FormatOptions>(encoded)?, missing);
+    Ok(())
+}
+
+#[test]
 fn protobuf_format_option_roundtrips_embedded_schema() {
     let options = FormatOptions {
         protobuf: Some(ProtobufOptions {

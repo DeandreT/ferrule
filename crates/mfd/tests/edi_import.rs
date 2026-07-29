@@ -678,7 +678,8 @@ fn retains_unavailable_swift_configuration_for_design_roundtrips() {
             .project
             .source_options
             .edi_config_reference
-            .as_deref(),
+            .as_ref()
+            .and_then(mapping::EdiConfigDependency::reference),
         Some("Unavailable/Envelope.Config")
     );
     assert!(imported.project.source_options.swift_mt.is_none());
@@ -712,7 +713,8 @@ fn retains_unavailable_swift_configuration_for_design_roundtrips() {
             .project
             .source_options
             .edi_config_reference
-            .as_deref(),
+            .as_ref()
+            .and_then(mapping::EdiConfigDependency::reference),
         Some("Unavailable/Envelope.Config")
     );
     assert!(reimported.project.source_options.swift_mt.is_none());

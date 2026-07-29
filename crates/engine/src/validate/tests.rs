@@ -274,6 +274,34 @@ fn validates_idoc_output_and_structured_edi_format_exclusivity() {
 }
 
 #[test]
+fn validates_typed_edi_configuration_dependencies() {
+    let mut missing_kind = valid_project();
+    missing_kind.source_options.edi_config_reference =
+        Some(mapping::EdiConfigDependency::MissingConfiguration);
+    assert!(validate(&missing_kind).iter().any(|issue| {
+        issue.location == "source format options" && issue.message.contains("requires `edi_kind`")
+    }));
+
+    missing_kind.source_options.edi_kind = Some(mapping::EdiBoundaryKind::X12);
+    assert!(validate(&missing_kind).is_empty());
+
+    let mut conflicting_layout = missing_kind;
+    conflicting_layout.source_options.edi_kind = Some(mapping::EdiBoundaryKind::SwiftMt);
+    let Ok(layout) =
+        mapping::SwiftMtLayout::new(vec![mapping::SwiftMessageLayout::new("MT950", Vec::new())])
+    else {
+        panic!("test SWIFT layout should be structurally valid");
+    };
+    conflicting_layout.source_options.swift_mt = Some(layout);
+    assert!(validate(&conflicting_layout).iter().any(|issue| {
+        issue.location == "source format options"
+            && issue
+                .message
+                .contains("cannot be combined with an embedded EDI layout")
+    }));
+}
+
+#[test]
 fn validates_xbrl_boundary_side_and_format_exclusivity() -> Result<(), Box<dyn std::error::Error>> {
     let mut valid_source = valid_project();
     valid_source.source_options.xbrl = Some(XbrlBoundaryOptions::external_source("source.xsd")?);

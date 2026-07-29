@@ -275,3 +275,47 @@ fn unresolved_edi_configuration_blocks_output_before_replacing_it()
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }
+
+#[test]
+fn missing_edi_configuration_metadata_blocks_output_before_replacing_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    let target = SchemaNode::group(
+        "Message",
+        vec![SchemaNode::group(
+            "PID",
+            vec![SchemaNode::scalar("PID-1", ScalarType::String)],
+        )],
+    );
+    let root = Scope {
+        children: vec![Scope {
+            target_field: "PID".into(),
+            bindings: vec![binding("PID-1", 0)],
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    };
+    let mut project = project(target, EdiBoundaryKind::Hl7, constant_graph(&["1"]), root);
+    project.target_options.edi_config_reference =
+        Some(mapping::EdiConfigDependency::MissingConfiguration);
+
+    let directory = test_dir("missing-config-metadata")?;
+    let project_path = write_project(&directory, &project)?;
+    let input = directory.join("input.capture");
+    let output = directory.join("output.capture");
+    std::fs::write(&input, "{}")?;
+    std::fs::write(&output, "preserved")?;
+
+    let Err(error) = cli::run_project(&project_path, &input, &output) else {
+        return Err("missing EDI configuration metadata did not block output".into());
+    };
+    let message = format!("{error:#}");
+    assert!(
+        message.contains(
+            "output requires an EDI configuration because its imported entry-tree schema is untyped"
+        ),
+        "{message}"
+    );
+    assert_eq!(std::fs::read_to_string(&output)?, "preserved");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
