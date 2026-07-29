@@ -5,7 +5,7 @@ use ir::{
 
 use super::{
     allowed_values, files, formats, item_counts, multiples, parse, patterns, property_counts,
-    ranges, reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
+    property_dependencies, ranges, reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -756,6 +756,8 @@ pub(super) fn parse_nullable_composition(
             "maxItems",
             "minProperties",
             "maxProperties",
+            "dependencies",
+            "dependentRequired",
             "minLength",
             "maxLength",
         ] {
@@ -1179,6 +1181,9 @@ fn ensure_annotation_or_range_only(
                     | "maxItems"
                     | "minProperties"
                     | "maxProperties"
+                    | "dependencies"
+                    | "dependentRequired"
+                    | "dependentSchemas"
                     | "uniqueItems"
                     | "minLength"
                     | "maxLength"
@@ -1257,6 +1262,8 @@ pub(super) fn parse_object_alternatives(
     let mut metadata = Vec::with_capacity(alternatives.len());
     let mut common_property_count = None;
     let mut saw_property_count = false;
+    let mut common_property_dependencies = None;
+    let mut saw_property_dependencies = false;
     for (index, alternative_schema) in alternatives.iter().enumerate() {
         if alternative_schema
             .get("$ref")
@@ -1323,6 +1330,41 @@ pub(super) fn parse_object_alternatives(
         }
         common_property_count = effective_property_count;
         saw_property_count = true;
+        let sibling_property_dependencies = if !core::ptr::eq(resolved, alternative_schema)
+            && files::ref_siblings_apply(alternative_schema)
+        {
+            property_dependencies::selected(name, alternative_schema)?
+        } else {
+            None
+        };
+        let possible_triggers = match &parsed.kind {
+            SchemaKind::Group { children, .. } => children
+                .iter()
+                .map(|child| child.name.as_str())
+                .collect::<Vec<_>>(),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Vec::new(),
+        };
+        let sibling_property_dependencies = property_dependencies::retain_possible_triggers(
+            name,
+            sibling_property_dependencies.as_ref(),
+            possible_triggers.iter().copied(),
+        )?;
+        let branch_property_dependencies = property_dependencies::intersect(
+            name,
+            parsed.json_property_dependencies.as_ref(),
+            sibling_property_dependencies.as_ref(),
+        )?;
+        if saw_property_dependencies && common_property_dependencies != branch_property_dependencies
+        {
+            return Err(unsupported_union(
+                name,
+                &format!(
+                    "{keyword} object alternatives have differing property dependencies that cannot be represented independently"
+                ),
+            ));
+        }
+        common_property_dependencies = branch_property_dependencies;
+        saw_property_dependencies = true;
         if parsed.repeating {
             return Err(unsupported_union(
                 name,
@@ -1447,7 +1489,9 @@ pub(super) fn parse_object_alternatives(
     }
     .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))?;
     group.property_count_range = common_property_count;
+    group.json_property_dependencies = common_property_dependencies;
     property_counts::ensure_feasible(name, &group)?;
+    property_dependencies::ensure_feasible(name, &group)?;
     Ok(group)
 }
 

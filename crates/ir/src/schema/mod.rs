@@ -3,6 +3,7 @@ mod json_allowed_values;
 mod json_format_annotations;
 mod json_multiple_of;
 mod json_pattern_constraints;
+mod json_property_dependencies;
 mod numeric_range;
 mod property_count_range;
 mod string_length_range;
@@ -25,6 +26,10 @@ pub use json_pattern_constraints::{
     JsonPatternConstraints, JsonPatternConstraintsError, MAX_DISTINCT_JSON_PATTERNS,
     MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
     MAX_JSON_PATTERN_TERMS,
+};
+pub use json_property_dependencies::{
+    JsonPropertyDependencies, JsonPropertyDependenciesError, MAX_JSON_PROPERTY_DEPENDENCY_EDGES,
+    MAX_JSON_PROPERTY_DEPENDENCY_NAME_BYTES, MAX_JSON_PROPERTY_DEPENDENCY_TRIGGERS,
 };
 pub use numeric_range::{IntegerRange, NumberBound, NumberRange, NumericRange};
 pub use property_count_range::PropertyCountRange;

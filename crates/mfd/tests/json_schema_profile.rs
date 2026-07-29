@@ -36,6 +36,10 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
   "type":"object",
   "minProperties":6,
   "maxProperties":8,
+  "dependentRequired":{
+    "TypedOpen":["Status"],
+    "Status":["Priority"]
+  },
   "additionalProperties":false,
   "properties":{
     "MaybeObject":{
@@ -52,7 +56,11 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     },
     "ImplicitOpen":{
       "type":"object",
-      "properties":{"Known":{"type":"string"}}
+      "properties":{
+        "Known":{"type":"string"},
+        "LegacyPeer":{"type":"string"}
+      },
+      "dependencies":{"Known":["LegacyPeer"]}
     },
     "TypedOpen":{
       "type":"object",
@@ -89,7 +97,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     )?;
     std::fs::write(
         directory.0.join("input.json"),
-        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"ImplicitOpen":{"Known":"A","arbitrary":{"nested":[true,null]}},"TypedOpen":{"Unit":"count","widgets":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"urgent"}"#,
+        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"ImplicitOpen":{"Known":"A","LegacyPeer":"B","arbitrary":{"nested":[true,null]}},"TypedOpen":{"Unit":"count","widgets":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"urgent"}"#,
     )?;
     let design = directory.0.join("mapping.mfd");
     std::fs::write(
@@ -121,6 +129,20 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .ok_or("missing root property-count range")?;
     assert_eq!(source_property_count.minimum(), 6);
     assert_eq!(source_property_count.maximum(), Some(8));
+    let source_dependencies = imported
+        .project
+        .source
+        .json_property_dependencies
+        .as_ref()
+        .ok_or("missing root property dependencies")?;
+    assert_eq!(
+        source_dependencies.requirements("TypedOpen"),
+        Some(&["Status".to_string()][..])
+    );
+    assert_eq!(
+        source_dependencies.requirements("Status"),
+        Some(&["Priority".to_string()][..])
+    );
 
     let object = imported
         .project
@@ -144,6 +166,13 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         implicit_open
             .dynamic_fields()
             .is_some_and(|dynamic| dynamic.json_any)
+    );
+    assert_eq!(
+        implicit_open
+            .json_property_dependencies
+            .as_ref()
+            .and_then(|dependencies| dependencies.requirements("Known")),
+        Some(&["LegacyPeer".to_string()][..])
     );
     let typed_open = imported
         .project
@@ -322,6 +351,28 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     ));
     assert!(matches!(
         format_json::from_str(
+            r#"{"MaybeObject":{"Code":"A"},"ImplicitOpen":{"LegacyPeer":"B"},"TypedOpen":{"Unit":"count","widgets":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Priority":"normal","Tracking":"opaque"}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::MissingDependentProperty {
+            ref object,
+            ref trigger,
+            ref property,
+        }) if object == "Envelope" && trigger == "TypedOpen" && property == "Status"
+    ));
+    assert!(matches!(
+        format_json::from_str(
+            r#"{"MaybeObject":{"Code":"A"},"ImplicitOpen":{"Known":"A"},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal","Tracking":"opaque"}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::MissingDependentProperty {
+            ref object,
+            ref trigger,
+            ref property,
+        }) if object == "ImplicitOpen" && trigger == "Known" && property == "LegacyPeer"
+    ));
+    assert!(matches!(
+        format_json::from_str(
             r#"{"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
             &imported.project.source,
         ),
@@ -391,6 +442,13 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     assert_eq!(exported_schema["minProperties"], 6);
     assert_eq!(exported_schema["maxProperties"], 8);
     assert_eq!(
+        exported_schema["dependentRequired"],
+        serde_json::json!({
+            "Status":["Priority"],
+            "TypedOpen":["Status"],
+        })
+    );
+    assert_eq!(
         exported_schema["properties"]["MaybeObject"]["anyOf"][0]["additionalProperties"],
         serde_json::json!({})
     );
@@ -405,6 +463,10 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     assert_eq!(
         exported_schema["properties"]["ImplicitOpen"]["additionalProperties"],
         serde_json::json!({})
+    );
+    assert_eq!(
+        exported_schema["properties"]["ImplicitOpen"]["dependentRequired"],
+        serde_json::json!({"Known":["LegacyPeer"]})
     );
     assert_eq!(
         exported_schema["properties"]["TypedOpen"]["additionalProperties"]["type"],
@@ -512,6 +574,24 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .and_then(|array| array.property_count_range)
             .map(|range| (range.minimum(), range.maximum())),
         Some((1, Some(1)))
+    );
+    assert_eq!(
+        reimported
+            .project
+            .source
+            .json_property_dependencies
+            .as_ref()
+            .and_then(|dependencies| dependencies.requirements("TypedOpen")),
+        Some(&["Status".to_string()][..])
+    );
+    assert_eq!(
+        reimported
+            .project
+            .source
+            .child("ImplicitOpen")
+            .and_then(|object| object.json_property_dependencies.as_ref())
+            .and_then(|dependencies| dependencies.requirements("Known")),
+        Some(&["LegacyPeer".to_string()][..])
     );
     Ok(())
 }

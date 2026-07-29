@@ -166,6 +166,16 @@ object in native and generated Rust/C# boundaries; canonical MFD export and
 re-import retains the interval. Unsatisfiable required/closed-object bounds and
 correlated alternative intervals produce the existing actionable
 schema-fallback diagnostic rather than silently widening the contract.
+Referenced JSON objects retain executable property dependencies as well.
+Modern `dependentRequired` and legacy property-array `dependencies` normalize
+to the same bounded relation and export canonically as `dependentRequired`.
+Native and generated Rust/C# boundaries require every dependent name whenever
+its trigger is present, counting explicit JSON null as input presence and
+checking normalized output after absent fields are omitted. Nullable object
+null bypasses the rule, compatible `allOf` branches unite rules, and alternatives
+must share one identical effective relation. Schema-valued legacy dependencies
+and `dependentSchemas` trigger the existing actionable schema-fallback
+diagnostic rather than being silently discarded.
 Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
 intervals measured in Unicode scalar values, including nullable fields, array
 items, typed dynamic properties, and compatible compositions. The constraints

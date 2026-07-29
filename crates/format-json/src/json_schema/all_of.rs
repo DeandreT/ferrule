@@ -1,8 +1,8 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use super::{
-    allowed_values, formats, item_counts, multiples, parse, patterns, property_counts, ranges,
-    string_lengths, unique_items, unsupported_union,
+    allowed_values, formats, item_counts, multiples, parse, patterns, property_counts,
+    property_dependencies, ranges, string_lengths, unique_items, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -75,13 +75,16 @@ pub(super) fn parse_all_of(
     for constraints in &pending_constraints {
         no_op_constraint_fallback &= (patterns::has_keyword(constraints)
             || unique_items::has_keyword(constraints)
-            || property_counts::has_keywords(constraints))
+            || property_counts::has_keywords(constraints)
+            || property_dependencies::has_keywords(constraints))
             && (!patterns::has_keyword(constraints)
                 || !patterns::is_effectively_constrained(name, constraints)?)
             && (!unique_items::has_keyword(constraints)
                 || !unique_items::selected(name, constraints)?)
             && (!property_counts::has_keywords(constraints)
                 || !property_counts::is_effectively_constrained(name, constraints)?)
+            && (!property_dependencies::has_keywords(constraints)
+                || !property_dependencies::is_effectively_constrained(name, constraints)?)
             && !ranges::has_range_keywords(constraints)
             && !allowed_values::has_keyword(constraints)
             && !multiples::has_keyword(constraints)
@@ -109,6 +112,12 @@ pub(super) fn parse_all_of(
                     "property-count constraints without a concrete object type also admit unconstrained non-object values",
                 ));
             }
+            if property_dependencies::is_effectively_constrained(name, constraints)? {
+                return Err(unsupported_union(
+                    name,
+                    "property dependencies without a concrete object type also admit unconstrained non-object values",
+                ));
+            }
         }
     }
     let mut merged = match merged {
@@ -125,6 +134,7 @@ pub(super) fn parse_all_of(
     for constraints in pending_constraints {
         allowed_values::apply(name, &constraints, &mut merged)?;
         property_counts::apply(name, &constraints, &mut merged, false)?;
+        property_dependencies::apply(name, &constraints, &mut merged, false)?;
         if merged.repeating {
             ranges::validate_ignored(name, &constraints)?;
             multiples::validate_ignored(name, &constraints)?;
@@ -250,6 +260,9 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "maxItems"
                 | "minProperties"
                 | "maxProperties"
+                | "dependencies"
+                | "dependentRequired"
+                | "dependentSchemas"
                 | "uniqueItems"
                 | "minLength"
                 | "maxLength"
@@ -273,6 +286,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
         || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
         || property_counts::has_keywords(schema)
+        || property_dependencies::has_keywords(schema)
         || unique_items::has_keyword(schema)
         || string_lengths::has_keywords(schema)
         || patterns::has_keyword(schema)
@@ -291,6 +305,9 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
                     | "maxItems"
                     | "minProperties"
                     | "maxProperties"
+                    | "dependencies"
+                    | "dependentRequired"
+                    | "dependentSchemas"
                     | "uniqueItems"
                     | "minLength"
                     | "maxLength"
@@ -342,6 +359,11 @@ fn intersect(
         target.property_count_range,
         branch.property_count_range,
     )?;
+    target.json_property_dependencies = property_dependencies::intersect(
+        name,
+        target.json_property_dependencies.as_ref(),
+        branch.json_property_dependencies.as_ref(),
+    )?;
     target.json_unique_items |= branch.json_unique_items;
 
     let result = match (&target.kind, &branch.kind) {
@@ -356,7 +378,8 @@ fn intersect(
         )),
     };
     result?;
-    property_counts::ensure_feasible(name, target)
+    property_counts::ensure_feasible(name, target)?;
+    property_dependencies::ensure_feasible(name, target)
 }
 
 fn intersect_scalar(
