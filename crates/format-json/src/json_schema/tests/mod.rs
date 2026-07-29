@@ -17,6 +17,7 @@ mod ranges;
 mod ref_dialects;
 mod required;
 mod resources;
+mod string_lengths;
 mod unconstrained;
 
 fn import_str(text: &str) -> SchemaNode {

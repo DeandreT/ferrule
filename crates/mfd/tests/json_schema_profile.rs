@@ -59,7 +59,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
       ],
       "exclusiveMaximum":20
     },
-    "Status":{"type":"string","const":"ready","format":"workflow-status"},
+    "Status":{"type":"string","const":"ready","minLength":5,"maxLength":5,"format":"workflow-status"},
     "Tracking":{"type":"string","format":""}
   }
 }"#,
@@ -151,6 +151,14 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             .map(String::as_str),
         Some("workflow-status")
     );
+    let status_length = imported
+        .project
+        .source
+        .child("Status")
+        .and_then(|status| status.string_length_range)
+        .ok_or("missing status string-length range")?;
+    assert_eq!(status_length.minimum(), 5);
+    assert_eq!(status_length.maximum(), Some(5));
     assert_eq!(
         imported
             .project

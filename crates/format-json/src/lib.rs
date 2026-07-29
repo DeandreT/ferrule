@@ -69,6 +69,12 @@ pub enum JsonFormatError {
         range: String,
         got: usize,
     },
+    #[error("`{name}` requires string length {range}, got {got} Unicode scalar values")]
+    StringLengthMismatch {
+        name: String,
+        range: String,
+        got: usize,
+    },
     #[error("JSON Lines cannot encode nullable array container `{name}`")]
     NullableJsonLinesContainer { name: String },
 }
@@ -197,14 +203,14 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
             let parsed = read_scalar(value, *ty, schema.nullable, &schema.name)?;
             json_schema::constraints::validate_json(schema, value)?;
             json_schema::ranges::validate_json(schema, value)?;
+            json_schema::string_lengths::validate_json(schema, value)?;
             Ok(Instance::Scalar(parsed))
         }
-        SchemaKind::ScalarUnion { types } => Ok(Instance::Scalar(read_scalar_union(
-            value,
-            *types,
-            schema.nullable,
-            &schema.name,
-        )?)),
+        SchemaKind::ScalarUnion { types } => {
+            let parsed = read_scalar_union(value, *types, schema.nullable, &schema.name)?;
+            json_schema::string_lengths::validate_json(schema, value)?;
+            Ok(Instance::Scalar(parsed))
+        }
         SchemaKind::Group {
             children,
             alternatives,
@@ -483,10 +489,13 @@ fn write_single_node(
             let value = write_scalar(value, *ty, schema.nullable, &schema.name)?;
             json_schema::constraints::validate_json(schema, &value)?;
             json_schema::ranges::validate_json(schema, &value)?;
+            json_schema::string_lengths::validate_json(schema, &value)?;
             Ok(value)
         }
         (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {
-            write_scalar_union(value, *types, schema.nullable, &schema.name)
+            let value = write_scalar_union(value, *types, schema.nullable, &schema.name)?;
+            json_schema::string_lengths::validate_json(schema, &value)?;
+            Ok(value)
         }
         (
             SchemaKind::Group {

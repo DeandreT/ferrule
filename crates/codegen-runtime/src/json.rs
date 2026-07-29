@@ -132,7 +132,10 @@ fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
 
 #[cfg(test)]
 mod tests {
-    use ir::{IntegerRange, ItemCountRange, NumericRange, ScalarType, ScalarTypeSet, Value};
+    use ir::{
+        IntegerRange, ItemCountRange, NumericRange, ScalarType, ScalarTypeSet, StringLengthRange,
+        Value,
+    };
 
     use super::*;
 
@@ -241,6 +244,43 @@ mod tests {
             parse_json(&invalid, "1"),
             Err(JsonBoundaryError::InvalidEmbeddedSchema { ref message })
                 if message.contains("item-count range")
+        ));
+    }
+
+    #[test]
+    fn enforces_embedded_unicode_string_lengths_on_input_and_output() {
+        let Some(range) = StringLengthRange::new(1, Some(1)) else {
+            panic!("test string-length range is valid");
+        };
+        let Some(schema) =
+            SchemaNode::scalar("Code", ScalarType::String).with_string_length_range(range)
+        else {
+            panic!("test string-length range matches its scalar type");
+        };
+        let encoded = serde_json::to_string(&schema).unwrap_or_default();
+        assert_eq!(
+            parse_json(&encoded, r#""😀""#),
+            Ok(Instance::Scalar(Value::String("😀".into())))
+        );
+        assert!(matches!(
+            parse_json(&encoded, r#""e\u0301""#),
+            Err(JsonBoundaryError::InvalidInput { ref message })
+                if message.contains("Unicode scalar")
+        ));
+        assert!(matches!(
+            serialize_json(
+                &encoded,
+                &Instance::Scalar(Value::String("e\u{301}".to_string()))
+            ),
+            Err(JsonBoundaryError::InvalidOutput { ref message })
+                if message.contains("Unicode scalar")
+        ));
+
+        let invalid = encoded.replace(r#""ty":"string""#, r#""ty":"int""#);
+        assert!(matches!(
+            parse_json(&invalid, "1"),
+            Err(JsonBoundaryError::InvalidEmbeddedSchema { ref message })
+                if message.contains("string-length range")
         ));
     }
 

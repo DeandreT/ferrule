@@ -73,6 +73,24 @@ fn arrays_without_items_retain_arbitrary_values() -> Result<(), Box<dyn std::err
 }
 
 #[test]
+fn no_op_string_length_does_not_narrow_dynamic_values() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_text(
+        r#"{
+          "type":"object",
+          "additionalProperties":{"minLength":0}
+        }"#,
+        "dynamic-no-op-length",
+    )?;
+    let input = r#"{"number":42,"object":{"nested":true},"array":[1,"two"]}"#;
+    let instance = from_str(input, &schema)?;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&to_string(&schema, &instance)?)?,
+        serde_json::from_str::<serde_json::Value>(input)?
+    );
+    Ok(())
+}
+
+#[test]
 fn false_schemas_fail_instead_of_weakening_to_strings() -> Result<(), Box<dyn std::error::Error>> {
     let property = import_text(r#"{"type":"object","properties":{"Never":false}}"#, "false");
     assert!(matches!(
