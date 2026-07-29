@@ -132,7 +132,7 @@ fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
 
 #[cfg(test)]
 mod tests {
-    use ir::{ScalarType, ScalarTypeSet, Value};
+    use ir::{IntegerRange, NumericRange, ScalarType, ScalarTypeSet, Value};
 
     use super::*;
 
@@ -167,6 +167,35 @@ mod tests {
             rendered.as_deref(),
             Ok("{\n  \"Name\": \"sample\",\n  \"Count\": 3\n}\n")
         );
+    }
+
+    #[test]
+    fn enforces_embedded_numeric_ranges_on_input_and_output() {
+        let Some(range) = IntegerRange::new(Some(5), Some(8)).map(NumericRange::Integer) else {
+            panic!("test range is valid");
+        };
+        let Some(schema) = SchemaNode::scalar("Count", ScalarType::Int).with_numeric_range(range)
+        else {
+            panic!("test range matches its scalar type");
+        };
+        let encoded = serde_json::to_string(&schema).unwrap_or_default();
+        assert_eq!(
+            parse_json(&encoded, "5"),
+            Ok(Instance::Scalar(Value::Int(5)))
+        );
+        assert!(matches!(
+            parse_json(&encoded, "4"),
+            Err(JsonBoundaryError::InvalidInput { ref message })
+                if message.contains("numeric range")
+        ));
+        assert!(matches!(
+            serialize_json(
+                &encoded,
+                &Instance::Scalar(Value::String("9".to_string()))
+            ),
+            Err(JsonBoundaryError::InvalidOutput { ref message })
+                if message.contains("numeric range")
+        ));
     }
 
     #[test]

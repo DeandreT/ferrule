@@ -20,6 +20,14 @@ pub(super) fn validate_schema(
             format!("fixed-value metadata{suffix} requires one concrete scalar type"),
         ));
     }
+    if !schema.numeric_range_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "numeric-range metadata{suffix} requires one matching concrete numeric scalar and must contain its fixed value"
+            ),
+        ));
+    }
     if !schema.recursive_ref_is_valid() {
         issues.push(ValidationIssue::new(
             root,

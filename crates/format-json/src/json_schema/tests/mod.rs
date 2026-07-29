@@ -11,6 +11,7 @@ use crate::JsonFormatError;
 mod all_of;
 mod constraints;
 mod nullable_composition;
+mod ranges;
 mod required;
 mod resources;
 mod unconstrained;

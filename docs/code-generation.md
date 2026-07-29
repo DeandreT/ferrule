@@ -159,9 +159,11 @@ correct embedded dynamic-source schema, and then invoke the same typed mapping.
 Each JSON input and output document is limited to 64 MiB, and each trusted
 embedded schema is limited to 1 MiB. Invalid JSON shape, non-exact numeric
 conversion, output serialization, and size failures remain typed boundary
-errors. Embedded object-property requirements are enforced on input and
-generated output: explicit JSON null satisfies presence when nullable, while an
-omitted property or Ferrule `Null` does not. These APIs intentionally use JSON
+errors. Embedded scalar constants and exact integer/finite-number ranges are
+enforced on both input and generated output in Rust and C#, including after
+supported output coercion. Embedded object-property requirements are enforced
+on input and generated output: explicit JSON null satisfies presence when
+nullable, while an omitted property or Ferrule `Null` does not. These APIs intentionally use JSON
 regardless of stored project paths or format options; hosts needing X12, XML,
 database, or other physical formats should use the interpreter payload API or
 adapt a typed `Instance` at their own boundary.

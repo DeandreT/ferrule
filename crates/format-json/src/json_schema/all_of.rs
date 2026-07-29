@@ -1,6 +1,6 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
-use super::{constraints, parse, unsupported_union};
+use super::{constraints, parse, ranges, unsupported_union};
 use crate::JsonFormatError;
 
 /// Flattens representable intersections into one structural projection.
@@ -27,9 +27,15 @@ pub(super) fn parse_all_of(
         ));
     }
 
-    let mut merged = composition_base(schema)
-        .map(|base| parse(name, &base, doc, active_refs))
-        .transpose()?;
+    let mut pending_ranges = Vec::new();
+    let mut merged = None;
+    if let Some(base) = composition_base(schema) {
+        if is_range_only_branch(&base) {
+            pending_ranges.push(base);
+        } else {
+            merged = Some(parse(name, &base, doc, active_refs)?);
+        }
+    }
 
     for branch in branches {
         if is_unconstrained_branch(branch) {
@@ -41,13 +47,26 @@ pub(super) fn parse_all_of(
                 "allOf contains the always-invalid false schema",
             ));
         }
+        if is_range_only_branch(branch) {
+            pending_ranges.push(branch.clone());
+            continue;
+        }
         let branch = parse(name, branch, doc, active_refs)?;
         match &mut merged {
             Some(current) => intersect(name, current, branch)?,
             None => merged = Some(branch),
         }
     }
-    merged.ok_or_else(|| unsupported_union(name, "allOf did not produce a structural schema"))
+    let mut merged = merged
+        .ok_or_else(|| unsupported_union(name, "allOf did not produce a structural schema"))?;
+    for range in pending_ranges {
+        if merged.repeating {
+            ranges::validate_ignored(name, &range)?;
+        } else {
+            ranges::apply(name, &range, &mut merged, false)?;
+        }
+    }
+    Ok(merged)
 }
 
 fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
@@ -55,7 +74,16 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
     if !object.keys().any(|key| {
         matches!(
             key.as_str(),
-            "type" | "properties" | "required" | "additionalProperties" | "const" | "enum"
+            "type"
+                | "properties"
+                | "required"
+                | "additionalProperties"
+                | "const"
+                | "enum"
+                | "minimum"
+                | "maximum"
+                | "exclusiveMinimum"
+                | "exclusiveMaximum"
         )
     }) {
         return None;
@@ -63,6 +91,37 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
     let mut base = object.clone();
     base.remove("allOf");
     Some(serde_json::Value::Object(base))
+}
+
+fn is_range_only_branch(schema: &serde_json::Value) -> bool {
+    let Some(object) = schema.as_object() else {
+        return false;
+    };
+    ranges::has_range_keywords(schema)
+        && object.keys().all(|keyword| {
+            matches!(
+                keyword.as_str(),
+                "minimum"
+                    | "maximum"
+                    | "exclusiveMinimum"
+                    | "exclusiveMaximum"
+                    | "$schema"
+                    | "$id"
+                    | "id"
+                    | "$anchor"
+                    | "$dynamicAnchor"
+                    | "$comment"
+                    | "$defs"
+                    | "definitions"
+                    | "title"
+                    | "description"
+                    | "default"
+                    | "deprecated"
+                    | "readOnly"
+                    | "writeOnly"
+                    | "examples"
+            )
+        })
 }
 
 fn intersect(
@@ -99,6 +158,8 @@ fn intersect_scalar(
 ) -> Result<(), JsonFormatError> {
     let target_constant = constraints::from_schema(target)?;
     let branch_constant = constraints::from_schema(branch)?;
+    let target_range = target.numeric_range;
+    let branch_range = branch.numeric_range;
     if let (Some(left), Some(right)) = (&target_constant, &branch_constant)
         && !left.semantically_equals(right)
     {
@@ -107,45 +168,40 @@ fn intersect_scalar(
             "allOf fixed scalar constraints have no value in common",
         ));
     }
-    if target.kind == branch.kind {
-        if let Some(constant) = target_constant.or(branch_constant) {
-            target.fixed = Some(constant.lexical());
-            target.nullable = false;
+    if target.kind != branch.kind {
+        let domain = scalar_domain(target) & scalar_domain(branch);
+        let mut types = Vec::new();
+        if domain & STRING != 0 {
+            types.push(ScalarType::String);
         }
-        return Ok(());
-    }
-    let domain = scalar_domain(target) & scalar_domain(branch);
-    let mut types = Vec::new();
-    if domain & STRING != 0 {
-        types.push(ScalarType::String);
-    }
-    if domain & INTEGER != 0 && domain & NUMBER == 0 {
-        types.push(ScalarType::Int);
-    }
-    if domain & NUMBER != 0 {
-        types.push(ScalarType::Float);
-    }
-    if domain & BOOLEAN != 0 {
-        types.push(ScalarType::Bool);
-    }
-    target.kind = match types.as_slice() {
-        [] => {
-            return Err(unsupported_union(
-                name,
-                "allOf scalar branches have no value type in common",
-            ));
+        if domain & INTEGER != 0 && domain & NUMBER == 0 {
+            types.push(ScalarType::Int);
         }
-        [ty] => SchemaKind::Scalar { ty: *ty },
-        _ => {
-            let Some(types) = ScalarTypeSet::new(types) else {
+        if domain & NUMBER != 0 {
+            types.push(ScalarType::Float);
+        }
+        if domain & BOOLEAN != 0 {
+            types.push(ScalarType::Bool);
+        }
+        target.kind = match types.as_slice() {
+            [] => {
                 return Err(unsupported_union(
                     name,
-                    "allOf scalar intersection produced an invalid type set",
+                    "allOf scalar branches have no value type in common",
                 ));
-            };
-            SchemaKind::ScalarUnion { types }
-        }
-    };
+            }
+            [ty] => SchemaKind::Scalar { ty: *ty },
+            _ => {
+                let Some(types) = ScalarTypeSet::new(types) else {
+                    return Err(unsupported_union(
+                        name,
+                        "allOf scalar intersection produced an invalid type set",
+                    ));
+                };
+                SchemaKind::ScalarUnion { types }
+            }
+        };
+    }
     let constant = target_constant.or(branch_constant);
     if let Some(constant) = constant {
         let value = constant.to_json();
@@ -165,6 +221,24 @@ fn intersect_scalar(
         target.nullable = false;
     } else {
         target.fixed = None;
+    }
+    target.numeric_range = match target.kind {
+        SchemaKind::Scalar {
+            ty: ty @ (ScalarType::Int | ScalarType::Float),
+        } => ranges::intersect(name, target_range, branch_range, ty)?,
+        _ if target_range.is_none() && branch_range.is_none() => None,
+        _ => {
+            return Err(unsupported_union(
+                name,
+                "numeric range is incompatible with the intersected scalar type",
+            ));
+        }
+    };
+    if !target.numeric_range_is_valid() {
+        return Err(unsupported_union(
+            name,
+            "allOf fixed numeric value falls outside the intersected range",
+        ));
     }
     Ok(())
 }
