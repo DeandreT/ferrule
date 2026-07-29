@@ -74,6 +74,43 @@ impl<'a> ScopeContext<'a> {
             .collect()
     }
 
+    /// Appends source frames from one host-loaded dynamic document while
+    /// retaining the exact driver context used to compute its path.
+    pub(crate) fn walk_loaded_source<'b>(
+        &'b self,
+        source: &str,
+        document: &'b Instance,
+        tail: &[&str],
+    ) -> Vec<ScopeContext<'b>>
+    where
+        'a: 'b,
+    {
+        let prefix = [source.to_string()];
+        walk_source_frames(document, tail, &prefix, &[])
+            .into_iter()
+            .map(|extension| {
+                let mut frames = self
+                    .frames
+                    .iter()
+                    .map(|frame| ScopeFrame {
+                        instance: frame.instance,
+                        collection: frame.collection.clone(),
+                        document_path: frame.document_path,
+                        join: frame.join,
+                        join_position: frame.join_position,
+                    })
+                    .collect::<Vec<_>>();
+                frames.extend(extension);
+                ScopeContext {
+                    frames,
+                    named_inputs: self.named_inputs,
+                    execution: self.execution,
+                    dynamic_source_loader: self.dynamic_source_loader,
+                }
+            })
+            .collect()
+    }
+
     /// Enumerates collection items with the engine's aggregate root-selection
     /// rules.
     ///
@@ -231,6 +268,7 @@ impl<'a> ScopeContext<'a> {
             frames,
             named_inputs: self.named_inputs,
             execution: self.execution,
+            dynamic_source_loader: self.dynamic_source_loader,
         }
     }
 }

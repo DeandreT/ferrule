@@ -11,18 +11,30 @@ public sealed partial class ScopeContext
     private readonly IReadOnlyList<FerruleInstance> _frames;
     private readonly IReadOnlyList<CollectionIdentity> _collections;
     private readonly FerruleExecutionContext? _executionContext;
+    private readonly IFerruleDynamicSourceLoader? _dynamicSourceLoader;
 
     private ScopeContext(
         IReadOnlyList<FerruleInstance> frames,
         IReadOnlyList<CollectionIdentity> collections,
-        FerruleExecutionContext? executionContext)
+        FerruleExecutionContext? executionContext,
+        IFerruleDynamicSourceLoader? dynamicSourceLoader = null)
     {
         _frames = frames;
         _collections = collections;
         _executionContext = executionContext;
+        _dynamicSourceLoader = dynamicSourceLoader;
     }
 
     public IReadOnlyList<FerruleInstance> Frames => _frames;
+
+    internal IFerruleDynamicSourceLoader? DynamicSourceLoader => _dynamicSourceLoader;
+
+    /// <summary>Adds the host boundary used to resolve per-driver sources.</summary>
+    public ScopeContext WithDynamicSourceLoader(IFerruleDynamicSourceLoader loader)
+    {
+        ArgumentNullException.ThrowIfNull(loader);
+        return new ScopeContext(_frames, _collections, _executionContext, loader);
+    }
 
     public static ScopeContext FromSource(
         FerruleInstance source,
@@ -205,6 +217,27 @@ public sealed partial class ScopeContext
             path,
             0,
             prefix,
+            new List<FerruleInstance>(),
+            new List<CollectionIdentity>(),
+            output);
+        return new ReadOnlyCollection<ScopeContext>(output);
+    }
+
+    internal IReadOnlyList<ScopeContext> IterateLoadedSource(
+        string source,
+        FerruleInstance document,
+        IReadOnlyList<string> tail)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(tail);
+        ValidatePath(tail);
+        var output = new List<ScopeContext>();
+        Walk(
+            document,
+            tail,
+            0,
+            new List<string> { source },
             new List<FerruleInstance>(),
             new List<CollectionIdentity>(),
             output);
@@ -522,7 +555,8 @@ public sealed partial class ScopeContext
         return new ScopeContext(
             _frames,
             new ReadOnlyCollection<CollectionIdentity>(collections),
-            _executionContext);
+            _executionContext,
+            _dynamicSourceLoader);
     }
 
     /// <summary>Clones the innermost source group for independent target ownership.</summary>
@@ -595,7 +629,8 @@ public sealed partial class ScopeContext
         return new ScopeContext(
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
-            _executionContext);
+            _executionContext,
+            _dynamicSourceLoader);
     }
 
     private FerruleInstance? FindAggregateBase(IReadOnlyList<string> path)
@@ -765,7 +800,8 @@ public sealed partial class ScopeContext
         output.Add(new ScopeContext(
             new ReadOnlyCollection<FerruleInstance>(allFrames),
             new ReadOnlyCollection<CollectionIdentity>(allCollections),
-            _executionContext));
+            _executionContext,
+            _dynamicSourceLoader));
     }
 
     private static void PushCollection(

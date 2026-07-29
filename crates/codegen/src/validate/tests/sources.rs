@@ -7,6 +7,7 @@ fn validates_names_before_schema_paths() {
     empty.extra_sources.push(NamedSourceProgram {
         name: "  ".into(),
         source: SchemaNode::group("Empty", Vec::new()),
+        dynamic: None,
     });
     assert_eq!(
         validate_program(&empty),
@@ -18,10 +19,12 @@ fn validates_names_before_schema_paths() {
         NamedSourceProgram {
             name: "Catalog".into(),
             source: SchemaNode::group("First", Vec::new()),
+            dynamic: None,
         },
         NamedSourceProgram {
             name: " Catalog ".into(),
             source: SchemaNode::group("Second", Vec::new()),
+            dynamic: None,
         },
     ];
     assert_eq!(
@@ -49,6 +52,7 @@ fn validates_explicit_and_parent_relative_iterations() {
                 .repeating(),
             ],
         ),
+        dynamic: None,
     });
     program.target = SchemaNode::group(
         "Target",
@@ -111,6 +115,7 @@ fn validates_recursive_sequences_against_their_owning_root() {
                 SchemaNode::recursive_group("children", "Directory").repeating(),
             ],
         ),
+        dynamic: None,
     });
     program.expressions.push(ExpressionNode {
         id: 3,
@@ -157,6 +162,7 @@ fn validates_aggregate_and_lookup_paths() {
                 .repeating(),
             ],
         ),
+        dynamic: None,
     });
 
     program.expressions[1].expression = Expression::Aggregate {

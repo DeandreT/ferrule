@@ -269,6 +269,7 @@ mod tests {
                         SchemaNode::scalar("Shared", ScalarType::Float),
                     ],
                 ),
+                dynamic: None,
             },
             NamedSourceProgram {
                 name: "Other".into(),
@@ -276,6 +277,7 @@ mod tests {
                     "OtherDocument",
                     vec![SchemaNode::scalar("OnlyExtra", ScalarType::Bool)],
                 ),
+                dynamic: None,
             },
         ];
         let sources = SourceCatalog::new(&primary, &extras);

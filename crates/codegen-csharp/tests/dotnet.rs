@@ -112,6 +112,7 @@ fn fixture() -> Program {
                         .repeating(),
                     ],
                 ),
+                dynamic: None,
             },
             NamedSourceProgram {
                 name: "settings".into(),
@@ -119,6 +120,7 @@ fn fixture() -> Program {
                     "settings source",
                     vec![SchemaNode::scalar("Prefix", ScalarType::String)],
                 ),
+                dynamic: None,
             },
         ],
         target: SchemaNode::group(

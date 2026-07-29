@@ -5,9 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
 use codegen::{
-    Binding, ExpressionNode, FailureIteration, FailureRule, FailureSelection, GeneratedSequence,
-    IterationOutput, IterationPlan, NamedSourceProgram, NamedTargetProgram, ScalarFunction,
-    SourceIteration, TargetConstruction, UserFunctionParameter, UserFunctionProgram,
+    Binding, DynamicSourceProgram, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
+    GeneratedSequence, IterationOutput, IterationPlan, NamedSourceProgram, NamedTargetProgram,
+    ScalarFunction, SourceIteration, TargetConstruction, UserFunctionParameter,
+    UserFunctionProgram,
 };
 use ir::{SchemaKind, SchemaNode};
 use mapping::{FunctionId, FunctionParameterId};

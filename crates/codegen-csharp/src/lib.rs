@@ -318,10 +318,12 @@ mod tests {
             NamedSourceProgram {
                 name: "catalog \"west\"".into(),
                 source: SchemaNode::group("catalog", Vec::new()),
+                dynamic: None,
             },
             NamedSourceProgram {
                 name: "settings".into(),
                 source: SchemaNode::group("settings", Vec::new()),
+                dynamic: None,
             },
         ];
 

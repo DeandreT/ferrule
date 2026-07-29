@@ -36,6 +36,7 @@ fn named_source_program() -> Program {
                     ],
                 )
                 .repeating(),
+                dynamic: None,
             },
             NamedSourceProgram {
                 name: "Settings".into(),
@@ -46,10 +47,12 @@ fn named_source_program() -> Program {
                         SchemaNode::scalar("Other", ScalarType::String),
                     ],
                 ),
+                dynamic: None,
             },
             NamedSourceProgram {
                 name: "Tree".into(),
                 source: directory_schema,
+                dynamic: None,
             },
         ],
         target: SchemaNode::group(
