@@ -342,6 +342,157 @@ fn dynamic_source_project() -> Project {
     }
 }
 
+fn project_with_unavailable_unselected_payload_source() -> Project {
+    let target =
+        |name: &str| SchemaNode::group(name, vec![SchemaNode::scalar("Value", ScalarType::String)]);
+    Project {
+        source: SchemaNode::group("Input", Vec::new()),
+        target: target("Primary"),
+        source_path: None,
+        target_path: Some("primary.json".into()),
+        source_options: json_options(),
+        target_options: json_options(),
+        extra_sources: vec![
+            NamedSource {
+                name: "unselected_data".into(),
+                path: "unselected.json".into(),
+                schema: target("Lookup"),
+                options: json_options(),
+                dynamic_path: None,
+            },
+            NamedSource {
+                name: "unselected_dynamic".into(),
+                path: String::new(),
+                schema: target("DynamicLookup"),
+                options: json_options(),
+                dynamic_path: Some(DynamicSourcePath {
+                    node: 2,
+                    iteration: Vec::new(),
+                }),
+            },
+        ],
+        extra_targets: vec![NamedTarget {
+            name: "unselected".into(),
+            path: Some("unselected-output.json".into()),
+            schema: SchemaNode::group(
+                "Unselected",
+                vec![
+                    SchemaNode::scalar("Value", ScalarType::String),
+                    target("Row").repeating(),
+                ],
+            ),
+            options: json_options(),
+            root: Scope {
+                bindings: vec![Binding {
+                    target_field: "Value".into(),
+                    node: 1,
+                }],
+                children: vec![Scope {
+                    target_field: "Row".into(),
+                    iteration: ScopeIteration::Source(vec!["unselected_dynamic".into()]),
+                    bindings: vec![Binding {
+                        target_field: "Value".into(),
+                        node: 3,
+                    }],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            },
+        }],
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::Const {
+                        value: Value::String("selected".into()),
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec!["unselected_data".into(), "Value".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    2,
+                    Node::Const {
+                        value: Value::String("dynamic.json".into()),
+                    },
+                ),
+                (
+                    3,
+                    Node::SourceField {
+                        path: vec!["Value".into()],
+                        frame: Some(vec!["unselected_dynamic".into()]),
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 0,
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
+#[test]
+fn selected_payload_target_ignores_unselected_source_payloads() -> anyhow::Result<()> {
+    let project = project_with_unavailable_unselected_payload_source();
+    let primary = cli::PayloadDocument::new(Path::new("input.json"), br#"{}"#)?;
+    let malformed_static = cli::PayloadDocument::new(Path::new("unselected.json"), br#"{"#)?;
+    let malformed_dynamic = cli::PayloadDocument::new(Path::new("dynamic.json"), br#"{"#)?;
+    let unselected = [
+        cli::NamedPayloadInput::new("unselected_data", malformed_static)?,
+        cli::NamedPayloadInput::new("unselected_dynamic", malformed_dynamic)?,
+    ];
+
+    let selected = cli::run_project_value_payloads(
+        &project,
+        Path::new("/virtual/project.json"),
+        &cli::PayloadRunOptions::new(primary)
+            .with_extra_sources(&unselected)
+            .with_target(cli::TargetSelection::Primary),
+    )?;
+    assert_eq!(selected.artifacts.len(), 1);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&selected.artifacts[0].bytes)?,
+        serde_json::json!({"Value": "selected"})
+    );
+
+    let missing_error = cli::run_project_value_payloads(
+        &project,
+        Path::new("/virtual/project.json"),
+        &cli::PayloadRunOptions::new(primary),
+    )
+    .expect_err("all-target execution must still require every static payload source");
+    assert!(
+        missing_error.to_string().contains(
+            "static extra source `unselected_data` requires exactly one payload document"
+        ),
+        "{missing_error:#}"
+    );
+
+    let error = cli::run_project_value_payloads(
+        &project,
+        Path::new("/virtual/project.json"),
+        &cli::PayloadRunOptions::new(primary).with_extra_sources(&unselected),
+    )
+    .expect_err("all-target execution must still parse every supplied source");
+    assert!(
+        error
+            .to_string()
+            .contains("reading payload source `unselected_data`"),
+        "{error:#}"
+    );
+    Ok(())
+}
+
 #[test]
 fn dynamic_source_paths_resolve_only_from_supplied_payloads() -> anyhow::Result<()> {
     let source = cli::PayloadDocument::new(

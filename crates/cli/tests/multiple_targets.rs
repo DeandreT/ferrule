@@ -3,7 +3,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{Binding, Graph, NamedTarget, Node, Project, Scope};
+use mapping::{Binding, Graph, NamedSource, NamedTarget, Node, Project, Scope};
 
 struct TempDir(PathBuf);
 
@@ -77,6 +77,58 @@ fn colliding_project() -> Project {
     let mut project = project("shared.xml");
     project.target_path = Some("shared.xml".into());
     project
+}
+
+fn project_with_unavailable_unselected_source() -> Project {
+    Project {
+        source: document("Source"),
+        target: document("Primary"),
+        source_path: None,
+        target_path: Some("selected.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: vec![NamedSource {
+            name: "unselected_data".into(),
+            path: "unavailable.xml".into(),
+            schema: document("Lookup"),
+            options: Default::default(),
+            dynamic_path: None,
+        }],
+        extra_targets: vec![NamedTarget {
+            name: "unselected".into(),
+            path: Some("unselected.xml".into()),
+            schema: document("Unselected"),
+            options: Default::default(),
+            root: Scope {
+                bindings: vec![Binding {
+                    target_field: "Value".into(),
+                    node: 1,
+                }],
+                ..Scope::default()
+            },
+        }],
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph {
+            nodes: [
+                (
+                    0,
+                    Node::Const {
+                        value: Value::String("selected".into()),
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec!["unselected_data".into(), "Value".into()],
+                        frame: None,
+                    },
+                ),
+            ]
+            .into(),
+        },
+        root: output_scope(),
+    }
 }
 
 #[test]
@@ -263,6 +315,43 @@ fn run_subcommand_accepts_primary_target_selector() -> Result<(), Box<dyn std::e
             "Value".into(),
             Instance::Scalar(Value::String("primary".into())),
         )])
+    );
+    Ok(())
+}
+
+#[test]
+fn selected_filesystem_target_does_not_load_unselected_static_source()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let project_path = dir.0.join("project.json");
+    let input_path = dir.0.join("input.xml");
+    let selected_path = dir.0.join("selected.xml");
+    std::fs::write(
+        &project_path,
+        serde_json::to_vec_pretty(&project_with_unavailable_unselected_source())?,
+    )?;
+    std::fs::write(&input_path, "<Source><Value>input</Value></Source>")?;
+
+    let selected = cli::run_project_with_options(
+        &project_path,
+        &cli::RunOptions::new()
+            .with_input_path(&input_path)
+            .with_target(cli::TargetSelection::Primary),
+    )?;
+    assert_eq!(selected.output_path, selected_path);
+    assert_eq!(
+        format_xml::read(&selected_path, &document("Primary"))?,
+        Instance::Group(vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("selected".into())),
+        )])
+    );
+
+    let error = cli::run_project_with_paths(&project_path, Some(&input_path), None)
+        .expect_err("all-target execution must still load every static source");
+    assert!(
+        format!("{error:#}").contains("loading extra source `unselected_data`"),
+        "{error:#}"
     );
     Ok(())
 }
