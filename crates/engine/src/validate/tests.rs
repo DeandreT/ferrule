@@ -517,6 +517,22 @@ fn rejects_programmatically_invalid_item_count_metadata() {
 }
 
 #[test]
+fn rejects_programmatically_invalid_property_count_metadata() {
+    let mut project = valid_project();
+    let Some(range) = ir::PropertyCountRange::new(1, Some(3)) else {
+        panic!("test property-count range is valid");
+    };
+    target_name(&mut project).property_count_range = Some(range);
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("property-count metadata")
+            && issue.message.contains("name")
+    }));
+}
+
+#[test]
 fn rejects_programmatically_invalid_string_length_metadata() {
     let mut project = valid_project();
     let Some(range) = ir::StringLengthRange::new(1, Some(3)) else {

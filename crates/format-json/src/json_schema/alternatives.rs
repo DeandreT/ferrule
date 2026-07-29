@@ -4,8 +4,8 @@ use ir::{
 };
 
 use super::{
-    allowed_values, files, formats, item_counts, multiples, parse, patterns, ranges,
-    reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
+    allowed_values, files, formats, item_counts, multiples, parse, patterns, property_counts,
+    ranges, reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -754,6 +754,8 @@ pub(super) fn parse_nullable_composition(
             "multipleOf",
             "minItems",
             "maxItems",
+            "minProperties",
+            "maxProperties",
             "minLength",
             "maxLength",
         ] {
@@ -1175,6 +1177,8 @@ fn ensure_annotation_or_range_only(
                     | "multipleOf"
                     | "minItems"
                     | "maxItems"
+                    | "minProperties"
+                    | "maxProperties"
                     | "uniqueItems"
                     | "minLength"
                     | "maxLength"
@@ -1233,6 +1237,7 @@ pub(super) fn parse_object_alternatives(
         })?;
     let mut base_children = parse_alternative_properties(schema, doc, active_refs)?;
     let base_required = required_names(schema);
+    let base_property_count = property_counts::selected(name, schema)?;
     let base_additional = match schema.get("additionalProperties") {
         None | Some(serde_json::Value::Bool(true)) => WrapperAdditional::Open,
         Some(serde_json::Value::Bool(false)) => WrapperAdditional::Closed,
@@ -1250,6 +1255,8 @@ pub(super) fn parse_object_alternatives(
     clear_constrained_fixed(&mut base_children, &base_constraints);
     let mut merged = base_children.clone();
     let mut metadata = Vec::with_capacity(alternatives.len());
+    let mut common_property_count = None;
+    let mut saw_property_count = false;
     for (index, alternative_schema) in alternatives.iter().enumerate() {
         if alternative_schema
             .get("$ref")
@@ -1295,6 +1302,27 @@ pub(super) fn parse_object_alternatives(
             .unwrap_or_else(|| format!("{keyword}{index}"));
         let normalized = without_direct_property_constraints(resolved);
         let parsed = parse(&alternative_name, &normalized, doc, active_refs)?;
+        let sibling_property_count = if !core::ptr::eq(resolved, alternative_schema)
+            && files::ref_siblings_apply(alternative_schema)
+        {
+            property_counts::selected(name, alternative_schema)?
+        } else {
+            None
+        };
+        let branch_property_count =
+            property_counts::intersect(name, parsed.property_count_range, sibling_property_count)?;
+        let effective_property_count =
+            property_counts::intersect(name, base_property_count, branch_property_count)?;
+        if saw_property_count && common_property_count != effective_property_count {
+            return Err(unsupported_union(
+                name,
+                &format!(
+                    "{keyword} object alternatives have differing property-count constraints that cannot be represented independently"
+                ),
+            ));
+        }
+        common_property_count = effective_property_count;
+        saw_property_count = true;
         if parsed.repeating {
             return Err(unsupported_union(
                 name,
@@ -1413,11 +1441,14 @@ pub(super) fn parse_object_alternatives(
             .any(|alternative| alternative.members.contains(&child.name))
     });
     let group = SchemaNode::group(name, merged);
-    match mode {
+    let mut group = match mode {
         GroupAlternativeMode::Exclusive => group.with_alternatives(metadata),
         GroupAlternativeMode::Inclusive => group.with_inclusive_alternatives(metadata),
     }
-    .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
+    .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))?;
+    group.property_count_range = common_property_count;
+    property_counts::ensure_feasible(name, &group)?;
+    Ok(group)
 }
 
 fn merge_exact_constrained_nullability(

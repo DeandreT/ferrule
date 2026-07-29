@@ -28,6 +28,7 @@ mod json_allowed_values;
 mod json_multiple_of;
 mod json_object_openness;
 mod json_patterns;
+mod json_property_counts;
 mod json_unique_items;
 mod recursive_filter;
 mod scalar_functions;
