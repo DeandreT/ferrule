@@ -700,6 +700,7 @@ fn retains_unavailable_swift_configuration_for_design_roundtrips() {
         text.attribute("config"),
         Some("Unavailable/Envelope.Config")
     );
+    assert_eq!(text.attribute("ferrule-unresolved-config"), Some("1"));
     assert!(
         text.children()
             .all(|child| !child.has_tag_name("ferrule-layout"))
@@ -715,7 +716,7 @@ fn retains_unavailable_swift_configuration_for_design_roundtrips() {
         Some("Unavailable/Envelope.Config")
     );
     assert!(reimported.project.source_options.swift_mt.is_none());
-    assert_eq!(reimported.warnings.len(), 1, "{:?}", reimported.warnings);
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(
         mfd::export(
             &reimported.project,
