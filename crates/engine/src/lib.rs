@@ -38,7 +38,7 @@ pub use trace::{TraceEvent, TracePosition, TraceSink};
 pub use validate::{ValidationIssue, validate};
 
 /// One additional named target value produced by a project run.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NamedOutput {
     pub name: String,
     pub instance: Instance,
@@ -49,6 +49,20 @@ pub struct NamedOutput {
 pub struct ExecutionOutputs {
     pub primary: Instance,
     pub extras: Vec<NamedOutput>,
+}
+
+/// One project target selected for isolated evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetSelection<'a> {
+    Primary,
+    Named(&'a str),
+}
+
+/// The value produced by isolated evaluation of one selected target.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SelectedTargetOutput {
+    Primary(Instance),
+    Named(NamedOutput),
 }
 
 pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
@@ -126,6 +140,10 @@ impl RuntimeParameters {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("project has no named target `{name}`")]
+    UnknownTarget { name: String },
+    #[error("project has more than one named target `{name}`")]
+    AmbiguousTarget { name: String },
     #[error("mapping graph has no node with id {0}")]
     MissingNode(NodeId),
     #[error("cycle detected while evaluating node {0}")]
@@ -347,6 +365,15 @@ pub fn run_outputs(project: &Project, source: &Instance) -> Result<ExecutionOutp
     run_outputs_internal(project, source, Vec::new(), None)
 }
 
+/// Evaluates only one selected target.
+pub fn run_selected_target(
+    project: &Project,
+    source: &Instance,
+    selection: TargetSelection<'_>,
+) -> Result<SelectedTargetOutput, EngineError> {
+    run_selected_target_internal(project, source, Vec::new(), None, selection)
+}
+
 /// Host values available to runtime graph nodes.
 #[derive(Clone, Copy)]
 pub struct ExecutionContext<'a> {
@@ -471,12 +498,122 @@ pub fn run_outputs_with_sources_and_context(
     run_outputs_internal(project, source, extras, Some(execution))
 }
 
+/// Like [`run_selected_target`], with named secondary sources and host values.
+pub fn run_selected_target_with_sources_and_context(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+    execution: &ExecutionContext<'_>,
+    selection: TargetSelection<'_>,
+) -> Result<SelectedTargetOutput, EngineError> {
+    run_selected_target_internal(project, source, extras, Some(execution), selection)
+}
+
 fn run_outputs_internal(
     project: &Project,
     source: &Instance,
     extras: Vec<(String, Instance)>,
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<ExecutionOutputs, EngineError> {
+    evaluate_run(project, source, extras, execution, |program, context| {
+        let primary = eval_scope(
+            program,
+            &project.root,
+            Some(&project.target),
+            context,
+            &[],
+            &project.extra_sources,
+            execution.and_then(|execution| execution.dynamic_source_loader),
+        )?;
+        let mut targets = Vec::with_capacity(project.extra_targets.len());
+        for target in &project.extra_targets {
+            targets.push(NamedOutput {
+                name: target.name.clone(),
+                instance: eval_scope(
+                    program,
+                    &target.root,
+                    Some(&target.schema),
+                    context,
+                    &[],
+                    &project.extra_sources,
+                    execution.and_then(|execution| execution.dynamic_source_loader),
+                )?,
+            });
+        }
+        Ok(ExecutionOutputs {
+            primary,
+            extras: targets,
+        })
+    })
+}
+
+fn run_selected_target_internal(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+    execution: Option<&ExecutionContext<'_>>,
+    selection: TargetSelection<'_>,
+) -> Result<SelectedTargetOutput, EngineError> {
+    let named_target = match selection {
+        TargetSelection::Primary => None,
+        TargetSelection::Named(name) => {
+            let mut matches = project
+                .extra_targets
+                .iter()
+                .filter(|target| target.name == name);
+            let target = matches.next().ok_or_else(|| EngineError::UnknownTarget {
+                name: name.to_string(),
+            })?;
+            if matches.next().is_some() {
+                return Err(EngineError::AmbiguousTarget {
+                    name: name.to_string(),
+                });
+            }
+            Some(target)
+        }
+    };
+    evaluate_run(
+        project,
+        source,
+        extras,
+        execution,
+        |program, context| match named_target {
+            None => eval_scope(
+                program,
+                &project.root,
+                Some(&project.target),
+                context,
+                &[],
+                &project.extra_sources,
+                execution.and_then(|execution| execution.dynamic_source_loader),
+            )
+            .map(SelectedTargetOutput::Primary),
+            Some(target) => eval_scope(
+                program,
+                &target.root,
+                Some(&target.schema),
+                context,
+                &[],
+                &project.extra_sources,
+                execution.and_then(|execution| execution.dynamic_source_loader),
+            )
+            .map(|instance| {
+                SelectedTargetOutput::Named(NamedOutput {
+                    name: target.name.clone(),
+                    instance,
+                })
+            }),
+        },
+    )
+}
+
+fn evaluate_run<R>(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+    execution: Option<&ExecutionContext<'_>>,
+    evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
+) -> Result<R, EngineError> {
     let runtime_frame = Instance::Group(
         execution
             .into_iter()
@@ -515,34 +652,7 @@ fn run_outputs_internal(
         execution.and_then(|execution| execution.trace_sink),
     );
     failure::evaluate(program, &project.failure_rules, &context)?;
-    let primary = eval_scope(
-        program,
-        &project.root,
-        Some(&project.target),
-        &context,
-        &[],
-        &project.extra_sources,
-        execution.and_then(|execution| execution.dynamic_source_loader),
-    )?;
-    let mut targets = Vec::with_capacity(project.extra_targets.len());
-    for target in &project.extra_targets {
-        targets.push(NamedOutput {
-            name: target.name.clone(),
-            instance: eval_scope(
-                program,
-                &target.root,
-                Some(&target.schema),
-                &context,
-                &[],
-                &project.extra_sources,
-                execution.and_then(|execution| execution.dynamic_source_loader),
-            )?,
-        });
-    }
-    Ok(ExecutionOutputs {
-        primary,
-        extras: targets,
-    })
+    evaluate(program, &context)
 }
 
 #[cfg(test)]
@@ -611,6 +721,9 @@ mod sequence_item_at_tests;
 #[cfg(test)]
 #[path = "tests/sequence_windows.rs"]
 mod sequence_windows_tests;
+#[cfg(test)]
+#[path = "tests/target_selection.rs"]
+mod target_selection_tests;
 #[cfg(test)]
 #[path = "tests/trace.rs"]
 mod trace_tests;
