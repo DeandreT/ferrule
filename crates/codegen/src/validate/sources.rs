@@ -55,6 +55,17 @@ impl<'a> SchemaCursor<'a> {
         };
         find_concrete_group(self.root, anchor).map(|node| Self::new(self.root, node))
     }
+
+    /// The immediately enclosing schema node when it is also a runtime source
+    /// frame: either the document root or a repeated ancestor.
+    pub(super) fn runtime_parent(self) -> Option<Self> {
+        let parent = find_parent(self.root, self.node)?;
+        (std::ptr::eq(parent, self.root) || parent.repeating).then(|| Self::new(self.root, parent))
+    }
+
+    pub(super) fn same_node(self, other: Self) -> bool {
+        std::ptr::eq(self.root, other.root) && std::ptr::eq(self.node, other.node)
+    }
 }
 
 /// All source schemas visible to one neutral program, in engine fallback order.
@@ -239,6 +250,21 @@ fn find_concrete_group<'a>(current: &'a SchemaNode, anchor: &str) -> Option<&'a 
     children
         .iter()
         .find_map(|child| find_concrete_group(child, anchor))
+}
+
+fn find_parent<'a>(current: &'a SchemaNode, target: &'a SchemaNode) -> Option<&'a SchemaNode> {
+    let SchemaKind::Group { children, .. } = &current.kind else {
+        return None;
+    };
+    for child in children {
+        if std::ptr::eq(child, target) {
+            return Some(current);
+        }
+        if let Some(parent) = find_parent(child, target) {
+            return Some(parent);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
