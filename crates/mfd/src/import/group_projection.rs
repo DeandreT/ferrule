@@ -68,6 +68,9 @@ pub(super) fn classify_target_connection(
     }
     match builder.classify_join_iteration(feed, target_path) {
         super::join::IterationFeed::Join(join) => {
+            let first_output = builder
+                .resolve_iteration_feed(feed)
+                .has_terminal_default_first();
             if target.format.is_xml_like() && target_path.is_empty() && !target_node.repeating {
                 builder.rejected_join_paths.insert(target_path.to_vec());
                 if builder.warned_join_controls.insert(join) {
@@ -78,7 +81,9 @@ pub(super) fn classify_target_connection(
                 }
                 return;
             }
-            let output = if target_path.is_empty() || target_node.repeating {
+            let output = if first_output && !target_path.is_empty() && !target_node.repeating {
+                IterationOutput::First
+            } else if target_path.is_empty() || target_node.repeating {
                 IterationOutput::Repeated
             } else {
                 IterationOutput::MappedSequence
@@ -160,7 +165,7 @@ pub(super) fn classify_target_connection(
                     .to_string(),
             );
         } else if target.format.is_xml_like()
-            && (max_one_database_source || resolved.has_default_first())
+            && (max_one_database_source || resolved.has_terminal_default_first())
             && matches!(target_node.kind, SchemaKind::Group { .. })
             && has_connected_descendant(target, target_path, builder)
         {
@@ -302,7 +307,11 @@ pub(super) fn classify_target_connection(
             feed,
             target_port: Some(input_key),
             additional_feeds: Vec::new(),
-            output: IterationOutput::MappedSequence,
+            output: if resolved.has_terminal_default_first() {
+                IterationOutput::First
+            } else {
+                IterationOutput::MappedSequence
+            },
             projects_whole_group: copy_all,
             join: None,
         });
@@ -538,6 +547,7 @@ fn mapped_group_sequence(
     };
     if enclosing_iteration_owns_source(target, target_path, builder, &source_path)
         && !builder.xml_type_conditions.contains_key(&feed.source_key)
+        && !feed.has_terminal_default_first()
     {
         return false;
     }

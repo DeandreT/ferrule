@@ -689,6 +689,12 @@ fn build_one(
         });
     }
     let primary_sort = sort_keys.first().copied();
+    let window_feeds =
+        if iteration.output == IterationOutput::First && feed.has_terminal_default_first() {
+            &feed.windows[..feed.windows.len() - 1]
+        } else {
+            feed.windows.as_slice()
+        };
     let windows = if query_at_most_one {
         Some(vec![SequenceWindow::First {
             count: builder.alloc(Node::Const {
@@ -696,7 +702,7 @@ fn build_one(
             }),
         }])
     } else {
-        materialize_windows(builder, &feed.windows, &iteration_anchor)
+        materialize_windows(builder, window_feeds, &iteration_anchor)
     };
     if let Some(id) = join
         && feed.has_windows()
