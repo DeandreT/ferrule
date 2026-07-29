@@ -336,6 +336,54 @@ fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
 }
 
 #[test]
+fn omitted_additional_properties_refines_a_nested_dynamic_target()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new("nested_default_open");
+    let design = write_nested_fixture(&dir.0);
+    let schema_path = dir.0.join("nested-target.schema.json");
+    let schema = std::fs::read_to_string(&schema_path)?;
+    let default_open = schema.replace(
+        ",\n            \"additionalProperties\": { \"type\": \"number\" }",
+        "",
+    );
+    assert_ne!(default_open, schema, "fixture refinement did not apply");
+    std::fs::write(&schema_path, default_open)?;
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let available = imported
+        .project
+        .target
+        .child("Stores")
+        .and_then(|stores| stores.child("Available"))
+        .ok_or_else(|| std::io::Error::other("missing dynamic target object"))?;
+    assert!(matches!(
+        available.dynamic_fields().map(|dynamic| &dynamic.kind),
+        Some(ir::SchemaKind::Scalar {
+            ty: ir::ScalarType::Float
+        })
+    ));
+
+    let source = format_json::read(&dir.0.join("inventory.json"), &imported.project.source)?;
+    let output = engine::run(&imported.project, &source)?;
+    let output_path = dir.0.join("nested-default-open-output.json");
+    format_json::write(&output_path, &imported.project.target, &output)?;
+    let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(output_path)?)?;
+    assert_eq!(value[0]["Stores"][0]["Available"]["S"], 4.0);
+    assert_eq!(value[0]["Stores"][0]["Available"]["M"], 2.0);
+
+    let export_path = dir.0.join("nested-default-open-export.mfd");
+    let warnings = mfd::export(&imported.project, &export_path)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let roundtrip = mfd::import(&export_path)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(output, engine::run(&roundtrip.project, &source)?);
+    Ok(())
+}
+
+#[test]
 fn nested_dynamic_values_preserve_source_position_on_export() {
     let dir = TempDir::new("nested_position");
     let design = write_nested_fixture(&dir.0);

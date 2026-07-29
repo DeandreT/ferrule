@@ -34,6 +34,9 @@ internal static partial class Program
     private const string ItemCountJsonSchema =
         "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"OptionalRows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}],\"required\":[\"Rows\"]}}";
 
+    private const string ObjectOpennessJsonSchema =
+        "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Known\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Nested\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Name\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Rows\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Code\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Maybe\",\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Id\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}]}},{\"name\":\"Open\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Fixed\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"dynamic\":{\"name\":\"*\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}]}}";
+
     private static void JsonDocumentBoundaries()
     {
         var parsed = (FerruleGroup)FerruleJson.Parse(
@@ -124,6 +127,7 @@ internal static partial class Program
                 "{\"name\":\"Broken\",\"kind\":{\"kind\":\"group\",\"children\":[],\"required\":[\"missing\"]}}",
                 "{}"));
 
+        JsonObjectOpennessBoundaries();
         JsonConstantBoundaries();
         JsonAllowedValuesBoundaries();
         JsonRangeBoundaries();
@@ -134,6 +138,54 @@ internal static partial class Program
         JsonStringLengthBoundaries();
         JsonPatternBoundaries();
         JsonScalarUnionBoundaries();
+    }
+
+    private static void JsonObjectOpennessBoundaries()
+    {
+        var firstUnexpected = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                BasicJsonSchema,
+                "{\"Name\":\"sample\",\"unexpected\":1,\"later\":2}"));
+        Equal(
+            true,
+            firstUnexpected.Message.Contains(
+                "object 'Root' does not allow property 'unexpected'",
+                StringComparison.Ordinal));
+        Equal(false, firstUnexpected.Message.Contains("'later'", StringComparison.Ordinal));
+
+        const string valid =
+            "{\"Known\":\"root\",\"Nested\":{\"Name\":\"nested\"},\"Rows\":[{\"Code\":\"A\"},{\"Code\":\"B\"}],\"Maybe\":null,\"Open\":{\"Fixed\":\"declared\",\"extra\":{\"nested\":[1,true,null]}}}";
+        var parsed = FerruleJson.Parse(ObjectOpennessJsonSchema, valid);
+        Equal(
+            "{\n  \"Known\": \"root\",\n  \"Nested\": {\n    \"Name\": \"nested\"\n  },\n  \"Rows\": [\n    {\n      \"Code\": \"A\"\n    },\n    {\n      \"Code\": \"B\"\n    }\n  ],\n  \"Maybe\": null,\n  \"Open\": {\n    \"Fixed\": \"declared\",\n    \"extra\": {\n      \"nested\": [\n        1,\n        true,\n        null\n      ]\n    }\n  }\n}\n",
+            FerruleJson.Serialize(ObjectOpennessJsonSchema, parsed));
+
+        foreach (var (input, objectName, propertyName) in new[]
+                 {
+                     (
+                         "{\"Known\":\"root\",\"Nested\":{\"Name\":\"nested\",\"extra\":1},\"Rows\":[],\"Maybe\":null,\"Open\":{}}",
+                         "Nested",
+                         "extra"),
+                     (
+                         "{\"Known\":\"root\",\"Nested\":{},\"Rows\":[{\"Code\":\"A\",\"extra\":1}],\"Maybe\":null,\"Open\":{}}",
+                         "Rows",
+                         "extra"),
+                     (
+                         "{\"Known\":\"root\",\"Nested\":{},\"Rows\":[],\"Maybe\":{\"Id\":1,\"extra\":1},\"Open\":{}}",
+                         "Maybe",
+                         "extra"),
+                 })
+        {
+            var error = Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(ObjectOpennessJsonSchema, input));
+            Equal(
+                true,
+                error.Message.Contains(
+                    $"object '{objectName}' does not allow property '{propertyName}'",
+                    StringComparison.Ordinal));
+        }
     }
 
     private static void JsonConstantBoundaries()

@@ -78,7 +78,7 @@ fn object_all_of_flattens_refs_nested_composition_and_equal_properties() {
         })
     ));
     assert!(alternatives.is_empty());
-    assert!(dynamic.is_none());
+    assert!(dynamic.as_deref().is_some_and(|node| node.json_any));
 
     let input = r#"{"id":7,"street":"Main","active":true,"score":9.5}"#;
     let instance = crate::from_str(input, &schema).unwrap();
@@ -160,7 +160,7 @@ fn object_all_of_preserves_compatible_dynamic_fields_and_closed_intersections() 
 }"#,
     );
     assert!(closed.dynamic_fields().is_none());
-    assert!(closed.child("known").is_some());
+    assert!(closed.child("known").is_none());
 }
 
 #[test]
@@ -425,14 +425,6 @@ fn all_of_rejects_incompatible_intersections() {
             r#""allOf": [
               {"type":"object","properties":{"value":{"type":"string"}}},
               {"type":"object","properties":{"value":{"type":"integer"}}}
-            ]"#,
-            "no value type in common",
-        ),
-        (
-            "dynamic",
-            r#""allOf": [
-              {"type":"object","additionalProperties":{"type":"string"}},
-              {"type":"object","additionalProperties":{"type":"integer"}}
             ]"#,
             "no value type in common",
         ),

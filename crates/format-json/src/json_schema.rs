@@ -18,8 +18,8 @@
 //! every allowed runtime type; array `anyOf` branches canonicalize when they
 //! are identical or one scalar item domain contains all the others. Unconstrained
 //! `additionalProperties` values are retained as canonical JSON text in the
-//! graph's string domain. An omitted or false `additionalProperties` is
-//! treated as closed. Bounded multi-value scalar `enum` domains are retained
+//! graph's string domain. Omitted or true `additionalProperties` is open,
+//! while explicit false is closed. Bounded multi-value scalar `enum` domains are retained
 //! exactly through direct schemas, references, compatible intersections, and
 //! finite scalar `anyOf`/`oneOf` composition. General composition remains outside this subset;
 //! bounded portable `pattern` constraints are enforced while string `format`
@@ -167,6 +167,7 @@ fn parse(
         }
         return Ok(node);
     }
+    reject_unsupported_object_keywords(name, schema)?;
     if let Some(composition) = schema.get("allOf") {
         return parse_all_of(name, schema, composition, doc, active_refs);
     }
@@ -696,8 +697,8 @@ fn attach_dynamic_fields(
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let additional = match schema.get("additionalProperties") {
-        None | Some(serde_json::Value::Bool(false)) => return Ok(group),
-        Some(serde_json::Value::Bool(true)) => return attach_unconstrained_dynamic(group),
+        None | Some(serde_json::Value::Bool(true)) => return attach_unconstrained_dynamic(group),
+        Some(serde_json::Value::Bool(false)) => return Ok(group),
         Some(additional @ serde_json::Value::Object(object)) => {
             if object.is_empty()
                 || (!declares_supported_shape(object)
@@ -724,6 +725,25 @@ fn attach_dynamic_fields(
             name,
             reason: "open objects cannot use closed object alternatives".to_string(),
         })
+}
+
+fn reject_unsupported_object_keywords(
+    name: &str,
+    schema: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    let Some(object) = schema.as_object() else {
+        return Ok(());
+    };
+    if let Some(keyword) = ["patternProperties", "unevaluatedProperties"]
+        .into_iter()
+        .find(|keyword| object.contains_key(*keyword))
+    {
+        return Err(unsupported_object(
+            name,
+            &format!("`{keyword}` object validation is not supported"),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_required_fields(

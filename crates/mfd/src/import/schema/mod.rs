@@ -940,9 +940,20 @@ fn attach_json_dynamic_source_schema(
             )
         })?;
         if let Some(existing) = owner.dynamic_fields() {
-            if existing.repeating
-                || !matches!(existing.kind, SchemaKind::Scalar { ty } if ty == value_type)
-            {
+            if existing.repeating {
+                return Err(format!(
+                    "open object `{}` declares incompatible dynamic value shapes",
+                    owner_path.join("/")
+                ));
+            }
+            if existing.json_any {
+                if !owner.set_dynamic_fields(Some(SchemaNode::scalar("*", value_type))) {
+                    return Err(format!(
+                        "open object `{}` cannot refine its arbitrary dynamic value shape",
+                        owner_path.join("/")
+                    ));
+                }
+            } else if !matches!(existing.kind, SchemaKind::Scalar { ty } if ty == value_type) {
                 return Err(format!(
                     "open object `{}` declares incompatible dynamic value shapes",
                     owner_path.join("/")

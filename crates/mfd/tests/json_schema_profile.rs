@@ -46,6 +46,15 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         {"type":"null"}
       ]
     },
+    "ImplicitOpen":{
+      "type":"object",
+      "properties":{"Known":{"type":"string"}}
+    },
+    "TypedOpen":{
+      "type":"object",
+      "properties":{"Unit":{"type":"string"}},
+      "additionalProperties":{"type":"integer"}
+    },
     "MaybeArray":{
       "type":["array","null"],
       "minItems":1,
@@ -69,7 +78,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     )?;
     std::fs::write(
         directory.0.join("input.json"),
-        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"urgent"}"#,
+        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"ImplicitOpen":{"Known":"A","arbitrary":{"nested":[true,null]}},"TypedOpen":{"Unit":"count","widgets":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"urgent"}"#,
     )?;
     let design = directory.0.join("mapping.mfd");
     std::fs::write(
@@ -93,6 +102,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
+    assert!(imported.project.source.dynamic_fields().is_none());
 
     let object = imported
         .project
@@ -102,6 +112,27 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     assert!(object.container_nullable);
     let dynamic = object.dynamic_fields().ok_or("missing dynamic value")?;
     assert!(dynamic.json_any);
+    let implicit_open = imported
+        .project
+        .source
+        .child("ImplicitOpen")
+        .ok_or("missing default-open object")?;
+    assert!(
+        implicit_open
+            .dynamic_fields()
+            .is_some_and(|dynamic| dynamic.json_any)
+    );
+    let typed_open = imported
+        .project
+        .source
+        .child("TypedOpen")
+        .ok_or("missing typed-open object")?;
+    assert!(matches!(
+        typed_open.dynamic_fields().map(|dynamic| &dynamic.kind),
+        Some(SchemaKind::Scalar {
+            ty: ir::ScalarType::Int
+        })
+    ));
     let array = imported
         .project
         .source
@@ -215,6 +246,43 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
 
     let input = format_json::read(&directory.0.join("input.json"), &imported.project.source)?;
     assert!(matches!(input, Instance::Group(_)));
+    assert_eq!(
+        input
+            .field("TypedOpen")
+            .and_then(|object| object.field("widgets"))
+            .and_then(Instance::as_scalar),
+        Some(&ir::Value::Int(3))
+    );
+    let arbitrary = input
+        .field("ImplicitOpen")
+        .and_then(|object| object.field("arbitrary"))
+        .and_then(Instance::as_scalar)
+        .and_then(|value| match value {
+            ir::Value::String(text) => Some(text),
+            _ => None,
+        })
+        .ok_or("missing unconstrained dynamic value")?;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(arbitrary)?,
+        serde_json::json!({"nested":[true,null]})
+    );
+    assert!(matches!(
+        format_json::from_str(
+            r#"{"Unexpected":true,"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
+            &imported.project.source,
+        ),
+        Err(format_json::JsonFormatError::UndeclaredProperty {
+            ref object,
+            ref property,
+        }) if object == "Envelope" && property == "Unexpected"
+    ));
+    assert!(
+        format_json::from_str(
+            r#"{"TypedOpen":{"Unit":"count","widgets":"three"},"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
+            &imported.project.source,
+        )
+        .is_err()
+    );
     assert!(
         format_json::from_str(
             r#"{"MaybeArray":[{"Id":1},{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"normal"}"#,
@@ -228,8 +296,52 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     let roundtrip_design = directory.0.join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &roundtrip_design)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let exported_schema: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
+        directory.0.join("roundtrip-source.schema.json"),
+    )?)?;
+    assert_eq!(exported_schema["additionalProperties"], false);
+    assert_eq!(
+        exported_schema["properties"]["MaybeObject"]["anyOf"][0]["additionalProperties"],
+        serde_json::json!({})
+    );
+    assert_eq!(
+        exported_schema["properties"]["ImplicitOpen"]["additionalProperties"],
+        serde_json::json!({})
+    );
+    assert_eq!(
+        exported_schema["properties"]["TypedOpen"]["additionalProperties"]["type"],
+        "integer"
+    );
     let reimported = mfd::import(&roundtrip_design)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(reimported.project.source.dynamic_fields().is_none());
+    assert!(
+        reimported
+            .project
+            .source
+            .child("MaybeObject")
+            .and_then(ir::SchemaNode::dynamic_fields)
+            .is_some_and(|dynamic| dynamic.json_any)
+    );
+    assert!(
+        reimported
+            .project
+            .source
+            .child("ImplicitOpen")
+            .and_then(ir::SchemaNode::dynamic_fields)
+            .is_some_and(|dynamic| dynamic.json_any)
+    );
+    assert!(matches!(
+        reimported
+            .project
+            .source
+            .child("TypedOpen")
+            .and_then(ir::SchemaNode::dynamic_fields)
+            .map(|dynamic| &dynamic.kind),
+        Some(SchemaKind::Scalar {
+            ty: ir::ScalarType::Int
+        })
+    ));
     let reimported_multiple_of = reimported
         .project
         .source

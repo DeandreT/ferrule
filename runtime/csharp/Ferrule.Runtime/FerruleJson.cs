@@ -910,6 +910,7 @@ public static partial class FerruleJson
 
         RequireKind(element, JsonValueKind.Object, schema.Name, "object");
         var properties = OrderedProperties(element);
+        ValidateDeclaredProperties(schema, properties);
         ValidateRequired(schema, properties);
         ValidateAlternatives(schema, properties);
         var fields = new List<FerruleField>();

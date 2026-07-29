@@ -16,6 +16,7 @@ mod formats;
 mod item_counts;
 mod multiples;
 mod nullable_composition;
+mod object_openness;
 mod patterns;
 mod ranges;
 mod ref_dialects;

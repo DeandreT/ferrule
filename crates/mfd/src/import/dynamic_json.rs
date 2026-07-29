@@ -105,11 +105,17 @@ impl DynamicJsonTarget {
                 return false;
             };
             if let Some(existing) = owner.dynamic_fields() {
-                if !matches!(
+                if existing.repeating {
+                    return false;
+                }
+                if existing.json_any {
+                    if !owner.set_dynamic_fields(Some(SchemaNode::scalar("*", site.value_type))) {
+                        return false;
+                    }
+                } else if !matches!(
                     &existing.kind,
                     SchemaKind::Scalar { ty } if *ty == site.value_type
-                ) || existing.repeating
-                {
+                ) {
                     return false;
                 }
             } else if !owner.set_dynamic_fields(Some(SchemaNode::scalar("*", site.value_type))) {
