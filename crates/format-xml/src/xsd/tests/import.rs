@@ -229,6 +229,49 @@ fn required_repeating_member_reconstructs_one_item_per_outer_cycle() {
 }
 
 #[test]
+fn sparse_unanchored_repeating_sequence_omits_absent_members() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_sparse_repeating_sequence_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Ledger"><xs:complexType>
+            <xs:sequence maxOccurs="unbounded">
+              <xs:element name="Entry" type="xs:string" maxOccurs="unbounded"/>
+              <xs:element name="Trailer" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    let schema = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+
+    let instance = Instance::Group(vec![(
+        "Entry".into(),
+        Instance::Repeated(vec![
+            Instance::Scalar(Value::String("first".into())),
+            Instance::Scalar(Value::String("second".into())),
+        ]),
+    )]);
+    let rendered = to_string(&schema, &instance).unwrap();
+    assert!(!rendered.contains("Trailer"), "{rendered}");
+    assert!(
+        rendered.find("<Entry>first</Entry>") < rendered.find("<Entry>second</Entry>"),
+        "{rendered}"
+    );
+
+    let parsed = from_str(&rendered, &schema).unwrap();
+    assert_eq!(parsed.field("Entry"), instance.field("Entry"));
+    assert_eq!(
+        parsed.field("Trailer"),
+        Some(&Instance::Repeated(Vec::new()))
+    );
+}
+
+#[test]
 fn imports_inline_simple_type_restriction_base() {
     let path = std::env::temp_dir().join(format!(
         "ferrule_xsd_inline_simple_{}.xsd",
