@@ -767,9 +767,12 @@ fn write_output(
             .with_context(|| format!("writing XBRL output {}", path.display()))?;
         return Ok(1);
     }
-    if options.idoc.is_some() {
+    if let Some(layout) = &options.idoc {
         reject_idoc_conflicts(options, "output")?;
-        bail!("SAP IDoc output is not supported; `idoc` is input-only");
+        let formatted = formatted_edi_output(instance, options)?;
+        format_edi::idoc::write(path, schema, &formatted, layout)
+            .with_context(|| format!("writing SAP IDoc output {}", path.display()))?;
+        return Ok(1);
     }
     if options.swift_mt.is_some() {
         reject_swift_conflicts(options, "output")?;
@@ -990,14 +993,20 @@ fn read_instance(
 
     if let Some(layout) = &options.idoc {
         reject_idoc_conflicts(options, "input")?;
-        return format_edi::idoc::read(path, schema, layout, options.lenient_segments)
-            .with_context(|| format!("reading SAP IDoc input {}", path.display()));
+        let mut instance = format_edi::idoc::read(path, schema, layout, options.lenient_segments)
+            .with_context(|| format!("reading SAP IDoc input {}", path.display()))?;
+        format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
+            .with_context(|| format!("applying EDI numeric formats to {}", path.display()))?;
+        return Ok(instance);
     }
 
     if let Some(layout) = &options.swift_mt {
         reject_swift_conflicts(options, "input")?;
-        return format_edi::swift::read(path, schema, layout, options.lenient_segments)
-            .with_context(|| format!("reading SWIFT MT input {}", path.display()));
+        let mut instance = format_edi::swift::read(path, schema, layout, options.lenient_segments)
+            .with_context(|| format!("reading SWIFT MT input {}", path.display()))?;
+        format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
+            .with_context(|| format!("applying EDI numeric formats to {}", path.display()))?;
+        return Ok(instance);
     }
 
     if let Some(boundary) = &options.external_source {
@@ -1684,7 +1693,9 @@ fn write_edi_output(
         }
         EdiBoundaryKind::Hl7 => format_edi::hl7::write(path, schema, instance),
         EdiBoundaryKind::Tradacoms => format_edi::tradacoms::write(path, schema, instance),
-        EdiBoundaryKind::Idoc => bail!("SAP IDoc output is not supported; IDoc is input-only"),
+        EdiBoundaryKind::Idoc => {
+            bail!("SAP IDoc output requires an embedded runtime layout")
+        }
         EdiBoundaryKind::SwiftMt => {
             bail!("SWIFT MT output is not supported; SWIFT MT is input-only")
         }

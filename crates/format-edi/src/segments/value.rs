@@ -54,7 +54,7 @@ pub(super) fn write_component(
 
 /// The serialized text for one element/component: the instance value, or
 /// the schema's `fixed` value when the instance doesn't provide one.
-pub(super) fn scalar_or_fixed(
+pub(crate) fn scalar_or_fixed(
     schema: &SchemaNode,
     value: Option<&Value>,
 ) -> Result<String, EdiFormatError> {

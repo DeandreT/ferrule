@@ -8,6 +8,7 @@ pub(super) fn validate_target_options(
     options: &FormatOptions,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    validate_structured_edi_options(location, options, issues);
     validate_xbrl_options(location, options, XbrlBoundaryMode::ExternalTarget, issues);
     validate_external_source_options(location, options, false, issues);
     if options.http_get.is_some() {
@@ -22,12 +23,6 @@ pub(super) fn validate_target_options(
             "PDF extraction is valid only for mapping sources",
         ));
     }
-    if options.idoc.is_some() {
-        issues.push(ValidationIssue::new(
-            location,
-            "SAP IDoc layouts are valid only for mapping sources",
-        ));
-    }
     if options.swift_mt.is_some() {
         issues.push(ValidationIssue::new(
             location,
@@ -36,7 +31,7 @@ pub(super) fn validate_target_options(
     }
 }
 
-pub(super) fn validate_structured_edi_source_options(
+pub(super) fn validate_structured_edi_options(
     location: &str,
     options: &FormatOptions,
     issues: &mut Vec<ValidationIssue>,

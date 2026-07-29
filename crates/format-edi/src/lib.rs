@@ -47,8 +47,21 @@ pub enum EdiFormatError {
     UnrecognizedIdocSegment { index: usize, found: String },
     #[error("IDoc record {record}, field `{field}` is not valid UTF-8")]
     InvalidIdocText { record: usize, field: String },
-    #[error("IDoc input exceeds the {0} limit")]
+    #[error("IDoc data exceeds the {0} limit")]
     IdocLimit(&'static str),
+    #[error(
+        "IDoc segment `{segment}` field `{field}` is {actual} bytes, exceeding its {width}-byte layout"
+    )]
+    IdocFieldTooWide {
+        segment: String,
+        field: String,
+        width: usize,
+        actual: usize,
+    },
+    #[error("IDoc segment `{segment}` field `{field}` contains unsupported control text")]
+    InvalidIdocOutputText { segment: String, field: String },
+    #[error("IDoc segment `{segment}` field `{field}` overlaps another record field")]
+    IdocFieldOverlap { segment: String, field: String },
     #[error("not a SWIFT MT message stream: {0}")]
     NotSwift(&'static str),
     #[error("SWIFT message type `{0}` has no embedded layout")]
