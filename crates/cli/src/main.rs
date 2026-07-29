@@ -47,6 +47,9 @@ enum Command {
         /// Evaluate and write only the primary target or one named target.
         #[arg(long, value_name = "primary|NAME")]
         target: Option<String>,
+        /// Write a deterministic, versioned JSON Lines execution trace.
+        #[arg(long, value_name = "PATH")]
+        trace_json: Option<PathBuf>,
         /// Named host scalar in NAME=VALUE form. Repeat for multiple
         /// parameters; declared mapping types apply during execution.
         #[arg(long = "param", value_name = "NAME=VALUE")]
@@ -243,9 +246,18 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             input,
             output,
             target,
+            trace_json,
             parameters,
         } => {
             let parameters = parse_runtime_parameters(&parameters)?;
+            let trace = trace_json
+                .as_deref()
+                .map(cli::JsonTraceFile::create)
+                .transpose()?;
+            let protected_output_paths = trace
+                .as_ref()
+                .map(|trace| vec![trace.destination()])
+                .unwrap_or_default();
             let target = target.as_deref().map(|target| {
                 if target == "primary" {
                     cli::TargetSelection::Primary
@@ -260,9 +272,13 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     output_path: output.as_deref(),
                     target,
                     runtime_parameters: Some(&parameters),
-                    trace_sink: None,
+                    trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
+                    protected_output_paths: &protected_output_paths,
                 },
             )?;
+            if let Some(trace) = trace {
+                trace.finish(&outcome.artifacts)?;
+            }
             println!(
                 "wrote {} record(s) to {}",
                 outcome.records_written,

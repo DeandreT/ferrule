@@ -30,12 +30,14 @@ pub(super) struct TargetWriteResult {
 
 pub(super) fn write_target_outputs(
     targets: &[TargetOutput<'_>],
+    protected_output_paths: &[&Path],
 ) -> anyhow::Result<Vec<TargetWriteResult>> {
     let planned = targets
         .iter()
         .map(PlannedTarget::build)
         .collect::<anyhow::Result<Vec<_>>>()?;
     validate_global_paths(&planned)?;
+    reject_protected_planned_files(&planned, protected_output_paths)?;
     preflight_planned_targets(&planned)?;
 
     let mut staged = Vec::with_capacity(planned.len());
@@ -59,6 +61,23 @@ pub(super) fn write_target_outputs(
     cleanup_stages(&staged);
 
     Ok(staged.into_iter().map(StagedTarget::into_result).collect())
+}
+
+pub(super) fn reject_protected_static_targets(
+    targets: &[super::PlannedProjectTarget<'_>],
+    protected_output_paths: &[&Path],
+) -> anyhow::Result<()> {
+    let protected = protected_output_paths
+        .iter()
+        .map(|path| normalized_absolute(path))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    for target in targets {
+        let OutputDestination::Static(path) = &target.destination else {
+            continue;
+        };
+        reject_protected_path(&normalized_absolute(path)?, path, &protected)?;
+    }
+    Ok(())
 }
 
 struct PlannedTarget<'a> {
@@ -171,6 +190,49 @@ fn validate_global_paths(targets: &[PlannedTarget<'_>]) -> anyhow::Result<()> {
                 );
             }
         }
+    }
+    Ok(())
+}
+
+fn reject_protected_planned_files(
+    targets: &[PlannedTarget<'_>],
+    protected_output_paths: &[&Path],
+) -> anyhow::Result<()> {
+    let protected = protected_output_paths
+        .iter()
+        .map(|path| normalized_absolute(path))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    for target in targets {
+        for file in &target.files {
+            reject_protected_path(
+                &normalized_absolute(&file.final_path)?,
+                &file.final_path,
+                &protected,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn reject_protected_path(
+    output: &Path,
+    display_path: &Path,
+    protected: &[PathBuf],
+) -> anyhow::Result<()> {
+    if protected.iter().any(|path| path == output) {
+        bail!(
+            "output destination {} is reserved by the host",
+            display_path.display()
+        );
+    }
+    if protected
+        .iter()
+        .any(|path| path.starts_with(output) || output.starts_with(path))
+    {
+        bail!(
+            "output destination {} overlaps a path reserved by the host",
+            display_path.display()
+        );
     }
     Ok(())
 }
