@@ -1,6 +1,6 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
-use super::{constraints, formats, item_counts, parse, ranges, unsupported_union};
+use super::{constraints, formats, item_counts, parse, ranges, string_lengths, unsupported_union};
 use crate::JsonFormatError;
 
 enum FormatEvent {
@@ -68,11 +68,21 @@ pub(super) fn parse_all_of(
             None => merged = Some(branch),
         }
     }
+    let format_only_fallback =
+        merged.is_none() && pending_constraints.iter().any(formats::has_keyword);
+    if format_only_fallback {
+        for constraints in &pending_constraints {
+            if string_lengths::is_effectively_constrained(name, constraints)? {
+                return Err(unsupported_union(
+                    name,
+                    "string-length constraints without a concrete string-capable type also admit unconstrained non-string values",
+                ));
+            }
+        }
+    }
     let mut merged = match merged {
         Some(merged) => merged,
-        None if pending_constraints.iter().any(formats::has_keyword) => {
-            SchemaNode::scalar(name, ScalarType::String)
-        }
+        None if format_only_fallback => SchemaNode::scalar(name, ScalarType::String),
         None => {
             return Err(unsupported_union(
                 name,
@@ -84,9 +94,11 @@ pub(super) fn parse_all_of(
         if merged.repeating {
             ranges::validate_ignored(name, &constraints)?;
             item_counts::apply(name, &constraints, &mut merged, false)?;
+            string_lengths::validate_ignored(name, &constraints)?;
         } else {
             ranges::apply(name, &constraints, &mut merged, false)?;
             item_counts::validate_ignored(name, &constraints)?;
+            string_lengths::apply(name, &constraints, &mut merged, false)?;
         }
     }
     apply_format_events(name, &mut merged, format_events)?;
@@ -150,6 +162,8 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "exclusiveMaximum"
                 | "minItems"
                 | "maxItems"
+                | "minLength"
+                | "maxLength"
                 | "format"
         )
     }) {
@@ -166,6 +180,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
     };
     (ranges::has_range_keywords(schema)
         || item_counts::has_keywords(schema)
+        || string_lengths::has_keywords(schema)
         || formats::has_keyword(schema))
         && object.keys().all(|keyword| {
             matches!(
@@ -176,6 +191,8 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
                     | "exclusiveMaximum"
                     | "minItems"
                     | "maxItems"
+                    | "minLength"
+                    | "maxLength"
                     | "format"
                     | "$schema"
                     | "$id"
@@ -234,6 +251,8 @@ fn intersect_scalar(
     let branch_constant = constraints::from_schema(branch)?;
     let target_range = target.numeric_range;
     let branch_range = branch.numeric_range;
+    let target_string_length = target.string_length_range;
+    let branch_string_length = branch.string_length_range;
     if let (Some(left), Some(right)) = (&target_constant, &branch_constant)
         && !left.semantically_equals(right)
     {
@@ -312,6 +331,17 @@ fn intersect_scalar(
         return Err(unsupported_union(
             name,
             "allOf fixed numeric value falls outside the intersected range",
+        ));
+    }
+    target.string_length_range = if target.accepts_scalar_type(ScalarType::String) {
+        string_lengths::intersect(name, target_string_length, branch_string_length)?
+    } else {
+        None
+    };
+    if !target.string_length_range_is_valid() {
+        return Err(unsupported_union(
+            name,
+            "allOf fixed string value falls outside the intersected length range",
         ));
     }
     formats::merge_scalar(name, target, branch)?;

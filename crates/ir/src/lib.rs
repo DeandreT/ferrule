@@ -15,7 +15,7 @@ mod schema;
 pub use schema::{
     IntegerRange, ItemCountRange, JsonFormatAnnotations, JsonFormatAnnotationsError,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
-    MAX_JSON_FORMAT_ANNOTATIONS, NumberBound, NumberRange, NumericRange,
+    MAX_JSON_FORMAT_ANNOTATIONS, NumberBound, NumberRange, NumericRange, StringLengthRange,
 };
 
 /// Instance-field name used for an XML element's simple text content.
@@ -524,6 +524,11 @@ pub struct SchemaNode {
     /// Exact cardinality bounds for a repeating JSON array node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_count_range: Option<ItemCountRange>,
+    /// Exact length bounds for a JSON string scalar in Unicode scalar values.
+    ///
+    /// On a repeating scalar node these bounds apply to each array item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub string_length_range: Option<StringLengthRange>,
     /// Ordered JSON Schema `format` annotations for this string-capable scalar
     /// value, or for each item when this node is repeating.
     #[serde(default, skip_serializing_if = "JsonFormatAnnotations::is_empty")]
@@ -601,6 +606,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             item_count_range: Option<ItemCountRange>,
             #[serde(default)]
+            string_length_range: Option<StringLengthRange>,
+            #[serde(default)]
             json_formats: JsonFormatAnnotations,
             #[serde(default)]
             default: Option<String>,
@@ -637,6 +644,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             fixed: repr.fixed,
             numeric_range: repr.numeric_range,
             item_count_range: repr.item_count_range,
+            string_length_range: repr.string_length_range,
             json_formats: repr.json_formats,
             default: repr.default,
             value_generation: repr.value_generation,
@@ -649,7 +657,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, item-count range, JSON format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, numeric range, item-count range, string-length range, JSON format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -865,6 +873,7 @@ impl SchemaNode {
             && self.fixed_is_valid()
             && self.numeric_range_is_valid()
             && self.item_count_range_is_valid()
+            && self.string_length_range_is_valid()
             && self.json_formats_are_valid()
             && self.value_generation_is_valid()
             && self.default_is_valid()
@@ -898,6 +907,7 @@ impl SchemaNode {
             fixed: None,
             numeric_range: None,
             item_count_range: None,
+            string_length_range: None,
             json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
@@ -934,6 +944,7 @@ impl SchemaNode {
             fixed: None,
             numeric_range: None,
             item_count_range: None,
+            string_length_range: None,
             json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
@@ -979,6 +990,7 @@ impl SchemaNode {
             fixed: None,
             numeric_range: None,
             item_count_range: None,
+            string_length_range: None,
             json_formats: JsonFormatAnnotations::default(),
             default: None,
             value_generation: None,
@@ -1178,6 +1190,20 @@ impl SchemaNode {
     /// Checks that item-count metadata remains attached to an array wrapper.
     pub fn item_count_range_is_valid(&self) -> bool {
         self.item_count_range.is_none() || self.repeating
+    }
+
+    /// Checks that string-length metadata matches a string-capable scalar
+    /// domain and that an optional fixed lexical value lies inside the interval.
+    pub fn string_length_range_is_valid(&self) -> bool {
+        let Some(range) = self.string_length_range else {
+            return true;
+        };
+        !self.json_any
+            && self.accepts_scalar_type(ScalarType::String)
+            && self
+                .fixed
+                .as_deref()
+                .is_none_or(|fixed| range.contains_str(fixed))
     }
 
     /// Checks that JSON format annotations describe a string-capable scalar
@@ -1658,7 +1684,10 @@ impl SchemaNode {
     /// Marks this string scalar as the canonical encoding of arbitrary JSON.
     pub fn json_any(mut self) -> Option<Self> {
         self.json_any = true;
-        self.json_any_is_valid().then_some(self)
+        (self.json_any_is_valid()
+            && self.string_length_range_is_valid()
+            && self.json_formats_are_valid())
+        .then_some(self)
     }
 
     /// Requires this scalar to hold `value` (builder-style).
@@ -1666,6 +1695,7 @@ impl SchemaNode {
         self.fixed = Some(value.into());
         (self.fixed_is_valid()
             && self.numeric_range_is_valid()
+            && self.string_length_range_is_valid()
             && self.default_is_valid()
             && self.value_generation_is_valid())
         .then_some(self)
@@ -1679,6 +1709,11 @@ impl SchemaNode {
     pub fn with_item_count_range(mut self, range: ItemCountRange) -> Option<Self> {
         self.item_count_range = Some(range);
         self.item_count_range_is_valid().then_some(self)
+    }
+
+    pub fn with_string_length_range(mut self, range: StringLengthRange) -> Option<Self> {
+        self.string_length_range = Some(range);
+        self.string_length_range_is_valid().then_some(self)
     }
 
     pub fn with_json_formats(mut self, formats: JsonFormatAnnotations) -> Option<Self> {
@@ -2204,6 +2239,64 @@ mod tests {
         }
         let permissive_null_maximum = r#"{"name":"x","repeating":true,"item_count_range":{"minimum":1,"maximum":null},"kind":{"kind":"scalar","ty":"string"}}"#;
         assert!(serde_json::from_str::<SchemaNode>(permissive_null_maximum).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn string_length_ranges_require_string_capable_domains_and_roundtrip()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(range) = StringLengthRange::new(1, Some(3)) else {
+            panic!("test range is valid");
+        };
+        assert!(StringLengthRange::new(0, None).is_none());
+        assert!(StringLengthRange::new(4, Some(3)).is_none());
+
+        let Some(string) =
+            SchemaNode::scalar("Value", ScalarType::String).with_string_length_range(range)
+        else {
+            panic!("string-length metadata matches a string scalar");
+        };
+        let encoded = serde_json::to_string(&string)?;
+        assert!(encoded.contains(r#""string_length_range":{"minimum":1,"maximum":3}"#));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, string);
+
+        let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+            panic!("test union is valid");
+        };
+        assert!(
+            SchemaNode::scalar_union("Value", types)
+                .repeating()
+                .with_string_length_range(range)
+                .is_some()
+        );
+        assert!(
+            SchemaNode::scalar("Value", ScalarType::Int)
+                .with_string_length_range(range)
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Value", ScalarType::String)
+                .with_string_length_range(range)
+                .and_then(SchemaNode::json_any)
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar_fixed("Value", ScalarType::String, "")
+                .with_string_length_range(range)
+                .is_none()
+        );
+
+        for invalid in [
+            r#"{"name":"x","string_length_range":{"minimum":1},"kind":{"kind":"scalar","ty":"int"}}"#,
+            r#"{"name":"x","json_any":true,"string_length_range":{"minimum":1},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","fixed":"","string_length_range":{"minimum":1},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","string_length_range":{},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","string_length_range":{"minimum":-1},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","string_length_range":{"maximum":1.0},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","string_length_range":{"minimum":1,"maximum":0},"kind":{"kind":"scalar","ty":"string"}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
         Ok(())
     }
 

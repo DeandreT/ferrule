@@ -6,7 +6,7 @@ use codegen::{
     Binding, Expression, ExpressionNode, Program, ScalarTargetDomain, TargetConstruction,
     TargetScope,
 };
-use ir::{JsonFormatAnnotations, ScalarType, ScalarTypeSet, SchemaNode};
+use ir::{JsonFormatAnnotations, ScalarType, ScalarTypeSet, SchemaNode, StringLengthRange};
 
 #[test]
 fn generated_union_targets_preserve_tags_and_adapt_exact_numbers() {
@@ -24,6 +24,9 @@ fn generated_union_targets_preserve_tags_and_adapt_exact_numbers() {
     assert!(generated.contains(r#"\"json_formats\":[\"source-string\"]"#));
     assert!(generated.contains(r#"\"json_formats\":[\"target-union\"]"#));
     assert!(generated.contains(r#"\"json_formats\":[\"target-string\"]"#));
+    assert!(generated.contains(r#"\"string_length_range\":{\"minimum\":2,\"maximum\":8}"#));
+    assert!(generated.contains(r#"\"string_length_range\":{\"minimum\":2,\"maximum\":20}"#));
+    assert!(generated.contains(r#"\"string_length_range\":{\"minimum\":2,\"maximum\":16}"#));
 
     let directory = TempDirectory::new();
     for file in artifacts.files() {
@@ -112,19 +115,27 @@ fn scalar_root_construction_renders_union_adaptation() {
 
 fn union_program() -> Program {
     let (value_source, value_types) = scalar_union("Value", [ScalarType::String, ScalarType::Int]);
-    let value_source = annotated(value_source, &["source-union"]);
+    let value_source = bounded(annotated(value_source, &["source-union"]), 2, 8);
     let (value_target, _) = scalar_union("Value", [ScalarType::String, ScalarType::Int]);
-    let value_target = annotated(value_target, &["target-union"]);
+    let value_target = bounded(annotated(value_target, &["target-union"]), 2, 8);
     let (number_target, number_types) =
         scalar_union("Number", [ScalarType::Float, ScalarType::Bool]);
     let (items_target, _) = scalar_union("Items", [ScalarType::Float, ScalarType::Bool]);
-    let label_source = annotated(
-        SchemaNode::scalar("Label", ScalarType::String),
-        &["source-string"],
+    let label_source = bounded(
+        annotated(
+            SchemaNode::scalar("Label", ScalarType::String),
+            &["source-string"],
+        ),
+        2,
+        20,
     );
-    let label_target = annotated(
-        SchemaNode::scalar("Label", ScalarType::String),
-        &["target-string"],
+    let label_target = bounded(
+        annotated(
+            SchemaNode::scalar("Label", ScalarType::String),
+            &["target-string"],
+        ),
+        2,
+        16,
     );
     Program {
         source: SchemaNode::group(
@@ -233,6 +244,13 @@ fn annotated(node: SchemaNode, formats: &[&str]) -> SchemaNode {
         .expect("test JSON formats match the string-capable scalar")
 }
 
+fn bounded(node: SchemaNode, minimum: u64, maximum: u64) -> SchemaNode {
+    let range = StringLengthRange::new(minimum, Some(maximum))
+        .expect("test string-length range is non-empty");
+    node.with_string_length_range(range)
+        .expect("test string-length range matches the string-capable scalar")
+}
+
 fn write_harness(root: &Path) {
     let directory = root.join("Harness");
     std::fs::create_dir_all(&directory).expect("harness directory is created");
@@ -336,6 +354,28 @@ try
     _ = GeneratedMapping.ExecuteJson(
         "{\"Value\":\"inexact\",\"Label\":\"annotation-only\",\"ExactInteger\":9007199254740993,\"Flag\":false}");
     throw new Exception("inexact union JSON output should fail");
+}
+catch (FerruleRuntimeException error)
+    when (error.Error == FerruleRuntimeError.JsonBoundary)
+{
+}
+
+try
+{
+    _ = GeneratedMapping.ExecuteJson(
+        "{\"Value\":\"x\",\"Label\":\"annotation-only\",\"ExactInteger\":1,\"Flag\":false}");
+    throw new Exception("short scalar-union string input should fail");
+}
+catch (FerruleRuntimeException error)
+    when (error.Error == FerruleRuntimeError.JsonBoundary)
+{
+}
+
+try
+{
+    _ = GeneratedMapping.ExecuteJson(
+        "{\"Value\":7,\"Label\":\"12345678901234567\",\"ExactInteger\":1,\"Flag\":false}");
+    throw new Exception("long target string output should fail after mapping");
 }
 catch (FerruleRuntimeException error)
     when (error.Error == FerruleRuntimeError.JsonBoundary)

@@ -120,7 +120,7 @@ expected to re-import and validate as ferrule projects.
 The main remaining gaps are some XML derived-type input shapes beyond compatible
 `complexContent` and scalar-text/attribute-only `simpleContent` hierarchies,
 XSD 1.1 wildcard exclusions, unordered wildcard compositors, unresolved strict
-wildcard declaration sets, validation-bearing scalar unions and general heterogeneous arrays,
+wildcard declaration sets, numeric-range-bearing scalar unions and general heterogeneous arrays,
 overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
 first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
@@ -142,6 +142,11 @@ Referenced JSON arrays likewise retain exact `minItems`/`maxItems` intervals
 through references, nullable wrappers, and compatible compositions. Invalid or
 nonrepresentable item-count unions use the same actionable schema fallback;
 valid constraints remain executable after MFD import.
+Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
+intervals measured in Unicode scalar values, including nullable fields, array
+items, typed dynamic properties, and compatible compositions. The constraints
+remain executable on imported source and target boundaries and round-trip
+alongside opaque `format` annotations.
 Expanded-name identity for ordinary elements and attributes is preserved;
 foreign declarations export as an atomic graph of local XSD siblings.
 Compatible strict-wildcard declarations that share one local name across

@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, ordinary scalar `const` and singleton `enum`, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, ordinary scalar `const` and singleton `enum`, exact numeric, array-count, and Unicode string-length intervals, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -70,7 +70,7 @@ layout and dialect details that an extension cannot express.
   exclusive finite endpoints and reject intervals containing no representable
   finite value. Import accepts both modern numeric exclusive bounds and Draft 4
   boolean exclusives regardless of the declared dialect for interoperability;
-  export emits the canonical normalized form. Range-bearing general scalar
+  export emits the canonical normalized form. Numeric-range-bearing general scalar
   unions and `multipleOf` remain unsupported.
   Concrete arrays retain exact non-negative `minItems` and `maxItems`
   intervals through references, nullable wrappers, compatible `allOf`
@@ -81,8 +81,16 @@ layout and dialect details that an extension cannot express.
   unions and independently constrained nested array wrappers reject rather than
   widen. `$ref` siblings follow the dialect declared by their physical schema
   resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
-  schemas without `$schema` apply Ferrule's supported numeric, item-count, and
-  annotation metadata. Unknown and empty string `format` annotations are
+  schemas without `$schema` apply Ferrule's supported numeric, item-count,
+  string-length, and annotation metadata. Concrete string-capable scalar
+  domains retain exact non-negative `minLength` and `maxLength` intervals.
+  Ferrule measures them in Unicode scalar values, applies them only when a
+  scalar union's runtime value is a string, and enforces them on native and
+  generated input and output boundaries. They survive nullable wrappers,
+  references, compatible `allOf`, contiguous exact `anyOf` unions, array-item
+  projection, typed dynamic properties, and canonical export. Disjoint length
+  unions, ambiguous untyped assertions, and constrained nested arrays reject
+  rather than move or widen an assertion. Unknown and empty string `format` annotations are
   retained exactly on string-capable values and array items, accumulated in
   order through compatible `allOf`, references, and exact scalar/array unions,
   and exported without turning them into assertions. Ferrule does not validate
@@ -93,7 +101,7 @@ layout and dialect details that an extension cannot express.
   Unsupported modern structural intersections reject explicitly instead of
   widening silently; external resources select their own policy.
   Export emits the canonical normalized constraint form.
-  General heterogeneous array composition, validation-bearing scalar unions,
+  General heterogeneous array composition, numeric-range-bearing scalar unions,
   and mixed structural unions remain unsupported.
   Shape-neutral validation keywords are
   accepted for schema recovery but are not enforced by the mapping runtime.
