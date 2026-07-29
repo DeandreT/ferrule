@@ -34,10 +34,12 @@
   --mfd design.mfd \
   --out project.json</code></pre>
         <p>
-          When schemas or EDI configurations live outside the design directory,
-          pass <code>--package-root package</code>. Windows separators and safe
-          parent paths are accepted, while every resolved file remains
-          canonically confined to that trusted directory.
+          When mapping resources live outside the design directory, pass
+          <code>--package-root package</code>. For separately managed EDI
+          releases, repeat <code>--edi-catalog-root DIR</code> in search order.
+          Package resources take precedence. Windows separators and safe parent
+          locators are accepted, while every resolved file remains canonically
+          confined to its explicitly trusted root.
         </p>
         <p>
           Import resolves supported document components, schemas, graph nodes,

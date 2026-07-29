@@ -25,6 +25,24 @@ when their canonical target remains inside the package. Symlink escapes,
 absolute Windows paths, ambiguous case-insensitive matches, and traversal above
 the root are rejected.
 
+If EDI configurations live in a separately managed release catalog, declare
+each trusted catalog in search order:
+
+```sh
+cargo +nightly run -p cli -- import-mfd \
+  --mfd package/maps/design.mfd \
+  --package-root package \
+  --edi-catalog-root edi-configs/current \
+  --edi-catalog-root edi-configs/archive \
+  --out project.json
+```
+
+Package-contained configurations take precedence. Catalog lookup accepts
+portable and Windows-style locators, including leading installation-relative
+parent components, but re-anchors them under the declared catalog instead of
+performing filesystem traversal. Direct files and bounded adjacent ZIP packages
+must remain canonically contained in that catalog.
+
 Import resolves the supported component graph into ferrule schemas, graph
 nodes, scopes, format options, and endpoints. Current coverage includes common
 XML, JSON, CSV/fixed-width/FlexText, XLSX, SQLite, EDI, Protocol Buffers, XBRL,
@@ -51,11 +69,12 @@ keeps nested relational reads executable when the database omits foreign-key met
 Filter components downstream from grouping retain their operator order: a
 group survives when any member satisfies the predicate, and sparse typed member
 ports resolve within that retained group.
-External EDI configurations may be ordinary package resources or adjacent ZIP
-packages. Packages are extracted under strict path, entry-count, compressed,
-and expanded-size limits; the resulting X12/EDIFACT schema and lexical metadata
-are embedded in the imported project, so execution and later export do not
-depend on the package remaining available.
+External EDI configurations may be ordinary package resources, explicitly
+trusted catalog resources, or adjacent ZIP packages. Packages are extracted
+under strict path, entry-count, compressed, and expanded-size limits; the
+resulting X12/EDIFACT schema and lexical metadata are embedded in the imported
+project, so execution and later export do not depend on the package or catalog
+remaining available.
 When an external EDI configuration cannot be resolved, its original reference
 is retained for `.mfd` export and re-import instead of being discarded. That
 keeps the design round-trippable, but the boundary remains explicitly

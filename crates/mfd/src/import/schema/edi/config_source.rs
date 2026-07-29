@@ -42,7 +42,15 @@ pub(super) fn resolve(
         .unwrap_or(declared)
         .replace('\\', "/");
     if let Some(resources) = resources {
-        return resolve_in_package(resources, declared, &portable);
+        let package_error = match resolve_in_package(resources, declared, &portable) {
+            Ok(config) => return Ok(config),
+            Err(error) => error,
+        };
+        if resources.edi_catalog_roots().is_empty() {
+            return Err(package_error);
+        }
+        return resolve_in_catalogs(resources.edi_catalog_roots(), declared, &portable)
+            .map_err(|error| format!("{package_error}; {error}"));
     }
     let relative = bounded_relative_path(&portable)
         .ok_or_else(|| format!("configuration path `{declared}` is not a bounded relative path"))?;
@@ -90,6 +98,103 @@ pub(super) fn resolve(
         )),
         _ => Err(format!(
             "configuration `{declared}` resolves to multiple nearby packages"
+        )),
+    }
+}
+
+fn resolve_in_catalogs(
+    roots: &[PathBuf],
+    declared: &str,
+    portable: &str,
+) -> Result<ResolvedConfig, String> {
+    let relative = catalog_relative_path(portable).map_err(|error| {
+        format!("configuration path `{declared}` is not a bounded catalog path ({error})")
+    })?;
+    for root in roots {
+        if let Some(candidate) = resolve_case_insensitive(root, &relative) {
+            let canonical = confined_catalog_file(root, &candidate, declared)?;
+            return Ok(ResolvedConfig {
+                path: canonical,
+                _archive: None,
+            });
+        }
+        if let Some(config) = resolve_catalog_archive(root, &relative, declared)? {
+            return Ok(config);
+        }
+    }
+    Err(format!(
+        "configuration `{declared}` was not found in trusted EDI catalog roots: {}",
+        roots
+            .iter()
+            .map(|root| format!("`{}`", root.display()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+fn confined_catalog_file(root: &Path, candidate: &Path, declared: &str) -> Result<PathBuf, String> {
+    let canonical = std::fs::canonicalize(candidate).map_err(|error| {
+        format!(
+            "could not canonicalize EDI configuration `{declared}` in trusted catalog `{}` \
+             ({error})",
+            root.display()
+        )
+    })?;
+    if !canonical.starts_with(root) {
+        return Err(format!(
+            "EDI configuration `{declared}` resolves outside trusted catalog root `{}`",
+            root.display()
+        ));
+    }
+    if !canonical.is_file() {
+        return Err(format!(
+            "EDI configuration `{declared}` does not resolve to a file in trusted catalog `{}`",
+            root.display()
+        ));
+    }
+    Ok(canonical)
+}
+
+fn resolve_catalog_archive(
+    root: &Path,
+    relative: &Path,
+    declared: &str,
+) -> Result<Option<ResolvedConfig>, String> {
+    let packages = archive_candidates(&[root.to_path_buf()], relative);
+    let mut extracted = Vec::new();
+    let mut errors = Vec::new();
+    for (archive, entries) in packages {
+        let archive = match confined_catalog_file(root, &archive, declared) {
+            Ok(archive) => archive,
+            Err(error) => {
+                errors.push(error);
+                continue;
+            }
+        };
+        match extract_matching_archive(&archive, &entries) {
+            Ok(Some((archive, path))) => extracted.push((archive, path)),
+            Ok(None) => {}
+            Err(error) => errors.push(format!("{}: {error}", archive.display())),
+        }
+    }
+    match extracted.len() {
+        1 => {
+            let (archive, path) = extracted
+                .pop()
+                .ok_or_else(|| "internal EDI catalog package resolution error".to_string())?;
+            Ok(Some(ResolvedConfig {
+                path,
+                _archive: Some(archive),
+            }))
+        }
+        0 if errors.is_empty() => Ok(None),
+        0 => Err(format!(
+            "configuration `{declared}` was found in an invalid trusted catalog package ({})",
+            errors.join("; ")
+        )),
+        _ => Err(format!(
+            "configuration `{declared}` resolves to multiple packages in trusted catalog `{}`",
+            root.display()
         )),
     }
 }
@@ -358,6 +463,42 @@ fn bounded_relative_path(text: &str) -> Option<PathBuf> {
     (!normalized.as_os_str().is_empty()).then_some(normalized)
 }
 
+fn catalog_relative_path(text: &str) -> Result<PathBuf, &'static str> {
+    if text.is_empty() || text.contains('\0') {
+        return Err("path is empty or contains NUL");
+    }
+    let portable = text.replace('\\', "/");
+    let path = Path::new(&portable);
+    let bytes = portable.as_bytes();
+    let windows_drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+    if path.is_absolute() || windows_drive || portable.starts_with("//") {
+        return Err("absolute paths are not allowed");
+    }
+    let mut normalized = PathBuf::new();
+    let mut saw_normal = false;
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(value) => {
+                saw_normal = true;
+                normalized.push(value);
+            }
+            Component::ParentDir if !saw_normal => {}
+            Component::ParentDir if normalized.pop() => {}
+            Component::ParentDir => {
+                return Err("parent traversal escapes the virtual catalog root");
+            }
+            Component::Prefix(_) | Component::RootDir => {
+                return Err("absolute paths are not allowed");
+            }
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        return Err("path does not name a file");
+    }
+    Ok(normalized)
+}
+
 fn portable_key(path: &Path) -> Option<String> {
     path.components()
         .filter_map(|component| match component {
@@ -414,5 +555,24 @@ mod tests {
         );
         assert!(bounded_relative_path("../Envelope.Config").is_none());
         assert!(bounded_relative_path("/Envelope.Config").is_none());
+    }
+
+    #[test]
+    fn catalog_paths_clamp_only_leading_parent_components() {
+        assert_eq!(
+            catalog_relative_path(r"..\..\EDI\Custom.X12\Envelope.Config"),
+            Ok(PathBuf::from("EDI/Custom.X12/Envelope.Config"))
+        );
+        assert_eq!(
+            catalog_relative_path("EDI/legacy/../Custom.X12/Envelope.Config"),
+            Ok(PathBuf::from("EDI/Custom.X12/Envelope.Config"))
+        );
+        assert!(
+            catalog_relative_path("../EDI/../../Envelope.Config")
+                .is_err_and(|error| error.contains("escapes"))
+        );
+        assert!(catalog_relative_path("C:/EDI/Envelope.Config").is_err());
+        assert!(catalog_relative_path(r"C:EDI\Envelope.Config").is_err());
+        assert!(catalog_relative_path("//server/EDI/Envelope.Config").is_err());
     }
 }

@@ -121,6 +121,10 @@ enum Command {
         /// Trusted root containing the mapping and all referenced resources.
         #[arg(long)]
         package_root: Option<PathBuf>,
+        /// Trusted EDI configuration catalog. Repeat to search multiple
+        /// catalogs in declaration order after the mapping package.
+        #[arg(long = "edi-catalog-root", value_name = "DIR")]
+        edi_catalog_roots: Vec<PathBuf>,
     },
     /// Convert a ferrule project file into a MapForce .mfd design
     /// (generated XSDs are written next to it).
@@ -421,8 +425,10 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             mfd,
             out,
             package_root,
+            edi_catalog_roots,
         } => {
-            let warnings = cli::import_mfd(&mfd, &out, package_root.as_deref())?;
+            let warnings =
+                cli::import_mfd(&mfd, &out, package_root.as_deref(), &edi_catalog_roots)?;
             for warning in &warnings {
                 diagnostics.warning("import-mfd", warning);
             }
