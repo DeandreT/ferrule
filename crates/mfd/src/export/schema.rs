@@ -339,7 +339,7 @@ pub(super) fn render_schema_component(
                     });
             sibling = Some(GeneratedSibling {
                 path: dir.join(&schema_file),
-                contents: format_json::json_schema::export(schema),
+                contents: format_json::json_schema::export(schema)?,
             });
             let _ = write!(
                 out,

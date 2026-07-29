@@ -102,7 +102,7 @@ pub(super) fn render(
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join(&schema_file),
-        contents: format_json::json_schema::export(&schema),
+        contents: format_json::json_schema::export(&schema).map_err(|error| error.to_string())?,
     };
     *uid += 1;
     let xml = format!(

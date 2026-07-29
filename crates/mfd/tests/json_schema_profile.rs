@@ -59,7 +59,7 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
       ],
       "exclusiveMaximum":20
     },
-    "Status":{"type":"string","const":"ready","minLength":5,"maxLength":5,"format":"workflow-status"},
+    "Status":{"type":"string","const":"ready","minLength":5,"maxLength":5,"pattern":"^ready$","format":"workflow-status"},
     "Tracking":{"type":"string","format":""}
   }
 }"#,
@@ -159,6 +159,15 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .ok_or("missing status string-length range")?;
     assert_eq!(status_length.minimum(), 5);
     assert_eq!(status_length.maximum(), Some(5));
+    assert_eq!(
+        imported
+            .project
+            .source
+            .child("Status")
+            .and_then(|status| status.json_patterns.as_ref())
+            .map(ir::JsonPatternConstraints::any_of),
+        Some(&[vec!["^ready$".to_string()]][..])
+    );
     assert_eq!(
         imported
             .project

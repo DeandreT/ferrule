@@ -187,14 +187,16 @@ pub(super) fn request_schema_artifact(
     options: &FormatOptions,
     mfd_path: &Path,
     suffix: &str,
-) -> Option<RequestSchemaArtifact> {
-    let boundary = options.external_source.as_ref()?;
+) -> Result<Option<RequestSchemaArtifact>, MfdError> {
+    let Some(boundary) = options.external_source.as_ref() else {
+        return Ok(None);
+    };
     let ExternalSourceOrigin::HttpPost {
         request_schema: Some(schema),
         ..
     } = boundary.origin()
     else {
-        return None;
+        return Ok(None);
     };
     let stem = mfd_path
         .file_stem()
@@ -205,11 +207,11 @@ pub(super) fn request_schema_artifact(
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(&file_name);
-    Some(RequestSchemaArtifact {
+    Ok(Some(RequestSchemaArtifact {
         file_name,
         path,
-        contents: format_json::json_schema::export(schema),
-    })
+        contents: format_json::json_schema::export(schema)?,
+    }))
 }
 
 pub(super) struct RenderHttpPostArgs<'a> {
@@ -299,7 +301,7 @@ pub(super) fn render_user_function(
         xml,
         siblings: vec![GeneratedSibling {
             path: schema_path,
-            contents: format_json::json_schema::export(args.schema),
+            contents: format_json::json_schema::export(args.schema)?,
         }],
     })
 }

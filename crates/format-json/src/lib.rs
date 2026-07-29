@@ -10,6 +10,7 @@
 //! text in the graph's string domain and restore them at the output boundary.
 
 pub mod json_schema;
+mod pattern_runtime;
 
 use std::path::Path;
 
@@ -18,6 +19,8 @@ use ir::{
     SchemaKind, SchemaNode, Value,
 };
 use thiserror::Error;
+
+use pattern_runtime::PatternRuntime;
 
 #[derive(Debug, Error)]
 pub enum JsonFormatError {
@@ -75,6 +78,12 @@ pub enum JsonFormatError {
         range: String,
         got: usize,
     },
+    #[error("`{name}` does not match its JSON Schema pattern constraints")]
+    PatternMismatch { name: String },
+    #[error("JSON pattern metadata is invalid: {reason}")]
+    InvalidPatternMetadata { reason: String },
+    #[error("JSON pattern matching for `{name}` exceeds the bounded work limit")]
+    PatternWorkLimit { name: String },
     #[error("JSON Lines cannot encode nullable array container `{name}`")]
     NullableJsonLinesContainer { name: String },
 }
@@ -139,24 +148,26 @@ pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonForm
 /// filesystem access such as WebAssembly applications.
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     let value: serde_json::Value = serde_json::from_str(strip_utf8_bom(text))?;
+    let mut patterns = PatternRuntime::new(schema)?;
     if schema.repeating {
-        read_repeated(&value, schema)
+        read_repeated(&value, schema, &mut patterns)
     } else {
-        read_node(&value, schema)
+        read_node_with_patterns(&value, schema, &mut patterns)
     }
 }
 
 /// Reads JSON Lines text into a repeated instance.
 pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
-    let items = strip_utf8_bom(text)
+    let mut patterns = PatternRuntime::new(schema)?;
+    let mut items = Vec::new();
+    for line in strip_utf8_bom(text)
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            let value: serde_json::Value = serde_json::from_str(line)?;
-            read_node(&value, schema)
-        })
-        .collect::<Result<Vec<_>, JsonFormatError>>()?;
+    {
+        let value: serde_json::Value = serde_json::from_str(line)?;
+        items.push(read_node_with_patterns(&value, schema, &mut patterns)?);
+    }
     if schema.repeating {
         json_schema::item_counts::validate_len(schema, items.len())?;
     }
@@ -170,6 +181,7 @@ fn strip_utf8_bom(text: &str) -> &str {
 fn read_repeated(
     value: &serde_json::Value,
     schema: &SchemaNode,
+    patterns: &mut PatternRuntime,
 ) -> Result<Instance, JsonFormatError> {
     if value.is_null() && schema.container_nullable {
         return Ok(Instance::Scalar(Value::json_null()));
@@ -182,14 +194,25 @@ fn read_repeated(
         });
     };
     json_schema::item_counts::validate_len(schema, items.len())?;
-    let items = items
-        .iter()
-        .map(|item| read_node(item, schema))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut parsed = Vec::with_capacity(items.len());
+    for item in items {
+        parsed.push(read_node_with_patterns(item, schema, patterns)?);
+    }
+    let items = parsed;
     Ok(Instance::Repeated(items))
 }
 
+#[cfg(test)]
 fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    let mut patterns = PatternRuntime::new(schema)?;
+    read_node_with_patterns(value, schema, &mut patterns)
+}
+
+fn read_node_with_patterns(
+    value: &serde_json::Value,
+    schema: &SchemaNode,
+    patterns: &mut PatternRuntime,
+) -> Result<Instance, JsonFormatError> {
     if schema.json_any {
         return Ok(Instance::Scalar(Value::String(serde_json::to_string(
             value,
@@ -204,11 +227,13 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
             json_schema::constraints::validate_json(schema, value)?;
             json_schema::ranges::validate_json(schema, value)?;
             json_schema::string_lengths::validate_json(schema, value)?;
+            patterns.validate_json(schema, value)?;
             Ok(Instance::Scalar(parsed))
         }
         SchemaKind::ScalarUnion { types } => {
             let parsed = read_scalar_union(value, *types, schema.nullable, &schema.name)?;
             json_schema::string_lengths::validate_json(schema, value)?;
+            patterns.validate_json(schema, value)?;
             Ok(Instance::Scalar(parsed))
         }
         SchemaKind::Group {
@@ -241,9 +266,9 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
                         .find(|child| child.name == *name)
                         .unwrap_or(dynamic);
                     let field = if field_schema.repeating {
-                        read_repeated(field_value, field_schema)?
+                        read_repeated(field_value, field_schema, patterns)?
                     } else {
-                        read_node(field_value, field_schema)?
+                        read_node_with_patterns(field_value, field_schema, patterns)?
                     };
                     out.push((name.clone(), field));
                 }
@@ -258,10 +283,16 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
             for child in children {
                 match fields.get(&child.name) {
                     Some(field_value) if child.repeating => {
-                        out.push((child.name.clone(), read_repeated(field_value, child)?));
+                        out.push((
+                            child.name.clone(),
+                            read_repeated(field_value, child, patterns)?,
+                        ));
                     }
                     Some(field_value) => {
-                        out.push((child.name.clone(), read_node(field_value, child)?));
+                        out.push((
+                            child.name.clone(),
+                            read_node_with_patterns(field_value, child, patterns)?,
+                        ));
                     }
                     None if child.repeating && !child.container_nullable => {
                         out.push((child.name.clone(), Instance::Repeated(Vec::new())));
@@ -397,17 +428,24 @@ pub fn write_lines(
 /// The returned document ends with a newline, matching [`write`]. This is
 /// the in-memory counterpart used by hosts without filesystem access.
 pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
+    let mut patterns = PatternRuntime::new(schema)?;
     // A root scope can produce flat rows even though the row schema itself
     // is not repeating (the same convention used by CSV). Preserve that
     // established JSON-output shape while keeping nested nodes
     // schema-directed.
     let value = match instance {
-        Instance::Repeated(items) if !schema.repeating => items
-            .iter()
-            .map(|item| write_single_node(schema, item))
-            .collect::<Result<Vec<_>, _>>()
-            .map(serde_json::Value::Array)?,
-        _ => write_node(schema, instance)?,
+        Instance::Repeated(items) if !schema.repeating => {
+            let mut values = Vec::with_capacity(items.len());
+            for item in items {
+                values.push(write_single_node_with_patterns(
+                    schema,
+                    item,
+                    &mut patterns,
+                )?);
+            }
+            serde_json::Value::Array(values)
+        }
+        _ => write_node_with_patterns(schema, instance, &mut patterns)?,
     };
     let mut text = serde_json::to_string_pretty(&value)?;
     text.push('\n');
@@ -418,6 +456,7 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Jso
 /// line. A non-repeated instance becomes a single line.
 pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
+    let mut patterns = PatternRuntime::new(schema)?;
     let mut text = String::new();
     match instance {
         Instance::Repeated(items) => {
@@ -425,7 +464,11 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
                 json_schema::item_counts::validate_len(schema, items.len())?;
             }
             for item in items {
-                text.push_str(&serde_json::to_string(&write_single_node(schema, item)?)?);
+                text.push_str(&serde_json::to_string(&write_single_node_with_patterns(
+                    schema,
+                    item,
+                    &mut patterns,
+                )?)?);
                 text.push('\n');
             }
         }
@@ -433,7 +476,11 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
             if schema.repeating {
                 json_schema::item_counts::validate_len(schema, 1)?;
             }
-            text.push_str(&serde_json::to_string(&write_single_node(schema, item)?)?);
+            text.push_str(&serde_json::to_string(&write_single_node_with_patterns(
+                schema,
+                item,
+                &mut patterns,
+            )?)?);
             text.push('\n');
         }
     }
@@ -449,9 +496,19 @@ fn reject_nullable_json_lines_container(schema: &SchemaNode) -> Result<(), JsonF
     Ok(())
 }
 
+#[cfg(test)]
 fn write_node(
     schema: &SchemaNode,
     instance: &Instance,
+) -> Result<serde_json::Value, JsonFormatError> {
+    let mut patterns = PatternRuntime::new(schema)?;
+    write_node_with_patterns(schema, instance, &mut patterns)
+}
+
+fn write_node_with_patterns(
+    schema: &SchemaNode,
+    instance: &Instance,
+    patterns: &mut PatternRuntime,
 ) -> Result<serde_json::Value, JsonFormatError> {
     if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
         return Ok(serde_json::Value::Null);
@@ -465,18 +522,19 @@ fn write_node(
             ));
         };
         json_schema::item_counts::validate_len(schema, items.len())?;
-        return items
-            .iter()
-            .map(|item| write_single_node(schema, item))
-            .collect::<Result<Vec<_>, _>>()
-            .map(serde_json::Value::Array);
+        let mut values = Vec::with_capacity(items.len());
+        for item in items {
+            values.push(write_single_node_with_patterns(schema, item, patterns)?);
+        }
+        return Ok(serde_json::Value::Array(values));
     }
-    write_single_node(schema, instance)
+    write_single_node_with_patterns(schema, instance, patterns)
 }
 
-fn write_single_node(
+fn write_single_node_with_patterns(
     schema: &SchemaNode,
     instance: &Instance,
+    patterns: &mut PatternRuntime,
 ) -> Result<serde_json::Value, JsonFormatError> {
     if schema.json_any {
         return write_json_any(schema, instance);
@@ -490,11 +548,13 @@ fn write_single_node(
             json_schema::constraints::validate_json(schema, &value)?;
             json_schema::ranges::validate_json(schema, &value)?;
             json_schema::string_lengths::validate_json(schema, &value)?;
+            patterns.validate_json(schema, &value)?;
             Ok(value)
         }
         (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {
             let value = write_scalar_union(value, *types, schema.nullable, &schema.name)?;
             json_schema::string_lengths::validate_json(schema, &value)?;
+            patterns.validate_json(schema, &value)?;
             Ok(value)
         }
         (
@@ -529,7 +589,10 @@ fn write_single_node(
                     if is_boundary_absence(child_schema, child_instance) {
                         continue;
                     }
-                    out.insert(name.clone(), write_node(child_schema, child_instance)?);
+                    out.insert(
+                        name.clone(),
+                        write_node_with_patterns(child_schema, child_instance, patterns)?,
+                    );
                 }
                 validate_required_fields(schema, required, |name| out.contains_key(name))?;
                 return Ok(serde_json::Value::Object(out));
@@ -545,7 +608,7 @@ fn write_single_node(
                     }
                     out.insert(
                         child_schema.name.clone(),
-                        write_node(child_schema, child_instance)?,
+                        write_node_with_patterns(child_schema, child_instance, patterns)?,
                     );
                 }
             }

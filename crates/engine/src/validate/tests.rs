@@ -537,6 +537,48 @@ fn rejects_programmatically_invalid_string_length_metadata() {
 }
 
 #[test]
+fn rejects_invalid_and_schema_wide_json_pattern_metadata() {
+    let Ok(patterns) = ir::JsonPatternConstraints::new([["^A$"]]) else {
+        panic!("test pattern is valid");
+    };
+    let mut wrong_domain = valid_project();
+    let target = target_name(&mut wrong_domain);
+    target.kind = SchemaKind::Scalar {
+        ty: ScalarType::Int,
+    };
+    target.json_patterns = Some(patterns);
+    assert!(validate(&wrong_domain).iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("JSON pattern metadata")
+            && issue.message.contains("name")
+    }));
+
+    let mut over_budget = valid_project();
+    over_budget.source = SchemaNode::group(
+        "Source",
+        (0..=ir::MAX_DISTINCT_JSON_PATTERNS)
+            .map(|index| {
+                let Ok(patterns) = ir::JsonPatternConstraints::new([[format!("^value-{index}$")]])
+                else {
+                    panic!("test pattern is valid");
+                };
+                let Some(node) = SchemaNode::scalar(format!("field-{index}"), ScalarType::String)
+                    .with_json_patterns(patterns)
+                else {
+                    panic!("test pattern matches a string field");
+                };
+                node
+            })
+            .collect(),
+    );
+    assert!(validate(&over_budget).iter().any(|issue| {
+        issue.location == "source schema"
+            && issue.message.contains("schema-wide")
+            && issue.message.contains("pattern")
+    }));
+}
+
+#[test]
 fn rejects_programmatically_invalid_json_format_metadata() {
     let mut project = valid_project();
     let Ok(formats) = ir::JsonFormatAnnotations::new(["email".to_string()]) else {

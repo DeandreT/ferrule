@@ -1,0 +1,9 @@
+[package]
+name = "json-pattern"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bounded portable JSON Schema pattern compiler and matcher"
+
+[dependencies]

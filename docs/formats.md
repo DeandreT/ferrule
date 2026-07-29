@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, ordinary scalar `const` and singleton `enum`, exact numeric, array-count, and Unicode string-length intervals, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, ordinary scalar `const` and singleton `enum`, exact numeric, array-count, and Unicode string-length intervals, bounded portable string `pattern` assertions, exact object-property presence requirements, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -90,7 +90,31 @@ layout and dialect details that an extension cannot express.
   references, compatible `allOf`, contiguous exact `anyOf` unions, array-item
   projection, typed dynamic properties, and canonical export. Disjoint length
   unions, ambiguous untyped assertions, and constrained nested arrays reject
-  rather than move or widen an assertion. Unknown and empty string `format` annotations are
+  rather than move or widen an assertion.
+  Concrete string-capable fields and scalar unions also retain JSON Schema
+  `pattern` assertions. Null bypasses a pattern in nullable domains, while
+  string values in array items and typed dynamic properties are checked.
+  Compatible `allOf` branches form a conjunction, exact `anyOf` branches form
+  a disjunction of conjunctions, and `oneOf` remains limited to provably
+  disjoint scalar branches. References and `$ref` siblings follow the same
+  per-resource dialect policy as the other supported assertions. Canonical
+  export uses direct `pattern`, `allOf`, or `anyOf` shapes as needed.
+  Native and generated Rust/C# boundaries enforce the same portable,
+  Unicode-scalar matcher on both input and normalized output.
+  The portable syntax includes unanchored matching, `^` and `$`, dot,
+  positive and complemented scalar classes and ranges, alternation,
+  capturing or noncapturing groups, `*`, `+`, `?`, bounded or open counted
+  repetition, lazy quantifier suffixes, and explicit character/Unicode
+  escapes. Backreferences, lookaround, named groups, inline flags, Unicode
+  properties, shorthand classes such as `\d`, octal/control escapes, and
+  class-set operators reject rather than acquire backend-specific semantics.
+  Each source is limited to 64 KiB, 256 nesting levels, 8,192 syntax nodes,
+  and 16,384 compiled instructions. Each constrained node retains at most 32
+  alternatives and 64 total terms; a complete schema retains at most 64
+  distinct sources, 256 KiB of distinct source text, and 65,536 distinct
+  compiled instructions. Each JSON document parse or serialization call shares
+  one deterministic 100-million-unit pattern work budget across that document.
+  Unknown and empty string `format` annotations are
   retained exactly on string-capable values and array items, accumulated in
   order through compatible `allOf`, references, and exact scalar/array unions,
   and exported without turning them into assertions. Ferrule does not validate

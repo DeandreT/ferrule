@@ -119,11 +119,27 @@
           <strong>Bounded documents.</strong>
           Each JSON input and output is capped at 64 MiB and each trusted
           embedded schema at 1 MiB. Invalid shapes, numeric conversions, scalar
-          constants, exact numeric ranges, array item-count intervals, Unicode string-length intervals, output serialization, and size excess
+          constants, exact numeric ranges, array item-count intervals, Unicode
+          string-length intervals, bounded portable JSON Schema
+          <code>pattern</code> assertions, output serialization, and size excess
           produce typed boundary failures in both Rust and C#. These
           methods are deliberately JSON-only; stored format paths and options
           remain host metadata.
         </div>
+
+        <p>
+          JSON Schema patterns use Ferrule's Unicode-scalar Thompson-NFA
+          matcher in both generated runtimes. It supports anchors, dot,
+          character classes and ranges, alternation, groups, ordinary and
+          counted repetition, lazy suffixes, and explicit character or Unicode
+          escapes. Nonportable constructs such as backreferences, lookaround,
+          named groups, inline flags, shorthand classes, and Unicode properties
+          reject before execution. Compilation, embedded metadata, and one
+          shared matching-work budget per JSON document parse or serialization
+          call are bounded.
+          Mapping-language regex tokenization is separate and still uses the
+          documented Rust/.NET backend subset.
+        </p>
 
         <h2 id="examples">Run the examples</h2>
         <p>

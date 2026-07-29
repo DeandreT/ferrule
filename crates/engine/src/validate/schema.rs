@@ -14,6 +14,12 @@ pub(super) fn validate_schema(
     } else {
         format!(" at `{}`", path.join("/"))
     };
+    if path.is_empty() && !schema.json_pattern_budget_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            "JSON pattern metadata, compiled programs, or fixed-value assertions exceed the schema-wide validation budget",
+        ));
+    }
     if !schema.fixed_is_valid() {
         issues.push(ValidationIssue::new(
             root,
@@ -39,6 +45,14 @@ pub(super) fn validate_schema(
             root,
             format!(
                 "string-length metadata{suffix} requires a non-arbitrary string-capable scalar domain and must contain its fixed value"
+            ),
+        ));
+    }
+    if !schema.json_patterns_are_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "JSON pattern metadata{suffix} requires a non-arbitrary string-capable scalar domain"
             ),
         ));
     }

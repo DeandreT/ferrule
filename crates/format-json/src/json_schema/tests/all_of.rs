@@ -246,6 +246,92 @@ fn scalar_all_of_intersects_domains_and_nullability() {
 }
 
 #[test]
+fn unconstrained_ref_is_an_order_independent_all_of_identity() {
+    let schema = import_str(
+        r##"{
+  "title":"Identity",
+  "type":"object",
+  "properties":{
+    "patternFirst":{
+      "allOf":[
+        {"$ref":"#/$defs/Any"},
+        {"type":"string","pattern":"^A$"}
+      ]
+    },
+    "patternLast":{
+      "allOf":[
+        {"type":"string","pattern":"^A$"},
+        {"$ref":"#/$defs/Any"}
+      ]
+    },
+    "integerFirst":{
+      "allOf":[{"$ref":"#/$defs/Any"},{"type":"integer"}]
+    },
+    "integerLast":{
+      "allOf":[{"type":"integer"},{"$ref":"#/$defs/Any"}]
+    },
+    "objectFirst":{
+      "allOf":[
+        {"$ref":"#/$defs/Any"},
+        {"type":"object","properties":{"value":{"type":"boolean"}}}
+      ]
+    },
+    "objectLast":{
+      "allOf":[
+        {"type":"object","properties":{"value":{"type":"boolean"}}},
+        {"$ref":"#/$defs/Any"}
+      ]
+    }
+  },
+  "$defs":{"Any":{}}
+}"##,
+    );
+
+    for name in ["patternFirst", "patternLast"] {
+        let child = schema
+            .child(name)
+            .unwrap_or_else(|| panic!("{name} is present"));
+        assert!(child.json_patterns.is_some(), "{name}");
+    }
+    for name in ["integerFirst", "integerLast"] {
+        assert!(matches!(
+            schema.child(name).map(|child| &child.kind),
+            Some(SchemaKind::Scalar {
+                ty: ScalarType::Int
+            })
+        ));
+    }
+    for name in ["objectFirst", "objectLast"] {
+        assert!(
+            schema
+                .child(name)
+                .and_then(|child| child.child("value"))
+                .is_some()
+        );
+    }
+
+    assert!(
+        crate::from_str(
+            r#"{
+  "patternFirst":"A",
+  "patternLast":"A",
+  "integerFirst":1,
+  "integerLast":2,
+  "objectFirst":{"value":true},
+  "objectLast":{"value":false}
+}"#,
+            &schema
+        )
+        .is_ok()
+    );
+    assert!(matches!(
+        crate::from_str(r#"{"patternFirst":"B"}"#, &schema),
+        Err(crate::JsonFormatError::PatternMismatch { .. })
+    ));
+    assert_eq!(import_str(&export(&schema)), schema);
+}
+
+#[test]
 fn array_all_of_intersects_scalar_and_object_item_shapes() {
     let scalar = import_str(
         r#"{

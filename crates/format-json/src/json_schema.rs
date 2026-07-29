@@ -20,9 +20,10 @@
 //! `additionalProperties` values are retained as canonical JSON text in the
 //! graph's string domain. An omitted or false `additionalProperties` is
 //! treated as closed. General composition remains outside this subset;
-//! bounded string `format` annotations are retained without asserting their
-//! vocabulary-specific semantics. Other shape-neutral validation keywords are
-//! accepted but are not enforced by the mapping schema.
+//! bounded portable `pattern` constraints are enforced while string `format`
+//! annotations are retained without asserting their vocabulary-specific
+//! semantics. Other shape-neutral validation keywords are accepted but are not
+//! enforced by the mapping schema.
 
 use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
 
@@ -34,6 +35,7 @@ pub(crate) mod constraints;
 mod files;
 mod formats;
 pub(crate) mod item_counts;
+mod patterns;
 pub(crate) mod ranges;
 mod render;
 pub(crate) mod string_lengths;
@@ -66,7 +68,14 @@ pub fn import_with_root(
 ) -> Result<SchemaNode, JsonFormatError> {
     let value = files::load(path, package_root)?;
     let name = schema_title(&value, &value, &mut Vec::new()).unwrap_or("root");
-    parse(name, &value, &value, &mut Vec::new())
+    let schema = parse(name, &value, &value, &mut Vec::new())?;
+    if !schema.json_pattern_budget_is_valid() {
+        return Err(unsupported_union(
+            name,
+            "pattern constraints exceed the schema-wide metadata, program, or fixed-value work budget",
+        ));
+    }
+    Ok(schema)
 }
 
 fn schema_title<'a>(
@@ -166,6 +175,7 @@ fn parse(
             ranges::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
+            patterns::apply(name, schema, &mut nullable, false)?;
             formats::apply_first(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
@@ -179,6 +189,7 @@ fn parse(
         if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
             let mut scalar = scalar;
             string_lengths::apply(name, schema, &mut scalar, false)?;
+            patterns::apply(name, schema, &mut scalar, false)?;
             formats::apply(name, schema, &mut scalar)?;
             return Ok(scalar);
         }
@@ -191,6 +202,7 @@ fn parse(
             active_refs,
         )?;
         string_lengths::validate_ignored(name, schema)?;
+        patterns::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
     }
@@ -206,6 +218,7 @@ fn parse(
             ranges::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
+            patterns::apply(name, schema, &mut nullable, false)?;
             formats::apply_first(name, schema, &mut nullable)?;
             return Ok(nullable);
         }
@@ -219,6 +232,7 @@ fn parse(
         if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
             let mut scalar = scalar;
             string_lengths::apply(name, schema, &mut scalar, false)?;
+            patterns::apply(name, schema, &mut scalar, false)?;
             formats::apply(name, schema, &mut scalar)?;
             return Ok(scalar);
         }
@@ -227,6 +241,7 @@ fn parse(
         {
             let mut array = array;
             string_lengths::validate_ignored(name, schema)?;
+            patterns::validate_ignored(name, schema)?;
             formats::apply(name, schema, &mut array)?;
             return Ok(array);
         }
@@ -239,9 +254,11 @@ fn parse(
             active_refs,
         )?;
         string_lengths::validate_ignored(name, schema)?;
+        patterns::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
     }
+    patterns::validate_ignored(name, schema)?;
     let (ty, nullable) = schema_type(name, schema)?;
     let type_was_absent = matches!(&ty, ImportedSchemaType::Absent);
     let constant = constraints::selected_constraint(name, schema)?;
@@ -300,6 +317,7 @@ fn parse(
                     ranges::validate_ignored(name, schema)?;
                     item_counts::apply(name, schema, &mut node, false)?;
                     string_lengths::validate_ignored(name, schema)?;
+                    patterns::validate_ignored(name, schema)?;
                     formats::validate(name, schema)?;
                     return Ok(node);
                 };
@@ -307,11 +325,12 @@ fn parse(
                 if item.repeating
                     && (item.item_count_range.is_some()
                         || item.string_length_range.is_some()
+                        || item.json_patterns.is_some()
                         || item_counts::has_keywords(schema))
                 {
                     return Err(unsupported_union(
                         name,
-                        "nested arrays with item-count or string-length constraints require distinct wrapper levels",
+                        "nested arrays with item-count, string-length, or pattern constraints require distinct wrapper levels",
                     ));
                 }
                 let mut node = item.repeating();
@@ -319,6 +338,7 @@ fn parse(
                 ranges::validate_ignored(name, schema)?;
                 item_counts::apply(name, schema, &mut node, false)?;
                 string_lengths::validate_ignored(name, schema)?;
+                patterns::validate_ignored(name, schema)?;
                 formats::validate(name, schema)?;
                 return Ok(node);
             }
@@ -347,6 +367,12 @@ fn parse(
                 let children = parse_properties(schema, doc, active_refs)?;
                 attach_object_metadata(SchemaNode::group(name, children), schema, doc, active_refs)?
             }
+            ImportedSchemaType::Absent
+                if patterns::has_keyword(schema)
+                    && !patterns::is_effectively_constrained(name, schema)? =>
+            {
+                arbitrary_json_schema(name)?
+            }
             ImportedSchemaType::Absent | ImportedSchemaType::Single(_) => {
                 SchemaNode::scalar(name, ScalarType::String)
             }
@@ -365,6 +391,12 @@ fn parse(
         type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
     )?;
     string_lengths::apply(
+        name,
+        schema,
+        &mut node,
+        type_was_absent && !narrowed_by_constant && schema.get("properties").is_none(),
+    )?;
+    patterns::apply(
         name,
         schema,
         &mut node,
@@ -390,11 +422,13 @@ fn apply_known_shape_constraints(
     if node.repeating {
         ranges::validate_ignored(name, schema)?;
         item_counts::apply(name, schema, node, false)?;
-        string_lengths::validate_ignored(name, schema)
+        string_lengths::validate_ignored(name, schema)?;
+        patterns::validate_ignored(name, schema)
     } else {
         ranges::apply(name, schema, node, false)?;
         item_counts::validate_ignored(name, schema)?;
-        string_lengths::apply(name, schema, node, false)
+        string_lengths::apply(name, schema, node, false)?;
+        patterns::apply(name, schema, node, false)
     }
 }
 
@@ -408,6 +442,7 @@ fn reject_unresolved_ref_constraints(
         || formats::has_keyword(schema)
         || string_lengths::has_keywords(schema)
             && string_lengths::is_effectively_constrained(name, schema)?
+        || patterns::has_keyword(schema) && patterns::is_effectively_constrained(name, schema)?
     {
         return Err(unsupported_union(
             name,
@@ -423,6 +458,7 @@ pub(super) fn reject_unsupported_ref_siblings(
 ) -> Result<(), JsonFormatError> {
     formats::validate(name, schema)?;
     string_lengths::validate_ignored(name, schema)?;
+    patterns::validate_ignored(name, schema)?;
     let Some(object) = schema.as_object() else {
         return Ok(());
     };
@@ -449,7 +485,6 @@ fn unsupported_ref_sibling(keyword: &str) -> bool {
             | "const"
             | "enum"
             | "multipleOf"
-            | "pattern"
             | "maxProperties"
             | "minProperties"
             | "required"
@@ -600,7 +635,8 @@ fn attach_dynamic_fields(
         Some(additional @ serde_json::Value::Object(object)) => {
             if object.is_empty()
                 || (!declares_supported_shape(object)
-                    && !string_lengths::is_effectively_constrained("*", additional)?)
+                    && !string_lengths::is_effectively_constrained("*", additional)?
+                    && !patterns::is_effectively_constrained("*", additional)?)
             {
                 return attach_unconstrained_dynamic(group);
             }
@@ -672,6 +708,7 @@ fn attach_unconstrained_dynamic(group: SchemaNode) -> Result<SchemaNode, JsonFor
 
 fn declares_supported_shape(schema: &serde_json::Map<String, serde_json::Value>) -> bool {
     schema.contains_key("$ref")
+        || schema.contains_key("allOf")
         || schema.contains_key("oneOf")
         || schema.contains_key("anyOf")
         || schema.contains_key("properties")
@@ -723,15 +760,23 @@ fn unsupported_object(name: &str, reason: &str) -> JsonFormatError {
     }
 }
 
-/// Renders a [`SchemaNode`] as JSON Schema text -- the inverse of
+/// Renders a validated [`SchemaNode`] as JSON Schema text -- the inverse of
 /// [`import`], producing the same `type: object/array/scalar` subset it
 /// reads (repeating nodes become `type: array` wrappers). The root gets a
 /// `title` so the name survives a roundtrip.
-pub fn export(schema: &SchemaNode) -> String {
+pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
+    if !schema.json_pattern_budget_is_valid() {
+        return Err(JsonFormatError::InvalidPatternMetadata {
+            reason: "schema-wide pattern domains, fixed values, count, source, instruction, or work budget are invalid"
+                .to_string(),
+        });
+    }
     let mut root = serde_json::Map::new();
     root.insert("title".into(), schema.name.clone().into());
     render::render(schema, &mut root);
-    serde_json::to_string_pretty(&serde_json::Value::Object(root)).expect("schema is valid JSON")
+    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
+        root,
+    ))?)
 }
 
 #[cfg(test)]

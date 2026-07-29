@@ -337,6 +337,54 @@ fn external_resources_use_their_own_ref_sibling_dialect() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn modern_pattern_siblings_on_unconstrained_refs_reject_locally_and_externally()
+-> Result<(), Box<dyn std::error::Error>> {
+    let local = import_str_result(
+        r##"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$ref":"#/$defs/Any",
+  "pattern":"^A$",
+  "$defs":{"Any":{}}
+}"##,
+    );
+    assert!(matches!(
+        local,
+        Err(JsonFormatError::UnsupportedSchemaUnion { ref reason, .. })
+            if reason.contains("unconstrained schema")
+    ));
+
+    let legacy = import_str_result(
+        r##"{
+  "$schema":"http://json-schema.org/draft-07/schema#",
+  "$ref":"#/definitions/Any",
+  "pattern":"^A$",
+  "definitions":{"Any":{}}
+}"##,
+    )?;
+    assert!(legacy.json_any);
+    assert!(crate::from_str(r#""B""#, &legacy).is_ok());
+    assert!(crate::from_str("7", &legacy).is_ok());
+
+    let directory = TempDir::new()?;
+    std::fs::write(
+        directory.0.join("root.schema.json"),
+        r#"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$ref":"external.schema.json",
+  "pattern":"^A$"
+}"#,
+    )?;
+    std::fs::write(directory.0.join("external.schema.json"), "{}")?;
+    let external = import_with_root(&directory.0.join("root.schema.json"), &directory.0);
+    assert!(matches!(
+        external,
+        Err(JsonFormatError::UnsupportedSchemaUnion { ref reason, .. })
+            if reason.contains("unconstrained schema")
+    ));
+    Ok(())
+}
+
+#[test]
 fn legacy_external_root_can_reference_ignored_sibling_definitions()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory = TempDir::new()?;
