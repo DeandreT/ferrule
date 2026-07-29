@@ -623,8 +623,7 @@ fn validates_bounded_correlated_join_scopes_with_tuple_controls_and_children() {
     );
 }
 
-#[test]
-fn rejects_correlated_join_scopes_that_reach_an_ancestor_collection() {
+fn immediate_parent_correlated_program() -> Program {
     let mut program = correlated_join_scope_program();
     let row_schema = program.target.child("Row").expect("row schema").clone();
     program.source = SchemaNode::group(
@@ -702,6 +701,35 @@ fn rejects_correlated_join_scopes_that_reach_an_ancestor_collection() {
         bindings: Vec::new(),
         children: vec![row_scope],
     });
+    program
+}
+
+#[test]
+fn validates_correlated_join_scopes_that_reach_an_immediate_parent_collection() {
+    assert_eq!(
+        validate_program(&immediate_parent_correlated_program()),
+        Ok(())
+    );
+}
+
+#[test]
+fn rejects_correlated_join_scopes_that_reach_a_deeper_ancestor_collection() {
+    let mut program = immediate_parent_correlated_program();
+    let order = program.source.child("Order").expect("order source").clone();
+    let line = order.child("Line").expect("line source").clone();
+    let product = order.child("Product").expect("product source").clone();
+    program.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Batch",
+                vec![SchemaNode::group("Order", vec![line]).repeating(), product],
+            )
+            .repeating(),
+        ],
+    );
+    program.root.children[0].iteration =
+        Some(IterationPlan::source(vec!["Batch".into(), "Order".into()]));
 
     assert_eq!(
         validate_program(&program),

@@ -377,10 +377,15 @@ fn is_bounded_correlated_plan(
     {
         return false;
     }
+    let runtime_parent = current_source.runtime_parent();
     let mut has_current_singleton = false;
     let singletons_are_bounded_scalars = singleton_sources.into_iter().all(|singleton| {
         let candidate = if let Some(candidate) = current_source.follow(singleton.collection()) {
             has_current_singleton = true;
+            candidate.resolved()
+        } else if let Some(candidate) =
+            runtime_parent.and_then(|parent| parent.follow(singleton.collection()))
+        {
             candidate.resolved()
         } else {
             sources
@@ -393,10 +398,17 @@ fn is_bounded_correlated_plan(
     has_current_singleton
         && singletons_are_bounded_scalars
         && repeating_sources.into_iter().all(|repeating| {
-            current_source.follow(repeating.collection()).is_none()
-                && sources
-                    .root_schema_at(repeating.collection())
-                    .is_some_and(|candidate| candidate.node().repeating)
+            if current_source.follow(repeating.collection()).is_some() {
+                return false;
+            }
+            if let Some(candidate) =
+                runtime_parent.and_then(|parent| parent.follow(repeating.collection()))
+            {
+                return !candidate.same_node(current_source) && candidate.node().repeating;
+            }
+            sources
+                .root_schema_at(repeating.collection())
+                .is_some_and(|candidate| candidate.node().repeating)
         })
 }
 
