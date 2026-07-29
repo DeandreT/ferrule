@@ -139,6 +139,13 @@ logical output-path override to the selected named target. SQLite and
 update-existing XLSX stay on the filesystem runner because their behavior
 depends on persistent prior state.
 
+The CLI exposes that payload boundary as `ferrule run PROJECT - -`: stdin is
+the primary document and stdout receives raw bytes only when exactly one
+artifact is produced. The configured source and target paths remain the
+logical format identities; named sources remain ordinary local paths. This
+mode rejects per-item dynamic named sources and all persistent-state operations
+before stdout is written.
+
 The `run --trace-json PATH` option streams interpreter events into a private
 sibling staging file and publishes it only after successful execution. Each
 JSON Lines record has a versioned envelope, deterministic sequence number, and

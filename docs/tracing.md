@@ -11,7 +11,8 @@ ferrule run \
 
 Tracing does not change the mapping output, the human result report on stdout,
 or `--diagnostics json` records on stderr. `--trace-json -` is rejected because
-stdout is reserved for the result report.
+stdout is reserved either for the result report or raw mapped bytes from
+`ferrule run PROJECT - -`.
 
 ## Publication and Failure Behavior
 
@@ -24,6 +25,11 @@ A trace path cannot be a directory, symlink, special file, or one of the
 mapping's published output paths. Missing parent directories are created before
 execution. Trace records can contain source values and paths; treat trace files
 as potentially sensitive data.
+
+Standard-output runs finalize the trace after successful mapping serialization
+and before writing raw artifact bytes. This preserves an empty stdout when trace
+publication fails. A later stdout write failure, such as a broken pipe, can
+therefore leave a trace for the successfully evaluated mapping.
 
 ## JSON Lines Envelope
 
