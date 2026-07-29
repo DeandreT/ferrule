@@ -124,6 +124,22 @@ fn authoring_names_are_derived_from_catalog_exposure() {
 }
 
 #[test]
+fn variadic_arithmetic_documentation_describes_more_than_binary_calls() {
+    assert_eq!(
+        definition("add").documentation,
+        "Adds two or more numeric values."
+    );
+    assert_eq!(
+        definition("subtract").documentation,
+        "Subtracts each following numeric value from the first."
+    );
+    assert_eq!(
+        definition("multiply").documentation,
+        "Multiplies two or more numeric values."
+    );
+}
+
+#[test]
 fn representative_metadata_covers_each_authoring_domain() {
     assert_metadata(
         "and",
