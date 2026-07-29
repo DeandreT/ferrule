@@ -2,7 +2,7 @@ use super::*;
 use crate::canvas_layout::arrange_snarl;
 use crate::layout_store::layout_path;
 use ir::{ScalarType, SchemaNode};
-use mapping::Binding;
+use mapping::{Binding, FormatOptions, FunctionId, NamedTarget, Scope, UserFunction};
 
 fn canvas_position(snarl: &Snarl<CanvasNode>, wanted: CanvasNode) -> egui::Pos2 {
     snarl
@@ -28,6 +28,291 @@ fn temporary_project_path(test_name: &str) -> PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("temporary test directory is created");
     dir.join("project.json")
+}
+
+fn named_target(name: &str) -> NamedTarget {
+    NamedTarget {
+        name: name.to_owned(),
+        path: Some(format!("{name}.json")),
+        schema: SchemaNode::group(name, vec![SchemaNode::scalar("value", ScalarType::String)]),
+        options: FormatOptions::default(),
+        root: Scope::default(),
+    }
+}
+
+fn user_function(name: &str) -> UserFunction {
+    let mut body = Graph::default();
+    body.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::String("result".to_owned()),
+        },
+    );
+    UserFunction {
+        library: "local".to_owned(),
+        name: name.to_owned(),
+        description: None,
+        parameters: Vec::new(),
+        output_name: "result".to_owned(),
+        output_type: ScalarType::String,
+        body,
+        output: 0,
+    }
+}
+
+#[test]
+fn extra_target_create_and_rename_roundtrip_through_history() {
+    let mut app = FerruleApp {
+        extra_target_draft: Some(ExtraTargetDraft {
+            name: "audit".to_owned(),
+            output_path: "audit.json".to_owned(),
+            schema: Some(named_target("audit").schema),
+            ..ExtraTargetDraft::default()
+        }),
+        ..FerruleApp::default()
+    };
+    app.finish_extra_target();
+    app.observe_editor_history(std::time::Instant::now(), false);
+
+    assert_eq!(app.project.extra_targets[0].name, "audit");
+    assert_eq!(app.mapping_workspace.active, MappingDocument::Target(0));
+    assert!(app.is_dirty());
+
+    app.undo_project();
+    assert!(app.project.extra_targets.is_empty());
+    assert_eq!(app.mapping_workspace.active, MappingDocument::Main);
+    assert!(!app.is_dirty());
+
+    app.redo_project();
+    assert_eq!(app.project.extra_targets[0].name, "audit");
+    assert_eq!(app.mapping_workspace.active, MappingDocument::Target(0));
+
+    app.project.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: ir::Value::String("shared".to_owned()),
+        },
+    );
+    assert!(app.ensure_target_canvas(0));
+    let custom = egui::pos2(203.0, 407.0);
+    move_canvas_node(
+        &mut app
+            .mapping_workspace
+            .target_canvases
+            .get_mut(&0)
+            .expect("audit target canvas exists")
+            .snarl,
+        CanvasNode::Graph(7),
+        custom,
+    );
+    app.observe_editor_history(std::time::Instant::now(), false);
+
+    app.edit_extra_target(0);
+    app.extra_target_draft
+        .as_mut()
+        .expect("edit draft exists")
+        .name = "archive".to_owned();
+    app.finish_extra_target();
+    app.observe_editor_history(std::time::Instant::now(), false);
+    assert_eq!(app.project.extra_targets[0].name, "archive");
+    assert_eq!(app.mapping_workspace.tabs[1], MappingDocument::Target(0));
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&0].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+
+    app.undo_project();
+    assert_eq!(app.project.extra_targets[0].name, "audit");
+    assert_eq!(app.mapping_workspace.tabs[1], MappingDocument::Target(0));
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&0].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+    app.redo_project();
+    assert_eq!(app.project.extra_targets[0].name, "archive");
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&0].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+}
+
+#[test]
+fn duplicate_extra_target_name_does_not_mutate_project() {
+    let mut app = FerruleApp::default();
+    app.project.extra_targets.push(named_target("audit"));
+    app.extra_target_draft = Some(ExtraTargetDraft {
+        name: " audit ".to_owned(),
+        schema: Some(named_target("duplicate").schema),
+        ..ExtraTargetDraft::default()
+    });
+
+    app.finish_extra_target();
+
+    assert_eq!(app.project.extra_targets.len(), 1);
+    assert_eq!(app.project.extra_targets[0].name, "audit");
+    assert!(app.extra_target_draft.is_some());
+    assert_eq!(app.status, "target is incomplete");
+}
+
+#[test]
+fn target_removal_rekeys_tabs_and_canvases_without_removing_graph_nodes() {
+    let mut app = FerruleApp::default();
+    app.project.extra_targets = vec![
+        named_target("first"),
+        named_target("second"),
+        named_target("third"),
+    ];
+    app.project.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: ir::Value::String("shared".to_owned()),
+        },
+    );
+    app.main_canvas.snarl = build_snarl(&app.project);
+    app.open_target_tab(2);
+    assert!(app.ensure_target_canvas(2));
+    let custom = egui::pos2(321.0, 654.0);
+    move_canvas_node(
+        &mut app
+            .mapping_workspace
+            .target_canvases
+            .get_mut(&2)
+            .expect("third target canvas exists")
+            .snarl,
+        CanvasNode::Graph(7),
+        custom,
+    );
+    app.mark_clean();
+    app.rebase_history();
+
+    app.remove_extra_target_now(0);
+    app.observe_editor_history(std::time::Instant::now(), false);
+
+    assert_eq!(
+        app.project
+            .extra_targets
+            .iter()
+            .map(|target| target.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["second", "third"]
+    );
+    assert!(app.project.graph.nodes.contains_key(&7));
+    assert_eq!(app.mapping_workspace.active, MappingDocument::Target(1));
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&1].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+
+    app.undo_project();
+    assert_eq!(app.project.extra_targets.len(), 3);
+    assert_eq!(app.mapping_workspace.active, MappingDocument::Target(2));
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&2].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+
+    app.redo_project();
+    assert_eq!(app.project.extra_targets.len(), 2);
+    assert!(app.project.graph.nodes.contains_key(&7));
+    assert_eq!(app.mapping_workspace.active, MappingDocument::Target(1));
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&1].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+}
+
+#[test]
+fn save_and_reopen_preserve_named_targets_and_mixed_tab_order() {
+    let project_path = temporary_project_path("extra-target-roundtrip");
+    let mut app = FerruleApp::default();
+    let mut audit = named_target("audit");
+    audit.path = Some("outputs/audit.jsonl".to_owned());
+    audit.options.json_lines = true;
+    audit.root.target_field = "auditRoot".to_owned();
+    app.project.extra_targets = vec![audit, named_target("archive")];
+    let function = FunctionId::new(42);
+    app.project
+        .user_functions
+        .insert(function, user_function("normalize"));
+    app.project.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: ir::Value::String("shared".to_owned()),
+        },
+    );
+    app.main_canvas.snarl = build_snarl(&app.project);
+
+    app.open_target_tab(1);
+    app.open_function_tab(function);
+    app.open_target_tab(0);
+    assert!(app.ensure_target_canvas(0));
+    let custom = egui::pos2(419.0, 287.0);
+    move_canvas_node(
+        &mut app
+            .mapping_workspace
+            .target_canvases
+            .get_mut(&0)
+            .expect("audit target canvas exists")
+            .snarl,
+        CanvasNode::Graph(7),
+        custom,
+    );
+    let expected_tabs = vec![
+        MappingDocument::Main,
+        MappingDocument::Target(1),
+        MappingDocument::Function(function),
+        MappingDocument::Target(0),
+    ];
+    assert_eq!(app.mapping_workspace.tabs, expected_tabs);
+
+    app.save_document_to(&project_path)
+        .expect("project and layout save");
+    let mut loaded = FerruleApp::default();
+    loaded.load_project_from(&project_path);
+
+    assert_eq!(loaded.project.extra_targets.len(), 2);
+    let loaded_audit = &loaded.project.extra_targets[0];
+    assert_eq!(loaded_audit.name, "audit");
+    assert_eq!(loaded_audit.path.as_deref(), Some("outputs/audit.jsonl"));
+    assert!(loaded_audit.options.json_lines);
+    assert_eq!(loaded_audit.root.target_field, "auditRoot");
+    assert_eq!(loaded.mapping_workspace.tabs, expected_tabs);
+    assert_eq!(loaded.mapping_workspace.active, MappingDocument::Target(0));
+    assert_eq!(
+        canvas_position(
+            &loaded.mapping_workspace.target_canvases[&0].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+    assert!(
+        loaded.mapping_workspace.target_canvases[&0]
+            .snarl
+            .nodes()
+            .all(|node| !matches!(node, CanvasNode::Placeholder(_)))
+    );
+    assert!(!loaded.is_dirty());
+
+    std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+        .expect("temporary test directory is removed");
 }
 
 #[test]

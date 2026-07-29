@@ -24,6 +24,7 @@ use crate::canvas_layout::{ArrangeMode, arrange_snarl_with_mode};
 use crate::diagnostics::{Diagnostic, DiagnosticLevel, Diagnostics};
 use crate::document::DocumentLocation;
 use crate::extra_sources::{ExtraSourceDraft, remove_extra_source};
+use crate::extra_targets::ExtraTargetDraft;
 use crate::graph_viewer::GraphViewer;
 use crate::layout_store::{project_fingerprint, read_layout, write_layout};
 use crate::new_mapping::{NewMappingSetup, SchemaSide, blank_project};
@@ -40,6 +41,8 @@ use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVis
 mod canvas_build;
 #[path = "app_extra_sources.rs"]
 mod extra_source_ui;
+#[path = "app_extra_targets.rs"]
+mod extra_target_ui;
 #[path = "workspace/functions.rs"]
 mod function_workspace;
 #[path = "app_new_mapping.rs"]
@@ -55,7 +58,7 @@ use canvas_build::{build_function_snarl, build_snarl, build_snarl_with_layout};
 pub(crate) use canvas_build::{endpoint_block_size, sync_endpoint_wires};
 
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
-pub(super) const LAYOUT_VERSION: u32 = 2;
+pub(super) const LAYOUT_VERSION: u32 = 3;
 
 struct CanvasDocumentState {
     snarl: Snarl<CanvasNode>,
@@ -69,6 +72,7 @@ struct CanvasDocumentState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum MappingDocument {
     Main,
+    Target(usize),
     Function(FunctionId),
 }
 
@@ -86,6 +90,7 @@ struct MappingWorkspace {
     split: Option<MappingDocument>,
     split_orientation: SplitOrientation,
     floating: std::collections::BTreeSet<FunctionId>,
+    target_canvases: std::collections::BTreeMap<usize, CanvasDocumentState>,
     function_canvases: std::collections::BTreeMap<FunctionId, CanvasDocumentState>,
 }
 
@@ -98,6 +103,7 @@ impl Default for MappingWorkspace {
             split: None,
             split_orientation: SplitOrientation::Horizontal,
             floating: std::collections::BTreeSet::new(),
+            target_canvases: std::collections::BTreeMap::new(),
             function_canvases: std::collections::BTreeMap::new(),
         }
     }
@@ -108,9 +114,14 @@ impl MappingWorkspace {
         *self = Self::default();
     }
 
-    fn reconcile(&mut self, functions: &std::collections::BTreeMap<FunctionId, UserFunction>) {
+    fn reconcile(
+        &mut self,
+        functions: &std::collections::BTreeMap<FunctionId, UserFunction>,
+        target_count: usize,
+    ) {
         let exists = |document: &MappingDocument| match document {
             MappingDocument::Main => true,
+            MappingDocument::Target(index) => *index < target_count,
             MappingDocument::Function(id) => functions.contains_key(id),
         };
         self.tabs.retain(exists);
@@ -127,8 +138,32 @@ impl MappingWorkspace {
             self.split = None;
         }
         self.floating.retain(|id| functions.contains_key(id));
+        self.target_canvases
+            .retain(|index, _| *index < target_count);
         self.function_canvases
             .retain(|id, _| functions.contains_key(id));
+    }
+
+    fn remove_target(&mut self, removed: usize) {
+        let remap = |document: MappingDocument| match document {
+            MappingDocument::Target(index) if index == removed => None,
+            MappingDocument::Target(index) if index > removed => {
+                Some(MappingDocument::Target(index - 1))
+            }
+            document => Some(document),
+        };
+        self.tabs = self.tabs.iter().copied().filter_map(remap).collect();
+        self.active = remap(self.active).unwrap_or(MappingDocument::Main);
+        self.focused = remap(self.focused).unwrap_or(self.active);
+        self.split = self.split.and_then(remap);
+        self.target_canvases = std::mem::take(&mut self.target_canvases)
+            .into_iter()
+            .filter_map(|(index, canvas)| match index.cmp(&removed) {
+                std::cmp::Ordering::Less => Some((index, canvas)),
+                std::cmp::Ordering::Equal => None,
+                std::cmp::Ordering::Greater => Some((index - 1, canvas)),
+            })
+            .collect();
     }
 
     fn from_layout(project: &Project, layout: Option<&CanvasLayout>) -> Self {
@@ -136,18 +171,40 @@ impl MappingWorkspace {
             return Self::default();
         };
         let mut workspace = Self::default();
-        for function in &layout.open_functions {
-            if project.user_functions.contains_key(function) {
-                workspace.tabs.push(MappingDocument::Function(*function));
+        if layout.open_documents.is_empty() {
+            for function in &layout.open_functions {
+                if project.user_functions.contains_key(function) {
+                    workspace.tabs.push(MappingDocument::Function(*function));
+                }
+            }
+        } else {
+            for document in &layout.open_documents {
+                if let Some(document) = document.into_document(project)
+                    && !workspace.tabs.contains(&document)
+                {
+                    workspace.tabs.push(document);
+                }
             }
         }
-        if let Some(function) = layout.active_function
-            && workspace
-                .tabs
-                .contains(&MappingDocument::Function(function))
+        let active = layout
+            .active_document
+            .and_then(|document| document.into_document(project))
+            .or_else(|| layout.active_function.map(MappingDocument::Function));
+        if let Some(active) = active
+            && workspace.tabs.contains(&active)
         {
-            workspace.active = MappingDocument::Function(function);
+            workspace.active = active;
             workspace.focused = workspace.active;
+        }
+        for (&target, nodes) in &layout.target_nodes {
+            if target >= project.extra_targets.len() {
+                continue;
+            }
+            let mut snarl = canvas_build::build_named_target_snarl(project, target);
+            CanvasLayout::apply_nodes(nodes, &mut snarl);
+            workspace
+                .target_canvases
+                .insert(target, CanvasDocumentState::with_snarl(snarl));
         }
         for (&function, nodes) in &layout.function_nodes {
             let Some(definition) = project.user_functions.get(&function) else {
@@ -192,10 +249,16 @@ pub(super) struct CanvasLayout {
     nodes: Vec<CanvasNodeLayout>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     function_nodes: std::collections::BTreeMap<FunctionId, Vec<CanvasNodeLayout>>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    target_nodes: std::collections::BTreeMap<usize, Vec<CanvasNodeLayout>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     open_functions: Vec<FunctionId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    open_documents: Vec<PersistedMappingDocument>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     active_function: Option<FunctionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    active_document: Option<PersistedMappingDocument>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -222,6 +285,35 @@ enum PersistedCanvasNode {
     Placeholder {
         id: NodeId,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum PersistedMappingDocument {
+    Target { index: usize },
+    Function { id: FunctionId },
+}
+
+impl PersistedMappingDocument {
+    fn from_document(document: MappingDocument) -> Option<Self> {
+        match document {
+            MappingDocument::Main => None,
+            MappingDocument::Target(index) => Some(Self::Target { index }),
+            MappingDocument::Function(id) => Some(Self::Function { id }),
+        }
+    }
+
+    fn into_document(self, project: &Project) -> Option<MappingDocument> {
+        match self {
+            Self::Target { index } => {
+                (index < project.extra_targets.len()).then_some(MappingDocument::Target(index))
+            }
+            Self::Function { id } => project
+                .user_functions
+                .contains_key(&id)
+                .then_some(MappingDocument::Function(id)),
+        }
+    }
 }
 
 impl From<CanvasNode> for PersistedCanvasNode {
@@ -286,6 +378,8 @@ pub struct FerruleApp {
     new_mapping_setup: Option<NewMappingSetup>,
     extra_source_draft: Option<ExtraSourceDraft>,
     pending_extra_source_removal: Option<usize>,
+    extra_target_draft: Option<ExtraTargetDraft>,
+    pending_extra_target_removal: Option<usize>,
     /// Native file dialog receiver; the dialog runs outside the UI thread.
     pending_dialog: Option<(DialogKind, std::sync::mpsc::Receiver<Option<String>>)>,
     pending_destructive_action: Option<DestructiveAction>,
@@ -313,6 +407,8 @@ enum DialogKind {
     BrowseTargetSchema,
     BrowseExtraSourceSchema,
     BrowseExtraSourceInstance,
+    BrowseExtraTargetSchema,
+    BrowseExtraTargetOutput,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -369,6 +465,8 @@ impl Default for FerruleApp {
             new_mapping_setup: None,
             extra_source_draft: None,
             pending_extra_source_removal: None,
+            extra_target_draft: None,
+            pending_extra_target_removal: None,
             pending_dialog: None,
             pending_destructive_action: None,
             pending_save_continuation: None,
@@ -410,11 +508,17 @@ impl CanvasLayout {
             .iter()
             .map(|(&function, canvas)| (function, Self::capture_nodes(&canvas.snarl)))
             .collect();
+        let target_nodes = workspace
+            .target_canvases
+            .iter()
+            .map(|(&target, canvas)| (target, Self::capture_nodes(&canvas.snarl)))
+            .collect();
         let mut open_functions = workspace
             .tabs
             .iter()
             .filter_map(|document| match document {
                 MappingDocument::Main => None,
+                MappingDocument::Target(_) => None,
                 MappingDocument::Function(function) => Some(*function),
             })
             .chain(
@@ -423,6 +527,7 @@ impl CanvasLayout {
                     .into_iter()
                     .filter_map(|document| match document {
                         MappingDocument::Main => None,
+                        MappingDocument::Target(_) => None,
                         MappingDocument::Function(function) => Some(function),
                     }),
             )
@@ -431,16 +536,25 @@ impl CanvasLayout {
             .into_iter()
             .collect::<Vec<_>>();
         open_functions.sort_unstable();
+        let open_documents = workspace
+            .tabs
+            .iter()
+            .filter_map(|document| PersistedMappingDocument::from_document(*document))
+            .collect::<Vec<_>>();
         Self {
             version: LAYOUT_VERSION,
             project_fingerprint: Some(project_fingerprint(project)),
             nodes: Self::capture_nodes(snarl),
             function_nodes,
+            target_nodes,
             open_functions,
+            open_documents,
             active_function: match workspace.active {
                 MappingDocument::Main => None,
+                MappingDocument::Target(_) => None,
                 MappingDocument::Function(function) => Some(function),
             },
+            active_document: PersistedMappingDocument::from_document(workspace.active),
         }
     }
 
@@ -455,13 +569,6 @@ impl CanvasLayout {
             .collect();
         nodes.sort_by_key(|entry| entry.node);
         nodes
-    }
-
-    fn apply(&self, snarl: &mut Snarl<CanvasNode>) {
-        if !(1..=LAYOUT_VERSION).contains(&self.version) {
-            return;
-        }
-        Self::apply_nodes(&self.nodes, snarl);
     }
 
     fn apply_nodes(nodes: &[CanvasNodeLayout], snarl: &mut Snarl<CanvasNode>) {
@@ -948,6 +1055,14 @@ impl FerruleApp {
                     draft.instance_path = path;
                 }
             }
+            DialogKind::BrowseExtraTargetSchema => {
+                self.stage_extra_target_schema(PathBuf::from(path));
+            }
+            DialogKind::BrowseExtraTargetOutput => {
+                if let Some(draft) = &mut self.extra_target_draft {
+                    draft.output_path = path;
+                }
+            }
             DialogKind::ImportMfd => match mfd::import(std::path::Path::new(&path)) {
                 Ok(imported) => {
                     self.clear_run_report();
@@ -1047,7 +1162,9 @@ impl eframe::App for FerruleApp {
             && self.pending_destructive_action.is_none()
             && self.new_mapping_setup.is_none()
             && self.extra_source_draft.is_none()
-            && self.pending_extra_source_removal.is_none();
+            && self.pending_extra_source_removal.is_none()
+            && self.extra_target_draft.is_none()
+            && self.pending_extra_target_removal.is_none();
         let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -1163,6 +1280,8 @@ impl eframe::App for FerruleApp {
         self.show_new_mapping_setup(ui.ctx());
         self.show_extra_source_setup(ui.ctx());
         self.show_extra_source_removal_confirmation(ui.ctx());
+        self.show_extra_target_setup(ui.ctx());
+        self.show_extra_target_removal_confirmation(ui.ctx());
         self.show_new_function_dialog(ui.ctx());
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
         self.show_floating_function_windows(ui.ctx(), project_editing_enabled);
