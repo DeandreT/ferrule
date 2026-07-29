@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use anyhow::{Context, bail};
 use engine::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
-    TraceScope, TraceSink, TraceTarget, TraceValue, TraceWindow,
+    TraceScope, TraceSink, TraceTarget, TraceTargetFieldBinding, TraceValue, TraceWindow,
 };
 use serde_json::{Value as JsonValue, json};
 
@@ -339,6 +339,22 @@ fn event_value(event: &TraceEvent) -> JsonValue {
             "before": before,
             "after": after,
         }),
+        TraceEvent::TargetFieldWritten {
+            scope,
+            field,
+            binding,
+            positions,
+            kind,
+            value,
+        } => json!({
+            "kind": "target_field_written",
+            "scope": scope_value(scope),
+            "field": field,
+            "binding": target_field_binding(*binding),
+            "positions": positions_value(positions),
+            "output_kind": output_kind(*kind),
+            "value": value.as_ref().map(trace_value),
+        }),
         TraceEvent::TargetProduced {
             scope,
             positions,
@@ -496,6 +512,21 @@ fn output_kind(kind: TraceOutputKind) -> &'static str {
     }
 }
 
+fn target_field_binding(binding: TraceTargetFieldBinding) -> JsonValue {
+    match binding {
+        TraceTargetFieldBinding::StaticBinding { value } => {
+            json!({"kind": "static_binding", "value_node": value})
+        }
+        TraceTargetFieldBinding::DynamicBinding { key, value } => {
+            json!({"kind": "dynamic_binding", "key_node": key, "value_node": value})
+        }
+        TraceTargetFieldBinding::StaticChild => json!({"kind": "static_child"}),
+        TraceTargetFieldBinding::DynamicChild { key } => {
+            json!({"kind": "dynamic_child", "key_node": key})
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,6 +607,18 @@ mod tests {
                 before: 2,
                 after: 1,
             },
+            TraceEvent::TargetFieldWritten {
+                scope: scope(),
+                field: "status".into(),
+                binding: TraceTargetFieldBinding::DynamicBinding { key: 5, value: 6 },
+                positions: vec![position.clone()],
+                kind: TraceOutputKind::Scalar,
+                value: Some(TraceValue {
+                    value_type: "string",
+                    preview: "accepted".into(),
+                    truncated: false,
+                }),
+            },
             TraceEvent::TargetProduced {
                 scope: scope(),
                 positions: vec![position],
@@ -612,9 +655,17 @@ mod tests {
                 "sort_position",
                 "group_produced",
                 "window_applied",
+                "target_field_written",
                 "target_produced",
                 "scope_finished",
             ]
         );
+        let field = trace_line(8, &events[8]);
+        assert_eq!(field["event"]["field"], "status");
+        assert_eq!(field["event"]["binding"]["kind"], "dynamic_binding");
+        assert_eq!(field["event"]["binding"]["key_node"], 5);
+        assert_eq!(field["event"]["binding"]["value_node"], 6);
+        assert_eq!(field["event"]["output_kind"], "scalar");
+        assert_eq!(field["event"]["value"]["preview"], "accepted");
     }
 }

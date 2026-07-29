@@ -36,7 +36,8 @@ mod trace_json;
 pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
 pub use engine::{
     TargetSelection, TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind,
-    TracePosition, TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceValue, TraceWindow,
+    TracePosition, TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceTargetFieldBinding,
+    TraceValue, TraceWindow,
 };
 use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 pub use payload::{

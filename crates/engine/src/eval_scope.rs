@@ -21,7 +21,8 @@ use crate::sequence::eval_sequence;
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceOutputKind, TraceScope, TraceSortKey,
-    TraceValue, TraceWindow, bounded_text, record, scope_iteration, trace_positions,
+    TraceTargetFieldBinding, TraceValue, TraceWindow, bounded_text, record, scope_iteration,
+    trace_positions,
 };
 use crate::{DynamicSourceLoader, EngineError};
 
@@ -975,7 +976,18 @@ impl ItemEvaluator<'_> {
                 },
                 false => Instance::Scalar(value),
             };
+            let traced_value = trace_field_value(&value);
             insert_static_binding(&mut fields, binding.target_field.clone(), value, repeating)?;
+            record_target_field(
+                program,
+                trace_scope,
+                bounded_text(&binding.target_field),
+                TraceTargetFieldBinding::StaticBinding {
+                    value: binding.node,
+                },
+                output_positions,
+                traced_value,
+            );
         }
         for binding in &scope.dynamic_bindings {
             let key = eval_dynamic_key(program, binding.key, context, output_positions)?;
@@ -994,12 +1006,21 @@ impl ItemEvaluator<'_> {
                 Some(SchemaKind::Scalar { ty }) => adapt_numeric_target(value, *ty),
                 Some(SchemaKind::Group { .. }) | None => value,
             };
-            dynamic_target::insert_dynamic_target_field(
-                &mut fields,
-                key,
-                Instance::Scalar(value),
-                target,
-            )?;
+            let value = Instance::Scalar(value);
+            let traced_key = bounded_text(&key);
+            let traced_value = trace_field_value(&value);
+            dynamic_target::insert_dynamic_target_field(&mut fields, key, value, target)?;
+            record_target_field(
+                program,
+                trace_scope,
+                traced_key,
+                TraceTargetFieldBinding::DynamicBinding {
+                    key: binding.key,
+                    value: binding.value,
+                },
+                output_positions,
+                traced_value,
+            );
         }
         for (index, child) in scope.children.iter().enumerate() {
             let child_target = target.and_then(|schema| schema.child(&child.target_field));
@@ -1013,7 +1034,16 @@ impl ItemEvaluator<'_> {
                 source_loader,
                 &trace_scope.child(&child.target_field, index),
             )?;
+            let traced_value = trace_field_value(&child_instance);
             insert_target_field(&mut fields, child.target_field.clone(), child_instance)?;
+            record_target_field(
+                program,
+                trace_scope,
+                bounded_text(&child.target_field),
+                TraceTargetFieldBinding::StaticChild,
+                output_positions,
+                traced_value,
+            );
         }
         for (index, child) in scope.dynamic_children.iter().enumerate() {
             if child.scope.iteration_output == IterationOutput::MappedSequence {
@@ -1031,13 +1061,56 @@ impl ItemEvaluator<'_> {
                 source_loader,
                 &trace_scope.child("<dynamic>", scope.children.len().saturating_add(index)),
             )?;
+            let traced_key = bounded_text(&key);
+            let traced_value = trace_field_value(&child_instance);
             dynamic_target::insert_dynamic_target_field(&mut fields, key, child_instance, target)?;
+            record_target_field(
+                program,
+                trace_scope,
+                traced_key,
+                TraceTargetFieldBinding::DynamicChild { key: child.key },
+                output_positions,
+                traced_value,
+            );
         }
         if let ScopeConstruction::XmlMixedContent { elements } = &scope.construction {
             attach_xml_mixed_content(&mut fields, context.last().copied(), elements);
         }
         Ok(Some(Instance::Group(fields)))
     }
+}
+
+fn trace_field_value(value: &Instance) -> (TraceOutputKind, Option<TraceValue>) {
+    let preview = match value {
+        Instance::Scalar(value) => Some(TraceValue::new(value)),
+        Instance::Repeated(values) if values.len() == 1 => values
+            .first()
+            .and_then(Instance::as_scalar)
+            .map(TraceValue::new),
+        Instance::Group(_)
+        | Instance::Repeated(_)
+        | Instance::MappedSequence(_)
+        | Instance::DocumentSet(_) => None,
+    };
+    (TraceOutputKind::of(value), preview)
+}
+
+fn record_target_field(
+    program: EvalProgram<'_>,
+    trace_scope: &TraceScope,
+    field: String,
+    binding: TraceTargetFieldBinding,
+    positions: &[PositionFrame],
+    (kind, value): (TraceOutputKind, Option<TraceValue>),
+) {
+    record(program.trace_sink, || TraceEvent::TargetFieldWritten {
+        scope: trace_scope.clone(),
+        field,
+        binding,
+        positions: trace_positions(positions),
+        kind,
+        value,
+    });
 }
 
 fn attach_xml_mixed_content(
