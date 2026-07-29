@@ -178,6 +178,32 @@ public static partial class FerruleFunctions
         return FerruleValue.FromInt64(integer);
     }
 
+    private static FerruleValue SqliteMultiply(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = "sqlite_multiply";
+        RequireArity(function, arguments, 2);
+        if (arguments.Any(value =>
+                value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull))
+        {
+            return FerruleValue.Null;
+        }
+
+        var left = NumericOperand.From(arguments[0], function);
+        var right = NumericOperand.From(arguments[1], function);
+        if (left.IsDouble || right.IsDouble)
+        {
+            return FerruleValue.FromDouble(left.AsDouble() * right.AsDouble());
+        }
+        try
+        {
+            return FerruleValue.FromInt64(checked(left.Integer * right.Integer));
+        }
+        catch (OverflowException)
+        {
+            return FerruleValue.FromDouble((double)left.Integer * right.Integer);
+        }
+    }
+
     private static FerruleValue Divide(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("divide", arguments, 2);
