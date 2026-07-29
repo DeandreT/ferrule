@@ -111,10 +111,9 @@ layout and dialect details that an extension cannot express.
   row independently. Predicate patterns share the document matcher budget.
   Nested dependent schemas are supported recursively, with the same per-object
   bounds. Effective `if` with `then` or `else`, `patternProperties`,
-  `unevaluatedProperties`, `unevaluatedItems`, heterogeneous modern
-  `prefixItems`, legacy tuple-form `items`, and effective `additionalItems`
-  reject instead of being approximated. A lone validation-neutral conditional
-  keyword is ignored.
+  `unevaluatedProperties`, `unevaluatedItems`, and heterogeneous positional
+  arrays reject instead of being approximated. A lone validation-neutral
+  conditional keyword is ignored.
   Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
   and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
   those schema values to use its object form, while Draft 6/7 also accept
@@ -196,6 +195,21 @@ layout and dialect details that an extension cannot express.
   `maxItems` when the tail is closed, so no tuple-specific runtime or mapping
   IR is required. Draft 4 through Draft 2019-09 treat
   `prefixItems` as an unknown keyword according to their dialects.
+  The complementary bounded homogeneous legacy tuple profile accepts
+  array-valued `items` in Draft 4, 6, 7, and 2019-09 resources and in schemas
+  without `$schema`. Each tuple must contain 1 to 4,096 positional members,
+  all of which normalize to one identical, non-repeating item shape. The
+  `additionalItems` tail must use that same shape, be `false` so the tuple
+  length becomes `maxItems`, or be provably unreachable under an existing
+  maximum. An absent or `true` tail is exact
+  only when the common item shape accepts arbitrary JSON or the explicit
+  maximum makes the tail unreachable. Explicit `minItems`/`maxItems` and the
+  derived closed-tail maximum are intersected, so contradictory bounds reject.
+  Canonical export writes ordinary schema-valued `items` plus `maxItems` when
+  closed; no positional-array runtime or mapping IR is retained. Draft 2020-12
+  requires schema-valued `items`, so array-valued `items` are rejected there
+  rather than being interpreted as `prefixItems`. Heterogeneous members, reachable
+  heterogeneous tails, and concrete nested-array members remain unsupported.
   Concrete array wrappers also retain `uniqueItems: true` through supported
   references and compatible composition. Native and generated Rust/C#
   boundaries compare complete raw input values and normalized output values:

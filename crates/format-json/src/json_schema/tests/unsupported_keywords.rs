@@ -23,7 +23,7 @@ fn validation_effective_conditionals_not_and_tuple_keywords_never_widen_silently
 }"#,
         r#"{"type":"string","not":{"const":"forbidden"}}"#,
         r#"{
-  "$schema":"http://json-schema.org/draft-07/schema#",
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
   "type":"array",
   "items":[{"type":"string"}],
   "additionalItems":false
