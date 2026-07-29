@@ -36,6 +36,26 @@ fn project() -> Project {
     })
     .and_then(|plan| {
         plan.then(
+            MappingJoinSource::new(vec!["PriceBand".into()]),
+            MappingJoinConditions::new(MappingJoinKey::new(
+                vec!["Offer".into()],
+                vec!["Sku".into()],
+                vec!["Sku".into()],
+            )),
+        )
+    })
+    .and_then(|plan| {
+        plan.then(
+            MappingJoinSource::singleton(vec!["Channel".into()]),
+            MappingJoinConditions::new(MappingJoinKey::new(
+                vec!["PriceBand".into()],
+                vec!["Channel".into()],
+                Vec::new(),
+            )),
+        )
+    })
+    .and_then(|plan| {
+        plan.then(
             MappingJoinSource::new(vec!["Catalog".into(), "Product".into()]),
             MappingJoinConditions::new(MappingJoinKey::new(
                 vec!["Offer".into()],
@@ -80,28 +100,44 @@ fn project() -> Project {
             "Source",
             vec![
                 SchemaNode::group(
-                    "Order",
+                    "Batch",
                     vec![
                         SchemaNode::group(
-                            "Line",
+                            "Order",
                             vec![
-                                SchemaNode::scalar("Sku", ScalarType::String),
-                                SchemaNode::scalar("Region", ScalarType::String),
-                                SchemaNode::scalar("Quantity", ScalarType::Int),
-                                SchemaNode::scalar("Separator", ScalarType::String),
+                                SchemaNode::group(
+                                    "Line",
+                                    vec![
+                                        SchemaNode::scalar("Sku", ScalarType::String),
+                                        SchemaNode::scalar("Region", ScalarType::String),
+                                        SchemaNode::scalar("Quantity", ScalarType::Int),
+                                        SchemaNode::scalar("Separator", ScalarType::String),
+                                    ],
+                                )
+                                .repeating(),
+                                SchemaNode::group(
+                                    "Offer",
+                                    vec![
+                                        SchemaNode::scalar("Sku", ScalarType::String),
+                                        SchemaNode::scalar("Market", ScalarType::String),
+                                        SchemaNode::scalar("Code", ScalarType::String),
+                                    ],
+                                )
+                                .repeating(),
+                                SchemaNode::scalar("Market", ScalarType::String),
                             ],
                         )
                         .repeating(),
                         SchemaNode::group(
-                            "Offer",
+                            "PriceBand",
                             vec![
                                 SchemaNode::scalar("Sku", ScalarType::String),
-                                SchemaNode::scalar("Market", ScalarType::String),
+                                SchemaNode::scalar("Channel", ScalarType::String),
                                 SchemaNode::scalar("Code", ScalarType::String),
                             ],
                         )
                         .repeating(),
-                        SchemaNode::scalar("Market", ScalarType::String),
+                        SchemaNode::scalar("Channel", ScalarType::String),
                     ],
                 )
                 .repeating(),
@@ -127,6 +163,8 @@ fn project() -> Project {
                                 SchemaNode::scalar("OuterQuantity", ScalarType::Int),
                                 SchemaNode::scalar("OfferCode", ScalarType::String),
                                 SchemaNode::scalar("Market", ScalarType::String),
+                                SchemaNode::scalar("PriceBandCode", ScalarType::String),
+                                SchemaNode::scalar("Channel", ScalarType::String),
                                 SchemaNode::scalar("Region", ScalarType::String),
                                 SchemaNode::scalar("Tenant", ScalarType::String),
                                 SchemaNode::scalar("Warehouse", ScalarType::String),
@@ -208,7 +246,7 @@ fn project() -> Project {
                 (
                     1,
                     Node::SourceField {
-                        frame: Some(vec!["Order".into(), "Line".into()]),
+                        frame: Some(vec!["Batch".into(), "Order".into(), "Line".into()]),
                         path: vec!["Quantity".into()],
                     },
                 ),
@@ -258,7 +296,7 @@ fn project() -> Project {
                 (
                     7,
                     Node::SourceField {
-                        frame: Some(vec!["Order".into(), "Line".into()]),
+                        frame: Some(vec!["Batch".into(), "Order".into(), "Line".into()]),
                         path: vec!["Separator".into()],
                     },
                 ),
@@ -275,7 +313,7 @@ fn project() -> Project {
                 (
                     9,
                     Node::SourceField {
-                        frame: Some(vec!["Order".into(), "Line".into()]),
+                        frame: Some(vec!["Batch".into(), "Order".into(), "Line".into()]),
                         path: vec!["Sku".into()],
                     },
                 ),
@@ -360,12 +398,32 @@ fn project() -> Project {
                         path: Vec::new(),
                     },
                 ),
+                (
+                    22,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["PriceBand".into()],
+                        path: vec!["Code".into()],
+                    },
+                ),
+                (
+                    23,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Channel".into()],
+                        path: Vec::new(),
+                    },
+                ),
             ]),
         },
         root: Scope {
             children: vec![Scope {
                 target_field: "Row".into(),
-                iteration: ScopeIteration::Source(vec!["Order".into(), "Line".into()]),
+                iteration: ScopeIteration::Source(vec![
+                    "Batch".into(),
+                    "Order".into(),
+                    "Line".into(),
+                ]),
                 bindings: vec![
                     MappingBinding {
                         target_field: "Sku".into(),
@@ -421,6 +479,14 @@ fn project() -> Project {
                             node: 21,
                         },
                         MappingBinding {
+                            target_field: "PriceBandCode".into(),
+                            node: 22,
+                        },
+                        MappingBinding {
+                            target_field: "Channel".into(),
+                            node: 23,
+                        },
+                        MappingBinding {
                             target_field: "Region".into(),
                             node: 18,
                         },
@@ -472,64 +538,90 @@ fn string(value: &str) -> Value {
 
 fn source() -> Instance {
     group([field(
-        "Order",
+        "Batch",
         repeated([group([
             field(
-                "Line",
-                repeated([
-                    group([
-                        field("Sku", scalar(string("1"))),
-                        field("Region", scalar(string("west"))),
-                        field("Quantity", scalar(Value::Int(2))),
-                        field("Separator", scalar(string("|"))),
-                    ]),
-                    group([
-                        field("Sku", scalar(string("2"))),
-                        field("Region", scalar(string("north"))),
-                        field("Quantity", scalar(Value::Int(3))),
-                        field("Separator", scalar(string("/"))),
-                    ]),
-                    group([
-                        field("Sku", scalar(Value::Null)),
-                        field("Region", scalar(string("west"))),
-                        field("Quantity", scalar(Value::Int(4))),
-                        field("Separator", scalar(string("-"))),
-                    ]),
-                    group([
-                        field("Sku", scalar(Value::xml_nil())),
-                        field("Region", scalar(string("west"))),
-                        field("Quantity", scalar(Value::Int(5))),
-                        field("Separator", scalar(string("-"))),
-                    ]),
-                    group([
-                        field("Sku", scalar(string("9"))),
-                        field("Region", scalar(string("west"))),
-                        field("Quantity", scalar(Value::Int(6))),
-                        field("Separator", scalar(string("-"))),
-                    ]),
-                ]),
+                "Order",
+                repeated([group([
+                    field(
+                        "Line",
+                        repeated([
+                            group([
+                                field("Sku", scalar(string("1"))),
+                                field("Region", scalar(string("west"))),
+                                field("Quantity", scalar(Value::Int(2))),
+                                field("Separator", scalar(string("|"))),
+                            ]),
+                            group([
+                                field("Sku", scalar(string("2"))),
+                                field("Region", scalar(string("north"))),
+                                field("Quantity", scalar(Value::Int(3))),
+                                field("Separator", scalar(string("/"))),
+                            ]),
+                            group([
+                                field("Sku", scalar(Value::Null)),
+                                field("Region", scalar(string("west"))),
+                                field("Quantity", scalar(Value::Int(4))),
+                                field("Separator", scalar(string("-"))),
+                            ]),
+                            group([
+                                field("Sku", scalar(Value::xml_nil())),
+                                field("Region", scalar(string("west"))),
+                                field("Quantity", scalar(Value::Int(5))),
+                                field("Separator", scalar(string("-"))),
+                            ]),
+                            group([
+                                field("Sku", scalar(string("9"))),
+                                field("Region", scalar(string("west"))),
+                                field("Quantity", scalar(Value::Int(6))),
+                                field("Separator", scalar(string("-"))),
+                            ]),
+                        ]),
+                    ),
+                    field(
+                        "Offer",
+                        repeated([
+                            group([
+                                field("Sku", scalar(Value::Int(1))),
+                                field("Market", scalar(string("retail"))),
+                                field("Code", scalar(string("promo"))),
+                            ]),
+                            group([
+                                field("Sku", scalar(string("1"))),
+                                field("Market", scalar(string("wholesale"))),
+                                field("Code", scalar(string("wrong-market"))),
+                            ]),
+                            group([
+                                field("Sku", scalar(string("2"))),
+                                field("Market", scalar(string("retail"))),
+                                field("Code", scalar(string("standard"))),
+                            ]),
+                        ]),
+                    ),
+                    field("Market", scalar(string("retail"))),
+                ])]),
             ),
             field(
-                "Offer",
+                "PriceBand",
                 repeated([
                     group([
                         field("Sku", scalar(Value::Int(1))),
-                        field("Market", scalar(string("retail"))),
-                        field("Code", scalar(string("promo"))),
+                        field("Channel", scalar(string("online"))),
+                        field("Code", scalar(string("vip"))),
                     ]),
                     group([
                         field("Sku", scalar(string("1"))),
-                        field("Market", scalar(string("wholesale"))),
-                        field("Code", scalar(string("wrong-market"))),
+                        field("Channel", scalar(string("store"))),
+                        field("Code", scalar(string("wrong-channel"))),
                     ]),
                     group([
                         field("Sku", scalar(string("2"))),
-                        field("Market", scalar(string("retail"))),
-                        field("Code", scalar(string("standard"))),
+                        field("Channel", scalar(string("online"))),
+                        field("Code", scalar(string("base"))),
                     ]),
                 ]),
             ),
-            field("Market", scalar(string("retail"))),
+            field("Channel", scalar(string("online"))),
         ])]),
     )])
 }
@@ -661,20 +753,28 @@ fn row(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Instance {
 }
 
 fn main() {
-    let source = group([field("Order", repeated([group([
-        field("Line", repeated([
-            row([("Sku", string("1")), ("Region", string("west")), ("Quantity", Value::Int(2)), ("Separator", string("|"))]),
-            row([("Sku", string("2")), ("Region", string("north")), ("Quantity", Value::Int(3)), ("Separator", string("/"))]),
-            row([("Sku", Value::Null), ("Region", string("west")), ("Quantity", Value::Int(4)), ("Separator", string("-"))]),
-            row([("Sku", Value::xml_nil()), ("Region", string("west")), ("Quantity", Value::Int(5)), ("Separator", string("-"))]),
-            row([("Sku", string("9")), ("Region", string("west")), ("Quantity", Value::Int(6)), ("Separator", string("-"))]),
+    let source = group([field("Batch", repeated([group([
+        field("Order", repeated([group([
+            field("Line", repeated([
+                row([("Sku", string("1")), ("Region", string("west")), ("Quantity", Value::Int(2)), ("Separator", string("|"))]),
+                row([("Sku", string("2")), ("Region", string("north")), ("Quantity", Value::Int(3)), ("Separator", string("/"))]),
+                row([("Sku", Value::Null), ("Region", string("west")), ("Quantity", Value::Int(4)), ("Separator", string("-"))]),
+                row([("Sku", Value::xml_nil()), ("Region", string("west")), ("Quantity", Value::Int(5)), ("Separator", string("-"))]),
+                row([("Sku", string("9")), ("Region", string("west")), ("Quantity", Value::Int(6)), ("Separator", string("-"))]),
+            ])),
+            field("Offer", repeated([
+                row([("Sku", Value::Int(1)), ("Market", string("retail")), ("Code", string("promo"))]),
+                row([("Sku", string("1")), ("Market", string("wholesale")), ("Code", string("wrong-market"))]),
+                row([("Sku", string("2")), ("Market", string("retail")), ("Code", string("standard"))]),
+            ])),
+            field("Market", scalar(string("retail"))),
+        ])])),
+        field("PriceBand", repeated([
+            row([("Sku", Value::Int(1)), ("Channel", string("online")), ("Code", string("vip"))]),
+            row([("Sku", string("1")), ("Channel", string("store")), ("Code", string("wrong-channel"))]),
+            row([("Sku", string("2")), ("Channel", string("online")), ("Code", string("base"))]),
         ])),
-        field("Offer", repeated([
-            row([("Sku", Value::Int(1)), ("Market", string("retail")), ("Code", string("promo"))]),
-            row([("Sku", string("1")), ("Market", string("wholesale")), ("Code", string("wrong-market"))]),
-            row([("Sku", string("2")), ("Market", string("retail")), ("Code", string("standard"))]),
-        ])),
-        field("Market", scalar(string("retail"))),
+        field("Channel", scalar(string("online"))),
     ])]))]);
     let catalog = group([field("Product", repeated([
         row([("Sku", Value::Int(1)), ("Region", string("west")), ("Tenant", string("A")), ("Price", Value::Int(10)), ("Label", string("first")), ("Rank", Value::Int(10))]),
@@ -708,21 +808,58 @@ fn main() {
         Err(RuntimeError::MissingNamedSource { name: "Policy" })
     ));
 
-    let malformed_offer_source = group([field("Order", repeated([group([
-        field("Line", repeated([row([
-            ("Sku", string("1")),
-            ("Region", string("west")),
-            ("Quantity", Value::Int(2)),
-            ("Separator", string("|")),
+    let malformed_offer_source = group([field("Batch", repeated([group([
+        field("Order", repeated([group([
+            field("Line", repeated([row([
+                ("Sku", string("1")),
+                ("Region", string("west")),
+                ("Quantity", Value::Int(2)),
+                ("Separator", string("|")),
+            ])])),
+            field("Offer", repeated([row([
+                ("Sku", Value::Int(1)),
+                ("Market", string("retail")),
+            ])])),
+            field("Market", scalar(string("retail"))),
         ])])),
-        field("Offer", repeated([row([
+        field("PriceBand", repeated([row([
             ("Sku", Value::Int(1)),
-            ("Market", string("retail")),
+            ("Channel", string("online")),
+            ("Code", string("vip")),
         ])])),
-        field("Market", scalar(string("retail"))),
+        field("Channel", scalar(string("online"))),
     ])]))]);
     assert!(matches!(
         correlated_join_map::execute_with_sources(&malformed_offer_source, &inputs),
+        Err(RuntimeError::SourcePath(SourcePathError::MissingJoinField {
+            join: 8,
+            ..
+        }))
+    ));
+
+    let malformed_price_band_source = group([field("Batch", repeated([group([
+        field("Order", repeated([group([
+            field("Line", repeated([row([
+                ("Sku", string("1")),
+                ("Region", string("west")),
+                ("Quantity", Value::Int(2)),
+                ("Separator", string("|")),
+            ])])),
+            field("Offer", repeated([row([
+                ("Sku", Value::Int(1)),
+                ("Market", string("retail")),
+                ("Code", string("promo")),
+            ])])),
+            field("Market", scalar(string("retail"))),
+        ])])),
+        field("PriceBand", repeated([row([
+            ("Sku", Value::Int(1)),
+            ("Channel", string("online")),
+        ])])),
+        field("Channel", scalar(string("online"))),
+    ])]))]);
+    assert!(matches!(
+        correlated_join_map::execute_with_sources(&malformed_price_band_source, &inputs),
         Err(RuntimeError::SourcePath(SourcePathError::MissingJoinField {
             join: 8,
             ..

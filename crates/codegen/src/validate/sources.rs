@@ -49,6 +49,14 @@ impl<'a> SchemaCursor<'a> {
         follow_direct(self.root, self.node, path).map(|node| Self::new(self.root, node))
     }
 
+    pub(super) fn owns_first(self, path: &[String]) -> bool {
+        path.first().is_none_or(|first| {
+            self.resolved()
+                .and_then(|cursor| cursor.node.child(first))
+                .is_some()
+        })
+    }
+
     pub(super) fn resolved(self) -> Option<Self> {
         let Some(anchor) = self.node.recursive_ref.as_deref() else {
             return Some(self);
@@ -56,15 +64,18 @@ impl<'a> SchemaCursor<'a> {
         find_concrete_group(self.root, anchor).map(|node| Self::new(self.root, node))
     }
 
-    /// The immediately enclosing schema node when it is also a runtime source
-    /// frame: either the document root or a repeated ancestor.
-    pub(super) fn runtime_parent(self) -> Option<Self> {
-        let parent = find_parent(self.root, self.node)?;
-        (std::ptr::eq(parent, self.root) || parent.repeating).then(|| Self::new(self.root, parent))
-    }
-
-    pub(super) fn same_node(self, other: Self) -> bool {
-        std::ptr::eq(self.root, other.root) && std::ptr::eq(self.node, other.node)
+    /// Lexically enclosing schema nodes that also own runtime source frames,
+    /// ordered from the nearest repeated ancestor out to the document root.
+    fn runtime_ancestors(self, include_document_root: bool) -> Vec<Self> {
+        let mut ancestors = Vec::new();
+        let mut current = self.node;
+        while let Some(parent) = find_parent(self.root, current) {
+            if parent.repeating || include_document_root && std::ptr::eq(parent, self.root) {
+                ancestors.push(Self::new(self.root, parent));
+            }
+            current = parent;
+        }
+        ancestors
     }
 }
 
@@ -129,6 +140,13 @@ impl<'a> SourceCatalog<'a> {
             collect_path_targets(&source.source, &source.source, path, false, &mut targets);
         }
         targets
+    }
+
+    /// Runtime frames enclosing `current`, in the same inner-to-outer order
+    /// used by generated source lookup. Only the primary document root is an
+    /// unqualified frame; named document roots require their explicit prefix.
+    pub(super) fn runtime_ancestors(self, current: SchemaCursor<'a>) -> Vec<SchemaCursor<'a>> {
+        current.runtime_ancestors(std::ptr::eq(current.root, self.primary))
     }
 
     fn explicit_target(self, path: &[String], direct: bool) -> Option<SchemaCursor<'a>> {
@@ -340,5 +358,60 @@ mod tests {
                 ty: ScalarType::Int
             })
         ));
+    }
+
+    #[test]
+    fn runtime_ancestors_include_only_the_unqualified_primary_root() {
+        fn schema(name: &str) -> SchemaNode {
+            SchemaNode::group(
+                name,
+                vec![
+                    SchemaNode::group(
+                        "Rows",
+                        vec![
+                            SchemaNode::group(
+                                "Items",
+                                vec![SchemaNode::scalar("Value", ScalarType::String)],
+                            )
+                            .repeating(),
+                        ],
+                    )
+                    .repeating(),
+                    SchemaNode::scalar("RootValue", ScalarType::String),
+                ],
+            )
+        }
+
+        let primary = schema("Primary");
+        let extras = vec![NamedSourceProgram {
+            name: "Catalog".into(),
+            source: schema("CatalogDocument"),
+            dynamic: None,
+        }];
+        let sources = SourceCatalog::new(&primary, &extras);
+
+        let primary_item = sources
+            .schema_at(None, &["Rows".into(), "Items".into()])
+            .unwrap_or_else(|| panic!("primary item schema exists"));
+        assert_eq!(
+            sources
+                .runtime_ancestors(primary_item)
+                .iter()
+                .map(|cursor| cursor.node().name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Rows", "Primary"]
+        );
+
+        let named_item = sources
+            .schema_at(None, &["Catalog".into(), "Rows".into(), "Items".into()])
+            .unwrap_or_else(|| panic!("named item schema exists"));
+        assert_eq!(
+            sources
+                .runtime_ancestors(named_item)
+                .iter()
+                .map(|cursor| cursor.node().name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Rows"]
+        );
     }
 }
