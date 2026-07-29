@@ -424,6 +424,15 @@ pub struct SchemaNode {
     /// current default namespace. Non-XML formats ignore this metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xml_namespace: Option<XmlNamespace>,
+    /// Additional exact XML namespace identities accepted for this local
+    /// element name.
+    ///
+    /// Strict wildcards can expose global declarations from different
+    /// namespaces that intentionally share one mapping-port name and shape.
+    /// The first identity remains in [`Self::xml_namespace`]; XML boundaries
+    /// retain the selected identity for each occurrence.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub xml_name_alternatives: Vec<XmlNamespace>,
     /// Exact namespace predicate for a generic `element()` group imported
     /// from `xs:any`. Other schema nodes leave this unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -524,6 +533,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_namespace: Option<XmlNamespace>,
             #[serde(default)]
+            xml_name_alternatives: Vec<XmlNamespace>,
+            #[serde(default)]
             xml_wildcard_namespace: Option<XmlWildcardNamespaceConstraint>,
             #[serde(default)]
             repeating: bool,
@@ -564,6 +575,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         let node = Self {
             name: repr.name,
             xml_namespace: repr.xml_namespace,
+            xml_name_alternatives: repr.xml_name_alternatives,
             xml_wildcard_namespace: repr.xml_wildcard_namespace,
             repeating: repr.repeating,
             recursive_ref: repr.recursive_ref,
@@ -585,6 +597,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.alternatives_are_valid()
             || !node.required_fields_are_valid()
+            || !node.xml_name_alternatives_are_valid()
             || !node.recursive_ref_is_valid()
             || !node.fixed_is_valid()
             || !node.value_generation_is_valid()
@@ -600,7 +613,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.xml_wildcard_namespace_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences or choices, XML wildcard namespace, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed value, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -811,6 +824,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             repeating: false,
             recursive_ref: None,
@@ -842,6 +856,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             repeating: false,
             recursive_ref: None,
@@ -882,6 +897,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             repeating: false,
             recursive_ref: None,
