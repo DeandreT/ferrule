@@ -60,7 +60,7 @@ clean-room interoperability, and extensible adapters.
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
 | XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, lax element and attribute wildcards with typed known declarations plus nonduplicating generic fallback, closed strict wildcards resolved to exact singular or repeating typed choices, strict known-attribute projection, direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes, XSD 1.1 wildcard exclusions, unordered wildcard compositors, and unresolved strict wildcard declaration sets |
-| JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, bounded exact scalar `const`/`enum` value sets including finite `anyOf`/`oneOf` composition, exact numeric ranges including contiguous same-type `anyOf` unions, exact decimal `multipleOf` constraints, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded exact homogeneous Draft 2020-12/undeclared `prefixItems` normalization, bounded portable string `pattern` assertions, exact object-property presence, property dependencies and whole-object dependent-schema predicates, property-name constraints, and open/closed object semantics, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties, and bounded ordered `format` annotation preservation without vocabulary assertion | Incompatible or correlated validation composition, general correlated property-name unions and `not`, `patternProperties`, `unevaluatedProperties`, active conditional schemas, general heterogeneous tuple/prefix array schemas, heterogeneous or correlated numeric-range scalar unions, heterogeneous array composition, overlapping cross-mode or incompatible typed-wrapper union composition, structured discriminator values, mixed arrays, and remaining validation-keyword enforcement |
+| JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, bounded exact scalar `const`/`enum` value sets including finite `anyOf`/`oneOf` composition, exact numeric ranges including contiguous same-type `anyOf` unions, exact decimal `multipleOf` constraints, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded exact homogeneous Draft 2020-12/undeclared `prefixItems` and Draft 4/6/7/2019-09/undeclared tuple-form `items` normalization, bounded portable string `pattern` assertions, exact object-property presence, property dependencies and whole-object dependent-schema predicates, property-name constraints, and open/closed object semantics, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties, and bounded ordered `format` annotation preservation without vocabulary assertion | Incompatible or correlated validation composition, general correlated property-name unions and `not`, `patternProperties`, `unevaluatedProperties`, active conditional schemas, general heterogeneous positional array schemas, heterogeneous or correlated numeric-range scalar unions, heterogeneous array composition, overlapping cross-mode or incompatible typed-wrapper union composition, structured discriminator values, mixed arrays, and remaining validation-keyword enforcement |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Validation reports, additional configuration commands, and pluggable release packs |
@@ -123,8 +123,8 @@ interleaved repeated triggers. Nullable object null bypasses them; object
 alternatives retain only one identical effective constraint set. Retained
 predicates may use the executable JSON subset recursively, including
 independently bounded nested dependent schemas. Active `if`/`then`/`else`,
-`patternProperties`, unevaluated keywords, and heterogeneous tuple/prefix
-array schemas remain explicit rejections rather than approximations.
+`patternProperties`, unevaluated keywords, and heterogeneous positional array
+schemas remain explicit rejections rather than approximations.
 
 The bounded exact homogeneous `prefixItems` subset normalizes Draft 2020-12
 and schemas without `$schema` into the existing repeated-item form. Every
@@ -138,6 +138,22 @@ requires no engine, Rust runtime, C# runtime, or backend-emitter extension.
 Draft 4 through Draft 2019-09 treat `prefixItems` as unknown, while
 heterogeneous prefixes, contradictory bounds, concrete nested-array entries,
 and active `unevaluatedItems` continue to reject.
+
+The complementary homogeneous legacy tuple profile accepts array-valued
+`items` in Draft 4, 6, 7, and 2019-09 resources and in schemas without
+`$schema`. Each non-empty bounded tuple contains at most 4,096 positional
+members, all of which must normalize to the same non-repeating item shape. Its
+`additionalItems` tail must use that same shape, be `false` so the tuple length
+becomes `maxItems`, or be provably unreachable
+under an existing maximum; an absent or `true` tail is exact only for an
+arbitrary-JSON item shape or when the maximum makes the tail unreachable.
+Explicit and derived item-count intervals are intersected, and contradictions
+reject. Canonical export lowers the result to ordinary schema-valued `items`
+plus `maxItems` when closed, so the existing mapping IR and native/generated
+Rust and C# boundaries execute it unchanged. Draft 2020-12 instead requires
+schema-valued `items`; array-valued `items` rejects there rather than being
+mistaken for `prefixItems`. Heterogeneous positional members or reachable
+heterogeneous tails remain unsupported.
 
 Object `propertyNames` assertions validate every actual key, including declared,
 runtime-named, and empty-string properties. Exact `false`, finite

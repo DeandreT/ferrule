@@ -175,6 +175,23 @@
         </p>
 
         <p>
+          Homogeneous legacy tuple-form <code>items</code> uses the same
+          lowering for Draft 4, 6, 7, and 2019-09 resources and for schemas
+          without <code>$schema</code>. Its 1 to 4,096 identical positional
+          members become one repeated-item schema. A <code>false</code>
+          <code>additionalItems</code> tail becomes <code>maxItems</code> at
+          the tuple length; an identical tail remains unbounded. An absent or
+          <code>true</code> tail is accepted for an arbitrary-JSON item shape or when the
+          explicit maximum makes the tail unreachable; a different schema tail
+          requires that same maximum proof. Canonical export again uses
+          schema-valued
+          <code>items</code> and an optional <code>maxItems</code>, so generated
+          Rust and C# need no positional-array IR or runtime path. Draft 2020-12
+          array-valued <code>items</code> and all reachable heterogeneous
+          positional shapes reject during import.
+        </p>
+
+        <p>
           Embedded object property dependencies are enforced on input and
           normalized output too. Whenever a trigger property is present, every
           dependent property must be present. Explicit JSON null counts as

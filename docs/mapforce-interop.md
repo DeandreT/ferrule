@@ -206,13 +206,26 @@ object/array constraints and export canonically as `dependentSchemas`.
 Repeated rules for a trigger remain conjunctive through export and re-import;
 ordered outer `allOf` branches preserve interleaved trigger declaration order.
 Nested dependent schemas retain the same recursively bounded behavior. Active
-conditional schemas, pattern/unevaluated property keywords, and tuple/prefix
-array schemas still produce the existing actionable schema-fallback diagnostic
-rather than being widened or discarded. Declared Draft 4/6/7 resources use
-legacy schema-valued `dependencies`; declared 2019-09/2020-12 resources use
+conditional schemas, pattern/unevaluated property keywords, and heterogeneous
+positional array schemas still produce the existing actionable schema-fallback
+diagnostic rather than being widened or discarded. Declared Draft 4/6/7
+resources use legacy schema-valued `dependencies`; declared 2019-09/2020-12 use
 modern `dependentSchemas`. Schemas without `$schema` intentionally accept both
 spellings while retaining modern reference-sibling behavior, which preserves
 older MFD schema packages without weakening explicitly declared dialects.
+Referenced JSON arrays using homogeneous legacy tuple-form `items` also remain
+executable through MFD import. Draft 4, 6, 7, and 2019-09 resources, plus
+schemas without `$schema`, normalize 1 to 4,096 identical positional members
+to one repeated item shape. An identical `additionalItems` tail remains
+unbounded, while `false` closes the array at the tuple length. An absent or
+`true` tail is accepted for an arbitrary-JSON item shape or when an explicit
+maximum makes the tail unreachable; a different schema tail requires that
+same maximum proof. The derived maximum intersects explicit
+item-count bounds. MFD schema export writes ordinary schema-valued `items` and
+an optional `maxItems`, so export/re-import and generated Rust/C# use the existing
+homogeneous-array path. Draft 2020-12 array-valued `items`, contradictory
+counts, and reachable heterogeneous members or tails produce the actionable
+schema-fallback diagnostic instead of being reinterpreted as `prefixItems`.
 Referenced JSON objects retain supported `propertyNames` schemas as well.
 Exact false, finite `const`/`enum` names, Unicode-scalar length intervals,
 bounded portable pattern conjunctions/disjunctions, and nonasserting `format`

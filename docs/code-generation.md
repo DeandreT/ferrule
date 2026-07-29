@@ -183,6 +183,18 @@ export uses ordinary `items` plus that bound. Rust and C# therefore execute the
 same existing homogeneous array boundary; heterogeneous prefixes
 and tails remain import-time rejections.
 
+Homogeneous legacy tuple-form `items` uses the same lowering for Draft 4, 6, 7,
+and 2019-09 resources and for schemas without `$schema`. Its 1 to 4,096
+identical positional members become one repeated-item schema. A `false`
+`additionalItems` tail becomes `maxItems` at the tuple length; an identical
+tail remains unbounded. An absent or `true` tail is accepted for an
+arbitrary-JSON item shape or when the explicit maximum makes the tail
+unreachable; a different schema tail requires that same maximum proof.
+Canonical export again uses schema-valued `items` and an optional `maxItems`,
+so generated Rust and C#
+need no positional-array IR or runtime path. Draft 2020-12 array-valued `items`
+and all reachable heterogeneous positional shapes reject during import.
+
 Embedded object-property requirements are enforced on input and generated output:
 explicit JSON null satisfies presence when nullable, while an omitted property
 or Ferrule `Null` does not. Object openness is exact as well: omitted or `true`

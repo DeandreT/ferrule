@@ -29,6 +29,7 @@ mod ref_dialects;
 mod required;
 mod resources;
 mod string_lengths;
+mod tuple_items;
 mod unconstrained;
 mod unique_items;
 mod unsupported_keywords;

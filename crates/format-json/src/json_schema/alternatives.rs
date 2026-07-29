@@ -1077,6 +1077,8 @@ fn ensure_exact_array_shape(
             keyword.as_str(),
             "type"
                 | "items"
+                | "prefixItems"
+                | "additionalItems"
                 | "minItems"
                 | "maxItems"
                 | "contains"

@@ -73,6 +73,10 @@ impl ValidationDialect {
         matches!(self, Self::Draft2020 | Self::Undeclared)
     }
 
+    pub(super) fn supports_legacy_tuple_items(self) -> bool {
+        !matches!(self, Self::Draft2020)
+    }
+
     fn marker(self) -> &'static str {
         match self {
             Self::Draft4 => "draft4",
@@ -248,7 +252,9 @@ impl Loader {
                         );
                     }
                 }
+                let has_tuple_items = object.get("items").is_some_and(serde_json::Value::is_array);
                 if object.contains_key("$ref")
+                    || has_tuple_items
                     || [
                         "propertyNames",
                         "contains",

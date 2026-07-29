@@ -44,8 +44,8 @@ mod formats;
 pub(crate) mod item_counts;
 pub(crate) mod multiples;
 mod patterns;
+mod positional_items;
 pub(crate) mod predicate;
-mod prefix_items;
 pub(crate) mod property_counts;
 pub(crate) mod property_dependencies;
 pub(crate) mod property_names;
@@ -384,7 +384,8 @@ fn parse(
                 node
             }
             ImportedSchemaType::Single("array") => {
-                if let Some(mut node) = prefix_items::normalize(name, schema, doc, active_refs)? {
+                if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)?
+                {
                     node.container_nullable = nullable;
                     ranges::validate_ignored(name, schema)?;
                     multiples::validate_ignored(name, schema)?;
@@ -845,7 +846,7 @@ fn reject_unsupported_object_keywords(
     }
     if dialect.supports_prefix_items()
         && object.contains_key("prefixItems")
-        && !prefix_items::is_direct_array_schema(schema)
+        && !positional_items::is_direct_array_schema(schema)
     {
         return Err(unsupported_union(
             name,
@@ -859,10 +860,18 @@ fn reject_unsupported_object_keywords(
         ));
     }
     if object.get("items").is_some_and(serde_json::Value::is_array) {
-        return Err(unsupported_union(
-            name,
-            "tuple-form array `items` and its `additionalItems` tail are not supported",
-        ));
+        if !dialect.supports_legacy_tuple_items() {
+            return Err(unsupported_union(
+                name,
+                "tuple-form array `items` is not supported in Draft 2020-12",
+            ));
+        }
+        if !positional_items::is_direct_array_schema(schema) {
+            return Err(unsupported_union(
+                name,
+                "tuple-form array `items` normalization requires a direct concrete array schema",
+            ));
+        }
     }
     if dialect.supports_conditionals()
         && object.contains_key("if")
