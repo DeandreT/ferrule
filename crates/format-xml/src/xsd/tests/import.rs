@@ -2331,12 +2331,12 @@ fn named_schema_groups_reject_unrepresentable_shapes_explicitly() {
             "xs:choice and xs:all model groups are not supported",
         ),
         (
-            "any-attribute",
-            r#"<xs:attributeGroup name="Metadata"><xs:anyAttribute/></xs:attributeGroup>
+            "prohibited-attribute",
+            r#"<xs:attributeGroup name="Metadata"><xs:attribute name="legacy" use="prohibited"/></xs:attributeGroup>
                <xs:element name="Root"><xs:complexType>
                  <xs:attributeGroup ref="Metadata"/>
                </xs:complexType></xs:element>"#,
-            "xs:anyAttribute is not supported",
+            "prohibited attributes are not supported",
         ),
     ];
     for (label, declarations, reason) in cases {
@@ -2763,6 +2763,83 @@ fn imports_local_skip_attribute_wildcards_without_losing_runtime_attributes()
 }
 
 #[test]
+fn imports_local_skip_attribute_wildcards_from_named_groups()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_named_attribute_wildcard_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("attributes.xsd"),
+        r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:t="urn:ferrule:named-attribute-wildcard"
+                       targetNamespace="urn:ferrule:named-attribute-wildcard">
+          <xs:attributeGroup name="OpenAttributes">
+            <xs:anyAttribute namespace="##local" processContents="skip"/>
+          </xs:attributeGroup>
+        </xs:schema>"###,
+    )?;
+    let root = dir.join("root.xsd");
+    std::fs::write(
+        &root,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:t="urn:ferrule:named-attribute-wildcard"
+                       targetNamespace="urn:ferrule:named-attribute-wildcard"
+                       elementFormDefault="qualified">
+          <xs:include schemaLocation="attributes.xsd"/>
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:element name="Known" type="xs:string"/>
+          </xs:sequence><xs:attributeGroup ref="t:OpenAttributes"/>
+          </xs:complexType></xs:element>
+        </xs:schema>"#,
+    )?;
+
+    let schema = import_root(&root, Some("{urn:ferrule:named-attribute-wildcard}Root"))?;
+    let input = r#"<Root xmlns="urn:ferrule:named-attribute-wildcard"
+                         token="abc" mode="fast"><Known>value</Known></Root>"#;
+    let instance = from_str(input, &schema)?;
+    let attributes = instance
+        .field(XML_ATTRIBUTES_FIELD)
+        .and_then(Instance::as_repeated)
+        .ok_or("named attribute wildcard values are missing")?;
+    assert_eq!(attributes.len(), 2);
+    assert_eq!(
+        attributes
+            .iter()
+            .filter_map(|attribute| attribute
+                .field(XML_LOCAL_NAME_FIELD)
+                .and_then(Instance::as_scalar))
+            .filter_map(|value| match value {
+                Value::String(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        vec!["token", "mode"]
+    );
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains(r#" token="abc" mode="fast""#), "{output}");
+    assert_eq!(from_str(&output, &schema)?, instance);
+
+    let exported = export(&schema)?;
+    assert!(
+        exported.contains("<xs:anyAttribute namespace=\"##local\" processContents=\"skip\"/>"),
+        "{exported}"
+    );
+    let normalized = dir.join("normalized.xsd");
+    std::fs::write(&normalized, exported)?;
+    let reimported = import_root(
+        &normalized,
+        Some("{urn:ferrule:named-attribute-wildcard}Root"),
+    )?;
+    std::fs::remove_dir_all(dir)?;
+    assert_eq!(reimported, schema);
+    assert_eq!(from_str(&output, &reimported)?, instance);
+    Ok(())
+}
+
+#[test]
 fn local_attribute_wildcards_roundtrip_simple_content() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::temp_dir().join(format!(
         "ferrule_xsd_simple_content_attribute_wildcard_{}.xsd",
@@ -2856,6 +2933,47 @@ fn rejects_attribute_wildcards_outside_the_lossless_local_skip_profile()
             }
             Err(error) => error,
         };
+        std::fs::remove_file(path)?;
+        assert!(
+            matches!(
+                &error,
+                XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
+                    if reason.contains(expected)
+            ),
+            "{label}: {error}"
+        );
+    }
+    for (label, members, expected) in [
+        (
+            "named-lax",
+            r###"<xs:anyAttribute namespace="##local" processContents="lax"/>"###,
+            "processContents=\"skip\"",
+        ),
+        (
+            "named-declared-sibling",
+            r###"<xs:attribute name="known" type="xs:string"/>
+               <xs:anyAttribute namespace="##local" processContents="skip"/>"###,
+            "only attribute declaration",
+        ),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_unsupported_attribute_group_wildcard_{label}_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:attributeGroup name="Metadata">{members}</xs:attributeGroup>
+                  <xs:element name="Root"><xs:complexType>
+                    <xs:attributeGroup ref="Metadata"/>
+                  </xs:complexType></xs:element>
+                </xs:schema>"#
+            ),
+        )?;
+        let error = import_root(&path, Some("Root")).expect_err(
+            "unsupported attribute wildcard inside a named group imported successfully",
+        );
         std::fs::remove_file(path)?;
         assert!(
             matches!(

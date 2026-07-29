@@ -7,7 +7,7 @@ use crate::XmlFormatError;
 
 use super::{
     ParseState, collect_sequence, is_local_qname, is_repeating, local_name, parse_attribute,
-    read_xml_text, top_level,
+    parse_attribute_wildcard, read_xml_text, schema_node_count, top_level,
 };
 
 pub(super) fn resolve_model_group(
@@ -169,11 +169,10 @@ fn parse_attribute_group(
                     attributes.extend(nested);
                 }
                 "anyAttribute" => {
-                    return Err(unsupported(
-                        "attributeGroup",
-                        name,
-                        "xs:anyAttribute is not supported",
-                    ));
+                    let wildcard = parse_attribute_wildcard(&child)?;
+                    if state.reserve_elements(schema_node_count(&wildcard)) {
+                        attributes.push(wildcard);
+                    }
                 }
                 _ => {
                     return Err(unsupported(
