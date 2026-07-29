@@ -125,15 +125,19 @@ A ferrule project is plain JSON built from four main concepts:
 Library hosts execute through `cli::RunOptions`, which combines path overrides,
 bounded typed runtime parameters, and optional tracing. A successful
 `RunOutcome` retains every atomically published file in deterministic
-primary-then-extra target order.
+primary-then-extra target order. `RunOptions::with_target` can instead evaluate
+one primary or named target; unselected target scopes are not evaluated or
+published, while the default all-target mode keeps its collision checks.
 
 Hosts that own transport and persistence can instead use
 `cli::PayloadRunOptions`. Each input carries bounded bytes plus a logical path
 that selects its format and supplies dynamic-source identity. The runner accepts
 named static and dynamic secondary documents and returns bounded serialized
 `PayloadArtifact` values in the same target order without touching output
-paths. SQLite and update-existing XLSX stay on the filesystem runner because
-their behavior depends on persistent prior state.
+paths. It supports the same explicit target selection, including applying a
+logical output-path override to the selected named target. SQLite and
+update-existing XLSX stay on the filesystem runner because their behavior
+depends on persistent prior state.
 
 During execution, source contexts form a stack. Field resolution begins at the
 innermost frame and falls outward, which allows parent values to broadcast into
