@@ -41,8 +41,45 @@ impl fmt::Display for ValidationIssue {
     }
 }
 
+pub(super) fn validate_builtin_call(
+    location: &str,
+    function: &str,
+    argument_count: usize,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let Some(definition) = functions::builtin(function) else {
+        issues.push(ValidationIssue::new(
+            location,
+            format!("unknown function `{function}`"),
+        ));
+        return;
+    };
+    if definition.accepts_arity(argument_count) {
+        return;
+    }
+
+    let arity = definition.arity;
+    let expected = match (arity.maximum(), arity.step()) {
+        (Some(maximum), _) if arity.minimum() == maximum => {
+            format!("exactly {} argument(s)", arity.minimum())
+        }
+        (Some(maximum), _) => format!("{} to {maximum} argument(s)", arity.minimum()),
+        (None, Some(1)) => format!("at least {} argument(s)", arity.minimum()),
+        (None, Some(step)) => format!(
+            "{} argument(s), then complete groups of {step}",
+            arity.minimum()
+        ),
+        (None, None) => format!("at least {} argument(s)", arity.minimum()),
+    };
+    issues.push(ValidationIssue::new(
+        location,
+        format!("function `{function}` expects {expected}, got {argument_count}"),
+    ));
+}
+
 /// Checks graph integrity, source/target paths, scope references, builtin
-/// names, and cycles without reading input data or evaluating expressions.
+/// names and arities, and cycles without reading input data or evaluating
+/// expressions.
 pub fn validate(project: &Project) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
     if project.root.output_path().is_some() && project.target_path.is_some() {
