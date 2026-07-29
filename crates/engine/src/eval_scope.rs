@@ -19,6 +19,10 @@ use crate::recursive_filter;
 use crate::resolve::context_for_position;
 use crate::sequence::eval_sequence;
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
+use crate::trace::{
+    TraceEvent, TraceFilterPhase, TraceGrouping, TraceOutputKind, TraceScope, TraceSortKey,
+    TraceValue, TraceWindow, bounded_text, record, scope_iteration, trace_positions,
+};
 use crate::{DynamicSourceLoader, EngineError};
 
 struct GroupBucket {
@@ -44,11 +48,13 @@ struct ProducedItem {
 struct ItemEvaluator<'a> {
     program: EvalProgram<'a>,
     scope: &'a Scope,
+    trace_scope: &'a TraceScope,
     target: Option<&'a ir::SchemaNode>,
     extra_sources: &'a [NamedSource],
     source_loader: Option<&'a dyn DynamicSourceLoader>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_scope(
     program: EvalProgram<'_>,
     scope: &Scope,
@@ -57,10 +63,16 @@ pub(crate) fn eval_scope(
     positions: &[PositionFrame],
     extra_sources: &[NamedSource],
     source_loader: Option<&dyn DynamicSourceLoader>,
+    trace_scope: &TraceScope,
 ) -> Result<Instance, EngineError> {
+    record(program.trace_sink, || TraceEvent::ScopeStarted {
+        scope: trace_scope.clone(),
+        iteration: scope_iteration(&scope.iteration),
+        positions: trace_positions(positions),
+    });
     if let Some(segments) = scope.concatenated() {
         let mut output = Vec::new();
-        for segment in segments.iter() {
+        for (index, segment) in segments.iter().enumerate() {
             match eval_scope(
                 program,
                 segment,
@@ -69,6 +81,7 @@ pub(crate) fn eval_scope(
                 positions,
                 extra_sources,
                 source_loader,
+                &trace_scope.segment(index),
             )? {
                 item @ Instance::Group(_) => output.push(item),
                 Instance::Repeated(items) | Instance::MappedSequence(items) => output.extend(items),
@@ -82,7 +95,7 @@ pub(crate) fn eval_scope(
                 }
             }
         }
-        return Ok(match scope.iteration_output {
+        let result = match scope.iteration_output {
             IterationOutput::Repeated => Instance::Repeated(output),
             IterationOutput::MappedSequence => Instance::MappedSequence(output),
             IterationOutput::First => {
@@ -90,7 +103,14 @@ pub(crate) fn eval_scope(
                     found: "a first-item wrapper",
                 });
             }
+        };
+        record(program.trace_sink, || TraceEvent::ScopeFinished {
+            scope: trace_scope.clone(),
+            candidates: segments.len(),
+            produced: output_len(&result),
+            kind: TraceOutputKind::of(&result),
         });
+        return Ok(result);
     }
     let sequence_items = scope
         .sequence()
@@ -235,10 +255,25 @@ pub(crate) fn eval_scope(
                 }),
         }
     };
+    let candidate_count = extensions.len();
+    for (ordinal, extension) in extensions.iter().enumerate() {
+        let mut candidate_positions = positions.to_vec();
+        candidate_positions.extend(extension.positions.iter().cloned());
+        record(program.trace_sink, || TraceEvent::IterationCandidate {
+            scope: trace_scope.clone(),
+            ordinal: ordinal + 1,
+            positions: trace_positions(&candidate_positions),
+        });
+    }
 
     let filter_before_sort = scope.filter.is_some()
         && scope.has_sort()
         && scope.sort_filter_order == SortFilterOrder::FilterThenSort;
+    let selection_filter_phase = if scope.has_sort() {
+        TraceFilterPhase::AfterSort
+    } else {
+        TraceFilterPhase::Selection
+    };
     if filter_before_sort {
         let mut filtered = Vec::with_capacity(extensions.len());
         for extension in extensions {
@@ -246,7 +281,14 @@ pub(crate) fn eval_scope(
             item_context.extend(extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
             item_positions.extend(extension.positions.iter().cloned());
-            if passes_filter(program, scope.filter, &item_context, &item_positions)? {
+            if passes_scope_filter(
+                program,
+                scope.filter,
+                TraceFilterPhase::BeforeSort,
+                trace_scope,
+                &item_context,
+                &item_positions,
+            )? {
                 filtered.push(extension);
             }
         }
@@ -272,6 +314,19 @@ pub(crate) fn eval_scope(
                     &mut in_progress,
                 )?);
             }
+            record(program.trace_sink, || TraceEvent::SortCandidate {
+                scope: trace_scope.clone(),
+                positions: trace_positions(&item_positions),
+                keys: sort_keys
+                    .iter()
+                    .zip(&values)
+                    .map(|(key, value)| TraceSortKey {
+                        node: key.node,
+                        descending: key.descending,
+                        value: TraceValue::new(value),
+                    })
+                    .collect(),
+            });
             keyed.push((extension, values));
         }
         keyed.sort_by(|(_, left), (_, right)| {
@@ -292,7 +347,14 @@ pub(crate) fn eval_scope(
             .into_iter()
             .enumerate()
             .map(|(index, (mut extension, _))| {
+                let mut input_positions = positions.to_vec();
+                input_positions.extend(extension.positions.iter().cloned());
                 renumber_extension(&mut extension.positions, index + 1);
+                record(program.trace_sink, || TraceEvent::SortPosition {
+                    scope: trace_scope.clone(),
+                    positions: trace_positions(&input_positions),
+                    output_index: index + 1,
+                });
                 extension
             })
             .collect();
@@ -313,25 +375,40 @@ pub(crate) fn eval_scope(
     if scope.has_conflicting_grouping() {
         return Err(EngineError::ConflictingGroupingModes);
     }
-    let grouping = if let Some(node) = scope.group_by {
-        Some(GroupingMode::By(node))
+    let (grouping, trace_grouping) = if let Some(node) = scope.group_by {
+        (
+            Some(GroupingMode::By(node)),
+            Some(TraceGrouping::By { node }),
+        )
     } else if let Some(node) = scope.group_adjacent_by {
-        Some(GroupingMode::AdjacentBy(node))
+        (
+            Some(GroupingMode::AdjacentBy(node)),
+            Some(TraceGrouping::AdjacentBy { node }),
+        )
     } else if let Some(node) = scope.group_starting_with {
-        Some(GroupingMode::StartingWith(node))
+        (
+            Some(GroupingMode::StartingWith(node)),
+            Some(TraceGrouping::StartingWith { node }),
+        )
     } else if let Some(node) = scope.group_ending_with {
-        Some(GroupingMode::EndingWith(node))
+        (
+            Some(GroupingMode::EndingWith(node)),
+            Some(TraceGrouping::EndingWith { node }),
+        )
     } else if let Some(node) = scope.group_into_blocks {
-        Some(GroupingMode::IntoBlocks(eval_block_size(
-            program, node, context, positions,
-        )?))
+        let size = eval_block_size(program, node, context, positions)?;
+        (
+            Some(GroupingMode::IntoBlocks(size)),
+            Some(TraceGrouping::IntoBlocks { node, size }),
+        )
     } else {
-        None
+        (None, None)
     };
     let mut produced = Vec::new();
     let item_evaluator = ItemEvaluator {
         program,
         scope,
+        trace_scope,
         target,
         extra_sources,
         source_loader,
@@ -345,7 +422,14 @@ pub(crate) fn eval_scope(
             let mut item_positions = positions.to_vec();
             item_positions.extend(extension.positions.iter().cloned());
             if !filter_before_sort
-                && !passes_filter(program, scope.filter, &item_context, &item_positions)?
+                && !passes_scope_filter(
+                    program,
+                    scope.filter,
+                    selection_filter_phase,
+                    trace_scope,
+                    &item_context,
+                    &item_positions,
+                )?
             {
                 continue;
             }
@@ -370,26 +454,38 @@ pub(crate) fn eval_scope(
                 | GroupingMode::IntoBlocks(_) => None,
             };
             let starts_group = match grouping {
-                GroupingMode::StartingWith(predicate) => {
-                    passes_filter(program, Some(predicate), &item_context, &item_positions)?
-                }
+                GroupingMode::StartingWith(predicate) => passes_scope_filter(
+                    program,
+                    Some(predicate),
+                    TraceFilterPhase::GroupStarting,
+                    trace_scope,
+                    &item_context,
+                    &item_positions,
+                )?,
                 GroupingMode::By(_)
                 | GroupingMode::AdjacentBy(_)
                 | GroupingMode::EndingWith(_)
                 | GroupingMode::IntoBlocks(_) => false,
             };
             let ends_group = match grouping {
-                GroupingMode::EndingWith(predicate) => {
-                    passes_filter(program, Some(predicate), &item_context, &item_positions)?
-                }
+                GroupingMode::EndingWith(predicate) => passes_scope_filter(
+                    program,
+                    Some(predicate),
+                    TraceFilterPhase::GroupEnding,
+                    trace_scope,
+                    &item_context,
+                    &item_positions,
+                )?,
                 GroupingMode::By(_)
                 | GroupingMode::AdjacentBy(_)
                 | GroupingMode::StartingWith(_)
                 | GroupingMode::IntoBlocks(_) => false,
             };
-            let post_filter_match = passes_filter(
+            let post_filter_match = passes_scope_filter(
                 program,
                 scope.post_group_filter,
+                TraceFilterPhase::PostGroupMember,
+                trace_scope,
                 &item_context,
                 &item_positions,
             )?;
@@ -432,6 +528,19 @@ pub(crate) fn eval_scope(
             }
             ending_group_closed = ends_group;
         }
+        if let Some(trace_grouping) = trace_grouping {
+            for (index, group) in groups.iter().enumerate() {
+                record(program.trace_sink, || TraceEvent::GroupProduced {
+                    scope: trace_scope.clone(),
+                    grouping: trace_grouping,
+                    group_index: index + 1,
+                    member_count: group.members.len(),
+                    key: group.key.as_ref().map(TraceValue::new),
+                    retained: group.post_filter_match,
+                    positions: trace_positions(&group.positions),
+                });
+            }
+        }
         // Position frames stay in order, with the named collection wrapper
         // immediately before the grouped members.
         let owned: Vec<OwnedGroup> = groups
@@ -451,7 +560,7 @@ pub(crate) fn eval_scope(
                 }
             })
             .collect();
-        let owned = apply_sequence_windows(owned, &windows);
+        let owned = apply_sequence_windows(owned, &windows, program.trace_sink, trace_scope);
         produced.reserve(owned.len());
         for group in &owned {
             let parent_wrappers = positions.iter().filter(|position| position.grouped).count();
@@ -485,13 +594,20 @@ pub(crate) fn eval_scope(
                 item_context.extend(extension.instances.iter().copied());
                 let mut item_positions = positions.to_vec();
                 item_positions.extend(extension.positions.iter().cloned());
-                if passes_filter(program, scope.filter, &item_context, &item_positions)? {
+                if passes_scope_filter(
+                    program,
+                    scope.filter,
+                    selection_filter_phase,
+                    trace_scope,
+                    &item_context,
+                    &item_positions,
+                )? {
                     filtered.push(extension);
                 }
             }
             extensions = filtered;
         }
-        extensions = apply_sequence_windows(extensions, &windows);
+        extensions = apply_sequence_windows(extensions, &windows, program.trace_sink, trace_scope);
         produced.reserve(extensions.len());
         let mut compact_positions: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
         let renumber_output = scope.filter.is_some() || scope.has_sort() || !windows.is_empty();
@@ -537,7 +653,8 @@ pub(crate) fn eval_scope(
         }
     }
 
-    if let Some(node) = scope.output_path() {
+    let produced_count = produced.len();
+    let result = if let Some(node) = scope.output_path() {
         let documents = produced
             .into_iter()
             .map(|produced| {
@@ -548,7 +665,7 @@ pub(crate) fn eval_scope(
                     .ok_or(EngineError::EmptyDynamicTargetPath { node })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(Instance::DocumentSet(documents))
+        Instance::DocumentSet(documents)
     } else {
         finalize_scope_output(
             scope,
@@ -557,8 +674,15 @@ pub(crate) fn eval_scope(
                 .into_iter()
                 .map(|produced| produced.instance)
                 .collect(),
-        )
-    }
+        )?
+    };
+    record(program.trace_sink, || TraceEvent::ScopeFinished {
+        scope: trace_scope.clone(),
+        candidates: candidate_count,
+        produced: produced_count,
+        kind: TraceOutputKind::of(&result),
+    });
+    Ok(result)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -568,6 +692,18 @@ enum EvaluatedWindow {
     From(usize),
     FromTo { first: usize, last: usize },
     Last(usize),
+}
+
+impl From<EvaluatedWindow> for TraceWindow {
+    fn from(window: EvaluatedWindow) -> Self {
+        match window {
+            EvaluatedWindow::SkipFirst(count) => Self::SkipFirst(count),
+            EvaluatedWindow::First(count) => Self::First(count),
+            EvaluatedWindow::From(position) => Self::From(position),
+            EvaluatedWindow::FromTo { first, last } => Self::FromTo { first, last },
+            EvaluatedWindow::Last(count) => Self::Last(count),
+        }
+    }
 }
 
 fn eval_sequence_window(
@@ -596,8 +732,14 @@ fn eval_sequence_window(
     })
 }
 
-fn apply_sequence_windows<T>(mut items: Vec<T>, windows: &[EvaluatedWindow]) -> Vec<T> {
-    for window in windows {
+fn apply_sequence_windows<T>(
+    mut items: Vec<T>,
+    windows: &[EvaluatedWindow],
+    trace_sink: Option<&dyn crate::TraceSink>,
+    trace_scope: &TraceScope,
+) -> Vec<T> {
+    for (index, window) in windows.iter().enumerate() {
+        let before = items.len();
         items = match *window {
             EvaluatedWindow::SkipFirst(count) => items.into_iter().skip(count).collect(),
             EvaluatedWindow::First(count) => items.into_iter().take(count).collect(),
@@ -614,6 +756,13 @@ fn apply_sequence_windows<T>(mut items: Vec<T>, windows: &[EvaluatedWindow]) -> 
                 items.into_iter().skip(skip).collect()
             }
         };
+        record(trace_sink, || TraceEvent::WindowApplied {
+            scope: trace_scope.clone(),
+            window_index: index + 1,
+            window: (*window).into(),
+            before,
+            after: items.len(),
+        });
     }
     items
 }
@@ -700,6 +849,12 @@ impl ItemEvaluator<'_> {
                 }
             })
             .transpose()?;
+        record(self.program.trace_sink, || TraceEvent::TargetProduced {
+            scope: self.trace_scope.clone(),
+            positions: trace_positions(output_positions),
+            output_path: output_path.as_deref().map(bounded_text),
+            kind: TraceOutputKind::of(&instance),
+        });
         Ok(Some(ProducedItem {
             instance,
             output_path,
@@ -716,11 +871,26 @@ impl ItemEvaluator<'_> {
         let Self {
             program,
             scope,
+            trace_scope,
             target,
             extra_sources,
             source_loader,
         } = *self;
-        if apply_filter && !passes_filter(program, scope.filter, context, filter_positions)? {
+        let filter_phase = if scope.has_sort() {
+            TraceFilterPhase::AfterSort
+        } else {
+            TraceFilterPhase::Selection
+        };
+        if apply_filter
+            && !passes_scope_filter(
+                program,
+                scope.filter,
+                filter_phase,
+                trace_scope,
+                context,
+                filter_positions,
+            )?
+        {
             return Ok(None);
         }
 
@@ -824,7 +994,7 @@ impl ItemEvaluator<'_> {
                 target,
             )?;
         }
-        for child in &scope.children {
+        for (index, child) in scope.children.iter().enumerate() {
             let child_target = target.and_then(|schema| schema.child(&child.target_field));
             let child_instance = eval_scope(
                 program,
@@ -834,10 +1004,11 @@ impl ItemEvaluator<'_> {
                 output_positions,
                 extra_sources,
                 source_loader,
+                &trace_scope.child(&child.target_field, index),
             )?;
             insert_target_field(&mut fields, child.target_field.clone(), child_instance)?;
         }
-        for child in &scope.dynamic_children {
+        for (index, child) in scope.dynamic_children.iter().enumerate() {
             if child.scope.iteration_output == IterationOutput::MappedSequence {
                 return Err(EngineError::MappedSequenceDynamicTarget);
             }
@@ -851,6 +1022,7 @@ impl ItemEvaluator<'_> {
                 output_positions,
                 extra_sources,
                 source_loader,
+                &trace_scope.child("<dynamic>", scope.children.len().saturating_add(index)),
             )?;
             dynamic_target::insert_dynamic_target_field(&mut fields, key, child_instance, target)?;
         }
@@ -989,5 +1161,35 @@ fn passes_filter(
             node: filter_node,
             found: other.type_name(),
         }),
+    }
+}
+
+fn passes_scope_filter(
+    program: EvalProgram<'_>,
+    filter: Option<NodeId>,
+    phase: TraceFilterPhase,
+    trace_scope: &TraceScope,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+) -> Result<bool, EngineError> {
+    let Some(node) = filter else {
+        return Ok(true);
+    };
+    let passed = passes_filter(program, Some(node), context, positions)?;
+    record(program.trace_sink, || TraceEvent::FilterDecision {
+        scope: trace_scope.clone(),
+        node,
+        phase,
+        positions: trace_positions(positions),
+        passed,
+    });
+    Ok(passed)
+}
+
+fn output_len(instance: &Instance) -> usize {
+    match instance {
+        Instance::Repeated(items) | Instance::MappedSequence(items) => items.len(),
+        Instance::DocumentSet(documents) => documents.len(),
+        Instance::Scalar(_) | Instance::Group(_) => 1,
     }
 }

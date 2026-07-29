@@ -33,7 +33,10 @@ mod output_documents;
 mod payload;
 
 pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
-pub use engine::{TargetSelection, TraceEvent, TracePosition, TraceSink};
+pub use engine::{
+    TargetSelection, TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind,
+    TracePosition, TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceValue, TraceWindow,
+};
 use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 pub use payload::{
     MAX_PAYLOAD_ARTIFACTS, MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_NAME_BYTES,
