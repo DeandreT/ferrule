@@ -480,7 +480,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
                             })
                         });
                         if string_parse {
-                            match read_flextext_component(&component, path)
+                            match read_flextext_component(&component, resources)
                                 .and_then(|schema| flextext_parser::read(&component, schema))
                             {
                                 Ok(parser) => flextext_parsers.push(parser),
@@ -495,7 +495,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
                                 }
                             }
                         } else {
-                            match read_flextext_component(&component, path) {
+                            match read_flextext_component(&component, resources) {
                                 Ok(schema) => schema_components.push(schema),
                                 Err(reason) => {
                                     note_skipped_library(&mut skipped_libraries, "text/flextext");
@@ -555,7 +555,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
                     }
                 }
                 "pdf" if component.attribute("kind") == Some("34") => {
-                    match read_pdf_component(&component, path, &mut warnings) {
+                    match read_pdf_component(&component, resources, &mut warnings) {
                         Ok(component) => schema_components.push(component),
                         Err(reason) => {
                             note_skipped_library(&mut skipped_libraries, "pdf");
@@ -564,7 +564,7 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
                     }
                 }
                 "xbrl" if component.attribute("kind") == Some("27") => {
-                    match read_xbrl_component(&component, path, &mut warnings) {
+                    match read_xbrl_component(&component, resources, &mut warnings) {
                         Ok(component) => schema_components.push(component),
                         Err(reason) => {
                             note_skipped_library(&mut skipped_libraries, "xbrl");
