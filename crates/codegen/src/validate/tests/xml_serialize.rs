@@ -110,6 +110,29 @@ fn validates_xml_serializer_source_schema_cardinality_and_namespace() {
     );
     assert_eq!(validate_program(&repeating_choice), Ok(()));
 
+    let mut expanded_names = xml_program();
+    let Expression::XmlSerialize { schema, .. } = &mut expanded_names.expressions[0].expression
+    else {
+        panic!("fixture has XML serialization expression");
+    };
+    let name = SchemaNode::scalar("Name", ScalarType::String)
+        .xml_qualified("urn:ferrule:xml-name:first")
+        .and_then(|name| {
+            name.with_xml_name_alternatives(vec![ir::XmlNamespace::qualified(
+                "urn:ferrule:xml-name:second",
+            )?])
+        })
+        .unwrap_or_else(|| panic!("fixture expanded names are valid"));
+    **schema = SchemaNode::group("Item", vec![name]);
+    assert_eq!(
+        validate_program(&expanded_names),
+        Err(ProgramValidationError::UnsupportedXmlSerializeSchema {
+            node: 1,
+            schema: "Item".into(),
+            feature: "ambiguous expanded XML element names",
+        })
+    );
+
     let alternatives = vec![
         ir::GroupAlternative {
             name: "{urn:ferrule:test}Named".into(),

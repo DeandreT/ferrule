@@ -39,9 +39,11 @@ layout and dialect details that an extension cannot express.
   wildcards resolved to exact singular or repeating typed choices, and direct
   or named-attribute-group skip attribute wildcards are supported. Open/lax and
   unresolved validating wildcard shapes remain outside the subset.
-  Because mapping paths use local field names,
-  sibling declarations cannot differ only by namespace; XSD import rejects that
-  ambiguous shape explicitly.
+  Because mapping paths use local field names, strict wildcard declarations
+  with the same local name collapse onto one port only when their complete
+  typed shapes match. The port retains every exact expanded name and ordered
+  runtime occurrences retain the selected namespace. Incompatible same-local
+  declarations reject explicitly.
 - JSON Schema supports compatible structural `allOf` intersections across objects,
   scalar domains, and matching arrays, selected object alternatives, exact nullable
   scalar/object/array wrappers and flat compatible multi-branch nullable

@@ -72,6 +72,14 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.xml_name_alternatives_are_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "XML expanded-name metadata{suffix} requires one ordinary exact-name element with unique alternative namespaces"
+            ),
+        ));
+    }
     if !schema.xml_repeating_sequences_are_valid() {
         issues.push(ValidationIssue::new(
             root,

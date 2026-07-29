@@ -961,13 +961,56 @@ impl SchemaNode {
     /// Marks this XML name as explicitly unqualified.
     pub fn xml_unqualified(mut self) -> Self {
         self.xml_namespace = Some(XmlNamespace::Unqualified);
+        self.xml_name_alternatives.clear();
         self
     }
 
     /// Marks this XML name as belonging to a non-empty namespace URI.
     pub fn xml_qualified(mut self, uri: impl Into<String>) -> Option<Self> {
         self.xml_namespace = Some(XmlNamespace::qualified(uri)?);
+        self.xml_name_alternatives.clear();
         Some(self)
+    }
+
+    /// Adds exact namespace identities for XML elements that share this
+    /// mapping-port local name and complete typed shape.
+    pub fn with_xml_name_alternatives(mut self, alternatives: Vec<XmlNamespace>) -> Option<Self> {
+        let previous = std::mem::replace(&mut self.xml_name_alternatives, alternatives);
+        if self.xml_name_alternatives_are_valid() {
+            Some(self)
+        } else {
+            self.xml_name_alternatives = previous;
+            None
+        }
+    }
+
+    pub fn xml_name_alternatives_are_valid(&self) -> bool {
+        if self.xml_name_alternatives.is_empty() {
+            return true;
+        }
+        let Some(primary) = &self.xml_namespace else {
+            return false;
+        };
+        !self.attribute
+            && !self.text
+            && self.recursive_ref.is_none()
+            && self.xml_alternative_kind != XmlAlternativeKind::SubstitutionGroup
+            && self
+                .xml_name_alternatives
+                .iter()
+                .enumerate()
+                .all(|(index, namespace)| {
+                    namespace != primary && !self.xml_name_alternatives[..index].contains(namespace)
+                })
+    }
+
+    /// Returns whether one runtime XML namespace is an exact accepted name
+    /// identity for this local element.
+    pub fn xml_namespace_matches(&self, namespace: Option<&str>) -> bool {
+        self.xml_namespace
+            .iter()
+            .chain(&self.xml_name_alternatives)
+            .any(|candidate| candidate.matches(namespace))
     }
 
     pub fn with_xml_wildcard_namespace(
@@ -2580,6 +2623,43 @@ mod tests {
             r#"{"name":"Code","xml_namespace":{"kind":"qualified","uri":""},"kind":{"kind":"scalar","ty":"string"}}"#,
         )
         .is_err());
+    }
+
+    #[test]
+    fn xml_name_alternatives_require_unique_exact_element_names() {
+        let primary =
+            XmlNamespace::qualified("urn:ferrule:name:first").unwrap_or(XmlNamespace::Unqualified);
+        let alternate =
+            XmlNamespace::qualified("urn:ferrule:name:second").unwrap_or(XmlNamespace::Unqualified);
+        let schema = SchemaNode::scalar("Note", ScalarType::String)
+            .xml_qualified("urn:ferrule:name:first")
+            .and_then(|schema| schema.with_xml_name_alternatives(vec![alternate.clone()]))
+            .unwrap_or_else(|| SchemaNode::scalar("invalid", ScalarType::String));
+        assert!(schema.xml_namespace_matches(primary.uri()));
+        assert!(schema.xml_namespace_matches(alternate.uri()));
+        let encoded = serde_json::to_string(&schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            schema
+        );
+
+        assert!(
+            SchemaNode::scalar("Note", ScalarType::String)
+                .with_xml_name_alternatives(vec![alternate.clone()])
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Note", ScalarType::String)
+                .xml_qualified("urn:ferrule:name:first")
+                .and_then(
+                    |schema| schema.with_xml_name_alternatives(vec![alternate.clone(), alternate,])
+                )
+                .is_none()
+        );
+        let legacy: SchemaNode =
+            serde_json::from_str(r#"{"name":"Note","kind":{"kind":"scalar","ty":"string"}}"#)
+                .unwrap();
+        assert!(legacy.xml_name_alternatives.is_empty());
     }
 
     #[test]
