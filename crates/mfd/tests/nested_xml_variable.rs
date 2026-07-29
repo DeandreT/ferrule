@@ -249,9 +249,39 @@ fn ambiguous_nested_variable_construction_warns_once() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn genuinely_nested_repetition_warns_once() -> Result<(), Box<dyn Error>> {
+fn unconnected_nested_repetition_does_not_block_projected_siblings() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
     let imported = mfd::import(&write_fixture(&dir.0, VariableShape::NestedRepetition)?)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    assert_execution(&imported.project)?;
+
+    let exported = dir.0.join("nested-round-trip.mfd");
+    let warnings = mfd::export(&imported.project, &exported)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&exported)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_execution(&reimported.project)?;
+    Ok(())
+}
+
+#[test]
+fn projection_across_nested_repetition_remains_unsupported() -> Result<(), Box<dyn Error>> {
+    let dir = TempDir::new()?;
+    let design = write_fixture(&dir.0, VariableShape::NestedRepetition)?;
+    let mapping = std::fs::read_to_string(&design)?
+        .replace(
+            r#"<entry name="Qty" inpkey="15"/></entry>"#,
+            r#"<entry name="Qty" inpkey="15"/><entry name="Detail"><entry name="Value" inpkey="16"/></entry></entry>"#,
+        )
+        .replace(
+            r#"<vertex vertexkey="3"><edges><edge vertexkey="14"/></edges></vertex>"#,
+            r#"<vertex vertexkey="3"><edges><edge vertexkey="14"/><edge vertexkey="16"/></edges></vertex>"#,
+        );
+    write(&design, &mapping)?;
+
+    let imported = mfd::import(&design)?;
     let warnings = imported
         .warnings
         .iter()
