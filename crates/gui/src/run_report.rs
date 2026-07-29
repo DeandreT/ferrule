@@ -422,7 +422,7 @@ fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
                 .map(format_trace_position)
                 .collect::<Vec<_>>()
                 .join(" > ");
-            let value = serde_json::to_string(value).unwrap_or_else(|_| format!("{value:?}"));
+            let value = format_trace_value(value);
             if context.is_empty() {
                 format!("{prefix}  node {node:<6}  {value}")
             } else {
@@ -785,10 +785,23 @@ mod tests {
     use super::*;
 
     fn trace_event(node: mapping::NodeId, value: ir::Value) -> cli::TraceEvent {
+        let (value_type, preview) = match value {
+            ir::Value::Null => ("null", "null".to_owned()),
+            ir::Value::JsonNull(_) => ("json-null", "json-null".to_owned()),
+            ir::Value::XmlNil(_) => ("xml-nil", "xml-nil".to_owned()),
+            ir::Value::Bool(value) => ("bool", value.to_string()),
+            ir::Value::Int(value) => ("int", value.to_string()),
+            ir::Value::Float(value) => ("float", value.to_string()),
+            ir::Value::String(value) => ("string", value),
+        };
         cli::TraceEvent::NodeValue {
             node,
             positions: Vec::new(),
-            value,
+            value: cli::TraceValue {
+                value_type,
+                preview,
+                truncated: false,
+            },
         }
     }
 

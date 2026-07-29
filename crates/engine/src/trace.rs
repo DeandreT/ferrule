@@ -240,7 +240,7 @@ pub enum TraceEvent {
     NodeValue {
         node: NodeId,
         positions: Vec<TracePosition>,
-        value: Value,
+        value: TraceValue,
     },
     ScopeStarted {
         scope: TraceScope,
@@ -341,7 +341,7 @@ pub(crate) fn record_node_value(
     sink.record(TraceEvent::NodeValue {
         node,
         positions: positions.iter().map(TracePosition::from).collect(),
-        value: value.clone(),
+        value: TraceValue::new(value),
     });
 }
 
