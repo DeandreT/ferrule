@@ -731,6 +731,14 @@ fn render_user_function_expression(
             output.push_str(runtime_value_name(*value));
             output.push_str(");\n");
         }
+        Expression::RuntimeParameter { name, ty } => {
+            output.push_str(" =>\n        context.ResolveRuntimeParameter(");
+            output.push_str(&format!("{node}U, "));
+            output.push_str(&literal::string(name));
+            output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
+            output.push_str(scalar_type_name(*ty));
+            output.push_str(");\n");
+        }
         Expression::Call {
             function: builtin,
             args,

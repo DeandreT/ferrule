@@ -34,7 +34,27 @@ fn runtime_project() -> Project {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
-        user_functions: Default::default(),
+        user_functions: BTreeMap::from([(
+            FunctionId::new(1),
+            UserFunction {
+                library: "tests".into(),
+                name: "correlation".into(),
+                description: None,
+                parameters: Vec::new(),
+                output_name: "value".into(),
+                output_type: ScalarType::String,
+                body: Graph {
+                    nodes: BTreeMap::from([(
+                        10,
+                        Node::RuntimeParameter {
+                            name: "correlation_id".into(),
+                            ty: ScalarType::String,
+                        },
+                    )]),
+                },
+                output: 10,
+            },
+        )]),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
@@ -98,9 +118,9 @@ fn runtime_project() -> Project {
                 ),
                 (
                     10,
-                    Node::RuntimeParameter {
-                        name: "correlation_id".into(),
-                        ty: ScalarType::String,
+                    Node::UserFunctionCall {
+                        function: FunctionId::new(1),
+                        args: Vec::new(),
                     },
                 ),
                 (

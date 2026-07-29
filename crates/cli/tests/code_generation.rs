@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cli::{GenerateOutcome, GenerateTarget, generate_project};
 use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
+use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, UserFunction};
 
 #[path = "code_generation/adjacency_tree.rs"]
 mod adjacency_tree;
