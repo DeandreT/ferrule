@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ir::{Instance, SchemaKind};
+use ir::{Instance, NumericRange, SchemaKind};
 
 struct TempDir(PathBuf);
 
@@ -54,7 +54,8 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
       "oneOf":[
         {"type":"number","minimum":0},
         {"type":"null"}
-      ]
+      ],
+      "exclusiveMaximum":20
     },
     "Status":{"type":"string","const":"ready"}
   }
@@ -109,6 +110,22 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .ok_or("missing nullable amount")?;
     assert!(amount.nullable);
     assert!(matches!(amount.kind, SchemaKind::Scalar { .. }));
+    let Some(NumericRange::Number(amount_range)) = amount.numeric_range else {
+        return Err("missing nullable amount range".into());
+    };
+    assert_eq!(
+        amount_range.minimum().map(|bound| bound.value().get()),
+        Some(0.0)
+    );
+    assert_eq!(
+        amount_range.maximum().map(|bound| bound.value().get()),
+        Some(20.0)
+    );
+    assert!(
+        amount_range
+            .maximum()
+            .is_some_and(|bound| bound.is_exclusive())
+    );
     assert_eq!(
         imported
             .project

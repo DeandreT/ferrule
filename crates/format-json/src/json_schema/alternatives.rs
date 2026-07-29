@@ -225,15 +225,43 @@ pub(super) fn parse_nullable_scalar_alternatives(
     };
     let first = classify_scalar_alternative(name, &alternatives[0], doc, active_refs)?;
     let second = classify_scalar_alternative(name, &alternatives[1], doc, active_refs)?;
-    let ty = match (first, second) {
-        (ScalarAlternative::Null, ScalarAlternative::Scalar(ty))
-        | (ScalarAlternative::Scalar(ty), ScalarAlternative::Null) => ty,
+    let (ty, content) = match (first, second) {
+        (ScalarAlternative::Null, ScalarAlternative::Scalar(ty)) => (ty, &alternatives[1]),
+        (ScalarAlternative::Scalar(ty), ScalarAlternative::Null) => (ty, &alternatives[0]),
         _ => return Ok(None),
     };
-    ensure_annotation_only(name, schema, keyword)?;
-    let mut node = SchemaNode::scalar(name, ty);
+    ensure_annotation_or_range_only(name, schema, keyword)?;
+    let content = without_ignored_scalar_validation(content);
+    let mut node = parse(name, &content, doc, active_refs)?;
+    if node.repeating || !matches!(node.kind, SchemaKind::Scalar { ty: parsed } if parsed == ty) {
+        return Err(unsupported_union(
+            name,
+            "nullable scalar alternative did not retain one concrete scalar type",
+        ));
+    }
     node.nullable = true;
     Ok(Some(node))
+}
+
+fn without_ignored_scalar_validation(schema: &serde_json::Value) -> serde_json::Value {
+    let mut schema = schema.clone();
+    if let Some(schema) = schema.as_object_mut() {
+        for keyword in [
+            "const",
+            "enum",
+            "format",
+            "pattern",
+            "minLength",
+            "maxLength",
+            "multipleOf",
+            "contentEncoding",
+            "contentMediaType",
+            "contentSchema",
+        ] {
+            schema.remove(keyword);
+        }
+    }
+    schema
 }
 
 /// Removes exact null branches, lowers the remaining composition through its
@@ -272,7 +300,7 @@ pub(super) fn parse_nullable_composition(
             "nullable oneOf null branches overlap",
         ));
     }
-    ensure_annotation_only(name, schema, keyword)?;
+    ensure_annotation_or_range_only(name, schema, keyword)?;
     let mut node = if content.len() == 1 {
         parse(name, &content[0], doc, active_refs)?
     } else {
@@ -281,6 +309,9 @@ pub(super) fn parse_nullable_composition(
             unsupported_union(name, "nullable composition must be a schema object")
         })?;
         object.insert(keyword.to_string(), serde_json::Value::Array(content));
+        for range_keyword in ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"] {
+            object.remove(range_keyword);
+        }
         parse(name, &reduced, doc, active_refs)?
     };
     if node.json_any {
@@ -568,6 +599,33 @@ fn ensure_annotation_only(
     };
     if let Some(keyword) = object.keys().find(|keyword| {
         keyword.as_str() != shape_keyword && !is_annotation_keyword(keyword.as_str())
+    }) {
+        return Err(unsupported_union(
+            union_name,
+            &format!("nullable composition cannot preserve `{keyword}` validation"),
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_annotation_or_range_only(
+    union_name: &str,
+    schema: &serde_json::Value,
+    shape_keyword: &str,
+) -> Result<(), JsonFormatError> {
+    let Some(object) = schema.as_object() else {
+        return Err(unsupported_union(
+            union_name,
+            "nullable scalar alternatives must be schema objects",
+        ));
+    };
+    if let Some(keyword) = object.keys().find(|keyword| {
+        keyword.as_str() != shape_keyword
+            && !is_annotation_keyword(keyword.as_str())
+            && !matches!(
+                keyword.as_str(),
+                "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum"
+            )
     }) {
         return Err(unsupported_union(
             union_name,
