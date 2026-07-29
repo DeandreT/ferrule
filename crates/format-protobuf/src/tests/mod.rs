@@ -272,6 +272,68 @@ fn string_fields_lexically_coerce_finite_scalars() {
 }
 
 #[test]
+fn typed_scalar_fields_coerce_lexical_strings() {
+    let layout = parse(
+        r#"
+        syntax = "proto2";
+        enum State { UNKNOWN = 0; READY = 2; }
+        message Scalars {
+          required int32 signed = 1;
+          required uint64 unsigned = 2;
+          required double ratio = 3;
+          required bool enabled = 4;
+          required State state = 5;
+        }
+        "#,
+    );
+    let lexical = group(vec![
+        ("signed", scalar(Value::String(" -12 ".into()))),
+        ("unsigned", scalar(Value::String("42".into()))),
+        ("ratio", scalar(Value::String(" 1.25 ".into()))),
+        ("enabled", scalar(Value::String(" true ".into()))),
+        ("state", scalar(Value::String(" 2 ".into()))),
+    ]);
+    let bytes = encode(&layout, "Scalars", &lexical);
+
+    assert_eq!(
+        decode(&layout, "Scalars", &bytes),
+        group(vec![
+            ("signed", scalar(Value::Int(-12))),
+            ("unsigned", scalar(Value::Int(42))),
+            ("ratio", scalar(Value::Float(1.25))),
+            ("enabled", scalar(Value::Bool(true))),
+            ("state", scalar(Value::Int(2))),
+        ])
+    );
+}
+
+#[test]
+fn boolean_fields_coerce_only_binary_integer_values() {
+    let layout = parse("message Flags { required bool disabled = 1; required bool enabled = 2; }");
+    let numeric = group(vec![
+        ("disabled", scalar(Value::Int(0))),
+        ("enabled", scalar(Value::Int(1))),
+    ]);
+    let bytes = encode(&layout, "Flags", &numeric);
+
+    assert_eq!(
+        decode(&layout, "Flags", &bytes),
+        group(vec![
+            ("disabled", scalar(Value::Bool(false))),
+            ("enabled", scalar(Value::Bool(true))),
+        ])
+    );
+
+    let invalid = group(vec![
+        ("disabled", scalar(Value::Bool(false))),
+        ("enabled", scalar(Value::Int(2))),
+    ]);
+    let error = error_text(to_vec(&layout, "Flags", &invalid));
+    assert!(error.contains("Flags.enabled"), "{error}");
+    assert!(error.contains("expected bool or 0/1, got int"), "{error}");
+}
+
+#[test]
 fn rejects_invalid_schemas_before_encoding() {
     let cases = [
         (
