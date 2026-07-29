@@ -60,14 +60,16 @@ pub(super) fn restore_connected_structural_ports(
 /// A whole-structure connection to a same-named, typed target group supplies
 /// the missing shape when no descendant connection or competing target shape
 /// makes that inference ambiguous.
-pub(super) fn refine_copied_fallback_source_groups(
+pub(super) fn refine_copied_fallback_source_shapes(
     components: &mut [SchemaComponent],
     edge_from: &BTreeMap<u32, u32>,
     copy_all_targets: &BTreeSet<u32>,
     fallback_source_outputs: &BTreeSet<u32>,
     fallback_target_inputs: &BTreeSet<u32>,
+    warnings: &mut Vec<String>,
 ) {
     let mut inferred = BTreeMap::<(usize, Vec<String>), Option<SchemaNode>>::new();
+    let mut rejected = BTreeSet::<(usize, Vec<String>)>::new();
     for target in components
         .iter()
         .filter(|component| component.format == ComponentFormat::Xml && component.is_target())
@@ -112,11 +114,21 @@ pub(super) fn refine_copied_fallback_source_groups(
             let Some(source_path) = source.ports.get(feed) else {
                 continue;
             };
-            if !schema_node_at(&source.schema, source_path).is_some_and(|node| {
-                plain_entry_tree_leaf(node)
-                    && node.name == target_group.name
-                    && source_path.last() == target_path.last()
-            }) {
+            let Some(source_node) = schema_node_at(&source.schema, source_path) else {
+                continue;
+            };
+            if source_node.name != target_group.name || source_path.last() != target_path.last() {
+                continue;
+            }
+            let key = (source_index, source_path.clone());
+            let recoverable = plain_entry_tree_leaf(source_node)
+                || exact_fallback_alternative_subset(source_node, target_group);
+            if !recoverable {
+                if !source_node.alternatives().is_empty()
+                    && target_group.alternatives().len() > source_node.alternatives().len()
+                {
+                    rejected.insert(key);
+                }
                 continue;
             }
             if source.output_keys.iter().any(|output| {
@@ -126,18 +138,23 @@ pub(super) fn refine_copied_fallback_source_groups(
             }) {
                 continue;
             }
-            let key = (source_index, source_path.clone());
+            let mut replacement = target_group.clone();
+            replacement.xml_namespace = source_node.xml_namespace.clone();
             inferred
-                .entry(key)
+                .entry(key.clone())
                 .and_modify(|candidate| {
-                    if candidate.as_ref() != Some(target_group) {
+                    if candidate.as_ref() != Some(&replacement) {
                         *candidate = None;
+                        rejected.insert(key.clone());
                     }
                 })
-                .or_insert_with(|| Some(target_group.clone()));
+                .or_insert(Some(replacement));
         }
     }
     for ((source_index, source_path), replacement) in inferred {
+        if rejected.contains(&(source_index, source_path.clone())) {
+            continue;
+        }
         let Some(replacement) = replacement else {
             continue;
         };
@@ -147,6 +164,16 @@ pub(super) fn refine_copied_fallback_source_groups(
         {
             *source = replacement;
         }
+    }
+    for (source_index, source_path) in rejected {
+        let component = components
+            .get(source_index)
+            .map(|component| component.name.as_str())
+            .unwrap_or("<unknown>");
+        warnings.push(format!(
+            "fallback XML type alternatives at `{component}/{}` could not be recovered exactly from connected target schemas; conditioned subset retained",
+            source_path.join("/")
+        ));
     }
 }
 
@@ -173,6 +200,61 @@ fn plain_entry_tree_leaf(node: &SchemaNode) -> bool {
                 ty: ir::ScalarType::String
             }
         )
+}
+
+fn exact_fallback_alternative_subset(source: &SchemaNode, target: &SchemaNode) -> bool {
+    if source.name != target.name
+        || source.repeating != target.repeating
+        || source.recursive_ref != target.recursive_ref
+        || source.attribute != target.attribute
+        || source.text != target.text
+        || source.nillable != target.nillable
+        || source.nullable != target.nullable
+        || source.container_nullable != target.container_nullable
+        || source.json_any != target.json_any
+        || source.fixed != target.fixed
+        || source.default != target.default
+        || source.value_generation != target.value_generation
+        || source.alternative_mode != target.alternative_mode
+        || source.xml_alternative_kind != target.xml_alternative_kind
+        || source.xml_repeating_sequences != target.xml_repeating_sequences
+        || source.database_relation != target.database_relation
+        || source
+            .xml_namespace
+            .as_ref()
+            .is_some_and(|namespace| target.xml_namespace.as_ref() != Some(namespace))
+    {
+        return false;
+    }
+    let (
+        SchemaKind::Group {
+            children: source_children,
+            alternatives: source_alternatives,
+            xml_restricted_alternatives: source_restricted,
+            dynamic: source_dynamic,
+        },
+        SchemaKind::Group {
+            children: target_children,
+            alternatives: target_alternatives,
+            xml_restricted_alternatives: target_restricted,
+            dynamic: target_dynamic,
+        },
+    ) = (&source.kind, &target.kind)
+    else {
+        return false;
+    };
+    !source_alternatives.is_empty()
+        && target_alternatives.len() > source_alternatives.len()
+        && source_restricted == target_restricted
+        && source_dynamic == target_dynamic
+        && source_children
+            .iter()
+            .all(|child| target_children.iter().any(|candidate| candidate == child))
+        && source_alternatives.iter().all(|alternative| {
+            target_alternatives
+                .iter()
+                .any(|candidate| candidate == alternative)
+        })
 }
 
 /// An untyped XSD element imports as a scalar, but MapForce can expose an
