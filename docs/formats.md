@@ -32,10 +32,11 @@ layout and dialect details that an extension cannot express.
   siblings and publishes the complete graph atomically. Bounded local-graph
   substitution groups, compatible `complexContent` extension/restriction
   `xsi:type` hierarchies, scalar-text/attribute-only `simpleContent` derivations,
-  exact optional/unbounded `##local`
-  `processContents="skip"` element wildcards, and direct or named-attribute-group
-  `##local` skip attribute wildcards are supported; other derived-type,
-  namespace-aware, and validating wildcard shapes remain outside the subset.
+  exact optional/unbounded `##local` `processContents="skip"` element wildcards
+  declared inline or through named model groups, and direct or
+  named-attribute-group `##local` skip attribute wildcards are supported; other
+  derived-type, namespace-aware, and validating wildcard shapes remain outside
+  the subset.
   Because mapping paths use local field names,
   sibling declarations cannot differ only by namespace; XSD import rejects that
   ambiguous shape explicitly.

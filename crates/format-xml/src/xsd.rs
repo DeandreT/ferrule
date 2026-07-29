@@ -16,8 +16,9 @@
 //! named attribute-only extensions and restrictions participate in executable
 //! `xsi:type` alternatives.
 //! `xs:any` imports only when it is an optional, unbounded, local-name,
-//! skip-validation wildcard that can round-trip through the recursive generic
-//! `element()` group. Other wildcard profiles fail with a typed diagnostic.
+//! skip-validation wildcard declared inline or through a named model group
+//! and can round-trip through the recursive generic `element()` group. Other
+//! wildcard profiles fail with a typed diagnostic.
 //! `xs:anyAttribute` likewise imports as a direct or named-attribute-group
 //! local-name, skip-validation wildcard with no other attribute declaration,
 //! using the repeating generic `attribute()` group.
