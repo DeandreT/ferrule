@@ -112,6 +112,32 @@ paths, ambiguous case-insensitive matches, and symlink escapes reject. Once the
 root schema matches a catalog, its nested local `$ref` graph remains confined
 to that same canonical root.
 
+### Read-only parity surveys
+
+The import/export, execution, and export/re-import execution surveys accept the
+same host-selected package manifest and ordered catalog roots as `import-mfd`.
+Set `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` to the manifest file. Set
+`FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
+`FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS` to platform path lists; roots
+retain their declared order after canonical deduplication. When no manifest is
+selected, the `ReferenceSamples` directory remains the package root.
+
+For example, on Unix:
+
+```sh
+FERRULE_MFD_SURVEY_PACKAGE_MANIFEST=/path/package/ferrule-package.json \
+FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS=/path/edi/current:/path/edi/archive \
+FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS=/path/json/current:/path/json/archive \
+cargo test -p mfd --test samples_survey -- --ignored --nocapture
+```
+
+The same variables apply to `samples_execution_survey`, including its
+`survey_sample_execution` and `survey_export_reimport_execution` entry points,
+and to `codegen_samples_survey`. Version-1 JSON reports retain their existing
+schema version and add an optional `resource_configuration` member. It records
+selection mode, effective catalog counts, and search precedence without
+disclosing package, manifest, or catalog host paths.
+
 Import resolves the supported component graph into ferrule schemas, graph
 nodes, scopes, format options, and endpoints. Current coverage includes common
 XML, JSON, CSV/fixed-width/FlexText, XLSX, SQLite, EDI, Protocol Buffers, XBRL,
@@ -324,12 +350,13 @@ schema-fallback diagnostic instead of being reinterpreted as `prefixItems`.
 Referenced JSON objects retain supported `propertyNames` schemas as well.
 Exact false, finite `const`/`enum` names and their finite `not` complements,
 Unicode-scalar length intervals, bounded portable pattern
-conjunctions/disjunctions, and nonasserting `format` annotations remain
-executable across import, canonical schema export, and re-import. Native and
-generated Rust/C# boundaries check every raw parsed input key and normalized
-emitted key, including runtime-named and empty-string properties.
-Unconstrained forms normalize away; correlated and infinite complements
-produce the existing actionable schema-fallback diagnostic. Each
+conjunctions/disjunctions and their exact complements, and nonasserting
+`format` annotations remain executable across import, canonical schema export,
+and re-import. Native and generated Rust/C# boundaries check every raw parsed
+input key and normalized emitted key, including runtime-named and empty-string
+properties. Unconstrained forms normalize away; correlated predicates and
+complements involving length, format, or mixed assertions produce the existing
+actionable schema-fallback diagnostic. Each
 referenced schema resource retains its dialect: Draft 4 ignores
 `propertyNames`, while Draft 6 and newer resources apply it.
 Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
