@@ -63,6 +63,23 @@
           read.
         </p>
 
+        <h3>Select one target</h3>
+        <p>
+          A project can publish a primary target and additional named targets.
+          Use <code>--target</code> when a run needs only one of them. Unselected
+          target scopes are not evaluated or written; omitting the option keeps
+          all-target execution and its atomic destination-collision checks.
+        </p>
+        <pre><code>cargo +nightly run -p cli -- run \
+  --project project.json \
+  --target audit \
+  --output audit.json
+
+# Select the primary target explicitly
+cargo +nightly run -p cli -- run \
+  --project project.json \
+  --target primary</code></pre>
+
         <h3>Run from host-owned bytes</h3>
         <p>
           Rust services can use <code>cli::PayloadRunOptions</code> to supply
@@ -78,7 +95,10 @@
 )?;
 let result = cli::run_project_payloads(
     std::path::Path::new("project.json"),
-    &amp;cli::PayloadRunOptions::new(input),
+    &amp;cli::PayloadRunOptions::new(input)
+      .with_target(
+        cli::TargetSelection::Named("audit")
+      ),
 )?;</code></pre>
         <p>
           Payload documents are limited to 64 MiB each, all input or output

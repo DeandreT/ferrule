@@ -71,6 +71,20 @@ cargo +nightly run -p cli -- run \
 CLI parameter values begin as strings and are coerced by each declaration's
 scalar type. Names are exact and duplicates are rejected before input is read.
 
+Projects with additional targets can evaluate and publish only one target. This
+is useful when target paths intentionally overlap or a host needs one artifact
+class from a larger mapping:
+
+```sh
+cargo +nightly run -p cli -- run \
+  --project project.json \
+  --target audit \
+  --output audit.json
+```
+
+Use `--target primary` for the primary target. Without `--target`, ferrule
+evaluates every target and atomically rejects destination collisions.
+
 Rust hosts can run the same interpreter without temporary input or output files:
 
 ```rust
@@ -80,7 +94,8 @@ let input = cli::PayloadDocument::new(
 )?;
 let outcome = cli::run_project_payloads(
     std::path::Path::new("project.json"),
-    &cli::PayloadRunOptions::new(input),
+    &cli::PayloadRunOptions::new(input)
+        .with_target(cli::TargetSelection::Named("audit")),
 )?;
 for artifact in outcome.artifacts {
     publish(artifact.path, artifact.bytes)?;
