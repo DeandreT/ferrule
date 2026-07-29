@@ -120,7 +120,7 @@
           Each JSON input and output is capped at 64 MiB and each trusted
           embedded schema at 1 MiB. Invalid shapes, numeric conversions, scalar
           constants, bounded exact scalar allowed-value sets, exact numeric ranges and decimal <code>multipleOf</code>
-          constraints, array item-count intervals, object property-count
+          constraints, array item-count and <code>contains</code> match-count intervals, object property-count
           intervals, object property dependencies, property-name constraints, structural
           <code>uniqueItems</code>, Unicode string-length
           intervals, bounded portable JSON Schema
@@ -146,6 +146,19 @@
           Duplicate input names use the parser's last value and count once.
           Nullable object null bypasses the interval; nested, repeated, primary,
           and named documents apply the same rule.
+        </p>
+
+        <p>
+          Embedded array <code>contains</code> assertions count members accepted
+          by each retained item predicate. Plain assertions require at least one
+          match, while retained <code>minContains</code>/<code>maxContains</code>
+          intervals apply exactly. Input checks the parsed array and output
+          checks the normalized emitted array; nullable array null bypasses the
+          assertions. Multiple compatible <code>allOf</code> assertions are
+          conjunctive, and predicate pattern matching shares the bounded
+          document work budget. Count mismatches remain typed input/output
+          boundary errors, while invalid embedded metadata and matcher work
+          exhaustion remain fatal.
         </p>
 
         <p>

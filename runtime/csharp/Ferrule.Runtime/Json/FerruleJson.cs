@@ -253,6 +253,13 @@ public static partial class FerruleJson
             fixedValue,
             patternContext);
         var itemCountRange = ReadItemCountRange(name, element, repeating);
+        var jsonContains = ReadJsonContains(
+            name,
+            element,
+            repeating,
+            budget,
+            patternContext,
+            depth);
         var propertyCountRange = ReadPropertyCountRange(
             name,
             element,
@@ -369,6 +376,7 @@ public static partial class FerruleJson
             stringLengthRange,
             jsonPatterns,
             itemCountRange,
+            jsonContains,
             propertyCountRange,
             propertyDependencies,
             propertyNames,
@@ -913,12 +921,13 @@ public static partial class FerruleJson
         {
             RequireKind(element, JsonValueKind.Array, schema.Name, "array");
             ValidateItemCount(schema, element.GetArrayLength());
-            ValidateUniqueInputItems(schema, element);
+            ValidateUniqueInputItems(schema, element, budget);
             var items = new List<FerruleInstance>();
             foreach (var item in element.EnumerateArray())
             {
                 items.Add(ReadSingleNode(schema, item, budget, depth + 1));
             }
+            ValidateContainsInputItems(schema, element, budget, depth + 1);
 
             return new FerruleRepeated(items);
         }
@@ -1127,9 +1136,14 @@ public static partial class FerruleJson
             ValidateItemCount(schema, repeated.Items.Count);
 
             writer.WriteStartArray();
-            if (schema.JsonUniqueItems)
+            if (schema.JsonUniqueItems || schema.JsonContains.Count != 0)
             {
-                WriteUniqueOutputItems(writer, schema, repeated.Items, budget, depth + 1);
+                WriteConstrainedOutputItems(
+                    writer,
+                    schema,
+                    repeated.Items,
+                    budget,
+                    depth + 1);
             }
             else
             {
@@ -2395,6 +2409,7 @@ public static partial class FerruleJson
             JsonStringLengthRange? stringLengthRange,
             JsonPatternConstraints? jsonPatterns,
             JsonItemCountRange? itemCountRange,
+            IReadOnlyList<JsonContainsConstraint> jsonContains,
             JsonPropertyCountRange? propertyCountRange,
             IReadOnlyList<JsonPropertyDependency> propertyDependencies,
             JsonPropertyNameConstraints? propertyNames,
@@ -2419,6 +2434,7 @@ public static partial class FerruleJson
             StringLengthRange = stringLengthRange;
             JsonPatterns = jsonPatterns;
             ItemCountRange = itemCountRange;
+            JsonContains = jsonContains;
             PropertyCountRange = propertyCountRange;
             PropertyDependencies = propertyDependencies;
             PropertyNames = propertyNames;
@@ -2458,6 +2474,8 @@ public static partial class FerruleJson
 
         public JsonItemCountRange? ItemCountRange { get; }
 
+        public IReadOnlyList<JsonContainsConstraint> JsonContains { get; }
+
         public JsonPropertyCountRange? PropertyCountRange { get; }
 
         public IReadOnlyList<JsonPropertyDependency> PropertyDependencies { get; }
@@ -2487,24 +2505,69 @@ public static partial class FerruleJson
 
     private sealed class NodeBudget
     {
+        private readonly PatternWorkBudget _patternWork;
         private int _nodes;
-        private ulong _remainingPatternWork = FerruleJsonPattern.MaximumBoundaryWork;
+        private bool _fatalTraversalLimit;
+        private NodeBudget? _matcher;
+
+        public NodeBudget()
+            : this(new PatternWorkBudget())
+        {
+        }
+
+        private NodeBudget(PatternWorkBudget patternWork)
+        {
+            _patternWork = patternWork;
+        }
+
+        public bool HasFatalLimit =>
+            _fatalTraversalLimit || _patternWork.HasFatalLimit;
+
+        public NodeBudget Matcher() =>
+            _matcher ??= new NodeBudget(_patternWork);
+
+        public void MarkFatalTraversalLimit()
+        {
+            _fatalTraversalLimit = true;
+        }
 
         public void Visit(int depth)
         {
             if (depth > MaximumDepth)
             {
+                _fatalTraversalLimit = true;
                 throw Boundary($"JSON nesting exceeds the {MaximumDepth}-level limit.");
             }
 
             _nodes = checked(_nodes + 1);
             if (_nodes > MaximumNodes)
             {
+                _fatalTraversalLimit = true;
                 throw Boundary($"JSON document exceeds the {MaximumNodes}-node limit.");
             }
         }
 
         public bool Matches(JsonPatternConstraints constraints, string value) =>
-            constraints.IsMatch(value, ref _remainingPatternWork);
+            _patternWork.Matches(constraints, value);
+    }
+
+    private sealed class PatternWorkBudget
+    {
+        private ulong _remaining = FerruleJsonPattern.MaximumBoundaryWork;
+
+        public bool HasFatalLimit { get; private set; }
+
+        public bool Matches(JsonPatternConstraints constraints, string value)
+        {
+            try
+            {
+                return constraints.IsMatch(value, ref _remaining);
+            }
+            catch (FerruleRuntimeException)
+            {
+                HasFatalLimit = true;
+                throw;
+            }
+        }
     }
 }

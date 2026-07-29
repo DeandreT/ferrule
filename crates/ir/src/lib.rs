@@ -14,12 +14,13 @@ mod schema;
 
 pub use schema::{
     IntegerRange, ItemCountRange, JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
-    JsonFormatAnnotations, JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
+    JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate, JsonFormatAnnotations,
+    JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
     JsonMultipleOfConstraintsError, JsonPatternConstraints, JsonPatternConstraintsError,
     JsonPropertyDependencies, JsonPropertyDependenciesError, JsonPropertyNameConstraints,
     JsonPropertyNameSet, JsonPropertyNameSetError, MAX_DISTINCT_JSON_PATTERNS,
     MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
-    MAX_JSON_ALLOWED_VALUES, MAX_JSON_FORMAT_ANNOTATION_BYTES,
+    MAX_JSON_ALLOWED_VALUES, MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_FORMAT_ANNOTATION_BYTES,
     MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES, MAX_JSON_FORMAT_ANNOTATIONS,
     MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS, MAX_JSON_PATTERN_ALTERNATIVES,
     MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES, MAX_JSON_PATTERN_TERMS,
@@ -545,6 +546,10 @@ pub struct SchemaNode {
     /// Exact cardinality bounds for a repeating JSON array node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_count_range: Option<ItemCountRange>,
+    /// Exact, independently counted JSON Schema `contains` assertions for
+    /// this array wrapper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_contains: Option<JsonContainsConstraints>,
     /// Exact cardinality bounds for the properties of a JSON object node.
     ///
     /// On a repeating group these bounds apply to each object item, while
@@ -658,6 +663,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             item_count_range: Option<ItemCountRange>,
             #[serde(default)]
+            json_contains: Option<JsonContainsConstraints>,
+            #[serde(default)]
             property_count_range: Option<PropertyCountRange>,
             #[serde(default)]
             json_property_dependencies: Option<JsonPropertyDependencies>,
@@ -708,6 +715,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             numeric_range: repr.numeric_range,
             json_multiple_of: repr.json_multiple_of,
             item_count_range: repr.item_count_range,
+            json_contains: repr.json_contains,
             property_count_range: repr.property_count_range,
             json_property_dependencies: repr.json_property_dependencies,
             json_property_names: repr.json_property_names,
@@ -726,7 +734,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, property-count, property-dependency, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -953,6 +961,7 @@ impl SchemaNode {
             && self.numeric_range_is_valid()
             && self.json_multiple_of_is_valid()
             && self.item_count_range_is_valid()
+            && self.json_contains_are_valid()
             && self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_property_names_are_valid()
@@ -994,6 +1003,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            json_contains: None,
             property_count_range: None,
             json_property_dependencies: None,
             json_property_names: None,
@@ -1038,6 +1048,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            json_contains: None,
             property_count_range: None,
             json_property_dependencies: None,
             json_property_names: None,
@@ -1091,6 +1102,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            json_contains: None,
             property_count_range: None,
             json_property_dependencies: None,
             json_property_names: None,
@@ -1386,6 +1398,63 @@ impl SchemaNode {
     /// Checks that item-count metadata remains attached to an array wrapper.
     pub fn item_count_range_is_valid(&self) -> bool {
         self.item_count_range.is_none() || self.repeating
+    }
+
+    /// Checks that every `contains` assertion belongs to an array wrapper and
+    /// retains canonical, structurally valid predicate metadata.
+    pub fn json_contains_are_valid(&self) -> bool {
+        let Some(constraints) = &self.json_contains else {
+            return true;
+        };
+        self.repeating
+            && constraints.is_canonical()
+            && constraints.as_slice().iter().all(|constraint| {
+                constraint
+                    .predicate()
+                    .as_schema()
+                    .is_none_or(SchemaNode::metadata_tree_is_valid)
+            })
+    }
+
+    /// Recursively checks JSON `contains` placement and predicate schemas.
+    pub fn json_contains_tree_is_valid(&self) -> bool {
+        self.json_contains_are_valid()
+            && self.json_contains.as_ref().is_none_or(|constraints| {
+                constraints.as_slice().iter().all(|constraint| {
+                    constraint
+                        .predicate()
+                        .as_schema()
+                        .is_none_or(SchemaNode::json_contains_tree_is_valid)
+                })
+            })
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children.iter().all(SchemaNode::json_contains_tree_is_valid)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::json_contains_tree_is_valid)
+                }
+            }
+    }
+
+    /// Recursively checks all local metadata invariants, including private
+    /// `contains` predicate schema trees.
+    pub fn metadata_tree_is_valid(&self) -> bool {
+        self.metadata_is_valid()
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children.iter().all(SchemaNode::metadata_tree_is_valid)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::metadata_tree_is_valid)
+                }
+            }
     }
 
     /// Checks that property-count metadata remains attached to an object and
@@ -1693,7 +1762,10 @@ impl SchemaNode {
         instructions: &mut usize,
         fixed_work: &mut u64,
     ) -> bool {
-        if !self.json_patterns_are_valid() || !self.json_property_names_are_valid() {
+        if !self.json_patterns_are_valid()
+            || !self.json_property_names_are_valid()
+            || !self.json_contains_are_valid()
+        {
             return false;
         }
         if let Some(constraints) = &self.json_property_names
@@ -1721,28 +1793,41 @@ impl SchemaNode {
             }
         }
 
-        match &self.kind {
-            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
-            SchemaKind::Group {
-                children, dynamic, ..
-            } => {
-                children.iter().all(|child| {
-                    child.accumulate_json_pattern_budget(
-                        programs,
-                        source_bytes,
-                        instructions,
-                        fixed_work,
-                    )
-                }) && dynamic.as_deref().is_none_or(|child| {
-                    child.accumulate_json_pattern_budget(
+        let contains_are_valid = self.json_contains.as_ref().is_none_or(|constraints| {
+            constraints.as_slice().iter().all(|constraint| {
+                constraint.predicate().as_schema().is_none_or(|schema| {
+                    schema.accumulate_json_pattern_budget(
                         programs,
                         source_bytes,
                         instructions,
                         fixed_work,
                     )
                 })
+            })
+        });
+        contains_are_valid
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children.iter().all(|child| {
+                        child.accumulate_json_pattern_budget(
+                            programs,
+                            source_bytes,
+                            instructions,
+                            fixed_work,
+                        )
+                    }) && dynamic.as_deref().is_none_or(|child| {
+                        child.accumulate_json_pattern_budget(
+                            programs,
+                            source_bytes,
+                            instructions,
+                            fixed_work,
+                        )
+                    })
+                }
             }
-        }
     }
 
     /// Checks that JSON format annotations describe a string-capable scalar
@@ -1785,17 +1870,13 @@ impl SchemaNode {
     /// Checks that arbitrary JSON values use the graph's canonical string domain.
     pub fn json_any_is_valid(&self) -> bool {
         !self.json_any
-            || (!self.repeating
-                && !self.attribute
+            || (!self.attribute
                 && !self.text
                 && !self.nullable
-                && !self.container_nullable
                 && self.fixed.is_none()
                 && self.json_allowed_values.is_none()
                 && self.numeric_range.is_none()
                 && self.json_multiple_of.is_none()
-                && self.item_count_range.is_none()
-                && !self.json_unique_items
                 && self.string_length_range.is_none()
                 && self.json_patterns.is_none()
                 && self.json_formats.is_empty()
@@ -2333,6 +2414,11 @@ impl SchemaNode {
     pub fn with_item_count_range(mut self, range: ItemCountRange) -> Option<Self> {
         self.item_count_range = Some(range);
         self.item_count_range_is_valid().then_some(self)
+    }
+
+    pub fn with_json_contains(mut self, constraints: JsonContainsConstraints) -> Option<Self> {
+        self.json_contains = Some(constraints);
+        (self.json_contains_are_valid() && self.json_pattern_budget_is_valid()).then_some(self)
     }
 
     pub fn with_property_count_range(mut self, range: PropertyCountRange) -> Option<Self> {
@@ -2942,6 +3028,7 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
         }
+
         Ok(())
     }
 
@@ -3002,6 +3089,7 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
         }
+
         Ok(())
     }
 
@@ -3142,6 +3230,33 @@ mod tests {
         }
         let permissive_null_maximum = r#"{"name":"x","repeating":true,"item_count_range":{"minimum":1,"maximum":null},"kind":{"kind":"scalar","ty":"string"}}"#;
         assert!(serde_json::from_str::<SchemaNode>(permissive_null_maximum).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn contains_constraints_require_array_owners_and_roundtrip_predicate_schemas()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(range) = ItemCountRange::new(1, Some(2)) else {
+            panic!("test contains range is valid");
+        };
+        let Some(constraints) = JsonContainsConstraints::new([JsonContainsConstraint::new(
+            JsonContainsPredicate::schema(SchemaNode::scalar("candidate", ScalarType::Int)),
+            range,
+        )]) else {
+            panic!("test contains constraints are valid");
+        };
+        let schema = SchemaNode::scalar("items", ScalarType::Int)
+            .repeating()
+            .with_json_contains(constraints.clone())
+            .ok_or("repeating contains owner is valid")?;
+        let encoded = serde_json::to_string(&schema)?;
+        assert!(encoded.contains(r#""json_contains":[{"predicate":{"kind":"schema""#));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, schema);
+        assert!(
+            SchemaNode::scalar("item", ScalarType::Int)
+                .with_json_contains(constraints)
+                .is_none()
+        );
         Ok(())
     }
 
@@ -4384,6 +4499,29 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
         }
+
+        let Some(count) = ItemCountRange::new(1, Some(3)) else {
+            panic!("test wrapper item count is valid");
+        };
+        let Some(match_count) = ItemCountRange::new(1, None) else {
+            panic!("test contains count is valid");
+        };
+        let Some(contains) = JsonContainsConstraints::new([JsonContainsConstraint::new(
+            JsonContainsPredicate::schema(SchemaNode::scalar("match", ScalarType::Int)),
+            match_count,
+        )]) else {
+            panic!("test contains metadata is valid");
+        };
+        let wrapped = any
+            .repeating()
+            .with_item_count_range(count)
+            .and_then(|schema| schema.with_json_contains(contains))
+            .and_then(SchemaNode::with_json_unique_items)
+            .and_then(SchemaNode::nullable_container)
+            .ok_or("arbitrary JSON arrays allow wrapper-only constraints")?;
+        assert!(wrapped.metadata_is_valid());
+        let encoded = serde_json::to_string(&wrapped)?;
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, wrapped);
         Ok(())
     }
 
