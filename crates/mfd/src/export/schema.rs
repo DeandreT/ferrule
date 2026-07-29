@@ -289,7 +289,7 @@ pub(super) fn render_schema_component(
                     xml_escape(&schema.name),
                     xml_escape(&schema_file),
                     xml_escape(&instance_root),
-                    ports.entries_xml(schema, attr, 10, true, None, target_branches),
+                    ports.portable_xml_entries_xml(schema, attr, 10, true, None, target_branches),
                     xml_escape(url),
                     http.timeout_seconds().get(),
                 );
@@ -315,7 +315,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(component_name),
-                ports.entries_xml(
+                ports.portable_xml_entries_xml(
                     schema,
                     attr,
                     9,
@@ -1036,6 +1036,12 @@ fn entry_schema_metadata(node: &SchemaNode) -> String {
     if let Some(default) = &node.default {
         let _ = write!(metadata, " ferrule-default=\"{}\"", xml_escape(default));
     }
+    if node.name == ir::XML_ELEMENTS_FIELD
+        && let SchemaKind::Group { children, .. } = &node.kind
+        && let Some(index) = children.iter().position(|child| child.text)
+    {
+        let _ = write!(metadata, " ferrule-text-index=\"{index}\"");
+    }
     metadata
 }
 
@@ -1389,6 +1395,29 @@ impl PortTree {
         )
     }
 
+    /// Entry-tree XML that can replace a generated XSD without losing schema
+    /// semantics. Unsupported metadata keeps the ordinary visual-only tree,
+    /// so importer fallback cannot claim an inexact schema is authoritative.
+    pub(super) fn portable_xml_entries_xml(
+        &self,
+        schema: &SchemaNode,
+        attr: &str,
+        indent: usize,
+        force_root_port: bool,
+        root_attr: Option<&str>,
+        target_branches: Option<&TargetBranches>,
+    ) -> String {
+        self.entries_xml_impl(
+            schema,
+            attr,
+            indent,
+            force_root_port,
+            root_attr,
+            target_branches,
+            xml_entry_schema_is_exact(schema),
+        )
+    }
+
     /// Entry-tree XML carrying Ferrule's portable schema metadata. WSDL
     /// message components have no generated XSD sibling, so the ordinary
     /// visual entry tree is otherwise unable to retain cardinality and scalar
@@ -1488,7 +1517,7 @@ impl PortTree {
                         };
                         let _ = write!(
                             out,
-                            "{pad}<entry name=\"{}\"{type_attr}{metadata} {attr}=\"{key}\" expanded=\"1\"{clone}",
+                            "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{key}\" expanded=\"1\"{clone}{metadata}",
                             xml_escape(&child.name),
                         );
                         if child.is_scalar() {
@@ -1497,7 +1526,7 @@ impl PortTree {
                                 for clone_key in branches.binding_clone_keys(branch, path) {
                                     let _ = writeln!(
                                         out,
-                                        "{pad}<entry name=\"{}\"{type_attr}{metadata} {attr}=\"{clone_key}\" expanded=\"1\" clone=\"1\"/>",
+                                        "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{clone_key}\" expanded=\"1\" clone=\"1\"{metadata}/>",
                                         xml_escape(&child.name),
                                     );
                                 }
@@ -1571,7 +1600,7 @@ impl PortTree {
         };
         let _ = writeln!(
             out,
-            "{pad}<entry name=\"{}\"{root_metadata}{root_port} expanded=\"1\">",
+            "{pad}<entry name=\"{}\"{root_port} expanded=\"1\"{root_metadata}>",
             xml_escape(&schema.name),
         );
         walk(
@@ -1675,6 +1704,80 @@ impl PortTree {
             }
         }
     }
+}
+
+fn xml_entry_schema_is_exact(node: &SchemaNode) -> bool {
+    if node.xml_namespace.is_some()
+        || node.recursive_ref.is_some()
+        || node.nullable
+        || node.container_nullable
+        || node.json_any
+        || node.value_generation.is_some()
+        || !node.xml_repeating_sequences.is_empty()
+        || node.database_relation.is_some()
+        || !matches!(node.alternative_mode, ir::GroupAlternativeMode::Exclusive)
+        || !matches!(node.xml_alternative_kind, ir::XmlAlternativeKind::XsiType)
+    {
+        return false;
+    }
+    match &node.kind {
+        SchemaKind::Scalar { .. } => true,
+        SchemaKind::ScalarUnion { .. } => false,
+        SchemaKind::Group {
+            children,
+            alternatives,
+            xml_restricted_alternatives,
+            dynamic,
+        } => {
+            alternatives.is_empty()
+                && xml_restricted_alternatives.is_empty()
+                && dynamic.is_none()
+                && if node.name == ir::XML_ELEMENTS_FIELD {
+                    generic_xml_entry_schema_is_exact(node, children)
+                } else {
+                    !children.iter().any(|child| child.text)
+                        && children.iter().all(xml_entry_schema_is_exact)
+                }
+        }
+    }
+}
+
+fn generic_xml_entry_schema_is_exact(node: &SchemaNode, children: &[SchemaNode]) -> bool {
+    let canonical_text = SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text();
+    let canonical_attributes = SchemaNode::group(
+        ir::XML_ATTRIBUTES_FIELD,
+        vec![
+            SchemaNode::scalar(ir::XML_LOCAL_NAME_FIELD, ScalarType::String),
+            canonical_text.clone(),
+        ],
+    )
+    .repeating();
+    node.repeating
+        && !node.attribute
+        && !node.text
+        && !node.nillable
+        && node.fixed.is_none()
+        && node.default.is_none()
+        && children
+            .iter()
+            .filter(|child| child.name == ir::XML_TEXT_FIELD)
+            .eq([&canonical_text])
+        && children
+            .iter()
+            .filter(|child| child.name == ir::XML_ATTRIBUTES_FIELD)
+            .eq([&canonical_attributes])
+        && children.iter().all(|child| {
+            if child.name == ir::XML_LOCAL_NAME_FIELD || child.name == ir::XML_NODE_NAME_FIELD {
+                child == &SchemaNode::scalar(&child.name, ScalarType::String)
+            } else if matches!(
+                child.name.as_str(),
+                ir::XML_TEXT_FIELD | ir::XML_ATTRIBUTES_FIELD
+            ) {
+                true
+            } else {
+                !child.attribute && !child.text && xml_entry_schema_is_exact(child)
+            }
+        })
 }
 
 fn branch_key(
