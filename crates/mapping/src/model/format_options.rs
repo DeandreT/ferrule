@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint,
@@ -49,6 +49,92 @@ macro_rules! xlsx_coordinate {
 
 xlsx_coordinate!(XlsxRow, 1_048_576, "row");
 xlsx_coordinate!(XlsxColumn, 16_384, "column");
+
+/// An EDI boundary whose executable schema could not be compiled during import.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EdiConfigDependency {
+    /// The design named an external configuration that was unavailable or invalid.
+    ExternalReference(String),
+    /// The design supplied neither a typed embedded schema nor a configuration.
+    MissingConfiguration,
+}
+
+impl EdiConfigDependency {
+    pub fn external_reference(reference: impl Into<String>) -> Self {
+        Self::ExternalReference(reference.into())
+    }
+
+    pub const fn missing_configuration() -> Self {
+        Self::MissingConfiguration
+    }
+
+    pub fn reference(&self) -> Option<&str> {
+        match self {
+            Self::ExternalReference(reference) => Some(reference),
+            Self::MissingConfiguration => None,
+        }
+    }
+}
+
+impl From<String> for EdiConfigDependency {
+    fn from(reference: String) -> Self {
+        Self::ExternalReference(reference)
+    }
+}
+
+impl From<&str> for EdiConfigDependency {
+    fn from(reference: &str) -> Self {
+        Self::ExternalReference(reference.to_string())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum EdiConfigDependencyKind {
+    MissingConfiguration,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EdiConfigDependencyState {
+    kind: EdiConfigDependencyKind,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum EdiConfigDependencyWire {
+    Reference(String),
+    State(EdiConfigDependencyState),
+}
+
+impl Serialize for EdiConfigDependency {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::ExternalReference(reference) => serializer.serialize_str(reference),
+            Self::MissingConfiguration => EdiConfigDependencyState {
+                kind: EdiConfigDependencyKind::MissingConfiguration,
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EdiConfigDependency {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match EdiConfigDependencyWire::deserialize(deserializer)? {
+            EdiConfigDependencyWire::Reference(reference) => Ok(Self::ExternalReference(reference)),
+            EdiConfigDependencyWire::State(EdiConfigDependencyState {
+                kind: EdiConfigDependencyKind::MissingConfiguration,
+            }) => Ok(Self::MissingConfiguration),
+        }
+    }
+}
 
 /// One repeated row table inside a composite XLSX workbook source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,11 +253,12 @@ pub struct FormatOptions {
     /// EDI document family retained independently of the instance extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edi_kind: Option<EdiBoundaryKind>,
-    /// Unresolved external EDI configuration reference retained for design
-    /// round-trips. Runtime adapters never reopen this path; executable
-    /// projects embed the compiled schema and any required layout separately.
+    /// Typed unresolved EDI configuration state retained for design round-trips.
+    /// Legacy project files encode exact external references as strings. Runtime
+    /// adapters never reopen the path; executable projects embed compiled schemas
+    /// and layouts separately.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub edi_config_reference: Option<String>,
+    pub edi_config_reference: Option<EdiConfigDependency>,
     /// EDI decimal leaves whose wire values have fixed implied fractional
     /// places. Paths are compiled from the owning external configuration.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

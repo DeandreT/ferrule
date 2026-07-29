@@ -19,8 +19,8 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
 use mapping::{
-    EdiAutocomplete, EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, ProtobufOptions,
-    TabularBoundaryKind,
+    EdiAutocomplete, EdiBoundaryKind, EdiConfigDependency, ExternalPayloadFormat, FormatOptions,
+    ProtobufOptions, TabularBoundaryKind,
 };
 
 const DEFAULT_HTTP_TIMEOUT_SECONDS: u64 = 30;
@@ -1534,11 +1534,20 @@ fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
 }
 
 fn reject_edi_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if let Some(reference) = &options.edi_config_reference {
-        bail!(
-            "{side} requires unresolved external EDI configuration `{reference}`; \
-             import from a package containing the exact configuration or a matching release pack"
-        );
+    match options.edi_config_reference.as_ref() {
+        Some(EdiConfigDependency::ExternalReference(reference)) => {
+            bail!(
+                "{side} requires unresolved external EDI configuration `{reference}`; \
+                 import from a package containing the exact configuration or a matching release pack"
+            );
+        }
+        Some(EdiConfigDependency::MissingConfiguration) => {
+            bail!(
+                "{side} requires an EDI configuration because its imported entry-tree schema is \
+                 untyped; supply a complete EDI configuration and re-import the mapping"
+            );
+        }
+        None => {}
     }
     let kind = options
         .edi_kind
