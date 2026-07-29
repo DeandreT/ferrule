@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, Value};
 use mapping::{
@@ -29,7 +29,6 @@ pub(in crate::import) fn accept_target(
     {
         return false;
     }
-    let recipe_key = builder.udf_by_output.get(&feed);
     let supported_location = match &recipe.source {
         RecipeSource::MappedSequenceParameter { .. } => {
             target.format == ComponentFormat::Db
@@ -65,17 +64,16 @@ pub(in crate::import) fn accept_target(
                         || !builder.edge_from.contains_key(key)
                 })
         }
-        RecipeSource::SequenceParameter { .. } | RecipeSource::MappedSequenceParameter { .. } => {
-            (target_node.repeating
-                || matches!(&recipe.source, RecipeSource::MappedSequenceParameter { .. })
-                    && target.format.is_xml_like())
+        RecipeSource::SequenceParameter { .. } => {
+            let recipe_key = builder.udf_by_output.get(&feed);
+            target_node.repeating
                 && target.ports.iter().all(|(key, path)| {
-                    let recipe_field = recipe.bindings.keys().any(|relative| {
-                        path.strip_prefix(target_path) == Some(relative.as_slice())
-                    });
                     if path.len() <= target_path.len() || !path.starts_with(target_path) {
                         return true;
                     }
+                    let recipe_field = recipe.bindings.keys().any(|relative| {
+                        path.strip_prefix(target_path) == Some(relative.as_slice())
+                    });
                     let descendant_recipe = builder
                         .edge_from
                         .get(key)
@@ -88,6 +86,21 @@ pub(in crate::import) fn accept_target(
                     }
                 })
         }
+        RecipeSource::MappedSequenceParameter { .. } => target.ports.iter().all(|(key, path)| {
+            if path.len() <= target_path.len() || !path.starts_with(target_path) {
+                return true;
+            }
+            builder
+                .edge_from
+                .get(key)
+                .and_then(|feed| builder.structured_recipe(*feed))
+                .is_none_or(|(_, descendant)| {
+                    matches!(
+                        descendant.source,
+                        RecipeSource::MappedSequenceParameter { .. }
+                    )
+                })
+        }),
         RecipeSource::RecursiveCollect { output, .. } => {
             let mut path = target_path.to_vec();
             path.extend(output.iter().cloned());
@@ -207,7 +220,7 @@ fn build_target(
             if !public_output {
                 return Err("its mapped sequence output is not the public record port".to_string());
             }
-            sequence_record::build_target(
+            let owner = sequence_record::build_target(
                 target_path,
                 target,
                 builder,
@@ -217,7 +230,17 @@ fn build_target(
                 &recipe,
                 *component_id,
                 input_name,
-            )
+            )?;
+            merge_mapped_sequence_projections(
+                target_path,
+                target,
+                feed,
+                &recipe,
+                &owner,
+                builder,
+                scopes,
+            );
+            Ok(())
         }
         RecipeSource::RecursiveCollect {
             component_id,
@@ -308,6 +331,137 @@ fn build_target(
             target_key,
             target_children,
         ),
+    }
+}
+
+fn merge_mapped_sequence_projections(
+    target_path: &[String],
+    target: &SchemaComponent,
+    owner_feed: u32,
+    owner_recipe: &Recipe,
+    owner: &sequence_record::MappedSequenceDriver,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+) {
+    let Some(owner_key) = builder.udf_by_output.get(&owner_feed).copied() else {
+        return;
+    };
+    let mut candidates = BTreeMap::<(usize, u32), (u32, BTreeSet<Vec<String>>)>::new();
+    let mut malformed = BTreeSet::new();
+    for (input, path) in &target.ports {
+        let Some(relative) = path.strip_prefix(target_path) else {
+            continue;
+        };
+        if relative.is_empty() {
+            continue;
+        }
+        let Some(feed) = builder.edge_from.get(input).copied() else {
+            continue;
+        };
+        let Some(key) = builder.udf_by_output.get(&feed).copied() else {
+            continue;
+        };
+        if key == owner_key {
+            continue;
+        }
+        let Some((call, recipe)) = builder.structured_recipe(feed) else {
+            continue;
+        };
+        let RecipeSource::MappedSequenceParameter { output_name, .. } = &recipe.source else {
+            continue;
+        };
+        if sequence_record::output_relative(call, feed, output_name) != Some(relative)
+            || !recipe.bindings.contains_key(relative)
+        {
+            malformed.insert(key);
+            continue;
+        }
+        candidates
+            .entry(key)
+            .and_modify(|(candidate_feed, fields)| {
+                *candidate_feed = (*candidate_feed).min(feed);
+                fields.insert(relative.to_vec());
+            })
+            .or_insert_with(|| (feed, BTreeSet::from([relative.to_vec()])));
+    }
+
+    for _ in malformed {
+        builder.warnings.push(format!(
+            "mapped sequence projection into `{}` does not match its connected UDF output path; \
+             contribution skipped",
+            target_path.join("/")
+        ));
+    }
+
+    let mut occupied = owner_recipe
+        .bindings
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut candidates = candidates.into_values().collect::<Vec<_>>();
+    // Public output pin keys survive component and edge reordering, so they
+    // provide deterministic precedence when two projections write one field.
+    candidates.sort_by_key(|(feed, _)| *feed);
+    for (feed, mut fields) in candidates {
+        let details =
+            builder
+                .structured_recipe(feed)
+                .and_then(|(call, recipe)| match &recipe.source {
+                    RecipeSource::MappedSequenceParameter {
+                        component_id,
+                        input_name,
+                        ..
+                    } => Some((
+                        call.inputs.clone(),
+                        call.structured_inputs.clone(),
+                        recipe.clone(),
+                        *component_id,
+                        input_name.clone(),
+                    )),
+                    _ => None,
+                });
+        let Some((call_inputs, structured_inputs, recipe, component_id, input_name)) = details
+        else {
+            continue;
+        };
+        let duplicates = fields.intersection(&occupied).cloned().collect::<Vec<_>>();
+        if !duplicates.is_empty() {
+            builder.warnings.push(format!(
+                "mapped sequence projection into `{}` also writes {}; the structural owner was \
+                 retained where applicable, otherwise the lowest output-pin projection was \
+                 retained",
+                target_path.join("/"),
+                duplicates
+                    .iter()
+                    .map(|path| format!("`{}`", path.join("/")))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            fields.retain(|field| !occupied.contains(field));
+        }
+        if fields.is_empty() {
+            continue;
+        }
+        match sequence_record::build_projection(
+            target_path,
+            target,
+            builder,
+            scopes,
+            &call_inputs,
+            &structured_inputs,
+            &recipe,
+            component_id,
+            &input_name,
+            owner,
+            &fields,
+        ) {
+            Ok(()) => occupied.extend(fields),
+            Err(reason) => builder.warnings.push(format!(
+                "mapped sequence projection into `{}` is incompatible with its structural owner \
+                 ({reason}); contribution skipped",
+                target_path.join("/")
+            )),
+        }
     }
 }
 
