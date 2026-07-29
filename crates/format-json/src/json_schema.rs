@@ -36,6 +36,7 @@ use crate::JsonFormatError;
 mod all_of;
 pub(crate) mod allowed_values;
 mod alternatives;
+mod conditionals;
 pub(crate) mod constraints;
 pub(crate) mod contains;
 pub(crate) mod dependent_schemas;
@@ -205,6 +206,7 @@ fn parse(
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
             dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+            conditionals::apply(name, schema, &mut nullable, doc, active_refs, false)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
@@ -224,6 +226,7 @@ fn parse(
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
             dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+            conditionals::apply(name, schema, &mut scalar, doc, active_refs, false)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
@@ -244,6 +247,7 @@ fn parse(
         property_counts::apply(name, schema, &mut node, false)?;
         property_dependencies::apply(name, schema, &mut node, false)?;
         dependent_schemas::apply(name, schema, &mut node, doc, active_refs, false)?;
+        conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
         unique_items::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
@@ -270,6 +274,7 @@ fn parse(
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
             dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+            conditionals::apply(name, schema, &mut nullable, doc, active_refs, false)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
@@ -289,6 +294,7 @@ fn parse(
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
             dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+            conditionals::apply(name, schema, &mut scalar, doc, active_refs, false)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
@@ -305,6 +311,7 @@ fn parse(
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
             dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+            conditionals::apply(name, schema, &mut array, doc, active_refs, false)?;
             unique_items::apply(name, schema, &mut array, false)?;
             formats::apply(name, schema, &mut array)?;
             return Ok(array);
@@ -323,6 +330,7 @@ fn parse(
         property_counts::apply(name, schema, &mut node, false)?;
         property_dependencies::apply(name, schema, &mut node, false)?;
         dependent_schemas::apply(name, schema, &mut node, doc, active_refs, false)?;
+        conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
         unique_items::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
@@ -390,6 +398,7 @@ fn parse(
                     ranges::validate_ignored(name, schema)?;
                     multiples::validate_ignored(name, schema)?;
                     contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+                    conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
                     unique_items::apply(name, schema, &mut node, false)?;
                     string_lengths::validate_ignored(name, schema)?;
                     patterns::validate_ignored(name, schema)?;
@@ -403,6 +412,7 @@ fn parse(
                     multiples::validate_ignored(name, schema)?;
                     item_counts::apply(name, schema, &mut node, false)?;
                     contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+                    conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
                     unique_items::apply(name, schema, &mut node, false)?;
                     string_lengths::validate_ignored(name, schema)?;
                     patterns::validate_ignored(name, schema)?;
@@ -433,6 +443,7 @@ fn parse(
                 multiples::validate_ignored(name, schema)?;
                 item_counts::apply(name, schema, &mut node, false)?;
                 contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+                conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
                 unique_items::apply(name, schema, &mut node, false)?;
                 string_lengths::validate_ignored(name, schema)?;
                 patterns::validate_ignored(name, schema)?;
@@ -521,6 +532,14 @@ fn parse(
         active_refs,
         type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
+    conditionals::apply(
+        name,
+        schema,
+        &mut node,
+        doc,
+        active_refs,
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
+    )?;
     property_names::apply(
         name,
         schema,
@@ -572,6 +591,7 @@ fn apply_known_shape_constraints(
     property_counts::apply(name, schema, node, false)?;
     property_dependencies::apply(name, schema, node, false)?;
     dependent_schemas::apply(name, schema, node, doc, active_refs, false)?;
+    conditionals::apply(name, schema, node, doc, active_refs, false)?;
     property_names::apply(name, schema, node, doc, active_refs, false)?;
     if node.repeating {
         ranges::validate_ignored(name, schema)?;
@@ -872,15 +892,6 @@ fn reject_unsupported_object_keywords(
                 "tuple-form array `items` normalization requires a direct concrete array schema",
             ));
         }
-    }
-    if dialect.supports_conditionals()
-        && object.contains_key("if")
-        && (object.contains_key("then") || object.contains_key("else"))
-    {
-        return Err(unsupported_union(
-            name,
-            "active `if`/`then`/`else` conditional validation is not supported",
-        ));
     }
     if object.contains_key("not") {
         return Err(unsupported_union(name, "`not` validation is not supported"));
