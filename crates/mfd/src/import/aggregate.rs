@@ -1,4 +1,3 @@
-use ir::SchemaKind;
 use mapping::{AggregateOp, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource, Node, NodeId};
 
 use super::GraphBuilder;
@@ -304,9 +303,8 @@ impl GraphBuilder<'_> {
         let (collection, value) = split_at_innermost_repeating(&component.schema, &source.path);
         if collection.is_empty()
             || value.is_empty()
-            || !schema_node_at(&component.schema, &source.path).is_some_and(|node| {
-                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-            })
+            || !schema_node_at(&component.schema, &source.path)
+                .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return None;
         }

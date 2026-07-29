@@ -364,9 +364,8 @@ pub(super) fn read(
             continue;
         }
         if path.len() != 1
-            || !schema_node_at(&output.schema, path).is_some_and(|node| {
-                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-            })
+            || !schema_node_at(&output.schema, path)
+                .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return Err("structured lookup output bindings must be flat scalars".to_string());
         }
@@ -808,9 +807,8 @@ fn read_aggregate_record(
             continue;
         }
         if path.len() != 1
-            || !schema_node_at(&output.schema, path).is_some_and(|node| {
-                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-            })
+            || !schema_node_at(&output.schema, path)
+                .is_some_and(|node| !node.repeating && node.is_scalar())
         {
             return Err("structured aggregate output bindings must be flat scalars".to_string());
         }
@@ -845,9 +843,8 @@ fn read_aggregate_record(
             .cloned()
             .filter(|path| {
                 !path.is_empty()
-                    && schema_node_at(&source.schema, path).is_some_and(|node| {
-                        !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                    })
+                    && schema_node_at(&source.schema, path)
+                        .is_some_and(|node| !node.repeating && node.is_scalar())
             })
             .ok_or_else(|| {
                 format!(
@@ -911,7 +908,7 @@ fn flat_group_fields(schema: &ir::SchemaNode) -> bool {
     matches!(
         &schema.kind,
         SchemaKind::Group { children, dynamic: None, .. }
-            if children.iter().all(|child| !child.repeating && matches!(child.kind, SchemaKind::Scalar { .. }))
+            if children.iter().all(|child| !child.repeating && child.is_scalar())
     )
 }
 
@@ -1029,9 +1026,8 @@ impl ExprContext<'_> {
                     schema,
                     allow_inferred_repetition,
                 } if relative.is_empty()
-                    || !schema_node_at(schema, path).is_some_and(|node| {
-                        !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                    })
+                    || !schema_node_at(schema, path)
+                        .is_some_and(|node| !node.repeating && node.is_scalar())
                     || !allow_inferred_repetition
                         && (self.collection_path.len() + 1..path.len()).any(|length| {
                             schema_node_at(schema, &path[..length])

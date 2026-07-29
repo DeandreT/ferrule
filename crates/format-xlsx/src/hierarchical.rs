@@ -282,7 +282,9 @@ fn materialize_schema(
                 Instance::Repeated(Vec::new())
             } else {
                 match child.kind {
-                    SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+                    SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+                        Instance::Scalar(Value::Null)
+                    }
                     SchemaKind::Group { .. } => materialize_schema(child, path, assignments),
                 }
             };

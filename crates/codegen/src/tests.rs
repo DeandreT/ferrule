@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 
-use ir::{ScalarType, SchemaNode, Value};
+use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode, Value};
 use mapping::{
     Binding as MappingBinding, Graph, NamedTarget, Node, Project, Scope, ScopeConstruction,
     ScopeIteration,
 };
 
 use crate::{
-    Diagnostic, Expression, GeneratedSequence, IterationPlan, ProgramValidationError,
+    Diagnostic, Expression, GeneratedSequence, IterationPlan, LowerError, ProgramValidationError,
     SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeFeature, SourceIteration, lower, validate_program,
 };
 
@@ -106,6 +106,42 @@ fn supported_project() -> Project {
             ..Scope::default()
         },
     }
+}
+
+fn scalar_union(name: &str) -> SchemaNode {
+    let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+        panic!("test union must contain two distinct types");
+    };
+    SchemaNode::scalar_union(name, types)
+}
+
+#[test]
+fn lowering_rejects_scalar_union_boundaries_before_building_a_program() {
+    let mut project = supported_project();
+    let SchemaKind::Group { children, .. } = &mut project.source.kind else {
+        panic!("supported project source is a group");
+    };
+    children[0] = scalar_union("First");
+    let SchemaKind::Group { children, .. } = &mut project.target.kind else {
+        panic!("supported project target is a group");
+    };
+    children[1] = scalar_union("FirstOut");
+
+    assert_eq!(
+        lower(&project).map_err(LowerError::into_diagnostics),
+        Err(vec![
+            Diagnostic::Validation {
+                location: "source schema `First`".into(),
+                message: "code generation does not support heterogeneous scalar-union fields"
+                    .into(),
+            },
+            Diagnostic::Validation {
+                location: "target schema `FirstOut`".into(),
+                message: "code generation does not support heterogeneous scalar-union fields"
+                    .into(),
+            },
+        ])
+    );
 }
 
 #[test]
@@ -323,10 +359,22 @@ fn unused_unsupported_nodes_do_not_block_lowering() {
             },
         ),
         (
+            91,
+            Node::Const {
+                value: Value::String("not a FlexText layout".into()),
+            },
+        ),
+        (
+            92,
+            Node::Const {
+                value: Value::String("not a field path".into()),
+            },
+        ),
+        (
             99,
             Node::Call {
                 function: "flextext_parse_field".into(),
-                args: vec![90],
+                args: vec![90, 91, 92],
             },
         ),
     ]);
@@ -350,7 +398,7 @@ fn reports_each_reachable_unsupported_function_by_name() {
         40,
         Node::Call {
             function: "flextext_parse_field".into(),
-            args: vec![10, 20],
+            args: vec![10, 20, 30],
         },
     );
     project.root.bindings[0].node = 40;

@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 
-use ir::SchemaKind;
 use mapping::{Node, NodeId};
 
 use super::function::{is_filter, is_sequence_producer, produces_scalar};
@@ -223,9 +222,8 @@ impl GraphBuilder<'_> {
                 let (collection, value) = split_at_innermost_repeating(&source.schema, &path);
                 if collection.is_empty()
                     || value.is_empty()
-                    || !schema_node_at(&source.schema, &path).is_some_and(|node| {
-                        !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                    })
+                    || !schema_node_at(&source.schema, &path)
+                        .is_some_and(|node| !node.repeating && node.is_scalar())
                 {
                     return None;
                 }
@@ -260,9 +258,8 @@ impl GraphBuilder<'_> {
                         (same_source
                             && key_collection == collection_path
                             && !relative.is_empty()
-                            && schema_node_at(&source.schema, &path.path).is_some_and(|node| {
-                                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                            }))
+                            && schema_node_at(&source.schema, &path.path)
+                                .is_some_and(|node| !node.repeating && node.is_scalar()))
                         .then_some(relative)
                     };
                     match (matching_side(left), matching_side(right)) {

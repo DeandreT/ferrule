@@ -9,12 +9,18 @@ pub(super) fn validate_schema(
     path: &mut Vec<String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    let suffix = if path.is_empty() {
+        String::new()
+    } else {
+        format!(" at `{}`", path.join("/"))
+    };
+    if !schema.fixed_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("fixed-value metadata{suffix} requires one concrete scalar type"),
+        ));
+    }
     if !schema.alternatives_are_valid() {
-        let suffix = if path.is_empty() {
-            String::new()
-        } else {
-            format!(" at `{}`", path.join("/"))
-        };
         issues.push(ValidationIssue::new(
             root,
             format!(
@@ -23,11 +29,6 @@ pub(super) fn validate_schema(
         ));
     }
     if !schema.xml_repeating_sequences_are_valid() {
-        let suffix = if path.is_empty() {
-            String::new()
-        } else {
-            format!(" at `{}`", path.join("/"))
-        };
         issues.push(ValidationIssue::new(
             root,
             format!(
@@ -104,7 +105,7 @@ fn find_schema_path_from<'a>(
         SchemaKind::Group { children, .. } => children
             .iter()
             .find_map(|child| find_schema_path_from(root, child, path)),
-        SchemaKind::Scalar { .. } => None,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
     })
 }
 
@@ -177,7 +178,7 @@ fn any_schema_path_resolved(
             SchemaKind::Group { children, .. } => children
                 .iter()
                 .any(|child| visit(root, child, path, predicate)),
-            SchemaKind::Scalar { .. } => false,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,
         }
     }
     visit(schema, schema, path, predicate)
@@ -214,7 +215,7 @@ fn any_schema_path_from(
         SchemaKind::Group { children, .. } => children
             .iter()
             .any(|child| any_schema_path_from(root, child, path, predicate)),
-        SchemaKind::Scalar { .. } => false,
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,
     }
 }
 

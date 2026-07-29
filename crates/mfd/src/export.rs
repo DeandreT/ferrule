@@ -178,7 +178,7 @@ fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<
                 SchemaKind::Group { children, .. } => {
                     children.iter().any(|child| !child.text && !child.attribute)
                 }
-                SchemaKind::Scalar { .. } => false,
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,
             });
         if maps_text && has_element_content {
             let mut text = path.clone();

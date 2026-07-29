@@ -404,6 +404,11 @@ fn collect_row_values(
                 });
             }
         }
+        SchemaKind::ScalarUnion { .. } => {
+            return Err(XbrlFormatError::UnsupportedScalarUnion {
+                name: schema.name.clone(),
+            });
+        }
         SchemaKind::Group { children, .. } => {
             let Instance::Group(fields) = instance else {
                 return Err(shape(path));
@@ -851,6 +856,11 @@ fn concrete_concepts(
                 result.insert(concept_key(schema, path, namespaces)?);
             }
         }
+        SchemaKind::ScalarUnion { .. } => {
+            return Err(XbrlFormatError::UnsupportedScalarUnion {
+                name: schema.name.clone(),
+            });
+        }
         SchemaKind::Group { children, .. } => {
             if children.iter().any(|child| child.text)
                 && !is_context_schema(schema, path, namespaces)
@@ -1060,6 +1070,9 @@ fn build_row(
             );
             Ok(Instance::Scalar(parse_scalar(&schema.name, *ty, text)?))
         }
+        SchemaKind::ScalarUnion { .. } => Err(XbrlFormatError::UnsupportedScalarUnion {
+            name: schema.name.clone(),
+        }),
         SchemaKind::Group { children, .. } => {
             let active = fact_at(
                 source.facts,
@@ -1185,6 +1198,9 @@ fn empty_instance(schema: &SchemaNode, depth: usize) -> Result<Instance, XbrlFor
     }
     match &schema.kind {
         SchemaKind::Scalar { .. } => Ok(Instance::Scalar(Value::Null)),
+        SchemaKind::ScalarUnion { .. } => Err(XbrlFormatError::UnsupportedScalarUnion {
+            name: schema.name.clone(),
+        }),
         SchemaKind::Group { children, .. } => Ok(Instance::Group(
             children
                 .iter()

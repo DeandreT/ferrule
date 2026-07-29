@@ -31,6 +31,8 @@ pub enum DbFormatError {
     NoSuchTable(String),
     #[error("table schema must be a group of scalar fields")]
     UnsupportedSchema,
+    #[error("SQLite column `{column}` cannot preserve a heterogeneous scalar union")]
+    UnsupportedScalarUnion { column: String },
     #[error("column `{column}`: cannot store a {got} as {expected:?}")]
     ValueType {
         column: String,
@@ -143,10 +145,15 @@ fn columns_of(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, DbFormatEr
             .iter()
             .map(|c| match &c.kind {
                 SchemaKind::Scalar { ty } if !c.repeating => Ok((c.name.as_str(), *ty)),
+                SchemaKind::ScalarUnion { .. } => Err(DbFormatError::UnsupportedScalarUnion {
+                    column: c.name.clone(),
+                }),
                 _ => Err(DbFormatError::UnsupportedSchema),
             })
             .collect(),
-        SchemaKind::Scalar { .. } => Err(DbFormatError::UnsupportedSchema),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+            Err(DbFormatError::UnsupportedSchema)
+        }
     }
 }
 

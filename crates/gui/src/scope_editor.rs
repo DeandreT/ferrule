@@ -344,10 +344,15 @@ pub fn binding_target_fields(target: &SchemaNode, chain: &[String]) -> Vec<Strin
         node = child;
     }
     match &node.kind {
-        SchemaKind::Scalar { .. } => Vec::new(),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Vec::new(),
         SchemaKind::Group { children, .. } => children
             .iter()
-            .filter(|child| matches!(child.kind, SchemaKind::Scalar { .. }))
+            .filter(|child| {
+                matches!(
+                    child.kind,
+                    SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }
+                )
+            })
             .map(|child| child.name.clone())
             .collect(),
     }
@@ -853,7 +858,7 @@ fn display_path(path: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::Value;
+    use ir::{ScalarType, ScalarTypeSet, Value};
 
     fn scope_management_target() -> SchemaNode {
         SchemaNode::group(
@@ -930,6 +935,26 @@ mod tests {
         assert_eq!(
             available_static_child_scopes(&scalar_target, &target, &[0]),
             Err(ScopeTreeError::TargetScopeNotGroup(vec!["Id".into()]))
+        );
+    }
+
+    #[test]
+    fn union_leaves_are_available_as_binding_targets() {
+        let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Bool]) else {
+            panic!("test union is valid");
+        };
+        let target = SchemaNode::group(
+            "root",
+            vec![
+                SchemaNode::scalar("single", ScalarType::String),
+                SchemaNode::scalar_union("union", types),
+                SchemaNode::group("nested", Vec::new()),
+            ],
+        );
+
+        assert_eq!(
+            binding_target_fields(&target, &[]),
+            ["single".to_string(), "union".to_string()]
         );
     }
 

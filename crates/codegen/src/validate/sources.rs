@@ -147,7 +147,7 @@ fn first_path_target<'a>(
             SchemaKind::Group { children, .. } => children
                 .iter()
                 .find_map(|child| first_path_target_from(root, child, path, direct)),
-            SchemaKind::Scalar { .. } => None,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
         })
 }
 
@@ -167,7 +167,7 @@ fn first_path_target_from<'a>(
             SchemaKind::Group { children, .. } => children
                 .iter()
                 .find_map(|child| first_path_target_from(root, child, path, direct)),
-            SchemaKind::Scalar { .. } => None,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
         })
 }
 

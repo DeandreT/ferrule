@@ -308,6 +308,9 @@ fn validate_schema_node(
     }
     match &node.kind {
         SchemaKind::Scalar { .. } => Ok(()),
+        SchemaKind::ScalarUnion { .. } => {
+            Err("a heterogeneous scalar union requires one concrete EDI field type")
+        }
         SchemaKind::Group {
             children,
             alternatives,
@@ -388,10 +391,21 @@ fn entries_xml(
                 SchemaKind::Scalar { ty } => {
                     format!(" datatype=\"{}\"", scalar_type_name(*ty))
                 }
+                SchemaKind::ScalarUnion { .. } => {
+                    return Err(MfdError::Unsupported(format!(
+                        "EDI field `{}` is a heterogeneous scalar union; EDI .mfd components require one concrete scalar type",
+                        if path.is_empty() {
+                            "<root>".to_string()
+                        } else {
+                            path.join("/")
+                        }
+                    )));
+                }
                 SchemaKind::Group { .. } => String::new(),
             };
             let node_kind = match &node.kind {
                 SchemaKind::Scalar { .. } => "scalar",
+                SchemaKind::ScalarUnion { .. } => "scalar",
                 SchemaKind::Group { .. } => "group",
             };
             let clone = if active_branch.is_none() && index > 0 {

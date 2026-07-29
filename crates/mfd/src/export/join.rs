@@ -539,9 +539,7 @@ fn render_one(
             JoinSourceCardinality::Repeating => {
                 node.repeating && matches!(node.kind, SchemaKind::Group { .. })
             }
-            JoinSourceCardinality::Singleton => {
-                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-            }
+            JoinSourceCardinality::Singleton => !node.repeating && node.is_scalar(),
         };
         if !valid {
             return Err(format!(
@@ -586,7 +584,7 @@ fn render_one(
                 absolute.join("/")
             ));
         };
-        if field.repeating || !matches!(field.kind, SchemaKind::Scalar { .. }) {
+        if field.repeating || !field.is_scalar() {
             return Err(format!(
                 "join field node {node_id} path `{}` is not a scalar",
                 absolute.join("/")
@@ -749,7 +747,7 @@ fn validate_key_path(
             absolute.join("/")
         )
     })?;
-    if node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. }) {
+    if node.repeating || !node.is_scalar() {
         return Err(format!(
             "join {side} key `{}` is not scalar",
             absolute.join("/")

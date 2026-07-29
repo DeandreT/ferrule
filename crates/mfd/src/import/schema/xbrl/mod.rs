@@ -567,6 +567,26 @@ fn merge_child(
             }
         }
         (
+            SchemaKind::ScalarUnion { types: existing },
+            SchemaKind::ScalarUnion { types: incoming },
+        ) => {
+            if *existing != incoming {
+                return Err(format!(
+                    "XBRL duplicate entry `{}` has incompatible scalar unions",
+                    path.join("/")
+                ));
+            }
+        }
+        (SchemaKind::ScalarUnion { .. }, SchemaKind::Scalar { .. })
+        | (SchemaKind::Scalar { .. }, SchemaKind::ScalarUnion { .. })
+        | (SchemaKind::ScalarUnion { .. }, SchemaKind::Group { .. })
+        | (SchemaKind::Group { .. }, SchemaKind::ScalarUnion { .. }) => {
+            return Err(format!(
+                "XBRL duplicate entry `{}` mixes a heterogeneous scalar union with a concrete field",
+                path.join("/")
+            ));
+        }
+        (
             SchemaKind::Group {
                 children: existing_children,
                 ..

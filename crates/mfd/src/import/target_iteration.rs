@@ -855,7 +855,9 @@ fn structural_presence_filter(
         return None;
     }
     let absolute_paths = match &source_node.kind {
-        SchemaKind::Scalar { .. } => vec![source_path.clone()],
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+            vec![source_path.clone()]
+        }
         SchemaKind::Group { .. } => {
             let mut relative_paths = Vec::new();
             collect_matching_scalar_paths(
@@ -1120,8 +1122,7 @@ fn project_connected_fields(
         let mut target_leaf = target_path.to_vec();
         target_leaf.extend(relative);
         if connected.contains(&target_leaf)
-            || !schema_node_at(&target.schema, &target_leaf)
-                .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+            || !schema_node_at(&target.schema, &target_leaf).is_some_and(|node| node.is_scalar())
         {
             continue;
         }

@@ -201,11 +201,7 @@ fn fixed_attribute_writes_preserve_lexical_form_after_typed_validation() {
 
     let typed_schema = SchemaNode::group(
         "Record",
-        vec![
-            SchemaNode::scalar("code", ScalarType::Int)
-                .attribute()
-                .fixed("007"),
-        ],
+        vec![SchemaNode::scalar_fixed("code", ScalarType::Int, "007").attribute()],
     );
     let typed_instance =
         Instance::Group(vec![("code".to_string(), Instance::Scalar(Value::Int(7)))]);

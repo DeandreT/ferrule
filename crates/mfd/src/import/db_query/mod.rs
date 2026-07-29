@@ -534,7 +534,9 @@ fn projection_columns(
                     )),
                 })
                 .collect(),
-            SchemaKind::Scalar { .. } => Err("introspected query table is not a group".to_string()),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
+                Err("introspected query table is not a group".to_string())
+            }
         },
     }
 }
@@ -587,7 +589,7 @@ fn read_output_ports(
             SchemaKind::Group { children, .. } => children
                 .iter()
                 .find(|child| child.name.eq_ignore_ascii_case(name)),
-            SchemaKind::Scalar { .. } => None,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
         }
         .map(|child| child.name.clone())
         .ok_or_else(|| format!("query output `{name}` is not in the typed schema"))?;
@@ -666,7 +668,7 @@ fn read_inline_output_ports(
             SchemaKind::Group { children, .. } => children
                 .iter()
                 .find(|child| child.name.eq_ignore_ascii_case(name)),
-            SchemaKind::Scalar { .. } => None,
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
         }
         .map(|child| child.name.clone())
         .ok_or_else(|| format!("inline query output `{name}` is not in the typed schema"))?;
@@ -753,7 +755,7 @@ impl GraphBuilder<'_> {
                 .schema_node(&source_path)
                 .and_then(|node| match &node.kind {
                     SchemaKind::Scalar { ty } => Some(*ty),
-                    SchemaKind::Group { .. } => None,
+                    SchemaKind::ScalarUnion { .. } | SchemaKind::Group { .. } => None,
                 });
             let input = self.source_field_at_anchor(&source_path, active_anchor)?;
             return Some(match ty {

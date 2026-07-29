@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ir::{SchemaKind, SchemaNode, Value};
+use ir::{SchemaNode, Value};
 use mapping::{Node, NodeId};
 
 use super::graph::GraphBuilder;
@@ -55,7 +55,7 @@ pub(super) fn read(
                 path.join("/")
             ));
         };
-        if !matches!(node.kind, SchemaKind::Scalar { .. }) {
+        if !node.is_scalar() {
             return Err(format!(
                 "output port `{output}` path `{}` is not scalar",
                 path.join("/")

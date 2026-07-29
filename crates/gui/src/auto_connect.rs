@@ -2,10 +2,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::ScalarType;
 use mapping::{Binding, Graph, Node, Scope, ScopeConstruction};
 
 use crate::canvas::{SourceLeaf, TargetLeaf, source_leaves, target_leaves};
+use crate::schema_scalar::ScalarDomain;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlannedConnection {
@@ -270,14 +270,14 @@ fn candidates_by_name<'a>(
 
 fn resolve_candidates(
     candidates: Vec<&SourceLeaf>,
-    target_type: ScalarType,
+    target_type: ScalarDomain,
 ) -> CandidateResolution<'_> {
     if candidates.is_empty() {
         return CandidateResolution::Missing;
     }
     let compatible = candidates
         .into_iter()
-        .filter(|source| compatible_types(source.ty, target_type))
+        .filter(|source| target_type.accepts_all_from(source.ty))
         .collect::<Vec<_>>();
     match compatible.as_slice() {
         [] => CandidateResolution::Incompatible,
@@ -295,10 +295,6 @@ fn frame_matches(frame: Option<&[String]>, hint: &[String]) -> bool {
     } else {
         frame == hint || frame.ends_with(hint)
     }
-}
-
-fn compatible_types(source: ScalarType, target: ScalarType) -> bool {
-    source == target || matches!((source, target), (ScalarType::Int, ScalarType::Float))
 }
 
 fn normalize_name(name: &str) -> String {
@@ -372,10 +368,17 @@ fn reserve_node_ids(graph: &Graph, count: usize) -> Option<Vec<mapping::NodeId>>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::SchemaNode;
+    use ir::{ScalarType, ScalarTypeSet, SchemaNode};
 
     fn group(name: &str, fields: Vec<SchemaNode>) -> SchemaNode {
         SchemaNode::group(name, fields)
+    }
+
+    fn scalar_union(name: &str, types: impl IntoIterator<Item = ScalarType>) -> SchemaNode {
+        let Some(types) = ScalarTypeSet::new(types) else {
+            panic!("test union must contain distinct scalar types");
+        };
+        SchemaNode::scalar_union(name, types)
     }
 
     #[test]
@@ -488,6 +491,49 @@ mod tests {
 
         assert!(plan.connections.is_empty());
         assert_eq!(plan.skipped_incompatible, 1);
+    }
+
+    #[test]
+    fn unions_auto_connect_only_when_the_complete_source_domain_is_accepted() {
+        let source = group(
+            "source",
+            vec![
+                scalar_union("safe", [ScalarType::String, ScalarType::Int]),
+                scalar_union("unsafe", [ScalarType::String, ScalarType::Bool]),
+                scalar_union("partial", [ScalarType::String, ScalarType::Int]),
+            ],
+        );
+        let target = group(
+            "target",
+            vec![
+                scalar_union("safe", [ScalarType::String, ScalarType::Float]),
+                scalar_union("unsafe", [ScalarType::String, ScalarType::Int]),
+                SchemaNode::scalar("partial", ScalarType::String),
+            ],
+        );
+
+        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None);
+
+        assert_eq!(plan.connections.len(), 1);
+        assert_eq!(plan.connections[0].target_field, "safe");
+        assert_eq!(plan.skipped_incompatible, 2);
+    }
+
+    #[test]
+    fn scalar_to_union_auto_connect_keeps_integer_widening() {
+        let source = group("source", vec![SchemaNode::scalar("value", ScalarType::Int)]);
+        let target = group(
+            "target",
+            vec![scalar_union(
+                "value",
+                [ScalarType::String, ScalarType::Float],
+            )],
+        );
+
+        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None);
+
+        assert_eq!(plan.connections.len(), 1);
+        assert_eq!(plan.skipped_incompatible, 0);
     }
 
     #[test]

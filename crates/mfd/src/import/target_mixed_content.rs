@@ -102,10 +102,7 @@ fn child_mappings(
                 return None;
             };
             let target_node = schema_node_at(&target.schema, path)?;
-            if target_node.text
-                || !target_node.repeating
-                || !matches!(target_node.kind, SchemaKind::Scalar { .. })
-            {
+            if target_node.text || !target_node.repeating || !target_node.is_scalar() {
                 return None;
             }
             let source = builder
@@ -119,7 +116,7 @@ fn child_mappings(
                 return None;
             };
             let source_node = builder.schema_node(&source)?;
-            if !source_node.repeating || !matches!(source_node.kind, SchemaKind::Scalar { .. }) {
+            if !source_node.repeating || !source_node.is_scalar() {
                 return None;
             }
             let pair = (source_name.clone(), target_name.clone());

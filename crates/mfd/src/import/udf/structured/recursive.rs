@@ -51,7 +51,7 @@ pub(in crate::import) fn try_read(
         return try_read_filter(component, mfd_path).map(Some);
     }
     let scalar_output = matches!(&output.schema.kind, SchemaKind::Group { children, .. }
-        if children.iter().any(|child| child.repeating && matches!(child.kind, SchemaKind::Scalar { .. })));
+        if children.iter().any(|child| child.repeating && child.is_scalar()));
     if scalar_output {
         return try_read_collect(component, mfd_path).map(Some);
     }
@@ -114,7 +114,7 @@ fn try_read_collect(
     };
     let output_value = output_children
         .iter()
-        .find(|child| child.repeating && matches!(child.kind, SchemaKind::Scalar { .. }))
+        .find(|child| child.repeating && child.is_scalar())
         .ok_or("recursive output has no repeating scalar field")?;
 
     let functions = components
@@ -243,7 +243,7 @@ fn try_read_collect(
                 && matches!(
                     crate::import::schema::schema_node_at(&input.schema, path)
                         .map(|node| &node.kind),
-                    Some(SchemaKind::Scalar { .. })
+                    Some(SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. })
                 )
         })
         .map(|(_, path)| path.clone())
@@ -257,7 +257,7 @@ fn try_read_collect(
                 && matches!(
                     crate::import::schema::schema_node_at(&input.schema, path)
                         .map(|node| &node.kind),
-                    Some(SchemaKind::Scalar { .. })
+                    Some(SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. })
                 )
         })
         .map(|(_, path)| path.clone())
@@ -452,8 +452,7 @@ fn try_read_filter(
                 && predicate_inputs
                     .iter()
                     .any(|pin| edge_from.get(pin) == Some(*key))
-                && schema_node_at(&input.schema, path)
-                    .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+                && schema_node_at(&input.schema, path).is_some_and(|node| node.is_scalar())
         })
         .collect::<Vec<_>>();
     let [(value_port, value_path)] = value_candidates.as_slice() else {
