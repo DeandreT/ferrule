@@ -42,6 +42,29 @@ pub(super) fn apply(
     admits_non_objects: bool,
 ) -> Result<(), JsonFormatError> {
     let selected = selected(name, schema, doc, active_refs)?;
+    apply_selected(name, selected, node, admits_non_objects)
+}
+
+pub(super) fn apply_triggered_schema(
+    name: &str,
+    trigger: &str,
+    predicate: &serde_json::Value,
+    node: &mut SchemaNode,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<(), JsonFormatError> {
+    let mut selected = Selected::default();
+    append_predicate(name, trigger, predicate, doc, active_refs, &mut selected)?;
+    selected.dependencies = dependencies(name, std::mem::take(&mut selected.required))?;
+    apply_selected(name, selected, node, false)
+}
+
+fn apply_selected(
+    name: &str,
+    selected: Selected,
+    node: &mut SchemaNode,
+    admits_non_objects: bool,
+) -> Result<(), JsonFormatError> {
     if selected.dependencies.is_none() && selected.predicates.is_empty() {
         return Ok(());
     }

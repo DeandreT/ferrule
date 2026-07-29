@@ -2,7 +2,7 @@ use super::{import_str, import_str_result};
 use crate::JsonFormatError;
 
 #[test]
-fn validation_effective_conditionals_not_and_tuple_keywords_never_widen_silently() {
+fn unsupported_validation_keywords_never_widen_silently() {
     for schema in [
         r#"{
   "$schema":"https://json-schema.org/draft/2020-12/schema",
@@ -14,12 +14,6 @@ fn validation_effective_conditionals_not_and_tuple_keywords_never_widen_silently
   "$schema":"https://json-schema.org/draft/2019-09/schema",
   "type":"array",
   "unevaluatedItems":false
-}"#,
-        r#"{
-  "$schema":"http://json-schema.org/draft-07/schema#",
-  "type":"object",
-  "if":{"required":["a"]},
-  "then":{"required":["b"]}
 }"#,
         r#"{"type":"string","not":{"const":"forbidden"}}"#,
         r#"{
