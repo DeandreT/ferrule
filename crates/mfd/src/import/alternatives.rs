@@ -30,7 +30,14 @@ pub(super) fn merge_conditioned_xml_types(
     schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
 ) {
-    merge_selected_roots(entry, schema, xsd_path, warnings, &mut Vec::new());
+    merge_selected_roots(
+        entry,
+        schema,
+        xsd_path,
+        schema_from_entry_tree,
+        warnings,
+        &mut Vec::new(),
+    );
     merge_entry_children(
         entry,
         schema,
@@ -45,6 +52,7 @@ fn merge_selected_roots(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
     xsd_path: &Path,
+    schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
     path: &mut Vec<String>,
 ) {
@@ -59,25 +67,54 @@ fn merge_selected_roots(
         .filter(|node| node.has_tag_name("qname"))
         .filter_map(|node| node.attribute("QNameAsString"))
         .filter(|qname| !qname.is_empty())
-        .collect::<Vec<_>>();
+        .fold(
+            BTreeMap::<String, Vec<&str>>::new(),
+            |mut selected, qname| {
+                let name = qname.rsplit('}').next().unwrap_or(qname).to_string();
+                let alternatives = selected.entry(name).or_default();
+                if !alternatives.contains(&qname) {
+                    alternatives.push(qname);
+                }
+                selected
+            },
+        );
 
     if let SchemaKind::Group { children, .. } = &mut schema.kind {
-        for qname in selected {
-            let name = qname.rsplit('}').next().unwrap_or(qname);
-            if children.iter().any(|child| child.name == name) {
+        for (name, qnames) in selected {
+            let [qname] = qnames.as_slice() else {
+                warnings.push(format!(
+                    "selected XML element `{}` could not be resolved because multiple qualified names share that mapping path: {}",
+                    display_child_path(path, &name),
+                    qnames.join(", ")
+                ));
                 continue;
-            }
+            };
             match format_xml::xsd::import_root(xsd_path, Some(qname)) {
                 Ok(mut selected_schema) => {
                     // A concrete QName selected from `xs:any` is still a
                     // sequence projection over wildcard children, even when
                     // the selected document root itself is singular.
                     selected_schema.repeating = true;
-                    children.push(selected_schema);
+                    match children.iter().position(|child| child.name == name) {
+                        Some(index) if schema_from_entry_tree => {
+                            if let Err(reason) =
+                                fallback_entry_shape_fits(&children[index], &selected_schema)
+                            {
+                                warnings.push(format!(
+                                    "selected XML element `{}` could not refine the fallback entry tree exactly: {reason}; fallback retained",
+                                    display_child_path(path, &name)
+                                ));
+                            } else {
+                                children[index] = selected_schema;
+                            }
+                        }
+                        Some(_) => {}
+                        None => children.push(selected_schema),
+                    }
                 }
                 Err(error) => warnings.push(format!(
                     "selected XML element `{}` could not be resolved from the schema: {error}",
-                    display_child_path(path, name)
+                    display_child_path(path, &name)
                 )),
             }
         }
@@ -95,9 +132,64 @@ fn merge_selected_roots(
             continue;
         };
         path.push(name);
-        merge_selected_roots(&child_entry, child_schema, xsd_path, warnings, path);
+        merge_selected_roots(
+            &child_entry,
+            child_schema,
+            xsd_path,
+            schema_from_entry_tree,
+            warnings,
+            path,
+        );
         path.pop();
     }
+}
+
+fn fallback_entry_shape_fits(fallback: &SchemaNode, selected: &SchemaNode) -> Result<(), String> {
+    fallback_entry_shape_fits_inner(fallback, selected, true)
+}
+
+fn fallback_entry_shape_fits_inner(
+    fallback: &SchemaNode,
+    selected: &SchemaNode,
+    root: bool,
+) -> Result<(), String> {
+    let SchemaKind::Group {
+        children: fallback_children,
+        ..
+    } = &fallback.kind
+    else {
+        return if root || selected.is_scalar() {
+            Ok(())
+        } else {
+            Err(format!(
+                "field `{}` is exposed as a scalar but the selected declaration is structured",
+                fallback.name
+            ))
+        };
+    };
+    let SchemaKind::Group {
+        children: selected_children,
+        ..
+    } = &selected.kind
+    else {
+        return Err(format!(
+            "entry `{}` exposes child fields but the selected declaration is scalar",
+            fallback.name
+        ));
+    };
+    for fallback_child in fallback_children {
+        let Some(selected_child) = selected_children
+            .iter()
+            .find(|selected_child| selected_child.name == fallback_child.name)
+        else {
+            return Err(format!(
+                "field `{}` is not declared by the selected schema",
+                fallback_child.name
+            ));
+        };
+        fallback_entry_shape_fits_inner(fallback_child, selected_child, false)?;
+    }
+    Ok(())
 }
 
 fn display_child_path(path: &[String], child: &str) -> String {
