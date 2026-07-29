@@ -40,6 +40,14 @@ pub(super) fn validate_schema(
             format!("item-count metadata{suffix} requires a repeating schema node"),
         ));
     }
+    if !schema.json_contains_are_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "JSON contains metadata{suffix} requires a repeating schema node with canonical bounded predicate schemas"
+            ),
+        ));
+    }
     if !schema.property_count_range_is_valid() {
         issues.push(ValidationIssue::new(
             root,
@@ -187,6 +195,15 @@ pub(super) fn validate_schema(
             root,
             format!("arbitrary-JSON metadata{suffix} requires one non-repeating string scalar"),
         ));
+    }
+    if let Some(constraints) = &schema.json_contains {
+        for (index, constraint) in constraints.as_slice().iter().enumerate() {
+            if let Some(predicate) = constraint.predicate().as_schema() {
+                path.push(format!("<contains:{}>", index + 1));
+                validate_schema(root, predicate, path, issues);
+                path.pop();
+            }
+        }
     }
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return;

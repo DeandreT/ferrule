@@ -4,9 +4,9 @@ use ir::{
 };
 
 use super::{
-    allowed_values, files, formats, item_counts, multiples, parse, patterns, property_counts,
-    property_dependencies, property_names, ranges, reject_unsupported_ref_siblings, resolve_ref,
-    unsupported_union,
+    allowed_values, contains, files, formats, item_counts, multiples, parse, patterns,
+    property_counts, property_dependencies, property_names, ranges,
+    reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -397,6 +397,7 @@ pub(super) fn parse_scalar_domain_array_any_of(
     node.container_nullable = nullable;
     ranges::validate_ignored(name, schema)?;
     item_counts::apply(name, schema, &mut node, false)?;
+    contains::apply(name, schema, &mut node, doc, active_refs, false)?;
     patterns::validate_ignored(name, schema)?;
     Ok(Some(node))
 }
@@ -408,6 +409,10 @@ fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> b
         || superset.container_nullable != subset.container_nullable
         || (superset.json_unique_items && !subset.json_unique_items)
         || !item_count_domain_contains(superset.item_count_range, subset.item_count_range)
+        || !contains_domain_contains(
+            superset.json_contains.as_ref(),
+            subset.json_contains.as_ref(),
+        )
     {
         return false;
     }
@@ -434,6 +439,17 @@ fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> b
     ]
     .into_iter()
     .all(|ty| !scalar_domain_contains(subset, ty) || scalar_domain_contains(superset, ty))
+}
+
+fn contains_domain_contains(
+    superset: Option<&ir::JsonContainsConstraints>,
+    subset: Option<&ir::JsonContainsConstraints>,
+) -> bool {
+    match (superset, subset) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(superset), Some(subset)) => superset == subset,
+    }
 }
 
 fn reduce_array_any_of(
@@ -1063,12 +1079,16 @@ fn ensure_exact_array_shape(
                 | "items"
                 | "minItems"
                 | "maxItems"
+                | "contains"
+                | "minContains"
+                | "maxContains"
                 | "uniqueItems"
                 | "minLength"
                 | "maxLength"
                 | "pattern"
                 | "format"
-        ) && !is_annotation_keyword(keyword.as_str())
+        ) && !files::is_internal_ref_keyword(keyword)
+            && !is_annotation_keyword(keyword.as_str())
     }) {
         return Err(unsupported_union(
             union_name,
@@ -1180,6 +1200,9 @@ fn ensure_annotation_or_range_only(
                     | "multipleOf"
                     | "minItems"
                     | "maxItems"
+                    | "contains"
+                    | "minContains"
+                    | "maxContains"
                     | "minProperties"
                     | "maxProperties"
                     | "dependencies"

@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -107,10 +107,16 @@ layout and dialect details that an extension cannot express.
   resources ignore `propertyNames`; Draft 6 and newer resources apply it.
   Finite name domains are limited to 4,096 names, 256 KiB per name, and 1 MiB
   total, while name patterns share the document's bounded matcher budget.
-  Active `contains` schemas, including Draft 2019-09 and newer
-  `minContains`/`maxContains` modifiers, reject explicitly instead of being
-  silently widened. Draft 4 resources and legacy `$ref` siblings continue to
-  ignore those keywords according to their declared dialect.
+  Array `contains` assertions retain a bounded conjunction of schema-shaped
+  item predicates and exact match-count intervals. Plain `contains` defaults
+  to one or more matches; Draft 2019-09 and newer `minContains`/`maxContains`
+  set explicit bounds. Raw parsed members and normalized emitted members are
+  counted, nullable array null bypasses the assertions, and predicate patterns
+  share the document matcher budget. Compatible `allOf` branches append their
+  assertions. Array alternatives retain only identical assertions or an exact
+  containment relation rather than weakening correlated predicates and
+  intervals. Draft 4 ignores `contains`; Draft 6/7 apply the default minimum
+  and ignore the newer modifiers.
   Bounded scalar `const` and `enum` constraints are enforced exactly on both
   input and normalized output and survive canonical export. Sets may combine
   strings, booleans, signed integers, exactly representable finite numbers, and

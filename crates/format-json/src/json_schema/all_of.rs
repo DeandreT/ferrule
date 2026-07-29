@@ -1,8 +1,9 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use super::{
-    allowed_values, files, formats, item_counts, multiples, parse, patterns, property_counts,
-    property_dependencies, property_names, ranges, string_lengths, unique_items, unsupported_union,
+    allowed_values, contains, files, formats, item_counts, multiples, parse, patterns,
+    property_counts, property_dependencies, property_names, ranges, string_lengths, unique_items,
+    unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -77,7 +78,8 @@ pub(super) fn parse_all_of(
             || unique_items::has_keyword(constraints)
             || property_counts::has_keywords(constraints)
             || property_dependencies::has_keywords(constraints)
-            || property_names::has_keyword(constraints))
+            || property_names::has_keyword(constraints)
+            || contains::has_keyword(constraints))
             && (!patterns::has_keyword(constraints)
                 || !patterns::is_effectively_constrained(name, constraints)?)
             && (!unique_items::has_keyword(constraints)
@@ -88,6 +90,8 @@ pub(super) fn parse_all_of(
                 || !property_dependencies::is_effectively_constrained(name, constraints)?)
             && (!property_names::has_keyword(constraints)
                 || property_names::selected(name, constraints, doc, active_refs)?.is_none())
+            && (!contains::has_keyword(constraints)
+                || !contains::is_effectively_constrained(name, constraints, doc, active_refs)?)
             && !ranges::has_range_keywords(constraints)
             && !allowed_values::has_keyword(constraints)
             && !multiples::has_keyword(constraints)
@@ -127,6 +131,12 @@ pub(super) fn parse_all_of(
                     "propertyNames without a concrete object type also admits unconstrained non-object values",
                 ));
             }
+            if contains::is_effectively_constrained(name, constraints, doc, active_refs)? {
+                return Err(unsupported_union(
+                    name,
+                    "contains without a concrete array type also admits unconstrained non-array values",
+                ));
+            }
         }
     }
     let mut merged = match merged {
@@ -149,6 +159,7 @@ pub(super) fn parse_all_of(
             ranges::validate_ignored(name, &constraints)?;
             multiples::validate_ignored(name, &constraints)?;
             item_counts::apply(name, &constraints, &mut merged, false)?;
+            contains::apply(name, &constraints, &mut merged, doc, active_refs, false)?;
             unique_items::apply(name, &constraints, &mut merged, false)?;
             string_lengths::validate_ignored(name, &constraints)?;
             patterns::validate_ignored(name, &constraints)?;
@@ -268,6 +279,9 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "multipleOf"
                 | "minItems"
                 | "maxItems"
+                | "contains"
+                | "minContains"
+                | "maxContains"
                 | "minProperties"
                 | "maxProperties"
                 | "dependencies"
@@ -296,6 +310,7 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
         || allowed_values::has_keyword(schema)
         || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
+        || contains::has_keyword(schema)
         || property_counts::has_keywords(schema)
         || property_dependencies::has_keywords(schema)
         || property_names::has_keyword(schema)
@@ -316,6 +331,9 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
                         | "multipleOf"
                         | "minItems"
                         | "maxItems"
+                        | "contains"
+                        | "minContains"
+                        | "maxContains"
                         | "minProperties"
                         | "maxProperties"
                         | "dependencies"
@@ -368,6 +386,11 @@ fn intersect(
     target.container_nullable &= branch.container_nullable;
     target.item_count_range =
         item_counts::intersect(name, target.item_count_range, branch.item_count_range)?;
+    target.json_contains = contains::merge(
+        name,
+        target.json_contains.take(),
+        branch.json_contains.clone(),
+    )?;
     target.property_count_range = property_counts::intersect(
         name,
         target.property_count_range,

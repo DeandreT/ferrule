@@ -37,6 +37,7 @@ mod all_of;
 pub(crate) mod allowed_values;
 mod alternatives;
 pub(crate) mod constraints;
+pub(crate) mod contains;
 mod files;
 mod formats;
 pub(crate) mod item_counts;
@@ -49,7 +50,6 @@ pub(crate) mod ranges;
 mod render;
 pub(crate) mod string_lengths;
 pub mod unique_items;
-mod unsupported_array_keywords;
 
 use all_of::parse_all_of;
 use alternatives::{
@@ -173,7 +173,7 @@ fn parse(
         return Ok(node);
     }
     reject_unsupported_object_keywords(name, schema)?;
-    unsupported_array_keywords::reject_active_contains(name, schema)?;
+    contains::validate_ignored(name, schema, doc, active_refs)?;
     property_names::validate_ignored(name, schema, doc, active_refs)?;
     if let Some(composition) = schema.get("allOf") {
         return parse_all_of(name, schema, composition, doc, active_refs);
@@ -378,6 +378,7 @@ fn parse(
                     ranges::validate_ignored(name, schema)?;
                     multiples::validate_ignored(name, schema)?;
                     item_counts::apply(name, schema, &mut node, false)?;
+                    contains::apply(name, schema, &mut node, doc, active_refs, false)?;
                     unique_items::apply(name, schema, &mut node, false)?;
                     string_lengths::validate_ignored(name, schema)?;
                     patterns::validate_ignored(name, schema)?;
@@ -391,13 +392,15 @@ fn parse(
                         || item.json_allowed_values.is_some()
                         || item.string_length_range.is_some()
                         || item.json_patterns.is_some()
+                        || item.json_contains.is_some()
                         || item.json_unique_items
                         || item_counts::has_keywords(schema)
+                        || contains::has_keyword(schema)
                         || unique_items::selected(name, schema)?)
                 {
                     return Err(unsupported_union(
                         name,
-                        "nested arrays with item-count, unique-items, allowed-value, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
+                        "nested arrays with item-count, contains, unique-items, allowed-value, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
                     ));
                 }
                 let mut node = item.repeating();
@@ -405,6 +408,7 @@ fn parse(
                 ranges::validate_ignored(name, schema)?;
                 multiples::validate_ignored(name, schema)?;
                 item_counts::apply(name, schema, &mut node, false)?;
+                contains::apply(name, schema, &mut node, doc, active_refs, false)?;
                 unique_items::apply(name, schema, &mut node, false)?;
                 string_lengths::validate_ignored(name, schema)?;
                 patterns::validate_ignored(name, schema)?;
@@ -463,6 +467,14 @@ fn parse(
         name,
         schema,
         &mut node,
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
+    )?;
+    contains::apply(
+        name,
+        schema,
+        &mut node,
+        doc,
+        active_refs,
         type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
     property_counts::apply(
@@ -532,6 +544,7 @@ fn apply_known_shape_constraints(
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         item_counts::apply(name, schema, node, false)?;
+        contains::apply(name, schema, node, doc, active_refs, false)?;
         unique_items::apply(name, schema, node, false)?;
         string_lengths::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)
@@ -554,6 +567,7 @@ fn reject_unresolved_ref_constraints(
         || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
             && item_counts::is_effectively_constrained(name, schema)?
+        || contains::has_keyword(schema) && files::validation_dialect(schema).supports_contains()
         || property_counts::has_keywords(schema)
             && property_counts::is_effectively_constrained(name, schema)?
         || property_dependencies::has_keywords(schema)
@@ -609,9 +623,6 @@ fn unsupported_ref_sibling(keyword: &str) -> bool {
             | "$recursiveRef"
             | "type"
             | "required"
-            | "contains"
-            | "maxContains"
-            | "minContains"
             | "properties"
             | "patternProperties"
             | "additionalProperties"
@@ -918,6 +929,13 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
         return Err(JsonFormatError::InvalidMultipleOfMetadata {
             reason:
                 "multipleOf constraints are incompatible with their numeric domains or fixed values"
+                    .to_string(),
+        });
+    }
+    if !schema.json_contains_tree_is_valid() {
+        return Err(JsonFormatError::InvalidContainsMetadata {
+            reason:
+                "contains constraints must be canonical, bounded, and belong to repeating array nodes"
                     .to_string(),
         });
     }

@@ -517,6 +517,28 @@ fn rejects_programmatically_invalid_item_count_metadata() {
 }
 
 #[test]
+fn rejects_programmatically_invalid_contains_metadata() {
+    let mut project = valid_project();
+    let Some(range) = ir::ItemCountRange::new(1, None) else {
+        panic!("test contains range is valid");
+    };
+    let Some(constraints) = ir::JsonContainsConstraints::new([ir::JsonContainsConstraint::new(
+        ir::JsonContainsPredicate::schema(SchemaNode::scalar("item", ir::ScalarType::String)),
+        range,
+    )]) else {
+        panic!("test contains constraints are valid");
+    };
+    target_name(&mut project).json_contains = Some(constraints);
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target schema"
+            && issue.message.contains("contains metadata")
+            && issue.message.contains("name")
+    }));
+}
+
+#[test]
 fn rejects_programmatically_invalid_property_count_metadata() {
     let mut project = valid_project();
     let Some(range) = ir::PropertyCountRange::new(1, Some(3)) else {

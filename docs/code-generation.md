@@ -163,7 +163,16 @@ errors. Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated
 output in Rust and C#, including after supported output coercion. Embedded
 array `uniqueItems` assertions compare complete raw input values and normalized
-output values, ignoring object member order while retaining nested array order. Embedded
+output values, ignoring object member order while retaining nested array order.
+Embedded array `contains` assertions count members accepted by each retained
+item predicate. Plain assertions require at least one match, while retained
+`minContains`/`maxContains` intervals apply exactly. Input checks the parsed
+array and output checks the normalized emitted array; nullable array null
+bypasses the assertions. Multiple compatible `allOf` assertions are
+conjunctive, and predicate pattern matching shares the bounded document work
+budget. A count mismatch remains a typed input/output boundary error, while
+invalid embedded metadata and matcher work exhaustion remain fatal instead of
+being treated as ordinary nonmatches. Embedded
 object-property requirements are enforced on input and generated output:
 explicit JSON null satisfies presence when nullable, while an omitted property
 or Ferrule `Null` does not. Object openness is exact as well: omitted or `true`
@@ -331,8 +340,9 @@ return instances or JSON documents and do not write files.
 Embedded JSON schemas are validated recursively before emission and again at
 the generated boundary. Rust and C# enforce scalar constants, exact scalar
 allowed-value sets, numeric ranges, exact decimal `multipleOf` constraints,
-array item-count intervals, object property-count intervals, object property
-dependencies, property-name constraints, exact structural `uniqueItems`,
+array item-count and `contains` match-count intervals, object property-count
+intervals, object property dependencies, property-name constraints, exact
+structural `uniqueItems`,
 Unicode-scalar string-length intervals, and portable JSON Schema `pattern`
 assertions on both input and normalized output.
 Pattern constraints retain conjunctions and exact disjunctions, nullable

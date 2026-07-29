@@ -46,7 +46,8 @@ public static partial class FerruleJson
 
     private static void ValidateUniqueInputItems(
         JsonSchemaNode schema,
-        JsonElement array)
+        JsonElement array,
+        NodeBudget nodeBudget)
     {
         if (!schema.JsonUniqueItems)
         {
@@ -59,10 +60,20 @@ public static partial class FerruleJson
         {
             if (index == MaximumNodes)
             {
+                nodeBudget.MarkFatalTraversalLimit();
                 throw Boundary(
                     $"JSON uniqueItems array '{schema.Name}' exceeds the {MaximumNodes}-item limit.");
             }
-            var key = CreateUniqueItemKey(item, budget);
+            byte[] key;
+            try
+            {
+                key = CreateUniqueItemKey(item, budget);
+            }
+            catch (FerruleRuntimeException)
+            {
+                nodeBudget.MarkFatalTraversalLimit();
+                throw;
+            }
             if (!keys.Add(key))
             {
                 throw Boundary(
@@ -72,55 +83,37 @@ public static partial class FerruleJson
         }
     }
 
-    private static void WriteUniqueOutputItems(
-        Utf8JsonWriter writer,
+    private static JsonDocument CreateNormalizedOutputItem(
         JsonSchemaNode schema,
-        IReadOnlyList<FerruleInstance> items,
+        FerruleInstance item,
         NodeBudget nodeBudget,
         int depth)
     {
-        if (items.Count > MaximumNodes)
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var itemWriter = new Utf8JsonWriter(
+                   buffer,
+                   new JsonWriterOptions
+                   {
+                       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                       MaxDepth = MaximumDepth,
+                       SkipValidation = false,
+                   }))
+        {
+            WriteSingleNode(itemWriter, schema, item, nodeBudget, depth);
+        }
+        if (buffer.WrittenCount > MaximumDocumentBytes)
         {
             throw Boundary(
-                $"Normalized JSON uniqueItems array '{schema.Name}' exceeds the {MaximumNodes}-item limit.");
+                $"Normalized JSON item in array '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit.");
         }
-        var keys = new HashSet<byte[]>(UniqueItemKeyComparer.Instance);
-        var uniqueBudget = new UniqueItemBudget();
-        for (var index = 0; index < items.Count; index++)
-        {
-            var buffer = new ArrayBufferWriter<byte>();
-            using (var itemWriter = new Utf8JsonWriter(
-                       buffer,
-                       new JsonWriterOptions
-                       {
-                           Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                           MaxDepth = MaximumDepth,
-                           SkipValidation = false,
-                       }))
+        return JsonDocument.Parse(
+            buffer.WrittenMemory.ToArray(),
+            new JsonDocumentOptions
             {
-                WriteSingleNode(itemWriter, schema, items[index], nodeBudget, depth);
-            }
-            if (buffer.WrittenCount > MaximumDocumentBytes)
-            {
-                throw Boundary(
-                    $"Normalized JSON item in array '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit.");
-            }
-            using var document = JsonDocument.Parse(
-                buffer.WrittenMemory,
-                new JsonDocumentOptions
-                {
-                    MaxDepth = MaximumDepth,
-                    CommentHandling = JsonCommentHandling.Disallow,
-                    AllowTrailingCommas = false,
-                });
-            var key = CreateUniqueItemKey(document.RootElement, uniqueBudget);
-            if (!keys.Add(key))
-            {
-                throw Boundary(
-                    $"Normalized JSON array '{schema.Name}' violates uniqueItems at item {index + 1}.");
-            }
-            document.RootElement.WriteTo(writer);
-        }
+                MaxDepth = MaximumDepth,
+                CommentHandling = JsonCommentHandling.Disallow,
+                AllowTrailingCommas = false,
+            });
     }
 
     private static byte[] CreateUniqueItemKey(

@@ -152,6 +152,12 @@ valid constraints remain executable after MFD import.
 Referenced array `uniqueItems: true` assertions also remain executable across
 MFD import and generated-schema export, with exact structural comparison on
 native and generated Rust/C# JSON boundaries.
+Referenced arrays also retain bounded `contains` assertions through MFD import,
+canonical schema export, and re-import. Plain assertions require at least one
+matching member; Draft 2019-09 and newer `minContains`/`maxContains` modifiers
+retain an exact match-count interval. Compatible `allOf` assertions remain
+conjunctive, nullable array null bypasses them, and predicate patterns use the
+same bounded document matcher budget as ordinary string constraints.
 Referenced JSON objects preserve their exact openness contract as well.
 Omitted or `true` `additionalProperties` remains an unconstrained dynamic
 property domain, schema-valued declarations remain typed, and explicit `false`

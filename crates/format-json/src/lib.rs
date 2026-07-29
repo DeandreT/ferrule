@@ -92,6 +92,12 @@ pub enum JsonFormatError {
         range: String,
         got: usize,
     },
+    #[error("`{name}` requires {range} items matching its contains predicate, got {got}")]
+    ContainsCountMismatch {
+        name: String,
+        range: String,
+        got: usize,
+    },
     #[error("`{name}` requires {range} object properties, got {got}")]
     PropertyCountMismatch {
         name: String,
@@ -136,6 +142,8 @@ pub enum JsonFormatError {
     InvalidPropertyDependenciesMetadata { reason: String },
     #[error("JSON property-name metadata is invalid: {reason}")]
     InvalidPropertyNameMetadata { reason: String },
+    #[error("JSON contains metadata is invalid: {reason}")]
+    InvalidContainsMetadata { reason: String },
     #[error("JSON pattern matching for `{name}` exceeds the bounded work limit")]
     PatternWorkLimit { name: String },
     #[error("JSON Lines cannot encode nullable array container `{name}`")]
@@ -232,6 +240,9 @@ pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonForma
     for value in &values {
         items.push(read_node_with_patterns(value, schema, &mut patterns)?);
     }
+    if schema.repeating {
+        json_schema::contains::validate_values(schema, &values, &mut patterns)?;
+    }
     Ok(Instance::Repeated(items))
 }
 
@@ -259,6 +270,7 @@ fn read_repeated(
     for item in items {
         parsed.push(read_node_with_patterns(item, schema, patterns)?);
     }
+    json_schema::contains::validate_values(schema, items, patterns)?;
     let items = parsed;
     Ok(Instance::Repeated(items))
 }
@@ -569,6 +581,7 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
         }
     };
     if schema.repeating {
+        json_schema::contains::validate_values(schema, &values, &mut patterns)?;
         json_schema::unique_items::validate(schema, &values)?;
     }
     let mut text = String::new();
@@ -618,6 +631,7 @@ fn write_node_with_patterns(
         for item in items {
             values.push(write_single_node_with_patterns(schema, item, patterns)?);
         }
+        json_schema::contains::validate_values(schema, &values, patterns)?;
         json_schema::unique_items::validate(schema, &values)?;
         return Ok(serde_json::Value::Array(values));
     }

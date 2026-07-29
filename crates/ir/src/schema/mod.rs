@@ -1,5 +1,6 @@
 mod item_count_range;
 mod json_allowed_values;
+mod json_contains_constraints;
 mod json_format_annotations;
 mod json_multiple_of;
 mod json_pattern_constraints;
@@ -14,6 +15,10 @@ pub use json_allowed_values::{
     JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
     MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
     MAX_JSON_ALLOWED_VALUES,
+};
+pub use json_contains_constraints::{
+    JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate,
+    MAX_JSON_CONTAINS_CONSTRAINTS,
 };
 pub use json_format_annotations::{
     JsonFormatAnnotations, JsonFormatAnnotationsError, MAX_JSON_FORMAT_ANNOTATION_BYTES,

@@ -164,6 +164,13 @@ fn collect_programs(
             programs.insert(source.clone(), program);
         }
     }
+    if let Some(constraints) = &schema.json_contains {
+        for constraint in constraints.as_slice() {
+            if let Some(predicate) = constraint.predicate().as_schema() {
+                collect_programs(predicate, programs)?;
+            }
+        }
+    }
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return Ok(());
     };
