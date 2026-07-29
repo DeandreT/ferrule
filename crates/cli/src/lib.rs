@@ -717,9 +717,11 @@ pub fn import_mfd(
     out_path: &Path,
     package_root: Option<&Path>,
     edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
 ) -> anyhow::Result<Vec<String>> {
-    let mut options =
-        mfd::ImportOptions::default().with_edi_catalog_roots(edi_catalog_roots.iter().cloned());
+    let mut options = mfd::ImportOptions::default()
+        .with_edi_catalog_roots(edi_catalog_roots.iter().cloned())
+        .with_json_schema_catalog_roots(json_schema_catalog_roots.iter().cloned());
     if let Some(root) = package_root {
         options = options.with_package_root(root);
     }

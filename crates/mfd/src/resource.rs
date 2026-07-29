@@ -12,6 +12,7 @@ pub(crate) struct ResourceResolver {
     package_root: PathBuf,
     explicit_package_root: bool,
     edi_catalog_roots: Vec<PathBuf>,
+    json_schema_catalog_roots: Vec<PathBuf>,
 }
 
 impl ResourceResolver {
@@ -53,6 +54,7 @@ impl ResourceResolver {
             package_root,
             explicit_package_root,
             edi_catalog_roots: Vec::new(),
+            json_schema_catalog_roots: Vec::new(),
         })
     }
 
@@ -87,6 +89,81 @@ impl ResourceResolver {
 
     pub(crate) fn edi_catalog_roots(&self) -> &[PathBuf] {
         &self.edi_catalog_roots
+    }
+
+    pub(crate) fn with_json_schema_catalog_roots(
+        mut self,
+        roots: &[PathBuf],
+    ) -> Result<Self, MfdError> {
+        for root in roots {
+            let canonical = std::fs::canonicalize(root).map_err(|error| {
+                MfdError::Resource(format!(
+                    "could not canonicalize trusted JSON Schema catalog root `{}` ({error})",
+                    root.display()
+                ))
+            })?;
+            if !canonical.is_dir() {
+                return Err(MfdError::Resource(format!(
+                    "trusted JSON Schema catalog root `{}` is not a directory",
+                    canonical.display()
+                )));
+            }
+            if !self.json_schema_catalog_roots.contains(&canonical) {
+                self.json_schema_catalog_roots.push(canonical);
+            }
+        }
+        Ok(self)
+    }
+
+    /// Resolves a JSON Schema from the package first, then from explicitly
+    /// trusted catalogs. The returned root is the boundary that authorized
+    /// the path and must also confine the schema's local-file references.
+    pub(crate) fn resolve_json_schema(&self, declared: &str) -> Result<(PathBuf, PathBuf), String> {
+        let package_error = match self.resolve_file(declared, "JSON Schema") {
+            Ok(path) => return Ok((path, self.package_root.clone())),
+            Err(error) => error,
+        };
+        if self.json_schema_catalog_roots.is_empty() {
+            return Err(package_error);
+        }
+
+        let relative = trusted_catalog_relative_path(declared).map_err(|error| {
+            format!("JSON Schema path `{declared}` is not a bounded catalog path ({error})")
+        })?;
+        for root in &self.json_schema_catalog_roots {
+            let candidate = root.join(&relative);
+            let resolved = match std::fs::canonicalize(&candidate)
+                .or_else(|_| resolve_case_insensitive(&candidate))
+            {
+                Ok(path) => path,
+                Err(_) => continue,
+            };
+            if !resolved.starts_with(root) {
+                return Err(format!(
+                    "{package_error}; JSON Schema `{declared}` resolves outside trusted catalog \
+                     root `{}`",
+                    root.display()
+                ));
+            }
+            if !resolved.is_file() {
+                return Err(format!(
+                    "{package_error}; JSON Schema `{declared}` does not resolve to a file in \
+                     trusted catalog `{}`",
+                    root.display()
+                ));
+            }
+            return Ok((resolved, root.clone()));
+        }
+
+        Err(format!(
+            "{package_error}; JSON Schema `{declared}` was not found in trusted JSON Schema \
+             catalog roots: {}",
+            self.json_schema_catalog_roots
+                .iter()
+                .map(|root| format!("`{}`", root.display()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
     }
 
     pub(crate) fn package_relative_path(
@@ -187,6 +264,43 @@ fn looks_like_windows_absolute(path: &str) -> bool {
     let bytes = path.as_bytes();
     (bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/')
         || path.starts_with("//")
+}
+
+pub(crate) fn trusted_catalog_relative_path(text: &str) -> Result<PathBuf, &'static str> {
+    if text.is_empty() || text.contains('\0') {
+        return Err("path is empty or contains NUL");
+    }
+    let portable = text.replace('\\', "/");
+    let path = Path::new(&portable);
+    let bytes = portable.as_bytes();
+    let windows_drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+    if path.is_absolute() || windows_drive || portable.starts_with("//") {
+        return Err("absolute paths are not allowed");
+    }
+
+    let mut normalized = PathBuf::new();
+    let mut saw_normal = false;
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(value) => {
+                saw_normal = true;
+                normalized.push(value);
+            }
+            Component::ParentDir if !saw_normal => {}
+            Component::ParentDir if normalized.pop() => {}
+            Component::ParentDir => {
+                return Err("parent traversal escapes the virtual catalog root");
+            }
+            Component::Prefix(_) | Component::RootDir => {
+                return Err("absolute paths are not allowed");
+            }
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        return Err("path does not name a file");
+    }
+    Ok(normalized)
 }
 
 fn resolve_case_insensitive(candidate: &Path) -> std::io::Result<PathBuf> {

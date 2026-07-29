@@ -125,6 +125,10 @@ enum Command {
         /// catalogs in declaration order after the mapping package.
         #[arg(long = "edi-catalog-root", value_name = "DIR")]
         edi_catalog_roots: Vec<PathBuf>,
+        /// Trusted JSON Schema catalog. Repeat to search multiple catalogs in
+        /// declaration order after the mapping package.
+        #[arg(long = "json-schema-root", value_name = "DIR")]
+        json_schema_catalog_roots: Vec<PathBuf>,
     },
     /// Convert a ferrule project file into a MapForce .mfd design
     /// (generated XSDs are written next to it).
@@ -426,9 +430,15 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             out,
             package_root,
             edi_catalog_roots,
+            json_schema_catalog_roots,
         } => {
-            let warnings =
-                cli::import_mfd(&mfd, &out, package_root.as_deref(), &edi_catalog_roots)?;
+            let warnings = cli::import_mfd(
+                &mfd,
+                &out,
+                package_root.as_deref(),
+                &edi_catalog_roots,
+                &json_schema_catalog_roots,
+            )?;
             for warning in &warnings {
                 diagnostics.warning("import-mfd", warning);
             }

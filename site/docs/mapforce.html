@@ -37,9 +37,12 @@
           When mapping resources live outside the design directory, pass
           <code>--package-root package</code>. For separately managed EDI
           releases, repeat <code>--edi-catalog-root DIR</code> in search order.
-          Package resources take precedence. Windows separators and safe parent
-          locators are accepted, while every resolved file remains canonically
-          confined to its explicitly trusted root.
+          Separately managed JSON Schema releases use repeatable
+          <code>--json-schema-root DIR</code>. Package resources take
+          precedence. Windows separators and leading installation-relative
+          parent locators are re-anchored under each catalog, while every
+          resolved file and nested schema reference remains canonically confined
+          to its explicitly trusted root.
         </p>
         <p>
           Import resolves supported document components, schemas, graph nodes,

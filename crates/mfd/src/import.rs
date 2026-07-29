@@ -85,6 +85,7 @@ pub struct Imported {
 pub struct ImportOptions {
     package_root: Option<PathBuf>,
     edi_catalog_roots: Vec<PathBuf>,
+    json_schema_catalog_roots: Vec<PathBuf>,
 }
 
 impl ImportOptions {
@@ -121,6 +122,31 @@ impl ImportOptions {
 
     pub fn edi_catalog_roots(&self) -> &[PathBuf] {
         &self.edi_catalog_roots
+    }
+
+    /// Adds an explicitly trusted JSON Schema catalog.
+    ///
+    /// Catalogs are searched in declaration order after package-contained
+    /// resources. Each resolved schema and its local-file references remain
+    /// confined to the matched canonical catalog directory.
+    pub fn with_json_schema_catalog_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.json_schema_catalog_roots.push(root.into());
+        self
+    }
+
+    /// Adds explicitly trusted JSON Schema catalogs in search order.
+    pub fn with_json_schema_catalog_roots<I, P>(mut self, roots: I) -> Self
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<PathBuf>,
+    {
+        self.json_schema_catalog_roots
+            .extend(roots.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn json_schema_catalog_roots(&self) -> &[PathBuf] {
+        &self.json_schema_catalog_roots
     }
 }
 
@@ -210,7 +236,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
     let resources = ResourceResolver::new(path, options.package_root())?
-        .with_edi_catalog_roots(options.edi_catalog_roots())?;
+        .with_edi_catalog_roots(options.edi_catalog_roots())?
+        .with_json_schema_catalog_roots(options.json_schema_catalog_roots())?;
     import_resolved(&resources)
 }
 

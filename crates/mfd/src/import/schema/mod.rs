@@ -714,9 +714,9 @@ fn read_json_component_resolved(
     let mut schema = json_el
         .and_then(|j| j.attribute("schema"))
         .and_then(|rel| {
-            let schema_path =
-                match resolve_resource_reference(mfd_path, resources, rel, "JSON Schema") {
-                    Ok(path) => path,
+            let (schema_path, schema_root) = match resources {
+                Some(resources) => match resources.resolve_json_schema(rel) {
+                    Ok(resolved) => resolved,
                     Err(error) => {
                         warnings.push(format!(
                             "component `{name}`: could not read schema `{rel}` ({error}); \
@@ -724,12 +724,26 @@ fn read_json_component_resolved(
                         ));
                         return None;
                     }
-                };
+                },
+                None => match resolve_resource_reference(mfd_path, None, rel, "JSON Schema") {
+                    Ok(path) => {
+                        let root = path
+                            .parent()
+                            .unwrap_or_else(|| Path::new("."))
+                            .to_path_buf();
+                        (path, root)
+                    }
+                    Err(error) => {
+                        warnings.push(format!(
+                            "component `{name}`: could not read schema `{rel}` ({error}); \
+                             falling back to the entry tree"
+                        ));
+                        return None;
+                    }
+                },
+            };
             let imported = match resources {
-                Some(resources) => format_json::json_schema::import_with_root(
-                    &schema_path,
-                    resources.package_root(),
-                ),
+                Some(_) => format_json::json_schema::import_with_root(&schema_path, &schema_root),
                 None => format_json::json_schema::import(&schema_path),
             };
             match imported {
