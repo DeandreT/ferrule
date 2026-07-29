@@ -73,6 +73,12 @@ fn validate_schema_metadata(
     boundary: &str,
     schema: &SchemaNode,
 ) -> Result<(), ProgramValidationError> {
+    if !schema.json_pattern_budget_is_valid() {
+        return Err(ProgramValidationError::InvalidSchemaMetadata {
+            boundary: boundary.to_string(),
+            path: Vec::new(),
+        });
+    }
     fn visit(
         boundary: &str,
         schema: &SchemaNode,

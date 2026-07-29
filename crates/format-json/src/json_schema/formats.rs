@@ -93,14 +93,20 @@ pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_
             out.insert("format".into(), format.clone().into());
         }
         formats => {
-            out.insert(
-                "allOf".into(),
-                formats
-                    .iter()
-                    .map(|format| serde_json::json!({ "format": format }))
-                    .collect::<Vec<_>>()
-                    .into(),
-            );
+            let annotations = formats
+                .iter()
+                .map(|format| serde_json::json!({ "format": format }))
+                .collect::<Vec<_>>();
+            match out.entry("allOf".to_string()) {
+                serde_json::map::Entry::Vacant(entry) => {
+                    entry.insert(annotations.into());
+                }
+                serde_json::map::Entry::Occupied(mut entry) => {
+                    if let Some(existing) = entry.get_mut().as_array_mut() {
+                        existing.extend(annotations);
+                    }
+                }
+            }
         }
     }
 }

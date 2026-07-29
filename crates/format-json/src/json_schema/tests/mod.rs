@@ -5,20 +5,27 @@ use ir::{
     SchemaNode,
 };
 
-use super::{export, import};
+use super::import;
 use crate::JsonFormatError;
 
 mod all_of;
 mod constraints;
+mod export_validation;
 mod formats;
 mod item_counts;
 mod nullable_composition;
+mod patterns;
 mod ranges;
 mod ref_dialects;
 mod required;
 mod resources;
 mod string_lengths;
 mod unconstrained;
+
+fn export(schema: &SchemaNode) -> String {
+    super::export(schema)
+        .unwrap_or_else(|error| panic!("test schema should export successfully: {error}"))
+}
 
 fn import_str(text: &str) -> SchemaNode {
     import_str_result(text).unwrap()
@@ -2000,7 +2007,7 @@ fn nullable_disjoint_scalar_one_of_resolves_local_refs() -> Result<(), Box<dyn s
 }
 
 #[test]
-fn overlapping_or_constrained_scalar_one_of_is_rejected() {
+fn overlapping_scalar_one_of_rejects_while_disjoint_pattern_branch_is_retained() {
     for overlap in [
         r#"{
   "title":"Numeric",
@@ -2019,7 +2026,7 @@ fn overlapping_or_constrained_scalar_one_of_is_rejected() {
         assert!(overlap.to_string().contains("branches overlap"));
     }
 
-    let constrained = import_str_result(
+    let constrained = import_str(
         r#"{
   "title":"Constrained",
   "oneOf":[
@@ -2027,12 +2034,13 @@ fn overlapping_or_constrained_scalar_one_of_is_rejected() {
     {"type":"integer"}
   ]
 }"#,
-    )
-    .unwrap_err();
-    assert!(
+    );
+    assert_eq!(
         constrained
-            .to_string()
-            .contains("cannot preserve `pattern`")
+            .json_patterns
+            .as_ref()
+            .map(ir::JsonPatternConstraints::any_of),
+        Some(&[vec!["^[A-Z]+$".to_string()]][..])
     );
 }
 

@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/editor-ui",
+    "crates/json-pattern",
     "crates/ir",
     "crates/mapping",
     "crates/functions",
@@ -34,6 +35,7 @@ repository = "https://github.com/DeandreT/ferrule"
 
 [workspace.dependencies]
 editor-ui = { path = "crates/editor-ui" }
+json-pattern = { path = "crates/json-pattern" }
 ir = { path = "crates/ir" }
 mapping = { path = "crates/mapping" }
 functions = { path = "crates/functions" }

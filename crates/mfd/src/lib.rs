@@ -62,6 +62,8 @@ pub enum MfdError {
     Xml(#[from] roxmltree::Error),
     #[error("schema export error: {0}")]
     SchemaExport(#[from] format_xml::XmlFormatError),
+    #[error("JSON schema export error: {0}")]
+    JsonSchemaExport(#[from] format_json::JsonFormatError),
     #[error("not a MapForce design: {0}")]
     NotMfd(&'static str),
     #[error("cannot import: {0}")]

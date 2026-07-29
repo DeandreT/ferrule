@@ -1,6 +1,7 @@
 use ir::{Instance, Value};
 
-use super::super::{export, import};
+use super::super::import;
+use super::export;
 use crate::{JsonFormatError, from_str, to_string};
 
 fn import_text(text: &str, label: &str) -> Result<ir::SchemaNode, JsonFormatError> {

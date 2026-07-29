@@ -568,7 +568,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 component_name: source.name,
                 component_uid: source.component_uid,
                 sibling_suffix: &source.sibling_suffix,
-            }) {
+            })? {
             rendered
         } else if source.options.external_source.is_some() {
             if matches!(
@@ -591,8 +591,11 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 })?
             } else {
                 let request_suffix = format!("{}-request", source.sibling_suffix);
-                let request_schema =
-                    external_source::request_schema_artifact(source.options, path, &request_suffix);
+                let request_schema = external_source::request_schema_artifact(
+                    source.options,
+                    path,
+                    &request_suffix,
+                )?;
                 let xml = external_source::render_http_post(external_source::RenderHttpPostArgs {
                     component_name: source.name,
                     response_schema: source.schema,
@@ -681,7 +684,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 component_uid: target.component_uid,
                 sibling_suffix: &target.sibling_suffix,
                 default_output: target.default_output,
-            })
+            })?
         } else {
             render_schema_component(
                 target.schema,

@@ -129,6 +129,7 @@ internal static partial class Program
         JsonItemCountBoundaries();
         JsonFormatAnnotationBoundaries();
         JsonStringLengthBoundaries();
+        JsonPatternBoundaries();
         JsonScalarUnionBoundaries();
     }
 
@@ -489,6 +490,256 @@ internal static partial class Program
                 FerruleRuntimeError.JsonBoundary,
                 () => FerruleJson.Parse(invalidSchema, "\"value\""));
         }
+    }
+
+    private static void JsonPatternBoundaries()
+    {
+        var dnf = JsonPatternSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            [["^A", "Z$"], ["^B$"]]);
+        Equal(Text("ABZ"), ((FerruleScalar)FerruleJson.Parse(dnf, "\"ABZ\"")).Value);
+        Equal(Text("B"), ((FerruleScalar)FerruleJson.Parse(dnf, "\"B\"")).Value);
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(dnf, "\"AX\""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(dnf, Scalar(Text("other"))));
+
+        var astral = JsonPatternSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            [["^\\u{1F600}$"]]);
+        Equal(
+            Text("\U0001F600"),
+            ((FerruleScalar)FerruleJson.Parse(astral, "\"\\uD83D\\uDE00\"")).Value);
+
+        var dot = JsonPatternSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            [["^.$"]]);
+        Equal(Text("x"), ((FerruleScalar)FerruleJson.Parse(dot, "\"x\"")).Value);
+        Equal(
+            Text("\U0001F600"),
+            ((FerruleScalar)FerruleJson.Parse(dot, "\"\\uD83D\\uDE00\"")).Value);
+        foreach (var lineTerminator in new[] { "\n", "\r", "\u2028", "\u2029" })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(
+                    dot,
+                    System.Text.Json.JsonSerializer.Serialize(lineTerminator)));
+        }
+
+        var final = JsonPatternSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            [["x$"]]);
+        foreach (var value in new[] { "x", "x\n", "x\r", "x\r\n", "x\u2028", "x\u2029" })
+        {
+            Equal(
+                Text(value),
+                ((FerruleScalar)FerruleJson.Parse(
+                    final,
+                    System.Text.Json.JsonSerializer.Serialize(value))).Value);
+        }
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(final, "\"x\\n\\n\""));
+
+        var emptyClass = JsonPatternSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            [["[]"]]);
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(emptyClass, "\"x\""));
+        var complementedEmptyClass = JsonPatternSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            [["[^]"]]);
+        Equal(
+            Text("\U0001F600"),
+            ((FerruleScalar)FerruleJson.Parse(
+                complementedEmptyClass,
+                "\"\\uD83D\\uDE00\"")).Value);
+        var groupedAssertion = JsonPatternSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            [["(^)*a"]]);
+        Equal(
+            Text("a"),
+            ((FerruleScalar)FerruleJson.Parse(groupedAssertion, "\"a\"")).Value);
+
+        var normalizedString = JsonPatternSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            [["^true$"]]);
+        Equal(
+            "\"true\"\n",
+            FerruleJson.Serialize(
+                normalizedString,
+                Scalar(FerruleValue.FromBoolean(true))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                normalizedString,
+                Scalar(FerruleValue.FromBoolean(false))));
+
+        foreach (var (value, expected, pattern) in new[]
+                 {
+                     (1.0, "1", "^1$"),
+                     (-0.0, "-0", "^-0$"),
+                     (1e20, "100000000000000000000", "^100000000000000000000$"),
+                     (1e-7, "0.0000001", "^0\\.0000001$"),
+                 })
+        {
+            var normalizedFloat = JsonPatternSchema(
+                "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                [[pattern]]);
+            Equal(
+                System.Text.Json.JsonSerializer.Serialize(expected) + "\n",
+                FerruleJson.Serialize(
+                    normalizedFloat,
+                    Scalar(FerruleValue.FromDouble(value))));
+        }
+
+        var scalarUnion = JsonPatternSchema(
+            "{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\"]}",
+            [["^A$"]]);
+        Equal(
+            FerruleValue.FromInt64(7),
+            ((FerruleScalar)FerruleJson.Parse(scalarUnion, "7")).Value);
+        Equal(
+            "7\n",
+            FerruleJson.Serialize(
+                scalarUnion,
+                Scalar(FerruleValue.FromInt64(7))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(scalarUnion, "\"B\""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(scalarUnion, Scalar(Text("B"))));
+
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Value\",\"json_patterns\":{},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[],\"extra\":true},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"A\",\"A\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"A\"],[\"A\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"\",\"A\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"\"],[\"A\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[7]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"\\\\d\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"[a-b-c]\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"[[]\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"A\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Value\",\"json_any\":true,\"json_patterns\":{\"any_of\":[[\"A\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"fixed\":\"B\",\"json_patterns\":{\"any_of\":[[\"^A$\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"A\"]],\"any_of\":[[\"B\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_patterns\":{\"any_of\":[[\"A\"]]},\"json_patterns\":{\"any_of\":[[\"B\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "\"A\""));
+        }
+
+        var tooManyAlternatives = Enumerable.Range(0, 33)
+            .Select(index => new[] { $"^{index}$" })
+            .ToArray();
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                JsonPatternSchema(
+                    "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                    tooManyAlternatives),
+                "\"0\""));
+        var tooManyTerms = new[]
+        {
+            Enumerable.Range(0, 65).Select(index => $"term-{index}").ToArray(),
+        };
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                JsonPatternSchema(
+                    "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                    tooManyTerms),
+                "\"term-0\""));
+
+        var distinctOverflow = Enumerable.Range(0, 65)
+            .Select(index => ($"field-{index}", $"^value-{index}$"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                JsonPatternGroupSchema(distinctOverflow),
+                "{}"));
+        var sharedPattern = Enumerable.Range(0, 65)
+            .Select(index => ($"field-{index}", "^shared$"));
+        _ = FerruleJson.Parse(JsonPatternGroupSchema(sharedPattern), "{}");
+        var sourceOverflow = new[] { 'b', 'c', 'd', 'e', 'f' }
+            .Select((marker, index) =>
+                ($"field-{index}", $"[{"a".PadRight(60_000, 'a')}{marker}]"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                JsonPatternGroupSchema(sourceOverflow),
+                "{}"));
+        var instructionOverflow = Enumerable.Range(0, 14)
+            .Select(index => ($"field-{index}", $"{new string('a', 5_000)}{index}"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                JsonPatternGroupSchema(instructionOverflow),
+                "{}"));
+
+        var expensivePattern = new string('a', 1_000);
+        var expensiveText = new string('a', 60_000);
+        var expensiveValue =
+            System.Text.Json.JsonSerializer.Serialize(expensiveText);
+        var sharedBudgetSchema = JsonPatternGroupSchema(
+            new[]
+            {
+                ("First", expensivePattern),
+                ("Second", expensivePattern),
+            });
+        var sharedBudgetError = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                sharedBudgetSchema,
+                $"{{\"First\":{expensiveValue},\"Second\":{expensiveValue}}}"));
+        Equal(
+            true,
+            sharedBudgetError.Message.Contains("work units", StringComparison.Ordinal));
+
+        var fixedChild = (string name) =>
+            $"{{\"name\":{System.Text.Json.JsonSerializer.Serialize(name)}," +
+            $"\"fixed\":{expensiveValue}," +
+            $"\"json_patterns\":{{\"any_of\":[[{System.Text.Json.JsonSerializer.Serialize(expensivePattern)}]]}}," +
+            "\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        var fixedBudgetSchema =
+            $"{{\"name\":\"Root\",\"kind\":{{\"kind\":\"group\",\"children\":[" +
+            $"{fixedChild("First")},{fixedChild("Second")}]}}}}";
+        var fixedBudgetError = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(fixedBudgetSchema, "{}"));
+        Equal(
+            true,
+            fixedBudgetError.Message.Contains("work units", StringComparison.Ordinal));
+    }
+
+    private static string JsonPatternSchema(
+        string kind,
+        IEnumerable<IEnumerable<string>> alternatives,
+        bool jsonAny = false) =>
+        $"{{\"name\":\"Value\",\"json_any\":{jsonAny.ToString().ToLowerInvariant()}," +
+        $"\"json_patterns\":{{\"any_of\":{System.Text.Json.JsonSerializer.Serialize(alternatives)}}}," +
+        $"\"kind\":{kind}}}";
+
+    private static string JsonPatternGroupSchema(
+        IEnumerable<(string Name, string Pattern)> children)
+    {
+        var childJson = children.Select(child =>
+            $"{{\"name\":{System.Text.Json.JsonSerializer.Serialize(child.Name)}," +
+            $"\"json_patterns\":{{\"any_of\":[[{System.Text.Json.JsonSerializer.Serialize(child.Pattern)}]]}}," +
+            "\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}");
+        return
+            $"{{\"name\":\"Root\",\"kind\":{{\"kind\":\"group\",\"children\":[{string.Join(",", childJson)}]}}}}";
     }
 
     private static void JsonScalarUnionBoundaries()

@@ -149,6 +149,65 @@ fn exclusive_nested_null_overlap_is_removed_without_widening() {
 }
 
 #[test]
+fn nested_nullable_all_of_scalar_branches_preserve_null_and_patterns() {
+    let inclusive = import_str(
+        r#"{
+  "title":"Value",
+  "anyOf":[
+    {
+      "allOf":[
+        {"type":["string","null"]},
+        {"pattern":"^A$"}
+      ]
+    },
+    {"type":"integer"}
+  ]
+}"#,
+    );
+    assert!(inclusive.nullable);
+    assert!(crate::from_str("null", &inclusive).is_ok());
+    assert!(crate::from_str(r#""A""#, &inclusive).is_ok());
+    assert!(crate::from_str("7", &inclusive).is_ok());
+    assert!(matches!(
+        crate::from_str(r#""B""#, &inclusive),
+        Err(JsonFormatError::PatternMismatch { .. })
+    ));
+    assert_eq!(import_str(&export(&inclusive)), inclusive);
+
+    let exclusive = import_str(
+        r#"{
+  "title":"Value",
+  "oneOf":[
+    {
+      "allOf":[
+        {"type":["string","null"]},
+        {"pattern":"^A$"}
+      ]
+    },
+    {"type":"integer"}
+  ]
+}"#,
+    );
+    assert!(exclusive.nullable);
+    assert!(crate::from_str("null", &exclusive).is_ok());
+    assert!(crate::from_str(r#""A""#, &exclusive).is_ok());
+    assert!(crate::from_str("7", &exclusive).is_ok());
+    assert_eq!(import_str(&export(&exclusive)), exclusive);
+
+    assert!(matches!(
+        import_str_result(
+            r#"{
+  "oneOf":[
+    {"allOf":[{"type":["string","null"]},{"pattern":"^A$"}]},
+    {"allOf":[{"type":["integer","null"]},{"minimum":1}]}
+  ]
+}"#
+        ),
+        Err(JsonFormatError::UnsupportedSchemaUnion { .. })
+    ));
+}
+
+#[test]
 fn exclusive_null_with_an_unconstrained_branch_rejects_actionably() {
     let error = import_str_result(
         r#"{
