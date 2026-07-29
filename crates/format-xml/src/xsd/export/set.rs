@@ -6,8 +6,8 @@ use ir::{SchemaKind, SchemaNode, XmlNamespace};
 use crate::XmlFormatError;
 
 use super::{
-    ExternalReference, alternatives, attribute_value_constraint, export_document, export_namespace,
-    xsd_type_name,
+    ExternalReference, alternatives, attribute_value_constraint, export_namespace,
+    export_set_document, export_set_substitution_member, substitution, xsd_type_name,
 };
 
 const MAX_NAMESPACE_ARTIFACTS: usize = 64;
@@ -39,7 +39,7 @@ pub fn export_set(
     root_filename: &str,
 ) -> Result<XsdExportSet, XmlFormatError> {
     let stem = artifact_stem(root_filename)?;
-    let mut planner = ExportSetPlanner::new(stem, schema);
+    let mut planner = ExportSetPlanner::new(stem, root_filename, schema);
     let target_namespace = match &schema.xml_namespace {
         Some(XmlNamespace::Qualified(namespace)) => Some(namespace.as_str().to_string()),
         _ => export_namespace(schema)?,
@@ -47,17 +47,29 @@ pub fn export_set(
     let mut active = root_key(schema, target_namespace.as_deref())
         .into_iter()
         .collect();
-    let root_imports = planner.scan_document(schema, target_namespace.as_deref(), &mut active)?;
+    let root_imports =
+        planner.scan_document(schema, target_namespace.as_deref(), &mut active, true)?;
     let root_references = planner.references(&root_imports);
-    let root = export_document(schema, &root_references)?;
+    let root = export_set_document(schema, &root_references)?;
 
     let mut dependencies = Vec::with_capacity(planner.dependencies.len());
     for dependency in &planner.dependencies {
         let references = planner.references(&dependency.imports);
-        let contents = if dependency.key.attribute {
+        let contents = if let DependencyKind::SubstitutionMember {
+            head,
+            member_identity,
+        } = &dependency.kind
+        {
+            export_set_substitution_member(
+                head,
+                member_identity,
+                &dependency.key.namespace,
+                &references,
+            )?
+        } else if dependency.key.attribute {
             export_attribute_document(&dependency.declaration, &dependency.key)?
         } else {
-            export_document(&dependency.declaration, &references)?
+            export_set_document(&dependency.declaration, &references)?
         };
         dependencies.push(XsdExportArtifact {
             filename: dependency.filename.clone(),
@@ -123,10 +135,21 @@ struct DependencyPlan {
     declaration: SchemaNode,
     filename: String,
     imports: Vec<DeclarationKey>,
+    kind: DependencyKind,
+}
+
+#[derive(Clone, PartialEq)]
+enum DependencyKind {
+    Ordinary,
+    SubstitutionMember {
+        head: Box<SchemaNode>,
+        member_identity: String,
+    },
 }
 
 struct ExportSetPlanner<'a> {
     stem: String,
+    root_filename: String,
     root_schema: &'a SchemaNode,
     dependencies: Vec<DependencyPlan>,
     by_key: BTreeMap<DeclarationKey, usize>,
@@ -134,9 +157,10 @@ struct ExportSetPlanner<'a> {
 }
 
 impl<'a> ExportSetPlanner<'a> {
-    fn new(stem: &str, root_schema: &'a SchemaNode) -> Self {
+    fn new(stem: &str, root_filename: &str, root_schema: &'a SchemaNode) -> Self {
         Self {
             stem: stem.to_string(),
+            root_filename: root_filename.to_string(),
             root_schema,
             dependencies: Vec::new(),
             by_key: BTreeMap::new(),
@@ -149,9 +173,17 @@ impl<'a> ExportSetPlanner<'a> {
         schema: &SchemaNode,
         target_namespace: Option<&str>,
         active: &mut Vec<DeclarationKey>,
+        discover_substitution_members: bool,
     ) -> Result<Vec<DeclarationKey>, XmlFormatError> {
         let mut imports = Vec::new();
-        self.scan_node(schema, target_namespace, active, &mut imports, true)?;
+        self.scan_node(
+            schema,
+            target_namespace,
+            active,
+            &mut imports,
+            true,
+            discover_substitution_members,
+        )?;
         Ok(imports)
     }
 
@@ -162,6 +194,7 @@ impl<'a> ExportSetPlanner<'a> {
         active: &mut Vec<DeclarationKey>,
         imports: &mut Vec<DeclarationKey>,
         document_root: bool,
+        discover_substitution_members: bool,
     ) -> Result<(), XmlFormatError> {
         if !document_root
             && let Some(XmlNamespace::Qualified(namespace)) = &node.xml_namespace
@@ -204,27 +237,152 @@ impl<'a> ExportSetPlanner<'a> {
                     declaration: declaration.clone(),
                     filename,
                     imports: Vec::new(),
+                    kind: DependencyKind::Ordinary,
                 });
                 active.push(key.clone());
-                let nested = self.scan_document(&declaration, Some(namespace.as_str()), active)?;
+                let nested =
+                    self.scan_document(&declaration, Some(namespace.as_str()), active, false)?;
                 active.pop();
                 self.dependencies[index].imports = nested;
             }
             if !imports.contains(&key) {
-                imports.push(key);
+                imports.push(key.clone());
+            }
+            if substitution::requires_partition(&declaration) {
+                let members = self.ensure_substitution_members(&declaration, &key, active)?;
+                for member in members {
+                    if !imports.contains(&member) {
+                        imports.push(member);
+                    }
+                }
             }
             return Ok(());
         }
 
-        if let SchemaKind::Group { children, .. } = &node.kind {
+        if discover_substitution_members && substitution::requires_partition(node) {
+            let namespace =
+                target_namespace.ok_or_else(|| XmlFormatError::UnsupportedSubstitutionGroup {
+                    head: node.name.clone(),
+                    member: node.name.clone(),
+                    reason: "an unqualified head cannot own qualified substitution members",
+                })?;
+            let head = DeclarationKey::new(node, namespace);
+            let members = self.ensure_substitution_members(node, &head, active)?;
+            for member in members {
+                if !imports.contains(&member) {
+                    imports.push(member);
+                }
+            }
+        }
+
+        let partitioned_projection = substitution::requires_partition(node)
+            .then(|| substitution::head_document_projection(node));
+        let projected;
+        let scan = match partitioned_projection {
+            Some(result) => {
+                projected = result?;
+                &projected
+            }
+            None => node,
+        };
+        if let SchemaKind::Group { children, .. } = &scan.kind {
             for child in children {
                 if child.text {
                     continue;
                 }
-                self.scan_node(child, target_namespace, active, imports, false)?;
+                self.scan_node(
+                    child,
+                    target_namespace,
+                    active,
+                    imports,
+                    false,
+                    discover_substitution_members,
+                )?;
             }
         }
         Ok(())
+    }
+
+    fn ensure_substitution_members(
+        &mut self,
+        head: &SchemaNode,
+        head_key: &DeclarationKey,
+        active: &mut Vec<DeclarationKey>,
+    ) -> Result<Vec<DeclarationKey>, XmlFormatError> {
+        let mut keys = Vec::new();
+        for (namespace, local) in substitution::member_identities(head)? {
+            let key = DeclarationKey {
+                attribute: false,
+                namespace,
+                name: local,
+            };
+            if active.contains(&key) {
+                return Err(XmlFormatError::NamespaceDependencyCycle {
+                    role: key.role(),
+                    namespace: key.namespace,
+                    name: key.name,
+                });
+            }
+            self.references = self.references.saturating_add(1);
+            if self.references > MAX_NAMESPACE_REFERENCES {
+                return Err(XmlFormatError::NamespaceReferenceLimit {
+                    limit: MAX_NAMESPACE_REFERENCES,
+                });
+            }
+            let member_identity = format!("{{{}}}{}", key.namespace, key.name);
+            let kind = DependencyKind::SubstitutionMember {
+                head: Box::new(head.clone()),
+                member_identity,
+            };
+            if let Some(index) = self.by_key.get(&key).copied() {
+                if self.dependencies[index].kind != kind {
+                    return Err(XmlFormatError::ConflictingNamespaceDeclaration {
+                        role: key.role(),
+                        namespace: key.namespace,
+                        name: key.name,
+                    });
+                }
+            } else {
+                if self.dependencies.len() >= MAX_NAMESPACE_ARTIFACTS {
+                    return Err(XmlFormatError::NamespaceArtifactLimit {
+                        limit: MAX_NAMESPACE_ARTIFACTS,
+                    });
+                }
+                let index = self.dependencies.len();
+                let filename = format!("{}-ns{}.xsd", self.stem, index + 1);
+                self.by_key.insert(key.clone(), index);
+                self.dependencies.push(DependencyPlan {
+                    key: key.clone(),
+                    declaration: head.clone(),
+                    filename,
+                    imports: Vec::new(),
+                    kind,
+                });
+                let member_identity = format!("{{{}}}{}", key.namespace, key.name);
+                let projection = substitution::member_extension_projection(head, &member_identity)?;
+                let mut member_imports = vec![head_key.clone()];
+                active.push(key.clone());
+                if let SchemaKind::Group { children, .. } = &projection.kind {
+                    for child in children {
+                        if child.text {
+                            continue;
+                        }
+                        self.scan_node(
+                            child,
+                            Some(key.namespace.as_str()),
+                            active,
+                            &mut member_imports,
+                            false,
+                            true,
+                        )?;
+                    }
+                }
+                active.pop();
+                self.dependencies[index].imports = member_imports;
+            }
+            keys.push(key);
+        }
+        Ok(keys)
     }
 
     fn materialize_declaration(
@@ -280,7 +438,22 @@ impl<'a> ExportSetPlanner<'a> {
                 let dependency = self
                     .by_key
                     .get(key)
-                    .and_then(|index| self.dependencies.get(*index))?;
+                    .and_then(|index| self.dependencies.get(*index));
+                let root = root_key(
+                    self.root_schema,
+                    self.root_schema
+                        .xml_namespace
+                        .as_ref()
+                        .and_then(|namespace| match namespace {
+                            XmlNamespace::Qualified(namespace) => Some(namespace.as_str()),
+                            XmlNamespace::Unqualified => None,
+                        }),
+                );
+                let location = match dependency {
+                    Some(dependency) => dependency.filename.clone(),
+                    None if root.as_ref() == Some(key) => self.root_filename.clone(),
+                    None => return None,
+                };
                 let namespace_index = namespaces
                     .iter()
                     .position(|namespace| *namespace == key.namespace)
@@ -293,7 +466,7 @@ impl<'a> ExportSetPlanner<'a> {
                     namespace: key.namespace.clone(),
                     name: key.name.clone(),
                     prefix: format!("ns{}", namespace_index + 1),
-                    location: dependency.filename.clone(),
+                    location,
                 })
             })
             .collect()
