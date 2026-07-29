@@ -274,7 +274,7 @@ pub(super) fn classify_target_connection(
                 role.driver_port == input_key
                     && branches_are_compatible
                     && mapped_feeds.iter().all(|(feed, role)| {
-                        matching_xml_type_conditions(builder, **feed, role.driver_port)
+                        compatible_xml_type_conditions(builder, **feed, role.driver_port)
                     })
             }) {
                 let mut feeds = mapped_feeds
@@ -422,9 +422,13 @@ fn exact_mapped_branches(
         .all(|(_, role)| role.copy_all || branches_with_content.contains(&role.representative))
 }
 
-fn matching_xml_type_conditions(builder: &GraphBuilder<'_>, feed: u32, target_port: u32) -> bool {
+fn compatible_xml_type_conditions(builder: &GraphBuilder<'_>, feed: u32, target_port: u32) -> bool {
     let source_port = builder.resolve_iteration_feed(feed).source_key;
-    builder.xml_type_conditions.get(&source_port) == builder.xml_type_conditions.get(&target_port)
+    let source = builder.xml_type_conditions.get(&source_port);
+    builder
+        .xml_type_conditions
+        .get(&target_port)
+        .is_none_or(|target| source == Some(target))
 }
 
 struct StructuralFeedRole {

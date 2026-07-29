@@ -287,17 +287,12 @@ fn mapped_scope_plan(
         });
     }
     scope.source()?;
-    let (alternative, absorbed_marker, alternative_group) = if target_group.repeating {
-        let (alternative, marker, group) =
-            super::concatenation::source_type_condition(scope, graph)?;
-        (Some(alternative), Some(marker), Some(group))
-    } else {
-        (
-            super::concatenation::exact_type_condition(scope, graph, target_group),
-            super::concatenation::exact_type_marker(scope, graph, target_group),
-            super::concatenation::source_type_condition(scope, graph).map(|(_, _, group)| group),
-        )
-    };
+    let source_condition = super::concatenation::source_type_condition(scope, graph);
+    let alternative = source_condition
+        .as_ref()
+        .map(|(alternative, _, _)| alternative.clone());
+    let absorbed_marker = source_condition.as_ref().map(|(_, marker, _)| *marker);
+    let alternative_group = source_condition.map(|(_, _, group)| group);
 
     let source_collection = sources.schema_node_at(collection)?;
     if !matches!(source_collection.kind, SchemaKind::Group { .. }) {
