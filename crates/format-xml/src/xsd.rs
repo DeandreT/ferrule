@@ -12,7 +12,9 @@
 //! fields. Repeating anonymous sequences retain their member occurrence
 //! metadata and input order while projecting repeating named ports, allowing
 //! exact read/write/export roundtrips and rejecting ambiguous newly constructed
-//! tuples. `xs:simpleContent` becomes a `#text` scalar plus attribute scalars.
+//! tuples. `xs:simpleContent` becomes a `#text` scalar plus attribute scalars;
+//! named attribute-only extensions and restrictions participate in executable
+//! `xsi:type` alternatives.
 //! `xs:any` imports only when it is an optional, unbounded, local-name,
 //! skip-validation wildcard that can round-trip through the recursive generic
 //! `element()` group. Other wildcard profiles fail with a typed diagnostic.
@@ -1063,7 +1065,10 @@ fn type_identity_in_namespace(namespace: Option<&str>, local: &str) -> Option<St
 fn direct_complex_derivation(declaration: &Node<'_, '_>) -> Option<(String, bool)> {
     let derivation = declaration
         .children()
-        .find(|child| child.is_element() && child.tag_name().name() == "complexContent")?
+        .find(|child| {
+            child.is_element()
+                && matches!(child.tag_name().name(), "complexContent" | "simpleContent")
+        })?
         .children()
         .find(|child| {
             child.is_element() && matches!(child.tag_name().name(), "extension" | "restriction")
@@ -1694,6 +1699,20 @@ fn parse_complex_type(
                         if let Some(ComplexTypeResolution::Group(base_group)) =
                             resolve_complex_type(base, schema_el, schema_path, state, None)
                         {
+                            if content.tag_name().name() == "restriction" {
+                                match restriction::apply_simple_content(
+                                    base,
+                                    base_group,
+                                    &content,
+                                    schema_el,
+                                    schema_path,
+                                    state,
+                                ) {
+                                    Ok(group) => parsed.extend(group),
+                                    Err(error) => state.reject_restriction(error),
+                                }
+                                continue;
+                            }
                             parsed.extend(base_group);
                             resolved_base = true;
                         } else {

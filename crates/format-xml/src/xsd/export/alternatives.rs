@@ -4,7 +4,7 @@ use ir::{GroupAlternative, SchemaKind, SchemaNode};
 
 use crate::XmlFormatError;
 
-use super::{ElementOccurrence, write_attribute, write_element_required};
+use super::{ElementOccurrence, write_attribute, write_element_required, xsd_type_name};
 
 pub(super) struct AlternativeExportPlan<'a> {
     namespace: Option<String>,
@@ -202,6 +202,10 @@ impl<'a> AlternativeExportPlan<'a> {
             } else {
                 ""
             };
+            if let Some(text) = self.simple_content_text(name, &mut BTreeSet::new())? {
+                self.write_simple_content_definition(name, definition, text, abstract_attr, out)?;
+                continue;
+            }
             if let Some(base) = &definition.base {
                 let derivation = match definition.derivation {
                     TypeDerivation::Extension => "extension",
@@ -225,6 +229,77 @@ impl<'a> AlternativeExportPlan<'a> {
                 out.push_str("  </xs:complexType>\n");
             }
         }
+        Ok(())
+    }
+
+    fn simple_content_text(
+        &self,
+        name: &str,
+        active: &mut BTreeSet<String>,
+    ) -> Result<Option<&'a SchemaNode>, XmlFormatError> {
+        if !active.insert(name.to_string()) {
+            return Err(unsupported_node_name(name));
+        }
+        let definition = self
+            .definitions
+            .get(name)
+            .ok_or_else(|| unsupported_node_name(name))?;
+        let mut local_text = None;
+        for member in &definition.members {
+            if member.text {
+                if local_text.replace(*member).is_some() {
+                    return Err(unsupported_node_name(name));
+                }
+            } else if !member.attribute {
+                active.remove(name);
+                return Ok(None);
+            }
+        }
+        let inherited = match definition.base.as_deref() {
+            Some(base) => self.simple_content_text(base, active)?,
+            None => None,
+        };
+        active.remove(name);
+        match (local_text, inherited, definition.base.is_some()) {
+            (Some(local), Some(base), _) if local != base => Err(unsupported_node_name(name)),
+            (Some(local), _, false) | (Some(local), Some(_), true) => Ok(Some(local)),
+            (Some(_), None, true) => Err(unsupported_node_name(name)),
+            (None, Some(base), _) => Ok(Some(base)),
+            (None, None, _) => Ok(None),
+        }
+    }
+
+    fn write_simple_content_definition(
+        &self,
+        name: &str,
+        definition: &TypeDefinition<'_>,
+        text: &SchemaNode,
+        abstract_attr: &str,
+        out: &mut String,
+    ) -> Result<(), XmlFormatError> {
+        let (derivation, base) = match &definition.base {
+            Some(base) => (
+                match definition.derivation {
+                    TypeDerivation::Extension => "extension",
+                    TypeDerivation::Restriction => "restriction",
+                },
+                self.qualified(base),
+            ),
+            None => {
+                let SchemaKind::Scalar { ty } = text.kind else {
+                    return Err(unsupported_node_name(name));
+                };
+                ("extension", xsd_type_name(&ty).to_string())
+            }
+        };
+        out.push_str(&format!(
+            "  <xs:complexType name=\"{}\"{abstract_attr}>\n    <xs:simpleContent>\n      <xs:{derivation} base=\"{base}\">\n",
+            xml_escape(name)
+        ));
+        write_simple_content_members(definition, 4, self, out)?;
+        out.push_str(&format!(
+            "      </xs:{derivation}>\n    </xs:simpleContent>\n  </xs:complexType>\n"
+        ));
         Ok(())
     }
 
@@ -562,6 +637,31 @@ fn write_members(
     out.push_str(&format!("{pad}</xs:sequence>\n"));
     for attribute in attributes {
         write_attribute(attribute, depth, alternatives, out)?;
+    }
+    for attribute in &definition.prohibited_attributes {
+        let pad = "  ".repeat(depth);
+        out.push_str(&format!(
+            "{pad}<xs:attribute name=\"{}\" use=\"prohibited\"/>\n",
+            xml_escape(&attribute.name)
+        ));
+    }
+    Ok(())
+}
+
+fn write_simple_content_members(
+    definition: &TypeDefinition<'_>,
+    depth: usize,
+    alternatives: &AlternativeExportPlan<'_>,
+    out: &mut String,
+) -> Result<(), XmlFormatError> {
+    for member in &definition.members {
+        if member.text {
+            continue;
+        }
+        if !member.attribute {
+            return Err(unsupported_node_name("non-attribute simple-content member"));
+        }
+        write_attribute(member, depth, alternatives, out)?;
     }
     for attribute in &definition.prohibited_attributes {
         let pad = "  ".repeat(depth);

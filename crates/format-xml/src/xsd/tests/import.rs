@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::{from_str, to_string};
-use ir::{Instance, SchemaKind, Value, XmlNamespace};
+use ir::{Instance, SchemaKind, Value, XML_TYPE_FIELD, XmlNamespace};
 
 #[test]
 fn imports_utf16_schemas_with_or_without_a_bom() {
@@ -325,6 +325,163 @@ fn imports_named_derived_complex_types() {
             ty: ScalarType::Int
         }
     ));
+}
+
+#[test]
+fn simple_content_extensions_become_executable_xsi_type_alternatives()
+-> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_simple_content_derivation_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:t="urn:ferrule:simple-derived"
+                       targetNamespace="urn:ferrule:simple-derived"
+                       elementFormDefault="qualified">
+          <xs:complexType name="BaseText"><xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="language" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent></xs:complexType>
+          <xs:complexType name="CodedText"><xs:simpleContent>
+            <xs:extension base="t:BaseText">
+              <xs:attribute name="code" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent></xs:complexType>
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:element name="value" type="t:BaseText"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )?;
+    let schema = import_root(&path, Some("{urn:ferrule:simple-derived}Root"))?;
+    let value = schema
+        .child("value")
+        .ok_or("derived simple-content field is missing")?;
+    assert_eq!(value.alternatives().len(), 2);
+    assert!(value.child(XML_TEXT_FIELD).is_some_and(|child| child.text));
+    assert!(value.child("language").is_some_and(|child| child.attribute));
+    assert!(value.child("code").is_some_and(|child| child.attribute));
+
+    let input = r#"<Root xmlns="urn:ferrule:simple-derived"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xmlns:t="urn:ferrule:simple-derived">
+          <value xsi:type="t:CodedText" language="en" code="A">hello</value>
+        </Root>"#;
+    let instance = from_str(input, &schema)?;
+    let derived = instance
+        .field("value")
+        .ok_or("derived simple-content instance is missing")?;
+    assert_eq!(
+        derived.field(XML_TEXT_FIELD).and_then(Instance::as_scalar),
+        Some(&Value::String("hello".to_string()))
+    );
+    assert_eq!(
+        derived.field("code").and_then(Instance::as_scalar),
+        Some(&Value::String("A".to_string()))
+    );
+    assert_eq!(
+        derived.field(XML_TYPE_FIELD).and_then(Instance::as_scalar),
+        Some(&Value::String(
+            "{urn:ferrule:simple-derived}CodedText".to_string()
+        ))
+    );
+
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains("xsi:type=\"ft:CodedText\""), "{output}");
+    assert!(
+        output.contains(r#"language="en" code="A">hello</value>"#),
+        "{output}"
+    );
+
+    let exported = export(&schema)?;
+    assert!(
+        exported.contains(r#"<xs:simpleContent>"#)
+            && exported.contains(r#"<xs:extension base="tns:BaseText">"#),
+        "{exported}"
+    );
+    std::fs::write(&path, exported)?;
+    let reimported = import_root(&path, Some("{urn:ferrule:simple-derived}Root"))?;
+    std::fs::remove_file(path)?;
+    assert_eq!(reimported, schema);
+    assert_eq!(from_str(&output, &reimported)?, instance);
+    Ok(())
+}
+
+#[test]
+fn simple_content_restrictions_retain_text_and_narrow_attributes()
+-> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_simple_content_restriction_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:t="urn:ferrule:simple-restricted"
+                       targetNamespace="urn:ferrule:simple-restricted"
+                       elementFormDefault="qualified">
+          <xs:complexType name="BaseText"><xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="language" type="xs:string"/>
+              <xs:attribute name="obsolete" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent></xs:complexType>
+          <xs:complexType name="RestrictedText"><xs:simpleContent>
+            <xs:restriction base="t:BaseText">
+              <xs:attribute name="language" type="xs:string"/>
+              <xs:attribute name="obsolete" use="prohibited"/>
+            </xs:restriction>
+          </xs:simpleContent></xs:complexType>
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:element name="value" type="t:BaseText"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )?;
+    let schema = import_root(&path, Some("{urn:ferrule:simple-restricted}Root"))?;
+    let value = schema
+        .child("value")
+        .ok_or("restricted simple-content field is missing")?;
+    let restricted = value
+        .alternatives()
+        .iter()
+        .find(|alternative| alternative.name == "{urn:ferrule:simple-restricted}RestrictedText")
+        .ok_or("restricted simple-content alternative is missing")?;
+    assert_eq!(
+        restricted.members,
+        vec![XML_TEXT_FIELD.to_string(), "language".to_string()]
+    );
+
+    let input = r#"<Root xmlns="urn:ferrule:simple-restricted"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xmlns:t="urn:ferrule:simple-restricted">
+          <value xsi:type="t:RestrictedText" language="en">hello</value>
+        </Root>"#;
+    let instance = from_str(input, &schema)?;
+    let output = to_string(&schema, &instance)?;
+    assert!(
+        output.contains("xsi:type=\"ft:RestrictedText\""),
+        "{output}"
+    );
+    assert!(
+        output.contains(r#"language="en">hello</value>"#),
+        "{output}"
+    );
+    assert!(!output.contains("obsolete="), "{output}");
+
+    let exported = export(&schema)?;
+    assert!(
+        exported.contains(r#"<xs:restriction base="tns:BaseText">"#)
+            && exported.contains(r#"<xs:attribute name="obsolete" use="prohibited"/>"#),
+        "{exported}"
+    );
+    std::fs::write(&path, exported)?;
+    let reimported = import_root(&path, Some("{urn:ferrule:simple-restricted}Root"))?;
+    std::fs::remove_file(path)?;
+    assert_eq!(reimported, schema);
+    assert_eq!(from_str(&output, &reimported)?, instance);
+    Ok(())
 }
 
 #[test]

@@ -98,7 +98,8 @@ expected to re-import and validate as ferrule projects.
 
 ## Current Boundaries
 
-The main remaining gaps are some XML derived-type input shapes,
+The main remaining gaps are some XML derived-type input shapes beyond compatible
+`complexContent` and scalar-text/attribute-only `simpleContent` hierarchies,
 namespace-aware or validating wildcards, validation-bearing scalar unions and general heterogeneous arrays,
 overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
 first-class sequence composition, general SQL and database mutation, broader
