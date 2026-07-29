@@ -52,6 +52,10 @@ Resource references accept both slash styles and may contain parent components
 when their canonical target remains inside the package. Symlink escapes,
 absolute Windows paths, ambiguous case-insensitive matches, and traversal above
 the root are rejected.
+External FlexText `.mft`, visual PDF `.pxt`, and XBRL `.sps` compiler inputs
+use this same package boundary. Their compiled layouts or fact metadata are
+embedded in the imported project, and FlexText data paths remain portable
+relative to the mapping even when the configuration is in a sibling directory.
 
 If EDI configurations live in a separately managed release catalog, declare
 each trusted catalog in search order:
@@ -128,6 +132,11 @@ When an external EDI configuration cannot be resolved, its original reference
 is retained for `.mfd` export and re-import instead of being discarded. That
 keeps the design round-trippable, but the boundary remains explicitly
 non-executable until the referenced configuration is supplied and compiled.
+An EDI boundary with neither a compiled configuration nor an embedded typed
+layout is also retained as a distinct typed missing-configuration dependency.
+It never borrows the untyped entry tree as an executable schema. Export and
+re-import preserve that state without inventing a resource path, and CLI or
+payload execution rejects it before publishing any output.
 Zero-input `create-guid` generator components execute in the interpreter and
 generated Rust/C# mappings and round-trip as native `lang` components. Scalar
 and record-producing filter lookup UDFs accept typed XML, EDI, or database
@@ -292,13 +301,14 @@ homogeneous-array path. Draft 2020-12 array-valued `items`, contradictory
 counts, and reachable heterogeneous members or tails produce the actionable
 schema-fallback diagnostic instead of being reinterpreted as `prefixItems`.
 Referenced JSON objects retain supported `propertyNames` schemas as well.
-Exact false, finite `const`/`enum` names, Unicode-scalar length intervals,
-bounded portable pattern conjunctions/disjunctions, and nonasserting `format`
-annotations remain executable across import, canonical schema export, and
-re-import. Native and generated Rust/C# boundaries check every raw parsed input
-key and normalized emitted key, including runtime-named and empty-string
-properties. Unconstrained forms normalize away; general correlated name unions
-and `not` produce the existing actionable schema-fallback diagnostic. Each
+Exact false, finite `const`/`enum` names and their finite `not` complements,
+Unicode-scalar length intervals, bounded portable pattern
+conjunctions/disjunctions, and nonasserting `format` annotations remain
+executable across import, canonical schema export, and re-import. Native and
+generated Rust/C# boundaries check every raw parsed input key and normalized
+emitted key, including runtime-named and empty-string properties.
+Unconstrained forms normalize away; correlated and infinite complements
+produce the existing actionable schema-fallback diagnostic. Each
 referenced schema resource retains its dialect: Draft 4 ignores
 `propertyNames`, while Draft 6 and newer resources apply it.
 Referenced string-capable JSON fields retain exact `minLength`/`maxLength`

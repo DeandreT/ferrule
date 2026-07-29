@@ -108,9 +108,9 @@ pub(super) fn read_fixed_width_component(
 
 pub(super) fn read_flextext_component(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
 ) -> Result<SchemaComponent, String> {
-    flextext::read(component, mfd_path)
+    flextext::read(component, resources)
 }
 
 pub(super) fn read_http_get_component(
@@ -147,18 +147,18 @@ pub(super) fn read_protobuf_component(
 
 pub(super) fn read_pdf_component(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
-    pdf::read(component, mfd_path, warnings)
+    pdf::read(component, resources, warnings)
 }
 
 pub(super) fn read_xbrl_component(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
-    xbrl::read(component, mfd_path, warnings)
+    xbrl::read(component, resources, warnings)
 }
 
 #[derive(Clone, Copy, PartialEq)]

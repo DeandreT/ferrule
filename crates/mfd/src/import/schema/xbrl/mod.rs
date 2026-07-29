@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode, XML_TEXT_FIELD};
 use mapping::{FormatOptions, XbrlBoundaryOptions};
+
+use crate::resource::ResourceResolver;
 
 use super::{ComponentFormat, SchemaComponent, is_default_output, normalize_xml_entry_name};
 
@@ -11,7 +12,7 @@ mod sps;
 
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     if component.attribute("kind") != Some("27") {
@@ -45,7 +46,7 @@ pub(super) fn read(
     let fact_bindings = if is_source {
         Vec::new()
     } else if let Some(presentation) = metadata.attribute("sps") {
-        match sps::fact_bindings(mfd_path, presentation, &schema, &namespace_bindings) {
+        match sps::fact_bindings(resources, presentation, &schema, &namespace_bindings) {
             Ok(bindings) => bindings,
             Err(error) => {
                 warnings.push(format!(
@@ -653,18 +654,48 @@ fn child<'a, 'input>(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use crate::resource::ResourceResolver;
     use ir::{SchemaKind, XML_TEXT_FIELD};
 
     use super::read;
 
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Result<Self, String> {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "ferrule-mfd-xbrl-component-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.to_string()),
+            }
+            std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+            Ok(Self(path))
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     fn parse(xml: &str) -> Result<(super::SchemaComponent, Vec<String>), String> {
         let document = roxmltree::Document::parse(xml).map_err(|error| error.to_string())?;
+        let directory = TempDir::new()?;
+        let mapping = directory.0.join("mapping.mfd");
+        std::fs::write(&mapping, "<mapping/>").map_err(|error| error.to_string())?;
+        let resources = ResourceResolver::new(&mapping, None).map_err(|error| error.to_string())?;
         let mut warnings = Vec::new();
-        let component = read(
-            &document.root_element(),
-            std::path::Path::new("mapping.mfd"),
-            &mut warnings,
-        )?;
+        let component = read(&document.root_element(), &resources, &mut warnings)?;
         Ok((component, warnings))
     }
 
