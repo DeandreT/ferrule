@@ -20,6 +20,7 @@ mod multiples;
 mod nullable_composition;
 mod object_openness;
 mod patterns;
+mod prefix_items;
 mod property_counts;
 mod property_dependencies;
 mod property_names;
