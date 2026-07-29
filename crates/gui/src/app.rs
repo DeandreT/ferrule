@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::appearance::EditorAppearance;
 use crate::appearance_editor::AppearanceTab;
+use crate::auto_connect::AutoConnectPlan;
 use crate::canvas::{CanvasNode, source_blocks, target_blocks};
 use crate::canvas_layout::{ArrangeMode, arrange_snarl_with_mode};
 use crate::diagnostics::{Diagnostic, DiagnosticLevel, Diagnostics};
@@ -37,6 +38,8 @@ use crate::scope_editor::{
 use crate::theme::{Palette, ThemeState};
 use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVisibility};
 
+#[path = "app_auto_connect.rs"]
+mod auto_connect_ui;
 #[path = "app_canvas.rs"]
 mod canvas_build;
 #[path = "app_extra_sources.rs"]
@@ -74,6 +77,19 @@ enum MappingDocument {
     Main,
     Target(usize),
     Function(FunctionId),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AutoConnectTarget {
+    Primary,
+    Named(usize),
+}
+
+struct PendingAutoConnect {
+    target: AutoConnectTarget,
+    scope_path: ScopePath,
+    scope_label: String,
+    plan: AutoConnectPlan,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -380,6 +396,7 @@ pub struct FerruleApp {
     pending_extra_source_removal: Option<usize>,
     extra_target_draft: Option<ExtraTargetDraft>,
     pending_extra_target_removal: Option<usize>,
+    pending_auto_connect: Option<PendingAutoConnect>,
     /// Native file dialog receiver; the dialog runs outside the UI thread.
     pending_dialog: Option<(DialogKind, std::sync::mpsc::Receiver<Option<String>>)>,
     pending_destructive_action: Option<DestructiveAction>,
@@ -467,6 +484,7 @@ impl Default for FerruleApp {
             pending_extra_source_removal: None,
             extra_target_draft: None,
             pending_extra_target_removal: None,
+            pending_auto_connect: None,
             pending_dialog: None,
             pending_destructive_action: None,
             pending_save_continuation: None,
@@ -1164,7 +1182,8 @@ impl eframe::App for FerruleApp {
             && self.extra_source_draft.is_none()
             && self.pending_extra_source_removal.is_none()
             && self.extra_target_draft.is_none()
-            && self.pending_extra_target_removal.is_none();
+            && self.pending_extra_target_removal.is_none()
+            && self.pending_auto_connect.is_none();
         let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -1282,6 +1301,7 @@ impl eframe::App for FerruleApp {
         self.show_extra_source_removal_confirmation(ui.ctx());
         self.show_extra_target_setup(ui.ctx());
         self.show_extra_target_removal_confirmation(ui.ctx());
+        self.show_auto_connect_confirmation(ui.ctx());
         self.show_new_function_dialog(ui.ctx());
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
         self.show_floating_function_windows(ui.ctx(), project_editing_enabled);

@@ -177,6 +177,19 @@ impl FerruleApp {
                             self.fit_focused_canvas();
                             ui.close();
                         }
+                        if ui
+                            .add_enabled(
+                                self.can_auto_connect(),
+                                egui::Button::new("Auto-connect fields..."),
+                            )
+                            .on_disabled_hover_text(
+                                "Open the primary mapping or a named target mapping first",
+                            )
+                            .clicked()
+                        {
+                            self.begin_auto_connect();
+                            ui.close();
+                        }
                         ui.separator();
                         if ui.button("Add extra source...").clicked() {
                             self.begin_extra_source();
