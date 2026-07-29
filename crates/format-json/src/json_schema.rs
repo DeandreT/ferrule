@@ -84,6 +84,17 @@ fn parse(
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
+    if schema == &serde_json::Value::Bool(true)
+        || schema.as_object().is_some_and(serde_json::Map::is_empty)
+    {
+        return arbitrary_json_schema(name);
+    }
+    if schema == &serde_json::Value::Bool(false) {
+        return Err(unsupported_union(
+            name,
+            "the false schema accepts no JSON value",
+        ));
+    }
     if let Some(r) = schema.get("$ref").and_then(|r| r.as_str()) {
         // Cyclic and external (non-`#/...`) refs degrade to string scalars.
         if active_refs.iter().any(|a| a == r) {
@@ -187,7 +198,7 @@ fn parse(
         }
         ImportedSchemaType::Single("array") => {
             let Some(items) = schema.get("items") else {
-                let mut node = SchemaNode::scalar(name, ScalarType::String).repeating();
+                let mut node = arbitrary_json_schema(name)?.repeating();
                 node.container_nullable = nullable;
                 return Ok(node);
             };
@@ -313,6 +324,12 @@ fn scalar_schema(name: &str, ty: ScalarType, nullable: bool) -> SchemaNode {
     node
 }
 
+fn arbitrary_json_schema(name: &str) -> Result<SchemaNode, JsonFormatError> {
+    SchemaNode::scalar(name, ScalarType::String)
+        .json_any()
+        .ok_or_else(|| unsupported_union(name, "invalid arbitrary JSON value schema"))
+}
+
 fn attach_dynamic_fields(
     group: SchemaNode,
     schema: &serde_json::Value,
@@ -346,9 +363,8 @@ fn attach_dynamic_fields(
 }
 
 fn attach_unconstrained_dynamic(group: SchemaNode) -> Result<SchemaNode, JsonFormatError> {
-    let value = SchemaNode::scalar("*", ScalarType::String)
-        .json_any()
-        .ok_or_else(|| unsupported_object(&group.name, "invalid arbitrary JSON value schema"))?;
+    let value = arbitrary_json_schema("*")
+        .map_err(|_| unsupported_object(&group.name, "invalid arbitrary JSON value schema"))?;
     let name = group.name.clone();
     group
         .with_dynamic_fields(value)

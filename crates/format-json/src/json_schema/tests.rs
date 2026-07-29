@@ -10,6 +10,7 @@ use crate::JsonFormatError;
 
 mod all_of;
 mod resources;
+mod unconstrained;
 
 fn import_str(text: &str) -> SchemaNode {
     import_str_result(text).unwrap()
