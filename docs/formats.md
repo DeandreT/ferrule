@@ -8,7 +8,7 @@ layout and dialect details that an extension cannot express.
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies and whole-object dependent-schema predicates, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditionals, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -110,10 +110,18 @@ layout and dialect details that an extension cannot express.
   Nullable object null bypasses the rules, and JSON Lines checks every object
   row independently. Predicate patterns share the document matcher budget.
   Nested dependent schemas are supported recursively, with the same per-object
-  bounds. Effective `if` with `then` or `else`, `patternProperties`,
-  `unevaluatedProperties`, `unevaluatedItems`, and heterogeneous positional
-  arrays reject instead of being approximated. A lone validation-neutral
-  conditional keyword is ignored.
+  bounds. Draft 7, 2019-09, 2020-12, and schemas without `$schema` also support
+  an exact conditional on a schema with explicit non-null `type: "object"`:
+  `if` must reduce to the presence
+  of exactly one required property, `else` must be absent or `true`, and `then`
+  must fit the supported dependent-schema predicate subset. The conditional
+  normalizes to the same trigger-keyed model, so explicit null counts as
+  presence and canonical export writes `dependentSchemas`. Value-sensitive,
+  multi-trigger, general-`if`, and nontrivial-`else` conditionals remain
+  unsupported. `patternProperties`, `unevaluatedProperties`,
+  `unevaluatedItems`, and heterogeneous positional arrays likewise reject
+  instead of being approximated. A lone validation-neutral conditional keyword
+  is ignored.
   Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
   and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
   those schema values to use its object form, while Draft 6/7 also accept

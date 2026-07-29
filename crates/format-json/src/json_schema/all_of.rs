@@ -1,9 +1,9 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use super::{
-    allowed_values, contains, dependent_schemas, files, formats, item_counts, multiples, parse,
-    patterns, property_counts, property_dependencies, property_names, ranges, string_lengths,
-    unique_items, unsupported_union,
+    allowed_values, conditionals, contains, dependent_schemas, files, formats, item_counts,
+    multiples, parse, patterns, property_counts, property_dependencies, property_names, ranges,
+    string_lengths, unique_items, unsupported_union,
 };
 use crate::JsonFormatError;
 
@@ -79,6 +79,7 @@ pub(super) fn parse_all_of(
             || property_counts::has_keywords(constraints)
             || property_dependencies::has_keywords(constraints)
             || dependent_schemas::has_keywords(constraints)
+            || conditionals::has_keywords(constraints)
             || property_names::has_keyword(constraints)
             || contains::has_keyword(constraints))
             && (!patterns::has_keyword(constraints)
@@ -96,6 +97,8 @@ pub(super) fn parse_all_of(
                     doc,
                     active_refs,
                 )?)
+            && (!conditionals::has_keywords(constraints)
+                || !conditionals::is_effectively_constrained(name, constraints)?)
             && (!property_names::has_keyword(constraints)
                 || property_names::selected(name, constraints, doc, active_refs)?.is_none())
             && (!contains::has_keyword(constraints)
@@ -139,6 +142,12 @@ pub(super) fn parse_all_of(
                     "dependent schemas without a concrete object type also admit unconstrained non-object values",
                 ));
             }
+            if conditionals::is_effectively_constrained(name, constraints)? {
+                return Err(unsupported_union(
+                    name,
+                    "presence-based conditionals without a concrete object type also admit unconstrained non-object values",
+                ));
+            }
             if property_names::selected(name, constraints, doc, active_refs)?.is_some() {
                 return Err(unsupported_union(
                     name,
@@ -169,6 +178,7 @@ pub(super) fn parse_all_of(
         property_counts::apply(name, &constraints, &mut merged, false)?;
         property_dependencies::apply(name, &constraints, &mut merged, false)?;
         dependent_schemas::apply(name, &constraints, &mut merged, doc, active_refs, false)?;
+        conditionals::apply(name, &constraints, &mut merged, doc, active_refs, false)?;
         property_names::apply(name, &constraints, &mut merged, doc, active_refs, false)?;
         if merged.repeating {
             ranges::validate_ignored(name, &constraints)?;
@@ -302,6 +312,9 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "dependencies"
                 | "dependentRequired"
                 | "dependentSchemas"
+                | "if"
+                | "then"
+                | "else"
                 | "propertyNames"
                 | "uniqueItems"
                 | "minLength"
@@ -328,6 +341,8 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
         || contains::has_keyword(schema)
         || property_counts::has_keywords(schema)
         || property_dependencies::has_keywords(schema)
+        || dependent_schemas::has_keywords(schema)
+        || conditionals::has_keywords(schema)
         || property_names::has_keyword(schema)
         || unique_items::has_keyword(schema)
         || string_lengths::has_keywords(schema)
@@ -354,6 +369,9 @@ fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
                         | "dependencies"
                         | "dependentRequired"
                         | "dependentSchemas"
+                        | "if"
+                        | "then"
+                        | "else"
                         | "propertyNames"
                         | "uniqueItems"
                         | "minLength"
