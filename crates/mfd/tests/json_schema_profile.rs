@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ir::{Instance, JsonAllowedValue, NumericRange, SchemaKind};
+use ir::{Instance, JsonAllowedValue, JsonContainsPredicate, NumericRange, SchemaKind, SchemaNode};
 
 struct TempDir(PathBuf);
 
@@ -664,6 +664,215 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             ref property,
         }) if object == "ImplicitOpen" && property == "bad-key"
     ));
+    Ok(())
+}
+
+fn assert_contains_range(
+    schema: &SchemaNode,
+    expected_minimum: u64,
+    expected_maximum: Option<u64>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let constraints = schema
+        .json_contains
+        .as_ref()
+        .ok_or("missing contains constraints")?;
+    let [constraint] = constraints.as_slice() else {
+        return Err("expected one contains constraint".into());
+    };
+    assert!(matches!(
+        constraint.predicate(),
+        JsonContainsPredicate::Schema { .. }
+    ));
+    assert_eq!(constraint.range().minimum(), expected_minimum);
+    assert_eq!(constraint.range().maximum(), expected_maximum);
+    Ok(())
+}
+
+#[test]
+fn imports_executes_and_roundtrips_json_contains_constraints()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new()?;
+    std::fs::write(
+        directory.0.join("source.schema.json"),
+        r#"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"ContainsEnvelope",
+  "type":"object",
+  "properties":{
+    "Codes":{
+      "type":"array",
+      "items":{"type":"string"},
+      "contains":{"type":"string","const":"keep"},
+      "minContains":2,
+      "maxContains":2
+    },
+    "DefaultCodes":{
+      "type":"array",
+      "items":{"type":"string"},
+      "contains":{"type":"string","const":"default"}
+    },
+    "Nested":{
+      "type":"object",
+      "properties":{
+        "Codes":{
+          "type":"array",
+          "items":{"type":"string"},
+          "contains":{"type":"string","pattern":"^nested$"},
+          "minContains":1
+        }
+      }
+    },
+    "Rows":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "properties":{
+          "Codes":{
+            "type":"array",
+            "items":{"type":"string"},
+            "contains":{"type":"string","const":"row"},
+            "minContains":1
+          }
+        }
+      }
+    },
+    "Maybe":{
+      "type":["array","null"],
+      "items":{"type":"string"},
+      "contains":false,
+      "minContains":0,
+      "maxContains":0
+    },
+    "Amount":{"type":"integer"}
+  }
+}"#,
+    )?;
+    std::fs::write(
+        directory.0.join("input.json"),
+        r#"{
+  "Codes":["keep","other","keep"],
+  "DefaultCodes":["other","default"],
+  "Nested":{"Codes":["other","nested"]},
+  "Rows":[{"Codes":["row"]},{"Codes":["other","row"]}],
+  "Maybe":null,
+  "Amount":7
+}"#,
+    )?;
+    let design = directory.0.join("mapping.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="json" kind="31"><data>
+    <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+      <entry name="Amount" type="json-property"><entry name="integer" outkey="10"/></entry>
+    </entry></entry></entry></entry></root>
+    <json schema="source.schema.json" inputinstance="input.json"/>
+  </data></component>
+  <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="Output"><entry name="Amount" inpkey="20"/></entry></root>
+    <document outputinstance="output.xml" instanceroot="{}Output"/>
+  </data></component>
+</children><graph><vertices>
+  <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = &imported.project.source;
+    assert_contains_range(source.child("Codes").ok_or("missing Codes")?, 2, Some(2))?;
+    assert_contains_range(
+        source.child("DefaultCodes").ok_or("missing DefaultCodes")?,
+        1,
+        None,
+    )?;
+    assert_contains_range(
+        source
+            .child("Nested")
+            .and_then(|nested| nested.child("Codes"))
+            .ok_or("missing nested Codes")?,
+        1,
+        None,
+    )?;
+    assert_contains_range(
+        source
+            .child("Rows")
+            .and_then(|row| row.child("Codes"))
+            .ok_or("missing row Codes")?,
+        1,
+        None,
+    )?;
+    assert!(
+        source
+            .child("Maybe")
+            .is_some_and(|maybe| maybe.container_nullable && maybe.json_contains.is_none())
+    );
+
+    let valid = std::fs::read_to_string(directory.0.join("input.json"))?;
+    assert!(format_json::from_str(&valid, source).is_ok());
+    for invalid in [
+        valid.replace(r#""keep","other","keep""#, r#""keep","other""#),
+        valid.replace(r#""other","default""#, r#""other","missing""#),
+        valid.replace(r#""other","nested""#, r#""other","missing""#),
+        valid.replace(r#""Codes":["row"]"#, r#""Codes":["other"]"#),
+    ] {
+        assert!(matches!(
+            format_json::from_str(&invalid, source),
+            Err(format_json::JsonFormatError::ContainsCountMismatch { .. })
+        ));
+    }
+    let input = format_json::from_str(&valid, source)?;
+    assert!(
+        engine::run(&imported.project, &input)?
+            .field("Amount")
+            .is_some()
+    );
+
+    let roundtrip_design = directory.0.join("roundtrip.mfd");
+    let export_warnings = mfd::export(&imported.project, &roundtrip_design)?;
+    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let exported: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
+        directory.0.join("roundtrip-source.schema.json"),
+    )?)?;
+    assert_eq!(exported["properties"]["Codes"]["contains"]["const"], "keep");
+    assert_eq!(exported["properties"]["Codes"]["minContains"], 2);
+    assert_eq!(exported["properties"]["Codes"]["maxContains"], 2);
+    assert_eq!(
+        exported["properties"]["DefaultCodes"]["contains"]["const"],
+        "default"
+    );
+    assert!(
+        exported["properties"]["DefaultCodes"]
+            .get("minContains")
+            .is_none()
+    );
+    assert!(
+        exported["properties"]["DefaultCodes"]
+            .get("maxContains")
+            .is_none()
+    );
+
+    let reimported = mfd::import(&roundtrip_design)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_contains_range(
+        reimported
+            .project
+            .source
+            .child("Codes")
+            .ok_or("missing round-tripped Codes")?,
+        2,
+        Some(2),
+    )?;
+    assert_contains_range(
+        reimported
+            .project
+            .source
+            .child("DefaultCodes")
+            .ok_or("missing round-tripped DefaultCodes")?,
+        1,
+        None,
+    )?;
     Ok(())
 }
 

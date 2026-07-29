@@ -79,6 +79,61 @@ pub(crate) fn validate(
     })
 }
 
+/// Validates `uniqueItems` throughout one already-decoded JSON value.
+///
+/// This complements the lexical raw-document prepass for private predicate
+/// schemas that are evaluated conditionally by `contains`.
+pub(crate) fn validate_json_tree(
+    schema: &SchemaNode,
+    value: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    if schema.container_nullable && value.is_null() {
+        return Ok(());
+    }
+    if !schema.repeating {
+        return validate_json_single_node(schema, value);
+    }
+    let serde_json::Value::Array(items) = value else {
+        return Ok(());
+    };
+    validate(schema, items)?;
+    for item in items {
+        validate_json_single_node(schema, item)?;
+    }
+    Ok(())
+}
+
+fn validate_json_single_node(
+    schema: &SchemaNode,
+    value: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    if schema.json_any || schema.container_nullable && value.is_null() {
+        return Ok(());
+    }
+    let (
+        SchemaKind::Group {
+            children, dynamic, ..
+        },
+        serde_json::Value::Object(fields),
+    ) = (&schema.kind, value)
+    else {
+        return Ok(());
+    };
+    for child in children {
+        if let Some(value) = fields.get(&child.name) {
+            validate_json_tree(child, value)?;
+        }
+    }
+    if let Some(dynamic) = dynamic {
+        for (name, value) in fields {
+            if !children.iter().any(|child| child.name == *name) {
+                validate_json_tree(dynamic, value)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Validates every exact JSON `uniqueItems` assertion in one raw document
 /// before ordinary JSON number decoding can lose decimal lexical precision.
 pub fn validate_raw_json_unique_items(

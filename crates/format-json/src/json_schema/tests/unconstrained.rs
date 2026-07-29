@@ -51,6 +51,11 @@ fn arrays_without_items_retain_arbitrary_values() -> Result<(), Box<dyn std::err
     let schema = import_text(r#"{"title":"Values","type":"array"}"#, "array")?;
     assert!(schema.repeating);
     assert!(schema.json_any);
+    assert!(schema.metadata_is_valid());
+    assert_eq!(
+        serde_json::from_str::<ir::SchemaNode>(&serde_json::to_string(&schema)?)?,
+        schema
+    );
     let input = r#"[1,"two",null,{"three":3}]"#;
     let instance = from_str(input, &schema)?;
     let items = instance

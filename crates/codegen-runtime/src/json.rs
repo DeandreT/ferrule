@@ -8,6 +8,8 @@ use json_pattern::{DEFAULT_MATCH_WORK_LIMIT, PortableJsonPattern};
 use crate::RuntimeError;
 
 mod allowed_values;
+#[cfg(test)]
+mod contains;
 mod multiple_of;
 #[cfg(test)]
 mod property_names;
@@ -300,7 +302,6 @@ fn without_boundary_constraints(mut schema: SchemaNode) -> SchemaNode {
 
 fn clear_boundary_constraints(schema: &mut SchemaNode) {
     schema.json_allowed_values = None;
-    schema.json_patterns = None;
     schema.json_multiple_of = None;
     schema.json_unique_items = false;
     if let SchemaKind::Group {
