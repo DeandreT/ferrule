@@ -156,10 +156,23 @@ impl FerruleApp {
                             ui.close();
                         }
                         if ui
-                            .add_enabled(
-                                self.run_report.is_some(),
-                                egui::Button::new("Run results"),
+                            .add_enabled(self.can_preview(), egui::Button::new("Preview..."))
+                            .on_disabled_hover_text(
+                                "Open the primary mapping or a named target mapping first",
                             )
+                            .clicked()
+                        {
+                            self.begin_preview();
+                            ui.close();
+                        }
+                        let result_label = self.run_report.as_ref().map_or("Results", |result| {
+                            match result.report.kind {
+                                crate::run_report::RunReportKind::Run => "Run results",
+                                crate::run_report::RunReportKind::Preview => "Preview results",
+                            }
+                        });
+                        if ui
+                            .add_enabled(self.run_report.is_some(), egui::Button::new(result_label))
                             .clicked()
                         {
                             self.show_run_report = true;
@@ -306,6 +319,16 @@ impl FerruleApp {
                 }
                 if crate::icons::button(
                     ui,
+                    editing_enabled && self.can_preview(),
+                    lucide_icons::Icon::Eye,
+                    "Preview current target from in-memory input",
+                )
+                .clicked()
+                {
+                    self.begin_preview();
+                }
+                if crate::icons::button(
+                    ui,
                     editing_enabled,
                     lucide_icons::Icon::Settings2,
                     "Run settings",
@@ -318,7 +341,7 @@ impl FerruleApp {
                     ui,
                     self.run_report.is_some(),
                     lucide_icons::Icon::FileOutput,
-                    "Show last run results",
+                    "Show latest run or preview results",
                 )
                 .clicked()
                 {

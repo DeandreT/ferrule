@@ -11,8 +11,8 @@ document formats without format-specific graph logic.
 
 ## Highlights
 
-- Visual mapping editor with undo/redo, saved canvas layouts, validation, and
-  run reporting
+- Visual mapping editor with undo/redo, saved canvas layouts, validation,
+  in-memory preview, and run reporting
 - Headless validation and execution with human-readable or JSON Lines
   diagnostics
 - Nested iteration, outward value broadcast, filters, grouping, stable sorting,

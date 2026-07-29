@@ -951,6 +951,80 @@ fn blank_run_paths_fall_back_to_stored_project_paths() {
 }
 
 #[test]
+fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> anyhow::Result<()> {
+    let directory = std::env::temp_dir().join(format!(
+        "ferrule-gui-preview-unsaved-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&directory)?;
+    let logical_output = directory.join("must-not-be-written.xml");
+    let mut app = FerruleApp {
+        preview_draft: Some(crate::preview::PreviewDraft {
+            target: crate::preview::PreviewTarget::Primary,
+            input_identity: "input.xml".into(),
+            output_identity: logical_output.display().to_string(),
+            input_text: "<root/>".into(),
+        }),
+        ..FerruleApp::default()
+    };
+
+    app.execute_preview();
+
+    assert!(
+        app.preview_draft.is_none(),
+        "successful preview closes setup"
+    );
+    assert!(app.show_run_report);
+    assert!(!logical_output.exists());
+    assert!(app.document.saved_path().is_none());
+    assert!(!app.is_dirty());
+    let Some(report) = app.run_report.as_mut() else {
+        anyhow::bail!("successful preview has no report");
+    };
+    assert_eq!(
+        report.report.kind,
+        crate::run_report::RunReportKind::Preview
+    );
+    assert_eq!(report.report.outputs.len(), 1);
+    assert!(matches!(
+        report.report.outputs[0].preview(),
+        crate::run_report::OutputPreview::Text { content, .. }
+            if content.contains("<root")
+    ));
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn preview_uses_the_active_named_target_only() -> anyhow::Result<()> {
+    let mut app = FerruleApp::default();
+    app.project.extra_targets.push(NamedTarget {
+        name: "audit".into(),
+        path: Some("audit.json".into()),
+        schema: SchemaNode::group("audit", Vec::new()),
+        options: FormatOptions::default(),
+        root: Scope::default(),
+    });
+    app.mapping_workspace.active = MappingDocument::Target(0);
+    app.begin_preview();
+    let Some(draft) = app.preview_draft.as_mut() else {
+        anyhow::bail!("named-target preview setup did not open");
+    };
+    draft.input_identity = "input.xml".into();
+    draft.input_text = "<root/>".into();
+
+    app.execute_preview();
+
+    let Some(report) = app.run_report.as_ref() else {
+        anyhow::bail!("successful preview has no report");
+    };
+    assert_eq!(report.report.outputs.len(), 1);
+    assert_eq!(report.report.outputs[0].name, "audit");
+    assert_eq!(report.report.outputs[0].path, PathBuf::from("audit.json"));
+    Ok(())
+}
+
+#[test]
 fn successful_save_resumes_a_destructive_continuation() {
     let project_path = temporary_project_path("save-continuation");
     let mut app = FerruleApp::default();
