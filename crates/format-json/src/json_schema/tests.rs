@@ -446,7 +446,7 @@ fn typed_alternative_wrappers_accept_only_identical_branch_field_schemas() {
 }
 
 #[test]
-fn incompatible_and_scalar_one_of_are_rejected() {
+fn incompatible_object_alternatives_are_rejected() {
     let incompatible = import_str_result(
             r#"{
   "title": "Bad",
@@ -458,15 +458,6 @@ fn incompatible_and_scalar_one_of_are_rejected() {
         )
         .unwrap_err();
     assert!(incompatible.to_string().contains("incompatible schemas"));
-
-    let scalar = import_str_result(
-        r#"{
-  "title": "Scalar",
-  "oneOf": [{ "type": "string" }, { "type": "integer" }]
-}"#,
-    )
-    .unwrap_err();
-    assert!(scalar.to_string().contains("only object alternatives"));
 }
 
 #[test]
@@ -1747,6 +1738,124 @@ fn heterogeneous_scalar_any_of_is_executable_in_array_items()
     ));
     assert_eq!(import_str(&export(&schema)), schema);
     Ok(())
+}
+
+#[test]
+fn pairwise_disjoint_scalar_one_of_preserves_runtime_tags_and_roundtrips()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_str(
+        r#"{
+  "title":"Identifier",
+  "description":"An external or numeric identifier",
+  "oneOf":[
+    {"type":"string","description":"external identifier"},
+    {"type":"integer","description":"numeric identifier"}
+  ]
+}"#,
+    );
+    let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Int]) else {
+        panic!("test scalar union must contain distinct types");
+    };
+    assert_eq!(schema.kind, SchemaKind::ScalarUnion { types });
+    assert!(!schema.nullable);
+
+    for (input, expected) in [
+        (r#""42""#, ir::Value::String("42".into())),
+        ("42", ir::Value::Int(42)),
+    ] {
+        let instance = crate::from_str(input, &schema)?;
+        assert_eq!(instance.as_scalar(), Some(&expected));
+        let output = crate::to_string(&schema, &instance)?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&output)?,
+            serde_json::from_str::<serde_json::Value>(input)?
+        );
+    }
+
+    let exported = export(&schema);
+    let exported_value: serde_json::Value = serde_json::from_str(&exported)?;
+    assert_eq!(
+        exported_value["type"],
+        serde_json::json!(["string", "integer"])
+    );
+    assert_eq!(import_str_result(&exported)?, schema);
+    Ok(())
+}
+
+#[test]
+fn nullable_disjoint_scalar_one_of_resolves_local_refs() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_str(
+        r##"{
+  "title":"Status",
+  "oneOf":[
+    {"$ref":"#/$defs/text","description":"text status"},
+    {"$ref":"#/$defs/enabled"},
+    {"type":"null"}
+  ],
+  "$defs":{
+    "text":{"type":"string","description":"human-readable status"},
+    "enabled":{"type":"boolean"}
+  }
+}"##,
+    );
+    let Some(types) = ScalarTypeSet::new([ScalarType::String, ScalarType::Bool]) else {
+        panic!("test scalar union must contain distinct types");
+    };
+    assert_eq!(schema.kind, SchemaKind::ScalarUnion { types });
+    assert!(schema.nullable);
+
+    for (input, expected) in [
+        (r#""ready""#, ir::Value::String("ready".into())),
+        ("true", ir::Value::Bool(true)),
+        ("null", ir::Value::json_null()),
+    ] {
+        let instance = crate::from_str(input, &schema)?;
+        assert_eq!(instance.as_scalar(), Some(&expected));
+        let output = crate::to_string(&schema, &instance)?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&output)?,
+            serde_json::from_str::<serde_json::Value>(input)?
+        );
+    }
+    assert_eq!(import_str(&export(&schema)), schema);
+    Ok(())
+}
+
+#[test]
+fn overlapping_or_constrained_scalar_one_of_is_rejected() {
+    for overlap in [
+        r#"{
+  "title":"Numeric",
+  "oneOf":[{"type":"integer"},{"type":"number"}]
+}"#,
+        r#"{
+  "title":"Duplicate",
+  "oneOf":[{"type":"string"},{"type":"string"}]
+}"#,
+        r#"{
+  "title":"DuplicateNull",
+  "oneOf":[{"type":"boolean"},{"type":"null"},{"type":"null"}]
+}"#,
+    ] {
+        let overlap = import_str_result(overlap).unwrap_err();
+        assert!(overlap.to_string().contains("branches overlap"));
+    }
+
+    let constrained = import_str_result(
+        r#"{
+  "title":"Constrained",
+  "oneOf":[
+    {"type":"string","pattern":"^[A-Z]+$"},
+    {"type":"integer"}
+  ]
+}"#,
+    )
+    .unwrap_err();
+    assert!(
+        constrained
+            .to_string()
+            .contains("cannot preserve `pattern`")
+    );
 }
 
 #[test]

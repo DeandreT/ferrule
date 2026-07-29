@@ -34,6 +34,32 @@ pub(super) fn parse_scalar_any_of(
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
+    parse_scalar_composition(name, schema, alternatives, "anyOf", false, doc, active_refs)
+}
+
+/// Imports an exclusive union made entirely from exact, pairwise-disjoint
+/// scalar type branches. JSON Schema `integer` overlaps `number`, and repeated
+/// scalar or null branches overlap themselves, so those shapes cannot be
+/// represented as an exact ferrule scalar union.
+pub(super) fn parse_scalar_one_of(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
+    parse_scalar_composition(name, schema, alternatives, "oneOf", true, doc, active_refs)
+}
+
+fn parse_scalar_composition(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    keyword: &str,
+    exclusive: bool,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
     let Some(alternatives) = alternatives
         .as_array()
         .filter(|alternatives| alternatives.len() >= 2)
@@ -44,8 +70,21 @@ pub(super) fn parse_scalar_any_of(
     let mut nullable = false;
     for alternative in alternatives {
         match classify_exact_scalar_alternative(name, alternative, doc, active_refs)? {
-            ScalarAlternative::Null => nullable = true,
+            ScalarAlternative::Null => {
+                if exclusive && nullable {
+                    return Err(overlapping_scalar_one_of(name));
+                }
+                nullable = true;
+            }
             ScalarAlternative::Scalar(ty) => {
+                if exclusive
+                    && scalar_types
+                        .iter()
+                        .copied()
+                        .any(|existing| scalar_types_overlap(existing, ty))
+                {
+                    return Err(overlapping_scalar_one_of(name));
+                }
                 if !scalar_types.contains(&ty) {
                     scalar_types.push(ty);
                 }
@@ -56,20 +95,35 @@ pub(super) fn parse_scalar_any_of(
     let Some(first) = scalar_types.first().copied() else {
         return Ok(None);
     };
-    ensure_annotation_only(name, schema, "anyOf")?;
+    ensure_annotation_only(name, schema, keyword)?;
     let mut node = if scalar_types.len() == 1 {
         SchemaNode::scalar(name, first)
     } else {
         let Some(types) = ScalarTypeSet::new(scalar_types) else {
             return Err(unsupported_union(
                 name,
-                "scalar anyOf contains an invalid type set",
+                &format!("scalar {keyword} contains an invalid type set"),
             ));
         };
         SchemaNode::scalar_union(name, types)
     };
     node.nullable = nullable;
     Ok(Some(node))
+}
+
+fn scalar_types_overlap(left: ScalarType, right: ScalarType) -> bool {
+    left == right
+        || matches!(
+            (left, right),
+            (ScalarType::Int, ScalarType::Float) | (ScalarType::Float, ScalarType::Int)
+        )
+}
+
+fn overlapping_scalar_one_of(name: &str) -> JsonFormatError {
+    unsupported_union(
+        name,
+        "scalar oneOf branches overlap and are not mutually exclusive",
+    )
 }
 
 /// Collapses equivalent inclusive array branches. The complete imported item
