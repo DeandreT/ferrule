@@ -174,6 +174,11 @@ fn lowers_datetime_composition_calls_without_backend_specific_state() {
             ScalarFunction::DatetimeFromParts,
             vec![10, 20, 10],
         ),
+        (
+            "duration_from_parts",
+            ScalarFunction::DurationFromParts,
+            vec![10, 20, 10],
+        ),
         ("coerce_datetime", ScalarFunction::CoerceDatetime, vec![20]),
     ]
     .into_iter()

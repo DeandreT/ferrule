@@ -359,6 +359,35 @@ RuntimeError(
     () => FerruleFunctions.Call(
         "json_serialize_object",
         new[] { Text("""["Value"]"""), Text("integer"), Text("not-an-integer") }));
+Equal(
+    Text("P1Y2M3DT4H5M6.007S"),
+    FerruleFunctions.Call(
+        "duration_from_parts",
+        new[]
+        {
+            FerruleValue.FromInt64(1),
+            FerruleValue.FromInt64(2),
+            FerruleValue.FromInt64(3),
+            FerruleValue.FromInt64(4),
+            FerruleValue.FromInt64(5),
+            FerruleValue.FromInt64(6),
+            FerruleValue.FromInt64(7),
+        }));
+Equal(
+    FerruleValue.Null,
+    FerruleFunctions.Call(
+        "sqlite_multiply",
+        new[] { FerruleValue.Null, FerruleValue.FromInt64(2) }));
+Equal(
+    FerruleValue.FromInt64(42),
+    FerruleFunctions.Call(
+        "sqlite_multiply",
+        new[] { Text("6"), FerruleValue.FromInt64(7) }));
+Equal(
+    FerruleValueKind.Double,
+    FerruleFunctions.Call(
+        "sqlite_multiply",
+        new[] { FerruleValue.FromInt64(long.MaxValue), FerruleValue.FromInt64(2) }).Kind);
 
 Console.WriteLine("generated scalar batch C passed");
 
