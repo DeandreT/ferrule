@@ -71,7 +71,7 @@ fn fixture() -> Program {
                     "Account",
                     vec![SchemaNode::scalar("Name", ScalarType::String)],
                 ),
-                SchemaNode::scalar("Condition", ScalarType::Bool),
+                SchemaNode::scalar_fixed("Condition", ScalarType::Bool, "true"),
                 SchemaNode::scalar("ExtraCondition", ScalarType::Bool),
                 SchemaNode::scalar("GeneratedFailure", ScalarType::Bool),
                 SchemaNode::scalar("GeneratedPattern", ScalarType::String),
@@ -128,7 +128,7 @@ fn fixture() -> Program {
         target: SchemaNode::group(
             "target schema",
             vec![
-                SchemaNode::scalar("RootInt", ScalarType::Int),
+                SchemaNode::scalar_fixed("RootInt", ScalarType::Int, "7"),
                 SchemaNode::scalar("Exists", ScalarType::Bool),
                 SchemaNode::scalar("Selected", ScalarType::String),
                 SchemaNode::scalar("LengthSum", ScalarType::Int),
@@ -870,6 +870,11 @@ Error(
     FerruleRuntimeError.JsonBoundary,
     () => GeneratedMapping.ExecuteJsonWithSources(
         """{"Condition":"true"}""",
+        jsonInputs));
+Error(
+    FerruleRuntimeError.JsonBoundary,
+    () => GeneratedMapping.ExecuteJsonWithSources(
+        """{"Condition":false}""",
         jsonInputs));
 Error(
     FerruleRuntimeError.JsonBoundary,

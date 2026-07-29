@@ -25,6 +25,9 @@ internal static partial class Program
     private const string RequiredJsonSchema =
         "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Id\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"Note\",\"nullable\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"required\":[\"Id\",\"Note\"]}}";
 
+    private const string ConstantJsonSchema =
+        "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Status\",\"fixed\":\"ready\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Count\",\"fixed\":\"7\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"Ratio\",\"fixed\":\"1.25\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}},{\"name\":\"Enabled\",\"fixed\":\"true\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"bool\"}}]}}";
+
     private static void JsonDocumentBoundaries()
     {
         var parsed = (FerruleGroup)FerruleJson.Parse(
@@ -89,7 +92,45 @@ internal static partial class Program
                 "{\"name\":\"Broken\",\"kind\":{\"kind\":\"group\",\"children\":[],\"required\":[\"missing\"]}}",
                 "{}"));
 
+        JsonConstantBoundaries();
         JsonScalarUnionBoundaries();
+    }
+
+    private static void JsonConstantBoundaries()
+    {
+        const string valid =
+            "{\"Status\":\"ready\",\"Count\":7,\"Ratio\":1.25,\"Enabled\":true}";
+        var parsed = FerruleJson.Parse(ConstantJsonSchema, valid);
+        Equal(
+            "{\n  \"Status\": \"ready\",\n  \"Count\": 7,\n  \"Ratio\": 1.25,\n  \"Enabled\": true\n}\n",
+            FerruleJson.Serialize(ConstantJsonSchema, parsed));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                ConstantJsonSchema,
+                "{\"Status\":\"wrong\",\"Count\":7,\"Ratio\":1.25,\"Enabled\":true}"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                ConstantJsonSchema,
+                Group(
+                    Field("Status", Scalar(Text("ready"))),
+                    Field("Count", Scalar(FerruleValue.FromInt64(8))),
+                    Field("Ratio", Scalar(FerruleValue.FromDouble(1.25))),
+                    Field("Enabled", Scalar(FerruleValue.FromBoolean(true))))));
+
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Value\",\"fixed\":\"x\",\"kind\":{\"kind\":\"group\",\"children\":[]}}",
+                     "{\"name\":\"Value\",\"fixed\":\"x\",\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\"]}}",
+                     "{\"name\":\"Value\",\"fixed\":\"not-an-int\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Value\",\"fixed\":\"x\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "\"x\""));
+        }
     }
 
     private static void JsonScalarUnionBoundaries()
