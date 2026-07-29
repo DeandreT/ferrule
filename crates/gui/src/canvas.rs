@@ -2,7 +2,7 @@
 //! target endpoint blocks. Endpoint pins keep their complete schema identity,
 //! while blocks group fields by their owning repetition context.
 
-use ir::{SchemaKind, SchemaNode};
+use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::NodeId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -26,6 +26,7 @@ pub struct SourceLeaf {
     pub label: String,
     pub frame: Option<Vec<String>>,
     pub path: Vec<String>,
+    pub ty: ScalarType,
 }
 
 /// One scalar leaf of the target schema. `chain` is the group-name chain
@@ -37,6 +38,7 @@ pub struct TargetLeaf {
     pub label: String,
     pub chain: Vec<String>,
     pub field: String,
+    pub ty: ScalarType,
 }
 
 /// A compact source endpoint. `frame` is populated when every leaf shares one
@@ -131,12 +133,13 @@ fn collect_source(
     label.push(node.name.clone());
     absolute.push(node.name.clone());
     match &node.kind {
-        SchemaKind::Scalar { .. } => {
+        SchemaKind::Scalar { ty } => {
             suffix.push(node.name.clone());
             out.push(SourceLeaf {
                 label: label.join("/"),
                 frame: frame_len.map(|len| absolute[..len].to_vec()),
                 path: suffix.clone(),
+                ty: *ty,
             });
             suffix.pop();
         }
@@ -216,13 +219,14 @@ fn target_block(schema: &SchemaNode, chain: Vec<String>, leaves: Vec<TargetLeaf>
 
 fn collect_target(node: &SchemaNode, chain: &mut Vec<String>, out: &mut Vec<TargetLeaf>) {
     match &node.kind {
-        SchemaKind::Scalar { .. } => {
+        SchemaKind::Scalar { ty } => {
             let mut label = chain.clone();
             label.push(node.name.clone());
             out.push(TargetLeaf {
                 label: label.join("/"),
                 chain: chain.clone(),
                 field: node.name.clone(),
+                ty: *ty,
             });
         }
         SchemaKind::Group { children, .. } => {
@@ -274,16 +278,19 @@ mod tests {
                     label: "Date".into(),
                     frame: None,
                     path: vec!["Date".into()],
+                    ty: ScalarType::String,
                 },
                 SourceLeaf {
                     label: "Order/Cust_Name".into(),
                     frame: Some(vec!["Order".into()]),
                     path: vec!["Cust_Name".into()],
+                    ty: ScalarType::String,
                 },
                 SourceLeaf {
                     label: "Order/Items/Item/Price".into(),
                     frame: Some(vec!["Order".into(), "Items".into(), "Item".into()]),
                     path: vec!["Price".into()],
+                    ty: ScalarType::Float,
                 },
             ]
         );
