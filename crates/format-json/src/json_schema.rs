@@ -4,9 +4,10 @@
 //! `boolean` to the corresponding scalar types, and resolves document-local
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
 //! refs degrade to string scalars). Compatible closed-object `oneOf` and
-//! `anyOf` unions, their required scalar `const` discriminators, and typed
-//! `additionalProperties` schemas are preserved. Compatible `allOf`
-//! intersections flatten across objects, scalar domains, and matching arrays.
+//! `anyOf` unions, their required scalar `const` or singleton-`enum`
+//! discriminators, and typed `additionalProperties` schemas are preserved.
+//! Compatible `allOf` intersections flatten across objects, scalar domains,
+//! and matching arrays.
 //! Scalar/container-plus-null `oneOf` / `anyOf` and nullable type arrays retain
 //! explicit nullability, including scalar array items. Exact heterogeneous
 //! scalar `anyOf`, pairwise-disjoint scalar `oneOf`, and type arrays preserve
@@ -28,9 +29,9 @@ mod render;
 
 use all_of::parse_all_of;
 use alternatives::{
-    parse_inferred_const_scalar, parse_nullable_container_alternatives,
+    parse_inferred_constraint_scalar, parse_nullable_container_alternatives,
     parse_nullable_scalar_alternatives, parse_object_alternatives, parse_scalar_any_of,
-    parse_scalar_domain_array_any_of, parse_scalar_one_of,
+    parse_scalar_domain_array_any_of, parse_scalar_one_of, singleton_enum_value,
 };
 
 enum ImportedSchemaType<'a> {
@@ -160,6 +161,11 @@ fn parse(
         );
     }
     let (ty, nullable) = schema_type(name, schema)?;
+    if matches!(&ty, ImportedSchemaType::Absent)
+        && let Some(value) = schema.get("const").or_else(|| singleton_enum_value(schema))
+    {
+        return parse_inferred_constraint_scalar(name, value);
+    }
     match ty {
         ImportedSchemaType::Single("object") => {
             let children = parse_properties(schema, doc, active_refs)?;
@@ -197,9 +203,6 @@ fn parse(
             name,
             "a null-only schema has no distinct ferrule scalar value type",
         )),
-        ImportedSchemaType::Absent if schema.get("const").is_some() => {
-            parse_inferred_const_scalar(name, &schema["const"])
-        }
         _ if schema.get("properties").is_some() => {
             let children = parse_properties(schema, doc, active_refs)?;
             attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)
