@@ -61,10 +61,7 @@ fn validate_bounded_repeating_construction(
     if !output.repeating || !matches!(output.kind, SchemaKind::Group { .. }) {
         return Err("the selected variable output is not a repeating record");
     }
-    if has_repeating_descendant(output) {
-        return Err("deeper nested repetition is not supported");
-    }
-    if count_repeating_nodes(&component.schema) != 1 {
+    if count_repeating_nodes(&component.schema) != count_repeating_nodes(output) {
         return Err("the variable record has multiple or ambiguous repeating children");
     }
     for (relative, _) in projections {
@@ -93,15 +90,6 @@ fn count_repeating_nodes(node: &ir::SchemaNode) -> usize {
         return own;
     };
     own + children.iter().map(count_repeating_nodes).sum::<usize>()
-}
-
-fn has_repeating_descendant(node: &ir::SchemaNode) -> bool {
-    let SchemaKind::Group { children, .. } = &node.kind else {
-        return false;
-    };
-    children
-        .iter()
-        .any(|child| child.repeating || has_repeating_descendant(child))
 }
 
 impl GraphBuilder<'_> {
