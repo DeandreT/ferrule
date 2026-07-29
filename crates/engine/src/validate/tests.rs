@@ -39,6 +39,16 @@ fn valid_project() -> Project {
     }
 }
 
+fn target_name(project: &mut Project) -> &mut SchemaNode {
+    let SchemaKind::Group { children, .. } = &mut project.target.kind else {
+        panic!("test target must be a group");
+    };
+    let Some(target) = children.iter_mut().find(|child| child.name == "name") else {
+        panic!("test target field must exist");
+    };
+    target
+}
+
 #[test]
 fn accepts_a_valid_project_and_relative_source_paths() {
     let mut project = valid_project();
@@ -435,12 +445,7 @@ fn rejects_programmatically_invalid_fixed_union_metadata() {
     let Some(types) = ir::ScalarTypeSet::new([ir::ScalarType::String, ir::ScalarType::Int]) else {
         panic!("test scalar union members must be distinct");
     };
-    let SchemaKind::Group { children, .. } = &mut project.target.kind else {
-        panic!("test target must be a group");
-    };
-    let Some(target) = children.iter_mut().find(|child| child.name == "name") else {
-        panic!("test target field must exist");
-    };
+    let target = target_name(&mut project);
     target.kind = SchemaKind::ScalarUnion { types };
     target.fixed = Some("ambiguous".into());
 
@@ -450,6 +455,69 @@ fn rejects_programmatically_invalid_fixed_union_metadata() {
             && issue.message.contains("fixed-value metadata")
             && issue.message.contains("name")
     }));
+}
+
+#[test]
+fn rejects_every_programmatically_invalid_schema_metadata_family() {
+    let mut cases = Vec::new();
+
+    let mut recursive = valid_project();
+    target_name(&mut recursive).recursive_ref = Some("row".into());
+    cases.push(("recursive-reference metadata", recursive));
+
+    let mut generated = valid_project();
+    let target = target_name(&mut generated);
+    target.repeating = true;
+    target.value_generation = Some(ir::ValueGeneration::MaxNumber);
+    cases.push(("generated-value metadata", generated));
+
+    let mut defaulted = valid_project();
+    let target = target_name(&mut defaulted);
+    target.repeating = true;
+    target.default = Some("value".into());
+    cases.push(("default-value metadata", defaulted));
+
+    let mut mode = valid_project();
+    target_name(&mut mode).alternative_mode = ir::GroupAlternativeMode::Inclusive;
+    cases.push(("alternative-mode metadata", mode));
+
+    let mut xml_kind = valid_project();
+    target_name(&mut xml_kind).xml_alternative_kind = ir::XmlAlternativeKind::SubstitutionGroup;
+    cases.push(("XML alternative-kind metadata", xml_kind));
+
+    let mut relation = valid_project();
+    target_name(&mut relation).database_relation = Some(ir::DatabaseRelation {
+        parent_column: "parent_id".into(),
+        child_column: "child_id".into(),
+        foreign_key_side: ir::DatabaseForeignKeySide::Child,
+    });
+    cases.push(("database-relation metadata", relation));
+
+    let mut nullable = valid_project();
+    nullable.target.nullable = true;
+    cases.push(("scalar nullability metadata", nullable));
+
+    let mut container_nullable = valid_project();
+    target_name(&mut container_nullable).container_nullable = true;
+    cases.push(("container-nullability metadata", container_nullable));
+
+    let mut arbitrary_json = valid_project();
+    let target = target_name(&mut arbitrary_json);
+    target.kind = SchemaKind::Scalar {
+        ty: ScalarType::Int,
+    };
+    target.json_any = true;
+    cases.push(("arbitrary-JSON metadata", arbitrary_json));
+
+    for (expected, project) in cases {
+        let issues = validate(&project);
+        assert!(
+            issues.iter().any(|issue| {
+                issue.location == "target schema" && issue.message.contains(expected)
+            }),
+            "missing `{expected}` issue in {issues:?}"
+        );
+    }
 }
 
 #[test]

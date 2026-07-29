@@ -20,11 +20,47 @@ pub(super) fn validate_schema(
             format!("fixed-value metadata{suffix} requires one concrete scalar type"),
         ));
     }
+    if !schema.recursive_ref_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("recursive-reference metadata{suffix} requires an empty structural group"),
+        ));
+    }
+    if !schema.value_generation_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "generated-value metadata{suffix} requires one non-repeating scalar without a fixed or default value"
+            ),
+        ));
+    }
+    if !schema.default_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "default-value metadata{suffix} requires one non-repeating scalar without a fixed or generated value"
+            ),
+        ));
+    }
     if !schema.alternatives_are_valid() {
         issues.push(ValidationIssue::new(
             root,
             format!(
                 "group alternative metadata{suffix} has duplicate or unknown names, members, or required fields"
+            ),
+        ));
+    }
+    if !schema.alternative_mode_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("alternative-mode metadata{suffix} requires group alternatives"),
+        ));
+    }
+    if !schema.xml_alternative_kind_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "XML alternative-kind metadata{suffix} requires exclusive structural alternatives"
             ),
         ));
     }
@@ -34,6 +70,34 @@ pub(super) fn validate_schema(
             format!(
                 "XML repeating-sequence metadata{suffix} has duplicate, unknown, or non-repeating members"
             ),
+        ));
+    }
+    if !schema.database_relation_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "database-relation metadata{suffix} requires a repeating table group with valid join columns"
+            ),
+        ));
+    }
+    if !schema.nullable_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("scalar nullability metadata{suffix} requires a scalar schema"),
+        ));
+    }
+    if !schema.container_nullable_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "container-nullability metadata{suffix} requires an object or repeating schema"
+            ),
+        ));
+    }
+    if !schema.json_any_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("arbitrary-JSON metadata{suffix} requires one non-repeating string scalar"),
         ));
     }
     let SchemaKind::Group { children, .. } = &schema.kind else {
