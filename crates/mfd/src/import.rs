@@ -84,6 +84,7 @@ pub struct Imported {
 #[derive(Debug, Clone, Default)]
 pub struct ImportOptions {
     package_root: Option<PathBuf>,
+    edi_catalog_roots: Vec<PathBuf>,
 }
 
 impl ImportOptions {
@@ -95,6 +96,31 @@ impl ImportOptions {
 
     pub fn package_root(&self) -> Option<&Path> {
         self.package_root.as_deref()
+    }
+
+    /// Adds an explicitly trusted EDI configuration catalog.
+    ///
+    /// Catalogs are searched in declaration order after package-contained
+    /// resources. Each resolved configuration remains confined to its
+    /// canonical catalog directory.
+    pub fn with_edi_catalog_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.edi_catalog_roots.push(root.into());
+        self
+    }
+
+    /// Adds explicitly trusted EDI configuration catalogs in search order.
+    pub fn with_edi_catalog_roots<I, P>(mut self, roots: I) -> Self
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<PathBuf>,
+    {
+        self.edi_catalog_roots
+            .extend(roots.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn edi_catalog_roots(&self) -> &[PathBuf] {
+        &self.edi_catalog_roots
     }
 }
 
@@ -183,7 +209,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 }
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
-    let resources = ResourceResolver::new(path, options.package_root())?;
+    let resources = ResourceResolver::new(path, options.package_root())?
+        .with_edi_catalog_roots(options.edi_catalog_roots())?;
     import_resolved(&resources)
 }
 

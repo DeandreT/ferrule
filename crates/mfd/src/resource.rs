@@ -11,6 +11,7 @@ pub(crate) struct ResourceResolver {
     mapping_directory: PathBuf,
     package_root: PathBuf,
     explicit_package_root: bool,
+    edi_catalog_roots: Vec<PathBuf>,
 }
 
 impl ResourceResolver {
@@ -51,7 +52,29 @@ impl ResourceResolver {
             mapping_directory,
             package_root,
             explicit_package_root,
+            edi_catalog_roots: Vec::new(),
         })
+    }
+
+    pub(crate) fn with_edi_catalog_roots(mut self, roots: &[PathBuf]) -> Result<Self, MfdError> {
+        for root in roots {
+            let canonical = std::fs::canonicalize(root).map_err(|error| {
+                MfdError::Resource(format!(
+                    "could not canonicalize trusted EDI catalog root `{}` ({error})",
+                    root.display()
+                ))
+            })?;
+            if !canonical.is_dir() {
+                return Err(MfdError::Resource(format!(
+                    "trusted EDI catalog root `{}` is not a directory",
+                    canonical.display()
+                )));
+            }
+            if !self.edi_catalog_roots.contains(&canonical) {
+                self.edi_catalog_roots.push(canonical);
+            }
+        }
+        Ok(self)
     }
 
     pub(crate) fn mapping_path(&self) -> &Path {
@@ -60,6 +83,10 @@ impl ResourceResolver {
 
     pub(crate) fn package_root(&self) -> &Path {
         &self.package_root
+    }
+
+    pub(crate) fn edi_catalog_roots(&self) -> &[PathBuf] {
+        &self.edi_catalog_roots
     }
 
     pub(crate) fn package_relative_path(
