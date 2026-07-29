@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::{GroupAlternative, SchemaKind, SchemaNode};
+use ir::{GroupAlternative, ScalarType, SchemaKind, SchemaNode, XML_TEXT_FIELD};
 
 use crate::XmlFormatError;
 
@@ -206,13 +206,15 @@ impl<'a> AlternativeExportPlan<'a> {
                 self.write_simple_content_definition(name, definition, text, abstract_attr, out)?;
                 continue;
             }
+            let mixed = self.mixed_content(name, &mut BTreeSet::new())?;
             if let Some(base) = &definition.base {
                 let derivation = match definition.derivation {
                     TypeDerivation::Extension => "extension",
                     TypeDerivation::Restriction => "restriction",
                 };
+                let mixed_attr = if mixed { " mixed=\"true\"" } else { "" };
                 out.push_str(&format!(
-                    "  <xs:complexType name=\"{}\">\n    <xs:complexContent>\n      <xs:{derivation} base=\"{}\">\n",
+                    "  <xs:complexType name=\"{}\">\n    <xs:complexContent{mixed_attr}>\n      <xs:{derivation} base=\"{}\">\n",
                     xml_escape(name),
                     self.qualified(base)
                 ));
@@ -221,8 +223,9 @@ impl<'a> AlternativeExportPlan<'a> {
                     "      </xs:{derivation}>\n    </xs:complexContent>\n  </xs:complexType>\n"
                 ));
             } else {
+                let mixed_attr = if mixed { " mixed=\"true\"" } else { "" };
                 out.push_str(&format!(
-                    "  <xs:complexType name=\"{}\"{abstract_attr}>\n",
+                    "  <xs:complexType name=\"{}\"{abstract_attr}{mixed_attr}>\n",
                     xml_escape(name)
                 ));
                 write_members(definition, 2, root_name, recursive_anchors, self, out)?;
@@ -230,6 +233,27 @@ impl<'a> AlternativeExportPlan<'a> {
             }
         }
         Ok(())
+    }
+
+    fn mixed_content(
+        &self,
+        name: &str,
+        active: &mut BTreeSet<String>,
+    ) -> Result<bool, XmlFormatError> {
+        if !active.insert(name.to_string()) {
+            return Err(unsupported_node_name(name));
+        }
+        let definition = self
+            .definitions
+            .get(name)
+            .ok_or_else(|| unsupported_node_name(name))?;
+        let local = definition.members.iter().any(|member| member.text);
+        let inherited = match (&definition.base, definition.derivation) {
+            (Some(base), TypeDerivation::Extension) => self.mixed_content(base, active)?,
+            (Some(_), TypeDerivation::Restriction) | (None, _) => false,
+        };
+        active.remove(name);
+        Ok(local || inherited)
     }
 
     fn simple_content_text(
@@ -609,13 +633,24 @@ fn write_members(
     alternatives: &AlternativeExportPlan<'_>,
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
-    let (attributes, elements): (Vec<&SchemaNode>, Vec<&SchemaNode>) = definition
+    let (attributes, mut elements): (Vec<&SchemaNode>, Vec<&SchemaNode>) = definition
         .members
         .iter()
         .copied()
         .partition(|child| child.attribute);
-    if elements.iter().any(|child| child.text) {
-        return Err(unsupported_node_name("mixed alternative content"));
+    let text = elements
+        .iter()
+        .copied()
+        .filter(|child| child.text)
+        .collect::<Vec<_>>();
+    if !text.is_empty() {
+        let canonical = SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text();
+        if text.len() != 1 || text[0] != &canonical {
+            return Err(unsupported_node_name(
+                "noncanonical mixed alternative content",
+            ));
+        }
+        elements.retain(|child| !child.text);
     }
     let pad = "  ".repeat(depth);
     out.push_str(&format!("{pad}<xs:sequence>\n"));

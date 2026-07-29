@@ -1634,7 +1634,10 @@ fn parse_complex_type(
     state: &mut ParseState,
 ) -> ParsedComplexType {
     let mut parsed = ParsedComplexType::default();
-    if complex_type.attribute("mixed") == Some("true") {
+    if complex_type
+        .attribute("mixed")
+        .is_some_and(|value| matches!(value, "true" | "1"))
+    {
         parsed
             .children
             .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
@@ -1670,6 +1673,15 @@ fn parse_complex_type(
                             resolve_complex_type(base, schema_el, schema_path, state, None)
                     {
                         parsed.extend(base_group);
+                    }
+                    if child
+                        .attribute("mixed")
+                        .is_some_and(|value| matches!(value, "true" | "1"))
+                        && !parsed.children.iter().any(|member| member.text)
+                    {
+                        parsed
+                            .children
+                            .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
                     }
                     parsed.extend(parse_complex_type(&ext, schema_el, schema_path, state));
                 } else if let Some(restriction) = child
