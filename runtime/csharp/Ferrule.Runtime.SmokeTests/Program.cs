@@ -19,6 +19,7 @@ internal static partial class Program
             ("value maps", ValueMaps),
             ("lookup contexts", LookupContexts),
             ("dynamic source contexts", DynamicSourceContexts),
+            ("dynamic target construction", DynamicTargetConstruction),
             ("collection-find contexts", CollectionFindContexts),
             ("inner join contexts", InnerJoinContexts),
             ("grouping contexts", GroupingContexts),

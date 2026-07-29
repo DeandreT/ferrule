@@ -20,6 +20,7 @@ struct ScopePlan<'a> {
     evaluations: Vec<u32>,
     bindings: Vec<BindingPlan<'a>>,
     children: Vec<(&'a str, usize)>,
+    dynamic_children: Vec<(u32, usize)>,
     segments: Vec<usize>,
 }
 
@@ -449,7 +450,15 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             if iteration.concatenated().is_some() {
                 render_concatenated_scope(iteration, &scope.segments, &mut output);
             } else {
-                render_iteration_scope(scope_index, iteration, &mut output);
+                render_iteration_scope(
+                    scope_index,
+                    iteration,
+                    matches!(
+                        scope.construction,
+                        TargetConstruction::DynamicGroup { merge: true, .. }
+                    ),
+                    &mut output,
+                );
             }
         } else {
             output.push_str(&format!(
@@ -551,11 +560,10 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 "        var value_{scope_index}_{binding_index} = Node_{expression}(context);\n"
             ));
         }
-        output.push_str(
-            &format!(
-                "        var group_{scope_index} = new global::Ferrule.Runtime.FerruleGroup(new global::Ferrule.Runtime.FerruleField[]\n        {{\n"
-            ),
-        );
+        let dynamic_group = matches!(scope.construction, TargetConstruction::DynamicGroup { .. });
+        output.push_str(&format!(
+            "        var fields_{scope_index} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleField>\n        {{\n"
+        ));
         for binding in &scope.bindings {
             output.push_str("            new global::Ferrule.Runtime.FerruleField(");
             output.push_str(&literal::string(binding.target_field));
@@ -580,12 +588,49 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             output.push_str(target_type(binding.target_type));
             output.push_str(")),\n");
         }
-        for (target_field, child_index) in &scope.children {
-            output.push_str("            new global::Ferrule.Runtime.FerruleField(");
-            output.push_str(&literal::string(target_field));
-            output.push_str(&format!(", Scope_{child_index}(context)),\n"));
+        output.push_str("        };\n");
+        if let TargetConstruction::DynamicGroup {
+            fixed_fields,
+            bindings,
+            ..
+        } = scope.construction
+        {
+            output.push_str(&format!(
+                "        var fixed_fields_{scope_index} = new string[] {{ "
+            ));
+            for (index, field) in fixed_fields.iter().enumerate() {
+                if index != 0 {
+                    output.push_str(", ");
+                }
+                output.push_str(&literal::string(field));
+            }
+            output.push_str(" };\n");
+            for (index, binding) in bindings.iter().enumerate() {
+                output.push_str(&format!(
+                    "        var dynamic_key_{scope_index}_{index} = global::Ferrule.Runtime.FerruleDynamicTargets.PropertyName({}U, Node_{}(context));\n        var dynamic_value_{scope_index}_{index} = Node_{}(context);\n        global::Ferrule.Runtime.FerruleDynamicTargets.Insert(\n            fields_{scope_index},\n            fixed_fields_{scope_index},\n            dynamic_key_{scope_index}_{index},\n            TargetBuilder.Scalar(dynamic_value_{scope_index}_{index}, {}));\n",
+                    binding.key,
+                    binding.key,
+                    binding.value,
+                    target_type(binding.target_type),
+                ));
+            }
         }
-        output.push_str("        });\n");
+        for (target_field, child_index) in &scope.children {
+            output.push_str(&format!(
+                "        fields_{scope_index}.Add(new global::Ferrule.Runtime.FerruleField({}, Scope_{child_index}(context)));\n",
+                literal::string(target_field)
+            ));
+        }
+        if dynamic_group {
+            for (index, (key, child_index)) in scope.dynamic_children.iter().enumerate() {
+                output.push_str(&format!(
+                    "        var dynamic_child_key_{scope_index}_{index} = global::Ferrule.Runtime.FerruleDynamicTargets.PropertyName({key}U, Node_{key}(context));\n        var dynamic_child_value_{scope_index}_{index} = Scope_{child_index}(context);\n        global::Ferrule.Runtime.FerruleDynamicTargets.Insert(\n            fields_{scope_index},\n            fixed_fields_{scope_index},\n            dynamic_child_key_{scope_index}_{index},\n            dynamic_child_value_{scope_index}_{index});\n"
+                ));
+            }
+        }
+        output.push_str(&format!(
+            "        var group_{scope_index} = new global::Ferrule.Runtime.FerruleGroup(fields_{scope_index});\n"
+        ));
         if let TargetConstruction::XmlMixedContent { elements } = scope.construction {
             output.push_str(&format!(
                 "        return global::Ferrule.Runtime.FerruleXmlMixedContent.Preserve(\n            context,\n            group_{scope_index},\n            new global::Ferrule.Runtime.FerruleXmlMixedContentElement[]\n            {{\n"
@@ -1032,7 +1077,12 @@ fn render_source_context(program: &Program, output: &mut String) {
     output.push_str("            },\n            executionContext);\n    }\n");
 }
 
-fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut String) {
+fn render_iteration_scope(
+    scope: usize,
+    iteration: &IterationPlan,
+    merge_dynamic_fields: bool,
+    output: &mut String,
+) {
     render_iteration_candidates(scope, iteration.input(), output);
 
     let sort = iteration.sort();
@@ -1130,6 +1180,12 @@ fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut 
     if dynamic.is_some() {
         output.push_str(&format!(
             "        return new global::Ferrule.Runtime.FerruleDocumentSet(documents_{scope});\n"
+        ));
+        return;
+    }
+    if merge_dynamic_fields {
+        output.push_str(&format!(
+            "        return global::Ferrule.Runtime.FerruleDynamicTargets.Merge(items_{scope});\n"
         ));
         return;
     }
@@ -1494,6 +1550,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
         evaluations: Vec::new(),
         bindings: Vec::new(),
         children: Vec::new(),
+        dynamic_children: Vec::new(),
         segments: Vec::new(),
     });
 
@@ -1518,6 +1575,13 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
         let child_index = add_scope(child, scopes);
         children.push((child.target_field.as_str(), child_index));
     }
+    let dynamic_children = match &scope.construction {
+        TargetConstruction::DynamicGroup { children, .. } => children
+            .iter()
+            .map(|child| (child.key, add_scope(&child.scope, scopes)))
+            .collect(),
+        _ => Vec::new(),
+    };
     let segments = scope
         .iteration
         .as_ref()
@@ -1536,6 +1600,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
         evaluations,
         bindings,
         children,
+        dynamic_children,
         segments,
     };
     scope_index

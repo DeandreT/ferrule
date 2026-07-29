@@ -1143,6 +1143,18 @@ impl From<mapping::SequenceWindow> for SequenceWindow {
 pub enum TargetConstruction {
     #[default]
     Group,
+    DynamicGroup {
+        /// Every statically declared property in the open target schema.
+        ///
+        /// Computed properties collide with these names even when the static
+        /// property is not constructed by this scope.
+        fixed_fields: Vec<String>,
+        bindings: Vec<DynamicTargetBinding>,
+        children: Vec<DynamicTargetChild>,
+        /// Merge the object fragment produced by each iteration into one
+        /// insertion-ordered object.
+        merge: bool,
+    },
     CopyCurrentSource,
     Scalar {
         expression: NodeId,
@@ -1170,6 +1182,21 @@ pub enum TargetConstruction {
         target_children: String,
         root: Option<NodeId>,
     },
+}
+
+/// One computed scalar property retained by shared lowering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynamicTargetBinding {
+    pub key: NodeId,
+    pub value: NodeId,
+    pub target_type: ScalarType,
+}
+
+/// One computed structured property retained by shared lowering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynamicTargetChild {
+    pub key: NodeId,
+    pub scope: TargetScope,
 }
 
 /// One direct-child rename retained in a mixed-content target stream.

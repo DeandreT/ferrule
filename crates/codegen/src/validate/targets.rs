@@ -86,6 +86,20 @@ fn collect_scope_sequence_items(
         target_path.pop();
         result?;
     }
+    if let crate::TargetConstruction::DynamicGroup { children, .. } = &scope.construction {
+        for child in children {
+            target_path.push("*".to_string());
+            let result = collect_scope_sequence_items(
+                expressions,
+                &child.scope,
+                target_path,
+                target_owner,
+                owners,
+            );
+            target_path.pop();
+            result?;
+        }
+    }
     Ok(())
 }
 

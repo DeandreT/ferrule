@@ -16,6 +16,7 @@ mod artifacts;
 mod collection_find;
 mod concatenate;
 mod dynamic_documents;
+mod dynamic_targets;
 mod extra_sources;
 mod failures;
 mod grouping;

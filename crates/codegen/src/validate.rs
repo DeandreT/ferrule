@@ -442,6 +442,21 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         output: IterationOutput,
     },
+    InvalidDynamicTarget {
+        target_path: Vec<String>,
+        reason: &'static str,
+    },
+    MissingDynamicPropertyExpression {
+        target_path: Vec<String>,
+        property: usize,
+        role: &'static str,
+        expression: NodeId,
+    },
+    DynamicChild {
+        target_path: Vec<String>,
+        child: usize,
+        error: Box<ProgramValidationError>,
+    },
     InvalidDuplicateBinding {
         target_path: Vec<String>,
         target_field: String,
@@ -1007,7 +1022,7 @@ fn validate_scope(
     }
 
     match &scope.construction {
-        TargetConstruction::Group => {
+        TargetConstruction::Group | TargetConstruction::DynamicGroup { .. } => {
             if !matches!(target_node.kind, SchemaKind::Group { .. }) {
                 return Err(
                     ProgramValidationError::GroupConstructionRequiresGroupTarget {
@@ -1309,6 +1324,163 @@ fn validate_scope(
                 item_root_context,
                 &sequence_owner,
             )?;
+        }
+    }
+
+    if let TargetConstruction::DynamicGroup {
+        fixed_fields,
+        bindings: dynamic_bindings,
+        children: dynamic_children,
+        merge,
+    } = &scope.construction
+    {
+        let expected_fixed = match &target_node.kind {
+            SchemaKind::Group { children, .. } => children
+                .iter()
+                .map(|child| child.name.as_str())
+                .collect::<Vec<_>>(),
+            SchemaKind::Scalar { .. } => Vec::new(),
+        };
+        if fixed_fields
+            .iter()
+            .map(String::as_str)
+            .ne(expected_fixed.iter().copied())
+        {
+            return Err(ProgramValidationError::InvalidDynamicTarget {
+                target_path: target_path.clone(),
+                reason: "fixed-property catalog does not match the target schema",
+            });
+        }
+        let Some(dynamic_target) = target_node.dynamic_fields() else {
+            return Err(ProgramValidationError::InvalidDynamicTarget {
+                target_path: target_path.clone(),
+                reason: "computed properties require an open group target",
+            });
+        };
+        if *merge {
+            let valid_iteration = scope.iteration.as_ref().is_some_and(|iteration| {
+                iteration.output() == IterationOutput::Repeated
+                    && iteration.concatenated().is_none()
+                    && iteration.dynamic_document_iteration().is_none()
+            });
+            if !valid_iteration {
+                return Err(ProgramValidationError::InvalidDynamicTarget {
+                    target_path: target_path.clone(),
+                    reason: "dynamic object merge requires ordinary repeated iteration output",
+                });
+            }
+            if !scope.bindings.is_empty() || !scope.children.is_empty() {
+                return Err(ProgramValidationError::InvalidDynamicTarget {
+                    target_path: target_path.clone(),
+                    reason: "dynamic object merge accepts only computed properties",
+                });
+            }
+            if dynamic_bindings.is_empty() && dynamic_children.is_empty() {
+                return Err(ProgramValidationError::InvalidDynamicTarget {
+                    target_path: target_path.clone(),
+                    reason: "dynamic object merge requires at least one computed property",
+                });
+            }
+        }
+        for (property, binding) in dynamic_bindings.iter().enumerate() {
+            let SchemaKind::Scalar { ty } = dynamic_target.kind else {
+                return Err(ProgramValidationError::InvalidDynamicTarget {
+                    target_path: target_path.clone(),
+                    reason: "computed scalar properties require a scalar dynamic-field schema",
+                });
+            };
+            if dynamic_target.repeating || binding.target_type != ty {
+                return Err(ProgramValidationError::InvalidDynamicTarget {
+                    target_path: target_path.clone(),
+                    reason: "computed scalar property type does not match the dynamic-field schema",
+                });
+            }
+            for (role, expression) in [("key", binding.key), ("value", binding.value)] {
+                if !expressions.contains_key(&expression) {
+                    return Err(ProgramValidationError::MissingDynamicPropertyExpression {
+                        target_path: target_path.clone(),
+                        property,
+                        role,
+                        expression,
+                    });
+                }
+                validate_expression_context(
+                    expression,
+                    expressions,
+                    ScopeSchemas {
+                        current_source: scope_source,
+                        active_source,
+                        ..schemas
+                    },
+                    sequence_items,
+                    &item_context,
+                    &scope_joins,
+                    item_root_context,
+                    &sequence_owner,
+                )?;
+            }
+        }
+        for (child, dynamic_child) in dynamic_children.iter().enumerate() {
+            if !expressions.contains_key(&dynamic_child.key) {
+                return Err(ProgramValidationError::MissingDynamicPropertyExpression {
+                    target_path: target_path.clone(),
+                    property: child,
+                    role: "child key",
+                    expression: dynamic_child.key,
+                });
+            }
+            validate_expression_context(
+                dynamic_child.key,
+                expressions,
+                ScopeSchemas {
+                    current_source: scope_source,
+                    active_source,
+                    ..schemas
+                },
+                sequence_items,
+                &item_context,
+                &scope_joins,
+                item_root_context,
+                &sequence_owner,
+            )?;
+            if !matches!(dynamic_target.kind, SchemaKind::Group { .. }) {
+                return Err(ProgramValidationError::InvalidDynamicTarget {
+                    target_path: target_path.clone(),
+                    reason: "computed child properties require a group dynamic-field schema",
+                });
+            }
+            if dynamic_child
+                .scope
+                .iteration
+                .as_ref()
+                .is_some_and(|iteration| iteration.output() == IterationOutput::MappedSequence)
+            {
+                return Err(ProgramValidationError::InvalidDynamicTarget {
+                    target_path: target_path.clone(),
+                    reason: "mapped-sequence output cannot populate a computed property",
+                });
+            }
+            let mut dynamic_path = Vec::new();
+            validate_scope(
+                &dynamic_child.scope,
+                expressions,
+                ScopeSchemas {
+                    current_source: scope_source,
+                    active_source,
+                    target_root: dynamic_target,
+                    ..schemas
+                },
+                &mut dynamic_path,
+                sequence_items,
+                &item_context,
+                &scope_joins,
+                root_context && scope.iteration.is_none(),
+            )
+            .map_err(|error| ProgramValidationError::DynamicChild {
+                target_path: target_path.clone(),
+                child,
+                error: Box::new(error),
+            })?;
         }
     }
 
@@ -2089,6 +2261,35 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} cannot use {output:?} iteration output with its target cardinality or location",
                 display_path(target_path)
             ),
+            Self::InvalidDynamicTarget {
+                target_path,
+                reason,
+            } => write!(
+                formatter,
+                "target scope {} has an invalid computed-property construction: {reason}",
+                display_path(target_path)
+            ),
+            Self::MissingDynamicPropertyExpression {
+                target_path,
+                property,
+                role,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} computed property {} {role} references missing expression {expression}",
+                display_path(target_path),
+                property + 1
+            ),
+            Self::DynamicChild {
+                target_path,
+                child,
+                error,
+            } => write!(
+                formatter,
+                "target scope {} computed child {}: {error}",
+                display_path(target_path),
+                child + 1
+            ),
             Self::InvalidDuplicateBinding {
                 target_path,
                 target_field,
@@ -2129,9 +2330,9 @@ impl fmt::Display for ProgramValidationError {
 impl std::error::Error for ProgramValidationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::NamedTarget { error, .. } | Self::UserFunction { error, .. } => {
-                Some(error.as_ref())
-            }
+            Self::NamedTarget { error, .. }
+            | Self::UserFunction { error, .. }
+            | Self::DynamicChild { error, .. } => Some(error.as_ref()),
             _ => None,
         }
     }

@@ -19,7 +19,7 @@ pub(super) fn validate(
         else {
             continue;
         };
-        let candidates = sources.direct_path_targets(collection);
+        let candidates = sources.path_targets(collection);
         if !candidates
             .iter()
             .any(|candidate| candidate.node().repeating)
