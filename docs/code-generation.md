@@ -204,14 +204,14 @@ The current portable model includes:
   replacements evaluated in each original occurrence context
 - root-context static inner joins across two or more primary or named-source
   collections plus bounded per-item scopes joining one active singleton scalar
-  to one ordinary primary/named repeating source, with left-deep composite
-  equality, scalar coercion, stable duplicate-preserving order, Null/XML-nil
-  exclusion, exact joined fields, raw source positions, compacted tuple
-  positions, ordinary scope controls, and nested target construction
+  to one or more independent primary/named repeating sources, with left-deep
+  composite equality, scalar coercion, stable duplicate-preserving order,
+  Null/XML-nil exclusion, exact joined fields, raw source positions, compacted
+  tuple positions, ordinary scope controls, and nested target construction
 - root-context inner-join aggregates plus bounded per-item correlated reductions
-  joining one active singleton scalar to one ordinary primary/named repeating
-  source, with direct tuple counts, computed per-tuple values, and parent-context
-  scalar arguments
+  joining one active singleton scalar to one or more independent primary/named
+  repeating sources, with direct tuple counts, computed per-tuple values, and
+  parent-context scalar arguments
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, scalar-union, and exact
   whole-current-group target construction with exact numeric target adaptation
@@ -279,10 +279,10 @@ tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
 expose materially different regex dialects and Unicode behavior, so patterns
 outside the shared non-backtracking dialect can produce a backend-specific
 invalid-pattern error; exact cross-backend support needs a Ferrule-owned
-matcher. Direct correlated join scopes and
-joined-tuple aggregates beyond the exact active-singleton-to-repeating
-two-source shape remain interpreter-only; their ownership and parent-context
-rules need a broader portable join model. Code generation is
+matcher. Correlated join scopes and joined-tuple aggregates that reach
+ancestor-relative repeating sources or require more than one active singleton
+remain interpreter-only; their ownership and parent-context rules need a
+broader portable join model. Code generation is
 expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
