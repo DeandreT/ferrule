@@ -158,6 +158,14 @@ property domain, schema-valued declarations remain typed, and explicit `false`
 rejects undeclared input properties instead of discarding them. MFD export
 writes a canonical JSON Schema sibling and re-import retains the same open,
 typed-open, or closed behavior.
+Referenced JSON objects also retain exact `minProperties`/`maxProperties`
+intervals through nullable wrappers, dialect-aware references, compatible
+`allOf`, and alternatives with one common effective interval. Imported
+mappings enforce each distinct parsed input-property set and normalized output
+object in native and generated Rust/C# boundaries; canonical MFD export and
+re-import retains the interval. Unsatisfiable required/closed-object bounds and
+correlated alternative intervals produce the existing actionable
+schema-fallback diagnostic rather than silently widening the contract.
 Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
 intervals measured in Unicode scalar values, including nullable fields, array
 items, typed dynamic properties, and compatible compositions. The constraints

@@ -4,6 +4,7 @@ mod json_format_annotations;
 mod json_multiple_of;
 mod json_pattern_constraints;
 mod numeric_range;
+mod property_count_range;
 mod string_length_range;
 
 pub use item_count_range::ItemCountRange;
@@ -26,4 +27,5 @@ pub use json_pattern_constraints::{
     MAX_JSON_PATTERN_TERMS,
 };
 pub use numeric_range::{IntegerRange, NumberBound, NumberRange, NumericRange};
+pub use property_count_range::PropertyCountRange;
 pub use string_length_range::StringLengthRange;

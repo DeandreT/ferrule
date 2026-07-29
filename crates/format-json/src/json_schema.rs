@@ -25,8 +25,9 @@
 //! bounded portable `pattern` constraints are enforced while string `format`
 //! annotations are retained without asserting their vocabulary-specific
 //! semantics. Exact structural `uniqueItems` assertions are enforced on
-//! concrete arrays. Other shape-neutral validation keywords are accepted but
-//! are not enforced by the mapping schema.
+//! concrete arrays. Exact `minProperties`/`maxProperties` intervals are
+//! enforced on concrete object shapes. Other shape-neutral validation
+//! keywords are accepted but are not enforced by the mapping schema.
 
 use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
 
@@ -41,6 +42,7 @@ mod formats;
 pub(crate) mod item_counts;
 pub(crate) mod multiples;
 mod patterns;
+pub(crate) mod property_counts;
 pub(crate) mod ranges;
 mod render;
 pub(crate) mod string_lengths;
@@ -190,6 +192,7 @@ fn parse(
             ranges::apply(name, schema, &mut nullable, false)?;
             multiples::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
+            property_counts::validate_ignored(name, schema)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
@@ -206,6 +209,7 @@ fn parse(
         if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
             let mut scalar = scalar;
             multiples::apply(name, schema, &mut scalar, false)?;
+            property_counts::validate_ignored(name, schema)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
@@ -223,6 +227,7 @@ fn parse(
         string_lengths::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)?;
+        property_counts::apply(name, schema, &mut node, false)?;
         unique_items::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
@@ -246,6 +251,7 @@ fn parse(
             ranges::apply(name, schema, &mut nullable, false)?;
             multiples::apply(name, schema, &mut nullable, false)?;
             item_counts::validate_ignored(name, schema)?;
+            property_counts::validate_ignored(name, schema)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
@@ -262,6 +268,7 @@ fn parse(
         if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
             let mut scalar = scalar;
             multiples::apply(name, schema, &mut scalar, false)?;
+            property_counts::validate_ignored(name, schema)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
@@ -275,6 +282,7 @@ fn parse(
             string_lengths::validate_ignored(name, schema)?;
             multiples::validate_ignored(name, schema)?;
             patterns::validate_ignored(name, schema)?;
+            property_counts::validate_ignored(name, schema)?;
             unique_items::apply(name, schema, &mut array, false)?;
             formats::apply(name, schema, &mut array)?;
             return Ok(array);
@@ -290,6 +298,7 @@ fn parse(
         string_lengths::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)?;
+        property_counts::apply(name, schema, &mut node, false)?;
         unique_items::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
@@ -444,6 +453,12 @@ fn parse(
         &mut node,
         type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
+    property_counts::apply(
+        name,
+        schema,
+        &mut node,
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
+    )?;
     unique_items::apply(
         name,
         schema,
@@ -480,6 +495,7 @@ fn apply_known_shape_constraints(
     node: &mut SchemaNode,
 ) -> Result<(), JsonFormatError> {
     allowed_values::apply(name, schema, node)?;
+    property_counts::apply(name, schema, node, false)?;
     if node.repeating {
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
@@ -506,6 +522,8 @@ fn reject_unresolved_ref_constraints(
         || multiples::has_keyword(schema)
         || item_counts::has_keywords(schema)
             && item_counts::is_effectively_constrained(name, schema)?
+        || property_counts::has_keywords(schema)
+            && property_counts::is_effectively_constrained(name, schema)?
         || unique_items::selected(name, schema)?
         || formats::has_keyword(schema)
         || string_lengths::has_keywords(schema)
@@ -530,6 +548,7 @@ pub(super) fn reject_unsupported_ref_siblings(
     multiples::validate_ignored(name, schema)?;
     patterns::validate_ignored(name, schema)?;
     unique_items::selected(name, schema)?;
+    property_counts::validate_ignored(name, schema)?;
     let Some(object) = schema.as_object() else {
         return Ok(());
     };
@@ -553,8 +572,6 @@ fn unsupported_ref_sibling(keyword: &str) -> bool {
         "$dynamicRef"
             | "$recursiveRef"
             | "type"
-            | "maxProperties"
-            | "minProperties"
             | "required"
             | "dependencies"
             | "dependentRequired"
@@ -704,6 +721,7 @@ fn attach_dynamic_fields(
                 || (!declares_supported_shape(object)
                     && !string_lengths::is_effectively_constrained("*", additional)?
                     && !multiples::has_keyword(additional)
+                    && !property_counts::is_effectively_constrained("*", additional)?
                     && !patterns::is_effectively_constrained("*", additional)?)
             {
                 return attach_unconstrained_dynamic(group);
@@ -868,6 +886,11 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
     if !schema.json_unique_items_tree_is_valid() {
         return Err(JsonFormatError::InvalidUniqueItemsMetadata {
             reason: "uniqueItems constraints must belong to repeating array nodes".to_string(),
+        });
+    }
+    if !schema.property_count_range_tree_is_valid() {
+        return Err(JsonFormatError::InvalidPropertyCountMetadata {
+            reason: "property-count constraints must belong to feasible object nodes".to_string(),
         });
     }
     if !schema.json_pattern_budget_is_valid() {

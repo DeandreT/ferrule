@@ -120,8 +120,9 @@
           Each JSON input and output is capped at 64 MiB and each trusted
           embedded schema at 1 MiB. Invalid shapes, numeric conversions, scalar
           constants, bounded exact scalar allowed-value sets, exact numeric ranges and decimal <code>multipleOf</code>
-          constraints, array item-count intervals, structural <code>uniqueItems</code>, Unicode
-          string-length intervals, bounded portable JSON Schema
+          constraints, array item-count intervals, object property-count
+          intervals, structural <code>uniqueItems</code>, Unicode string-length
+          intervals, bounded portable JSON Schema
           <code>pattern</code> assertions, exact open/closed object contracts,
           output serialization, and size excess
           produce typed boundary failures in both Rust and C#. These
@@ -135,6 +136,15 @@
           validate unknown fields against their retained type, and explicit
           <code>false</code> reports an undeclared property instead of silently
           dropping it.
+        </p>
+
+        <p>
+          Exact object <code>minProperties</code>/<code>maxProperties</code>
+          intervals count distinct parsed input properties before decoding and
+          normalized output members after absent Ferrule values are omitted.
+          Duplicate input names use the parser's last value and count once.
+          Nullable object null bypasses the interval; nested, repeated, primary,
+          and named documents apply the same rule.
         </p>
 
         <p>

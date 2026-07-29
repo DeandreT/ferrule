@@ -21,7 +21,8 @@ pub use schema::{
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
     MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS,
     MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
-    MAX_JSON_PATTERN_TERMS, NumberBound, NumberRange, NumericRange, StringLengthRange,
+    MAX_JSON_PATTERN_TERMS, NumberBound, NumberRange, NumericRange, PropertyCountRange,
+    StringLengthRange,
 };
 
 /// Instance-field name used for an XML element's simple text content.
@@ -540,6 +541,12 @@ pub struct SchemaNode {
     /// Exact cardinality bounds for a repeating JSON array node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_count_range: Option<ItemCountRange>,
+    /// Exact cardinality bounds for the properties of a JSON object node.
+    ///
+    /// On a repeating group these bounds apply to each object item, while
+    /// [`Self::item_count_range`] applies to the enclosing array.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub property_count_range: Option<PropertyCountRange>,
     /// Whether one repeating JSON array requires pairwise-distinct items
     /// under JSON Schema's structural equality rules.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
@@ -637,6 +644,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             item_count_range: Option<ItemCountRange>,
             #[serde(default)]
+            property_count_range: Option<PropertyCountRange>,
+            #[serde(default)]
             json_unique_items: bool,
             #[serde(default)]
             string_length_range: Option<StringLengthRange>,
@@ -681,6 +690,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             numeric_range: repr.numeric_range,
             json_multiple_of: repr.json_multiple_of,
             item_count_range: repr.item_count_range,
+            property_count_range: repr.property_count_range,
             json_unique_items: repr.json_unique_items,
             string_length_range: repr.string_length_range,
             json_patterns: repr.json_patterns,
@@ -696,7 +706,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         };
         if !node.metadata_is_valid() {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, property-count, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -923,6 +933,7 @@ impl SchemaNode {
             && self.numeric_range_is_valid()
             && self.json_multiple_of_is_valid()
             && self.item_count_range_is_valid()
+            && self.property_count_range_is_valid()
             && self.json_unique_items_is_valid()
             && self.string_length_range_is_valid()
             && self.json_patterns_are_valid()
@@ -961,6 +972,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            property_count_range: None,
             json_unique_items: false,
             string_length_range: None,
             json_patterns: None,
@@ -1002,6 +1014,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            property_count_range: None,
             json_unique_items: false,
             string_length_range: None,
             json_patterns: None,
@@ -1052,6 +1065,7 @@ impl SchemaNode {
             numeric_range: None,
             json_multiple_of: None,
             item_count_range: None,
+            property_count_range: None,
             json_unique_items: false,
             string_length_range: None,
             json_patterns: None,
@@ -1346,6 +1360,65 @@ impl SchemaNode {
         self.item_count_range.is_none() || self.repeating
     }
 
+    /// Checks that property-count metadata remains attached to an object and
+    /// is compatible with its required fields and closed property capacity.
+    pub fn property_count_range_is_valid(&self) -> bool {
+        let Some(range) = self.property_count_range else {
+            return true;
+        };
+        let SchemaKind::Group {
+            children,
+            alternatives,
+            required,
+            dynamic,
+            ..
+        } = &self.kind
+        else {
+            return false;
+        };
+        let fits = |required_count: usize, capacity: Option<usize>| {
+            let required_fits = u64::try_from(required_count).map_or_else(
+                |_| range.maximum().is_none(),
+                |required_count| {
+                    range
+                        .maximum()
+                        .is_none_or(|maximum| required_count <= maximum)
+                },
+            );
+            if !required_fits {
+                return false;
+            }
+            capacity.is_none_or(|capacity| {
+                u64::try_from(capacity).map_or(true, |capacity| range.minimum() <= capacity)
+            })
+        };
+        if !fits(required.len(), dynamic.is_none().then_some(children.len())) {
+            return false;
+        }
+        alternatives
+            .iter()
+            .all(|alternative| fits(alternative.required.len(), Some(alternative.members.len())))
+    }
+
+    /// Recursively checks JSON object property-count placement and
+    /// feasibility for one schema tree.
+    pub fn property_count_range_tree_is_valid(&self) -> bool {
+        self.property_count_range_is_valid()
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children
+                        .iter()
+                        .all(SchemaNode::property_count_range_tree_is_valid)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::property_count_range_tree_is_valid)
+                }
+            }
+    }
+
     /// Checks that JSON `uniqueItems` metadata remains attached to an array
     /// wrapper rather than its item shape.
     pub fn json_unique_items_is_valid(&self) -> bool {
@@ -1628,28 +1701,38 @@ impl SchemaNode {
     }
 
     pub fn set_dynamic_fields(&mut self, value: Option<SchemaNode>) -> bool {
-        let SchemaKind::Group {
-            children,
-            alternatives,
-            required,
-            dynamic,
-            ..
-        } = &mut self.kind
-        else {
-            return false;
+        let previous = {
+            let SchemaKind::Group {
+                children,
+                alternatives,
+                required,
+                dynamic,
+                ..
+            } = &mut self.kind
+            else {
+                return false;
+            };
+            if value.is_some() && !alternatives.is_empty() {
+                return false;
+            }
+            if value.is_none()
+                && required
+                    .iter()
+                    .any(|name| !children.iter().any(|child| child.name == *name))
+            {
+                return false;
+            }
+            std::mem::replace(dynamic, value.map(Box::new))
         };
-        if value.is_some() && !alternatives.is_empty() {
-            return false;
+        if self.property_count_range_is_valid() {
+            true
+        } else {
+            let SchemaKind::Group { dynamic, .. } = &mut self.kind else {
+                return false;
+            };
+            *dynamic = previous;
+            false
         }
-        if value.is_none()
-            && required
-                .iter()
-                .any(|name| !children.iter().any(|child| child.name == *name))
-        {
-            return false;
-        }
-        *dynamic = value.map(Box::new);
-        true
     }
 
     pub fn dynamic_fields(&self) -> Option<&SchemaNode> {
@@ -1665,20 +1748,33 @@ impl SchemaNode {
     }
 
     pub fn set_required_fields(&mut self, required: Vec<String>) -> bool {
-        let SchemaKind::Group {
-            children,
-            required: target,
-            dynamic,
-            ..
-        } = &mut self.kind
-        else {
-            return false;
+        let previous = {
+            let SchemaKind::Group {
+                children,
+                required: target,
+                dynamic,
+                ..
+            } = &mut self.kind
+            else {
+                return false;
+            };
+            if !valid_required_fields(children, dynamic.as_deref(), &required) {
+                return false;
+            }
+            std::mem::replace(target, required)
         };
-        if !valid_required_fields(children, dynamic.as_deref(), &required) {
-            return false;
+        if self.property_count_range_is_valid() {
+            true
+        } else {
+            let SchemaKind::Group {
+                required: target, ..
+            } = &mut self.kind
+            else {
+                return false;
+            };
+            *target = previous;
+            false
         }
-        *target = required;
-        true
     }
 
     pub fn required_fields(&self) -> &[String] {
@@ -1755,24 +1851,44 @@ impl SchemaNode {
         mode: GroupAlternativeMode,
         xml_kind: XmlAlternativeKind,
     ) -> bool {
-        let SchemaKind::Group {
-            children,
-            alternatives: target,
-            required: _,
-            xml_restricted_alternatives,
-            dynamic,
-        } = &mut self.kind
-        else {
-            return false;
+        let (previous, previous_restricted) = {
+            let SchemaKind::Group {
+                children,
+                alternatives: target,
+                required: _,
+                xml_restricted_alternatives,
+                dynamic,
+            } = &mut self.kind
+            else {
+                return false;
+            };
+            if dynamic.is_some() || !valid_group_alternatives(children, &alternatives) {
+                return false;
+            }
+            (
+                std::mem::replace(target, alternatives),
+                std::mem::take(xml_restricted_alternatives),
+            )
         };
-        if dynamic.is_some() || !valid_group_alternatives(children, &alternatives) {
-            return false;
+        let previous_mode = std::mem::replace(&mut self.alternative_mode, mode);
+        let previous_xml_kind = std::mem::replace(&mut self.xml_alternative_kind, xml_kind);
+        if self.property_count_range_is_valid() {
+            true
+        } else {
+            let SchemaKind::Group {
+                alternatives,
+                xml_restricted_alternatives,
+                ..
+            } = &mut self.kind
+            else {
+                return false;
+            };
+            *alternatives = previous;
+            *xml_restricted_alternatives = previous_restricted;
+            self.alternative_mode = previous_mode;
+            self.xml_alternative_kind = previous_xml_kind;
+            false
         }
-        *target = alternatives;
-        xml_restricted_alternatives.clear();
-        self.alternative_mode = mode;
-        self.xml_alternative_kind = xml_kind;
-        true
     }
 
     pub fn set_xml_restricted_alternatives(&mut self, restricted: Vec<String>) -> bool {
@@ -2050,6 +2166,11 @@ impl SchemaNode {
     pub fn with_item_count_range(mut self, range: ItemCountRange) -> Option<Self> {
         self.item_count_range = Some(range);
         self.item_count_range_is_valid().then_some(self)
+    }
+
+    pub fn with_property_count_range(mut self, range: PropertyCountRange) -> Option<Self> {
+        self.property_count_range = Some(range);
+        self.property_count_range_is_valid().then_some(self)
     }
 
     /// Requires pairwise-distinct JSON array items under JSON Schema equality.
@@ -2741,6 +2862,80 @@ mod tests {
         }
         let permissive_null_maximum = r#"{"name":"x","repeating":true,"item_count_range":{"minimum":1,"maximum":null},"kind":{"kind":"scalar","ty":"string"}}"#;
         assert!(serde_json::from_str::<SchemaNode>(permissive_null_maximum).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn property_count_ranges_require_feasible_groups_and_roundtrip()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let Some(range) = PropertyCountRange::new(1, Some(2)) else {
+            panic!("ordered property-count range is valid");
+        };
+        assert!(range.contains_len(1));
+        assert!(range.contains_len(2));
+        assert!(!range.contains_len(0));
+        assert!(PropertyCountRange::new(0, None).is_none());
+        assert!(PropertyCountRange::new(3, Some(2)).is_none());
+
+        let Some(schema) = SchemaNode::group(
+            "Object",
+            vec![
+                SchemaNode::scalar("first", ScalarType::String),
+                SchemaNode::scalar("second", ScalarType::String),
+            ],
+        )
+        .with_required_fields(vec!["first".into()])
+        .and_then(|schema| schema.with_property_count_range(range)) else {
+            panic!("property-count metadata is feasible on the test group");
+        };
+        let encoded = serde_json::to_string(&schema)?;
+        assert!(encoded.contains(r#""property_count_range":{"minimum":1,"maximum":2}"#));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded)?, schema);
+
+        assert!(
+            SchemaNode::scalar("value", ScalarType::String)
+                .with_property_count_range(range)
+                .is_none()
+        );
+        let Some(at_least_three) = PropertyCountRange::new(3, None) else {
+            panic!("positive lower bound is constrained");
+        };
+        assert!(
+            SchemaNode::group(
+                "closed",
+                vec![
+                    SchemaNode::scalar("first", ScalarType::String),
+                    SchemaNode::scalar("second", ScalarType::String),
+                ],
+            )
+            .with_property_count_range(at_least_three)
+            .is_none()
+        );
+        let Some(at_most_one) = PropertyCountRange::new(0, Some(1)) else {
+            panic!("finite upper bound is constrained");
+        };
+        assert!(
+            SchemaNode::group(
+                "required",
+                vec![
+                    SchemaNode::scalar("first", ScalarType::String),
+                    SchemaNode::scalar("second", ScalarType::String),
+                ],
+            )
+            .with_required_fields(vec!["first".into(), "second".into()])
+            .and_then(|schema| schema.with_property_count_range(at_most_one))
+            .is_none()
+        );
+
+        for invalid in [
+            r#"{"name":"x","property_count_range":{"minimum":1},"kind":{"kind":"scalar","ty":"string"}}"#,
+            r#"{"name":"x","property_count_range":{},"kind":{"kind":"group","children":[]}}"#,
+            r#"{"name":"x","property_count_range":{"minimum":-1},"kind":{"kind":"group","children":[]}}"#,
+            r#"{"name":"x","property_count_range":{"maximum":1.5},"kind":{"kind":"group","children":[]}}"#,
+            r#"{"name":"x","property_count_range":{"minimum":1,"maxmium":3},"kind":{"kind":"group","children":[]}}"#,
+        ] {
+            assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+        }
         Ok(())
     }
 
