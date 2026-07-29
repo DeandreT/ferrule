@@ -4,9 +4,9 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::{FunctionId, Graph, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
-    Binding, Diagnostic, Expression, ExpressionNode, FailureIteration, FailureRule,
-    FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource,
-    JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
+    Binding, Diagnostic, DynamicDocumentIteration, Expression, ExpressionNode, FailureIteration,
+    FailureRule, FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan,
+    IterationSource, JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
     ProgramValidationError, ScalarFunction, ScopeFeature, SequenceWindow, SortKey, SortPlan,
     SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
     XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
@@ -218,6 +218,7 @@ fn lower_scope(
         roots.extend(sequence.inputs());
         roots.push(sequence.item());
     }
+    roots.extend(scope.output_path());
     let construction = match &scope.construction {
         ScopeConstruction::Scalar { value } => {
             roots.push(*value);
@@ -342,13 +343,15 @@ fn lower_scope(
 fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
     let input: IterationSource = match &scope.iteration {
         ScopeIteration::Source(path) => SourceIteration::new(path.clone()).into(),
+        ScopeIteration::DynamicDocuments {
+            source,
+            output_path,
+        } => DynamicDocumentIteration::new(source.clone(), *output_path).into(),
         ScopeIteration::Sequence(sequence) => lower_generated_sequence(sequence).into(),
         ScopeIteration::InnerJoin { id, plan } => {
             InnerJoin::new(JoinId::from(*id), JoinPlan::from_mapping(plan)).into()
         }
-        ScopeIteration::None
-        | ScopeIteration::DynamicDocuments { .. }
-        | ScopeIteration::Concatenate(_) => return None,
+        ScopeIteration::None | ScopeIteration::Concatenate(_) => return None,
     };
     let grouping = if let Some(key) = scope.group_by {
         Some(GroupingPlan::By { key })
@@ -489,9 +492,7 @@ fn inspect_scope_features(
         | ScopeIteration::Source(_)
         | ScopeIteration::Sequence(_)
         | ScopeIteration::InnerJoin { .. } => {}
-        ScopeIteration::DynamicDocuments { .. } => {
-            report(ScopeFeature::Iteration);
-        }
+        ScopeIteration::DynamicDocuments { .. } => {}
         ScopeIteration::Concatenate(_) => {}
     }
     if !scope.dynamic_bindings.is_empty() {
@@ -608,6 +609,11 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),
+        },
+        Node::DynamicSourceField { object, frame, key } => Expression::DynamicSourceField {
+            object: object.clone(),
+            frame: frame.clone(),
+            key: *key,
         },
         Node::XmlSerialize {
             path,
@@ -802,12 +808,6 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             expression: *expression,
             arg: *arg,
         },
-        node => {
-            return Err(Diagnostic::UnsupportedNode {
-                node: id,
-                kind: unsupported_node_kind(node),
-            });
-        }
     };
     Ok(ExpressionNode { id, expression })
 }
@@ -816,36 +816,5 @@ fn unsupported_function(node: NodeId, function: &str) -> Diagnostic {
     Diagnostic::UnsupportedFunction {
         node,
         function: function.to_string(),
-    }
-}
-
-fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
-    match node {
-        Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
-        Node::SourceField { .. }
-        | Node::XmlSerialize { .. }
-        | Node::XmlMixedContent { .. }
-        | Node::SourceDocumentPath
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Unconnected
-        | Node::Const { .. }
-        | Node::FunctionParameter { .. }
-        | Node::RuntimeValue { .. }
-        | Node::RuntimeParameter { .. }
-        | Node::Call { .. }
-        | Node::UserFunctionCall { .. }
-        | Node::If { .. }
-        | Node::ValueMap { .. }
-        | Node::Lookup { .. }
-        | Node::CollectionFind { .. }
-        | Node::SequenceExists { .. }
-        | Node::SequenceItemAt { .. }
-        | Node::SequenceAggregate { .. }
-        | Node::Aggregate { .. }
-        | Node::JoinAggregate { .. } => {
-            unreachable!("portable expressions are handled above")
-        }
     }
 }
