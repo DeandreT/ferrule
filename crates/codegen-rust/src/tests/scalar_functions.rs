@@ -124,6 +124,20 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
                 parser: delimited_parser(),
             },
         },
+        ExpressionNode {
+            id: 117,
+            expression: Expression::Call {
+                function: ScalarFunction::DurationFromParts,
+                args: vec![101, 101, 101],
+            },
+        },
+        ExpressionNode {
+            id: 118,
+            expression: Expression::Call {
+                function: ScalarFunction::SqliteMultiply,
+                args: vec![101, 101],
+            },
+        },
     ]);
     let selected = program
         .root
@@ -158,6 +172,8 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
         "json_parse_field",
         "json_serialize_object",
         "flextext_parse_field",
+        "duration_from_parts",
+        "sqlite_multiply",
     ] {
         assert!(source.contains(&format!("call(\"{name}\", &args)")));
     }

@@ -318,6 +318,118 @@ public static partial class FerruleFunctions
         return FerruleValue.FromString(output);
     }
 
+    private static FerruleValue DurationFromParts(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = "duration_from_parts";
+        if (arguments.Count is < 3 or > 8)
+        {
+            throw Arity(function, 3, arguments.Count);
+        }
+
+        var year = DateTimeIntegerPart(arguments[0], function);
+        var month = DateTimeIntegerPart(arguments[1], function);
+        var day = DateTimeIntegerPart(arguments[2], function);
+        long OptionalInteger(int index) => index >= arguments.Count ||
+            arguments[index].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+                ? 0
+                : DateTimeIntegerPart(arguments[index], function);
+        var hour = OptionalInteger(3);
+        var minute = OptionalInteger(4);
+        var second = OptionalInteger(5);
+        var millisecond = arguments.Count <= 6 ||
+            arguments[6].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+            ? 0.0
+            : DateTimeDecimalPart(arguments[6], function);
+        var negative = arguments.Count > 7 &&
+            arguments[7].Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull)
+                ? RequireBooleanArgument(arguments[7], function)
+                : false;
+
+        if (year < 0 ||
+            month < 0 ||
+            day < 0 ||
+            hour < 0 ||
+            minute < 0 ||
+            second < 0 ||
+            !double.IsFinite(millisecond) ||
+            millisecond is < 0.0 or >= 1000.0)
+        {
+            throw InvalidArgument(function, SupportedPictureDetail);
+        }
+
+        var hasDate = year != 0 || month != 0 || day != 0;
+        var hasTime = hour != 0 || minute != 0 || second != 0 || millisecond != 0.0;
+        var output = negative ? "-P" : "P";
+        if (year != 0)
+        {
+            output += $"{year}Y";
+        }
+        if (month != 0)
+        {
+            output += $"{month}M";
+        }
+        if (day != 0)
+        {
+            output += $"{day}D";
+        }
+        if (hasTime)
+        {
+            output += "T";
+            if (hour != 0)
+            {
+                output += $"{hour}H";
+            }
+            if (minute != 0)
+            {
+                output += $"{minute}M";
+            }
+            if (second != 0 || millisecond != 0.0)
+            {
+                output += second.ToString(CultureInfo.InvariantCulture);
+                if (millisecond != 0.0)
+                {
+                    output += ShiftedDecimalFraction(millisecond, 3, function);
+                }
+                output += "S";
+            }
+        }
+        if (!hasDate && !hasTime)
+        {
+            output += "T0S";
+        }
+        return FerruleValue.FromString(output);
+    }
+
+    private static string ShiftedDecimalFraction(double value, int places, string function)
+    {
+        var lexical = value.ToString("R", CultureInfo.InvariantCulture);
+        var exponentMarker = lexical.IndexOfAny(['e', 'E']);
+        var mantissa = exponentMarker < 0 ? lexical : lexical[..exponentMarker];
+        var exponent = exponentMarker < 0
+            ? 0
+            : int.Parse(lexical[(exponentMarker + 1)..], CultureInfo.InvariantCulture);
+        var point = mantissa.IndexOf('.');
+        var whole = point < 0 ? mantissa : mantissa[..point];
+        var fraction = point < 0 ? string.Empty : mantissa[(point + 1)..];
+        if (whole.Length == 0 ||
+            whole.Any(character => !char.IsAsciiDigit(character)) ||
+            fraction.Any(character => !char.IsAsciiDigit(character)))
+        {
+            throw InvalidArgument(function, SupportedPictureDetail);
+        }
+
+        var digits = whole + fraction;
+        var decimalPosition = checked(whole.Length + exponent - places);
+        var shifted = decimalPosition switch
+        {
+            < 0 => "." + new string('0', -decimalPosition) + digits,
+            _ when decimalPosition >= digits.Length =>
+                "." + digits + new string('0', decimalPosition - digits.Length),
+            _ => "." + digits,
+        };
+        return shifted.TrimEnd('0');
+    }
+
     private static long DateTimeIntegerPart(FerruleValue value, string function)
     {
         if (value.Kind == FerruleValueKind.Int64)
