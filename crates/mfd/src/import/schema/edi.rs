@@ -175,6 +175,21 @@ pub(super) fn read(
     let embedded_lexical_formats = embedded_lexical_formats(&text, &name, warnings);
     let embedded_value_constraints = embedded_value_constraints(&text, &name, warnings);
     let config = text.attribute("config");
+    let retained_unresolved_config = if runtime_boundary {
+        match text.attribute("ferrule-unresolved-config") {
+            Some("1") => true,
+            Some(value) => {
+                warnings.push(format!(
+                    "EDI component `{name}` has invalid ferrule-unresolved-config metadata \
+                     `{value}`; the external configuration will be resolved normally"
+                ));
+                false
+            }
+            None => false,
+        }
+    } else {
+        false
+    };
     let compiled = if runtime_boundary
         && matches!(
             kind,
@@ -228,7 +243,7 @@ pub(super) fn read(
             }) {
                 Ok(compiled) => Some(compiled),
                 Err(error) => {
-                    if runtime_boundary {
+                    if runtime_boundary && !retained_unresolved_config {
                         warnings.push(format!(
                             "EDI component `{name}` could not compile external configuration \
                          `{declared}` ({error}); its mapping graph was imported, but execution is \
