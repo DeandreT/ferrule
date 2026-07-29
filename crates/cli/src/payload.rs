@@ -162,7 +162,30 @@ pub fn run_project_value_payloads(
 
     let source = read_payload(options.primary, &project.source, &project.source_options)
         .context("reading primary input payload")?;
-    let loaded_sources = load_extra_payloads(project, options.extra_sources)?;
+    let required_sources = options
+        .target
+        .map(|selection| engine::required_sources_for_target(project, selection))
+        .transpose()?;
+    let required_static_names = required_sources.as_ref().map(|sources| {
+        sources
+            .static_sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<BTreeSet<_>>()
+    });
+    let required_dynamic_names = required_sources.as_ref().map(|sources| {
+        sources
+            .dynamic_sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<BTreeSet<_>>()
+    });
+    let loaded_sources = load_extra_payloads(
+        project,
+        options.extra_sources,
+        required_static_names.as_ref(),
+        required_dynamic_names.as_ref(),
+    )?;
 
     let runtime_project_path = absolute_mapping_path(project_path)?;
     let current_datetime = jiff::Zoned::now()
@@ -365,6 +388,8 @@ struct LoadedPayloadSources {
 fn load_extra_payloads(
     project: &mapping::Project,
     inputs: &[NamedPayloadInput<'_>],
+    required_static: Option<&BTreeSet<&str>>,
+    required_dynamic: Option<&BTreeSet<&str>>,
 ) -> anyhow::Result<LoadedPayloadSources> {
     let mut static_payloads = BTreeMap::new();
     let mut dynamic_payloads = BTreeMap::new();
@@ -374,6 +399,16 @@ fn load_extra_payloads(
             .iter()
             .find(|source| source.name == input.name)
             .with_context(|| format!("payload source `{}` is not declared", input.name))?;
+        if source.dynamic_path.is_none()
+            && required_static.is_some_and(|required| !required.contains(source.name.as_str()))
+        {
+            continue;
+        }
+        if source.dynamic_path.is_some()
+            && required_dynamic.is_some_and(|required| !required.contains(source.name.as_str()))
+        {
+            continue;
+        }
         let instance = read_payload(input.document, &source.schema, &source.options)
             .with_context(|| format!("reading payload source `{}`", input.name))?;
         if source.dynamic_path.is_some() {
@@ -401,7 +436,9 @@ fn load_extra_payloads(
 
     let mut static_sources = Vec::new();
     for source in &project.extra_sources {
-        if source.dynamic_path.is_some() {
+        if source.dynamic_path.is_some()
+            || required_static.is_some_and(|required| !required.contains(source.name.as_str()))
+        {
             continue;
         }
         let value = static_payloads.remove(&source.name).with_context(|| {

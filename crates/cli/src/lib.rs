@@ -11,7 +11,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -224,6 +224,17 @@ pub fn run_project_value_with_options(
         true,
     )?;
     let targets = plan_project_targets(project, project_path, options.output_path, options.target)?;
+    let required_sources = options
+        .target
+        .map(|selection| engine::required_sources_for_target(project, selection))
+        .transpose()?;
+    let required_static_names = required_sources.as_ref().map(|sources| {
+        sources
+            .static_sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<BTreeSet<_>>()
+    });
     let output_path = targets
         .first()
         .map(|target| target.destination.path().to_path_buf())
@@ -233,11 +244,12 @@ pub fn run_project_value_with_options(
 
     let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
     let mut extras = Vec::with_capacity(project.extra_sources.len());
-    for extra in project
-        .extra_sources
-        .iter()
-        .filter(|extra| extra.dynamic_path.is_none())
-    {
+    for extra in project.extra_sources.iter().filter(|extra| {
+        extra.dynamic_path.is_none()
+            && required_static_names
+                .as_ref()
+                .is_none_or(|required| required.contains(extra.name.as_str()))
+    }) {
         let path = PathBuf::from(&extra.path);
         let path = if path.is_absolute() || http_url(&path).is_some() {
             path

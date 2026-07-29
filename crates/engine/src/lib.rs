@@ -22,6 +22,7 @@ mod iteration_output;
 mod join;
 mod path_hierarchy;
 mod recursive_filter;
+mod required_sources;
 mod resolve;
 mod sequence;
 mod source_iteration;
@@ -63,6 +64,26 @@ pub enum TargetSelection<'a> {
 pub enum SelectedTargetOutput {
     Primary(Instance),
     Named(NamedOutput),
+}
+
+/// Secondary inputs reachable during isolated evaluation of one target.
+///
+/// Both collections retain declaration order and contain the declarations
+/// themselves, so hosts do not need to repeat name-based resolution.
+#[derive(Debug, Clone)]
+pub struct RequiredTargetSources<'a> {
+    pub static_sources: Vec<&'a mapping::NamedSource>,
+    pub dynamic_sources: Vec<&'a mapping::NamedSource>,
+}
+
+/// Returns every secondary input that isolated target evaluation can reach,
+/// including sources used by always-run failure rules and dynamic path
+/// expressions.
+pub fn required_sources_for_target<'a>(
+    project: &'a Project,
+    selection: TargetSelection<'_>,
+) -> Result<RequiredTargetSources<'a>, EngineError> {
+    required_sources::required_for_target(project, selection)
 }
 
 pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
@@ -554,24 +575,7 @@ fn run_selected_target_internal(
     execution: Option<&ExecutionContext<'_>>,
     selection: TargetSelection<'_>,
 ) -> Result<SelectedTargetOutput, EngineError> {
-    let named_target = match selection {
-        TargetSelection::Primary => None,
-        TargetSelection::Named(name) => {
-            let mut matches = project
-                .extra_targets
-                .iter()
-                .filter(|target| target.name == name);
-            let target = matches.next().ok_or_else(|| EngineError::UnknownTarget {
-                name: name.to_string(),
-            })?;
-            if matches.next().is_some() {
-                return Err(EngineError::AmbiguousTarget {
-                    name: name.to_string(),
-                });
-            }
-            Some(target)
-        }
-    };
+    let named_target = required_sources::selected_target(project, selection)?;
     evaluate_run(
         project,
         source,
