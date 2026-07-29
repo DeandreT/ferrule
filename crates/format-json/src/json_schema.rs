@@ -62,19 +62,29 @@ pub fn import_with_root(
     package_root: &std::path::Path,
 ) -> Result<SchemaNode, JsonFormatError> {
     let value = files::load(path, package_root)?;
-    let name = value
-        .get("title")
-        .and_then(|t| t.as_str())
-        .or_else(|| {
-            value
-                .get("$ref")
-                .and_then(|r| r.as_str())
-                .and_then(|r| resolve_ref(&value, r))
-                .and_then(|resolved| resolved.get("title"))
-                .and_then(|t| t.as_str())
-        })
-        .unwrap_or("root");
+    let name = schema_title(&value, &value, &mut Vec::new()).unwrap_or("root");
     parse(name, &value, &value, &mut Vec::new())
+}
+
+fn schema_title<'a>(
+    schema: &'a serde_json::Value,
+    doc: &'a serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Option<&'a str> {
+    if files::ref_siblings_apply(schema)
+        && let Some(title) = schema.get("title").and_then(serde_json::Value::as_str)
+    {
+        return Some(title);
+    }
+    let reference = schema.get("$ref").and_then(serde_json::Value::as_str)?;
+    if active_refs.iter().any(|active| active == reference) {
+        return None;
+    }
+    let resolved = resolve_ref(doc, reference)?;
+    active_refs.push(reference.to_string());
+    let title = schema_title(resolved, doc, active_refs);
+    active_refs.pop();
+    title
 }
 
 /// Resolves a document-local JSON pointer ref (`#/definitions/office`).
@@ -101,20 +111,30 @@ fn parse(
         ));
     }
     if let Some(r) = schema.get("$ref").and_then(|r| r.as_str()) {
+        let apply_siblings = files::ref_siblings_apply(schema);
+        if apply_siblings {
+            reject_unsupported_ref_siblings(name, schema)?;
+        }
         // Cyclic and external (non-`#/...`) refs degrade to string scalars.
         if active_refs.iter().any(|a| a == r) {
-            reject_unresolved_ref_constraints(name, schema)?;
+            if apply_siblings {
+                reject_unresolved_ref_constraints(name, schema)?;
+            }
             return Ok(SchemaNode::scalar(name, ScalarType::String));
         }
         let Some(resolved) = resolve_ref(doc, r) else {
-            reject_unresolved_ref_constraints(name, schema)?;
+            if apply_siblings {
+                reject_unresolved_ref_constraints(name, schema)?;
+            }
             return Ok(SchemaNode::scalar(name, ScalarType::String));
         };
         active_refs.push(r.to_string());
         let parsed = parse(name, resolved, doc, active_refs);
         active_refs.pop();
         let mut node = parsed?;
-        apply_known_shape_constraints(name, schema, &mut node)?;
+        if apply_siblings {
+            apply_known_shape_constraints(name, schema, &mut node)?;
+        }
         return Ok(node);
     }
     if let Some(composition) = schema.get("allOf") {
@@ -342,6 +362,68 @@ fn reject_unresolved_ref_constraints(
         ));
     }
     Ok(())
+}
+
+pub(super) fn reject_unsupported_ref_siblings(
+    name: &str,
+    schema: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    let Some(object) = schema.as_object() else {
+        return Ok(());
+    };
+    if let Some(keyword) = object
+        .keys()
+        .find(|keyword| unsupported_ref_sibling(keyword.as_str()))
+    {
+        return Err(unsupported_union(
+            name,
+            &format!(
+                "modern `$ref` sibling `{keyword}` requires an unsupported intersection and cannot be ignored"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn unsupported_ref_sibling(keyword: &str) -> bool {
+    matches!(
+        keyword,
+        "$dynamicRef"
+            | "$recursiveRef"
+            | "type"
+            | "const"
+            | "enum"
+            | "multipleOf"
+            | "maxLength"
+            | "minLength"
+            | "pattern"
+            | "maxProperties"
+            | "minProperties"
+            | "required"
+            | "dependencies"
+            | "dependentRequired"
+            | "uniqueItems"
+            | "contains"
+            | "maxContains"
+            | "minContains"
+            | "properties"
+            | "patternProperties"
+            | "additionalProperties"
+            | "propertyNames"
+            | "dependentSchemas"
+            | "unevaluatedProperties"
+            | "items"
+            | "prefixItems"
+            | "additionalItems"
+            | "unevaluatedItems"
+            | "allOf"
+            | "anyOf"
+            | "oneOf"
+            | "not"
+            | "if"
+            | "then"
+            | "else"
+    )
 }
 
 fn schema_type<'a>(

@@ -79,8 +79,12 @@ layout and dialect details that an extension cannot express.
   array interval to the total nonblank line count; nullable root arrays reject
   because line-oriented null-container semantics are ambiguous. Disjoint count
   unions and independently constrained nested array wrappers reject rather than
-  widen. As with numeric constraints, `$ref` siblings use the supported modern
-  assertion behavior regardless of a declared draft and export canonically.
+  widen. `$ref` siblings follow the dialect declared by their physical schema
+  resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
+  schemas without `$schema` apply Ferrule's supported numeric and item-count
+  assertions. Unsupported modern structural intersections reject explicitly
+  instead of widening silently; external resources select their own policy.
+  Export emits the canonical normalized constraint form.
   General heterogeneous array composition, validation-bearing scalar unions,
   and mixed structural unions remain unsupported.
   Shape-neutral validation keywords are

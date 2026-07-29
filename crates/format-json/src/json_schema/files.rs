@@ -9,6 +9,7 @@ const MAX_REFERENCE_DEPTH: usize = 64;
 const MAX_JSON_DEPTH: usize = 128;
 const MAX_REFERENCES: usize = 100_000;
 const EXTERNAL_DEFS_KEY: &str = "__ferrule_external_documents";
+const IGNORE_REF_SIBLINGS_KEY: &str = "__ferrule_ignore_ref_siblings";
 
 struct Document {
     path: PathBuf,
@@ -97,13 +98,14 @@ impl Loader {
             });
         }
         let mut value = serde_json::from_slice(&bytes)?;
+        let ignore_ref_siblings = uses_legacy_ref_siblings(&value);
         let index = self.documents.len();
         self.indexes.insert(path.to_path_buf(), index);
         self.documents.push(Document {
             path: path.to_path_buf(),
             value: serde_json::Value::Null,
         });
-        self.rewrite_references(&mut value, index, reference_depth, 0)?;
+        self.rewrite_references(&mut value, index, reference_depth, 0, ignore_ref_siblings)?;
         self.documents[index].value = value;
         Ok(index)
     }
@@ -114,6 +116,7 @@ impl Loader {
         document_index: usize,
         reference_depth: usize,
         json_depth: usize,
+        ignore_ref_siblings: bool,
     ) -> Result<(), JsonFormatError> {
         if json_depth > MAX_JSON_DEPTH {
             return Err(JsonFormatError::SchemaResourceLimit {
@@ -123,6 +126,13 @@ impl Loader {
         }
         match value {
             serde_json::Value::Object(object) => {
+                if object.contains_key(IGNORE_REF_SIBLINGS_KEY) {
+                    return self.resource_error(
+                        document_index,
+                        IGNORE_REF_SIBLINGS_KEY,
+                        "a schema object uses ferrule's reserved `$ref` policy key",
+                    );
+                }
                 let reference = object
                     .get("$ref")
                     .and_then(serde_json::Value::as_str)
@@ -138,6 +148,12 @@ impl Loader {
                     let rewritten =
                         self.resolve_reference(document_index, &reference, reference_depth)?;
                     object.insert("$ref".to_string(), serde_json::Value::String(rewritten));
+                    if ignore_ref_siblings {
+                        object.insert(
+                            IGNORE_REF_SIBLINGS_KEY.to_string(),
+                            serde_json::Value::Bool(true),
+                        );
+                    }
                 }
                 for child in object.values_mut() {
                     self.rewrite_references(
@@ -145,6 +161,7 @@ impl Loader {
                         document_index,
                         reference_depth,
                         json_depth + 1,
+                        ignore_ref_siblings,
                     )?;
                 }
             }
@@ -155,6 +172,7 @@ impl Loader {
                         document_index,
                         reference_depth,
                         json_depth + 1,
+                        ignore_ref_siblings,
                     )?;
                 }
             }
@@ -299,6 +317,30 @@ impl Loader {
             reason: reason.to_string(),
         }
     }
+}
+
+pub(super) fn ref_siblings_apply(schema: &serde_json::Value) -> bool {
+    schema.get(IGNORE_REF_SIBLINGS_KEY) != Some(&serde_json::Value::Bool(true))
+}
+
+pub(super) fn is_internal_ref_keyword(keyword: &str) -> bool {
+    keyword == IGNORE_REF_SIBLINGS_KEY
+}
+
+fn uses_legacy_ref_siblings(schema: &serde_json::Value) -> bool {
+    let Some(dialect) = schema.get("$schema").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    let dialect = dialect.strip_suffix('#').unwrap_or(dialect);
+    matches!(
+        dialect,
+        "http://json-schema.org/draft-04/schema"
+            | "https://json-schema.org/draft-04/schema"
+            | "http://json-schema.org/draft-06/schema"
+            | "https://json-schema.org/draft-06/schema"
+            | "http://json-schema.org/draft-07/schema"
+            | "https://json-schema.org/draft-07/schema"
+    )
 }
 
 fn ensure_contained(
