@@ -58,7 +58,7 @@ clean-room interoperability, and extensible adapters.
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
 | XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes, simple and ordered mixed content, `xsi:nil`, exact inline or named-group `##local` skip element wildcards and direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes and namespace-aware or validating wildcards |
-| JSON | JSON Schema subset, local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, exact nullable scalar/object/array wrappers, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null `const` discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties | Validation-bearing and incompatible intersection composition, heterogeneous array composition, validation-bearing scalar unions, overlapping cross-mode or incompatible typed-wrapper union composition, untyped discriminator shapes, mixed arrays, validation-keyword enforcement |
+| JSON | JSON Schema subset, local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, exact nullable scalar/object/array wrappers, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null `const` and singleton-`enum` discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties | Validation-bearing and incompatible intersection composition, heterogeneous array composition, validation-bearing scalar unions, overlapping cross-mode or incompatible typed-wrapper union composition, multi-value or structured discriminator shapes, mixed arrays, validation-keyword enforcement |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Validation reports, additional configuration commands, and pluggable release packs |
@@ -85,11 +85,11 @@ are implemented. Generated and source-backed scopes execute and export ordered
 skip/first/from/range/last windows after sort/filter/group controls with stage-correct
 positions, while generated sequences can feed scalar `item-at`.
 Compatible JSON object alternatives preserve required or optional typed scalar
-and JSON-null `const` discriminators. Heterogeneous scalar type arrays and exact
-scalar `anyOf` unions preserve each runtime value tag, while nullable members
-distinguish explicit JSON null from a missing property. Array `anyOf` branches
-also collapse exactly when one scalar item domain contains every narrower
-branch. Those alternatives can drive exact derived XML
+and JSON-null `const` or singleton-`enum` discriminators. Heterogeneous scalar
+type arrays and exact scalar `anyOf` unions preserve each runtime value tag,
+while nullable members distinguish explicit JSON null from a missing property.
+Array `anyOf` branches also collapse exactly when one scalar item domain
+contains every narrower branch. Those alternatives can drive exact derived XML
 type output. Transitive concrete XSD descendants are discovered through abstract
 include/import intermediates, and bounded substitution groups retain their exact
 concrete element names. Database WHERE/ORDER controls lower into runtime scopes,
