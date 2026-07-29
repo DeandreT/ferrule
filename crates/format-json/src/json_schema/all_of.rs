@@ -1,6 +1,6 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
-use super::{constraints, parse, ranges, unsupported_union};
+use super::{constraints, item_counts, parse, ranges, unsupported_union};
 use crate::JsonFormatError;
 
 /// Flattens representable intersections into one structural projection.
@@ -27,11 +27,11 @@ pub(super) fn parse_all_of(
         ));
     }
 
-    let mut pending_ranges = Vec::new();
+    let mut pending_constraints = Vec::new();
     let mut merged = None;
     if let Some(base) = composition_base(schema) {
-        if is_range_only_branch(&base) {
-            pending_ranges.push(base);
+        if is_constraint_only_branch(&base) {
+            pending_constraints.push(base);
         } else {
             merged = Some(parse(name, &base, doc, active_refs)?);
         }
@@ -47,8 +47,8 @@ pub(super) fn parse_all_of(
                 "allOf contains the always-invalid false schema",
             ));
         }
-        if is_range_only_branch(branch) {
-            pending_ranges.push(branch.clone());
+        if is_constraint_only_branch(branch) {
+            pending_constraints.push(branch.clone());
             continue;
         }
         let branch = parse(name, branch, doc, active_refs)?;
@@ -59,11 +59,13 @@ pub(super) fn parse_all_of(
     }
     let mut merged = merged
         .ok_or_else(|| unsupported_union(name, "allOf did not produce a structural schema"))?;
-    for range in pending_ranges {
+    for constraints in pending_constraints {
         if merged.repeating {
-            ranges::validate_ignored(name, &range)?;
+            ranges::validate_ignored(name, &constraints)?;
+            item_counts::apply(name, &constraints, &mut merged, false)?;
         } else {
-            ranges::apply(name, &range, &mut merged, false)?;
+            ranges::apply(name, &constraints, &mut merged, false)?;
+            item_counts::validate_ignored(name, &constraints)?;
         }
     }
     Ok(merged)
@@ -84,6 +86,8 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
                 | "maximum"
                 | "exclusiveMinimum"
                 | "exclusiveMaximum"
+                | "minItems"
+                | "maxItems"
         )
     }) {
         return None;
@@ -93,11 +97,11 @@ fn composition_base(schema: &serde_json::Value) -> Option<serde_json::Value> {
     Some(serde_json::Value::Object(base))
 }
 
-fn is_range_only_branch(schema: &serde_json::Value) -> bool {
+fn is_constraint_only_branch(schema: &serde_json::Value) -> bool {
     let Some(object) = schema.as_object() else {
         return false;
     };
-    ranges::has_range_keywords(schema)
+    (ranges::has_range_keywords(schema) || item_counts::has_keywords(schema))
         && object.keys().all(|keyword| {
             matches!(
                 keyword.as_str(),
@@ -105,6 +109,8 @@ fn is_range_only_branch(schema: &serde_json::Value) -> bool {
                     | "maximum"
                     | "exclusiveMinimum"
                     | "exclusiveMaximum"
+                    | "minItems"
+                    | "maxItems"
                     | "$schema"
                     | "$id"
                     | "id"
@@ -137,6 +143,8 @@ fn intersect(
     }
     target.nullable &= branch.nullable;
     target.container_nullable &= branch.container_nullable;
+    target.item_count_range =
+        item_counts::intersect(name, target.item_count_range, branch.item_count_range)?;
 
     match (&target.kind, &branch.kind) {
         (SchemaKind::Group { .. }, SchemaKind::Group { .. }) => merge_object(name, target, branch),

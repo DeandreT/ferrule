@@ -31,6 +31,9 @@ internal static partial class Program
     private const string RangeJsonSchema =
         "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Count\",\"numeric_range\":{\"kind\":\"integer\",\"bounds\":{\"minimum\":5,\"maximum\":8}},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"Ratio\",\"nullable\":true,\"numeric_range\":{\"kind\":\"number\",\"bounds\":{\"minimum\":{\"value\":0.25,\"exclusive\":true},\"maximum\":{\"value\":2.5}}},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}]}}";
 
+    private const string ItemCountJsonSchema =
+        "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"OptionalRows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}],\"required\":[\"Rows\"]}}";
+
     private static void JsonDocumentBoundaries()
     {
         var parsed = (FerruleGroup)FerruleJson.Parse(
@@ -123,6 +126,7 @@ internal static partial class Program
 
         JsonConstantBoundaries();
         JsonRangeBoundaries();
+        JsonItemCountBoundaries();
         JsonScalarUnionBoundaries();
     }
 
@@ -218,6 +222,90 @@ internal static partial class Program
             Error(
                 FerruleRuntimeError.JsonBoundary,
                 () => FerruleJson.Parse(invalidSchema, "1"));
+        }
+    }
+
+    private static void JsonItemCountBoundaries()
+    {
+        var parsed = FerruleJson.Parse(
+            ItemCountJsonSchema,
+            "{\"Rows\":[1],\"OptionalRows\":[2,3]}");
+        Equal(
+            "{\n  \"Rows\": [\n    1\n  ],\n  \"OptionalRows\": [\n    2,\n    3\n  ]\n}\n",
+            FerruleJson.Serialize(ItemCountJsonSchema, parsed));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(ItemCountJsonSchema, "{\"Rows\":[]}"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(ItemCountJsonSchema, "{\"Rows\":[1,2,3]}"));
+        const string atLeastTwo =
+            "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        var countFirst = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(atLeastTwo, "[true]"));
+        Equal(
+            true,
+            countFirst.Message.Contains("item-count", StringComparison.Ordinal));
+
+        Equal(
+            "{\n  \"Rows\": [\n    1\n  ]\n}\n",
+            FerruleJson.Serialize(
+                ItemCountJsonSchema,
+                Group(
+                    Field("Rows", Repeated(Scalar(FerruleValue.FromInt64(1)))),
+                    Field("OptionalRows", Repeated()))));
+        var requiredEmpty = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                ItemCountJsonSchema,
+                Group(
+                    Field("Rows", Repeated()),
+                    Field("OptionalRows", Repeated()))));
+        Equal(
+            true,
+            requiredEmpty.Message.Contains("requires property 'Rows'", StringComparison.Ordinal));
+        var outputCountFirst = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                atLeastTwo,
+                Repeated(Scalar(FerruleValue.FromBoolean(true)))));
+        Equal(
+            true,
+            outputCountFirst.Message.Contains("item-count", StringComparison.Ordinal));
+
+        const string nullable =
+            "{\"name\":\"Rows\",\"repeating\":true,\"container_nullable\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        Equal(
+            FerruleValue.JsonNull,
+            ((FerruleScalar)FerruleJson.Parse(nullable, "null")).Value);
+        Equal("null\n", FerruleJson.Serialize(nullable, Scalar(FerruleValue.JsonNull)));
+
+        const string maximum =
+            "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"maximum\":18446744073709551615},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        Equal("[]\n", FerruleJson.Serialize(maximum, Repeated()));
+        const string nullableMaximum =
+            "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":null},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        Equal(
+            "[\n  1\n]\n",
+            FerruleJson.Serialize(
+                nullableMaximum,
+                Repeated(Scalar(FerruleValue.FromInt64(1)))));
+
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Rows\",\"item_count_range\":{\"minimum\":1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":2,\"maximum\":1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":-1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1.0},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":18446744073709551616},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                     "{\"name\":\"Rows\",\"repeating\":true,\"item_count_range\":{\"minimum\":1,\"maximim\":2},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}",
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "[]"));
         }
     }
 
