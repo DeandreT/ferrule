@@ -37,10 +37,11 @@ clean-room interoperability, and extensible adapters.
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, persisted primary/function/named-target canvases, and deterministic
   JSON Lines execution traces; plus a WASM XML/JSON/CSV/XBRL playground.
-- `.mfd` survey: all 187 designs in the local ReferenceSamples corpus import,
-  and all 187 export warning-free. Of those, 173 are dependency-complete,
-  warning-free, and engine-valid; fourteen retain typed unresolved external
-  EDI-catalog dependencies and remain deliberately non-executable. The
+- `.mfd` survey: all 187 designs in the local ReferenceSamples corpus import;
+  168 import warning-free, five more are dependency-complete and engine-valid
+  with nonblocking wildcard or structural warnings, and fourteen retain typed
+  unresolved external EDI-catalog dependencies and remain deliberately
+  non-executable. All 187 export and re-import warning-free. The
   read-only execution profile attempts 166 safe-input designs and all 166 pass;
   seven network or captured-service inputs are unavailable. All 166 safe
   export/re-import executions match semantically with zero drift. Across the
@@ -67,7 +68,7 @@ clean-room interoperability, and extensible adapters.
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
 | Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, and a bounded searchable GUI run report | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 187/187 imports, warning-free export for all 187, 173 dependency-complete warning-free/engine-valid designs, fourteen typed missing EDI-catalog dependencies preserved across round trips, 166/166 safe-input executions, 166/166 semantically exact export/re-import executions, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and executable package resolution for externally supplied configuration catalogs |
+| `.mfd` | 187/187 imports (168 warning-free and five additional engine-valid designs with nonblocking warnings), warning-free export and re-import for all 187, 173 dependency-complete engine-valid designs, fourteen typed missing EDI-catalog dependencies preserved across round trips, 166/166 safe-input executions, 166/166 semantically exact export/re-import executions, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and executable package resolution for externally supplied configuration catalogs |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, 75 scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 173 dependency-complete survey designs emit in both languages | Publish the Rust runtime and consider optional XML-specific XSLT |
 
 ## Workstreams
@@ -128,9 +129,10 @@ Named static XML, JSON, flat-file, and database sources now retain separate comp
 during export; per-item dynamic XML sources and captured HTTP POST response
 boundaries also round-trip with their typed contracts.
 The versioned compatibility survey records import, engine validation, export,
-re-import, and post-export validation separately. All 187 local designs import
-and export; all exports are warning-free. The 173 dependency-complete designs
-are warning-free and engine-valid, while fourteen preserve typed unresolved
+re-import, and post-export validation separately. All 187 local designs import;
+168 do so warning-free and five more are engine-valid with nonblocking import
+warnings. All 187 export and re-import warning-free. In total, 173 designs are
+dependency-complete and engine-valid, while fourteen preserve typed unresolved
 external EDI-catalog dependencies. A broad isolated execution survey runs all
 166 safe-input originals successfully, with seven network or captured-service
 cases unavailable. The round-trip profile executes the same 166 safe originals;
@@ -336,13 +338,13 @@ Five release journeys require no hand-edited project JSON:
 Update these numbers with each parity increment:
 
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
-- `.mfd` import: 187/187 import; 173 are warning-free and fourteen retain only
-  typed missing EDI-catalog dependencies.
+- `.mfd` import: 187/187 import; 168 are warning-free, five additional designs
+  are engine-valid with nonblocking warnings, and fourteen retain typed missing
+  EDI-catalog dependencies.
 - `.mfd` validation: all 173 dependency-complete projects are engine-valid;
   fourteen are explicitly dependency-blocked.
-- `.mfd` export/re-import: all 187 designs export and re-import, with zero export
-  warnings; all 173 dependency-complete round trips remain warning-free and
-  engine-valid.
+- `.mfd` export/re-import: all 187 designs export and re-import with zero
+  warnings; all 173 dependency-complete round trips remain engine-valid.
 - `.mfd` execution: all 166 attempted read-only executions pass; fourteen are
   dependency-blocked and seven network or captured-service inputs are
   unavailable.
