@@ -1213,6 +1213,139 @@ fn nullable_scalar_refs_and_array_items_preserve_null_values() {
 }
 
 #[test]
+fn homogeneous_scalar_any_of_canonicalizes_without_weakening_runtime_type() {
+    let schema = import_str(
+        r##"{
+  "title":"MaybeCode",
+  "anyOf":[
+    {"$ref":"#/$defs/code"},
+    {"type":"string","description":"same runtime shape"},
+    {"type":"null"}
+  ],
+  "$defs":{
+    "code":{"type":"string","title":"Code"}
+  }
+}"##,
+    );
+    assert!(schema.nullable);
+    assert!(matches!(
+        schema.kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::String
+        }
+    ));
+    for input in [r#""EXPRESS""#, "null"] {
+        let instance = crate::from_str(input, &schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &crate::to_string(&schema, &instance).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(input).unwrap()
+        );
+    }
+    assert!(matches!(
+        crate::from_str("17", &schema),
+        Err(JsonFormatError::Shape { .. })
+    ));
+
+    let exported = export(&schema);
+    let value: serde_json::Value = serde_json::from_str(&exported).unwrap();
+    assert_eq!(value["type"], serde_json::json!(["string", "null"]));
+    assert_eq!(import_str(&exported), schema);
+}
+
+#[test]
+fn homogeneous_scalar_any_of_is_executable_inside_array_items() {
+    let schema = import_str(
+        r##"{
+  "title":"Priorities",
+  "type":"array",
+  "items":{
+    "anyOf":[
+      {"type":"integer","title":"primary"},
+      {"$ref":"#/$defs/priority"},
+      {"type":"null"}
+    ]
+  },
+  "$defs":{
+    "priority":{"type":"integer","description":"same exact item type"}
+  }
+}"##,
+    );
+    assert!(schema.repeating);
+    assert!(schema.nullable);
+    assert!(matches!(
+        schema.kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Int
+        }
+    ));
+    let instance = crate::from_str("[1,null,3]", &schema).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&crate::to_string(&schema, &instance).unwrap())
+            .unwrap(),
+        serde_json::json!([1, null, 3])
+    );
+    assert!(matches!(
+        crate::from_str(r#"[1,"high"]"#, &schema),
+        Err(JsonFormatError::Shape { .. })
+    ));
+    assert_eq!(import_str(&export(&schema)), schema);
+}
+
+#[test]
+fn homogeneous_array_any_of_preserves_items_and_container_nullability() {
+    let schema = import_str(
+        r##"{
+  "title":"Shipments",
+  "anyOf":[
+    {
+      "type":"array",
+      "items":{
+        "type":"object",
+        "additionalProperties":false,
+        "properties":{"tracking":{"type":"string"}}
+      }
+    },
+    {"$ref":"#/$defs/shipments"},
+    {"type":"null"}
+  ],
+  "$defs":{
+    "shipment":{
+      "type":"object",
+      "additionalProperties":false,
+      "properties":{"tracking":{"type":"string"}}
+    },
+    "shipments":{
+      "type":"array",
+      "items":{"$ref":"#/$defs/shipment"}
+    }
+  }
+}"##,
+    );
+    assert!(schema.repeating);
+    assert!(schema.container_nullable);
+    assert!(matches!(schema.kind, SchemaKind::Group { .. }));
+    for input in [r#"[{"tracking":"ZX-17"}]"#, "null"] {
+        let instance = crate::from_str(input, &schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &crate::to_string(&schema, &instance).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(input).unwrap()
+        );
+    }
+
+    let exported = export(&schema);
+    let value: serde_json::Value = serde_json::from_str(&exported).unwrap();
+    assert_eq!(value["anyOf"][0]["type"], "array");
+    assert_eq!(value["anyOf"][1]["type"], "null");
+    assert_eq!(import_str(&exported), schema);
+}
+
+#[test]
 fn nullable_scalar_unions_accept_shape_neutral_validation_keywords() {
     for (ty, validation) in [
         ("string", r#""minLength":1"#),
@@ -1425,6 +1558,25 @@ fn repeating_object_alternatives_are_rejected() {
         error
             .to_string()
             .contains("array alternatives are not supported")
+    );
+}
+
+#[test]
+fn heterogeneous_any_of_arrays_remain_rejected() {
+    let error = import_str_result(
+        r#"{
+  "title":"MixedSequences",
+  "anyOf":[
+    {"type":"array","items":{"type":"string"}},
+    {"type":"array","items":{"type":"integer"}}
+  ]
+}"#,
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("must have identical item schemas")
     );
 }
 

@@ -18,6 +18,97 @@ enum ScalarAlternative {
     Other,
 }
 
+enum ArrayAlternative {
+    Null,
+    Array(Box<SchemaNode>),
+    Other,
+}
+
+/// Collapses an inclusive union whose scalar branches all describe the same
+/// runtime type. Unlike `oneOf`, duplicate `anyOf` branches do not carry
+/// observable selection semantics, so annotations and repeated null branches
+/// can be canonicalized without weakening the accepted value shape.
+pub(super) fn parse_homogeneous_scalar_any_of(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
+    let Some(alternatives) = alternatives
+        .as_array()
+        .filter(|alternatives| alternatives.len() >= 2)
+    else {
+        return Ok(None);
+    };
+    let mut scalar_type = None;
+    let mut nullable = false;
+    for alternative in alternatives {
+        match classify_exact_scalar_alternative(name, alternative, doc, active_refs)? {
+            ScalarAlternative::Null => nullable = true,
+            ScalarAlternative::Scalar(ty) => {
+                if scalar_type.is_some_and(|existing| existing != ty) {
+                    return Ok(None);
+                }
+                scalar_type = Some(ty);
+            }
+            ScalarAlternative::Other => return Ok(None),
+        }
+    }
+    let Some(ty) = scalar_type else {
+        return Ok(None);
+    };
+    ensure_annotation_only(name, schema, "anyOf")?;
+    let mut node = SchemaNode::scalar(name, ty);
+    node.nullable = nullable;
+    Ok(Some(node))
+}
+
+/// Collapses equivalent inclusive array branches. The complete imported item
+/// schema must agree across branches; heterogeneous arrays still require a
+/// first-class union type in the IR.
+pub(super) fn parse_homogeneous_array_any_of(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
+    let Some(alternatives) = alternatives
+        .as_array()
+        .filter(|alternatives| alternatives.len() >= 2)
+    else {
+        return Ok(None);
+    };
+    let mut array = None;
+    let mut nullable = false;
+    for alternative in alternatives {
+        match classify_exact_array_alternative(name, alternative, doc, active_refs)? {
+            ArrayAlternative::Null => nullable = true,
+            ArrayAlternative::Array(candidate) => {
+                if array
+                    .as_ref()
+                    .is_some_and(|existing| existing != &candidate)
+                {
+                    return Err(unsupported_union(
+                        name,
+                        "anyOf array alternatives must have identical item schemas",
+                    ));
+                }
+                array = Some(candidate);
+            }
+            ArrayAlternative::Other => return Ok(None),
+        }
+    }
+    let Some(node) = array else {
+        return Ok(None);
+    };
+    ensure_annotation_only(name, schema, "anyOf")?;
+    let mut node = *node;
+    node.container_nullable = nullable;
+    Ok(Some(node))
+}
+
 /// Canonicalizes the common nullable-scalar union spelling used by OpenAPI
 /// and generated JSON Schemas. Structured nullability needs a distinct
 /// instance variant, while scalar nullability maps exactly to
@@ -148,6 +239,138 @@ fn classify_scalar_alternative(
     };
     ensure_scalar_shape_only(union_name, schema)?;
     Ok(classified)
+}
+
+fn classify_exact_scalar_alternative(
+    union_name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<ScalarAlternative, JsonFormatError> {
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        ensure_annotation_only(union_name, schema, "$ref")?;
+        if active_refs.iter().any(|active| active == reference) {
+            return Err(unsupported_union(
+                union_name,
+                "homogeneous scalar alternatives cannot use cyclic references",
+            ));
+        }
+        let Some(resolved) = resolve_ref(doc, reference) else {
+            return Err(unsupported_union(
+                union_name,
+                "homogeneous scalar alternatives require document-local references",
+            ));
+        };
+        active_refs.push(reference.to_string());
+        let classified = classify_exact_scalar_alternative(union_name, resolved, doc, active_refs);
+        active_refs.pop();
+        return classified;
+    }
+    let Some(ty) = schema.get("type").and_then(serde_json::Value::as_str) else {
+        return Ok(ScalarAlternative::Other);
+    };
+    let classified = match ty {
+        "null" => ScalarAlternative::Null,
+        "string" => ScalarAlternative::Scalar(ScalarType::String),
+        "integer" => ScalarAlternative::Scalar(ScalarType::Int),
+        "number" => ScalarAlternative::Scalar(ScalarType::Float),
+        "boolean" => ScalarAlternative::Scalar(ScalarType::Bool),
+        _ => return Ok(ScalarAlternative::Other),
+    };
+    ensure_exact_scalar_shape(union_name, schema)?;
+    Ok(classified)
+}
+
+fn classify_exact_array_alternative(
+    union_name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<ArrayAlternative, JsonFormatError> {
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        ensure_annotation_only(union_name, schema, "$ref")?;
+        if active_refs.iter().any(|active| active == reference) {
+            return Err(unsupported_union(
+                union_name,
+                "homogeneous array alternatives cannot use cyclic references",
+            ));
+        }
+        let Some(resolved) = resolve_ref(doc, reference) else {
+            return Err(unsupported_union(
+                union_name,
+                "homogeneous array alternatives require document-local references",
+            ));
+        };
+        active_refs.push(reference.to_string());
+        let classified = classify_exact_array_alternative(union_name, resolved, doc, active_refs);
+        active_refs.pop();
+        return classified;
+    }
+    match schema.get("type").and_then(serde_json::Value::as_str) {
+        Some("null") => {
+            ensure_exact_scalar_shape(union_name, schema)?;
+            Ok(ArrayAlternative::Null)
+        }
+        Some("array") => {
+            ensure_exact_array_shape(union_name, schema)?;
+            Ok(ArrayAlternative::Array(Box::new(parse(
+                union_name,
+                schema,
+                doc,
+                active_refs,
+            )?)))
+        }
+        _ => Ok(ArrayAlternative::Other),
+    }
+}
+
+fn ensure_exact_scalar_shape(
+    union_name: &str,
+    schema: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    let Some(object) = schema.as_object() else {
+        return Err(unsupported_union(
+            union_name,
+            "homogeneous scalar alternatives must be schema objects",
+        ));
+    };
+    if let Some(keyword) = object
+        .keys()
+        .find(|keyword| keyword.as_str() != "type" && !is_annotation_keyword(keyword.as_str()))
+    {
+        return Err(unsupported_union(
+            union_name,
+            &format!("homogeneous scalar alternatives cannot preserve `{keyword}` validation"),
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_exact_array_shape(
+    union_name: &str,
+    schema: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    let Some(object) = schema.as_object() else {
+        return Err(unsupported_union(
+            union_name,
+            "homogeneous array alternatives must be schema objects",
+        ));
+    };
+    if !object.contains_key("items") {
+        return Err(unsupported_union(
+            union_name,
+            "homogeneous array alternatives require an explicit item schema",
+        ));
+    }
+    if let Some(keyword) = object.keys().find(|keyword| {
+        !matches!(keyword.as_str(), "type" | "items") && !is_annotation_keyword(keyword.as_str())
+    }) {
+        return Err(unsupported_union(
+            union_name,
+            &format!("homogeneous array alternatives cannot preserve `{keyword}` validation"),
+        ));
+    }
+    Ok(())
 }
 
 fn ensure_scalar_shape_only(

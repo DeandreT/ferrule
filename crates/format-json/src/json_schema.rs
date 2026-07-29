@@ -7,11 +7,13 @@
 //! `anyOf` unions, their required scalar `const` discriminators, and typed
 //! `additionalProperties` schemas are preserved. Scalar/container-plus-null
 //! `oneOf` / `anyOf` and nullable type arrays retain explicit nullability,
-//! including scalar array items. Unconstrained `additionalProperties` values
-//! are retained as canonical JSON text in the graph's string domain. An
-//! omitted or false `additionalProperties` is treated as closed. General
-//! composition remains outside this subset; shape-neutral validation keywords
-//! are accepted but are not enforced by the mapping schema.
+//! including scalar array items. Homogeneous scalar and array `anyOf` branches
+//! canonicalize to their shared exact runtime shape. Unconstrained
+//! `additionalProperties` values are retained as canonical JSON text in the
+//! graph's string domain. An omitted or false `additionalProperties` is
+//! treated as closed. General composition remains outside this subset;
+//! shape-neutral validation keywords are accepted but are not enforced by the
+//! mapping schema.
 
 use ir::{GroupAlternativeMode, ScalarType, SchemaNode};
 
@@ -21,8 +23,9 @@ mod alternatives;
 mod render;
 
 use alternatives::{
-    parse_inferred_const_scalar, parse_nullable_container_alternatives,
-    parse_nullable_scalar_alternatives, parse_object_alternatives,
+    parse_homogeneous_array_any_of, parse_homogeneous_scalar_any_of, parse_inferred_const_scalar,
+    parse_nullable_container_alternatives, parse_nullable_scalar_alternatives,
+    parse_object_alternatives,
 };
 
 /// Imports the root of a JSON Schema file as a [`SchemaNode`]. The root
@@ -121,6 +124,16 @@ fn parse(
             active_refs,
         )? {
             return Ok(nullable);
+        }
+        if let Some(homogeneous) =
+            parse_homogeneous_scalar_any_of(name, schema, alternatives, doc, active_refs)?
+        {
+            return Ok(homogeneous);
+        }
+        if let Some(homogeneous) =
+            parse_homogeneous_array_any_of(name, schema, alternatives, doc, active_refs)?
+        {
+            return Ok(homogeneous);
         }
         return parse_object_alternatives(
             name,
