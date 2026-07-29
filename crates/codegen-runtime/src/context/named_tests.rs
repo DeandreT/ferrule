@@ -64,7 +64,7 @@ fn named_inputs_are_an_outer_fallback_for_every_collection_operation() {
 }
 
 #[test]
-fn active_and_primary_owners_precede_named_inputs_without_hiding_lookup_fallback() {
+fn active_and_primary_owners_shadow_named_lookup_fallback() {
     let source = group([
         field("Catalog", group([field("Label", scalar(text("primary")))])),
         field(
@@ -97,10 +97,11 @@ fn active_and_primary_owners_precede_named_inputs_without_hiding_lookup_fallback
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].resolve_scalar(&["Label"]), Ok(text("primary")));
 
-    // Lookup instead continues outward until the terminal value is repeated.
+    // Lookup also commits to the primary owner before it considers a
+    // same-named source, even when the owned terminal is not repeated.
     assert_eq!(
         context.lookup(&["Catalog"], &["Key"], &Value::Int(1), &["Value"]),
-        Ok(text("named"))
+        Ok(Value::Null)
     );
 }
 

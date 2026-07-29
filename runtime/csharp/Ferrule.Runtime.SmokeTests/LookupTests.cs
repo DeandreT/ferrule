@@ -58,9 +58,10 @@ internal static partial class Program
                 Text("absent"),
                 new[] { "Name" }));
 
-        // A non-repeated inner collision does not hide an outer collection.
+        // Once an inner frame owns the first segment, an invalid terminal
+        // shape shadows an otherwise valid outer collection.
         Equal(
-            Text("outer integer"),
+            FerruleValue.Null,
             rows[1].Lookup(
                 new[] { "Catalog" },
                 new[] { "Id" },
@@ -79,6 +80,22 @@ internal static partial class Program
                 Text("A"),
                 new[] { "Name" }));
 
+        // Ownership of the first segment also shadows outer fallback when a
+        // deeper segment is absent.
+        var nestedShadowing = ScopeContext.FromSource(Group(
+            Field(
+                "Directory",
+                Group(Field("Catalog", Repeated(Row(Text("A"), Text("outer nested")))))),
+            Field("Rows", Repeated(Group(Field("Directory", Group()))))));
+        var innerNested = nestedShadowing.IterateSource("Rows")[0];
+        Equal(
+            FerruleValue.Null,
+            innerNested.Lookup(
+                new[] { "Directory", "Catalog" },
+                new[] { "Id" },
+                Text("A"),
+                new[] { "Name" }));
+
         var scalarCollection = ScopeContext.FromSource(Repeated(Scalar(Text("first"))));
         Equal(
             Text("first"),
@@ -88,12 +105,13 @@ internal static partial class Program
                 Text("first"),
                 Array.Empty<string>()));
 
-        // Lookup follows exact fields; it must not flatten an intermediate repetition.
+        // Repeated ancestors are flattened in source order.
         var multiHop = ScopeContext.FromSource(Group(Field("Groups", Repeated(
+            Group(Field("Catalog", Repeated(Row(Text("B"), Text("first ancestor"))))),
             Group(Field("Catalog", Repeated(Row(Text("A"), Text("flattened")))))))));
-        Error(
-            FerruleRuntimeError.MissingSourceField,
-            () => multiHop.Lookup(
+        Equal(
+            Text("flattened"),
+            multiHop.Lookup(
                 new[] { "Groups", "Catalog" },
                 new[] { "Id" },
                 Text("A"),

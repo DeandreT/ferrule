@@ -120,20 +120,6 @@ impl<'a> SourceCatalog<'a> {
         targets
     }
 
-    /// Lookup collections cannot cross another repeated boundary before their
-    /// terminal collection.
-    pub(super) fn direct_path_targets(self, path: &[String]) -> Vec<SchemaCursor<'a>> {
-        let mut targets = Vec::new();
-        if let Some(target) = self.explicit_target(path, true) {
-            targets.push(target);
-        }
-        collect_path_targets(self.primary, self.primary, path, true, &mut targets);
-        for source in self.extras {
-            collect_path_targets(&source.source, &source.source, path, true, &mut targets);
-        }
-        targets
-    }
-
     fn explicit_target(self, path: &[String], direct: bool) -> Option<SchemaCursor<'a>> {
         let (name, rest) = path.split_first()?;
         let source = self.extras.iter().find(|source| source.name == *name)?;
