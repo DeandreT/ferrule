@@ -164,6 +164,172 @@ fn duplicate_extra_target_name_does_not_mutate_project() {
 }
 
 #[test]
+fn primary_auto_connect_is_one_undoable_position_preserving_mutation() {
+    let mut app = FerruleApp::default();
+    app.project.source = SchemaNode::group(
+        "source",
+        vec![
+            SchemaNode::scalar("order_id", ScalarType::String),
+            SchemaNode::scalar("amount", ScalarType::Int),
+        ],
+    );
+    app.project.target = SchemaNode::group(
+        "target",
+        vec![
+            SchemaNode::scalar("OrderId", ScalarType::String),
+            SchemaNode::scalar("amount", ScalarType::Float),
+        ],
+    );
+    app.main_canvas.snarl = build_snarl(&app.project);
+    let custom = egui::pos2(117.0, 259.0);
+    move_canvas_node(
+        &mut app.main_canvas.snarl,
+        CanvasNode::SourceBlock(0),
+        custom,
+    );
+    app.mark_clean();
+    app.rebase_history();
+
+    app.begin_auto_connect();
+    let pending = app
+        .pending_auto_connect
+        .as_ref()
+        .expect("confirmation is staged");
+    assert_eq!(pending.plan.connections.len(), 2);
+    assert_eq!(pending.plan.skipped_ambiguous, 0);
+    assert_eq!(pending.plan.skipped_incompatible, 0);
+    app.apply_pending_auto_connect();
+    app.observe_editor_history(std::time::Instant::now(), false);
+
+    assert_eq!(app.project.root.bindings.len(), 2);
+    assert_eq!(app.project.graph.nodes.len(), 2);
+    assert!(
+        app.project
+            .graph
+            .nodes
+            .values()
+            .all(|node| matches!(node, Node::SourceField { .. }))
+    );
+    assert_eq!(
+        canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0)),
+        custom
+    );
+    assert_eq!(app.history.undo_len(), 1);
+
+    app.undo_project();
+    assert!(app.project.root.bindings.is_empty());
+    assert!(app.project.graph.nodes.is_empty());
+    assert_eq!(
+        canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0)),
+        custom
+    );
+    app.redo_project();
+    assert_eq!(app.project.root.bindings.len(), 2);
+    assert_eq!(app.project.graph.nodes.len(), 2);
+}
+
+#[test]
+fn ambiguous_auto_connect_plan_leaves_the_project_unchanged() {
+    let mut app = FerruleApp::default();
+    app.project.source = SchemaNode::group(
+        "source",
+        vec![
+            SchemaNode::group(
+                "left",
+                vec![SchemaNode::scalar("customer_id", ScalarType::String)],
+            ),
+            SchemaNode::group(
+                "right",
+                vec![SchemaNode::scalar("Customer-Id", ScalarType::String)],
+            ),
+        ],
+    );
+    app.project.target = SchemaNode::group(
+        "target",
+        vec![SchemaNode::scalar("CustomerId", ScalarType::String)],
+    );
+    app.main_canvas.snarl = build_snarl(&app.project);
+    app.mark_clean();
+    app.rebase_history();
+
+    app.begin_auto_connect();
+    let pending = app
+        .pending_auto_connect
+        .as_ref()
+        .expect("confirmation is staged");
+    assert!(pending.plan.connections.is_empty());
+    assert_eq!(pending.plan.skipped_ambiguous, 1);
+    app.apply_pending_auto_connect();
+    app.observe_editor_history(std::time::Instant::now(), false);
+
+    assert!(app.project.graph.nodes.is_empty());
+    assert!(app.project.root.bindings.is_empty());
+    assert!(!app.is_dirty());
+    assert!(!app.can_undo());
+}
+
+#[test]
+fn named_target_auto_connect_uses_its_scope_and_preserves_its_canvas() {
+    let mut app = FerruleApp::default();
+    app.project.source = SchemaNode::group(
+        "source",
+        vec![SchemaNode::scalar("status", ScalarType::String)],
+    );
+    app.project.extra_targets.push(NamedTarget {
+        name: "audit".to_owned(),
+        path: Some("audit.json".to_owned()),
+        schema: SchemaNode::group(
+            "audit",
+            vec![SchemaNode::scalar("Status", ScalarType::String)],
+        ),
+        options: FormatOptions::default(),
+        root: Scope::default(),
+    });
+    app.open_target_tab(0);
+    assert!(app.ensure_target_canvas(0));
+    let custom = egui::pos2(151.0, 313.0);
+    move_canvas_node(
+        &mut app
+            .mapping_workspace
+            .target_canvases
+            .get_mut(&0)
+            .expect("named target canvas exists")
+            .snarl,
+        CanvasNode::SourceBlock(0),
+        custom,
+    );
+    app.mark_clean();
+    app.rebase_history();
+
+    app.begin_auto_connect();
+    app.apply_pending_auto_connect();
+    app.observe_editor_history(std::time::Instant::now(), false);
+
+    assert!(app.project.root.bindings.is_empty());
+    assert_eq!(app.project.extra_targets[0].root.bindings.len(), 1);
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&0].snarl,
+            CanvasNode::SourceBlock(0)
+        ),
+        custom
+    );
+
+    app.undo_project();
+    assert!(app.project.extra_targets[0].root.bindings.is_empty());
+    assert_eq!(app.mapping_workspace.active, MappingDocument::Target(0));
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&0].snarl,
+            CanvasNode::SourceBlock(0)
+        ),
+        custom
+    );
+    app.redo_project();
+    assert_eq!(app.project.extra_targets[0].root.bindings.len(), 1);
+}
+
+#[test]
 fn target_removal_rekeys_tabs_and_canvases_without_removing_graph_nodes() {
     let mut app = FerruleApp::default();
     app.project.extra_targets = vec![

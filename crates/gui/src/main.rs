@@ -1,6 +1,7 @@
 mod app;
 mod appearance;
 mod appearance_editor;
+mod auto_connect;
 mod canvas;
 mod canvas_endpoints;
 mod canvas_keyboard;
