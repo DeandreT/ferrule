@@ -126,10 +126,14 @@ fn overlapping_scalar_one_of(name: &str) -> JsonFormatError {
     )
 }
 
-/// Collapses equivalent inclusive array branches. The complete imported item
-/// schema must agree across branches; heterogeneous arrays still require a
-/// first-class union type in the IR.
-pub(super) fn parse_homogeneous_array_any_of(
+/// Collapses inclusive array branches when one imported scalar item domain
+/// contains every other branch. This preserves the exact union: an array whose
+/// item schema already accepts strings and integers subsumes a string-only
+/// array, including mixed arrays admitted by the broader branch itself.
+///
+/// Incomparable item domains remain unsupported because merging them would
+/// incorrectly admit mixed arrays that match none of the original branches.
+pub(super) fn parse_scalar_domain_array_any_of(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
@@ -142,22 +146,26 @@ pub(super) fn parse_homogeneous_array_any_of(
     else {
         return Ok(None);
     };
-    let mut array = None;
+    let mut array: Option<Box<SchemaNode>> = None;
     let mut nullable = false;
     for alternative in alternatives {
         match classify_exact_array_alternative(name, alternative, doc, active_refs)? {
             ArrayAlternative::Null => nullable = true,
             ArrayAlternative::Array(candidate) => {
-                if array
-                    .as_ref()
-                    .is_some_and(|existing| existing != &candidate)
-                {
-                    return Err(unsupported_union(
-                        name,
-                        "anyOf array alternatives must have identical item schemas",
-                    ));
+                if let Some(existing) = array.as_ref() {
+                    if existing == &candidate {
+                        // Keep the first identical branch.
+                    } else if scalar_array_domain_contains(candidate.as_ref(), existing.as_ref()) {
+                        array = Some(candidate);
+                    } else if !scalar_array_domain_contains(existing.as_ref(), candidate.as_ref()) {
+                        return Err(unsupported_union(
+                            name,
+                            "anyOf array alternatives must have identical item schemas or one scalar item domain must contain the other",
+                        ));
+                    }
+                } else {
+                    array = Some(candidate);
                 }
-                array = Some(candidate);
             }
             ArrayAlternative::Other => return Ok(None),
         }
@@ -169,6 +177,32 @@ pub(super) fn parse_homogeneous_array_any_of(
     let mut node = *node;
     node.container_nullable = nullable;
     Ok(Some(node))
+}
+
+fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> bool {
+    if !superset.repeating
+        || !subset.repeating
+        || (subset.nullable && !superset.nullable)
+        || superset.container_nullable != subset.container_nullable
+    {
+        return false;
+    }
+    [
+        ScalarType::String,
+        ScalarType::Int,
+        ScalarType::Float,
+        ScalarType::Bool,
+    ]
+    .into_iter()
+    .all(|ty| !scalar_domain_contains(subset, ty) || scalar_domain_contains(superset, ty))
+}
+
+fn scalar_domain_contains(node: &SchemaNode, ty: ScalarType) -> bool {
+    match node.kind {
+        SchemaKind::Scalar { ty: declared } => declared == ty,
+        SchemaKind::ScalarUnion { types } => types.contains(ty),
+        SchemaKind::Group { .. } => false,
+    }
 }
 
 /// Canonicalizes the common nullable-scalar union spelling used by OpenAPI
@@ -354,13 +388,13 @@ fn classify_exact_array_alternative(
         if active_refs.iter().any(|active| active == reference) {
             return Err(unsupported_union(
                 union_name,
-                "homogeneous array alternatives cannot use cyclic references",
+                "array anyOf alternatives cannot use cyclic references",
             ));
         }
         let Some(resolved) = resolve_ref(doc, reference) else {
             return Err(unsupported_union(
                 union_name,
-                "homogeneous array alternatives require document-local references",
+                "array anyOf alternatives require document-local references",
             ));
         };
         active_refs.push(reference.to_string());
@@ -415,13 +449,13 @@ fn ensure_exact_array_shape(
     let Some(object) = schema.as_object() else {
         return Err(unsupported_union(
             union_name,
-            "homogeneous array alternatives must be schema objects",
+            "array anyOf alternatives must be schema objects",
         ));
     };
     if !object.contains_key("items") {
         return Err(unsupported_union(
             union_name,
-            "homogeneous array alternatives require an explicit item schema",
+            "array anyOf alternatives require an explicit item schema",
         ));
     }
     if let Some(keyword) = object.keys().find(|keyword| {
@@ -429,7 +463,7 @@ fn ensure_exact_array_shape(
     }) {
         return Err(unsupported_union(
             union_name,
-            &format!("homogeneous array alternatives cannot preserve `{keyword}` validation"),
+            &format!("array anyOf alternatives cannot preserve `{keyword}` validation"),
         ));
     }
     Ok(())

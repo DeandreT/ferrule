@@ -1338,6 +1338,82 @@ fn homogeneous_array_any_of_preserves_items_and_container_nullability() {
 }
 
 #[test]
+fn scalar_domain_subsumed_array_any_of_is_executable_and_roundtrips()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = import_str_result(
+        r##"{
+  "title":"References",
+  "anyOf":[
+    {"$ref":"#/$defs/textReferences"},
+    {"$ref":"#/$defs/flexibleReferences"},
+    {"type":"array","items":{"type":"integer"}},
+    {"type":"null"}
+  ],
+  "$defs":{
+    "textReferences":{
+      "type":"array",
+      "items":{"type":"string"}
+    },
+    "flexibleReferences":{
+      "type":"array",
+      "items":{
+        "anyOf":[
+          {"type":"string"},
+          {"type":"integer"},
+          {"type":"null"}
+        ]
+      }
+    }
+  }
+}"##,
+    )?;
+    let types = ScalarTypeSet::new([ScalarType::String, ScalarType::Int])
+        .ok_or("test scalar union must contain distinct types")?;
+    assert!(schema.repeating);
+    assert!(schema.nullable);
+    assert!(schema.container_nullable);
+    assert_eq!(schema.kind, SchemaKind::ScalarUnion { types });
+
+    for input in [
+        "null",
+        "[]",
+        r#"["external","internal"]"#,
+        "[17,23]",
+        r#"["external",17,null]"#,
+    ] {
+        let instance = crate::from_str(input, &schema)?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&crate::to_string(&schema, &instance)?)?,
+            serde_json::from_str::<serde_json::Value>(input)?
+        );
+    }
+    let mixed = crate::from_str(r#"["external",17,null]"#, &schema)?;
+    let ir::Instance::Repeated(items) = mixed else {
+        return Err("non-null array should import as a repeated instance".into());
+    };
+    assert_eq!(
+        items[0].as_scalar(),
+        Some(&ir::Value::String("external".into()))
+    );
+    assert_eq!(items[1].as_scalar(), Some(&ir::Value::Int(17)));
+    assert_eq!(items[2].as_scalar(), Some(&ir::Value::json_null()));
+    assert!(matches!(
+        crate::from_str("[true]", &schema),
+        Err(JsonFormatError::Shape { .. })
+    ));
+
+    let exported = export(&schema);
+    let value: serde_json::Value = serde_json::from_str(&exported)?;
+    assert_eq!(
+        value["anyOf"][0]["items"]["type"],
+        serde_json::json!(["string", "integer", "null"])
+    );
+    assert_eq!(value["anyOf"][1]["type"], "null");
+    assert_eq!(import_str_result(&exported)?, schema);
+    Ok(())
+}
+
+#[test]
 fn nullable_scalar_unions_accept_shape_neutral_validation_keywords() {
     for (ty, validation) in [
         ("string", r#""minLength":1"#),
