@@ -40,6 +40,21 @@ impl<'a> AlternativeExportPlan<'a> {
         schema: &'a SchemaNode,
         external_references: &[super::ExternalReference],
     ) -> Result<Self, XmlFormatError> {
+        Self::build_with_partitioned_substitutions(schema, external_references, false)
+    }
+
+    pub(super) fn build_set(
+        schema: &'a SchemaNode,
+        external_references: &[super::ExternalReference],
+    ) -> Result<Self, XmlFormatError> {
+        Self::build_with_partitioned_substitutions(schema, external_references, true)
+    }
+
+    fn build_with_partitioned_substitutions(
+        schema: &'a SchemaNode,
+        external_references: &[super::ExternalReference],
+        partition_cross_substitutions: bool,
+    ) -> Result<Self, XmlFormatError> {
         let mut plan = Self {
             namespace: None,
             export_namespace: None,
@@ -54,8 +69,8 @@ impl<'a> AlternativeExportPlan<'a> {
         };
         plan.set_external_references(external_references);
         let mut reserved = BTreeSet::new();
-        collect_type_names(schema, &plan, &mut reserved)?;
-        plan.collect(schema, &reserved)?;
+        collect_type_names(schema, &plan, &mut reserved, partition_cross_substitutions)?;
+        plan.collect(schema, &reserved, partition_cross_substitutions)?;
         Ok(plan)
     }
 
@@ -203,8 +218,12 @@ impl<'a> AlternativeExportPlan<'a> {
         &mut self,
         node: &'a SchemaNode,
         reserved: &BTreeSet<String>,
+        partition_cross_substitutions: bool,
     ) -> Result<(), XmlFormatError> {
         if self.external_prefix(node).is_some() {
+            return Ok(());
+        }
+        if partition_cross_substitutions && super::substitution::requires_partition(node) {
             return Ok(());
         }
         let SchemaKind::Group {
@@ -222,7 +241,7 @@ impl<'a> AlternativeExportPlan<'a> {
             self.collect_group(node, children, alternatives, reserved)?;
         }
         for child in children {
-            self.collect(child, reserved)?;
+            self.collect(child, reserved, partition_cross_substitutions)?;
         }
         Ok(())
     }
@@ -459,8 +478,12 @@ fn collect_type_names(
     node: &SchemaNode,
     plan: &AlternativeExportPlan<'_>,
     out: &mut BTreeSet<String>,
+    partition_cross_substitutions: bool,
 ) -> Result<(), XmlFormatError> {
     if plan.external_prefix(node).is_some() {
+        return Ok(());
+    }
+    if partition_cross_substitutions && super::substitution::requires_partition(node) {
         return Ok(());
     }
     let SchemaKind::Group {
@@ -478,7 +501,7 @@ fn collect_type_names(
         }
     }
     for child in children {
-        collect_type_names(child, plan, out)?;
+        collect_type_names(child, plan, out, partition_cross_substitutions)?;
     }
     Ok(())
 }

@@ -211,6 +211,9 @@ fn export_roundtrips_complex_substitution_group_declarations() {
         xsd.contains(r#"<xs:element ref="tns:Creature" minOccurs="0" maxOccurs="unbounded"/>"#),
         "{xsd}"
     );
+    let set = export_set(&schema, "habitat.xsd").unwrap();
+    assert!(set.dependencies.is_empty());
+    assert_eq!(set.root, xsd);
 
     let path = std::env::temp_dir().join(format!(
         "ferrule_xsd_substitution_export_{}.xsd",
@@ -751,6 +754,296 @@ fn export_set_supports_multiple_declarations_in_one_foreign_namespace() {
     let imported = import(&dir.join("shared.xsd")).unwrap();
     std::fs::remove_dir_all(dir).unwrap();
     assert_eq!(imported, schema);
+}
+
+#[test]
+fn export_set_roundtrips_a_cross_namespace_substitution_group() {
+    let root_namespace = "urn:ferrule:substitution-set:root";
+    let head_namespace = "urn:ferrule:substitution-set:head";
+    let member_namespace = "urn:ferrule:substitution-set:member";
+    let creature = SchemaNode::group(
+        "Creature",
+        vec![
+            SchemaNode::scalar("Name", ScalarType::String)
+                .xml_qualified(member_namespace)
+                .unwrap(),
+            SchemaNode::scalar("Lives", ScalarType::Int)
+                .xml_qualified(member_namespace)
+                .unwrap(),
+        ],
+    )
+    .xml_qualified(head_namespace)
+    .unwrap()
+    .with_substitution_group_alternatives(vec![ir::GroupAlternative {
+        name: format!("{{{member_namespace}}}Cat"),
+        members: vec!["Name".into(), "Lives".into()],
+        required: Vec::new(),
+        constraints: Vec::new(),
+    }])
+    .unwrap()
+    .repeating();
+    let schema = SchemaNode::group("Habitat", vec![creature])
+        .xml_qualified(root_namespace)
+        .unwrap();
+
+    assert!(export(&schema).is_err());
+    let set = export_set(&schema, "habitat.xsd").unwrap();
+    assert_eq!(
+        set.dependencies
+            .iter()
+            .map(|artifact| artifact.filename.as_str())
+            .collect::<Vec<_>>(),
+        vec!["habitat-ns1.xsd", "habitat-ns2.xsd"]
+    );
+    assert!(
+        set.root
+            .contains(r#"<xs:import namespace="urn:ferrule:substitution-set:head" schemaLocation="habitat-ns1.xsd"/>"#),
+        "{}",
+        set.root
+    );
+    assert!(
+        set.root
+            .contains(r#"<xs:import namespace="urn:ferrule:substitution-set:member" schemaLocation="habitat-ns2.xsd"/>"#),
+        "{}",
+        set.root
+    );
+    assert!(
+        set.dependencies[0]
+            .contents
+            .contains(r#"<xs:element name="Creature" type="tns:CreatureFerruleSubstitutionType" abstract="true"/>"#),
+        "{}",
+        set.dependencies[0].contents
+    );
+    assert!(
+        set.dependencies[1]
+            .contents
+            .contains(r#"substitutionGroup="ns1:Creature""#),
+        "{}",
+        set.dependencies[1].contents
+    );
+
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_cross_substitution_set_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("habitat.xsd"), &set.root).unwrap();
+    for dependency in &set.dependencies {
+        std::fs::write(dir.join(&dependency.filename), &dependency.contents).unwrap();
+    }
+    let imported = import_root(
+        &dir.join("habitat.xsd"),
+        Some(&format!("{{{root_namespace}}}Habitat")),
+    )
+    .unwrap();
+    assert_eq!(imported, schema);
+
+    let input = crate::from_str(
+        &format!(
+            r#"<r:Habitat xmlns:r="{root_namespace}" xmlns:m="{member_namespace}"><m:Cat><m:Name>Ada</m:Name><m:Lives>9</m:Lives></m:Cat></r:Habitat>"#
+        ),
+        &imported,
+    )
+    .unwrap();
+    let output = crate::to_string(&imported, &input).unwrap();
+    assert!(output.contains("<Cat xmlns=\"urn:ferrule:substitution-set:member\">"));
+    let reexported = export_set(&imported, "habitat.xsd").unwrap();
+    assert_eq!(reexported, set);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn export_set_roundtrips_a_two_namespace_root_substitution_head() {
+    let head_namespace = "urn:ferrule:root-substitution:head";
+    let member_namespace = "urn:ferrule:root-substitution:member";
+    let schema = SchemaNode::group(
+        "Event",
+        vec![
+            SchemaNode::scalar("Code", ScalarType::String)
+                .xml_qualified(member_namespace)
+                .unwrap(),
+        ],
+    )
+    .xml_qualified(head_namespace)
+    .unwrap()
+    .with_substitution_group_alternatives(vec![ir::GroupAlternative {
+        name: format!("{{{member_namespace}}}Created"),
+        members: vec!["Code".into()],
+        required: Vec::new(),
+        constraints: Vec::new(),
+    }])
+    .unwrap();
+
+    let set = export_set(&schema, "event.xsd").unwrap();
+    assert_eq!(set.dependencies.len(), 1);
+    assert!(
+        set.root.contains(r#"schemaLocation="event-ns1.xsd""#),
+        "{}",
+        set.root
+    );
+    assert!(
+        set.dependencies[0]
+            .contents
+            .contains(r#"schemaLocation="event.xsd""#),
+        "{}",
+        set.dependencies[0].contents
+    );
+
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_root_substitution_set_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("event.xsd"), &set.root).unwrap();
+    std::fs::write(
+        dir.join(&set.dependencies[0].filename),
+        &set.dependencies[0].contents,
+    )
+    .unwrap();
+    let imported = import_root(
+        &dir.join("event.xsd"),
+        Some(&format!("{{{head_namespace}}}Event")),
+    )
+    .unwrap();
+    assert_eq!(imported, schema);
+    assert_eq!(export_set(&imported, "event.xsd").unwrap(), set);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn export_set_flattens_transitive_cross_namespace_substitution_members() {
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_transitive_cross_substitution_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("head.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:h="urn:ferrule:transitive:head" targetNamespace="urn:ferrule:transitive:head" elementFormDefault="qualified">
+  <xs:complexType name="CreatureType"><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType>
+  <xs:element name="Creature" type="h:CreatureType" abstract="true"/>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("middle.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:h="urn:ferrule:transitive:head" targetNamespace="urn:ferrule:transitive:middle">
+  <xs:import namespace="urn:ferrule:transitive:head" schemaLocation="head.xsd"/>
+  <xs:element name="Mammal" type="h:CreatureType" abstract="true" substitutionGroup="h:Creature"/>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("member.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:h="urn:ferrule:transitive:head" xmlns:m="urn:ferrule:transitive:middle" xmlns:c="urn:ferrule:transitive:member" targetNamespace="urn:ferrule:transitive:member" elementFormDefault="qualified">
+  <xs:import namespace="urn:ferrule:transitive:head" schemaLocation="head.xsd"/>
+  <xs:import namespace="urn:ferrule:transitive:middle" schemaLocation="middle.xsd"/>
+  <xs:complexType name="CatType"><xs:complexContent><xs:extension base="h:CreatureType"><xs:sequence><xs:element name="Lives" type="xs:integer"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>
+  <xs:element name="Cat" type="c:CatType" substitutionGroup="m:Mammal"/>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("root.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:h="urn:ferrule:transitive:head" targetNamespace="urn:ferrule:transitive:root" elementFormDefault="qualified">
+  <xs:import namespace="urn:ferrule:transitive:head" schemaLocation="head.xsd"/>
+  <xs:import namespace="urn:ferrule:transitive:middle" schemaLocation="middle.xsd"/>
+  <xs:import namespace="urn:ferrule:transitive:member" schemaLocation="member.xsd"/>
+  <xs:element name="Habitat"><xs:complexType><xs:sequence><xs:element ref="h:Creature" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(
+        &dir.join("root.xsd"),
+        Some("{urn:ferrule:transitive:root}Habitat"),
+    )
+    .unwrap();
+    let set = export_set(&schema, "flattened.xsd").unwrap();
+    assert!(set.dependencies.iter().any(|artifact| {
+        artifact.contents.contains(r#"name="Cat""#)
+            && artifact
+                .contents
+                .contains(r#"substitutionGroup="ns1:Creature""#)
+    }));
+    assert!(
+        set.dependencies
+            .iter()
+            .all(|artifact| !artifact.contents.contains(r#"name="Mammal""#))
+    );
+    std::fs::write(dir.join("flattened.xsd"), &set.root).unwrap();
+    for dependency in &set.dependencies {
+        std::fs::write(dir.join(&dependency.filename), &dependency.contents).unwrap();
+    }
+    let reimported = import_root(
+        &dir.join("flattened.xsd"),
+        Some("{urn:ferrule:transitive:root}Habitat"),
+    )
+    .unwrap();
+    assert_eq!(reimported, schema);
+    assert_eq!(export_set(&reimported, "flattened.xsd").unwrap(), set);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn export_set_rejects_partitioned_substitution_conflicts_and_cycles() {
+    let substitution = |head: &str, namespace: &str, field: SchemaNode| {
+        SchemaNode::group(head, vec![field])
+            .xml_qualified(namespace)
+            .unwrap()
+            .with_substitution_group_alternatives(vec![ir::GroupAlternative {
+                name: "{urn:ferrule:partition-conflict}Member".into(),
+                members: vec!["Value".into()],
+                required: Vec::new(),
+                constraints: Vec::new(),
+            }])
+            .unwrap()
+    };
+    let conflict = SchemaNode::group(
+        "Root",
+        vec![
+            substitution(
+                "FirstHead",
+                "urn:ferrule:first-head",
+                SchemaNode::scalar("Value", ScalarType::String)
+                    .xml_qualified("urn:ferrule:partition-conflict")
+                    .unwrap(),
+            ),
+            substitution(
+                "SecondHead",
+                "urn:ferrule:second-head",
+                SchemaNode::scalar("Value", ScalarType::Int)
+                    .xml_qualified("urn:ferrule:partition-conflict")
+                    .unwrap(),
+            ),
+        ],
+    )
+    .xml_qualified("urn:ferrule:partition-root")
+    .unwrap();
+    assert!(matches!(
+        export_set(&conflict, "conflict.xsd"),
+        Err(XmlFormatError::ConflictingNamespaceDeclaration { name, .. }) if name == "Member"
+    ));
+
+    let cycle = SchemaNode::group(
+        "Member",
+        vec![substitution(
+            "Head",
+            "urn:ferrule:cycle-head",
+            SchemaNode::scalar("Value", ScalarType::String)
+                .xml_qualified("urn:ferrule:cycle-root")
+                .unwrap(),
+        )],
+    )
+    .xml_qualified("urn:ferrule:partition-conflict")
+    .unwrap();
+    assert!(matches!(
+        export_set(&cycle, "cycle.xsd"),
+        Err(XmlFormatError::NamespaceDependencyCycle { name, .. }) if name == "Member"
+    ));
 }
 
 #[test]

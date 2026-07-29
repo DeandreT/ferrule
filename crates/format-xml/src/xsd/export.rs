@@ -37,13 +37,41 @@ pub(super) fn export_document(
     schema: &SchemaNode,
     external_references: &[ExternalReference],
 ) -> Result<String, XmlFormatError> {
+    export_document_inner(schema, external_references, false)
+}
+
+pub(super) fn export_set_document(
+    schema: &SchemaNode,
+    external_references: &[ExternalReference],
+) -> Result<String, XmlFormatError> {
+    export_document_inner(schema, external_references, true)
+}
+
+fn export_document_inner(
+    schema: &SchemaNode,
+    external_references: &[ExternalReference],
+    partition_cross_substitutions: bool,
+) -> Result<String, XmlFormatError> {
     crate::instance::validate_namespace_siblings(schema)?;
     let recursive_anchors = recursive_export_anchors(schema)?;
-    let mut alternatives = AlternativeExportPlan::build(schema, external_references)?;
-    let substitutions = SubstitutionExportPlan::build(schema, &alternatives)?;
+    let mut alternatives = if partition_cross_substitutions {
+        AlternativeExportPlan::build_set(schema, external_references)?
+    } else {
+        AlternativeExportPlan::build(schema, external_references)?
+    };
+    let substitutions = if partition_cross_substitutions {
+        SubstitutionExportPlan::build_set(schema, &alternatives)?
+    } else {
+        SubstitutionExportPlan::build(schema, &alternatives)?
+    };
     let namespace = export_target_namespace(schema, &alternatives)?;
     alternatives.set_export_namespace(namespace.clone());
-    validate_namespace_tree(schema, namespace.as_deref(), &alternatives)?;
+    validate_namespace_tree(
+        schema,
+        namespace.as_deref(),
+        &alternatives,
+        partition_cross_substitutions,
+    )?;
     validate_export_node(schema, true, &schema.name, &recursive_anchors)?;
     let legacy_name_namespace = if namespace.is_some() && has_legacy_xml_names(schema) {
         format!(" xmlns:ferruleName=\"{LEGACY_NAME_NAMESPACE}\"")
@@ -68,7 +96,19 @@ pub(super) fn export_document(
     }
     alternatives.write_definitions(&schema.name, &recursive_anchors, &mut out)?;
     substitutions.write_declarations(&alternatives, &mut out)?;
-    if !substitutions.contains(schema) {
+    if partition_cross_substitutions {
+        substitution::write_partitioned_heads(
+            schema,
+            namespace.as_deref(),
+            &schema.name,
+            &recursive_anchors,
+            &alternatives,
+            &mut out,
+        )?;
+    }
+    if !substitutions.contains(schema)
+        && !(partition_cross_substitutions && substitution::requires_partition(schema))
+    {
         write_element(
             schema,
             1,
@@ -78,6 +118,34 @@ pub(super) fn export_document(
             &mut out,
         )?;
     }
+    out.push_str("</xs:schema>\n");
+    Ok(out)
+}
+
+pub(super) fn export_set_substitution_member(
+    head: &SchemaNode,
+    member_identity: &str,
+    target_namespace: &str,
+    external_references: &[ExternalReference],
+) -> Result<String, XmlFormatError> {
+    crate::instance::validate_namespace_siblings(head)?;
+    let recursive_anchors = recursive_export_anchors(head)?;
+    let mut alternatives = AlternativeExportPlan::build_set(head, external_references)?;
+    alternatives.set_export_namespace(Some(target_namespace.to_string()));
+    validate_export_node(head, true, &head.name, &recursive_anchors)?;
+    let mut out = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"{} elementFormDefault=\"unqualified\" attributeFormDefault=\"unqualified\">\n",
+        alternatives.schema_attributes(),
+    );
+    alternatives.write_imports(&mut out);
+    substitution::write_partitioned_member(
+        head,
+        member_identity,
+        &head.name,
+        &recursive_anchors,
+        &alternatives,
+        &mut out,
+    )?;
     out.push_str("</xs:schema>\n");
     Ok(out)
 }
@@ -121,6 +189,7 @@ fn validate_namespace_tree(
     node: &SchemaNode,
     target_namespace: Option<&str>,
     alternatives: &AlternativeExportPlan<'_>,
+    partition_cross_substitutions: bool,
 ) -> Result<(), XmlFormatError> {
     if let Some(XmlNamespace::Qualified(namespace)) = &node.xml_namespace
         && Some(namespace.as_str()) != target_namespace
@@ -134,9 +203,21 @@ fn validate_namespace_tree(
             target_namespace.unwrap_or_default(),
         ));
     }
-    if let ir::SchemaKind::Group { children, .. } = &node.kind {
+    let projected;
+    let scan = if partition_cross_substitutions && substitution::requires_partition(node) {
+        projected = substitution::head_document_projection(node)?;
+        &projected
+    } else {
+        node
+    };
+    if let ir::SchemaKind::Group { children, .. } = &scan.kind {
         for child in children {
-            validate_namespace_tree(child, target_namespace, alternatives)?;
+            validate_namespace_tree(
+                child,
+                target_namespace,
+                alternatives,
+                partition_cross_substitutions,
+            )?;
         }
     }
     Ok(())
