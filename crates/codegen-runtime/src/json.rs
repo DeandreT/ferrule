@@ -1,9 +1,6 @@
-use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
 use std::fmt;
 
-use ir::{Instance, SchemaKind, SchemaNode, Value};
-use json_pattern::{DEFAULT_MATCH_WORK_LIMIT, PortableJsonPattern};
+use ir::{Instance, SchemaKind, SchemaNode};
 
 use crate::RuntimeError;
 
@@ -13,6 +10,8 @@ mod contains;
 #[cfg(test)]
 mod dependent_schemas;
 mod multiple_of;
+#[cfg(test)]
+mod pattern_properties;
 #[cfg(test)]
 mod property_names;
 mod unique_items;
@@ -77,27 +76,13 @@ impl From<RuntimeError> for JsonBoundaryError {
     }
 }
 
-/// Per-document portable-constraint state and deterministic pattern work budget.
+/// Per-document portable-constraint state.
 #[derive(Debug)]
-struct ConstraintBoundary {
-    patterns: RefCell<BTreeMap<String, PortableJsonPattern>>,
-    remaining_pattern_work: Cell<u64>,
-}
+struct ConstraintBoundary;
 
 impl ConstraintBoundary {
     fn new() -> Self {
-        Self {
-            patterns: RefCell::new(BTreeMap::new()),
-            remaining_pattern_work: Cell::new(DEFAULT_MATCH_WORK_LIMIT),
-        }
-    }
-
-    #[cfg(test)]
-    fn with_pattern_work_limit(limit: u64) -> Self {
-        Self {
-            patterns: RefCell::new(BTreeMap::new()),
-            remaining_pattern_work: Cell::new(limit),
-        }
+        Self
     }
 
     /// Parses one bounded JSON document and applies embedded constraints
@@ -184,7 +169,6 @@ impl ConstraintBoundary {
                         .to_string(),
             });
         }
-        register_patterns(&schema, &mut self.patterns.borrow_mut())?;
         Ok(schema)
     }
 
@@ -193,11 +177,7 @@ impl ConstraintBoundary {
         schema: &SchemaNode,
         instance: &Instance,
     ) -> Result<(), JsonBoundaryError> {
-        let mut remaining = self.remaining_pattern_work.get();
-        let result =
-            validate_instance_document(schema, instance, &self.patterns.borrow(), &mut remaining);
-        self.remaining_pattern_work.set(remaining);
-        result.map_err(constraint_input_error)
+        validate_instance_document(schema, instance).map_err(constraint_input_error)
     }
 
     fn validate_output(
@@ -206,10 +186,7 @@ impl ConstraintBoundary {
         value: &serde_json::Value,
     ) -> Result<(), JsonBoundaryError> {
         unique_items::validate_document(schema, value).map_err(unique_items::output_error)?;
-        let mut remaining = self.remaining_pattern_work.get();
-        let result = validate_json_document(schema, value, &self.patterns.borrow(), &mut remaining);
-        self.remaining_pattern_work.set(remaining);
-        result.map_err(constraint_output_error)
+        validate_json_document(schema, value).map_err(constraint_output_error)
     }
 }
 
@@ -258,45 +235,6 @@ fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
     })
 }
 
-fn register_patterns(
-    schema: &SchemaNode,
-    programs: &mut BTreeMap<String, PortableJsonPattern>,
-) -> Result<(), JsonBoundaryError> {
-    if !schema.json_patterns_are_valid() {
-        return Err(JsonBoundaryError::InvalidEmbeddedSchema {
-            message: format!(
-                "JSON pattern metadata on schema node `{}` is invalid",
-                schema.name
-            ),
-        });
-    }
-    if let Some(constraints) = &schema.json_patterns {
-        for source in constraints.any_of().iter().flatten() {
-            if programs.contains_key(source) {
-                continue;
-            }
-            let program = PortableJsonPattern::compile(source).map_err(|error| {
-                JsonBoundaryError::InvalidEmbeddedSchema {
-                    message: error.to_string(),
-                }
-            })?;
-            programs.insert(source.clone(), program);
-        }
-    }
-    if let SchemaKind::Group {
-        children, dynamic, ..
-    } = &schema.kind
-    {
-        for child in children {
-            register_patterns(child, programs)?;
-        }
-        if let Some(dynamic) = dynamic {
-            register_patterns(dynamic, programs)?;
-        }
-    }
-    Ok(())
-}
-
 fn without_boundary_constraints(mut schema: SchemaNode) -> SchemaNode {
     clear_boundary_constraints(&mut schema);
     schema
@@ -322,10 +260,7 @@ fn clear_boundary_constraints(schema: &mut SchemaNode) {
 #[derive(Debug)]
 enum ConstraintValidationError {
     AllowedValueMismatch { name: String },
-    MissingPatternProgram { source: String },
-    PatternMismatch { name: String },
     MultipleOfMismatch { name: String },
-    PatternWorkLimit { name: String },
 }
 
 fn constraint_input_error(error: ConstraintValidationError) -> JsonBoundaryError {
@@ -335,21 +270,10 @@ fn constraint_input_error(error: ConstraintValidationError) -> JsonBoundaryError
                 message: format!("`{name}` is not one of its JSON Schema allowed values"),
             }
         }
-        ConstraintValidationError::MissingPatternProgram { source } => {
-            JsonBoundaryError::InvalidEmbeddedSchema {
-                message: format!("compiled JSON pattern `{source}` is missing"),
-            }
-        }
-        ConstraintValidationError::PatternMismatch { name } => JsonBoundaryError::InvalidInput {
-            message: format!("`{name}` does not match its JSON Schema pattern constraints"),
-        },
         ConstraintValidationError::MultipleOfMismatch { name } => JsonBoundaryError::InvalidInput {
             message: format!(
                 "`{name}` is not an exact multiple of its JSON Schema multipleOf constraints"
             ),
-        },
-        ConstraintValidationError::PatternWorkLimit { name } => JsonBoundaryError::InvalidInput {
-            message: format!("JSON pattern matching for `{name}` exceeds the bounded work limit"),
         },
     }
 }
@@ -361,14 +285,6 @@ fn constraint_output_error(error: ConstraintValidationError) -> JsonBoundaryErro
                 message: format!("`{name}` is not one of its JSON Schema allowed values"),
             }
         }
-        ConstraintValidationError::MissingPatternProgram { source } => {
-            JsonBoundaryError::InvalidEmbeddedSchema {
-                message: format!("compiled JSON pattern `{source}` is missing"),
-            }
-        }
-        ConstraintValidationError::PatternMismatch { name } => JsonBoundaryError::InvalidOutput {
-            message: format!("`{name}` does not match its JSON Schema pattern constraints"),
-        },
         ConstraintValidationError::MultipleOfMismatch { name } => {
             JsonBoundaryError::InvalidOutput {
                 message: format!(
@@ -376,40 +292,30 @@ fn constraint_output_error(error: ConstraintValidationError) -> JsonBoundaryErro
                 ),
             }
         }
-        ConstraintValidationError::PatternWorkLimit { name } => JsonBoundaryError::InvalidOutput {
-            message: format!("JSON pattern matching for `{name}` exceeds the bounded work limit"),
-        },
     }
 }
 
 fn validate_instance_document(
     schema: &SchemaNode,
     instance: &Instance,
-    programs: &BTreeMap<String, PortableJsonPattern>,
-    remaining_work: &mut u64,
 ) -> Result<(), ConstraintValidationError> {
     if schema.repeating {
         if let Instance::Repeated(items) = instance {
             for item in items {
-                validate_instance_node(schema, item, programs, remaining_work)?;
+                validate_instance_node(schema, item)?;
             }
         }
         return Ok(());
     }
-    validate_instance_node(schema, instance, programs, remaining_work)
+    validate_instance_node(schema, instance)
 }
 
 fn validate_instance_node(
     schema: &SchemaNode,
     instance: &Instance,
-    programs: &BTreeMap<String, PortableJsonPattern>,
-    remaining_work: &mut u64,
 ) -> Result<(), ConstraintValidationError> {
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }, Instance::Scalar(value)) => {
-            if let Value::String(value) = value {
-                validate_pattern_value(schema, value, programs, remaining_work)?;
-            }
             multiple_of::validate_instance_value(schema, value)?;
             allowed_values::validate_instance_value(schema, value)
         }
@@ -425,7 +331,7 @@ fn validate_instance_node(
                     .find(|child| child.name == *name)
                     .or(dynamic.as_deref());
                 if let Some(child) = child {
-                    validate_instance_document(child, value, programs, remaining_work)?;
+                    validate_instance_document(child, value)?;
                 }
             }
             Ok(())
@@ -437,13 +343,11 @@ fn validate_instance_node(
 fn validate_json_document(
     schema: &SchemaNode,
     value: &serde_json::Value,
-    programs: &BTreeMap<String, PortableJsonPattern>,
-    remaining_work: &mut u64,
 ) -> Result<(), ConstraintValidationError> {
     if schema.repeating {
         if let serde_json::Value::Array(items) = value {
             for item in items {
-                validate_json_node(schema, item, programs, remaining_work)?;
+                validate_json_node(schema, item)?;
             }
         }
         return Ok(());
@@ -452,24 +356,19 @@ fn validate_json_document(
     // schema. Every serialized row still shares the one output budget.
     if let serde_json::Value::Array(items) = value {
         for item in items {
-            validate_json_node(schema, item, programs, remaining_work)?;
+            validate_json_node(schema, item)?;
         }
         return Ok(());
     }
-    validate_json_node(schema, value, programs, remaining_work)
+    validate_json_node(schema, value)
 }
 
 fn validate_json_node(
     schema: &SchemaNode,
     value: &serde_json::Value,
-    programs: &BTreeMap<String, PortableJsonPattern>,
-    remaining_work: &mut u64,
 ) -> Result<(), ConstraintValidationError> {
     match (&schema.kind, value) {
         (SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }, value) => {
-            if let serde_json::Value::String(value) = value {
-                validate_pattern_value(schema, value, programs, remaining_work)?;
-            }
             if let serde_json::Value::Number(value) = value {
                 multiple_of::validate_json_value(schema, value)?;
             }
@@ -490,11 +389,11 @@ fn validate_json_node(
                     if child.repeating {
                         if let serde_json::Value::Array(items) = value {
                             for item in items {
-                                validate_json_node(child, item, programs, remaining_work)?;
+                                validate_json_node(child, item)?;
                             }
                         }
                     } else {
-                        validate_json_node(child, value, programs, remaining_work)?;
+                        validate_json_node(child, value)?;
                     }
                 }
             }
@@ -502,45 +401,6 @@ fn validate_json_node(
         }
         _ => Ok(()),
     }
-}
-
-fn validate_pattern_value(
-    schema: &SchemaNode,
-    value: &str,
-    programs: &BTreeMap<String, PortableJsonPattern>,
-    remaining_work: &mut u64,
-) -> Result<(), ConstraintValidationError> {
-    let Some(constraints) = &schema.json_patterns else {
-        return Ok(());
-    };
-    for alternative in constraints.any_of() {
-        let mut matched = true;
-        for source in alternative {
-            let Some(program) = programs.get(source) else {
-                return Err(ConstraintValidationError::MissingPatternProgram {
-                    source: source.clone(),
-                });
-            };
-            match program.is_match_with_budget(value, remaining_work) {
-                Ok(true) => {}
-                Ok(false) => {
-                    matched = false;
-                    break;
-                }
-                Err(_) => {
-                    return Err(ConstraintValidationError::PatternWorkLimit {
-                        name: schema.name.clone(),
-                    });
-                }
-            }
-        }
-        if matched {
-            return Ok(());
-        }
-    }
-    Err(ConstraintValidationError::PatternMismatch {
-        name: schema.name.clone(),
-    })
 }
 
 #[cfg(test)]
@@ -1082,21 +942,16 @@ mod tests {
 
     #[test]
     fn applies_one_shared_pattern_budget_across_repeated_values() {
-        let schema = patterned_schema("Value", &[&["^a$"]]);
-        let Ok(program) = PortableJsonPattern::compile("^a$") else {
-            panic!("test pattern compiles");
-        };
-        let charge = program.work_estimate("a");
+        let schema = patterned_schema("Value", &[&["^(a?){5000}$"]]);
         let repeated = schema.repeating();
         let encoded = serde_json::to_string(&repeated).unwrap_or_default();
-        let boundary =
-            ConstraintBoundary::with_pattern_work_limit(charge.saturating_mul(2).saturating_sub(1));
+        let value = "a".repeat(5_000);
+        let document = serde_json::to_string(&[&value, &value]).unwrap_or_default();
         assert!(matches!(
-            boundary.parse_json(&encoded, r#"["a","a"]"#),
+            parse_json(&encoded, &document),
             Err(JsonBoundaryError::InvalidInput { ref message })
                 if message.contains("work limit")
         ));
-        assert_eq!(boundary.patterns.borrow().len(), 1);
     }
 
     #[test]

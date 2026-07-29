@@ -280,6 +280,11 @@ public static partial class FerruleJson
             element,
             scalarDomain == JsonScalarDomain.None,
             patternContext);
+        var patternPropertyNames = ReadJsonPatternPropertyNames(
+            name,
+            element,
+            scalarDomain == JsonScalarDomain.None,
+            patternContext);
         var children = new List<JsonSchemaNode>();
         JsonSchemaNode? dynamic = null;
         var alternatives = new List<JsonAlternative>();
@@ -361,6 +366,15 @@ public static partial class FerruleJson
                 required,
                 alternatives,
                 propertyCountRange);
+            ValidatePatternPropertyNameSchema(
+                name,
+                patternPropertyNames,
+                children,
+                dynamic,
+                propertyDependencies,
+                required,
+                alternatives,
+                patternContext);
         }
         else if (kindElement.TryGetProperty("required", out _))
         {
@@ -376,6 +390,7 @@ public static partial class FerruleJson
             jsonAny,
             jsonFormats,
             scalarDomain,
+            fixedLexical,
             fixedValue,
             jsonAllowedValues,
             numericRange,
@@ -388,6 +403,7 @@ public static partial class FerruleJson
             propertyDependencies,
             dependentSchemas,
             propertyNames,
+            patternPropertyNames,
             jsonUniqueItems,
             children,
             dynamic,
@@ -679,7 +695,7 @@ public static partial class FerruleJson
             }
 
             canonicalSources.Add(sources.ToArray());
-            alternatives.Add(new JsonPatternAlternative(compiledTerms));
+            alternatives.Add(new JsonPatternAlternative(sources.ToArray(), compiledTerms));
         }
         if (alternatives.Count == 0)
         {
@@ -890,6 +906,9 @@ public static partial class FerruleJson
     private static JsonAlternative ReadAlternative(JsonElement element)
     {
         RequireKind(element, JsonValueKind.Object, "schema alternative", "object");
+        var name = element.TryGetProperty("name", out _)
+            ? RequiredString(element, "name")
+            : string.Empty;
         var members = RequiredStrings(element, "members");
         var required = element.TryGetProperty("required", out _)
             ? RequiredStrings(element, "required")
@@ -910,7 +929,7 @@ public static partial class FerruleJson
             }
         }
 
-        return new JsonAlternative(members, required, constraints);
+        return new JsonAlternative(name, members, required, constraints);
     }
 
     private static FerruleInstance ReadNode(
@@ -970,6 +989,7 @@ public static partial class FerruleJson
         ValidatePropertyCount(schema, properties.Count);
         ValidatePropertyNames(schema, properties, budget);
         ValidateDeclaredProperties(schema, properties);
+        ValidatePatternProperties(schema, properties, budget);
         ValidateRequired(schema, properties);
         ValidatePropertyDependencies(schema, properties);
         ValidateAlternatives(schema, properties);
@@ -1236,6 +1256,7 @@ public static partial class FerruleJson
 
         ValidateOutputRequired(schema, group);
         ValidateOutputPropertyNames(schema, group, budget);
+        ValidateOutputPatternProperties(schema, group, budget);
         ValidateOutputPropertyDependencies(schema, group);
         ValidateOutputAlternatives(schema, group);
         ValidateOutputPropertyCount(schema, group);
@@ -2279,6 +2300,7 @@ public static partial class FerruleJson
     private sealed record JsonConstraint(string Member, string Type, JsonElement Expected);
 
     private sealed record JsonAlternative(
+        string Name,
         IReadOnlyList<string> Members,
         IReadOnlyList<string> Required,
         IReadOnlyList<JsonConstraint> Constraints);
@@ -2352,6 +2374,7 @@ public static partial class FerruleJson
     }
 
     private sealed record JsonPatternAlternative(
+        IReadOnlyList<string> Sources,
         IReadOnlyList<FerruleJsonPattern> Terms);
 
     private sealed record JsonPatternConstraints(
@@ -2419,6 +2442,11 @@ public static partial class FerruleJson
 
         public bool FixedMatches(JsonPatternConstraints constraints, string value) =>
             constraints.IsMatch(value, ref _remainingFixedPatternWork);
+
+        public bool FixedMatches(
+            JsonPatternPropertyNames selectors,
+            string value) =>
+            selectors.IsMatch(value, ref _remainingFixedPatternWork);
     }
 
     private sealed class JsonSchemaNode
@@ -2431,6 +2459,7 @@ public static partial class FerruleJson
             bool jsonAny,
             IReadOnlyList<string> jsonFormats,
             JsonScalarDomain scalarDomain,
+            string? fixedLexical,
             FerruleValue? fixedValue,
             JsonAllowedValues? jsonAllowedValues,
             JsonNumericRange? numericRange,
@@ -2443,6 +2472,7 @@ public static partial class FerruleJson
             IReadOnlyList<JsonPropertyDependency> propertyDependencies,
             IReadOnlyList<JsonDependentSchema> dependentSchemas,
             JsonPropertyNameConstraints? propertyNames,
+            JsonPatternPropertyNames? patternPropertyNames,
             bool jsonUniqueItems,
             IReadOnlyList<JsonSchemaNode> children,
             JsonSchemaNode? dynamic,
@@ -2457,6 +2487,7 @@ public static partial class FerruleJson
             JsonAny = jsonAny;
             JsonFormats = jsonFormats;
             ScalarDomain = scalarDomain;
+            FixedLexical = fixedLexical;
             Fixed = fixedValue;
             JsonAllowedValues = jsonAllowedValues;
             NumericRange = numericRange;
@@ -2469,6 +2500,7 @@ public static partial class FerruleJson
             PropertyDependencies = propertyDependencies;
             DependentSchemas = dependentSchemas;
             PropertyNames = propertyNames;
+            PatternPropertyNames = patternPropertyNames;
             JsonUniqueItems = jsonUniqueItems;
             Children = children;
             Dynamic = dynamic;
@@ -2490,6 +2522,8 @@ public static partial class FerruleJson
         public IReadOnlyList<string> JsonFormats { get; }
 
         public JsonScalarDomain ScalarDomain { get; }
+
+        public string? FixedLexical { get; }
 
         public FerruleValue? Fixed { get; }
 
@@ -2514,6 +2548,8 @@ public static partial class FerruleJson
         public IReadOnlyList<JsonDependentSchema> DependentSchemas { get; }
 
         public JsonPropertyNameConstraints? PropertyNames { get; }
+
+        public JsonPatternPropertyNames? PatternPropertyNames { get; }
 
         public bool JsonUniqueItems { get; }
 
@@ -2582,6 +2618,9 @@ public static partial class FerruleJson
 
         public bool Matches(JsonPatternConstraints constraints, string value) =>
             _patternWork.Matches(constraints, value);
+
+        public bool Matches(FerruleJsonPattern pattern, string value) =>
+            _patternWork.Matches(pattern, value);
     }
 
     private sealed class PatternWorkBudget
@@ -2595,6 +2634,19 @@ public static partial class FerruleJson
             try
             {
                 return constraints.IsMatch(value, ref _remaining);
+            }
+            catch (FerruleRuntimeException)
+            {
+                HasFatalLimit = true;
+                throw;
+            }
+        }
+
+        public bool Matches(FerruleJsonPattern pattern, string value)
+        {
+            try
+            {
+                return pattern.IsMatch(value, ref _remaining);
             }
             catch (FerruleRuntimeException)
             {

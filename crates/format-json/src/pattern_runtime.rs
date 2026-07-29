@@ -121,6 +121,36 @@ impl PatternRuntime {
             property: property.to_string(),
         })
     }
+
+    pub(super) fn validate_dynamic_property_name(
+        &mut self,
+        schema: &SchemaNode,
+        property: &str,
+    ) -> Result<(), JsonFormatError> {
+        let Some(selectors) = schema.json_pattern_property_names() else {
+            return Ok(());
+        };
+        for source in selectors.sources() {
+            let Some(program) = self.programs.get(source) else {
+                return Err(JsonFormatError::InvalidPatternMetadata {
+                    reason: format!("compiled program for `{source}` is missing"),
+                });
+            };
+            match program.is_match_with_budget(property, &mut self.remaining_work) {
+                Ok(true) => return Ok(()),
+                Ok(false) => {}
+                Err(_) => {
+                    return Err(JsonFormatError::PatternWorkLimit {
+                        name: schema.name.clone(),
+                    });
+                }
+            }
+        }
+        Err(JsonFormatError::UnmatchedPatternProperty {
+            object: schema.name.clone(),
+            property: property.to_string(),
+        })
+    }
 }
 
 fn collect_programs(
@@ -154,6 +184,27 @@ fn collect_programs(
         && let Some(patterns) = constraints.patterns()
     {
         for source in patterns.any_of().iter().flatten() {
+            if programs.contains_key(source) {
+                continue;
+            }
+            let program = PortableJsonPattern::compile(source).map_err(|error| {
+                JsonFormatError::InvalidPatternMetadata {
+                    reason: error.to_string(),
+                }
+            })?;
+            programs.insert(source.clone(), program);
+        }
+    }
+    if !schema.json_pattern_property_names_are_valid() {
+        return Err(JsonFormatError::InvalidPatternMetadata {
+            reason: format!(
+                "patternProperties selectors on `{}` require an open object without alternatives",
+                schema.name
+            ),
+        });
+    }
+    if let Some(selectors) = schema.json_pattern_property_names() {
+        for source in selectors.sources() {
             if programs.contains_key(source) {
                 continue;
             }
