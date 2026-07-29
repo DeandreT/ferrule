@@ -318,13 +318,12 @@ impl TargetPlan {
         schema: &SchemaNode,
         root: &Scope,
         sources: &SourceExports<'_>,
-        graph: &Graph,
         keys: &mut KeyAlloc,
     ) -> Result<Option<Self>, MfdError> {
         if !scope_has_dynamic_mapping(root) {
             return Ok(None);
         }
-        if let Some(root_target) = build_root_target(schema, root, sources, graph, keys)? {
+        if let Some(root_target) = build_root_target(schema, root, sources, keys)? {
             return Ok(Some(Self {
                 kind: TargetKind::Root(root_target),
                 static_root: None,
@@ -405,26 +404,8 @@ impl RootTarget {
             );
             args.edges
                 .extend([(driver, nodes_input), (group_key, key_input)]);
-            driver = groups_output;
-        }
-        args.edges.push((driver, self.property_input));
-        args.edges.push((
-            required_node_output(args.node_out_key, self.property_key, "dynamic property key")?,
-            self.property_key_input,
-        ));
-        let item_driver = args.sources.key_for_abs(&self.item_source).ok_or_else(|| {
-            MfdError::Unsupported(format!(
-                "dynamic root item source `{}` has no exported port",
-                self.item_source.join("/")
-            ))
-        })?;
-        args.edges.push((item_driver, self.item_input));
-        for field in &self.fields {
-            connect_field(field, args.node_out_key, args.edges)?;
-        }
-        if self.group_by.is_none() {
             connect_position_roots(
-                [self.property_key],
+                [group_by],
                 Some(&self.outer_source),
                 true,
                 outer_driver,
@@ -434,6 +415,33 @@ impl RootTarget {
                 args.edges,
                 args.warnings,
             );
+            driver = groups_output;
+        }
+        args.edges.push((driver, self.property_input));
+        args.edges.push((
+            required_node_output(args.node_out_key, self.property_key, "dynamic property key")?,
+            self.property_key_input,
+        ));
+        connect_position_roots(
+            [self.property_key],
+            Some(&self.outer_source),
+            true,
+            driver,
+            args.graph,
+            args.position_inputs,
+            args.position_contexts,
+            args.edges,
+            args.warnings,
+        );
+        let item_driver = args.sources.key_for_abs(&self.item_source).ok_or_else(|| {
+            MfdError::Unsupported(format!(
+                "dynamic root item source `{}` has no exported port",
+                self.item_source.join("/")
+            ))
+        })?;
+        args.edges.push((item_driver, self.item_input));
+        for field in &self.fields {
+            connect_field(field, args.node_out_key, args.edges)?;
         }
         connect_position_roots(
             self.fields
@@ -531,7 +539,6 @@ fn build_root_target(
     schema: &SchemaNode,
     root: &Scope,
     sources: &SourceExports<'_>,
-    graph: &Graph,
     keys: &mut KeyAlloc,
 ) -> Result<Option<RootTarget>, MfdError> {
     if !root.merge_dynamic_fields || root.dynamic_children.is_empty() {
@@ -625,9 +632,6 @@ fn build_root_target(
         return Err(dynamic_target_error(
             "computed array item collection is missing",
         ));
-    }
-    if root.group_by.is_some() {
-        reject_position_dependencies(graph, root.group_by.into_iter().chain([child.key]))?;
     }
     let fields = item_scope
         .dynamic_bindings
@@ -892,29 +896,6 @@ fn node_dependencies(node: &Node) -> Vec<NodeId> {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
     }
-}
-
-fn reject_position_dependencies(
-    graph: &Graph,
-    roots: impl IntoIterator<Item = NodeId>,
-) -> Result<(), MfdError> {
-    let mut pending = roots.into_iter().collect::<Vec<_>>();
-    let mut seen = BTreeSet::new();
-    while let Some(id) = pending.pop() {
-        if !seen.insert(id) {
-            continue;
-        }
-        let Some(node) = graph.nodes.get(&id) else {
-            continue;
-        };
-        if matches!(node, Node::Position { .. } | Node::JoinPosition { .. }) {
-            return Err(dynamic_target_error(
-                "computed property expressions using position are not yet exportable",
-            ));
-        }
-        pending.extend(node_dependencies(node));
-    }
-    Ok(())
 }
 
 fn connect_field(

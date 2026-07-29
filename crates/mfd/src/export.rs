@@ -88,8 +88,7 @@ impl<'a> TargetExport<'a> {
         keys: &mut KeyAlloc,
     ) -> Result<Self, MfdError> {
         let mut format = side_format(spec.path, spec.options);
-        let dynamic_json =
-            dynamic_json::TargetPlan::build(spec.schema, spec.root, sources, &project.graph, keys)?;
+        let dynamic_json = dynamic_json::TargetPlan::build(spec.schema, spec.root, sources, keys)?;
         if dynamic_json.is_some() && format != SideFormat::Json {
             if spec.path.is_some() || !dynamic_json::target_format_is_implicit(spec.options) {
                 return Err(MfdError::Unsupported(
