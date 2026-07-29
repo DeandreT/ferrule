@@ -81,9 +81,17 @@ layout and dialect details that an extension cannot express.
   unions and independently constrained nested array wrappers reject rather than
   widen. `$ref` siblings follow the dialect declared by their physical schema
   resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
-  schemas without `$schema` apply Ferrule's supported numeric and item-count
-  assertions. Unsupported modern structural intersections reject explicitly
-  instead of widening silently; external resources select their own policy.
+  schemas without `$schema` apply Ferrule's supported numeric, item-count, and
+  annotation metadata. Unknown and empty string `format` annotations are
+  retained exactly on string-capable values and array items, accumulated in
+  order through compatible `allOf`, references, and exact scalar/array unions,
+  and exported without turning them into assertions. Ferrule does not validate
+  values against named format vocabularies. Annotations on non-string values
+  and arbitrary-JSON nodes are syntactically validated but not retained. Each
+  node retains at most 64 distinct annotations, each at most 1 KiB and at most
+  16 KiB in total.
+  Unsupported modern structural intersections reject explicitly instead of
+  widening silently; external resources select their own policy.
   Export emits the canonical normalized constraint form.
   General heterogeneous array composition, validation-bearing scalar unions,
   and mixed structural unions remain unsupported.

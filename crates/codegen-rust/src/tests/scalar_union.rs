@@ -12,6 +12,20 @@ fn scalar_union(name: &str, types: [ScalarType; 2]) -> (SchemaNode, ScalarTypeSe
 fn union_program() -> Program {
     let (value_source, value_types) = scalar_union("Value", [ScalarType::String, ScalarType::Int]);
     let (value_target, _) = scalar_union("Value", [ScalarType::String, ScalarType::Int]);
+    let Ok(source_formats) = ir::JsonFormatAnnotations::new(["source-identifier".to_string()])
+    else {
+        panic!("source format annotation is bounded");
+    };
+    let Ok(target_formats) = ir::JsonFormatAnnotations::new(["target-identifier".to_string()])
+    else {
+        panic!("target format annotation is bounded");
+    };
+    let Some(value_source) = value_source.with_json_formats(source_formats) else {
+        panic!("source format annotation matches its string-containing union");
+    };
+    let Some(value_target) = value_target.with_json_formats(target_formats) else {
+        panic!("target format annotation matches its string-containing union");
+    };
     let (number_target, number_types) =
         scalar_union("Number", [ScalarType::Float, ScalarType::Bool]);
     Program {
@@ -152,6 +166,8 @@ fn generated_union_targets_preserve_tags_and_adapt_exact_numbers() {
         "adapt_union_target_value(expression_2(context)?, &[ScalarType::Float, ScalarType::Bool])"
     ));
     assert!(generated_source.contains(r#"\"kind\":\"scalar_union\""#));
+    assert!(generated_source.contains(r#"\"json_formats\":[\"source-identifier\"]"#));
+    assert!(generated_source.contains(r#"\"json_formats\":[\"target-identifier\"]"#));
 
     let output = TempDir::new("rust_scalar_union_codegen");
     write_artifacts(output.path(), &artifacts);

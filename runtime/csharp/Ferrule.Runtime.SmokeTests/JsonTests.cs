@@ -127,6 +127,7 @@ internal static partial class Program
         JsonConstantBoundaries();
         JsonRangeBoundaries();
         JsonItemCountBoundaries();
+        JsonFormatAnnotationBoundaries();
         JsonScalarUnionBoundaries();
     }
 
@@ -308,6 +309,91 @@ internal static partial class Program
                 () => FerruleJson.Parse(invalidSchema, "[]"));
         }
     }
+
+    private static void JsonFormatAnnotationBoundaries()
+    {
+        var annotated = JsonFormatSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            new[] { string.Empty, "email" });
+        var parsed = FerruleJson.Parse(annotated, "\"not-an-email\"");
+        Equal(
+            Text("not-an-email"),
+            ((FerruleScalar)parsed).Value);
+        Equal(
+            "\"not-an-email\"\n",
+            FerruleJson.Serialize(annotated, parsed));
+
+        var repeated = JsonFormatSchema(
+            "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+            new[] { "date" },
+            repeating: true);
+        Equal(
+            "[\n  \"not-a-date\"\n]\n",
+            FerruleJson.Serialize(
+                repeated,
+                FerruleJson.Parse(repeated, "[\"not-a-date\"]")));
+
+        var maximumCount = Enumerable.Range(0, 64).Select(index => $"format-{index}");
+        var maximumSingle = new[] { new string('\u00E9', 512) };
+        var maximumTotal = Enumerable.Range(0, 16)
+            .Select(index => new string((char)('a' + index), 1024));
+        foreach (var validSchema in new[] { maximumCount, maximumSingle, maximumTotal }
+                     .Select(formats => JsonFormatSchema(
+                         "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                         formats)))
+        {
+            Equal(
+                Text("value"),
+                ((FerruleScalar)FerruleJson.Parse(validSchema, "\"value\"")).Value);
+        }
+
+        var tooMany = Enumerable.Range(0, 65).Select(index => $"format-{index}");
+        var tooLarge = new[] { new string('\u00E9', 513) };
+        var tooLargeInTotal = Enumerable.Range(0, 17)
+            .Select(index => new string((char)('a' + index), 1024));
+        foreach (var invalidSchema in new[]
+                 {
+                     "{\"name\":\"Value\",\"json_formats\":\"email\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     "{\"name\":\"Value\",\"json_formats\":[7],\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}",
+                     JsonFormatSchema(
+                         "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                         new[] { "email", "email" }),
+                     JsonFormatSchema(
+                         "{\"kind\":\"scalar\",\"ty\":\"int\"}",
+                         new[] { "email" }),
+                     JsonFormatSchema(
+                         "{\"kind\":\"group\",\"children\":[]}",
+                         new[] { "email" }),
+                     JsonFormatSchema(
+                         "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                         new[] { "email" },
+                         jsonAny: true),
+                     JsonFormatSchema(
+                         "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                         tooMany),
+                     JsonFormatSchema(
+                         "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                         tooLarge),
+                     JsonFormatSchema(
+                         "{\"kind\":\"scalar\",\"ty\":\"string\"}",
+                         tooLargeInTotal),
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "\"value\""));
+        }
+    }
+
+    private static string JsonFormatSchema(
+        string kind,
+        IEnumerable<string> formats,
+        bool jsonAny = false,
+        bool repeating = false) =>
+        $"{{\"name\":\"Value\",\"repeating\":{repeating.ToString().ToLowerInvariant()}," +
+        $"\"json_any\":{jsonAny.ToString().ToLowerInvariant()}," +
+        $"\"json_formats\":{System.Text.Json.JsonSerializer.Serialize(formats)}," +
+        $"\"kind\":{kind}}}";
 
     private static void JsonScalarUnionBoundaries()
     {
