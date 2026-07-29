@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use std::collections::BTreeSet;
 
-use ir::{SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
+use ir::{
+    GroupAlternativeMode, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD,
+    XmlAlternativeKind,
+};
 use mapping::NodeId;
 
 use super::{ProgramValidationError, SourceCatalog};
@@ -122,6 +125,9 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     if !schema.xml_repeating_sequences.is_empty() {
         return Some("anonymous repeating-sequence metadata");
     }
+    if !schema.xml_repeating_choices.is_empty() {
+        return Some("repeating-choice order metadata");
+    }
     if matches!(schema.kind, SchemaKind::ScalarUnion { .. }) {
         return Some("heterogeneous scalar unions");
     }
@@ -135,7 +141,18 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
         return None;
     };
     if !alternatives.is_empty() {
-        return Some("schema alternatives");
+        if schema.alternative_mode() != GroupAlternativeMode::Exclusive {
+            return Some("inclusive schema alternatives");
+        }
+        if schema.xml_alternative_kind != XmlAlternativeKind::XsiType {
+            return Some("substitution-group alternatives");
+        }
+        if alternatives
+            .iter()
+            .any(|alternative| !alternative.constraints.is_empty())
+        {
+            return Some("value-constrained schema alternatives");
+        }
     }
     if dynamic.is_some() {
         return Some("runtime-named fields");

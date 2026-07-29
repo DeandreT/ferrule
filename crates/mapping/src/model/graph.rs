@@ -140,7 +140,7 @@ pub enum Node {
         path: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         frame: Option<Vec<String>>,
-        schema: ir::SchemaNode,
+        schema: Box<ir::SchemaNode>,
         #[serde(default)]
         declaration: bool,
         #[serde(default = "default_xml_indent")]

@@ -87,7 +87,7 @@ impl GraphBuilder<'_> {
         let node = self.alloc(Node::XmlSerialize {
             path,
             frame,
-            schema: recipe.schema.clone(),
+            schema: Box::new(recipe.schema.clone()),
             declaration: recipe.declaration,
             indent: recipe.indent,
             namespace: recipe.namespace.clone(),
