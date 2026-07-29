@@ -1,56 +1,23 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{ItemCountRange, SchemaNode};
+use crate::{ItemCountRange, JsonSchemaPredicate, SchemaNode};
 
 pub const MAX_JSON_CONTAINS_CONSTRAINTS: usize = 32;
-
-/// One JSON Schema predicate used to count matching array items.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum JsonContainsPredicate {
-    /// A predicate that matches no JSON value.
-    Never,
-    /// One ordinary, exactly represented JSON item schema.
-    Schema { schema: Box<SchemaNode> },
-}
-
-impl JsonContainsPredicate {
-    pub fn never() -> Self {
-        Self::Never
-    }
-
-    pub fn schema(schema: SchemaNode) -> Self {
-        Self::Schema {
-            schema: Box::new(schema),
-        }
-    }
-
-    pub fn as_schema(&self) -> Option<&SchemaNode> {
-        match self {
-            Self::Never => None,
-            Self::Schema { schema } => Some(schema),
-        }
-    }
-
-    pub fn is_never(&self) -> bool {
-        matches!(self, Self::Never)
-    }
-}
 
 /// One independently counted JSON Schema `contains` assertion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JsonContainsConstraint {
-    predicate: JsonContainsPredicate,
+    predicate: JsonSchemaPredicate,
     range: ItemCountRange,
 }
 
 impl JsonContainsConstraint {
-    pub fn new(predicate: JsonContainsPredicate, range: ItemCountRange) -> Self {
+    pub fn new(predicate: JsonSchemaPredicate, range: ItemCountRange) -> Self {
         Self { predicate, range }
     }
 
-    pub fn predicate(&self) -> &JsonContainsPredicate {
+    pub fn predicate(&self) -> &JsonSchemaPredicate {
         &self.predicate
     }
 
@@ -131,11 +98,8 @@ impl<'de> Deserialize<'de> for JsonContainsConstraints {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate,
-        MAX_JSON_CONTAINS_CONSTRAINTS,
-    };
-    use crate::{ItemCountRange, ScalarType, SchemaNode};
+    use super::{JsonContainsConstraint, JsonContainsConstraints, MAX_JSON_CONTAINS_CONSTRAINTS};
+    use crate::{ItemCountRange, JsonContainsPredicate, ScalarType, SchemaNode};
 
     #[test]
     fn construction_deduplicates_terms_and_removes_false_tautologies() {

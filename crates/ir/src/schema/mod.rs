@@ -1,11 +1,13 @@
 mod item_count_range;
 mod json_allowed_values;
 mod json_contains_constraints;
+mod json_dependent_schema_constraints;
 mod json_format_annotations;
 mod json_multiple_of;
 mod json_pattern_constraints;
 mod json_property_dependencies;
 mod json_property_name_constraints;
+mod json_schema_predicate;
 mod numeric_range;
 mod property_count_range;
 mod string_length_range;
@@ -17,8 +19,14 @@ pub use json_allowed_values::{
     MAX_JSON_ALLOWED_VALUES,
 };
 pub use json_contains_constraints::{
-    JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate,
-    MAX_JSON_CONTAINS_CONSTRAINTS,
+    JsonContainsConstraint, JsonContainsConstraints, MAX_JSON_CONTAINS_CONSTRAINTS,
+};
+pub use json_schema_predicate::JsonSchemaPredicate;
+/// Compatibility alias for the original `contains`-specific public name.
+pub type JsonContainsPredicate = JsonSchemaPredicate;
+pub use json_dependent_schema_constraints::{
+    JsonDependentSchemaConstraint, JsonDependentSchemaConstraints,
+    MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
 };
 pub use json_format_annotations::{
     JsonFormatAnnotations, JsonFormatAnnotationsError, MAX_JSON_FORMAT_ANNOTATION_BYTES,

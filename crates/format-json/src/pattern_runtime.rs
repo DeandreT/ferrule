@@ -12,6 +12,7 @@ pub(super) struct PatternRuntime {
 
 impl PatternRuntime {
     pub(super) fn new(schema: &SchemaNode) -> Result<Self, JsonFormatError> {
+        crate::json_schema::predicate::validate_private_unique_items(schema)?;
         if !schema.json_pattern_budget_is_valid() {
             return Err(JsonFormatError::InvalidPatternMetadata {
                 reason:
@@ -165,6 +166,13 @@ fn collect_programs(
         }
     }
     if let Some(constraints) = &schema.json_contains {
+        for constraint in constraints.as_slice() {
+            if let Some(predicate) = constraint.predicate().as_schema() {
+                collect_programs(predicate, programs)?;
+            }
+        }
+    }
+    if let Some(constraints) = &schema.json_dependent_schemas {
         for constraint in constraints.as_slice() {
             if let Some(predicate) = constraint.predicate().as_schema() {
                 collect_programs(predicate, programs)?;

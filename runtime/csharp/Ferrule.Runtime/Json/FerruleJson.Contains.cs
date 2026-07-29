@@ -71,12 +71,13 @@ public static partial class FerruleJson
                 }
             }
 
-            var predicate = ReadContainsPredicate(
+            var predicate = ReadJsonSchemaPredicate(
                 name,
                 RequiredProperty(termElement, "predicate"),
                 schemaBudget,
                 patternContext,
-                depth + 1);
+                depth + 1,
+                "contains");
             var range = ReadContainsRange(
                 name,
                 RequiredProperty(termElement, "range"));
@@ -101,17 +102,18 @@ public static partial class FerruleJson
         return constraints;
     }
 
-    private static JsonContainsPredicate ReadContainsPredicate(
+    private static JsonSchemaPredicate ReadJsonSchemaPredicate(
         string name,
         JsonElement element,
         NodeBudget schemaBudget,
         JsonPatternSchemaContext patternContext,
-        int depth)
+        int depth,
+        string context)
     {
         RequireKind(
             element,
             JsonValueKind.Object,
-            $"schema node '{name}' JSON contains predicate",
+            $"schema node '{name}' JSON {context} predicate",
             "object");
         var kind = RequiredString(element, "kind");
         var fields = new HashSet<string>(StringComparer.Ordinal);
@@ -123,25 +125,48 @@ public static partial class FerruleJson
             if (!known || !fields.Add(property.Name))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON contains predicate has an unknown or duplicate field '{property.Name}'.");
+                    $"Embedded JSON schema node '{name}' JSON {context} predicate has an unknown or duplicate field '{property.Name}'.");
             }
         }
         if (string.Equals(kind, "never", StringComparison.Ordinal))
         {
-            return new JsonContainsPredicate(null);
+            return new JsonSchemaPredicate(null);
         }
         if (!string.Equals(kind, "schema", StringComparison.Ordinal))
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has unknown JSON contains predicate kind '{kind}'.");
+                $"Embedded JSON schema node '{name}' has unknown JSON {context} predicate kind '{kind}'.");
         }
-        return new JsonContainsPredicate(
-            ReadSchemaNode(
-                RequiredProperty(element, "schema"),
-                schemaBudget,
-                patternContext,
-                depth));
+        var schema = ReadSchemaNode(
+            RequiredProperty(element, "schema"),
+            schemaBudget,
+            patternContext,
+            depth);
+        if (!PrivateUniqueItemsAreExact(schema))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' JSON {context} predicate uses uniqueItems with a number or arbitrary-JSON item domain whose exact numeric semantics cannot be preserved.");
+        }
+        return new JsonSchemaPredicate(schema);
     }
+
+    private static bool PrivateUniqueItemsAreExact(JsonSchemaNode schema) =>
+        (!schema.JsonUniqueItems || !ItemShapeCanLoseNumberPrecision(schema)) &&
+        schema.JsonContains.All(constraint =>
+            constraint.Predicate.Schema is null ||
+            PrivateUniqueItemsAreExact(constraint.Predicate.Schema)) &&
+        schema.DependentSchemas.All(constraint =>
+            constraint.Predicate.Schema is null ||
+            PrivateUniqueItemsAreExact(constraint.Predicate.Schema)) &&
+        schema.Children.All(PrivateUniqueItemsAreExact) &&
+        (schema.Dynamic is null || PrivateUniqueItemsAreExact(schema.Dynamic));
+
+    private static bool ItemShapeCanLoseNumberPrecision(JsonSchemaNode schema) =>
+        schema.JsonAny ||
+        (schema.ScalarDomain & JsonScalarDomain.Double) != 0 ||
+        schema.Children.Any(ItemShapeCanLoseNumberPrecision) ||
+        (schema.Dynamic is not null &&
+         ItemShapeCanLoseNumberPrecision(schema.Dynamic));
 
     private static JsonItemCountRange ReadContainsRange(
         string name,
@@ -187,12 +212,12 @@ public static partial class FerruleJson
         foreach (var constraint in schema.JsonContains)
         {
             var matches = 0;
-            if (constraint.Predicate.Schema is { } predicate)
+            if (constraint.Predicate.Schema is not null)
             {
                 foreach (var item in array.EnumerateArray())
                 {
-                    if (MatchesContainsPredicate(
-                            predicate,
+                    if (MatchesJsonSchemaPredicate(
+                            constraint.Predicate,
                             item,
                             matcher,
                             depth))
@@ -250,12 +275,12 @@ public static partial class FerruleJson
             foreach (var constraint in schema.JsonContains)
             {
                 var matches = 0;
-                if (constraint.Predicate.Schema is { } predicate)
+                if (constraint.Predicate.Schema is not null)
                 {
                     foreach (var document in documents)
                     {
-                        if (MatchesContainsPredicate(
-                                predicate,
+                        if (MatchesJsonSchemaPredicate(
+                                constraint.Predicate,
                                 document.RootElement,
                                 matcher,
                                 depth))
@@ -303,15 +328,19 @@ public static partial class FerruleJson
         }
     }
 
-    private static bool MatchesContainsPredicate(
-        JsonSchemaNode predicate,
+    private static bool MatchesJsonSchemaPredicate(
+        JsonSchemaPredicate predicate,
         JsonElement value,
         NodeBudget matcher,
         int depth)
     {
+        if (predicate.Schema is not { } predicateSchema)
+        {
+            return false;
+        }
         try
         {
-            _ = ReadNode(predicate, value, matcher, depth);
+            _ = ReadNode(predicateSchema, value, matcher, depth);
             return true;
         }
         catch (FerruleRuntimeException) when (!matcher.HasFatalLimit)
@@ -333,8 +362,8 @@ public static partial class FerruleJson
     }
 
     private sealed record JsonContainsConstraint(
-        JsonContainsPredicate Predicate,
+        JsonSchemaPredicate Predicate,
         JsonItemCountRange Range);
 
-    private sealed record JsonContainsPredicate(JsonSchemaNode? Schema);
+    private sealed record JsonSchemaPredicate(JsonSchemaNode? Schema);
 }

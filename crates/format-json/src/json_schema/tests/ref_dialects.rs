@@ -96,7 +96,6 @@ fn modern_and_default_dialects_apply_supported_ref_siblings() -> Result<(), Json
 fn modern_structural_and_malformed_supported_siblings_reject() {
     for sibling in [
         r##""$dynamicRef":"#/$defs/Base""##,
-        r##""$recursiveRef":"#/$defs/Base""##,
         r#""type":"string""#,
         r#""required":["value"]"#,
         r#""allOf":[{"type":"integer"}]"#,

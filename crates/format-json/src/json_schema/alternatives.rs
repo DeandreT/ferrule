@@ -4,8 +4,8 @@ use ir::{
 };
 
 use super::{
-    allowed_values, contains, files, formats, item_counts, multiples, parse, patterns,
-    property_counts, property_dependencies, property_names, ranges,
+    allowed_values, contains, dependent_schemas, files, formats, item_counts, multiples, parse,
+    patterns, property_counts, property_dependencies, property_names, ranges,
     reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
 };
 use crate::JsonFormatError;
@@ -1289,6 +1289,8 @@ pub(super) fn parse_object_alternatives(
     let mut saw_property_count = false;
     let mut common_property_dependencies = None;
     let mut saw_property_dependencies = false;
+    let mut common_dependent_schemas = None;
+    let mut saw_dependent_schemas = false;
     let mut common_property_names = None;
     let mut saw_property_names = false;
     for (index, alternative_schema) in alternatives.iter().enumerate() {
@@ -1335,7 +1337,19 @@ pub(super) fn parse_object_alternatives(
             })
             .unwrap_or_else(|| format!("{keyword}{index}"));
         let normalized = without_direct_property_constraints(resolved);
-        let parsed = parse(&alternative_name, &normalized, doc, active_refs)?;
+        let mut parsed = parse(&alternative_name, &normalized, doc, active_refs)?;
+        if !core::ptr::eq(resolved, alternative_schema)
+            && files::ref_siblings_apply(alternative_schema)
+        {
+            dependent_schemas::apply(
+                name,
+                alternative_schema,
+                &mut parsed,
+                doc,
+                active_refs,
+                false,
+            )?;
+        }
         let sibling_property_count = if !core::ptr::eq(resolved, alternative_schema)
             && files::ref_siblings_apply(alternative_schema)
         {
@@ -1392,6 +1406,23 @@ pub(super) fn parse_object_alternatives(
         }
         common_property_dependencies = branch_property_dependencies;
         saw_property_dependencies = true;
+        let branch_dependent_schemas = parsed.json_dependent_schemas.clone();
+        if saw_dependent_schemas {
+            if !equivalent_dependent_schemas(
+                common_dependent_schemas.as_ref(),
+                branch_dependent_schemas.as_ref(),
+            ) {
+                return Err(unsupported_union(
+                    name,
+                    &format!(
+                        "{keyword} object alternatives have differing dependent schemas that cannot be represented independently"
+                    ),
+                ));
+            }
+        } else {
+            common_dependent_schemas = branch_dependent_schemas;
+            saw_dependent_schemas = true;
+        }
         let sibling_property_names = if !core::ptr::eq(resolved, alternative_schema)
             && files::ref_siblings_apply(alternative_schema)
         {
@@ -1541,6 +1572,7 @@ pub(super) fn parse_object_alternatives(
     .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))?;
     group.property_count_range = common_property_count;
     group.json_property_dependencies = common_property_dependencies;
+    group.json_dependent_schemas = common_dependent_schemas;
     group.json_property_names = common_property_names;
     property_counts::ensure_feasible(name, &group)?;
     property_dependencies::ensure_feasible(name, &group)?;
@@ -1551,6 +1583,17 @@ pub(super) fn parse_object_alternatives(
         ));
     }
     Ok(group)
+}
+
+fn equivalent_dependent_schemas(
+    left: Option<&ir::JsonDependentSchemaConstraints>,
+    right: Option<&ir::JsonDependentSchemaConstraints>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left.semantically_equals(right),
+        (None, None) => true,
+        (Some(_), None) | (None, Some(_)) => false,
+    }
 }
 
 fn merge_exact_constrained_nullability(
