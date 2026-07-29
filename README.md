@@ -85,6 +85,20 @@ cargo +nightly run -p cli -- run \
 Use `--target primary` for the primary target. Without `--target`, ferrule
 evaluates every target and atomically rejects destination collisions.
 
+For a stateless, payload-compatible mapping, the CLI can stream one primary
+input and exactly one output artifact without creating input or output files.
+The configured `source_path` and `target_path` select the input/output formats:
+
+```sh
+ferrule run project.json - - < order.csv > invoice.csv
+```
+
+`-` is valid only for the primary input and one stdout artifact. Named sources
+keep their configured local paths. Dynamic named sources, SQLite, and
+update-existing XLSX remain filesystem-host operations; mappings that produce
+more than one artifact are rejected before stdout receives bytes. No success
+report is mixed into stdout; diagnostics remain on stderr.
+
 Rust hosts can run the same interpreter without temporary input or output files:
 
 ```rust
