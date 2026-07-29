@@ -208,16 +208,23 @@
           predicate patterns share the document work budget, and malformed
           metadata remains a typed boundary failure. Text and UTF-8 byte entry
           points enforce the same primary and named input/output behavior.
-          Draft 7, 2019-09, 2020-12, and undeclared schemas with explicit
-          non-null <code>type: "object"</code> may
-          spell one such rule as an <code>if</code> with exactly one
-          required-property presence trigger, a supported <code>then</code>
-          predicate, and an absent or <code>true</code> <code>else</code>.
-          Import normalizes that form to dependent-schema metadata and canonical
-          export writes <code>dependentSchemas</code>, so generated Rust and C#
-          need no separate conditional runtime. Value-sensitive, multi-trigger,
-          general-<code>if</code>, and nontrivial-<code>else</code> conditionals remain
-          unsupported.
+          Draft 7, 2019-09, 2020-12, and undeclared explicitly typed object
+          schemas may spell one such rule as an <code>if</code> with exactly
+          one required-property presence trigger and a supported
+          <code>then</code> predicate. A nullable outer object is supported with an absent or
+          <code>true</code> <code>else</code> only when the
+          <code>if</code> explicitly proves <code>type: "object"</code>.
+          Exact <code>else: false</code> requires a trigger that can be
+          represented as an ordinary required field; it removes the nullable
+          bypass when the false branch rejects null and retains any supported
+          <code>then</code> dependency. It does not combine with existing
+          object alternatives, and a closed object must already declare the
+          trigger. Import lowers these forms to <code>required</code> plus
+          <code>dependentRequired</code> or <code>dependentSchemas</code>
+          metadata as appropriate, so generated Rust and C# need no separate
+          conditional runtime. Value-sensitive, multi-trigger,
+          general-<code>if</code>, and other nontrivial <code>else</code>
+          schemas remain unsupported.
         </p>
 
         <p>
