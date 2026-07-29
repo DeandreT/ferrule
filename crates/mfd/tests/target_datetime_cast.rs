@@ -148,3 +148,89 @@ fn target_without_cast_mode_preserves_the_connected_lexical_value() {
         Some(&Value::String("2031-08-17+05:45".to_string()))
     );
 }
+
+#[test]
+fn relocated_package_resolves_windows_parent_target_cast_schema()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new();
+    let original = directory.0.join("original");
+    let maps = original.join("maps/orders");
+    let schemas = original.join("schemas");
+    std::fs::create_dir_all(&maps)?;
+    std::fs::create_dir_all(&schemas)?;
+    let design = write_design(&maps, true);
+    std::fs::rename(maps.join("target.xsd"), schemas.join("target.xsd"))?;
+    let mapping = std::fs::read_to_string(&design)?.replace(
+        "schema=\"target.xsd\"",
+        "schema=\"..\\..\\schemas\\target.xsd\"",
+    );
+    std::fs::write(&design, mapping)?;
+
+    let relocated = directory.0.join("relocated");
+    std::fs::rename(&original, &relocated)?;
+    let relocated_design = relocated.join(design.strip_prefix(&original)?);
+    let options = mfd::ImportOptions::default().with_package_root(&relocated);
+    let imported = mfd::import_with_options(&relocated_design, &options)?;
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let received = imported
+        .project
+        .root
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Received")
+        .ok_or("Received target binding is missing")?;
+    assert!(matches!(
+        imported.project.graph.nodes.get(&received.node),
+        Some(Node::Call { function, .. }) if function == "coerce_datetime"
+    ));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn target_cast_schema_symlink_escape_falls_back_without_reopening_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::symlink;
+
+    let directory = TempDir::new();
+    let package = directory.0.join("package");
+    let maps = package.join("maps/orders");
+    let schemas = package.join("schemas");
+    std::fs::create_dir_all(&maps)?;
+    std::fs::create_dir_all(&schemas)?;
+    let design = write_design(&maps, true);
+    let outside_schema = directory.0.join("outside-target.xsd");
+    std::fs::rename(maps.join("target.xsd"), &outside_schema)?;
+    symlink(&outside_schema, schemas.join("target.xsd"))?;
+    let mapping = std::fs::read_to_string(&design)?.replace(
+        "schema=\"target.xsd\"",
+        "schema=\"..\\..\\schemas\\target.xsd\"",
+    );
+    std::fs::write(&design, mapping)?;
+
+    let options = mfd::ImportOptions::default().with_package_root(&package);
+    let imported = mfd::import_with_options(&design, &options)?;
+
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("target cast-in-subtree metadata")
+            && warning.contains("resolves outside package root")
+    }));
+    let received = imported
+        .project
+        .root
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Received")
+        .ok_or("Received target binding is missing")?;
+    assert!(!matches!(
+        imported.project.graph.nodes.get(&received.node),
+        Some(Node::Call { function, .. }) if function == "coerce_datetime"
+    ));
+    let output = engine::run(&imported.project, &source())?;
+    assert_eq!(
+        output.field("Received").and_then(Instance::as_scalar),
+        Some(&Value::String("2031-08-17+05:45".to_string()))
+    );
+    Ok(())
+}

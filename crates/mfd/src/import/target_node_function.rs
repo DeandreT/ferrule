@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 use ir::{ScalarType, SchemaKind};
+
+use crate::resource::ResourceResolver;
 
 use super::graph::GraphBuilder;
 use super::schema::{ComponentFormat, SchemaComponent, normalize_xml_entry_name, schema_node_at};
@@ -50,7 +51,7 @@ pub(super) fn install(
     mapping: &roxmltree::Node<'_, '_>,
     target: &SchemaComponent,
     structure: &roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     builder: &mut GraphBuilder<'_>,
     scopes: &mut ScopeBuilder,
 ) {
@@ -82,7 +83,16 @@ pub(super) fn install(
         .iter()
         .map(|rule| rule.path.clone())
         .collect::<BTreeSet<_>>();
-    let fraction_digits = read_fraction_digits(component, mfd_path, target, &paths);
+    let fraction_digits = match read_fraction_digits(component, resources, target, &paths) {
+        Ok(fraction_digits) => fraction_digits,
+        Err((schema_reference, reason)) => {
+            builder.warnings.push(format!(
+                "target node-function metadata from schema `{schema_reference}` was skipped: \
+                 {reason}"
+            ));
+            BTreeMap::new()
+        }
+    };
     for applied in rules {
         install_one(applied, target, &fraction_digits, builder, scopes);
     }
@@ -240,39 +250,38 @@ fn existing_scope<'a>(
 
 fn read_fraction_digits(
     component: roxmltree::Node<'_, '_>,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     target: &SchemaComponent,
     paths: &BTreeSet<Vec<String>>,
-) -> BTreeMap<Vec<String>, u32> {
+) -> Result<BTreeMap<Vec<String>, u32>, (String, String)> {
     let schema_reference = component
         .descendants()
         .find(|node| node.has_tag_name("document"))
         .and_then(|document| document.attribute("schema"));
-    let Some(schema_path) = schema_reference.and_then(|reference| {
-        super::schema::resolve_xml_schema_reference(mfd_path, reference).ok()
-    }) else {
-        return BTreeMap::new();
+    let Some(schema_reference) = schema_reference else {
+        return Ok(BTreeMap::new());
     };
-    if std::fs::metadata(&schema_path)
-        .ok()
-        .is_none_or(|metadata| metadata.len() > MAX_SCHEMA_BYTES)
-    {
-        return BTreeMap::new();
-    }
-    let Some(text) = std::fs::read_to_string(schema_path).ok() else {
-        return BTreeMap::new();
-    };
-    let Some(document) = roxmltree::Document::parse(&text).ok() else {
-        return BTreeMap::new();
-    };
+    let text = resources
+        .read_utf8_file(
+            schema_reference,
+            "target node-function XML Schema",
+            MAX_SCHEMA_BYTES,
+        )
+        .map_err(|reason| (schema_reference.to_string(), reason))?;
+    let document = roxmltree::Document::parse(&text).map_err(|error| {
+        (
+            schema_reference.to_string(),
+            format!("schema is not well-formed XML ({error})"),
+        )
+    })?;
     let schema = document.root_element();
-    paths
+    Ok(paths
         .iter()
         .filter_map(|path| {
             fraction_digits_for_path(schema, &target.schema.name, path)
                 .map(|digits| (path.clone(), digits))
         })
-        .collect()
+        .collect())
 }
 
 fn fraction_digits_for_path(

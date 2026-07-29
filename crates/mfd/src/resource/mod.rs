@@ -2,6 +2,7 @@
 
 mod manifest;
 
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 use crate::MfdError;
@@ -310,6 +311,39 @@ impl ResourceResolver {
             ));
         }
         Ok(resolved)
+    }
+
+    /// Reads one package-confined UTF-8 resource without permitting an
+    /// unbounded allocation between path resolution and parsing.
+    pub(crate) fn read_utf8_file(
+        &self,
+        declared: &str,
+        description: &str,
+        max_bytes: u64,
+    ) -> Result<String, String> {
+        let resolved = self.resolve_file(declared, description)?;
+        let file = std::fs::File::open(&resolved).map_err(|error| {
+            format!(
+                "could not open {description} `{declared}` at `{}` ({error})",
+                resolved.display()
+            )
+        })?;
+        let mut bytes = Vec::new();
+        file.take(max_bytes.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .map_err(|error| {
+                format!(
+                    "could not read {description} `{declared}` at `{}` ({error})",
+                    resolved.display()
+                )
+            })?;
+        if u64::try_from(bytes.len()).map_or(true, |length| length > max_bytes) {
+            return Err(format!(
+                "{description} `{declared}` exceeds the {max_bytes}-byte import limit"
+            ));
+        }
+        String::from_utf8(bytes)
+            .map_err(|error| format!("{description} `{declared}` is not UTF-8 ({error})"))
     }
 }
 

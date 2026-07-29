@@ -1493,22 +1493,16 @@ pub(super) fn read_db_component_in_package(
     resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    read_db_component_resolved(
-        component,
-        mapping_el,
-        resources.mapping_path(),
-        Some(resources),
-        warnings,
-    )
+    read_db_component_resolved(component, mapping_el, resources, warnings)
 }
 
 fn read_db_component_resolved(
     component: &roxmltree::Node,
     mapping_el: &roxmltree::Node,
-    mfd_path: &Path,
-    resources: Option<&ResourceResolver>,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
+    let mfd_path = resources.mapping_path();
     let name = component.attribute("name").unwrap_or_default().to_string();
     match super::db_query::read_embedded_catalog(component, mapping_el, mfd_path) {
         Ok(Some(catalog)) => return Some(catalog),
@@ -1596,7 +1590,7 @@ fn read_db_component_resolved(
     let db_xml_columns = database_xml::collect(
         &tables,
         tables.len() > 1 || canonical_database_wrapper,
-        mfd_path,
+        resources,
         &name,
         warnings,
     );
@@ -1669,7 +1663,7 @@ fn read_db_component_resolved(
     }
 
     let db_path = connection.as_deref().and_then(|conn| {
-        match resolve_resource_reference(mfd_path, resources, conn, "database") {
+        match resolve_resource_reference(mfd_path, Some(resources), conn, "database") {
             Ok(path) => Some(path),
             Err(error) => {
                 if embedded_types.is_none() {

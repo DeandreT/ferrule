@@ -67,6 +67,11 @@ also resolve from the package boundary. Local references below an HTTP request
 JSON Schema remain confined to the root that authorized the schema; endpoint
 URLs, preview instance paths, and retained WSDL service contract locators are
 host metadata and are not rewritten as package resources.
+Target `cast-in-subtree` and target node-function metadata use the same bounded
+resolver when they inspect a component XSD after target construction. A missing,
+oversized, malformed, or canonically escaped schema produces an actionable
+postprocessing warning and leaves the resilient entry-tree mapping intact
+instead of reopening the resource outside the selected package.
 
 If EDI configurations live in a separately managed release catalog, declare
 each trusted catalog in search order:
@@ -127,6 +132,11 @@ typed scalar element/simple-content/attribute defaults, and materialize those
 defaults at the XML input boundary.
 Structured XML database columns reuse that typed serializer with compact output,
 so document-valued TEXT fields execute without flattening the source subtree.
+Their declared root XSD or DTD accepts portable Windows separators and safe
+parent traversal within an explicitly selected package, while canonical
+symlink escapes reject with an actionable column warning. The imported schema
+is embedded in the project, so execution remains independent of the original
+root schema file.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
 endpoints, validated against the physical columns, and exported canonically. This
 keeps nested relational reads executable when the database omits foreign-key metadata.
