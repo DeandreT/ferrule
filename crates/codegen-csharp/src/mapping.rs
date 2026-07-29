@@ -78,6 +78,18 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 }
                 output.push_str(");\n");
             }
+            Expression::DynamicSourceField { object, frame, key } => {
+                output.push_str("\n    {\n        var key = Node_");
+                output.push_str(&key.to_string());
+                output.push_str("(context);\n        return context.ResolveDynamicScalar(");
+                match frame {
+                    Some(frame) => render_path(frame, &mut output),
+                    None => output.push_str("null"),
+                }
+                output.push_str(", ");
+                render_path(object, &mut output);
+                output.push_str(", key);\n    }\n");
+            }
             Expression::XmlSerialize {
                 frame,
                 path,
@@ -1071,9 +1083,16 @@ fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut 
         ));
     }
 
-    output.push_str(&format!(
-        "        var items_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();\n        foreach (var item_context_{scope} in candidates_{scope})\n        {{\n"
-    ));
+    let dynamic = iteration.dynamic_document_iteration();
+    if dynamic.is_some() {
+        output.push_str(&format!(
+            "        var documents_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleDocument>();\n        foreach (var item_context_{scope} in candidates_{scope})\n        {{\n"
+        ));
+    } else {
+        output.push_str(&format!(
+            "        var items_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();\n        foreach (var item_context_{scope} in candidates_{scope})\n        {{\n"
+        ));
+    }
     if grouping.is_none()
         && !filter_before_sort
         && !has_windows
@@ -1083,16 +1102,37 @@ fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut 
             "            var filter_{scope} = Node_{filter}(item_context_{scope});\n            if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(filter_{scope}, {filter}U))\n            {{\n                continue;\n            }}\n"
         ));
     }
-    if renumber_output {
+    let item_context = if renumber_output {
+        let count = if dynamic.is_some() {
+            format!("documents_{scope}.Count")
+        } else {
+            format!("items_{scope}.Count")
+        };
         output.push_str(&format!(
-            "            var output_context_{scope} = item_context_{scope}.WithCompactedPosition(items_{scope}.Count + 1);\n            items_{scope}.Add(ScopeItem_{scope}(output_context_{scope}));\n"
+            "            var output_context_{scope} = item_context_{scope}.WithCompactedPosition({count} + 1);\n"
+        ));
+        format!("output_context_{scope}")
+    } else {
+        format!("item_context_{scope}")
+    };
+    if let Some(dynamic) = dynamic {
+        output.push_str(&format!(
+            "            var output_{scope} = ScopeItem_{scope}({item_context});\n            var output_path_{scope} = Node_{}({item_context});\n            documents_{scope}.Add(global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope}));\n",
+            dynamic.output_path(),
+            dynamic.output_path(),
         ));
     } else {
         output.push_str(&format!(
-            "            items_{scope}.Add(ScopeItem_{scope}(item_context_{scope}));\n"
+            "            items_{scope}.Add(ScopeItem_{scope}({item_context}));\n"
         ));
     }
     output.push_str("        }\n");
+    if dynamic.is_some() {
+        output.push_str(&format!(
+            "        return new global::Ferrule.Runtime.FerruleDocumentSet(documents_{scope});\n"
+        ));
+        return;
+    }
     match iteration.output() {
         IterationOutput::Repeated => output.push_str(&format!(
             "        return new global::Ferrule.Runtime.FerruleRepeated(items_{scope});\n"
@@ -1184,6 +1224,7 @@ fn render_post_group_filter(scope: usize, post_group_filter: Option<NodeId>, out
 fn render_grouping_path(input: &IterationSource, output: &mut String) {
     match input {
         IterationSource::Source(source) => render_path(source.path(), output),
+        IterationSource::DynamicDocuments(dynamic) => render_path(dynamic.source().path(), output),
         IterationSource::Generated(_) => render_path(&[], output),
         IterationSource::InnerJoin(_) | IterationSource::Concatenate(_) => {
             unreachable!("validated portable grouping cannot own an inner join")
@@ -1198,6 +1239,13 @@ fn render_iteration_candidates(scope: usize, input: &IterationSource, output: &m
                 "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateSource("
             ));
             render_path(source.path(), output);
+            output.push_str("));\n");
+        }
+        IterationSource::DynamicDocuments(dynamic) => {
+            output.push_str(&format!(
+                "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateSource("
+            ));
+            render_path(dynamic.source().path(), output);
             output.push_str("));\n");
         }
         IterationSource::Generated(sequence) => {

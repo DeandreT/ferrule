@@ -203,6 +203,13 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         source_path: Vec<String>,
     },
+    DynamicDocumentsRequireRoot {
+        target_path: Vec<String>,
+    },
+    MissingDynamicTargetPathExpression {
+        target_path: Vec<String>,
+        expression: NodeId,
+    },
     MissingGroupingExpression {
         target_path: Vec<String>,
         role: GroupingExpressionRole,
@@ -775,6 +782,27 @@ fn validate_scope(
                     .schema_at(schemas.current_source, source_iteration.path());
                 active_source = scope_source;
             }
+            IterationSource::DynamicDocuments(dynamic) => {
+                if !target_path.is_empty() {
+                    return Err(ProgramValidationError::DynamicDocumentsRequireRoot {
+                        target_path: target_path.clone(),
+                    });
+                }
+                let source_iteration = dynamic.source();
+                if !schemas
+                    .sources
+                    .path_matches(source_iteration.path(), |_| true)
+                {
+                    return Err(ProgramValidationError::InvalidSourceIteration {
+                        target_path: target_path.clone(),
+                        source_path: source_iteration.path().to_vec(),
+                    });
+                }
+                scope_source = schemas
+                    .sources
+                    .schema_at(schemas.current_source, source_iteration.path());
+                active_source = scope_source;
+            }
             IterationSource::Generated(sequence) => {
                 scope_source = None;
                 active_source = None;
@@ -824,6 +852,25 @@ fn validate_scope(
             active_source,
             ..schemas
         };
+        if let Some(dynamic) = iteration.dynamic_document_iteration() {
+            let expression = dynamic.output_path();
+            if !expressions.contains_key(&expression) {
+                return Err(ProgramValidationError::MissingDynamicTargetPathExpression {
+                    target_path: target_path.clone(),
+                    expression,
+                });
+            }
+            validate_expression_context(
+                expression,
+                expressions,
+                candidate_schemas,
+                sequence_items,
+                &item_context,
+                &scope_joins,
+                item_root_context,
+                &sequence_owner,
+            )?;
+        }
         if let Some(grouping_expression) = grouping_expression {
             let grouping_items = if grouping_expression.is_parent_context() {
                 active_sequence_items
@@ -939,13 +986,15 @@ fn validate_scope(
         }
         let target_is_nonrepeating_group =
             !target_node.repeating && matches!(target_node.kind, SchemaKind::Group { .. });
-        let invalid_output = match iteration.output() {
-            IterationOutput::Repeated => false,
-            IterationOutput::First => scope.repeating || !target_is_nonrepeating_group,
-            IterationOutput::MappedSequence => {
-                scope.repeating || target_path.is_empty() || !target_is_nonrepeating_group
-            }
-        };
+        let invalid_output = iteration.dynamic_document_iteration().is_some()
+            && iteration.output() != IterationOutput::Repeated
+            || match iteration.output() {
+                IterationOutput::Repeated => false,
+                IterationOutput::First => scope.repeating || !target_is_nonrepeating_group,
+                IterationOutput::MappedSequence => {
+                    scope.repeating || target_path.is_empty() || !target_is_nonrepeating_group
+                }
+            };
         if invalid_output {
             return Err(ProgramValidationError::InvalidIterationOutput {
                 target_path: target_path.clone(),
@@ -1076,7 +1125,10 @@ fn validate_scope(
                 );
             }
             if let Some(iteration) = &scope.iteration {
-                if !matches!(iteration.input(), IterationSource::Source(_)) {
+                if !matches!(
+                    iteration.input(),
+                    IterationSource::Source(_) | IterationSource::DynamicDocuments(_)
+                ) {
                     return Err(
                         ProgramValidationError::RecursiveFilterConstructionHasInvalidIteration {
                             target_path: target_path.clone(),
@@ -1626,6 +1678,19 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} source iteration {} matches no source path",
                 display_path(target_path),
                 display_path(source_path)
+            ),
+            Self::DynamicDocumentsRequireRoot { target_path } => write!(
+                formatter,
+                "target scope {} dynamic document iteration is valid only at a target root",
+                display_path(target_path)
+            ),
+            Self::MissingDynamicTargetPathExpression {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} dynamic target path references missing expression {expression}",
+                display_path(target_path)
             ),
             Self::MissingGroupingExpression {
                 target_path,

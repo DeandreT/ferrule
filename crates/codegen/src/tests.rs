@@ -15,6 +15,7 @@ mod adjacency_tree;
 mod artifacts;
 mod collection_find;
 mod concatenate;
+mod dynamic_documents;
 mod extra_sources;
 mod failures;
 mod grouping;
@@ -264,7 +265,7 @@ fn lowers_exact_whole_current_source_group_copy() {
 }
 
 #[test]
-fn rejects_copy_current_source_with_dynamic_target_paths() {
+fn lowers_copy_current_source_with_dynamic_target_paths() {
     let source = SchemaNode::group("Source", vec![scalar("Value")]).repeating();
     let mut target = source.clone();
     target.name = "Target".into();
@@ -296,13 +297,18 @@ fn rejects_copy_current_source_with_dynamic_target_paths() {
         root,
     };
 
-    let diagnostics = lower(&project)
-        .expect_err("dynamic target documents remain outside code generation")
-        .into_diagnostics();
-    assert!(diagnostics.contains(&Diagnostic::UnsupportedScope {
-        target_path: Vec::new(),
-        feature: ScopeFeature::Iteration,
-    }));
+    let program = lower(&project).expect("dynamic document output is portable");
+    let dynamic = program
+        .root
+        .iteration
+        .as_ref()
+        .and_then(IterationPlan::dynamic_document_iteration)
+        .expect("dynamic iteration is retained");
+    assert_eq!(dynamic.output_path(), 1);
+    assert_eq!(
+        program.root.construction,
+        crate::TargetConstruction::CopyCurrentSource
+    );
 }
 
 #[test]
@@ -770,6 +776,62 @@ fn lowers_primary_source_lookups_with_only_the_match_dependency() {
             .map(|node| node.id)
             .collect::<Vec<_>>(),
         vec![10, 30, 40]
+    );
+}
+
+#[test]
+fn lowers_dynamic_source_fields_with_only_the_key_dependency() {
+    let mut project = supported_project();
+    let Some(properties) =
+        SchemaNode::group("Properties", Vec::new()).with_dynamic_fields(scalar("*"))
+    else {
+        panic!("a group schema accepts dynamic fields");
+    };
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            scalar("First"),
+            scalar("Second"),
+            scalar("NestedValue"),
+            properties,
+        ],
+    );
+    project.graph.nodes.insert(
+        40,
+        Node::DynamicSourceField {
+            object: vec!["Properties".into()],
+            frame: None,
+            key: 50,
+        },
+    );
+    project.graph.nodes.insert(
+        50,
+        Node::Const {
+            value: Value::String("selected".into()),
+        },
+    );
+    project.root.bindings[1].node = 40;
+
+    let program = lower(&project).expect("open source-object reads are portable expressions");
+
+    assert!(matches!(
+        program.expressions.iter().find(|node| node.id == 40),
+        Some(crate::ExpressionNode {
+            expression: Expression::DynamicSourceField {
+                object,
+                frame: None,
+                key: 50,
+            },
+            ..
+        }) if object == &["Properties"]
+    ));
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![10, 30, 40, 50]
     );
 }
 

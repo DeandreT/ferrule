@@ -14,6 +14,7 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         | Expression::FunctionParameter { .. }
         | Expression::RuntimeValue { .. }
         | Expression::RuntimeParameter { .. } => Vec::new(),
+        Expression::DynamicSourceField { key, .. } => vec![*key],
         Expression::XmlMixedContent { replacements, .. } => replacements
             .iter()
             .map(|replacement| replacement.expression)

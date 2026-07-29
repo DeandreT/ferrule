@@ -123,6 +123,60 @@ public sealed partial class ScopeContext
     }
 
     /// <summary>
+    /// Reads one runtime-named scalar field from an open source object.
+    /// Missing objects/properties, structural values, inactive frames, and
+    /// non-string keys produce Null; present JSON null remains distinct.
+    /// </summary>
+    public FerruleValue ResolveDynamicScalar(
+        IReadOnlyList<string>? frame,
+        IReadOnlyList<string> objectPath,
+        FerruleValue key)
+    {
+        ArgumentNullException.ThrowIfNull(objectPath);
+        ValidatePath(objectPath);
+        if (frame is not null)
+        {
+            ValidatePath(frame);
+        }
+        if (key.Kind != FerruleValueKind.String)
+        {
+            return FerruleValue.Null;
+        }
+
+        if (frame is not null)
+        {
+            for (var index = _collections.Count - 1; index >= 0; index--)
+            {
+                var collection = _collections[index];
+                if (FrameMatches(frame, collection.Path))
+                {
+                    return TryResolveDynamicScalar(
+                        collection.Item,
+                        objectPath,
+                        key.StringValue,
+                        out var framedValue)
+                        ? framedValue
+                        : FerruleValue.Null;
+                }
+            }
+            return FerruleValue.Null;
+        }
+
+        for (var index = _frames.Count - 1; index >= 0; index--)
+        {
+            if (TryResolveDynamicScalar(
+                _frames[index],
+                objectPath,
+                key.StringValue,
+                out var value))
+            {
+                return value;
+            }
+        }
+        return FerruleValue.Null;
+    }
+
+    /// <summary>
     /// Follows a source path and returns one context per flattened candidate.
     /// Repeated and document-set boundaries retain their collection identity.
     /// </summary>
@@ -747,6 +801,52 @@ public sealed partial class ScopeContext
         return current is FerruleScalar scalar
             ? ScalarResolution.Resolved(scalar.Value)
             : ScalarResolution.Missing;
+    }
+
+    private static bool TryResolveDynamicScalar(
+        FerruleInstance source,
+        IReadOnlyList<string> objectPath,
+        string key,
+        out FerruleValue value)
+    {
+        var current = source;
+        for (var index = 0; index < objectPath.Count; index++)
+        {
+            if (current is FerruleRepeated repeated)
+            {
+                if (repeated.Items.Count == 0)
+                {
+                    value = FerruleValue.Null;
+                    return false;
+                }
+                current = repeated.Items[0];
+            }
+            if (!TryGetField(current, objectPath[index], out var next))
+            {
+                value = FerruleValue.Null;
+                return false;
+            }
+            current = next;
+        }
+        if (current is FerruleRepeated terminalRepeated)
+        {
+            if (terminalRepeated.Items.Count == 0)
+            {
+                value = FerruleValue.Null;
+                return false;
+            }
+            current = terminalRepeated.Items[0];
+        }
+
+        if (TryGetField(current, key, out var field))
+        {
+            value = field is FerruleScalar scalar
+                ? scalar.Value
+                : FerruleValue.Null;
+            return true;
+        }
+        value = FerruleValue.Null;
+        return true;
     }
 
     private static bool TryGetField(

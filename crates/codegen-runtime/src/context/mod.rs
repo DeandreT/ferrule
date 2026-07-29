@@ -7,6 +7,8 @@ mod walk;
 #[cfg(test)]
 mod collection_find_tests;
 #[cfg(test)]
+mod dynamic_tests;
+#[cfg(test)]
 mod grouping_tests;
 #[cfg(test)]
 mod join_tests;
@@ -219,6 +221,44 @@ impl<'a> ScopeContext<'a> {
             })
             .map(|path| Value::String(path.to_string()))
             .ok_or(SourcePathError::MissingDocumentPath)
+    }
+
+    /// Reads one runtime-named scalar field from an open source object.
+    ///
+    /// The outer owning-object match shadows outward frames even when the
+    /// requested property is absent. All misses and non-string keys produce
+    /// Null; present JSON null values remain distinct.
+    pub fn dynamic_scalar(&self, frame: Option<&[&str]>, object: &[&str], key: &Value) -> Value {
+        let Value::String(key) = key else {
+            return Value::Null;
+        };
+        if let Some(frame) = frame {
+            return self
+                .frames
+                .iter()
+                .rev()
+                .find(|scope_frame| {
+                    scope_frame.collection.as_ref().is_some_and(|collection| {
+                        same_path(frame, collection.path())
+                            || !collection.path().is_empty() && has_suffix(frame, collection.path())
+                    })
+                })
+                .and_then(|owner| dynamic_scalar_in(owner.instance, object, key))
+                .flatten()
+                .unwrap_or(Value::Null);
+        }
+        for scope_frame in self.frames.iter().rev() {
+            if let Some(value) = dynamic_scalar_in(scope_frame.instance, object, key) {
+                return value.unwrap_or(Value::Null);
+            }
+        }
+        if let Some((name, rest)) = object.split_first()
+            && let Some(input) = self.named_input(name)
+            && let Some(value) = dynamic_scalar_in(input, rest, key)
+        {
+            return value.unwrap_or(Value::Null);
+        }
+        Value::Null
     }
 
     /// Clones the innermost source group for independent target ownership.
@@ -442,6 +482,22 @@ fn document_frame<'a>(
         join: None,
         join_position: None,
     }
+}
+
+/// The outer option says whether this frame contains the owning object; the
+/// inner option distinguishes an absent runtime property from that mismatch.
+fn dynamic_scalar_in(source: &Instance, object: &[&str], key: &str) -> Option<Option<Value>> {
+    let mut current = source;
+    for segment in object {
+        if let Instance::Repeated(items) = current {
+            current = items.first()?;
+        }
+        current = current.field(segment)?;
+    }
+    if let Instance::Repeated(items) = current {
+        current = items.first()?;
+    }
+    Some(current.field(key).and_then(Instance::as_scalar).cloned())
 }
 
 fn has_prefix(path: &[&str], prefix: &[String]) -> bool {

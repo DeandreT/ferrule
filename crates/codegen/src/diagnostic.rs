@@ -44,7 +44,6 @@ pub enum ScopeFeature {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedNodeKind {
-    DynamicSourceField,
     CorrelatedJoinAggregate,
 }
 
@@ -152,7 +151,6 @@ impl fmt::Display for ScopeFeature {
 impl fmt::Display for UnsupportedNodeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::DynamicSourceField => "a dynamic source field",
             Self::CorrelatedJoinAggregate => "an unsupported correlated join aggregate",
         })
     }

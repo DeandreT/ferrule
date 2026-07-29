@@ -18,6 +18,7 @@ internal static partial class Program
             ("double domain", DoubleDomain),
             ("value maps", ValueMaps),
             ("lookup contexts", LookupContexts),
+            ("dynamic source contexts", DynamicSourceContexts),
             ("collection-find contexts", CollectionFindContexts),
             ("inner join contexts", InnerJoinContexts),
             ("grouping contexts", GroupingContexts),
