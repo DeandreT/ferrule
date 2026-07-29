@@ -258,6 +258,20 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
         .as_deref()
         .map(PackageManifest::load)
         .transpose()?;
+    if let (Some(selected_path), Some(selected_root), Some(manifest)) = (
+        options.package_manifest.as_deref(),
+        options.package_root.as_deref(),
+        manifest.as_ref(),
+    ) && (manifest.path() != selected_path || manifest.package_root() != selected_root)
+    {
+        return Err(MfdError::Resource(format!(
+            "selected package manifest identity changed from `{}` under `{}` to `{}` under `{}`",
+            selected_path.display(),
+            selected_root.display(),
+            manifest.path().display(),
+            manifest.package_root().display()
+        )));
+    }
     let package_root = manifest
         .as_ref()
         .map(PackageManifest::package_root)

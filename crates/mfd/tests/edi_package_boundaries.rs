@@ -59,6 +59,36 @@ fn manifest_catalog_is_reconfined_when_options_are_reused() -> Result<(), Box<dy
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn selected_manifest_rejects_package_directory_retargeting() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::symlink;
+
+    let directory = TempDir::new()?;
+    let package = directory.path().join("package");
+    write_package(&package)?;
+    let manifest = package.join("ferrule-package.json");
+    let options = mfd::ImportOptions::default().with_package_manifest(&manifest)?;
+    let original = directory.path().join("original");
+    std::fs::rename(&package, &original)?;
+    let outside = directory.path().join("outside");
+    write_package(&outside)?;
+    symlink(&outside, &package)?;
+
+    let error = match mfd::import_with_options(&package.join("maps/orders/mapping.mfd"), &options) {
+        Ok(_) => return Err("retargeted package manifest identity was accepted".into()),
+        Err(error) => error,
+    };
+
+    assert!(
+        error
+            .to_string()
+            .contains("package manifest identity changed"),
+        "{error}"
+    );
+    Ok(())
+}
+
 fn import_package(package: &Path) -> Result<mfd::Imported, Box<dyn Error>> {
     let manifest = package.join("ferrule-package.json");
     let mapping = package.join("maps/orders/mapping.mfd");
