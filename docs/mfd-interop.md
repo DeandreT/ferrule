@@ -43,6 +43,25 @@ parent components, but re-anchors them under the declared catalog instead of
 performing filesystem traversal. Direct files and bounded adjacent ZIP packages
 must remain canonically contained in that catalog.
 
+Separately managed JSON Schema catalogs use the same explicit ordered trust
+model:
+
+```sh
+cargo +nightly run -p cli -- import-mfd \
+  --mfd package/maps/design.mfd \
+  --package-root package \
+  --json-schema-root schemas/current \
+  --json-schema-root schemas/archive \
+  --out project.json
+```
+
+Package-contained schemas take precedence. A catalog lookup normalizes Windows
+separators and re-anchors only leading installation-relative parent components
+under each catalog root. Parent traversal after a real path segment, absolute
+paths, ambiguous case-insensitive matches, and symlink escapes reject. Once the
+root schema matches a catalog, its nested local `$ref` graph remains confined
+to that same canonical root.
+
 Import resolves the supported component graph into ferrule schemas, graph
 nodes, scopes, format options, and endpoints. Current coverage includes common
 XML, JSON, CSV/fixed-width/FlexText, XLSX, SQLite, EDI, Protocol Buffers, XBRL,
