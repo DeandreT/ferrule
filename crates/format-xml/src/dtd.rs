@@ -3,10 +3,11 @@
 //! The importer supports bounded internal parameter entities containing
 //! content-model particles, but never loads external entities or subsets. It
 //! supports `ELEMENT` and `ATTLIST` declarations, child sequences and choices,
-//! the standard occurrence suffixes, `EMPTY`, text and mixed content, and
-//! CDATA, tokenized, and enumeration attributes. Fixed attribute declarations
-//! become schema constraints; ordinary attribute defaults are accepted but are
-//! not materialized by the format-neutral schema.
+//! the standard occurrence suffixes, `EMPTY`, text and mixed content, recursive
+//! namespace-aware `ANY` content, and CDATA, tokenized, and enumeration
+//! attributes. Fixed attribute declarations become schema constraints;
+//! ordinary attribute defaults are accepted but are not materialized by the
+//! format-neutral schema.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -14,7 +15,7 @@ use std::path::Path;
 
 use ir::{
     ScalarType, SchemaNode, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD, XML_LOCAL_NAME_FIELD,
-    XML_TEXT_FIELD,
+    XML_NAMESPACE_URI_FIELD, XML_TEXT_FIELD, XmlWildcardNamespaceConstraint,
 };
 use thiserror::Error;
 
@@ -151,6 +152,7 @@ impl AttributeDefault {
 
 #[derive(Debug)]
 enum Content {
+    Any,
     Empty,
     Text,
     Mixed(Vec<String>),
@@ -287,7 +289,7 @@ impl<'a> Parser<'a> {
             return Ok(Content::Empty);
         }
         if self.consume_keyword("ANY") {
-            return self.unsupported("ANY element content");
+            return Ok(Content::Any);
         }
         if self.starts_with("%") {
             return self.parse_particle(1).map(Content::Children);
@@ -816,6 +818,14 @@ impl<'a> Expander<'a> {
         self.active.push(name);
         let result =
             match &declaration.content {
+                Content::Any => {
+                    self.bump_node_count()?;
+                    let mut children =
+                        vec![SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text()];
+                    children.push(self.expand_any_elements()?);
+                    children.extend(self.expand_attributes(&declaration.attributes)?);
+                    Ok(SchemaNode::group(name, children))
+                }
                 Content::Text if declaration.attributes.is_empty() => {
                     Ok(SchemaNode::scalar(name, ScalarType::String))
                 }
@@ -957,6 +967,45 @@ impl<'a> Expander<'a> {
         self.bump_node_count()?;
         children.push(attributes);
         Ok(SchemaNode::group(XML_ELEMENTS_FIELD, children).repeating())
+    }
+
+    fn expand_any_elements(&mut self) -> Result<SchemaNode, DtdError> {
+        self.bump_node_count()?;
+        let local_name = SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String);
+        self.bump_node_count()?;
+        let namespace_uri = SchemaNode::scalar(XML_NAMESPACE_URI_FIELD, ScalarType::String);
+        self.bump_node_count()?;
+        let text = SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text();
+
+        self.bump_node_count()?;
+        let attribute_local_name = SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String);
+        self.bump_node_count()?;
+        let attribute_namespace_uri =
+            SchemaNode::scalar(XML_NAMESPACE_URI_FIELD, ScalarType::String);
+        self.bump_node_count()?;
+        let attribute_text = SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text();
+        self.bump_node_count()?;
+        let attributes = SchemaNode::group(
+            XML_ATTRIBUTES_FIELD,
+            vec![
+                attribute_local_name,
+                attribute_namespace_uri,
+                attribute_text,
+            ],
+        )
+        .repeating();
+
+        self.bump_node_count()?;
+        let nested =
+            SchemaNode::recursive_group(XML_ELEMENTS_FIELD, XML_ELEMENTS_FIELD).repeating();
+        self.bump_node_count()?;
+        let mut elements = SchemaNode::group(
+            XML_ELEMENTS_FIELD,
+            vec![local_name, namespace_uri, text, attributes, nested],
+        )
+        .repeating();
+        elements.xml_wildcard_namespace = Some(XmlWildcardNamespaceConstraint::Any);
+        Ok(elements)
     }
 
     fn bump_node_count(&mut self) -> Result<(), DtdError> {
