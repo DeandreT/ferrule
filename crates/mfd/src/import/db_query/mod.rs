@@ -1179,6 +1179,15 @@ mod tests {
     }
 
     #[test]
+    fn parses_sql_server_top_as_first_window() {
+        let parsed = Parser::new("SELECT TOP 1 Name FROM Articles ORDER BY Price DESC")
+            .and_then(Parser::parse)
+            .unwrap();
+        assert_eq!(parsed.cardinality, QueryCardinality::AtMostOne);
+        assert_eq!(parsed.windows, [QueryWindow::First { count: 1 }]);
+    }
+
+    #[test]
     fn parses_general_literal_limit_as_a_window() {
         let parsed = Parser::new("SELECT Name FROM Articles LIMIT 2")
             .and_then(Parser::parse)
@@ -1206,6 +1215,8 @@ mod tests {
     fn rejects_offset_without_limit_and_dynamic_limits() {
         for sql in [
             "SELECT * FROM Articles LIMIT :count",
+            "SELECT TOP :count * FROM Articles",
+            "SELECT TOP 1 * FROM Articles LIMIT 1",
             "SELECT * FROM Articles OFFSET 1",
             "SELECT * FROM Articles LIMIT -1",
         ] {
