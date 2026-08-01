@@ -64,6 +64,11 @@ impl Parser {
 
     pub(super) fn parse(mut self) -> Result<ParsedQuery, String> {
         self.keyword("SELECT")?;
+        let top = if self.take_keyword("TOP") {
+            Some(self.item_count("TOP")?)
+        } else {
+            None
+        };
         let projection = if self.take(&Token::Star) {
             QueryProjection::All
         } else {
@@ -122,7 +127,17 @@ impl Parser {
             None
         };
         let mut windows = Vec::new();
-        let cardinality = if self.take_keyword("LIMIT") {
+        let cardinality = if let Some(top) = top {
+            if self.take_keyword("LIMIT") {
+                return Err("SQL TOP and LIMIT cannot be combined".to_string());
+            }
+            windows.push(QueryWindow::First { count: top });
+            if top == 1 {
+                QueryCardinality::AtMostOne
+            } else {
+                QueryCardinality::Many
+            }
+        } else if self.take_keyword("LIMIT") {
             let first = self.item_count("LIMIT")?;
             let limit = if self.take(&Token::Comma) {
                 windows.push(QueryWindow::SkipFirst { count: first });
