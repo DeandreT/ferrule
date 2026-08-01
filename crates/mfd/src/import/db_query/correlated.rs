@@ -404,6 +404,9 @@ fn build_plan(
                         "correlated query null predicates are not supported yet".to_string()
                     );
                 }
+                ParsedOperand::List(_) => {
+                    return Err("correlated query IN predicates are not supported yet".to_string());
+                }
                 ParsedOperand::Parameter(parameter) if correlated == Some(parameter.as_str()) => {
                     if !matches!(predicate.operator, QueryOperator::Equal)
                         || correlated_column

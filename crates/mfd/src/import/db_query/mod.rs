@@ -9,6 +9,8 @@ use super::function::{FnComponent, is_input, parse_constant};
 use super::schema::{ComponentFormat, SchemaComponent, entry_key_sets, parse_u32};
 use super::source::SourcePath;
 
+const MAX_QUERY_IN_ITEMS: usize = 256;
+
 mod catalog;
 mod correlated;
 mod joined;
@@ -71,6 +73,8 @@ enum QueryOperator {
     NotEqual,
     IsNull,
     IsNotNull,
+    In,
+    NotIn,
     Like,
     Less,
     LessOrEqual,
@@ -87,6 +91,7 @@ enum QueryOperand {
     },
     Literal(Value),
     Correlated,
+    List(Vec<QueryOperand>),
 }
 
 #[derive(Clone)]
@@ -132,6 +137,7 @@ enum ParsedOperand {
     Parameter(String),
     Literal(Value),
     Null,
+    List(Vec<ParsedOperand>),
 }
 
 pub(super) enum DbControlError {
@@ -314,25 +320,11 @@ fn read_uncorrelated_component(
         .predicates
         .into_iter()
         .map(|predicate| {
-            let operand = match predicate.operand {
-                ParsedOperand::Literal(value) => QueryOperand::Literal(value),
-                ParsedOperand::Null => QueryOperand::Literal(Value::Null),
-                ParsedOperand::Parameter(name) => {
-                    let ty = declared_parameters.get(&name).copied().ok_or_else(|| {
-                        format!("SQL parameter `:{name}` has no matching declaration")
-                    })?;
-                    let input_key = parameter_keys.get(&name).copied().ok_or_else(|| {
-                        format!(
-                            "parameter `:{name}` is supplied by a relation or parent row; correlated queries are not supported"
-                        )
-                    })?;
-                    QueryOperand::Parameter {
-                        name,
-                        input_key,
-                        ty,
-                    }
-                }
-            };
+            let operand = query_operand_from_parsed(
+                predicate.operand,
+                &declared_parameters,
+                &parameter_keys,
+            )?;
             Ok(QueryPredicate {
                 column: predicate.column,
                 operator: predicate.operator,
@@ -495,6 +487,38 @@ fn read_parameter_keys(
         }
     }
     Ok(parameters)
+}
+
+fn query_operand_from_parsed(
+    operand: ParsedOperand,
+    declared_parameters: &BTreeMap<String, ScalarType>,
+    parameter_keys: &BTreeMap<String, u32>,
+) -> Result<QueryOperand, String> {
+    match operand {
+        ParsedOperand::Literal(value) => Ok(QueryOperand::Literal(value)),
+        ParsedOperand::Null => Ok(QueryOperand::Literal(Value::Null)),
+        ParsedOperand::Parameter(name) => {
+            let ty = declared_parameters
+                .get(&name)
+                .copied()
+                .ok_or_else(|| format!("SQL parameter `:{name}` has no matching declaration"))?;
+            let input_key = parameter_keys.get(&name).copied().ok_or_else(|| {
+                format!(
+                    "parameter `:{name}` is supplied by a relation or parent row; correlated queries are not supported"
+                )
+            })?;
+            Ok(QueryOperand::Parameter {
+                name,
+                input_key,
+                ty,
+            })
+        }
+        ParsedOperand::List(operands) => operands
+            .into_iter()
+            .map(|operand| query_operand_from_parsed(operand, declared_parameters, parameter_keys))
+            .collect::<Result<Vec<_>, _>>()
+            .map(QueryOperand::List),
+    }
 }
 
 fn scalar_type(name: &str) -> Result<ScalarType, String> {
@@ -986,7 +1010,73 @@ impl GraphBuilder<'_> {
                 }))
             };
         }
-        let value = match predicate.operand {
+        if matches!(predicate.operator, QueryOperator::In | QueryOperator::NotIn) {
+            if column_type == ScalarType::String {
+                return Err(
+                    "text IN collation cannot be established from SQLite schema metadata"
+                        .to_string(),
+                );
+            }
+            let QueryOperand::List(operands) = predicate.operand else {
+                return Err("IN query predicate requires an operand list".to_string());
+            };
+            let mut comparisons = operands
+                .into_iter()
+                .map(|operand| {
+                    self.query_binary_predicate_node(
+                        source_path,
+                        column,
+                        column_type,
+                        QueryOperator::Equal,
+                        operand,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter();
+            let Some(first) = comparisons.next() else {
+                return Err("IN query predicate requires at least one operand".to_string());
+            };
+            let predicate_node = comparisons.fold(first, |left, right| {
+                self.alloc(Node::Call {
+                    function: "or".to_string(),
+                    args: vec![left, right],
+                })
+            });
+            return if matches!(predicate.operator, QueryOperator::In) {
+                Ok(predicate_node)
+            } else {
+                let column_exists = self.alloc(Node::Call {
+                    function: "exists".to_string(),
+                    args: vec![column],
+                });
+                let inverted = self.alloc(Node::Call {
+                    function: "not".to_string(),
+                    args: vec![predicate_node],
+                });
+                Ok(self.alloc(Node::Call {
+                    function: "and".to_string(),
+                    args: vec![column_exists, inverted],
+                }))
+            };
+        }
+        self.query_binary_predicate_node(
+            source_path,
+            column,
+            column_type,
+            predicate.operator,
+            predicate.operand,
+        )
+    }
+
+    fn query_binary_predicate_node(
+        &mut self,
+        source_path: &SourcePath,
+        column: NodeId,
+        column_type: ScalarType,
+        operator: QueryOperator,
+        operand: QueryOperand,
+    ) -> Result<NodeId, String> {
+        let value = match operand {
             QueryOperand::Literal(value) => coerce_value(value, column_type)?,
             QueryOperand::Parameter {
                 name,
@@ -1010,14 +1100,15 @@ impl GraphBuilder<'_> {
                     "correlated predicate was not absorbed by the relational source".to_string(),
                 );
             }
+            QueryOperand::List(_) => {
+                return Err("nested query predicate operand lists are not supported".to_string());
+            }
         };
-        if matches!(predicate.operator, QueryOperator::Like) && column_type != ScalarType::String {
+        if matches!(operator, QueryOperator::Like) && column_type != ScalarType::String {
             return Err("LIKE requires a string column and operand".to_string());
         }
-        if matches!(
-            predicate.operator,
-            QueryOperator::Equal | QueryOperator::NotEqual
-        ) && column_type == ScalarType::String
+        if matches!(operator, QueryOperator::Equal | QueryOperator::NotEqual)
+            && column_type == ScalarType::String
         {
             return Err(
                 "text equality collation cannot be established from SQLite schema metadata"
@@ -1026,11 +1117,14 @@ impl GraphBuilder<'_> {
         }
         let operand = self.alloc(Node::Const { value });
         let comparison = self.alloc(Node::Call {
-            function: match predicate.operator {
+            function: match operator {
                 QueryOperator::Equal => "equal",
                 QueryOperator::NotEqual => "not_equal",
-                QueryOperator::IsNull | QueryOperator::IsNotNull => {
-                    return Err("null query predicate was not lowered".to_string());
+                QueryOperator::IsNull
+                | QueryOperator::IsNotNull
+                | QueryOperator::In
+                | QueryOperator::NotIn => {
+                    return Err("unary or list query predicate was not lowered".to_string());
                 }
                 QueryOperator::Like => "sql_like",
                 QueryOperator::Less => "less_than",
@@ -1307,6 +1401,28 @@ mod tests {
             assert_eq!(parsed.predicates.len(), 1);
             assert!(matches!(parsed.predicates[0].operator, operator if operator == expected));
             assert!(matches!(parsed.predicates[0].operand, ParsedOperand::Null));
+        }
+    }
+
+    #[test]
+    fn parses_in_predicates() {
+        for (sql, expected) in [
+            (
+                "SELECT First FROM Person WHERE ForeignKey IN (1, 2, :DepartmentID)",
+                QueryOperator::In,
+            ),
+            (
+                "SELECT First FROM Person WHERE ForeignKey NOT IN (1, 2, :DepartmentID)",
+                QueryOperator::NotIn,
+            ),
+        ] {
+            let parsed = Parser::new(sql).and_then(Parser::parse).unwrap();
+            assert_eq!(parsed.predicates.len(), 1);
+            assert!(matches!(parsed.predicates[0].operator, operator if operator == expected));
+            assert!(matches!(
+                parsed.predicates[0].operand,
+                ParsedOperand::List(ref operands) if operands.len() == 3
+            ));
         }
     }
 
