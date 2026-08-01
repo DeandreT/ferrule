@@ -20,8 +20,7 @@ cargo +nightly run -p cli -- import-mfd \
   --out project.json
 ```
 
-For a relocatable package, put `ferrule-package.json` at its root and select it
-explicitly:
+For a relocatable package, put `ferrule-package.json` at its root:
 
 ```json
 {
@@ -41,12 +40,17 @@ cargo +nightly run -p cli -- import-mfd \
   --out package/projects/project.json
 ```
 
-The manifest must be selected by the host or user; a mapping cannot grant
-itself filesystem access. Its directory is the package trust boundary, and
-catalog entries are relative, traversal-free directories inside that boundary.
-Direct catalog flags are searched before manifest catalogs. The GUI stores an
-explicitly selected manifest as a host preference, never in the mapping
-project. `--package-root` and `--package-manifest` are mutually exclusive.
+When no `--package-root` or `--package-manifest` is supplied, import searches
+the design's ancestor directories for the nearest `ferrule-package.json` and
+uses that manifest. Passing `--package-manifest` still selects a specific
+manifest explicitly, and passing `--package-root` keeps the package root as a
+host-provided trust boundary without reading a manifest. A mapping cannot grant
+itself arbitrary filesystem access: the manifest's directory is the package
+trust boundary, and catalog entries are relative, traversal-free directories
+inside that boundary. Direct catalog flags are searched before manifest
+catalogs. The GUI stores an explicitly selected manifest as a host preference,
+never in the mapping project. `--package-root` and `--package-manifest` are
+mutually exclusive.
 
 Resource references accept both slash styles and may contain parent components
 when their canonical target remains inside the package. Symlink escapes,

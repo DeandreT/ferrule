@@ -253,11 +253,17 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 }
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
-    let manifest = options
+    let discovered_manifest =
+        if options.package_root.is_none() && options.package_manifest.is_none() {
+            discover_package_manifest(path)?
+        } else {
+            None
+        };
+    let manifest_path = options
         .package_manifest
         .as_deref()
-        .map(PackageManifest::load)
-        .transpose()?;
+        .or(discovered_manifest.as_deref());
+    let manifest = manifest_path.map(PackageManifest::load).transpose()?;
     if let (Some(selected_path), Some(selected_root), Some(manifest)) = (
         options.package_manifest.as_deref(),
         options.package_root.as_deref(),
@@ -285,6 +291,28 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
             .with_package_json_schema_catalog_roots(manifest.json_schema_catalog_roots())?;
     }
     import_resolved(&resources)
+}
+
+fn discover_package_manifest(path: &Path) -> Result<Option<PathBuf>, MfdError> {
+    let mapping_path = std::fs::canonicalize(path).map_err(|error| {
+        MfdError::Resource(format!(
+            "could not canonicalize mapping `{}` ({error})",
+            path.display()
+        ))
+    })?;
+    let mut directory = mapping_path
+        .parent()
+        .ok_or_else(|| MfdError::Resource("mapping has no parent directory".to_string()))?;
+    loop {
+        let manifest = directory.join("ferrule-package.json");
+        if manifest.is_file() {
+            return Ok(Some(manifest));
+        }
+        let Some(parent) = directory.parent() else {
+            return Ok(None);
+        };
+        directory = parent;
+    }
 }
 
 fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {

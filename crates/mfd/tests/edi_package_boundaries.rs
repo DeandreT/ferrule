@@ -32,6 +32,20 @@ fn package_manifest_resolves_all_edi_boundary_roles_after_relocation() -> Result
     Ok(())
 }
 
+#[test]
+fn plain_import_discovers_package_manifest_from_mapping_ancestors() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new()?;
+    let package = directory.path().join("package");
+    write_package(&package)?;
+
+    let imported = mfd::import(&package.join("maps/orders/mapping.mfd"))?;
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_compiled_boundaries(&imported.project)?;
+    assert!(engine::validate(&imported.project).is_empty());
+    Ok(())
+}
+
 #[cfg(unix)]
 #[test]
 fn manifest_catalog_is_reconfined_when_options_are_reused() -> Result<(), Box<dyn Error>> {
