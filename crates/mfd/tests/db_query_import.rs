@@ -233,6 +233,41 @@ fn static_query_limit_offset_lowers_to_sequence_windows() {
 }
 
 #[test]
+fn static_query_sqlite_comma_limit_lowers_to_sequence_windows() {
+    let dir = TempDir::new();
+    prepare_database(&dir.0);
+    let design = dir.0.join("query-comma-window.mfd");
+    write_design(&design);
+    let text = std::fs::read_to_string(&design).unwrap().replace(
+        "AND &quot;Title&quot; LIKE '%Manager%'",
+        "AND &quot;Title&quot; LIKE '%Manager%' ORDER BY &quot;Id&quot; LIMIT 1, 1",
+    );
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let source =
+        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let names = output
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            row.field("Name")
+                .and_then(Instance::as_scalar)
+                .and_then(|value| match value {
+                    Value::String(value) => Some(value.as_str()),
+                    _ => None,
+                })
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["Grace"]);
+}
+
+#[test]
 fn many_to_one_joined_query_imports_computed_projection_and_filter() {
     let dir = TempDir::new();
     let design = prepare_joined_query(&dir.0);
