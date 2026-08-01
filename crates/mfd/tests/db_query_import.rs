@@ -378,6 +378,41 @@ fn static_query_numeric_not_equal_imports_and_executes() {
 }
 
 #[test]
+fn static_query_numeric_ordering_predicate_imports_and_executes() {
+    let dir = TempDir::new();
+    prepare_database(&dir.0);
+    let design = dir.0.join("query-numeric-ordering-predicate.mfd");
+    write_design(&design);
+    let text = std::fs::read_to_string(&design).unwrap().replace(
+        "&quot;DepartmentID&quot; = :DepartmentID",
+        "&quot;DepartmentID&quot; &gt; :DepartmentID",
+    );
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let source =
+        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let names = output
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            row.field("Name")
+                .and_then(Instance::as_scalar)
+                .and_then(|value| match value {
+                    Value::String(value) => Some(value.as_str()),
+                    _ => None,
+                })
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["Bob"]);
+}
+
+#[test]
 fn static_query_sqlite_comma_limit_lowers_to_sequence_windows() {
     let dir = TempDir::new();
     prepare_database(&dir.0);
