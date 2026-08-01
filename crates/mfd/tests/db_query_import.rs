@@ -240,7 +240,7 @@ fn static_query_top_lowers_to_first_window() {
     write_design(&design);
     let text = std::fs::read_to_string(&design)
         .unwrap()
-        .replace("SELECT &quot;Name&quot;", "SELECT TOP 1 &quot;Name&quot;");
+        .replace("SELECT &quot;Name&quot;", "SELECT TOP (1) &quot;Name&quot;");
     std::fs::write(&design, text).unwrap();
 
     let imported = mfd::import(&design).unwrap();
