@@ -99,8 +99,8 @@ fn run(dir: &Path, design: &Path) -> (mapping::Project, Instance) {
     );
     assert_eq!(imported.project.root.source(), Some([].as_slice()));
     assert!(matches!(
-        imported.project.root.windows.as_slice(),
-        [SequenceWindow::First { .. }]
+        imported.project.root.windows.last(),
+        Some(SequenceWindow::First { .. })
     ));
     assert!(engine::validate(&imported.project).is_empty());
     let source =
@@ -156,6 +156,42 @@ fn all_columns_descending_limit_one_imports_the_winner() {
 }
 
 #[test]
+fn all_columns_descending_top_one_imports_the_winner() {
+    let dir = TempDir::new();
+    let design = prepare(&dir.0, true);
+    let sql_server_style =
+        design_xml("").replace("SELECT * FROM Articles", "SELECT TOP (1) * FROM Articles");
+    std::fs::write(&design, sql_server_style).unwrap();
+    let (_, output) = run(&dir.0, &design);
+
+    assert_eq!(
+        output.field("Number").and_then(Instance::as_scalar),
+        Some(&Value::Int(2))
+    );
+    assert_eq!(
+        output.field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("Monitor".to_string()))
+    );
+}
+
+#[test]
+fn all_columns_descending_limit_one_offset_zero_imports_the_winner() {
+    let dir = TempDir::new();
+    let design = prepare(&dir.0, true);
+    std::fs::write(&design, design_xml("LIMIT 1 OFFSET 0")).unwrap();
+    let (_, output) = run(&dir.0, &design);
+
+    assert_eq!(
+        output.field("Number").and_then(Instance::as_scalar),
+        Some(&Value::Int(2))
+    );
+    assert_eq!(
+        output.field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("Monitor".to_string()))
+    );
+}
+
+#[test]
 fn root_first_export_preserves_an_explicit_window_before_cardinality_selection() {
     let dir = TempDir::new();
     let design = prepare(&dir.0, true);
@@ -208,7 +244,8 @@ fn an_empty_query_still_produces_the_empty_document_root() {
 
 #[test]
 fn unsupported_limit_forms_fall_back_with_an_actionable_warning() {
-    for limit in ["LIMIT 2", "LIMIT :count", "LIMIT 1 OFFSET 0"] {
+    {
+        let limit = "LIMIT :count";
         let dir = TempDir::new();
         let design = prepare(&dir.0, false);
         std::fs::write(&design, design_xml(limit)).unwrap();
@@ -222,6 +259,19 @@ fn unsupported_limit_forms_fall_back_with_an_actionable_warning() {
             imported.warnings
         );
     }
+
+    let dir = TempDir::new();
+    let design = prepare(&dir.0, false);
+    std::fs::write(&design, design_xml("LIMIT 2")).unwrap();
+    let imported = mfd::import(&design).unwrap();
+    assert!(
+        imported.warnings.iter().any(|warning| {
+            warning.contains("database query `db` is used only through scalar outputs")
+                && warning.contains("require a collection iteration")
+        }),
+        "{:?}",
+        imported.warnings
+    );
 }
 
 #[test]
@@ -267,7 +317,8 @@ fn controls_after_sql_limit_one_are_rejected_instead_of_reordered() {
     let imported = mfd::import(&design).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| {
-            warning.contains("database LIMIT 1") && warning.contains("order cannot be represented")
+            warning.contains("database row-window clause")
+                && warning.contains("order cannot be represented")
         }),
         "{:?}",
         imported.warnings

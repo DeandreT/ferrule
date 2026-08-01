@@ -572,7 +572,7 @@ fn build_one(
             || feed.order_issue.is_some())
     {
         builder.warnings.push(format!(
-            "database LIMIT/OFFSET feeding `{}` is followed by sequence controls whose order cannot be represented exactly; iteration skipped",
+            "database row-window clause feeding `{}` is followed by sequence controls whose order cannot be represented exactly; iteration skipped",
             target_path.join("/")
         ));
         skipped.push(target_path);

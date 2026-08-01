@@ -367,7 +367,7 @@ fn read_query_plan(
     };
     ensure_unique_names("SQL projection", &columns)?;
     if cardinality != QueryCardinality::Many || !windows.is_empty() {
-        return Err("SQL LIMIT/OFFSET is supported only for standalone queries".to_string());
+        return Err("SQL row-window clauses are supported only for standalone queries".to_string());
     }
     let declarations = read_parameter_types(view)?;
     build_plan(
