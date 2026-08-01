@@ -3,7 +3,9 @@ use mapping::Node;
 use crate::resource::ResourceResolver;
 
 use super::graph::GraphBuilder;
-use super::schema::{ComponentFormat, SchemaComponent, normalize_xml_entry_name};
+use super::schema::{
+    ComponentFormat, SchemaComponent, normalize_xml_entry_name, read_xsd_metadata_text,
+};
 use super::scope::ScopeBuilder;
 
 const MAX_SCHEMA_BYTES: u64 = 8 * 1024 * 1024;
@@ -39,7 +41,8 @@ pub(super) fn install(
     let Some(schema_reference) = schema_reference else {
         return;
     };
-    let text = match resources.read_utf8_file(
+    let text = match read_xsd_metadata_text(
+        resources,
         schema_reference,
         "target cast XML Schema",
         MAX_SCHEMA_BYTES,
@@ -52,6 +55,11 @@ pub(super) fn install(
             ));
             return;
         }
+    };
+    let Some(text) = text else {
+        // DTDs do not carry the XML Schema scalar type annotations used by
+        // cast-in-subtree, so there is no metadata to install.
+        return;
     };
     let Some(document) = roxmltree::Document::parse(&text).ok() else {
         builder.warnings.push(format!(

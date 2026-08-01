@@ -5,7 +5,10 @@ use ir::{ScalarType, SchemaKind};
 use crate::resource::ResourceResolver;
 
 use super::graph::GraphBuilder;
-use super::schema::{ComponentFormat, SchemaComponent, normalize_xml_entry_name, schema_node_at};
+use super::schema::{
+    ComponentFormat, SchemaComponent, normalize_xml_entry_name, read_xsd_metadata_text,
+    schema_node_at,
+};
 use super::scope::ScopeBuilder;
 use super::source_node_function::{Definitions, Expr, instantiate_target};
 
@@ -261,13 +264,16 @@ fn read_fraction_digits(
     let Some(schema_reference) = schema_reference else {
         return Ok(BTreeMap::new());
     };
-    let text = resources
-        .read_utf8_file(
-            schema_reference,
-            "target node-function XML Schema",
-            MAX_SCHEMA_BYTES,
-        )
-        .map_err(|reason| (schema_reference.to_string(), reason))?;
+    let text = read_xsd_metadata_text(
+        resources,
+        schema_reference,
+        "target node-function XML Schema",
+        MAX_SCHEMA_BYTES,
+    )
+    .map_err(|reason| (schema_reference.to_string(), reason))?;
+    let Some(text) = text else {
+        return Ok(BTreeMap::new());
+    };
     let document = roxmltree::Document::parse(&text).map_err(|error| {
         (
             schema_reference.to_string(),
