@@ -126,6 +126,31 @@ impl Parser {
                     }
                     continue;
                 }
+                if self.take_keyword("NOT") {
+                    self.keyword("IN")?;
+                    let operand = self.predicate_list()?;
+                    predicates.push(ParsedPredicate {
+                        column,
+                        operator: QueryOperator::NotIn,
+                        operand,
+                    });
+                    if !self.take_keyword("AND") {
+                        break;
+                    }
+                    continue;
+                }
+                if self.take_keyword("IN") {
+                    let operand = self.predicate_list()?;
+                    predicates.push(ParsedPredicate {
+                        column,
+                        operator: QueryOperator::In,
+                        operand,
+                    });
+                    if !self.take_keyword("AND") {
+                        break;
+                    }
+                    continue;
+                }
                 let operator = if self.take(&Token::Equal) {
                     QueryOperator::Equal
                 } else if self.take(&Token::NotEqual) {
@@ -142,7 +167,7 @@ impl Parser {
                     QueryOperator::Like
                 } else {
                     return Err(
-                        "query predicates must use `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, `BETWEEN`, `IS NULL`, `IS NOT NULL`, or `LIKE`"
+                        "query predicates must use `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, `BETWEEN`, `IN`, `NOT IN`, `IS NULL`, `IS NOT NULL`, or `LIKE`"
                             .to_string(),
                     );
                 };
@@ -220,6 +245,30 @@ impl Parser {
             cardinality,
             windows,
         })
+    }
+
+    fn predicate_list(&mut self) -> Result<ParsedOperand, String> {
+        if !self.take(&Token::LeftParen) {
+            return Err("query IN predicate requires a parenthesized operand list".to_string());
+        }
+        let mut operands = Vec::new();
+        loop {
+            if operands.len() >= super::MAX_QUERY_IN_ITEMS {
+                return Err(format!(
+                    "query IN predicate cannot contain more than {} items",
+                    super::MAX_QUERY_IN_ITEMS
+                ));
+            }
+            operands.push(self.predicate_operand()?);
+            if self.take(&Token::Comma) {
+                continue;
+            }
+            if self.take(&Token::RightParen) {
+                break;
+            }
+            return Err("query IN predicate list must separate operands with `,`".to_string());
+        }
+        Ok(ParsedOperand::List(operands))
     }
 
     fn predicate_operand(&mut self) -> Result<ParsedOperand, String> {
