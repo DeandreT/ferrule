@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode, Value};
-use mapping::{FormatOptions, Node, NodeId};
+use mapping::{FormatOptions, Node, NodeId, SequenceWindow};
 
 use super::GraphBuilder;
 use super::function::{FnComponent, is_input, parse_constant};
@@ -24,6 +24,7 @@ pub(super) struct DbQuery {
     predicates: Vec<QueryPredicate>,
     order: Option<QueryOrder>,
     cardinality: QueryCardinality,
+    windows: Vec<QueryWindow>,
     required_paths: Vec<Vec<String>>,
     computed_ports: BTreeMap<u32, DbComputedExpression>,
 }
@@ -45,6 +46,7 @@ pub(super) fn at_most_one_query_for_test(collection: Vec<String>) -> DbQuery {
         predicates: Vec::new(),
         order: None,
         cardinality: QueryCardinality::AtMostOne,
+        windows: Vec::new(),
         required_paths: Vec::new(),
         computed_ports: BTreeMap::new(),
     }
@@ -87,12 +89,26 @@ struct QueryOrder {
     descending: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum QueryWindow {
+    SkipFirst { count: i64 },
+    First { count: i64 },
+}
+
+pub(super) struct DbQueryControls {
+    pub(super) filter: Option<NodeId>,
+    pub(super) sort: Option<NodeId>,
+    pub(super) descending: bool,
+    pub(super) windows: Vec<QueryWindow>,
+}
+
 struct ParsedQuery {
     table: String,
     projection: QueryProjection,
     predicates: Vec<ParsedPredicate>,
     order: Option<QueryOrder>,
     cardinality: QueryCardinality,
+    windows: Vec<QueryWindow>,
 }
 
 enum QueryProjection {
@@ -368,6 +384,7 @@ fn read_uncorrelated_component(
             predicates,
             order: parsed.order,
             cardinality: parsed.cardinality,
+            windows: parsed.windows,
             required_paths: Vec::new(),
             computed_ports: BTreeMap::new(),
         }],
@@ -803,45 +820,55 @@ impl GraphBuilder<'_> {
         db_where: Option<usize>,
         source_path: Option<&SourcePath>,
         existing_filter: Option<NodeId>,
-    ) -> Result<(Option<NodeId>, Option<NodeId>, bool, bool), DbControlError> {
-        let (query_filter, query_sort, query_descending, query_at_most_one) = self
+    ) -> Result<DbQueryControls, DbControlError> {
+        let query = self
             .apply_db_query(source_path, existing_filter)
             .map_err(DbControlError::Query)?;
         let (filter, where_sort, where_descending) = self
-            .apply_db_where(db_where, source_path, query_filter)
+            .apply_db_where(db_where, source_path, query.filter)
             .map_err(|reason| DbControlError::Where {
                 name: db_where
                     .and_then(|index| self.fn_components.get(index))
                     .map_or_else(|| "unknown".to_string(), |component| component.name.clone()),
                 reason,
             })?;
-        if query_sort.is_some() && where_sort.is_some() {
+        if query.sort.is_some() && where_sort.is_some() {
             return Err(DbControlError::Query(
                 "query ORDER is combined with a database where/order control".to_string(),
             ));
         }
-        Ok((
+        Ok(DbQueryControls {
             filter,
-            query_sort.or(where_sort),
-            if query_sort.is_some() {
-                query_descending
+            sort: query.sort.or(where_sort),
+            descending: if query.sort.is_some() {
+                query.descending
             } else {
                 where_descending
             },
-            query_at_most_one,
-        ))
+            windows: query.windows,
+        })
     }
 
     pub(super) fn apply_db_query(
         &mut self,
         source_path: Option<&SourcePath>,
         existing_filter: Option<NodeId>,
-    ) -> Result<(Option<NodeId>, Option<NodeId>, bool, bool), String> {
+    ) -> Result<DbQueryControls, String> {
         let Some(source_path) = source_path else {
-            return Ok((existing_filter, None, false, false));
+            return Ok(DbQueryControls {
+                filter: existing_filter,
+                sort: None,
+                descending: false,
+                windows: Vec::new(),
+            });
         };
         let Some(source) = self.sources.get(source_path.source) else {
-            return Ok((existing_filter, None, false, false));
+            return Ok(DbQueryControls {
+                filter: existing_filter,
+                sort: None,
+                descending: false,
+                windows: Vec::new(),
+            });
         };
         let mut filter = existing_filter;
         let queries = source
@@ -852,15 +879,16 @@ impl GraphBuilder<'_> {
             .collect::<Vec<_>>();
         let mut sort = None;
         let mut descending = false;
-        let mut at_most_one = false;
+        let mut windows = Vec::new();
         for query in queries {
             // A flattened multi-hop iteration retains every parent frame. Parent
             // predicates therefore evaluate identically for each child, and one
             // parent sort remains a stable ordering by that parent value.
             let mut collection = source_path.clone();
             collection.path = query.collection.clone();
-            at_most_one |= query.collection == source_path.path
-                && query.cardinality == QueryCardinality::AtMostOne;
+            if query.collection == source_path.path {
+                windows.extend(query.windows);
+            }
             for path in query.required_paths {
                 let mut required = collection.clone();
                 required.path.extend(path);
@@ -913,7 +941,12 @@ impl GraphBuilder<'_> {
                 descending = direction;
             }
         }
-        Ok((filter, sort, descending, at_most_one))
+        Ok(DbQueryControls {
+            filter,
+            sort,
+            descending,
+            windows,
+        })
     }
 
     pub(super) fn db_query_is_at_most_one(&self, source_path: &SourcePath) -> bool {
@@ -1042,6 +1075,29 @@ pub(super) fn source_query_is_at_most_one(source: &SchemaComponent, path: &[Stri
         .any(|query| query.collection == path && query.cardinality == QueryCardinality::AtMostOne)
 }
 
+pub(super) fn materialize_query_windows(
+    builder: &mut GraphBuilder<'_>,
+    windows: &[QueryWindow],
+) -> Vec<SequenceWindow> {
+    windows
+        .iter()
+        .map(|window| match *window {
+            QueryWindow::SkipFirst { count } => SequenceWindow::SkipFirst {
+                count: const_item_count(builder, count),
+            },
+            QueryWindow::First { count } => SequenceWindow::First {
+                count: const_item_count(builder, count),
+            },
+        })
+        .collect()
+}
+
+fn const_item_count(builder: &mut GraphBuilder<'_>, count: i64) -> NodeId {
+    builder.alloc(Node::Const {
+        value: Value::Int(count),
+    })
+}
+
 fn db_query_owns_output(component: &SchemaComponent, key: u32) -> bool {
     component.ports.contains_key(&key)
         || component
@@ -1108,19 +1164,35 @@ mod tests {
 
     #[test]
     fn parses_all_columns_and_exact_limit_one() {
-        let parsed = Parser::new("SELECT * FROM Articles ORDER BY Price DESC LIMIT 1")
+        let parsed = Parser::new("SELECT * FROM Articles ORDER BY Price DESC LIMIT 1 OFFSET 0")
             .and_then(Parser::parse)
             .unwrap();
         assert!(matches!(parsed.projection, QueryProjection::All));
         assert_eq!(parsed.cardinality, QueryCardinality::AtMostOne);
+        assert_eq!(
+            parsed.windows,
+            [
+                QueryWindow::SkipFirst { count: 0 },
+                QueryWindow::First { count: 1 }
+            ]
+        );
     }
 
     #[test]
-    fn rejects_other_limits_offsets_and_dynamic_limits() {
+    fn parses_general_literal_limit_as_a_window() {
+        let parsed = Parser::new("SELECT Name FROM Articles LIMIT 2")
+            .and_then(Parser::parse)
+            .unwrap();
+        assert_eq!(parsed.cardinality, QueryCardinality::Many);
+        assert_eq!(parsed.windows, [QueryWindow::First { count: 2 }]);
+    }
+
+    #[test]
+    fn rejects_offset_without_limit_and_dynamic_limits() {
         for sql in [
-            "SELECT * FROM Articles LIMIT 2",
             "SELECT * FROM Articles LIMIT :count",
-            "SELECT * FROM Articles LIMIT 1 OFFSET 0",
+            "SELECT * FROM Articles OFFSET 1",
+            "SELECT * FROM Articles LIMIT -1",
         ] {
             assert!(Parser::new(sql).and_then(Parser::parse).is_err(), "{sql}");
         }

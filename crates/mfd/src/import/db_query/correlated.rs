@@ -213,6 +213,7 @@ fn read_correlated_component(
             predicates: parent.predicates,
             order: parent.order,
             cardinality: QueryCardinality::Many,
+            windows: Vec::new(),
             required_paths: Vec::new(),
             computed_ports: BTreeMap::new(),
         });
@@ -223,6 +224,7 @@ fn read_correlated_component(
         predicates: child.predicates,
         order: child.order,
         cardinality: QueryCardinality::Many,
+        windows: Vec::new(),
         required_paths: Vec::new(),
         computed_ports: BTreeMap::new(),
     });
@@ -355,6 +357,7 @@ fn read_query_plan(
         predicates,
         order,
         cardinality,
+        windows,
     } = parsed;
     let columns = match projection {
         QueryProjection::Columns(columns) => columns,
@@ -363,8 +366,8 @@ fn read_query_plan(
         }
     };
     ensure_unique_names("SQL projection", &columns)?;
-    if cardinality != QueryCardinality::Many {
-        return Err("SQL LIMIT is supported only for standalone queries".to_string());
+    if cardinality != QueryCardinality::Many || !windows.is_empty() {
+        return Err("SQL LIMIT/OFFSET is supported only for standalone queries".to_string());
     }
     let declarations = read_parameter_types(view)?;
     build_plan(
