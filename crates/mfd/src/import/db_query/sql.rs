@@ -2,7 +2,7 @@ use ir::Value;
 
 use super::{
     ParsedOperand, ParsedPredicate, ParsedQuery, QueryCardinality, QueryOperator, QueryOrder,
-    QueryProjection, ensure_unique_names,
+    QueryProjection, QueryWindow, ensure_unique_names,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -121,16 +121,25 @@ impl Parser {
         } else {
             None
         };
+        let mut windows = Vec::new();
         let cardinality = if self.take_keyword("LIMIT") {
-            match self.next() {
-                Some(Token::Number(limit)) if limit == "1" => QueryCardinality::AtMostOne,
-                _ => return Err("only the literal SQL clause `LIMIT 1` is supported".to_string()),
+            let limit = self.item_count("LIMIT")?;
+            if self.take_keyword("OFFSET") {
+                windows.push(QueryWindow::SkipFirst {
+                    count: self.item_count("OFFSET")?,
+                });
+            }
+            windows.push(QueryWindow::First { count: limit });
+            if limit == 1 {
+                QueryCardinality::AtMostOne
+            } else {
+                QueryCardinality::Many
             }
         } else {
             QueryCardinality::Many
         };
         if self.take_keyword("OFFSET") {
-            return Err("SQL OFFSET is not supported".to_string());
+            return Err("SQL OFFSET requires a preceding literal LIMIT".to_string());
         }
         self.take(&Token::Semicolon);
         if self.position != self.tokens.len() {
@@ -144,6 +153,7 @@ impl Parser {
             predicates,
             order,
             cardinality,
+            windows,
         })
     }
 
@@ -262,6 +272,19 @@ impl Parser {
         self.take_keyword(expected)
             .then_some(())
             .ok_or_else(|| format!("expected SQL keyword `{expected}`"))
+    }
+
+    fn item_count(&mut self, clause: &str) -> Result<i64, String> {
+        let Some(Token::Number(value)) = self.next() else {
+            return Err(format!(
+                "SQL {clause} requires a literal non-negative integer"
+            ));
+        };
+        value
+            .parse::<i64>()
+            .ok()
+            .filter(|value| *value >= 0)
+            .ok_or_else(|| format!("SQL {clause} requires a literal non-negative integer"))
     }
 
     fn take_keyword(&mut self, expected: &str) -> bool {

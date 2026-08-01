@@ -30,10 +30,10 @@ fn prepare_database(dir: &Path) {
     let connection = Connection::open(dir.join("people.sqlite")).unwrap();
     connection
         .execute_batch(
-            "CREATE TABLE Person (Name TEXT, Title TEXT, DepartmentID INTEGER); \
+            "CREATE TABLE Person (Id INTEGER, Name TEXT, Title TEXT, DepartmentID INTEGER); \
              INSERT INTO Person VALUES \
-               ('Ada', 'Manager', 1), ('Grace', 'Senior Manager', 1), \
-               ('Linus', 'Engineer', 1), ('Bob', 'Manager', 2);",
+               (1, 'Ada', 'Manager', 1), (2, 'Grace', 'Senior Manager', 1), \
+               (3, 'Linus', 'Engineer', 1), (4, 'Bob', 'Manager', 2);",
         )
         .unwrap();
 }
@@ -195,6 +195,41 @@ fn static_single_table_query_imports_and_executes() {
         })
         .collect::<Vec<_>>();
     assert_eq!(names, ["Ada", "Grace"]);
+}
+
+#[test]
+fn static_query_limit_offset_lowers_to_sequence_windows() {
+    let dir = TempDir::new();
+    prepare_database(&dir.0);
+    let design = dir.0.join("query-window.mfd");
+    write_design(&design);
+    let text = std::fs::read_to_string(&design).unwrap().replace(
+        "AND &quot;Title&quot; LIKE '%Manager%'",
+        "AND &quot;Title&quot; LIKE '%Manager%' ORDER BY &quot;Id&quot; LIMIT 1 OFFSET 1",
+    );
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let source =
+        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let names = output
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            row.field("Name")
+                .and_then(Instance::as_scalar)
+                .and_then(|value| match value {
+                    Value::String(value) => Some(value.as_str()),
+                    _ => None,
+                })
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["Grace"]);
 }
 
 #[test]
