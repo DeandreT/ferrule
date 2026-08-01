@@ -387,12 +387,17 @@ fn tokenize(sql: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::Word(value));
                 index = next;
             }
+            '[' => {
+                let (value, next) = bracket_quoted(&chars, index + 1)?;
+                tokens.push(Token::Word(value));
+                index = next;
+            }
             '\'' => {
                 let (value, next) = quoted(&chars, index + 1, '\'')?;
                 tokens.push(Token::String(value));
                 index = next;
             }
-            ':' => {
+            ':' | '@' => {
                 let (value, next) = bare(&chars, index + 1);
                 if !valid_identifier(&value) {
                     return Err("query contains an invalid named parameter".to_string());
@@ -442,6 +447,24 @@ fn quoted(chars: &[char], mut index: usize, quote: char) -> Result<(String, usiz
         }
     }
     Err("unterminated quoted SQL value".to_string())
+}
+
+fn bracket_quoted(chars: &[char], mut index: usize) -> Result<(String, usize), String> {
+    let mut value = String::new();
+    while index < chars.len() {
+        if chars[index] == ']' {
+            if chars.get(index + 1) == Some(&']') {
+                value.push(']');
+                index += 2;
+            } else {
+                return Ok((value, index + 1));
+            }
+        } else {
+            value.push(chars[index]);
+            index += 1;
+        }
+    }
+    Err("unterminated bracket-quoted SQL identifier".to_string())
 }
 
 fn bare(chars: &[char], mut index: usize) -> (String, usize) {

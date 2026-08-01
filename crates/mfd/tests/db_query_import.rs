@@ -267,6 +267,41 @@ fn static_query_top_lowers_to_first_window() {
 }
 
 #[test]
+fn static_query_sql_server_identifiers_and_parameters_import() {
+    let dir = TempDir::new();
+    prepare_database(&dir.0);
+    let design = dir.0.join("query-sql-server-syntax.mfd");
+    write_design(&design);
+    let text = std::fs::read_to_string(&design).unwrap().replace(
+        "SELECT &quot;Name&quot;, &quot;Title&quot; FROM &quot;Person&quot; WHERE &quot;DepartmentID&quot; = :DepartmentID AND &quot;Title&quot; LIKE '%Manager%'",
+        "SELECT [Name], [Title] FROM [Person] WHERE [DepartmentID] = @DepartmentID AND [Title] LIKE '%Manager%'",
+    );
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let source =
+        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let names = output
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            row.field("Name")
+                .and_then(Instance::as_scalar)
+                .and_then(|value| match value {
+                    Value::String(value) => Some(value.as_str()),
+                    _ => None,
+                })
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["Ada", "Grace"]);
+}
+
+#[test]
 fn static_query_sqlite_comma_limit_lowers_to_sequence_windows() {
     let dir = TempDir::new();
     prepare_database(&dir.0);
