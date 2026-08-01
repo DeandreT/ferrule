@@ -89,6 +89,25 @@ impl Parser {
         if self.take_keyword("WHERE") {
             loop {
                 let column = self.column_ref()?.column;
+                if self.take_keyword("BETWEEN") {
+                    let lower = self.predicate_operand()?;
+                    self.keyword("AND")?;
+                    let upper = self.predicate_operand()?;
+                    predicates.push(ParsedPredicate {
+                        column: column.clone(),
+                        operator: QueryOperator::GreaterOrEqual,
+                        operand: lower,
+                    });
+                    predicates.push(ParsedPredicate {
+                        column,
+                        operator: QueryOperator::LessOrEqual,
+                        operand: upper,
+                    });
+                    if !self.take_keyword("AND") {
+                        break;
+                    }
+                    continue;
+                }
                 let operator = if self.take(&Token::Equal) {
                     QueryOperator::Equal
                 } else if self.take(&Token::NotEqual) {
@@ -105,21 +124,11 @@ impl Parser {
                     QueryOperator::Like
                 } else {
                     return Err(
-                        "query predicates must use `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, or `LIKE`"
+                        "query predicates must use `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, `BETWEEN`, or `LIKE`"
                             .to_string(),
                     );
                 };
-                let operand = match self.next() {
-                    Some(Token::Parameter(name)) => ParsedOperand::Parameter(name),
-                    Some(Token::String(value)) => ParsedOperand::Literal(Value::String(value)),
-                    Some(Token::Number(value)) => ParsedOperand::Literal(parse_number(&value)?),
-                    _ => {
-                        return Err(
-                            "query predicate operands must be named parameters or literals"
-                                .to_string(),
-                        );
-                    }
-                };
+                let operand = self.predicate_operand()?;
                 predicates.push(ParsedPredicate {
                     column,
                     operator,
@@ -193,6 +202,15 @@ impl Parser {
             cardinality,
             windows,
         })
+    }
+
+    fn predicate_operand(&mut self) -> Result<ParsedOperand, String> {
+        match self.next() {
+            Some(Token::Parameter(name)) => Ok(ParsedOperand::Parameter(name)),
+            Some(Token::String(value)) => Ok(ParsedOperand::Literal(Value::String(value))),
+            Some(Token::Number(value)) => Ok(ParsedOperand::Literal(parse_number(&value)?)),
+            _ => Err("query predicate operands must be named parameters or literals".to_string()),
+        }
     }
 
     /// Parses the bounded relational SELECT shape that can be lowered to the

@@ -1250,6 +1250,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_numeric_between_predicate_as_two_bounds() {
+        let parsed = Parser::new("SELECT First FROM Person WHERE ForeignKey BETWEEN 1 AND 2")
+            .and_then(Parser::parse)
+            .unwrap();
+        assert_eq!(parsed.predicates.len(), 2);
+        assert_eq!(parsed.predicates[0].column, "ForeignKey");
+        assert_eq!(parsed.predicates[1].column, "ForeignKey");
+        assert!(matches!(
+            parsed.predicates[0].operator,
+            QueryOperator::GreaterOrEqual
+        ));
+        assert!(matches!(
+            parsed.predicates[1].operator,
+            QueryOperator::LessOrEqual
+        ));
+    }
+
+    #[test]
     fn parses_all_columns_and_exact_limit_one() {
         let parsed = Parser::new("SELECT * FROM Articles ORDER BY Price DESC LIMIT 1 OFFSET 0")
             .and_then(Parser::parse)
