@@ -18,7 +18,10 @@ enum Token {
     RightParen,
     Equal,
     NotEqual,
+    Less,
+    LessOrEqual,
     Greater,
+    GreaterOrEqual,
     Semicolon,
 }
 
@@ -90,10 +93,21 @@ impl Parser {
                     QueryOperator::Equal
                 } else if self.take(&Token::NotEqual) {
                     QueryOperator::NotEqual
+                } else if self.take(&Token::LessOrEqual) {
+                    QueryOperator::LessOrEqual
+                } else if self.take(&Token::Less) {
+                    QueryOperator::Less
+                } else if self.take(&Token::GreaterOrEqual) {
+                    QueryOperator::GreaterOrEqual
+                } else if self.take(&Token::Greater) {
+                    QueryOperator::Greater
                 } else if self.take_keyword("LIKE") {
                     QueryOperator::Like
                 } else {
-                    return Err("query predicates must use `=`, `<>`, `!=`, or `LIKE`".to_string());
+                    return Err(
+                        "query predicates must use `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, or `LIKE`"
+                            .to_string(),
+                    );
                 };
                 let operand = match self.next() {
                     Some(Token::Parameter(name)) => ParsedOperand::Parameter(name),
@@ -381,8 +395,20 @@ fn tokenize(sql: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::NotEqual);
                 index += 2;
             }
+            '<' if chars.get(index + 1) == Some(&'=') => {
+                tokens.push(Token::LessOrEqual);
+                index += 2;
+            }
+            '<' => {
+                tokens.push(Token::Less);
+                index += 1;
+            }
             '!' if chars.get(index + 1) == Some(&'=') => {
                 tokens.push(Token::NotEqual);
+                index += 2;
+            }
+            '>' if chars.get(index + 1) == Some(&'=') => {
+                tokens.push(Token::GreaterOrEqual);
                 index += 2;
             }
             '>' => {

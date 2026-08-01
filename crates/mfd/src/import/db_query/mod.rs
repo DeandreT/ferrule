@@ -65,12 +65,15 @@ struct QueryPredicate {
     operand: QueryOperand,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum QueryOperator {
     Equal,
     NotEqual,
     Like,
+    Less,
+    LessOrEqual,
     Greater,
+    GreaterOrEqual,
 }
 
 #[derive(Clone)]
@@ -1006,7 +1009,10 @@ impl GraphBuilder<'_> {
                 QueryOperator::Equal => "equal",
                 QueryOperator::NotEqual => "not_equal",
                 QueryOperator::Like => "sql_like",
+                QueryOperator::Less => "less_than",
+                QueryOperator::LessOrEqual => "less_or_equal",
                 QueryOperator::Greater => "greater_than",
+                QueryOperator::GreaterOrEqual => "greater_or_equal",
             }
             .to_string(),
             args: vec![column, operand],
@@ -1214,6 +1220,32 @@ mod tests {
                 parsed.predicates[0].operator,
                 QueryOperator::NotEqual
             ));
+        }
+    }
+
+    #[test]
+    fn parses_numeric_ordering_predicates() {
+        for (sql, expected) in [
+            (
+                "SELECT First FROM Person WHERE ForeignKey < :DepartmentID",
+                QueryOperator::Less,
+            ),
+            (
+                "SELECT First FROM Person WHERE ForeignKey <= :DepartmentID",
+                QueryOperator::LessOrEqual,
+            ),
+            (
+                "SELECT First FROM Person WHERE ForeignKey > :DepartmentID",
+                QueryOperator::Greater,
+            ),
+            (
+                "SELECT First FROM Person WHERE ForeignKey >= :DepartmentID",
+                QueryOperator::GreaterOrEqual,
+            ),
+        ] {
+            let parsed = Parser::new(sql).and_then(Parser::parse).unwrap();
+            assert_eq!(parsed.predicates.len(), 1);
+            assert!(matches!(parsed.predicates[0].operator, operator if operator == expected));
         }
     }
 
