@@ -1163,6 +1163,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_sql_server_bracket_identifiers_and_at_parameters() {
+        let parsed =
+            Parser::new("SELECT [First], [Title] FROM [Person] WHERE [ForeignKey] = @DepartmentID")
+                .and_then(Parser::parse)
+                .unwrap();
+        assert_eq!(parsed.table, "Person");
+        assert!(matches!(
+            parsed.projection,
+            QueryProjection::Columns(columns) if columns == ["First", "Title"]
+        ));
+        assert_eq!(parsed.predicates.len(), 1);
+        assert!(matches!(
+            parsed.predicates[0].operand,
+            ParsedOperand::Parameter(ref name) if name == "DepartmentID"
+        ));
+    }
+
+    #[test]
     fn parses_all_columns_and_exact_limit_one() {
         let parsed = Parser::new("SELECT * FROM Articles ORDER BY Price DESC LIMIT 1 OFFSET 0")
             .and_then(Parser::parse)
