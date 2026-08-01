@@ -1188,6 +1188,21 @@ mod tests {
     }
 
     #[test]
+    fn parses_sqlite_comma_limit_as_offset_then_count() {
+        let parsed = Parser::new("SELECT Name FROM Articles LIMIT 4, 2")
+            .and_then(Parser::parse)
+            .unwrap();
+        assert_eq!(parsed.cardinality, QueryCardinality::Many);
+        assert_eq!(
+            parsed.windows,
+            [
+                QueryWindow::SkipFirst { count: 4 },
+                QueryWindow::First { count: 2 }
+            ]
+        );
+    }
+
+    #[test]
     fn rejects_offset_without_limit_and_dynamic_limits() {
         for sql in [
             "SELECT * FROM Articles LIMIT :count",

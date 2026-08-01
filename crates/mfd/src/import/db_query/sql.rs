@@ -123,7 +123,13 @@ impl Parser {
         };
         let mut windows = Vec::new();
         let cardinality = if self.take_keyword("LIMIT") {
-            let limit = self.item_count("LIMIT")?;
+            let first = self.item_count("LIMIT")?;
+            let limit = if self.take(&Token::Comma) {
+                windows.push(QueryWindow::SkipFirst { count: first });
+                self.item_count("LIMIT")?
+            } else {
+                first
+            };
             if self.take_keyword("OFFSET") {
                 windows.push(QueryWindow::SkipFirst {
                     count: self.item_count("OFFSET")?,
