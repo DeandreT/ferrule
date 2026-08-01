@@ -25,7 +25,7 @@ mod xml_ports;
 
 pub(super) use shared::{
     XmlSchemaReadError, entry_key_sets, is_default_output, parse_u32, read_xml_schema_file,
-    resolve_xml_schema_reference,
+    read_xsd_metadata_text, resolve_xml_schema_reference,
 };
 
 pub(super) fn enrich_unresolved_edi_source_schemas(project: &mut mapping::Project) {

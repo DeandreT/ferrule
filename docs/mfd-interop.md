@@ -68,10 +68,12 @@ JSON Schema remain confined to the root that authorized the schema; endpoint
 URLs, preview instance paths, and retained WSDL service contract locators are
 host metadata and are not rewritten as package resources.
 Target `cast-in-subtree` and target node-function metadata use the same bounded
-resolver when they inspect a component XSD after target construction. A missing,
-oversized, malformed, or canonically escaped schema produces an actionable
-postprocessing warning and leaves the resilient entry-tree mapping intact
-instead of reopening the resource outside the selected package.
+resolver and UTF-8/UTF-16 decoder when they inspect a component XSD after target
+construction. DTD targets are accepted without applying XSD-only scalar type or
+facet annotations. A missing, oversized, malformed, or canonically escaped
+schema produces an actionable postprocessing warning and leaves the resilient
+entry-tree mapping intact instead of reopening the resource outside the selected
+package.
 
 If EDI configurations live in a separately managed release catalog, declare
 each trusted catalog in search order:
