@@ -1180,11 +1180,14 @@ mod tests {
 
     #[test]
     fn parses_sql_server_top_as_first_window() {
-        let parsed = Parser::new("SELECT TOP 1 Name FROM Articles ORDER BY Price DESC")
-            .and_then(Parser::parse)
-            .unwrap();
-        assert_eq!(parsed.cardinality, QueryCardinality::AtMostOne);
-        assert_eq!(parsed.windows, [QueryWindow::First { count: 1 }]);
+        for sql in [
+            "SELECT TOP 1 Name FROM Articles ORDER BY Price DESC",
+            "SELECT TOP (1) Name FROM Articles ORDER BY Price DESC",
+        ] {
+            let parsed = Parser::new(sql).and_then(Parser::parse).unwrap();
+            assert_eq!(parsed.cardinality, QueryCardinality::AtMostOne);
+            assert_eq!(parsed.windows, [QueryWindow::First { count: 1 }]);
+        }
     }
 
     #[test]
@@ -1216,6 +1219,8 @@ mod tests {
         for sql in [
             "SELECT * FROM Articles LIMIT :count",
             "SELECT TOP :count * FROM Articles",
+            "SELECT TOP (1 Name FROM Articles",
+            "SELECT TOP () Name FROM Articles",
             "SELECT TOP 1 * FROM Articles LIMIT 1",
             "SELECT * FROM Articles OFFSET 1",
             "SELECT * FROM Articles LIMIT -1",

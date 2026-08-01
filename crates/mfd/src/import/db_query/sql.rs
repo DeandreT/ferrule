@@ -65,7 +65,7 @@ impl Parser {
     pub(super) fn parse(mut self) -> Result<ParsedQuery, String> {
         self.keyword("SELECT")?;
         let top = if self.take_keyword("TOP") {
-            Some(self.item_count("TOP")?)
+            Some(self.parenthesized_item_count("TOP")?)
         } else {
             None
         };
@@ -306,6 +306,15 @@ impl Parser {
             .ok()
             .filter(|value| *value >= 0)
             .ok_or_else(|| format!("SQL {clause} requires a literal non-negative integer"))
+    }
+
+    fn parenthesized_item_count(&mut self, clause: &str) -> Result<i64, String> {
+        let parenthesized = self.take(&Token::LeftParen);
+        let count = self.item_count(clause)?;
+        if parenthesized && !self.take(&Token::RightParen) {
+            return Err(format!("expected `)` after SQL {clause} literal"));
+        }
+        Ok(count)
     }
 
     fn take_keyword(&mut self, expected: &str) -> bool {
