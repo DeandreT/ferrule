@@ -1181,6 +1181,22 @@ mod tests {
     }
 
     #[test]
+    fn parses_single_table_qualified_columns() {
+        let parsed = Parser::new(
+            "SELECT [Person].[First], [Person].[Title] FROM [Person] WHERE [Person].[ForeignKey] = @DepartmentID ORDER BY [Person].[Title]",
+        )
+        .and_then(Parser::parse)
+        .unwrap();
+        assert_eq!(parsed.table, "Person");
+        assert!(matches!(
+            parsed.projection,
+            QueryProjection::Columns(columns) if columns == ["First", "Title"]
+        ));
+        assert_eq!(parsed.predicates[0].column, "ForeignKey");
+        assert!(matches!(parsed.order, Some(QueryOrder { column, .. }) if column == "Title"));
+    }
+
+    #[test]
     fn parses_all_columns_and_exact_limit_one() {
         let parsed = Parser::new("SELECT * FROM Articles ORDER BY Price DESC LIMIT 1 OFFSET 0")
             .and_then(Parser::parse)

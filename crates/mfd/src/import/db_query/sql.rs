@@ -72,9 +72,9 @@ impl Parser {
         let projection = if self.take(&Token::Star) {
             QueryProjection::All
         } else {
-            let mut columns = vec![self.identifier()?];
+            let mut columns = vec![self.column_ref()?.column];
             while self.take(&Token::Comma) {
-                columns.push(self.identifier()?);
+                columns.push(self.column_ref()?.column);
             }
             ensure_unique_names("SQL projection", &columns)?;
             QueryProjection::Columns(columns)
@@ -84,7 +84,7 @@ impl Parser {
         let mut predicates = Vec::new();
         if self.take_keyword("WHERE") {
             loop {
-                let column = self.identifier()?;
+                let column = self.column_ref()?.column;
                 let operator = if self.take(&Token::Equal) {
                     QueryOperator::Equal
                 } else if self.take_keyword("LIKE") {
@@ -115,7 +115,7 @@ impl Parser {
         }
         let order = if self.take_keyword("ORDER") {
             self.keyword("BY")?;
-            let column = self.identifier()?;
+            let column = self.column_ref()?.column;
             let descending = if self.take_keyword("DESC") {
                 true
             } else {
