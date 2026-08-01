@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 use ir::SchemaNode;
 
+use crate::resource::ResourceResolver;
+
 #[derive(Debug)]
 pub(in crate::import) enum XmlSchemaReadError {
     Xsd(format_xml::XmlFormatError),
@@ -77,6 +79,30 @@ pub(in crate::import) fn read_xml_schema_file(
     } else {
         format_xml::xsd::import_root(schema_path, root).map_err(XmlSchemaReadError::Xsd)
     }
+}
+
+pub(in crate::import) fn read_xsd_metadata_text(
+    resources: &ResourceResolver,
+    declared: &str,
+    description: &str,
+    max_bytes: u64,
+) -> Result<Option<String>, String> {
+    let resolved = resources.resolve_file(declared, description)?;
+    if resolved
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("dtd"))
+    {
+        return Ok(None);
+    }
+    format_xml::xsd::read_text(&resolved, max_bytes)
+        .map(Some)
+        .map_err(|error| {
+            format!(
+                "could not read {description} `{declared}` at `{}` ({error})",
+                resolved.display()
+            )
+        })
 }
 
 pub(in crate::import) fn parse_u32(attr: Option<&str>) -> Option<u32> {

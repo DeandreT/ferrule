@@ -28,6 +28,7 @@
 //! the name.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use ir::{
@@ -49,6 +50,7 @@ pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, expo
 
 const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 4_096;
 const MAX_TYPE_DERIVATION_DEPTH: usize = 256;
+const MAX_SCHEMA_BYTES: u64 = 64 * 1024 * 1024;
 const ALTERNATIVE_VIEW_NAMESPACE: &str = "urn:ferrule:xsd:group-alternatives";
 const LEGACY_NAME_NAMESPACE: &str = "urn:ferrule:xsd:legacy-name";
 
@@ -241,8 +243,20 @@ impl ParseState {
     }
 }
 
-fn read_xml_text(path: &Path) -> std::io::Result<String> {
-    let bytes = std::fs::read(path)?;
+/// Reads one XML Schema document with bounded UTF-8/UTF-16 decoding.
+///
+/// Callers that only need schema annotations can use this without invoking
+/// the full XSD importer while retaining the same encoding rules.
+pub fn read_text(path: &Path, max_bytes: u64) -> std::io::Result<String> {
+    let file = std::fs::File::open(path)?;
+    let mut bytes = Vec::with_capacity(max_bytes.min(8_192) as usize);
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    if u64::try_from(bytes.len()).map_or(true, |length| length > max_bytes) {
+        return Err(invalid_xml_encoding(&format!(
+            "XML Schema exceeds the {max_bytes}-byte input limit"
+        )));
+    }
     if bytes.starts_with(&[0x00, 0x00, 0xfe, 0xff]) || bytes.starts_with(&[0xff, 0xfe, 0x00, 0x00])
     {
         return Err(invalid_xml_encoding("UTF-32 schemas are not supported"));
@@ -264,6 +278,10 @@ fn read_xml_text(path: &Path) -> std::io::Result<String> {
         None => String::from_utf8(bytes),
     };
     decoded.map_err(|error| invalid_xml_encoding(&format!("schema is not UTF-8: {error}")))
+}
+
+fn read_xml_text(path: &Path) -> std::io::Result<String> {
+    read_text(path, MAX_SCHEMA_BYTES)
 }
 
 fn decode_utf16(bytes: &[u8], decode: fn([u8; 2]) -> u16) -> std::io::Result<String> {

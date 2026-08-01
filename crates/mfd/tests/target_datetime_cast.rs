@@ -150,6 +150,66 @@ fn target_without_cast_mode_preserves_the_connected_lexical_value() {
 }
 
 #[test]
+fn cast_in_subtree_reads_utf16_target_schema_metadata() {
+    let directory = TempDir::new();
+    let design = write_design(&directory.0, true);
+    let target_schema = directory.0.join("target.xsd");
+    let text = std::fs::read_to_string(&target_schema).unwrap();
+    let mut bytes = vec![0xff, 0xfe];
+    for unit in text.encode_utf16() {
+        bytes.extend(unit.to_le_bytes());
+    }
+    std::fs::write(target_schema, bytes).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let received = imported
+        .project
+        .root
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Received")
+        .unwrap();
+    assert!(matches!(
+        imported.project.graph.nodes.get(&received.node),
+        Some(Node::Call { function, .. }) if function == "coerce_datetime"
+    ));
+}
+
+#[test]
+fn cast_in_subtree_accepts_dtd_without_xsd_type_metadata() {
+    let directory = TempDir::new();
+    let design = write_design(&directory.0, true);
+    std::fs::write(
+        directory.0.join("target.dtd"),
+        r#"<!ELEMENT Target (Received, Existing)>
+           <!ELEMENT Received (#PCDATA)>
+           <!ELEMENT Existing (#PCDATA)>"#,
+    )
+    .unwrap();
+    let mapping = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace("schema=\"target.xsd\"", "schema=\"target.dtd\"");
+    std::fs::write(&design, mapping).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let received = imported
+        .project
+        .root
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Received")
+        .unwrap();
+    assert!(!matches!(
+        imported.project.graph.nodes.get(&received.node),
+        Some(Node::Call { function, .. }) if function == "coerce_datetime"
+    ));
+}
+
+#[test]
 fn relocated_package_resolves_windows_parent_target_cast_schema()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory = TempDir::new();

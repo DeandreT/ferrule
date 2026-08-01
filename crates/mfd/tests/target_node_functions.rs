@@ -130,6 +130,28 @@ fn target_descendant_rule_inlines_nested_scalar_udf_and_uses_fraction_digits() {
 }
 
 #[test]
+fn target_node_function_reads_utf16_fraction_digit_metadata() {
+    let directory = setup();
+    let target_schema = directory.0.join("target.xsd");
+    let text = std::fs::read_to_string(&target_schema).unwrap();
+    let mut bytes = vec![0xfe, 0xff];
+    for unit in text.encode_utf16() {
+        bytes.extend(unit.to_be_bytes());
+    }
+    std::fs::write(target_schema, bytes).unwrap();
+
+    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let output = engine::run(&imported.project, &decimal_source(1.235)).unwrap();
+    let items = output.field("Item").and_then(sequence_items).unwrap();
+    assert_eq!(
+        items[0].field("Amount").and_then(Instance::as_scalar),
+        Some(&Value::Float(1.24))
+    );
+}
+
+#[test]
 fn target_descendant_rule_treats_the_csv_row_block_as_transparent() {
     let directory = TempDir::new();
     std::fs::write(

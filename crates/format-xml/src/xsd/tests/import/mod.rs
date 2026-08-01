@@ -43,6 +43,21 @@ fn imports_utf16_schemas_with_or_without_a_bom() {
 }
 
 #[test]
+fn bounded_schema_text_reader_rejects_oversized_input() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_bounded_reader_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(&path, b"<schema/>").unwrap();
+
+    let error = read_text(&path, 4).unwrap_err();
+
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert!(error.to_string().contains("4-byte input limit"));
+}
+
+#[test]
 fn max_occurs_recognizes_arbitrarily_large_non_negative_integers() {
     for value in ["2", "0002", "+2", "4294967296"] {
         assert!(non_negative_integer_exceeds_one(value), "{value}");
