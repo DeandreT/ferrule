@@ -399,6 +399,11 @@ fn build_plan(
         .map(|predicate| {
             let operand = match predicate.operand {
                 ParsedOperand::Literal(value) => QueryOperand::Literal(value),
+                ParsedOperand::Null => {
+                    return Err(
+                        "correlated query null predicates are not supported yet".to_string()
+                    );
+                }
                 ParsedOperand::Parameter(parameter) if correlated == Some(parameter.as_str()) => {
                     if !matches!(predicate.operator, QueryOperator::Equal)
                         || correlated_column

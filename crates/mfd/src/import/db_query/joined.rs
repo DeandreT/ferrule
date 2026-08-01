@@ -132,6 +132,9 @@ pub(super) fn read_component(
     let predicate_operand =
         match parsed.predicate_operand {
             ParsedOperand::Literal(value) => QueryOperand::Literal(value),
+            ParsedOperand::Null => {
+                return Err("joined query null predicates are not supported yet".to_string());
+            }
             ParsedOperand::Parameter(name) => QueryOperand::Parameter {
                 ty: declared_parameters.get(&name).copied().ok_or_else(|| {
                     format!("SQL parameter `:{name}` has no matching declaration")
