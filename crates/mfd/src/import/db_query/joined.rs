@@ -189,6 +189,7 @@ pub(super) fn read_component(
             }],
             order: None,
             cardinality: QueryCardinality::Many,
+            windows: Vec::new(),
             required_paths: vec![vec![relation_name, joined_join]],
             computed_ports: output_ports.computed,
         }],

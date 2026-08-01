@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use ir::{SchemaKind, Value, XML_TYPE_FIELD};
 use mapping::{IterationOutput, Node, NodeId, ScopeConstruction, SequenceWindow};
 
+use super::db_query::materialize_query_windows;
 use super::graph::GraphBuilder;
 use super::group_projection::{GroupProjectionPlan, GroupProjectionStep, TargetIteration};
 use super::iteration::{SequenceWindowFeed, split_at_innermost_repeating};
@@ -517,12 +518,11 @@ fn build_one(
         );
         return;
     }
-    let (mut filter, database_sort, database_descending, query_at_most_one) = match builder
-        .apply_db_controls(
-            feed.db_where_component,
-            source_path.as_ref(),
-            existing_filter,
-        ) {
+    let database_controls = match builder.apply_db_controls(
+        feed.db_where_component,
+        source_path.as_ref(),
+        existing_filter,
+    ) {
         Ok(nodes) => nodes,
         Err(error) => {
             builder.warnings.push(error.warning(&target_path));
@@ -530,6 +530,7 @@ fn build_one(
             return;
         }
     };
+    let mut filter = database_controls.filter;
     let structural_source_path = builder
         .source_abs_path(feed.source_key)
         .map(|mut path| {
@@ -556,7 +557,7 @@ fn build_one(
             None => presence,
         });
     }
-    if query_at_most_one
+    if !database_controls.windows.is_empty()
         && (feed.db_where_component.is_some()
             || feed.has_filter
             || has_inherited_filter
@@ -571,7 +572,7 @@ fn build_one(
             || feed.order_issue.is_some())
     {
         builder.warnings.push(format!(
-            "database LIMIT 1 feeding `{}` is followed by sequence controls whose order cannot be represented exactly; iteration skipped",
+            "database LIMIT/OFFSET feeding `{}` is followed by sequence controls whose order cannot be represented exactly; iteration skipped",
             target_path.join("/")
         ));
         skipped.push(target_path);
@@ -676,16 +677,18 @@ fn build_one(
         skipped.push(target_path);
         return;
     }
-    if ordinary_sort.as_ref().is_some_and(|keys| !keys.is_empty()) && database_sort.is_some() {
+    if ordinary_sort.as_ref().is_some_and(|keys| !keys.is_empty())
+        && database_controls.sort.is_some()
+    {
         builder.warn_conflicting_db_sort(&target_path);
         skipped.push(target_path);
         return;
     }
     let mut sort_keys = ordinary_sort.unwrap_or_default();
-    if let Some(node) = database_sort {
+    if let Some(node) = database_controls.sort {
         sort_keys.push(mapping::SortKey {
             node,
-            descending: database_descending,
+            descending: database_controls.descending,
         });
     }
     let primary_sort = sort_keys.first().copied();
@@ -695,12 +698,11 @@ fn build_one(
         } else {
             feed.windows.as_slice()
         };
-    let windows = if query_at_most_one {
-        Some(vec![SequenceWindow::First {
-            count: builder.alloc(Node::Const {
-                value: Value::Int(1),
-            }),
-        }])
+    let windows = if !database_controls.windows.is_empty() {
+        Some(materialize_query_windows(
+            builder,
+            &database_controls.windows,
+        ))
     } else {
         materialize_windows(builder, window_feeds, &iteration_anchor)
     };
