@@ -108,6 +108,24 @@ impl Parser {
                     }
                     continue;
                 }
+                if self.take_keyword("IS") {
+                    let operator = if self.take_keyword("NOT") {
+                        self.keyword("NULL")?;
+                        QueryOperator::IsNotNull
+                    } else {
+                        self.keyword("NULL")?;
+                        QueryOperator::IsNull
+                    };
+                    predicates.push(ParsedPredicate {
+                        column,
+                        operator,
+                        operand: ParsedOperand::Null,
+                    });
+                    if !self.take_keyword("AND") {
+                        break;
+                    }
+                    continue;
+                }
                 let operator = if self.take(&Token::Equal) {
                     QueryOperator::Equal
                 } else if self.take(&Token::NotEqual) {
@@ -124,7 +142,7 @@ impl Parser {
                     QueryOperator::Like
                 } else {
                     return Err(
-                        "query predicates must use `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, `BETWEEN`, or `LIKE`"
+                        "query predicates must use `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, `BETWEEN`, `IS NULL`, `IS NOT NULL`, or `LIKE`"
                             .to_string(),
                     );
                 };

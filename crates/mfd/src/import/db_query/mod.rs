@@ -69,6 +69,8 @@ struct QueryPredicate {
 enum QueryOperator {
     Equal,
     NotEqual,
+    IsNull,
+    IsNotNull,
     Like,
     Less,
     LessOrEqual,
@@ -129,6 +131,7 @@ struct ParsedPredicate {
 enum ParsedOperand {
     Parameter(String),
     Literal(Value),
+    Null,
 }
 
 pub(super) enum DbControlError {
@@ -313,6 +316,7 @@ fn read_uncorrelated_component(
         .map(|predicate| {
             let operand = match predicate.operand {
                 ParsedOperand::Literal(value) => QueryOperand::Literal(value),
+                ParsedOperand::Null => QueryOperand::Literal(Value::Null),
                 ParsedOperand::Parameter(name) => {
                     let ty = declared_parameters.get(&name).copied().ok_or_else(|| {
                         format!("SQL parameter `:{name}` has no matching declaration")
@@ -965,6 +969,23 @@ impl GraphBuilder<'_> {
         predicate: QueryPredicate,
     ) -> Result<NodeId, String> {
         let (column, column_type) = self.db_column_node(source_path, &[predicate.column])?;
+        if matches!(
+            predicate.operator,
+            QueryOperator::IsNull | QueryOperator::IsNotNull
+        ) {
+            let exists = self.alloc(Node::Call {
+                function: "exists".to_string(),
+                args: vec![column],
+            });
+            return if matches!(predicate.operator, QueryOperator::IsNotNull) {
+                Ok(exists)
+            } else {
+                Ok(self.alloc(Node::Call {
+                    function: "not".to_string(),
+                    args: vec![exists],
+                }))
+            };
+        }
         let value = match predicate.operand {
             QueryOperand::Literal(value) => coerce_value(value, column_type)?,
             QueryOperand::Parameter {
@@ -1008,6 +1029,9 @@ impl GraphBuilder<'_> {
             function: match predicate.operator {
                 QueryOperator::Equal => "equal",
                 QueryOperator::NotEqual => "not_equal",
+                QueryOperator::IsNull | QueryOperator::IsNotNull => {
+                    return Err("null query predicate was not lowered".to_string());
+                }
                 QueryOperator::Like => "sql_like",
                 QueryOperator::Less => "less_than",
                 QueryOperator::LessOrEqual => "less_or_equal",
@@ -1265,6 +1289,25 @@ mod tests {
             parsed.predicates[1].operator,
             QueryOperator::LessOrEqual
         ));
+    }
+
+    #[test]
+    fn parses_null_predicates() {
+        for (sql, expected) in [
+            (
+                "SELECT First FROM Person WHERE ForeignKey IS NULL",
+                QueryOperator::IsNull,
+            ),
+            (
+                "SELECT First FROM Person WHERE ForeignKey IS NOT NULL",
+                QueryOperator::IsNotNull,
+            ),
+        ] {
+            let parsed = Parser::new(sql).and_then(Parser::parse).unwrap();
+            assert_eq!(parsed.predicates.len(), 1);
+            assert!(matches!(parsed.predicates[0].operator, operator if operator == expected));
+            assert!(matches!(parsed.predicates[0].operand, ParsedOperand::Null));
+        }
     }
 
     #[test]
