@@ -17,6 +17,7 @@ enum Token {
     LeftParen,
     RightParen,
     Equal,
+    NotEqual,
     Greater,
     Semicolon,
 }
@@ -87,10 +88,12 @@ impl Parser {
                 let column = self.column_ref()?.column;
                 let operator = if self.take(&Token::Equal) {
                     QueryOperator::Equal
+                } else if self.take(&Token::NotEqual) {
+                    QueryOperator::NotEqual
                 } else if self.take_keyword("LIKE") {
                     QueryOperator::Like
                 } else {
-                    return Err("query predicates must use `=` or `LIKE`".to_string());
+                    return Err("query predicates must use `=`, `<>`, `!=`, or `LIKE`".to_string());
                 };
                 let operand = match self.next() {
                     Some(Token::Parameter(name)) => ParsedOperand::Parameter(name),
@@ -373,6 +376,14 @@ fn tokenize(sql: &str) -> Result<Vec<Token>, String> {
             '=' => {
                 tokens.push(Token::Equal);
                 index += 1;
+            }
+            '<' if chars.get(index + 1) == Some(&'>') => {
+                tokens.push(Token::NotEqual);
+                index += 2;
+            }
+            '!' if chars.get(index + 1) == Some(&'=') => {
+                tokens.push(Token::NotEqual);
+                index += 2;
             }
             '>' => {
                 tokens.push(Token::Greater);

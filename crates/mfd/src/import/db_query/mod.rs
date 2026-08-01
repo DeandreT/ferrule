@@ -68,6 +68,7 @@ struct QueryPredicate {
 #[derive(Clone, Copy)]
 enum QueryOperator {
     Equal,
+    NotEqual,
     Like,
     Greater,
 }
@@ -989,7 +990,11 @@ impl GraphBuilder<'_> {
         if matches!(predicate.operator, QueryOperator::Like) && column_type != ScalarType::String {
             return Err("LIKE requires a string column and operand".to_string());
         }
-        if matches!(predicate.operator, QueryOperator::Equal) && column_type == ScalarType::String {
+        if matches!(
+            predicate.operator,
+            QueryOperator::Equal | QueryOperator::NotEqual
+        ) && column_type == ScalarType::String
+        {
             return Err(
                 "text equality collation cannot be established from SQLite schema metadata"
                     .to_string(),
@@ -999,6 +1004,7 @@ impl GraphBuilder<'_> {
         let comparison = self.alloc(Node::Call {
             function: match predicate.operator {
                 QueryOperator::Equal => "equal",
+                QueryOperator::NotEqual => "not_equal",
                 QueryOperator::Like => "sql_like",
                 QueryOperator::Greater => "greater_than",
             }
@@ -1194,6 +1200,21 @@ mod tests {
         ));
         assert_eq!(parsed.predicates[0].column, "ForeignKey");
         assert!(matches!(parsed.order, Some(QueryOrder { column, .. }) if column == "Title"));
+    }
+
+    #[test]
+    fn parses_numeric_not_equal_predicates() {
+        for sql in [
+            "SELECT First FROM Person WHERE ForeignKey <> :DepartmentID",
+            "SELECT First FROM Person WHERE ForeignKey != :DepartmentID",
+        ] {
+            let parsed = Parser::new(sql).and_then(Parser::parse).unwrap();
+            assert_eq!(parsed.predicates.len(), 1);
+            assert!(matches!(
+                parsed.predicates[0].operator,
+                QueryOperator::NotEqual
+            ));
+        }
     }
 
     #[test]
