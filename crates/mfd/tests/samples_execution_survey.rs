@@ -62,13 +62,14 @@ use survey_import_options::{SurveyResourceProvenance, SurveyResourceSelection};
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const JSON_REPORT_ENV: &str = "FERRULE_EXECUTION_SURVEY_JSON";
 const DETAILS_ENV: &str = "FERRULE_EXECUTION_SURVEY_DETAILS";
-const REPORT_SCHEMA_VERSION: u32 = 1;
+const REPORT_SCHEMA_VERSION: u32 = 2;
 const FIXED_CURRENT_DATETIME: &str = "2000-01-01T00:00:00-08:00";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Status {
     Passed,
     Failed,
+    ExpectedFailure,
     DependencyBlocked,
     Skipped,
 }
@@ -78,6 +79,7 @@ impl Status {
         match self {
             Self::Passed => "passed",
             Self::Failed => "failed",
+            Self::ExpectedFailure => "expected_failure",
             Self::DependencyBlocked => "dependency_blocked",
             Self::Skipped => "skipped",
         }
@@ -101,6 +103,13 @@ impl StageOutcome {
     fn failed(message: impl Into<String>) -> Self {
         Self {
             status: Status::Failed,
+            message: Some(message.into()),
+        }
+    }
+
+    fn expected_failure(message: impl Into<String>) -> Self {
+        Self {
+            status: Status::ExpectedFailure,
             message: Some(message.into()),
         }
     }
@@ -187,6 +196,7 @@ struct Summary {
     execution_attempted: usize,
     execution_passed: usize,
     outputs_written: usize,
+    output_expected_failures: usize,
     references_available: usize,
     references_matched: usize,
     references_mismatched: usize,
@@ -209,6 +219,9 @@ impl Summary {
             execution_passed: count(outcomes, |sample| sample.execution.status == Status::Passed),
             outputs_written: count(outcomes, |sample| {
                 sample.output_write.status == Status::Passed
+            }),
+            output_expected_failures: count(outcomes, |sample| {
+                sample.output_write.status == Status::ExpectedFailure
             }),
             references_available: count(outcomes, |sample| {
                 matches!(
@@ -234,6 +247,7 @@ impl Summary {
             "execution_attempted": self.execution_attempted,
             "execution_passed": self.execution_passed,
             "outputs_written": self.outputs_written,
+            "output_expected_failures": self.output_expected_failures,
             "references_available": self.references_available,
             "references_matched": self.references_matched,
             "references_mismatched": self.references_mismatched,
@@ -659,7 +673,11 @@ fn survey_file(
     ) {
         Ok(written) => written,
         Err(reason) => {
-            outcome.output_write = StageOutcome::skipped(reason);
+            outcome.output_write = if is_expected_output_write_failure(&reason) {
+                StageOutcome::expected_failure(reason)
+            } else {
+                StageOutcome::skipped(reason)
+            };
             return outcome;
         }
     };
@@ -749,6 +767,11 @@ fn survey_file(
         ));
     }
     outcome
+}
+
+fn is_expected_output_write_failure(reason: &str) -> bool {
+    reason.starts_with("writing primary-output failed: sqlite error: ")
+        && reason.contains(" constraint failed")
 }
 
 fn has_nondeterministic_current_time(graph: &Graph) -> bool {
@@ -869,22 +892,45 @@ fn summary_counts_attempts_separately_from_skips() {
     failed.validation = StageOutcome::passed();
     failed.execution = StageOutcome::failed("runtime failure");
     failed.reference_match = StageOutcome::failed("different");
+    let mut expected_output_failure = SampleOutcome::pending(Path::new("expected-output.mfd"));
+    expected_output_failure.import = StageOutcome::passed();
+    expected_output_failure.validation = StageOutcome::passed();
+    expected_output_failure.execution = StageOutcome::passed();
+    expected_output_failure.output_write =
+        StageOutcome::expected_failure("target constraint failed");
 
     assert_eq!(
-        Summary::from_outcomes(&[passed, failed]),
+        Summary::from_outcomes(&[passed, failed, expected_output_failure]),
         Summary {
-            total: 2,
-            imported: 2,
-            valid: 2,
+            total: 3,
+            imported: 3,
+            valid: 3,
             dependency_blocked: 0,
-            execution_attempted: 2,
-            execution_passed: 1,
+            execution_attempted: 3,
+            execution_passed: 2,
             outputs_written: 1,
+            output_expected_failures: 1,
             references_available: 2,
             references_matched: 1,
             references_mismatched: 1,
         }
     );
+}
+
+#[test]
+fn sqlite_constraint_output_failures_are_classified_as_expected_target_failures() {
+    assert!(is_expected_output_write_failure(
+        "writing primary-output failed: sqlite error: NOT NULL constraint failed: records.name"
+    ));
+    assert!(is_expected_output_write_failure(
+        "writing primary-output failed: sqlite error: UNIQUE constraint failed: records.id"
+    ));
+    assert!(!is_expected_output_write_failure(
+        "writing primary-output failed: sqlite error: no such table: records"
+    ));
+    assert!(!is_expected_output_write_failure(
+        "writing extra target `archive` failed: writing extra-output-0 failed: sqlite error: NOT NULL constraint failed: records.name"
+    ));
 }
 
 #[test]
@@ -1391,6 +1437,10 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
         summary.total - summary.execution_attempted
     );
     println!("redirected outputs written: {}", summary.outputs_written);
+    println!(
+        "expected output failures: {}",
+        summary.output_expected_failures
+    );
     println!(
         "references: {} available; {} matched; {} mismatched",
         summary.references_available, summary.references_matched, summary.references_mismatched

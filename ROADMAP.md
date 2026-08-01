@@ -256,8 +256,9 @@ re-import, and post-export validation separately. All 187 local designs import;
 export and re-import warning-free, with all 175 dependency-complete round trips
 remaining engine-valid. Twelve designs preserve typed unresolved external
 EDI-catalog dependencies. A broad isolated execution survey runs all
-168 safe-input originals successfully, publishing 165 captured outputs, with
-seven network or captured-service cases unavailable. The round-trip profile
+168 safe-input originals successfully, publishing 165 captured outputs and
+classifying one SQLite target-constraint rejection as an expected output
+failure, with seven network or captured-service cases unavailable. The round-trip profile
 executes the same 168 safe originals; all 168 exportable/re-importable
 executions match semantically. The latest
 isolated manifests provide 79 deterministic references, all of which match
@@ -468,8 +469,9 @@ Update these numbers with each parity increment:
 - `.mfd` export/re-import: all 187 designs export and re-import with zero
   warnings; all 175 dependency-complete round trips remain engine-valid.
 - `.mfd` execution: all 168 attempted read-only executions pass and publish
-  165 captured outputs; twelve are dependency-blocked and seven network or
-  captured-service inputs are unavailable.
+  165 captured outputs; one SQLite target-constraint rejection is classified as
+  an expected output failure, twelve are dependency-blocked, and seven network
+  or captured-service inputs are unavailable.
 - `.mfd` execution round trips: all 168 safe projects export, re-import,
   validate, execute, and produce semantically identical outputs.
 - Code generation: 175/175 dependency-complete designs lower and emit for both
