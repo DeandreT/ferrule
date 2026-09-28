@@ -2172,6 +2172,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui-snarl",
+ "engine",
  "format-edi",
  "functions",
  "ir",

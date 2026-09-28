@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 editor-ui = { workspace = true }
+engine = { workspace = true }
 ir = { workspace = true }
 mapping = { workspace = true }
 functions = { workspace = true }

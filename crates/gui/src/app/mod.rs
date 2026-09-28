@@ -22,7 +22,7 @@ use crate::appearance_editor::AppearanceTab;
 use crate::auto_connect::AutoConnectPlan;
 use crate::canvas::{CanvasNode, source_blocks, target_blocks};
 use crate::canvas_layout::{ArrangeMode, arrange_snarl_with_mode};
-use crate::diagnostics::{Diagnostic, DiagnosticLevel, Diagnostics};
+use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::document::DocumentLocation;
 use crate::extra_sources::{ExtraSourceDraft, remove_extra_source};
 use crate::extra_targets::ExtraTargetDraft;
@@ -448,7 +448,7 @@ enum SaveContinuation {
 }
 
 struct DocumentSaveOutcome {
-    validation_issues: Vec<String>,
+    validation_issues: Vec<engine::ValidationIssue>,
     layout_warning: Option<String>,
 }
 
@@ -925,14 +925,10 @@ impl FerruleApp {
                 let validation = cli::validate(&self.project);
                 let mut diagnostics = validation
                     .into_iter()
-                    .map(|issue| Diagnostic {
-                        level: DiagnosticLevel::Error,
-                        message: issue.to_string(),
-                    })
+                    .map(Diagnostic::validation)
                     .collect::<Vec<_>>();
-                diagnostics.extend(layout_warning.map(|warning| Diagnostic {
-                    level: DiagnosticLevel::Warning,
-                    message: format!("using default canvas layout: {warning}"),
+                diagnostics.extend(layout_warning.map(|warning| {
+                    Diagnostic::warning(format!("using default canvas layout: {warning}"))
                 }));
                 if diagnostics.is_empty() {
                     self.diagnostics.clear();
@@ -963,10 +959,7 @@ impl FerruleApp {
             .err()
             .map(|error| format!("canvas layout was not saved: {error}"));
         Ok(DocumentSaveOutcome {
-            validation_issues: cli::validate(&self.project)
-                .into_iter()
-                .map(|issue| issue.to_string())
-                .collect(),
+            validation_issues: cli::validate(&self.project),
             layout_warning,
         })
     }
@@ -990,15 +983,9 @@ impl FerruleApp {
         let mut diagnostics = outcome
             .validation_issues
             .into_iter()
-            .map(|message| Diagnostic {
-                level: DiagnosticLevel::Error,
-                message,
-            })
+            .map(Diagnostic::validation)
             .collect::<Vec<_>>();
-        diagnostics.extend(outcome.layout_warning.map(|message| Diagnostic {
-            level: DiagnosticLevel::Warning,
-            message,
-        }));
+        diagnostics.extend(outcome.layout_warning.map(Diagnostic::warning));
         if diagnostics.is_empty() {
             self.diagnostics.clear();
         } else {
@@ -1153,15 +1140,9 @@ impl FerruleApp {
                         .warnings
                         .iter()
                         .cloned()
-                        .map(|message| Diagnostic {
-                            level: DiagnosticLevel::Warning,
-                            message,
-                        })
+                        .map(|message| Diagnostic::import_warning(message, &imported.mapping_path))
                         .collect::<Vec<_>>();
-                    diagnostics.extend(validation.into_iter().map(|issue| Diagnostic {
-                        level: DiagnosticLevel::Error,
-                        message: issue.to_string(),
-                    }));
+                    diagnostics.extend(validation.into_iter().map(Diagnostic::validation));
                     if diagnostics.is_empty() {
                         self.diagnostics.clear();
                     } else {

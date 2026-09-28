@@ -40,7 +40,10 @@ pub use trace::{
     TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceTargetFieldBinding, TraceValue,
     TraceWindow,
 };
-pub use validate::{ValidationIssue, validate};
+pub use validate::{
+    ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationSchemaLocation,
+    ValidationSchemaStep, ValidationScopeLocation, ValidationScopeStep, validate,
+};
 
 /// One additional named target value produced by a project run.
 #[derive(Debug, Clone, PartialEq)]
