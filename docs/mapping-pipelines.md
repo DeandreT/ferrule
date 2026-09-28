@@ -39,7 +39,8 @@ Add `"target": "NAME"` to a `stage_target` reference to read a named target.
 Every static named source declared by the stage project needs exactly one
 pipeline binding. Dynamic named sources continue to use the supplied
 `ExecutionContext` loader. The primary and named output schema of a producing
-stage must currently equal the receiving boundary schema; incompatible edges,
+stage must currently have the same typed shape and constraints as the receiving
+boundary schema, though the root names may differ; incompatible edges,
 missing IDs or targets, duplicate bindings, and cycles fail validation before
 execution. Reusing one host input name with incompatible schemas also fails.
 

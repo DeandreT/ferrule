@@ -321,7 +321,7 @@ impl<'a> PlanBuilder<'a> {
                     ));
                 }
                 if let Some(previous) = self.hosts.insert(name, expected)
-                    && previous != expected
+                    && !boundary_compatible(previous, expected)
                 {
                     self.issues.push(issue(
                         Some(stage.id.clone()),
@@ -360,7 +360,7 @@ impl<'a> PlanBuilder<'a> {
                     ));
                     return;
                 };
-                if actual != expected {
+                if !boundary_compatible(actual, expected) {
                     self.issues.push(issue(
                         Some(stage.id.clone()),
                         format!(
@@ -371,6 +371,17 @@ impl<'a> PlanBuilder<'a> {
             }
         }
     }
+}
+
+/// Instance trees do not carry their root schema name. A stage may therefore
+/// pass an otherwise identical value to a differently named input boundary.
+fn boundary_compatible(actual: &SchemaNode, expected: &SchemaNode) -> bool {
+    if actual == expected {
+        return true;
+    }
+    let mut renamed = actual.clone();
+    renamed.name.clone_from(&expected.name);
+    renamed == *expected
 }
 
 fn issue(stage: Option<String>, message: impl Into<String>) -> PipelineValidationIssue {
@@ -557,6 +568,29 @@ mod tests {
             validate_pipeline(&pipeline)
                 .iter()
                 .any(|issue| issue.message.contains("schema does not match"))
+        );
+    }
+
+    #[test]
+    fn identical_in_memory_shapes_can_connect_across_different_root_names() {
+        let producer = copy_project(ScalarType::String);
+        let mut consumer = copy_project(ScalarType::String);
+        consumer.source.name = "RenamedInput".into();
+        let pipeline = Pipeline {
+            stages: vec![
+                stage("producer", producer, host("main")),
+                stage("consumer", consumer, output("producer", None)),
+            ],
+        };
+        assert!(validate_pipeline(&pipeline).is_empty());
+        let result = run_pipeline(
+            &pipeline,
+            &BTreeMap::from([("main".to_string(), input("same value"))]),
+        )
+        .unwrap();
+        assert_eq!(
+            result.stage("consumer").unwrap().primary,
+            input("same value")
         );
     }
 
