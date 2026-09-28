@@ -6,6 +6,8 @@
 //! Host-selected resources use `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` plus
 //! path lists in `FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
 //! `FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS`.
+//! Set `FERRULE_MFD_SURVEY_ENFORCE_BASELINE=1` in the private qualification
+//! environment to require the corpus and enforce the reviewed coverage counts.
 //! The survey never executes a sample or writes inside the sample tree.
 
 use std::collections::BTreeMap;
@@ -15,6 +17,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "support/sample_discovery.rs"]
 mod sample_discovery;
+#[path = "support/survey_gate.rs"]
+mod survey_gate;
 #[path = "support/survey_import_options.rs"]
 mod survey_import_options;
 
@@ -505,11 +509,7 @@ fn schema_v1_report_adds_non_path_resource_provenance() -> Result<(), Box<dyn Er
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_samples() -> Result<(), Box<dyn Error>> {
     let samples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
-    if !samples_dir.is_dir() {
-        eprintln!(
-            "samples dir not found at {}; skipping",
-            samples_dir.display()
-        );
+    if !survey_gate::corpus_available(&samples_dir)? {
         return Ok(());
     }
 
@@ -615,6 +615,27 @@ fn survey_samples() -> Result<(), Box<dyn Error>> {
         )?;
         println!("json report: {}", report_path.display());
     }
+
+    survey_gate::enforce_exact(
+        "MFD import/export survey",
+        &[
+            ("total", summary.total, 187),
+            ("imported", summary.imported, 187),
+            ("import_clean", summary.import_clean, 175),
+            ("valid", summary.valid, 175),
+            ("dependency_blocked", summary.dependency_blocked, 12),
+            ("exported", summary.exported, 187),
+            ("export_clean", summary.export_clean, 187),
+            ("reimported", summary.reimported, 187),
+            ("reimport_clean", summary.reimport_clean, 187),
+            ("roundtrip_valid", summary.roundtrip_valid, 175),
+            (
+                "roundtrip_dependency_blocked",
+                summary.roundtrip_dependency_blocked,
+                12,
+            ),
+        ],
+    )?;
 
     Ok(())
 }
