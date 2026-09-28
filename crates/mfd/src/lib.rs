@@ -38,6 +38,9 @@
 //! captured-response behavior differences. [`ExportProfile::NativeMapForce`]
 //! rejects those designs before publication; ordinary [`export`] preserves
 //! Ferrule's existing round-trip representation.
+//! [`import_with_profile`] can require an executable project. It rejects any
+//! import warning, unresolved runtime resource, or engine validation issue
+//! while ordinary [`import`] keeps a partial design available for repair.
 //! A source-less design driven by one opaque user call can retain that call's
 //! JSON-shaped public result as a typed external input that requires a local
 //! captured result instance at run time.
@@ -55,7 +58,10 @@ pub use export::{
     ExportCompatibility, ExportCompatibilityFeature, ExportCompatibilityIssue, ExportProfile,
     ExportReport, export, export_with_profile, preflight_export,
 };
-pub use import::{ImportOptions, Imported, import, import_with_options};
+pub use import::{
+    ImportIssue, ImportIssueKind, ImportOptions, ImportOutcome, ImportProfile, ImportReport,
+    Imported, assess_import, import, import_with_options, import_with_profile,
+};
 pub use resource::PackageManifest;
 
 use thiserror::Error;
@@ -80,4 +86,6 @@ pub enum MfdError {
     Unsupported(String),
     #[error("native MapForce export rejected: {0}")]
     IncompatibleExport(Box<ExportReport>),
+    #[error("executable import rejected: {0}")]
+    IncompatibleImport(Box<ImportReport>),
 }

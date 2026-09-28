@@ -93,6 +93,14 @@ are preserved.
 
 ### 0. Versioned Conformance and Compatibility Profiles
 
+Progress: a versioned ledger records independent status cells and supports
+strict profile gates; its inventory is explicitly incomplete. Export preflight
+classifies known Ferrule extension dependencies and blocks a selected native
+profile before publication. Strict executable import now rejects warnings,
+unresolved runtime dependencies, and invalid mappings while the default import
+remains repair-oriented. Selected private survey counts are enforceable in a
+qualification environment; native MapForce execution evidence remains absent.
+
 - Maintain a checked-in, machine-readable MapForce 2026r2 capability ledger.
   Track import, interpreter execution, Ferrule self-roundtrip, native MapForce
   export, GUI authoring, debugging, and every generated backend independently.
