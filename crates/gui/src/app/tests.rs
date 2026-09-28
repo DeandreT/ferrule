@@ -950,6 +950,15 @@ fn diagnostic_ownership_survives_save_and_reload() {
             .iter()
             .any(|item| item.location.as_ref() == Some(&expected))
     );
+    let diagnostic = app
+        .diagnostics
+        .items()
+        .iter()
+        .find(|item| item.location.as_ref() == Some(&expected))
+        .expect("owned diagnostic")
+        .clone();
+    assert!(app.navigate_to_diagnostic(&diagnostic));
+    assert!(app.main_canvas.pending_focus.is_some());
 
     let mut reopened = FerruleApp::default();
     reopened.load_project_from(&project_path);
@@ -960,6 +969,15 @@ fn diagnostic_ownership_survives_save_and_reload() {
             .iter()
             .any(|item| item.location.as_ref() == Some(&expected))
     );
+    let diagnostic = reopened
+        .diagnostics
+        .items()
+        .iter()
+        .find(|item| item.location.as_ref() == Some(&expected))
+        .expect("reloaded owned diagnostic")
+        .clone();
+    assert!(reopened.navigate_to_diagnostic(&diagnostic));
+    assert!(reopened.main_canvas.pending_focus.is_some());
     std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
         .expect("temporary test directory is removed");
 }

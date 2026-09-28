@@ -42,6 +42,8 @@ use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVis
 mod auto_connect_ui;
 #[path = "canvas.rs"]
 mod canvas_build;
+#[path = "diagnostic_navigation.rs"]
+mod diagnostic_navigation;
 #[path = "extra_sources.rs"]
 mod extra_source_ui;
 #[path = "extra_targets.rs"]
@@ -72,6 +74,7 @@ struct CanvasDocumentState {
     search: crate::canvas_search::CanvasSearchState,
     view_generation: u64,
     viewport_width: f32,
+    pending_focus: Option<egui::Pos2>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -251,11 +254,22 @@ impl CanvasDocumentState {
             search: crate::canvas_search::CanvasSearchState::default(),
             view_generation: 0,
             viewport_width: 1_200.0,
+            pending_focus: None,
         }
     }
 
     fn reset_view(&mut self) {
         self.view_generation = self.view_generation.wrapping_add(1);
+        self.pending_focus = None;
+    }
+
+    fn focus_node(&mut self, wanted: CanvasNode) -> bool {
+        let Some((position, _)) = self.snarl.nodes_pos().find(|(_, node)| **node == wanted) else {
+            return false;
+        };
+        let size = self.node_sizes.get(&wanted).copied().unwrap_or_default();
+        self.pending_focus = Some(position + size / 2.0);
+        true
     }
 }
 
@@ -391,7 +405,11 @@ pub struct FerruleApp {
     output_path: String,
     source_schema_explorer: SchemaExplorerState,
     target_schema_explorer: SchemaExplorerState,
+    focused_schema: Option<diagnostic_navigation::SchemaFocus>,
     selected_scope: ScopePath,
+    pending_scope_scroll: bool,
+    selected_failure_rule: Option<usize>,
+    pending_failure_rule_scroll: bool,
     status: String,
     diagnostics: Diagnostics,
     run_report: Option<crate::run_report::RunReportView>,
@@ -487,7 +505,11 @@ impl Default for FerruleApp {
             output_path: String::new(),
             source_schema_explorer: SchemaExplorerState::default(),
             target_schema_explorer: SchemaExplorerState::default(),
+            focused_schema: None,
             selected_scope: Vec::new(),
+            pending_scope_scroll: false,
+            selected_failure_rule: None,
+            pending_failure_rule_scroll: false,
             status: String::new(),
             diagnostics: Diagnostics::default(),
             run_report: None,
@@ -696,6 +718,7 @@ impl FerruleApp {
     }
 
     fn rebase_history(&mut self) {
+        self.clear_diagnostic_navigation();
         let snapshot = editor_snapshot(
             &self.project,
             &self.main_canvas.snarl,
@@ -781,6 +804,7 @@ impl FerruleApp {
     }
 
     fn restore_history_snapshot(&mut self, snapshot: EditorSnapshot) {
+        self.clear_diagnostic_navigation();
         self.project = snapshot.project.clone();
         self.mapping_workspace =
             MappingWorkspace::from_layout(&self.project, Some(&snapshot.state.layout));
@@ -923,9 +947,10 @@ impl FerruleApp {
                 self.mark_clean();
                 self.rebase_history();
                 let validation = cli::validate(&self.project);
+                let fingerprint = project_fingerprint(&self.project);
                 let mut diagnostics = validation
                     .into_iter()
-                    .map(Diagnostic::validation)
+                    .map(|issue| Diagnostic::validation_with_fingerprint(issue, &fingerprint))
                     .collect::<Vec<_>>();
                 diagnostics.extend(layout_warning.map(|warning| {
                     Diagnostic::warning(format!("using default canvas layout: {warning}"))
@@ -980,10 +1005,11 @@ impl FerruleApp {
 
     fn apply_save_outcome(&mut self, path: &Path, outcome: DocumentSaveOutcome) {
         self.status = Self::saved_status(path, &outcome);
+        let fingerprint = project_fingerprint(&self.project);
         let mut diagnostics = outcome
             .validation_issues
             .into_iter()
-            .map(Diagnostic::validation)
+            .map(|issue| Diagnostic::validation_with_fingerprint(issue, &fingerprint))
             .collect::<Vec<_>>();
         diagnostics.extend(outcome.layout_warning.map(Diagnostic::warning));
         if diagnostics.is_empty() {
@@ -1136,13 +1162,18 @@ impl FerruleApp {
                     self.rebase_history();
                     self.document = DocumentLocation::untitled(project_path);
                     let validation = cli::validate(&self.project);
+                    let fingerprint = project_fingerprint(&self.project);
                     let mut diagnostics = imported
                         .warnings
                         .iter()
                         .cloned()
                         .map(|message| Diagnostic::import_warning(message, &imported.mapping_path))
                         .collect::<Vec<_>>();
-                    diagnostics.extend(validation.into_iter().map(Diagnostic::validation));
+                    diagnostics.extend(
+                        validation.into_iter().map(|issue| {
+                            Diagnostic::validation_with_fingerprint(issue, &fingerprint)
+                        }),
+                    );
                     if diagnostics.is_empty() {
                         self.diagnostics.clear();
                     } else {
@@ -1275,10 +1306,14 @@ impl eframe::App for FerruleApp {
             .exact_size(28.0)
             .show(ui, |ui| self.show_status_bar(ui));
         if !self.diagnostics.is_empty() {
+            let mut navigate = None;
             egui::Panel::bottom("diagnostics_panel")
                 .resizable(true)
                 .default_size(120.0)
-                .show(ui, |ui| self.diagnostics.show(ui));
+                .show(ui, |ui| navigate = self.diagnostics.show(ui));
+            if let Some(diagnostic) = navigate {
+                self.navigate_to_diagnostic(&diagnostic);
+            }
         }
 
         let visibility = WorkspaceVisibility::resolve(

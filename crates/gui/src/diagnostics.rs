@@ -19,6 +19,8 @@ pub struct Diagnostic {
     pub level: DiagnosticLevel,
     pub message: String,
     pub location: Option<DiagnosticLocation>,
+    /// Fingerprint of the project that produced a validation owner.
+    pub project_fingerprint: Option<String>,
 }
 
 impl Diagnostic {
@@ -27,6 +29,7 @@ impl Diagnostic {
             level: DiagnosticLevel::Warning,
             message: message.into(),
             location: None,
+            project_fingerprint: None,
         }
     }
 
@@ -37,11 +40,20 @@ impl Diagnostic {
         }
     }
 
-    pub fn validation(issue: engine::ValidationIssue) -> Self {
+    #[cfg(test)]
+    pub fn validation(project: &mapping::Project, issue: engine::ValidationIssue) -> Self {
+        Self::validation_with_fingerprint(issue, &crate::layout_store::project_fingerprint(project))
+    }
+
+    pub(crate) fn validation_with_fingerprint(
+        issue: engine::ValidationIssue,
+        fingerprint: &str,
+    ) -> Self {
         Self {
             level: DiagnosticLevel::Error,
             message: issue.to_string(),
             location: issue.owner.map(DiagnosticLocation::Validation),
+            project_fingerprint: Some(fingerprint.to_string()),
         }
     }
 }
@@ -74,6 +86,7 @@ impl Diagnostics {
                 level: DiagnosticLevel::Error,
                 message: message.into(),
                 location: None,
+                project_fingerprint: None,
             }],
         );
     }
@@ -86,8 +99,18 @@ impl Diagnostics {
         self.replace(title, warnings.into_iter().map(Diagnostic::warning));
     }
 
-    pub fn validation(&mut self, issues: impl IntoIterator<Item = engine::ValidationIssue>) {
-        self.replace("Validation", issues.into_iter().map(Diagnostic::validation));
+    pub fn validation(
+        &mut self,
+        project: &mapping::Project,
+        issues: impl IntoIterator<Item = engine::ValidationIssue>,
+    ) {
+        let fingerprint = crate::layout_store::project_fingerprint(project);
+        self.replace(
+            "Validation",
+            issues
+                .into_iter()
+                .map(|issue| Diagnostic::validation_with_fingerprint(issue, &fingerprint)),
+        );
     }
 
     pub fn is_empty(&self) -> bool {
@@ -103,7 +126,10 @@ impl Diagnostics {
         &self.items
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui) {
+    /// Returns a clicked diagnostic so the app can resolve its owner against
+    /// the current project after this panel finishes borrowing the list.
+    pub fn show(&mut self, ui: &mut egui::Ui) -> Option<Diagnostic> {
+        let mut navigate = None;
         let errors = self
             .items
             .iter()
@@ -136,9 +162,15 @@ impl Diagnostics {
                         if let Some(DiagnosticLocation::ImportFile(path)) = &item.location {
                             label.on_hover_text(format!("Imported from {}", path.display()));
                         }
+                        if matches!(item.location, Some(DiagnosticLocation::Validation(_)))
+                            && ui.button("Go to").clicked()
+                        {
+                            navigate = Some(item.clone());
+                        }
                     });
                 }
             });
+        navigate
     }
 }
 
@@ -162,11 +194,15 @@ mod tests {
             node: 12,
         };
         let mut diagnostics = Diagnostics::default();
-        diagnostics.validation([engine::ValidationIssue {
-            location: "the existing location text".into(),
-            message: "the existing message".into(),
-            owner: Some(owner.clone()),
-        }]);
+        let project = crate::new_mapping::blank_project();
+        diagnostics.validation(
+            &project,
+            [engine::ValidationIssue {
+                location: "the existing location text".into(),
+                message: "the existing message".into(),
+                owner: Some(owner.clone()),
+            }],
+        );
 
         let diagnostic = &diagnostics.items()[0];
         assert_eq!(
