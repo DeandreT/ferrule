@@ -34,8 +34,10 @@
 //! project's instance-path extension. Static HTTP XML sources, complete
 //! document-copy edges, and structured XML string serializers also round-trip
 //! through their canonical components.
-//! Captured-response boundaries reject export rather than publishing a
-//! design that would imply live POST or opaque UDF execution.
+//! [`preflight_export`] reports known Ferrule extension dependencies and
+//! captured-response behavior differences. [`ExportProfile::NativeMapForce`]
+//! rejects those designs before publication; ordinary [`export`] preserves
+//! Ferrule's existing round-trip representation.
 //! A source-less design driven by one opaque user call can retain that call's
 //! JSON-shaped public result as a typed external input that requires a local
 //! captured result instance at run time.
@@ -49,7 +51,10 @@ mod export;
 mod import;
 mod resource;
 
-pub use export::export;
+pub use export::{
+    ExportCompatibility, ExportCompatibilityFeature, ExportCompatibilityIssue, ExportProfile,
+    ExportReport, export, export_with_profile, preflight_export,
+};
 pub use import::{ImportOptions, Imported, import, import_with_options};
 pub use resource::PackageManifest;
 
@@ -73,4 +78,6 @@ pub enum MfdError {
     Resource(String),
     #[error("cannot export: {0}")]
     Unsupported(String),
+    #[error("native MapForce export rejected: {0}")]
+    IncompatibleExport(Box<ExportReport>),
 }
