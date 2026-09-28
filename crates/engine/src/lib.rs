@@ -21,6 +21,7 @@ mod grouping;
 mod iteration_output;
 mod join;
 mod path_hierarchy;
+mod pipeline;
 mod recursive_filter;
 mod required_sources;
 mod resolve;
@@ -35,6 +36,10 @@ use aggregate::aggregate;
 use context::{runtime_field, runtime_parameter_field};
 use eval_scope::eval_scope;
 
+pub use pipeline::{
+    PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue, run_pipeline,
+    run_pipeline_with_context, validate_pipeline,
+};
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
     TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceTargetFieldBinding, TraceValue,

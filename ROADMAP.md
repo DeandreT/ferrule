@@ -331,6 +331,13 @@ Exit criteria:
 
 Replace the single-target assumption before adding multi-file special cases.
 
+Progress: the typed [in-memory pipeline model](docs/mapping-pipelines.md)
+connects complete projects through primary or named target outputs into primary
+or static named inputs. It validates IDs, references, schemas, and cycles before
+execution, then runs stages in stable dependency order and returns results only
+after the complete graph succeeds. File/service host integration, stage-specific
+runtime paths, general driver cardinality, and GUI authoring remain.
+
 - Named source and target endpoints with runtime-overridable locations.
 - Ordered target writes and deterministic failure semantics.
 - Intermediate target-as-source stages represented as a DAG.
