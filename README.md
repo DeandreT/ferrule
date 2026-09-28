@@ -148,7 +148,17 @@ cargo +nightly run -p cli -- import-mfd --mfd package/maps/design.mfd --package-
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --edi-catalog-root edi-configs --out project.json
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --json-schema-root schemas --out project.json
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
+cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mapforce --check --report-json
+cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mapforce
 ```
+
+`export-mfd` defaults to `--profile ferrule-extensions`, preserving Ferrule's
+round-trip features. `--profile native-mapforce` refuses known Ferrule-only
+dependencies and lossy exports before writing any artifacts. `--check` renders
+the export for compatibility inspection without writing files or directories;
+`--report-json` prints a versioned, deterministic report on stdout. See
+[MapForce interoperability](docs/mapforce-interop.md#export) for the report's
+limits.
 
 Emit machine-readable validation diagnostics:
 
@@ -171,7 +181,7 @@ cargo +nightly run -p cli -- run --project project.json --trace-json run.trace.j
 - [MapForce interoperability](docs/mapforce-interop.md)
 - [Rust and C# code generation](docs/code-generation.md)
 - [Runnable generated Rust and C# hosts](examples/codegen/)
-- [Workflow-parity roadmap](ROADMAP.md)
+- [MapForce compatibility and product-parity roadmap](ROADMAP.md)
 
 The integration fixtures under `crates/cli/tests/fixtures/` are executable
 examples covering XML, JSON, CSV, SQLite, X12, EDIFACT, and cross-source

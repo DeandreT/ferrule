@@ -31,6 +31,21 @@ enum CodegenLanguage {
     Csharp,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum MfdExportProfile {
+    FerruleExtensions,
+    NativeMapforce,
+}
+
+impl From<MfdExportProfile> for mfd::ExportProfile {
+    fn from(profile: MfdExportProfile) -> Self {
+        match profile {
+            MfdExportProfile::FerruleExtensions => Self::FerruleExtensions,
+            MfdExportProfile::NativeMapforce => Self::NativeMapForce,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Run a mapping project, including configured PDF input. Output supports
@@ -142,6 +157,15 @@ enum Command {
         project: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Preserve Ferrule extensions or require a native MapForce export.
+        #[arg(long, value_enum, default_value_t = MfdExportProfile::FerruleExtensions)]
+        profile: MfdExportProfile,
+        /// Inspect the exact export without creating files or directories.
+        #[arg(long)]
+        check: bool,
+        /// Print one versioned JSON report on stdout.
+        #[arg(long)]
+        report_json: bool,
     },
 }
 
@@ -167,6 +191,36 @@ impl DiagnosticFormat {
 
     fn validation_error(self, command: &str, issue: &engine::ValidationIssue) {
         self.emit(command, "error", Some(&issue.location), &issue.message);
+    }
+
+    fn export_issue(self, issue: &mfd::ExportCompatibilityIssue, blocking: bool) {
+        let severity = if blocking { "error" } else { "warning" };
+        match self {
+            Self::Human => {
+                let component = match issue.component_uid {
+                    Some(uid) => format!("{} (uid {uid})", issue.component),
+                    None => issue.component.clone(),
+                };
+                eprintln!(
+                    "{severity}: MapForce compatibility in {component}: {}",
+                    issue.message
+                );
+            }
+            Self::Json => {
+                eprintln!(
+                    "{}",
+                    json!({
+                        "schema_version": 1,
+                        "command": "export-mfd",
+                        "severity": severity,
+                        "feature": issue.feature,
+                        "component": issue.component,
+                        "component_uid": issue.component_uid,
+                        "message": issue.message,
+                    })
+                );
+            }
+        }
     }
 
     fn error(self, command: &str, error: &anyhow::Error) {
@@ -452,14 +506,93 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             println!("wrote {} ({} warning(s))", out.display(), warnings.len());
             Ok(ExitCode::SUCCESS)
         }
-        Command::ExportMfd { project, out } => {
-            let warnings = cli::export_mfd(&project, &out)?;
-            for warning in &warnings {
-                diagnostics.warning("export-mfd", warning);
-            }
-            println!("wrote {} ({} warning(s))", out.display(), warnings.len());
-            Ok(ExitCode::SUCCESS)
+        Command::ExportMfd {
+            project,
+            out,
+            profile,
+            check,
+            report_json,
+        } => export_mfd_command(
+            diagnostics,
+            &project,
+            &out,
+            profile.into(),
+            check,
+            report_json,
+        ),
+    }
+}
+
+fn export_mfd_command(
+    diagnostics: DiagnosticFormat,
+    project: &std::path::Path,
+    out: &std::path::Path,
+    profile: mfd::ExportProfile,
+    check: bool,
+    report_json: bool,
+) -> anyhow::Result<ExitCode> {
+    let result = if check {
+        cli::preflight_mfd_export(project, out)
+    } else {
+        cli::export_mfd_with_profile(project, out, profile)
+    };
+    let report = match result {
+        Ok(report) => report,
+        Err(error) => match error.downcast_ref::<mfd::MfdError>() {
+            Some(mfd::MfdError::IncompatibleExport(report)) => (**report).clone(),
+            _ => return Err(error),
+        },
+    };
+    let accepted = profile != mfd::ExportProfile::NativeMapForce || report.is_native_compatible();
+    let blocking = !accepted;
+    for issue in &report.issues {
+        diagnostics.export_issue(issue, blocking);
+    }
+    for warning in &report.warnings {
+        if blocking {
+            diagnostics.emit("export-mfd", "error", None, warning);
+        } else {
+            diagnostics.warning("export-mfd", warning);
         }
+    }
+    if report_json {
+        let output = json!({
+            "schema_version": 1,
+            "command": "export-mfd",
+            "profile": profile,
+            "mode": if check { "check" } else { "export" },
+            "accepted": accepted,
+            "report": report,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else if check {
+        println!(
+            "{}: {} ({} compatibility issue(s), {} export warning(s))",
+            out.display(),
+            export_compatibility_label(report.compatibility),
+            report.issues.len(),
+            report.warnings.len()
+        );
+    } else if accepted {
+        println!(
+            "wrote {} ({} warning(s)); MapForce compatibility: {}",
+            out.display(),
+            report.warnings.len(),
+            export_compatibility_label(report.compatibility)
+        );
+    }
+    Ok(if accepted {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+fn export_compatibility_label(compatibility: mfd::ExportCompatibility) -> &'static str {
+    match compatibility {
+        mfd::ExportCompatibility::NativeMapForce => "native MapForce",
+        mfd::ExportCompatibility::FerruleExtensions => "Ferrule extensions required",
+        mfd::ExportCompatibility::Incomplete => "incomplete",
     }
 }
 
