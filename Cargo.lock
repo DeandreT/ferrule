@@ -2821,6 +2821,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc788cd197371c8775ecd589009350ea71dbc3a5709b2495c032670dcfed320d"
 
 [[package]]
+name = "mapforce-conformance"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "mapping"
 version = "0.1.0"
 dependencies = [
