@@ -10,13 +10,47 @@ Run these commands from the workspace root:
 ```sh
 cargo run -p mapforce-conformance
 cargo test -p mapforce-conformance
+cargo run -p mapforce-conformance -- summary --format json
+cargo run -p mapforce-conformance -- gate --profile mapforce-2026r2-enterprise
 ```
 
 The binary accepts another ledger path and `--root PATH` for its repository
 evidence root. Relative ledger and evidence paths resolve from that root. The
 workspace's ordinary tests validate the checked-in inventory and its local
 references; no vendor application, network access, or private sample corpus is
-needed. A nonzero exit status indicates malformed inventory or evidence.
+needed. The default validation command exits nonzero for malformed inventory or
+evidence.
+
+`summary` reports exact status counts for each selected profile and dimension;
+`--format json` emits the same deterministic counts for automation. `gate`
+reports those counts plus a failure for every selected in-scope cell that is
+unassessed, unverified, unsupported, partial, blocked, or missing required
+evidence. It exits 0 only on a pass and 1 on a conformance failure. A
+`not_applicable` cell is excluded only when it cites evidence; native MapForce
+export and vendor-backend exclusions need vendor documentation or execution
+evidence. A selection containing no applicable cells fails rather than passing
+vacuously. No skip or ignore flag exists.
+
+Use repeated `--profile ID`, `--capability ID`, and `--dimension NAME` options
+to create a focused development gate. Each option is inclusive; omitting an
+axis selects all values on that axis. Unknown, duplicate, or empty
+profile/capability intersections fail. Dimension names are `import`,
+`interpreter`, `native_export`, `ferrule_roundtrip`, `gui`, `debug`, `rust`,
+`csharp`, and `vendor_backends.xslt1`, `.xslt2`, `.xquery1`, `.cpp`, `.java`,
+`.csharp`. For example:
+
+```sh
+cargo run -p mapforce-conformance -- gate \
+  --profile mapforce-2026r2-enterprise \
+  --capability interop.mfd-designs \
+  --dimension native_export --format json
+```
+
+A gate covering every capability and dimension in a selected profile also
+requires `inventory_complete=true`, whether those values were selected
+implicitly or listed explicitly. The checked-in seeded inventory is incomplete,
+so its full-profile gate intentionally fails. A focused gate can qualify a
+development slice without implying that the product or profile is complete.
 
 Each capability independently assesses MFD import, interpreter execution,
 native MapForce export acceptance, Ferrule self-roundtrip, GUI authoring,
