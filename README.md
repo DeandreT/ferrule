@@ -173,9 +173,19 @@ output:
 cargo +nightly run -p cli -- run --project project.json --trace-json run.trace.jsonl
 ```
 
+Run a [mapping pipeline](docs/mapping-pipelines.md) and publish only selected
+stage targets after the complete graph succeeds:
+
+```sh
+cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
+  --input orders orders.json --output invoice invoice.json \
+  --named-output prepare audit audit.json
+```
+
 ## Documentation
 
 - [Mapping model and workspace architecture](docs/architecture.md)
+- [Mapping pipelines](docs/mapping-pipelines.md)
 - [Execution trace JSON Lines contract](docs/tracing.md)
 - [Supported formats](docs/formats.md)
 - [MapForce interoperability](docs/mapforce-interop.md)

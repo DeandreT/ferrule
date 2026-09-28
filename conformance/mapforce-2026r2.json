@@ -33,7 +33,9 @@
     {"id": "gui-reports", "kind": "repository", "location": "crates/gui/src/run_report.rs", "description": "Bounded searchable run reports."},
     {"id": "recursive-export", "kind": "repository", "location": "crates/mfd/src/export/recursive.rs", "description": "Ferrule library components for recursive and hierarchy constructions."},
     {"id": "edi-export", "kind": "repository", "location": "crates/mfd/src/export/edi.rs", "description": "Retained Ferrule EDI layout and lexical metadata."},
-    {"id": "external-export", "kind": "repository", "location": "crates/mfd/src/export/external_source.rs", "description": "Captured-response boundaries and Ferrule provenance."}
+    {"id": "external-export", "kind": "repository", "location": "crates/mfd/src/export/external_source.rs", "description": "Captured-response boundaries and Ferrule provenance."},
+    {"id": "stage-pipeline", "kind": "repository", "location": "crates/engine/src/pipeline.rs", "description": "Typed in-memory stage DAG execution and validation; MFD stage import, GUI authoring and host effects are separate."},
+    {"id": "pipeline-file-host", "kind": "repository", "location": "crates/cli/src/pipeline.rs", "description": "Typed pipeline file host with explicit inputs and selected atomic output publication."}
   ],
   "capabilities": [
     {
@@ -243,8 +245,8 @@
       "profiles": ["mapforce-2026r2-enterprise"],
       "depends_on": ["mapping.iteration"],
       "support": {
-        "import": {"status": "partial", "evidence": ["endpoint-model", "roadmap"], "detail": "Named endpoints and multiple targets exist; a general intermediate target-as-source stage DAG is absent."},
-        "interpreter": {"status": "partial", "evidence": ["endpoint-model", "roadmap"], "detail": "Named endpoints and multiple targets exist; a general intermediate target-as-source stage DAG is absent."},
+        "import": {"status": "partial", "evidence": ["endpoint-model", "roadmap"], "detail": "Named endpoints and multiple targets exist; MFD import does not construct a general intermediate target-as-source stage DAG."},
+        "interpreter": {"status": "partial", "evidence": ["endpoint-model", "stage-pipeline", "pipeline-file-host"], "detail": "Typed stage DAGs execute in memory and through a file host with selected output publication; MFD graph import and full vendor behavior remain unverified."},
         "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
         "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
         "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},

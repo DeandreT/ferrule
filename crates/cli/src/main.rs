@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use anyhow::{Context, bail};
 use clap::error::ErrorKind;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
 #[derive(Parser)]
@@ -91,6 +91,23 @@ enum Command {
         #[arg(long = "param", value_name = "NAME=VALUE")]
         parameters: Vec<String>,
     },
+    /// Run a typed graph of complete mapping stages and publish selected outputs.
+    RunPipeline {
+        #[arg(long, value_name = "PIPELINE")]
+        pipeline: PathBuf,
+        /// Host input name and file path. Repeat for each declared host input.
+        #[arg(long = "input", action = ArgAction::Append, num_args = 2, value_names = ["NAME", "PATH"])]
+        inputs: Vec<String>,
+        /// Stage ID and destination for its primary target. Repeat as needed.
+        #[arg(long = "output", action = ArgAction::Append, num_args = 2, value_names = ["STAGE", "PATH"])]
+        outputs: Vec<String>,
+        /// Stage ID, named target, and destination. Repeat as needed.
+        #[arg(long = "named-output", action = ArgAction::Append, num_args = 3, value_names = ["STAGE", "TARGET", "PATH"])]
+        named_outputs: Vec<String>,
+        /// Named host scalar in NAME=VALUE form, shared by all stages.
+        #[arg(long = "param", value_name = "NAME=VALUE")]
+        parameters: Vec<String>,
+    },
     /// Check project graph, scope, and schema references without reading data.
     Validate {
         #[arg(long)]
@@ -173,6 +190,7 @@ impl Command {
     fn name(&self) -> &'static str {
         match self {
             Self::Run { .. } => "run",
+            Self::RunPipeline { .. } => "run-pipeline",
             Self::Validate { .. } => "validate",
             Self::Generate { .. } => "generate",
             Self::ImportXsd { .. } => "import-xsd",
@@ -296,8 +314,9 @@ fn json_diagnostics_requested(args: &[OsString]) -> bool {
 }
 
 fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
-    const COMMANDS: [&str; 8] = [
+    const COMMANDS: [&str; 9] = [
         "run",
+        "run-pipeline",
         "validate",
         "generate",
         "import-xsd",
@@ -429,6 +448,64 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     );
                 }
             }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::RunPipeline {
+            pipeline,
+            inputs,
+            outputs,
+            named_outputs,
+            parameters,
+        } => {
+            let inputs = inputs
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| cli::PipelineHostFile {
+                    name: pair[0].clone(),
+                    path: PathBuf::from(&pair[1]),
+                })
+                .collect::<Vec<_>>();
+            let mut publications = outputs
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| cli::PipelineOutputFile {
+                    stage: pair[0].clone(),
+                    target: None,
+                    path: PathBuf::from(&pair[1]),
+                })
+                .collect::<Vec<_>>();
+            publications.extend(named_outputs.as_chunks::<3>().0.iter().map(|triple| {
+                cli::PipelineOutputFile {
+                    stage: triple[0].clone(),
+                    target: Some(triple[1].clone()),
+                    path: PathBuf::from(&triple[2]),
+                }
+            }));
+            let parameters = parse_runtime_parameters(&parameters)?;
+            let outcome = cli::run_pipeline_file_with_options(
+                &pipeline,
+                &inputs,
+                &publications,
+                &cli::PipelineRunOptions {
+                    runtime_parameters: Some(&parameters),
+                },
+            )?;
+            for artifact in &outcome.artifacts {
+                let target = artifact.target.as_deref().unwrap_or("primary");
+                println!(
+                    "wrote {} record(s) from stage `{}` target `{target}` to {}",
+                    artifact.records_written,
+                    artifact.stage,
+                    artifact.path.display()
+                );
+            }
+            println!(
+                "completed {} stage(s); published {} artifact(s)",
+                outcome.stages_executed.len(),
+                outcome.artifacts.len()
+            );
             Ok(ExitCode::SUCCESS)
         }
         Command::Validate { project } => {

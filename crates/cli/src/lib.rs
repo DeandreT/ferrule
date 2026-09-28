@@ -31,6 +31,7 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 mod code_generation;
 mod output_documents;
 mod payload;
+mod pipeline;
 mod project_paths;
 mod stdio;
 mod trace_json;
@@ -47,6 +48,10 @@ pub use payload::{
     MAX_PAYLOAD_PATH_BYTES, MAX_PAYLOAD_RUN_BYTES, NamedPayloadInput, PayloadArtifact,
     PayloadDocument, PayloadRunOptions, PayloadRunOutcome, run_project_payloads,
     run_project_value_payloads,
+};
+pub use pipeline::{
+    PipelineArtifact, PipelineHostFile, PipelineOutputFile, PipelineRunOptions, PipelineRunOutcome,
+    run_pipeline_file, run_pipeline_file_with_options,
 };
 pub use project_paths::rebase as rebase_project_paths;
 pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
