@@ -240,7 +240,10 @@ fn reject_protected_path(
 fn normalized_absolute(path: &Path) -> anyhow::Result<PathBuf> {
     let absolute = std::path::absolute(path)
         .with_context(|| format!("resolving output path {}", path.display()))?;
-    let absolute = lexical_normalize(&absolute);
+    // Resolve existing components before removing `..`: after a symlink,
+    // `link/..` names the parent of the link's target, not the link's parent.
+    // Lexical normalization here could make an output alias to a protected
+    // input (or another output) appear to be a different file.
     let mut existing = absolute.as_path();
     let mut suffix = Vec::new();
     loop {
@@ -823,7 +826,12 @@ fn cleanup_stage_paths(stages: &[PathBuf]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{PublishFailure, restore_backups, rollback_publication};
+    use super::{
+        OutputDestination, PublishFailure, TargetOutput, restore_backups, rollback_publication,
+        write_target_outputs,
+    };
+    use ir::{Instance, ScalarType, SchemaNode, Value};
+    use mapping::FormatOptions;
 
     fn test_root(label: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
@@ -831,6 +839,106 @@ mod tests {
             std::process::id(),
             super::STAGE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ))
+    }
+
+    #[cfg(unix)]
+    fn symlink_parent_fixture(
+        label: &str,
+    ) -> anyhow::Result<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf)> {
+        use std::os::unix::fs::symlink;
+
+        let root = test_root(label);
+        let real = root.join("real");
+        let child = real.join("child");
+        std::fs::create_dir_all(&child)?;
+        let link = root.join("link");
+        symlink(&child, &link)?;
+        Ok((root, real, link))
+    }
+
+    #[cfg(unix)]
+    fn json_target<'a>(
+        destination: &'a OutputDestination,
+        name: &'a str,
+        schema: &'a SchemaNode,
+        instance: &'a Instance,
+        options: &'a FormatOptions,
+    ) -> TargetOutput<'a> {
+        TargetOutput {
+            destination,
+            name,
+            schema,
+            instance,
+            options,
+            current_datetime: "2026-01-01T00:00:00Z",
+            additional: false,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_then_parent_cannot_overwrite_protected_input() -> anyhow::Result<()> {
+        let (root, real, link) = symlink_parent_fixture("protected-symlink-parent")?;
+        let protected = real.join("input.json");
+        let original = br#"{"Value":"original"}"#;
+        std::fs::write(&protected, original)?;
+        let alias = link.join("..").join("input.json");
+        let destination = OutputDestination::Static(alias);
+        let schema = SchemaNode::group(
+            "Record",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        let instance = Instance::Group(vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("replacement".into())),
+        )]);
+        let options = FormatOptions {
+            json_document: true,
+            ..FormatOptions::default()
+        };
+        let target = json_target(&destination, "primary", &schema, &instance, &options);
+
+        let error = write_target_outputs(&[target], &[protected.as_path()])
+            .err()
+            .expect("the output aliases a protected host input");
+        assert!(error.to_string().contains("reserved by the host"));
+        assert_eq!(std::fs::read(&protected)?, original);
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_then_parent_output_aliases_collide_before_staging() -> anyhow::Result<()> {
+        let (root, real, link) = symlink_parent_fixture("output-symlink-parent")?;
+        let direct = real.join("result.json");
+        let alias = link.join("..").join("result.json");
+        let direct_destination = OutputDestination::Static(direct.clone());
+        let alias_destination = OutputDestination::Static(alias);
+        let schema = SchemaNode::group(
+            "Record",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        let instance = Instance::Group(vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("value".into())),
+        )]);
+        let options = FormatOptions {
+            json_document: true,
+            ..FormatOptions::default()
+        };
+        let targets = [
+            json_target(&direct_destination, "direct", &schema, &instance, &options),
+            json_target(&alias_destination, "alias", &schema, &instance, &options),
+        ];
+
+        let error = write_target_outputs(&targets, &[])
+            .err()
+            .expect("both outputs resolve to the same physical path");
+        assert!(error.to_string().contains("same path"));
+        assert!(!direct.exists());
+        std::fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]
