@@ -307,9 +307,15 @@ pub(crate) fn eval_expr(
             positions,
             in_progress,
         ),
-        Node::SequenceItemAt { sequence, index } => {
-            eval_sequence_item_at(program, sequence, *index, context, positions, in_progress)
-        }
+        Node::SequenceItemAt { sequence, index } => eval_sequence_item_at(
+            program,
+            node_id,
+            sequence,
+            *index,
+            context,
+            positions,
+            in_progress,
+        ),
         Node::SequenceAggregate {
             function,
             sequence,

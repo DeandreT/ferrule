@@ -20,12 +20,20 @@ pub(super) fn eval_sequence(
     positions: &[PositionFrame],
 ) -> Result<Vec<Value>, EngineError> {
     let mut in_progress = HashSet::new();
-    eval_sequence_in_progress(program, sequence, context, positions, &mut in_progress)
+    eval_sequence_in_progress(
+        program,
+        sequence,
+        None,
+        context,
+        positions,
+        &mut in_progress,
+    )
 }
 
 pub(super) fn eval_sequence_in_progress(
     program: EvalProgram<'_>,
     sequence: &SequenceExpr,
+    consumer: Option<NodeId>,
     context: &[&Instance],
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
@@ -34,24 +42,54 @@ pub(super) fn eval_sequence_in_progress(
         SequenceExpr::Tokenize {
             input, delimiter, ..
         } => {
-            let Some(input) = eval_sequence_arg(program, *input, context, positions, in_progress)?
+            let Some(input) = eval_sequence_arg(
+                program,
+                consumer,
+                *input,
+                0,
+                context,
+                positions,
+                in_progress,
+            )?
             else {
                 return Ok(Vec::new());
             };
-            let Some(delimiter) =
-                eval_sequence_arg(program, *delimiter, context, positions, in_progress)?
+            let Some(delimiter) = eval_sequence_arg(
+                program,
+                consumer,
+                *delimiter,
+                1,
+                context,
+                positions,
+                in_progress,
+            )?
             else {
                 return Ok(Vec::new());
             };
             tokenize(input, delimiter)
         }
         SequenceExpr::TokenizeByLength { input, length, .. } => {
-            let Some(input) = eval_sequence_arg(program, *input, context, positions, in_progress)?
+            let Some(input) = eval_sequence_arg(
+                program,
+                consumer,
+                *input,
+                0,
+                context,
+                positions,
+                in_progress,
+            )?
             else {
                 return Ok(Vec::new());
             };
-            let Some(length) =
-                eval_sequence_arg(program, *length, context, positions, in_progress)?
+            let Some(length) = eval_sequence_arg(
+                program,
+                consumer,
+                *length,
+                1,
+                context,
+                positions,
+                in_progress,
+            )?
             else {
                 return Ok(Vec::new());
             };
@@ -63,19 +101,41 @@ pub(super) fn eval_sequence_in_progress(
             flags,
             ..
         } => {
-            let Some(input) = eval_sequence_arg(program, *input, context, positions, in_progress)?
+            let Some(input) = eval_sequence_arg(
+                program,
+                consumer,
+                *input,
+                0,
+                context,
+                positions,
+                in_progress,
+            )?
             else {
                 return Ok(Vec::new());
             };
-            let Some(pattern) =
-                eval_sequence_arg(program, *pattern, context, positions, in_progress)?
+            let Some(pattern) = eval_sequence_arg(
+                program,
+                consumer,
+                *pattern,
+                1,
+                context,
+                positions,
+                in_progress,
+            )?
             else {
                 return Ok(Vec::new());
             };
             let flags = match flags {
                 Some(node) => {
-                    let Some(flags) =
-                        eval_sequence_arg(program, *node, context, positions, in_progress)?
+                    let Some(flags) = eval_sequence_arg(
+                        program,
+                        consumer,
+                        *node,
+                        2,
+                        context,
+                        positions,
+                        in_progress,
+                    )?
                     else {
                         return Ok(Vec::new());
                     };
@@ -86,10 +146,18 @@ pub(super) fn eval_sequence_in_progress(
             tokenize_regex(input, pattern, flags)
         }
         SequenceExpr::Generate { from, to, .. } => {
+            let to_input_index = usize::from(from.is_some());
             let from = match from {
                 Some(node) => {
-                    let Some(value) =
-                        eval_sequence_arg(program, *node, context, positions, in_progress)?
+                    let Some(value) = eval_sequence_arg(
+                        program,
+                        consumer,
+                        *node,
+                        0,
+                        context,
+                        positions,
+                        in_progress,
+                    )?
                     else {
                         return Ok(Vec::new());
                     };
@@ -97,7 +165,16 @@ pub(super) fn eval_sequence_in_progress(
                 }
                 None => None,
             };
-            let Some(to) = eval_sequence_arg(program, *to, context, positions, in_progress)? else {
+            let Some(to) = eval_sequence_arg(
+                program,
+                consumer,
+                *to,
+                to_input_index,
+                context,
+                positions,
+                in_progress,
+            )?
+            else {
                 return Ok(Vec::new());
             };
             generate_sequence(from, to)
@@ -112,15 +189,30 @@ pub(super) fn eval_sequence_in_progress(
             separator,
             ..
         } => {
-            let prefix = eval_sequence_arg(program, *prefix, context, positions, in_progress)?
-                .map(|value| scalar_text(&value))
-                .transpose()?
-                .unwrap_or_default();
-            let separator =
-                eval_sequence_arg(program, *separator, context, positions, in_progress)?
-                    .map(|value| scalar_text(&value))
-                    .transpose()?
-                    .unwrap_or_default();
+            let prefix = eval_sequence_arg(
+                program,
+                consumer,
+                *prefix,
+                0,
+                context,
+                positions,
+                in_progress,
+            )?
+            .map(|value| scalar_text(&value))
+            .transpose()?
+            .unwrap_or_default();
+            let separator = eval_sequence_arg(
+                program,
+                consumer,
+                *separator,
+                1,
+                context,
+                positions,
+                in_progress,
+            )?
+            .map(|value| scalar_text(&value))
+            .transpose()?
+            .unwrap_or_default();
             recursive_collect(
                 context,
                 collection,
@@ -309,7 +401,14 @@ pub(super) fn eval_sequence_exists(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let values = eval_sequence_in_progress(program, sequence, context, positions, in_progress)?;
+    let values = eval_sequence_in_progress(
+        program,
+        sequence,
+        Some(consumer),
+        context,
+        positions,
+        in_progress,
+    )?;
     // The owned sequence item is a dependency, not a visible input pin.
     let predicate_input_index = sequence.inputs().len();
     for (index, value) in values.into_iter().enumerate() {
@@ -349,14 +448,30 @@ pub(super) fn eval_sequence_exists(
 
 pub(super) fn eval_sequence_item_at(
     program: EvalProgram<'_>,
+    consumer: NodeId,
     sequence: &SequenceExpr,
     index: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let values = eval_sequence_in_progress(program, sequence, context, positions, in_progress)?;
-    let index = eval_expr(program, index, context, positions, in_progress)?;
+    let values = eval_sequence_in_progress(
+        program,
+        sequence,
+        Some(consumer),
+        context,
+        positions,
+        in_progress,
+    )?;
+    let index = eval_node_input(
+        program,
+        consumer,
+        index,
+        sequence.inputs().len(),
+        context,
+        positions,
+        in_progress,
+    )?;
     super::aggregate::aggregate(
         mapping::AggregateOp::ItemAt,
         values.len(),
@@ -378,7 +493,14 @@ pub(super) fn eval_sequence_aggregate(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let generated = eval_sequence_in_progress(program, sequence, context, positions, in_progress)?;
+    let generated = eval_sequence_in_progress(
+        program,
+        sequence,
+        Some(consumer),
+        context,
+        positions,
+        in_progress,
+    )?;
     // The owned sequence item is a dependency, not a visible input pin.
     let predicate_input_index = sequence.inputs().len();
     let expression_input_index = predicate_input_index + usize::from(predicate.is_some());
@@ -450,12 +572,25 @@ pub(super) fn eval_sequence_aggregate(
 
 fn eval_sequence_arg(
     program: EvalProgram<'_>,
+    consumer: Option<NodeId>,
     node: NodeId,
+    input_index: usize,
     context: &[&Instance],
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Option<Value>, EngineError> {
-    let value = eval_expr(program, node, context, positions, in_progress)?;
+    let value = match consumer {
+        Some(consumer) => eval_node_input(
+            program,
+            consumer,
+            node,
+            input_index,
+            context,
+            positions,
+            in_progress,
+        )?,
+        None => eval_expr(program, node, context, positions, in_progress)?,
+    };
     Ok((!matches!(value, Value::Null | Value::JsonNull(_))).then_some(value))
 }
 

@@ -1157,6 +1157,7 @@ fn sequence_exists_predicate_pin_uses_visible_index_and_stops_after_first_match(
     assert_eq!(
         deliveries,
         [
+            (0, 0, None, "3".into()),
             (4, 1, Some(1), "false".into()),
             (4, 1, Some(2), "true".into())
         ]
@@ -1218,7 +1219,7 @@ fn sequence_exists_predicate_pin_follows_two_tokenizer_inputs() {
                 _ => None,
             })
             .collect::<Vec<_>>(),
-        [2, 2]
+        [0, 1, 2, 2]
     );
 }
 
@@ -1234,12 +1235,22 @@ fn sequence_exists_predicate_pin_is_absent_for_empty_or_null_sequence() {
             output.field("first").and_then(Instance::as_scalar),
             Some(&Value::Bool(false))
         );
-        assert!(
-            !trace
+        assert_eq!(
+            trace
                 .0
                 .into_inner()
                 .iter()
-                .any(|event| matches!(event, TraceEvent::NodeInputValue { consumer: 5, .. }))
+                .filter_map(|event| match event {
+                    TraceEvent::NodeInputValue {
+                        consumer: 5,
+                        input_index,
+                        ..
+                    } => Some(*input_index),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            [0],
+            "the generator bound is delivered even when it makes no items"
         );
     }
 }
@@ -1264,7 +1275,7 @@ fn sequence_exists_predicate_pin_cancel_precedes_target_write() {
         .inputs
         .into_inner()
         .into_iter()
-        .filter(|input| input.consumer == 5)
+        .filter(|input| input.consumer == 5 && input.input_index == 1)
         .collect::<Vec<_>>();
     assert_eq!(predicate_deliveries.len(), 1);
     assert_eq!(predicate_deliveries[0].input_index, 1);
@@ -1419,6 +1430,7 @@ fn sequence_aggregate_expression_pin_skips_rejected_items_and_keeps_raw_position
     assert_eq!(
         deliveries,
         [
+            (0, 0, None, "4".into()),
             (4, 1, Some(1), "false".into()),
             (4, 1, Some(2), "false".into()),
             (4, 1, Some(3), "true".into()),
@@ -1458,7 +1470,13 @@ fn sequence_aggregate_expression_pin_shifts_when_predicate_is_absent() {
                 _ => None,
             })
             .collect::<Vec<_>>(),
-        [(1, Some(1)), (1, Some(2)), (1, Some(3)), (1, Some(4))]
+        [
+            (0, None),
+            (1, Some(1)),
+            (1, Some(2)),
+            (1, Some(3)),
+            (1, Some(4)),
+        ]
     );
 }
 
@@ -1775,5 +1793,386 @@ fn sequence_aggregate_failed_expression_delivers_no_pin_or_parent_arg() {
         !events
             .iter()
             .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn generate_arguments_follow_optional_from_pin_order_and_null_short_circuit() {
+    let mut project = sequence_exists_pin_project(Value::Int(3));
+    project.graph.nodes.insert(
+        6,
+        Node::Const {
+            value: Value::Int(2),
+        },
+    );
+    let Some(Node::SequenceExists { sequence, .. }) = project.graph.nodes.get_mut(&5) else {
+        panic!("sequence exists node");
+    };
+    let SequenceExpr::Generate { from, .. } = sequence else {
+        panic!("generated range");
+    };
+    *from = Some(6);
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("first").and_then(Instance::as_scalar),
+        Some(&Value::Bool(true))
+    );
+    assert_eq!(
+        trace
+            .0
+            .into_inner()
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 5,
+                    input,
+                    input_index,
+                    value,
+                    ..
+                } => Some((*input, *input_index, value.preview.as_str())),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [(6, 0, "2"), (0, 1, "3"), (4, 2, "false"), (4, 2, "true")]
+    );
+
+    project
+        .graph
+        .nodes
+        .insert(6, Node::Const { value: Value::Null });
+    project.graph.nodes.insert(
+        0,
+        Node::RuntimeParameter {
+            name: "unreached-to".into(),
+            ty: ScalarType::Int,
+        },
+    );
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("first").and_then(Instance::as_scalar),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(
+        trace
+            .0
+            .into_inner()
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 5,
+                    input_index,
+                    value,
+                    ..
+                } => Some((*input_index, value.value_type)),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [(0, "null")]
+    );
+}
+
+#[test]
+fn generator_input_cancel_skips_later_argument_and_predicate() {
+    let mut project = sequence_exists_pin_project(Value::Int(3));
+    project.graph.nodes.insert(
+        6,
+        Node::Const {
+            value: Value::Int(1),
+        },
+    );
+    project.graph.nodes.insert(
+        0,
+        Node::RuntimeParameter {
+            name: "unreached-to".into(),
+            ty: ScalarType::Int,
+        },
+    );
+    let Some(Node::SequenceExists { sequence, .. }) = project.graph.nodes.get_mut(&5) else {
+        panic!("sequence exists node");
+    };
+    let SequenceExpr::Generate { from, .. } = sequence else {
+        panic!("generated range");
+    };
+    *from = Some(6);
+    let source = Instance::Group(vec![]);
+    let hook = PinHook {
+        inputs: RefCell::new(Vec::new()),
+        cancel_at: Some((5, 0)),
+    };
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json"))
+        .with_trace_sink(&trace)
+        .with_debug_hook(&hook);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    assert_eq!(
+        hook.inputs
+            .into_inner()
+            .iter()
+            .filter_map(|input| (input.consumer == 5).then_some((input.input, input.input_index)))
+            .collect::<Vec<_>>(),
+        [(6, 0)]
+    );
+    let events = trace.0.into_inner();
+    assert!(matches!(
+        events.last(),
+        Some(TraceEvent::NodeInputValue {
+            consumer: 5,
+            input: 6,
+            input_index: 0,
+            ..
+        })
+    ));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn regex_generator_optional_flags_delivery_can_short_circuit_predicate() {
+    let mut project = sequence_exists_pin_project(Value::String("one,two".into()));
+    project.graph.nodes.insert(
+        6,
+        Node::Const {
+            value: Value::String(",".into()),
+        },
+    );
+    project
+        .graph
+        .nodes
+        .insert(7, Node::Const { value: Value::Null });
+    project.graph.nodes.insert(
+        5,
+        Node::SequenceExists {
+            sequence: SequenceExpr::TokenizeRegex {
+                input: 0,
+                pattern: 6,
+                flags: Some(7),
+                item: 1,
+            },
+            predicate: 4,
+        },
+    );
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("first").and_then(Instance::as_scalar),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(
+        trace
+            .0
+            .into_inner()
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 5,
+                    input,
+                    input_index,
+                    ..
+                } => Some((*input, *input_index)),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [(0, 0), (6, 1), (7, 2)]
+    );
+}
+
+fn sequence_item_at_pin_project() -> Project {
+    let mut project = two_field_project();
+    project.source = SchemaNode::group("Source", vec![]);
+    project.target =
+        SchemaNode::group("Target", vec![SchemaNode::scalar("first", ScalarType::Int)]);
+    project.graph.nodes = [
+        (
+            0,
+            Node::Const {
+                value: Value::Int(3),
+            },
+        ),
+        (
+            1,
+            Node::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        ),
+        (
+            6,
+            Node::Const {
+                value: Value::Int(2),
+            },
+        ),
+        (
+            7,
+            Node::SequenceItemAt {
+                sequence: SequenceExpr::Generate {
+                    from: None,
+                    to: 0,
+                    item: 1,
+                },
+                index: 6,
+            },
+        ),
+    ]
+    .into();
+    project.root.bindings.truncate(1);
+    project.root.bindings[0].node = 7;
+    project
+}
+
+#[test]
+fn sequence_item_at_generator_then_index_pins_use_parent_context() {
+    let mut project = sequence_item_at_pin_project();
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("first").and_then(Instance::as_scalar),
+        Some(&Value::Int(2))
+    );
+    assert_eq!(
+        trace
+            .0
+            .into_inner()
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 7,
+                    input,
+                    input_index,
+                    positions,
+                    ..
+                } => Some((*input, *input_index, positions.len())),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [(0, 0, 0), (6, 1, 0)]
+    );
+
+    project.graph.nodes.insert(
+        8,
+        Node::Const {
+            value: Value::Int(2),
+        },
+    );
+    let Some(Node::SequenceItemAt { sequence, .. }) = project.graph.nodes.get_mut(&7) else {
+        panic!("sequence item-at node");
+    };
+    let SequenceExpr::Generate { from, .. } = sequence else {
+        panic!("generated range");
+    };
+    *from = Some(8);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("first").and_then(Instance::as_scalar),
+        Some(&Value::Int(3))
+    );
+    assert_eq!(
+        trace
+            .0
+            .into_inner()
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 7,
+                    input,
+                    input_index,
+                    positions,
+                    ..
+                } => Some((*input, *input_index, positions.len())),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [(8, 0, 0), (0, 1, 0), (6, 2, 0)]
+    );
+}
+
+#[test]
+fn sequence_item_at_index_can_cancel_after_generator_before_target_write() {
+    let project = sequence_item_at_pin_project();
+    let source = Instance::Group(vec![]);
+    let hook = PinHook {
+        inputs: RefCell::new(Vec::new()),
+        cancel_at: Some((7, 1)),
+    };
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json"))
+        .with_trace_sink(&trace)
+        .with_debug_hook(&hook);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    assert_eq!(
+        hook.inputs
+            .into_inner()
+            .iter()
+            .filter_map(|input| (input.consumer == 7).then_some(input.input_index))
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+    let events = trace.0.into_inner();
+    assert!(matches!(
+        events.last(),
+        Some(TraceEvent::NodeInputValue {
+            consumer: 7,
+            input_index: 1,
+            ..
+        })
+    ));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn sequence_item_at_failed_index_has_no_delivery() {
+    let mut project = sequence_item_at_pin_project();
+    project.graph.nodes.insert(
+        6,
+        Node::RuntimeParameter {
+            name: "missing-index".into(),
+            ty: ScalarType::Int,
+        },
+    );
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::MissingRuntimeParameter { node: 6, .. })
+    ));
+    assert_eq!(
+        trace
+            .0
+            .into_inner()
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 7,
+                    input_index,
+                    ..
+                } => Some(*input_index),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [0]
     );
 }
