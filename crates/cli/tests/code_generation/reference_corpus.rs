@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against two local, gitignored mappings.
+//! Opt-in generated-backend execution against three local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -9,24 +9,40 @@ use super::*;
 enum SourceKind {
     Json,
     Xml,
+    FlexText,
+}
+
+#[derive(Clone, Copy)]
+enum TargetKind {
+    Json,
+    Xml,
 }
 
 struct CorpusCase {
     sample: &'static str,
     input: &'static str,
     source_kind: SourceKind,
+    target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 2] = [
+const CASES: [CorpusCase; 3] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
         source_kind: SourceKind::Json,
+        target_kind: TargetKind::Json,
     },
     CorpusCase {
         sample: "Altova_Hierarchical_JSON.mfd",
         input: "Altova_Hierarchical.xml",
         source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Json,
+    },
+    CorpusCase {
+        sample: "Altova_Hierarchical_FLF.mfd",
+        input: "Altova_Hierarchical_FLF.txt",
+        source_kind: SourceKind::FlexText,
+        target_kind: TargetKind::Xml,
     },
 ];
 
@@ -79,13 +95,17 @@ fn run_case(
         "{sample}: expected one input"
     );
     assert!(
-        project.target_options.json_document,
-        "{sample}: expected a JSON output boundary"
+        match case.target_kind {
+            TargetKind::Json => project.target_options.json_document,
+            TargetKind::Xml => project.target_options.xml_document,
+        },
+        "{sample}: unexpected output format"
     );
     assert!(
         match case.source_kind {
             SourceKind::Json => project.source_options.json_document,
             SourceKind::Xml => project.source_options.xml_document,
+            SourceKind::FlexText => project.source_options.flextext.is_some(),
         },
         "{sample}: unexpected input format"
     );
@@ -104,12 +124,17 @@ fn run_case(
     let source = match case.source_kind {
         SourceKind::Json => format_json::read(&input_path, &project.source)?,
         SourceKind::Xml => format_xml::read(&input_path, &project.source)?,
+        SourceKind::FlexText => format_flextext::read(
+            &input_path,
+            &project.source,
+            project.source_options.flextext.as_ref().unwrap(),
+        )?,
     };
-    // Generated hosts expose a schema-shaped JSON API. For the XML sample,
-    // preserve the native reader's typed instance while crossing that host API.
+    // Generated hosts expose a schema-shaped JSON API. Preserve native XML
+    // and FlexText readers' typed instances while crossing that host API.
     let source_json = match case.source_kind {
         SourceKind::Json => std::fs::read_to_string(&input_path)?,
-        SourceKind::Xml => format_json::to_string(&project.source, &source)?,
+        SourceKind::Xml | SourceKind::FlexText => format_json::to_string(&project.source, &source)?,
     };
     let expected = engine::run(&project, &source)?;
     let expected_json: serde_json::Value =
