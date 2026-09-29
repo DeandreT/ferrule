@@ -426,6 +426,8 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                         target,
                         runtime_parameters: Some(&parameters),
                         trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
+                        debug_hook: None,
+                        before_publish: None,
                         protected_output_paths: &protected_output_paths,
                     },
                 )?;

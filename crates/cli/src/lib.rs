@@ -120,6 +120,11 @@ pub struct RunOptions<'a> {
     pub target: Option<TargetSelection<'a>>,
     pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
     pub trace_sink: Option<&'a dyn TraceSink>,
+    /// Optional live control point before ordinary target-field writes.
+    pub debug_hook: Option<&'a dyn engine::DebugHook>,
+    /// Called after evaluation succeeds and before any output staging begins.
+    /// Returning false cancels the run without publishing target files.
+    pub before_publish: Option<&'a dyn Fn() -> bool>,
     /// Host-owned artifact paths that mapping outputs must not replace.
     pub protected_output_paths: &'a [&'a Path],
 }
@@ -151,6 +156,16 @@ impl<'a> RunOptions<'a> {
 
     pub fn with_trace_sink(mut self, trace_sink: &'a dyn TraceSink) -> Self {
         self.trace_sink = Some(trace_sink);
+        self
+    }
+
+    pub fn with_debug_hook(mut self, debug_hook: &'a dyn engine::DebugHook) -> Self {
+        self.debug_hook = Some(debug_hook);
+        self
+    }
+
+    pub fn with_before_publish(mut self, gate: &'a dyn Fn() -> bool) -> Self {
+        self.before_publish = Some(gate);
         self
     }
 
@@ -333,6 +348,9 @@ pub fn run_project_value_with_options(
     if let Some(trace_sink) = options.trace_sink {
         execution = execution.with_trace_sink(trace_sink);
     }
+    if let Some(debug_hook) = options.debug_hook {
+        execution = execution.with_debug_hook(debug_hook);
+    }
     let written = if let Some(selection) = options.target {
         let output = engine::run_selected_target_with_sources_and_context(
             project,
@@ -341,6 +359,7 @@ pub fn run_project_value_with_options(
             &execution,
             selection,
         )?;
+        allow_output_publication(options)?;
         write_selected_target(
             &targets[0],
             &output,
@@ -354,6 +373,7 @@ pub fn run_project_value_with_options(
             extras,
             &execution,
         )?;
+        allow_output_publication(options)?;
         write_all_targets(
             &targets,
             &outputs,
@@ -370,6 +390,13 @@ pub fn run_project_value_with_options(
         extra_outputs: written.extra_outputs,
         artifacts: written.artifacts,
     })
+}
+
+fn allow_output_publication(options: &RunOptions<'_>) -> anyhow::Result<()> {
+    if options.before_publish.is_some_and(|gate| !gate()) {
+        return Err(engine::EngineError::DebugCancelled.into());
+    }
+    Ok(())
 }
 
 struct PlannedProjectTarget<'a> {

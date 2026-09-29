@@ -649,7 +649,7 @@ fn run_preview_payload(
     cli::run_project_value_payloads(project, project_path, &options)
 }
 
-fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, debug: bool) {
+pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, debug: bool) {
     match phase {
         PreviewPhase::Running => {
             ui.horizontal(|ui| {

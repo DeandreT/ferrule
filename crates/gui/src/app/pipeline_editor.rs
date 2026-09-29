@@ -481,6 +481,18 @@ impl FerruleApp {
         if !close_requested || self.allow_close {
             return;
         }
+        if self.pending_file_run.is_some() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.close_after_file_run = true;
+            if self
+                .pending_file_run
+                .as_ref()
+                .is_some_and(|run| !matches!(run.phase, run_ui::FileRunPhase::Publishing))
+            {
+                self.file_run_command(run_ui::FileRunCommand::Cancel);
+            }
+            return;
+        }
         if self
             .pipeline_editor
             .as_ref()

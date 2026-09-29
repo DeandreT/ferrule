@@ -172,3 +172,11 @@ field in one target-scope path. After **Continue**, it pauses again when that
 field is written in a later source row; **Step** still stops at the next
 ordinary write. Runtime-named dynamic fields are not listed in the selector.
 Runs with no ordinary target-field insertion finish without a live pause.
+
+**Debug Run** offers the same controls for a saved, file-backed mapping and
+can select a static field in the primary or a named target. Ordinary Run also
+executes on a worker. Evaluation finishes before the file host begins staging
+outputs; Cancel before that publication boundary leaves existing target files
+unchanged. Once publishing begins, the GUI waits for the worker to finish and
+defers app close. Completed output and trace appear in the run report.
+Pipeline runs do not yet offer live stepping.

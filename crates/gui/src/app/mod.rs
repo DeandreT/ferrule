@@ -397,6 +397,9 @@ pub struct FerruleApp {
     narrow_pane: WorkspacePane,
     last_layout_class: Option<LayoutClass>,
     show_run_setup: bool,
+    file_run_breakpoint: Option<run_ui::FileBreakpoint>,
+    pending_file_run: Option<run_ui::PendingFileRun>,
+    close_after_file_run: bool,
     preview_draft: Option<crate::preview::PreviewDraft>,
     pending_preview: Option<preview_ui::PendingPreview>,
     pipeline_run_draft: Option<crate::pipeline_run::PipelineRunDraft>,
@@ -482,6 +485,7 @@ enum DestructiveAction {
 enum SaveContinuation {
     Destructive(DestructiveAction),
     Run,
+    DebugRun,
 }
 
 struct DocumentSaveOutcome {
@@ -511,6 +515,9 @@ impl Default for FerruleApp {
             narrow_pane: WorkspacePane::Canvas,
             last_layout_class: None,
             show_run_setup: false,
+            file_run_breakpoint: None,
+            pending_file_run: None,
+            close_after_file_run: false,
             preview_draft: None,
             pending_preview: None,
             pipeline_run_draft: None,
@@ -1081,7 +1088,8 @@ impl FerruleApp {
             Some(SaveContinuation::Destructive(action)) => {
                 self.perform_destructive_action(action, ctx)
             }
-            Some(SaveContinuation::Run) => self.run_saved(),
+            Some(SaveContinuation::Run) => self.run_saved(false),
+            Some(SaveContinuation::DebugRun) => self.run_saved(true),
             None => {}
         }
     }
@@ -1291,6 +1299,7 @@ impl eframe::App for FerruleApp {
         self.poll_dialog(ui.ctx());
         self.poll_pipeline_run(ui.ctx());
         self.poll_preview(ui.ctx());
+        self.poll_file_run(ui.ctx());
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
         self.guard_app_close_requested(ui.ctx(), close_requested);
         let project_editing_enabled = self.pending_dialog.is_none()
@@ -1302,7 +1311,8 @@ impl eframe::App for FerruleApp {
             && self.pending_extra_target_removal.is_none()
             && self.pending_auto_connect.is_none()
             && self.preview_draft.is_none()
-            && self.pending_preview.is_none();
+            && self.pending_preview.is_none()
+            && self.pending_file_run.is_none();
         let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -1426,6 +1436,7 @@ impl eframe::App for FerruleApp {
         self.show_extra_target_removal_confirmation(ui.ctx());
         self.show_auto_connect_confirmation(ui.ctx());
         self.show_preview_setup(ui.ctx());
+        self.show_file_run_progress(ui.ctx());
         self.show_pipeline_run_setup(ui.ctx());
         self.show_pipeline_editor(ui.ctx());
         self.show_pipeline_editor_guard(ui.ctx());

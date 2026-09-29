@@ -1114,6 +1114,7 @@ fn blank_run_paths_fall_back_to_stored_project_paths() {
     app.output_path.clear();
 
     app.run(&egui::Context::default());
+    wait_for_file_run_completion(&mut app);
 
     assert!(directory.join("output.xml").is_file(), "{}", app.status);
     assert!(app.diagnostics.is_empty(), "{}", app.status);
@@ -1237,6 +1238,33 @@ fn wait_for_preview_completion(app: &mut FerruleApp) {
     assert!(app.pending_preview.is_none(), "preview worker completes");
 }
 
+fn wait_for_file_run_completion(app: &mut FerruleApp) {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while app.pending_file_run.is_some() && std::time::Instant::now() < deadline {
+        app.poll_file_run(&context);
+        if app.pending_file_run.is_some() {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+    assert!(app.pending_file_run.is_none(), "file run worker completes");
+}
+
+fn wait_for_file_run_pause(app: &mut FerruleApp) -> engine::PendingTargetWrite {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_file_run(&context);
+        match app.pending_file_run.as_ref().map(|pending| &pending.phase) {
+            Some(run_ui::FileRunPhase::Paused(write)) => return (**write).clone(),
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug file run did not pause before deadline: {other:?}"),
+        }
+    }
+}
+
 fn wait_for_debug_pause(app: &mut FerruleApp) -> engine::PendingTargetWrite {
     let context = egui::Context::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -1291,6 +1319,72 @@ fn two_field_debug_preview_app() -> FerruleApp {
         debug_breakpoint: None,
     });
     app
+}
+
+fn two_field_file_run_app(test_name: &str) -> (FerruleApp, PathBuf, PathBuf) {
+    let project_path = temporary_project_path(test_name);
+    let directory = project_path.parent().expect("project has parent");
+    let input = directory.join("input.xml");
+    let output = directory.join("output.xml");
+    std::fs::write(&input, "<root/>").expect("input instance is written");
+    std::fs::write(&output, "old output").expect("old output is written");
+    let mut app = two_field_debug_preview_app();
+    app.preview_draft = None;
+    app.save_document_to(&project_path)
+        .expect("file run project is saved");
+    app.input_path = input.display().to_string();
+    app.output_path = output.display().to_string();
+    (app, project_path, output)
+}
+
+#[test]
+fn debug_file_run_steps_then_publishes_on_continue() {
+    let (mut app, project_path, output) = two_field_file_run_app("debug-file-step");
+    app.debug_run(&egui::Context::default());
+    let first = wait_for_file_run_pause(&mut app);
+    assert_eq!(first.field, "first");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    assert!(app.run_report.is_none());
+
+    app.file_run_command(run_ui::FileRunCommand::Step);
+    let second = wait_for_file_run_pause(&mut app);
+    assert_eq!(second.field, "second");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+
+    app.file_run_command(run_ui::FileRunCommand::Continue);
+    wait_for_file_run_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
+    assert!(
+        std::fs::read_to_string(&output)
+            .unwrap()
+            .contains("<second>B</second>")
+    );
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn cancelling_paused_file_run_preserves_existing_output() {
+    let (mut app, project_path, output) = two_field_file_run_app("debug-file-cancel");
+    app.debug_run(&egui::Context::default());
+    assert_eq!(wait_for_file_run_pause(&mut app).field, "first");
+    app.file_run_command(run_ui::FileRunCommand::Cancel);
+    wait_for_file_run_completion(&mut app);
+    assert_eq!(app.status, "run cancelled");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    assert!(app.run_report.is_none());
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn cancelling_ordinary_file_run_suppresses_late_success_and_publication() {
+    let (mut app, project_path, output) = two_field_file_run_app("file-run-cancel");
+    app.run(&egui::Context::default());
+    app.file_run_command(run_ui::FileRunCommand::Cancel);
+    wait_for_file_run_completion(&mut app);
+    assert_eq!(app.status, "run cancelled");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    assert!(app.run_report.is_none());
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
 }
 
 fn three_field_debug_preview_app() -> FerruleApp {
