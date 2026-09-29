@@ -242,12 +242,13 @@ Export writes the representable project subset plus generated schema or layout
 siblings. Component kinds are selected from endpoint format metadata and paths.
 Pipeline export writes one connected design for a validated serial XML
 pass-through chain of 2–65 stages. Each intermediate primary target becomes
-the next stage's pass-through source. The final primary target may be XML or
-delimited CSV; connected named final targets remain XML. An original static
-XML host source may connect to named inputs in multiple stages, including the
-first and later intermediate stages, when its boundary and output ports still
-match. Connections from a reused output port share one vertex with multiple
-edges. Intermediate XML pass-through components retain their declared output
+the next stage's pass-through source. The final primary target may be XML,
+delimited CSV, or JSON; connected named final targets remain XML. An original
+static XML host source may connect to named inputs in multiple stages,
+including the first and later intermediate stages, when its boundary and
+output ports still match. Connections from a reused output port share one
+vertex with multiple edges. Intermediate XML pass-through components retain
+their declared output
 instance and source preview instance, even when the two paths differ. An
 undeclared output instance is not inferred from an input preview or schema
 default. Repeated target branches connect the unique uncloned publication
@@ -255,12 +256,15 @@ port; zero or multiple base ports reject before output artifacts are written.
 Preflight and native-profile checks run before any design or schema sibling is
 published.
 Independent intermediate targets, disconnected final targets, other connected
-later-stage named sources, and other non-XML boundaries reject explicitly.
+later-stage named sources, and other non-XML intermediate boundaries reject
+explicitly. JSON targets remain final-primary only.
 Synthetic two- and four-stage export/re-import runs preserve stage results;
-terminal fan-out, repeated named-host connections, and a CSV final target
-preserve their connected outputs. The CSV result also passes local write/read
-checks. A local chained-report sample and a synthetic distinct-path case
-preserve both intermediate instance identities across export/reimport.
+terminal fan-out, repeated named-host connections, and CSV or JSON final targets
+preserve their connected outputs. The CSV result passes local write/read checks,
+while JSON retains exact serialized bytes after re-import. A local XML-to-JSON
+mapping also runs unchanged after an identity XML stage. A local chained-report
+sample and a synthetic distinct-path case preserve both intermediate instance
+identities across export/reimport.
 All four local chains reimport after strict native export. The date/time chain
 lowers uniquely bound direct XML dateTime conversions to the document's native
 `cast-in-subtree` mode and restores `xs:dateTime` on precisely those generated
