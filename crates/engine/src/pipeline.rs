@@ -211,6 +211,14 @@ fn plan_pipeline(pipeline: &Pipeline) -> Result<Plan, Vec<PipelineValidationIssu
         if ids.insert(stage.id.as_str(), index).is_some() {
             issues.push(issue(Some(stage.id.clone()), "stage ID is duplicated"));
         }
+        if let Some(path) = &stage.mapping_path
+            && (path.is_empty() || path.contains('\0') || path.len() > 4096)
+        {
+            issues.push(issue(
+                Some(stage.id.clone()),
+                "mapping path must be nonempty, at most 4096 bytes, and contain no NUL",
+            ));
+        }
         issues.extend(crate::validate(&stage.project).into_iter().map(|finding| {
             issue(
                 Some(stage.id.clone()),
@@ -409,9 +417,10 @@ mod tests {
     use super::*;
     use ir::{ScalarType, Value};
     use mapping::{
-        Binding, Graph, NamedSource, NamedTarget, Node, PipelineNamedInput, PipelineStage, Scope,
-        ScopeConstruction,
+        Binding, Graph, NamedSource, NamedTarget, Node, PipelineNamedInput, PipelineStage,
+        RuntimeValue, Scope, ScopeConstruction,
     };
+    use std::path::Path;
 
     fn schema(ty: ScalarType) -> SchemaNode {
         SchemaNode::group("Record", vec![SchemaNode::scalar("Value", ty)])
@@ -459,6 +468,7 @@ mod tests {
     fn stage(id: &str, project: mapping::Project, source: PipelineInput) -> PipelineStage {
         PipelineStage {
             id: id.into(),
+            mapping_path: None,
             project,
             source,
             extra_sources: Vec::new(),
@@ -639,5 +649,81 @@ mod tests {
             run_pipeline(&pipeline, &hosts),
             Err(PipelineError::StageExecution { stage, .. }) if stage == "failing"
         ));
+    }
+
+    #[test]
+    fn stage_contexts_keep_active_and_main_mapping_paths_distinct() {
+        let mut first = copy_project(ScalarType::String);
+        first.graph.nodes.insert(
+            0,
+            Node::RuntimeValue {
+                value: RuntimeValue::MappingFilePath,
+            },
+        );
+        first.root = Scope {
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 0,
+            }],
+            ..Scope::default()
+        };
+        let mut second = first.clone();
+        second.graph.nodes.insert(
+            0,
+            Node::RuntimeValue {
+                value: RuntimeValue::MainMappingFilePath,
+            },
+        );
+        let pipeline = Pipeline {
+            stages: vec![
+                stage("first", first, host("main")),
+                stage("second", second, output("first", None)),
+            ],
+        };
+        let results = run_pipeline_with_stage_contexts(
+            &pipeline,
+            &BTreeMap::from([("main".to_string(), input("unused"))]),
+            |stage| {
+                let active = match stage {
+                    "first" => Path::new("/maps/first.ferrule.json"),
+                    "second" => Path::new("/maps/second.ferrule.json"),
+                    _ => unreachable!(),
+                };
+                ExecutionContext::with_main_mapping_file_path(
+                    active,
+                    Path::new("/maps/pipeline.json"),
+                )
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            results.stage("first").unwrap().primary,
+            input("/maps/first.ferrule.json")
+        );
+        assert_eq!(
+            results.stage("second").unwrap().primary,
+            input("/maps/pipeline.json")
+        );
+    }
+
+    #[test]
+    fn invalid_stage_mapping_paths_are_rejected_before_execution() {
+        let mut pipeline = Pipeline {
+            stages: vec![stage(
+                "first",
+                copy_project(ScalarType::String),
+                host("main"),
+            )],
+        };
+        for path in [String::new(), "bad\0path".into(), "x".repeat(4097)] {
+            pipeline.stages[0].mapping_path = Some(path);
+            assert!(
+                validate_pipeline(&pipeline)
+                    .iter()
+                    .any(|issue| issue.message.contains("mapping path"))
+            );
+        }
+        pipeline.stages[0].mapping_path = Some("stages/first.json".into());
+        assert!(validate_pipeline(&pipeline).is_empty());
     }
 }

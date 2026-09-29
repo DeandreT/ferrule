@@ -108,6 +108,7 @@ fn pipeline() -> Pipeline {
         stages: vec![
             PipelineStage {
                 id: "consume".into(),
+                mapping_path: None,
                 project: project(),
                 source: PipelineInput::StageTarget {
                     stage: "prepare".into(),
@@ -117,6 +118,7 @@ fn pipeline() -> Pipeline {
             },
             PipelineStage {
                 id: "prepare".into(),
+                mapping_path: None,
                 project: producer,
                 source: PipelineInput::Host {
                     name: "orders".into(),
@@ -187,6 +189,7 @@ fn mixed_format_pipeline() -> Pipeline {
         stages: vec![
             PipelineStage {
                 id: "finish".into(),
+                mapping_path: None,
                 project: finish,
                 source: PipelineInput::StageTarget {
                     stage: "combine".into(),
@@ -196,6 +199,7 @@ fn mixed_format_pipeline() -> Pipeline {
             },
             PipelineStage {
                 id: "combine".into(),
+                mapping_path: None,
                 project: combine,
                 source: PipelineInput::StageTarget {
                     stage: "prepare".into(),
@@ -208,6 +212,7 @@ fn mixed_format_pipeline() -> Pipeline {
             },
             PipelineStage {
                 id: "prepare".into(),
+                mapping_path: None,
                 project: project(),
                 source: PipelineInput::Host {
                     name: "json".into(),
@@ -485,6 +490,7 @@ fn rejects_invalid_host_contracts_and_output_publication_paths() -> Result<(), B
     other.source.name = "OtherRoot".into();
     pipeline.stages.push(PipelineStage {
         id: "other".into(),
+        mapping_path: None,
         project: other,
         source: PipelineInput::Host {
             name: "orders".into(),
@@ -576,6 +582,7 @@ fn dynamic_xml_file_set_pipeline() -> Pipeline {
     Pipeline {
         stages: vec![PipelineStage {
             id: "load".into(),
+            mapping_path: None,
             project: mapping,
             source: PipelineInput::Host {
                 name: "files".into(),
@@ -696,6 +703,7 @@ fn reused_host_file_sources_reject_ambiguous_root_schemas() -> Result<(), Box<dy
     host.stages[1].project.source_options = second.source_options.clone();
     host.stages.push(PipelineStage {
         id: "other".into(),
+        mapping_path: None,
         project: second,
         source: PipelineInput::Host {
             name: "orders".into(),
@@ -709,5 +717,76 @@ fn reused_host_file_sources_reject_ambiguous_root_schemas() -> Result<(), Box<dy
     let error =
         cli::run_pipeline_file(&pipeline_path, &[input(&input_path)], &[selected]).unwrap_err();
     assert!(format!("{error:#}").contains("host input `orders` has inconsistent schema"));
+    Ok(())
+}
+
+#[test]
+fn stage_mapping_paths_supply_runtime_identity_and_are_protected() -> Result<(), Box<dyn Error>> {
+    let dir = TempDir::new()?;
+    let mut pipeline = pipeline();
+    let active = dir.0.join("stages/prepare.ferrule.json");
+    std::fs::create_dir_all(active.parent().unwrap())?;
+    std::fs::write(&active, "keep this stage file")?;
+    pipeline.stages[1].mapping_path = Some("stages/prepare.ferrule.json".into());
+    pipeline.stages[0].mapping_path = Some("stages/consume.ferrule.json".into());
+    for (index, value) in [
+        (1, mapping::RuntimeValue::MappingFilePath),
+        (0, mapping::RuntimeValue::MainMappingFilePath),
+    ] {
+        let stage = &mut pipeline.stages[index];
+        stage
+            .project
+            .graph
+            .nodes
+            .insert(10, Node::RuntimeValue { value });
+        stage.project.root = Scope {
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 10,
+            }],
+            ..Scope::default()
+        };
+    }
+    let pipeline_path = dir.pipeline(&pipeline)?;
+    let input_path = dir.input()?;
+    let prepared = dir.0.join("prepared.json");
+    let consumed = dir.0.join("consumed.json");
+    let selections = [
+        output("prepare", None, &prepared),
+        output("consume", None, &consumed),
+    ];
+    cli::run_pipeline_file(&pipeline_path, &[input(&input_path)], &selections)?;
+    let prepared_json: serde_json::Value = serde_json::from_slice(&std::fs::read(&prepared)?)?;
+    let consumed_json: serde_json::Value = serde_json::from_slice(&std::fs::read(&consumed)?)?;
+    assert_eq!(
+        prepared_json["Value"].as_str(),
+        active.canonicalize()?.to_str()
+    );
+    assert_eq!(
+        consumed_json["Value"].as_str(),
+        pipeline_path.canonicalize()?.to_str()
+    );
+
+    let error = cli::run_pipeline_file(
+        &pipeline_path,
+        &[input(&input_path)],
+        &[output("prepare", None, &active)],
+    )
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("reserved by the host"));
+    assert_eq!(std::fs::read_to_string(&active)?, "keep this stage file");
+
+    pipeline.stages[1].mapping_path = None;
+    dir.pipeline(&pipeline)?;
+    cli::run_pipeline_file(
+        &pipeline_path,
+        &[input(&input_path)],
+        &[output("prepare", None, &prepared)],
+    )?;
+    let default_json: serde_json::Value = serde_json::from_slice(&std::fs::read(&prepared)?)?;
+    assert_eq!(
+        default_json["Value"].as_str(),
+        pipeline_path.canonicalize()?.to_str()
+    );
     Ok(())
 }
