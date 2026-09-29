@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against fifteen local, gitignored mappings.
+//! Opt-in generated-backend execution against sixteen local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -29,7 +29,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 15] = [
+const CASES: [CorpusCase; 16] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -117,6 +117,12 @@ const CASES: [CorpusCase; 15] = [
     CorpusCase {
         sample: "FlattenHierarchy.mfd",
         input: "Directory.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "Tutorial/Expense-valmap.mfd",
+        input: "Tutorial/ExpReport-item.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
@@ -288,8 +294,28 @@ fn run_case(
             "{sample}: schema-shaped JSON boundary changed recursive mapping output"
         );
     }
-    let expected_json: serde_json::Value =
-        serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?;
+    // A mapped XML sequence can contain multiple occurrences under a nominally
+    // nonrepeating XSD field. Keep the JSON boundary strict and compare that
+    // case through the generated Instance API and XML serializers instead.
+    let mapped_xml_output = sample == "Tutorial/Expense-valmap.mfd";
+    let expected_xml = if mapped_xml_output {
+        Some(format_xml::to_string_with_options(
+            &project.target,
+            &expected,
+            &format_xml::XmlWriteOptions {
+                declaration: false,
+                indent: false,
+                default_namespace: None,
+            },
+        )?)
+    } else {
+        None
+    };
+    let expected_json: serde_json::Value = if mapped_xml_output {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?
+    };
     if sample == "BuildHierarchyFromTextfile.mfd" {
         let Instance::Repeated(rows) = &source else {
             panic!("{sample}: CSV source should contain repeated rows");
@@ -597,10 +623,76 @@ fn run_case(
         );
     }
 
+    if sample == "Tutorial/Expense-valmap.mfd" {
+        assert_eq!(
+            project
+                .graph
+                .nodes
+                .values()
+                .filter(|node| matches!(node, Node::ValueMap { .. }))
+                .count(),
+            2,
+            "{sample}: integer and boolean value maps are present"
+        );
+        let Instance::Group(fields) = &expected else {
+            panic!("{sample}: mapped root group");
+        };
+        let (_, Instance::MappedSequence(items)) = fields
+            .iter()
+            .find(|(name, _)| name == "expense-item")
+            .expect("mapped expense field")
+        else {
+            panic!("{sample}: mapped expense sequence");
+        };
+        assert_eq!(items.len(), 4, "{sample}: four mapped expense items");
+        let weekdays = items
+            .iter()
+            .map(|item| corpus_string_field(item, "Weekday"))
+            .collect::<Vec<_>>();
+        assert!(weekdays.iter().all(|value| !value.is_empty()));
+        assert_eq!(
+            weekdays
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            3,
+            "{sample}: integer value map selects distinct weekday branches"
+        );
+        let notes = items
+            .iter()
+            .map(|item| corpus_string_field(item, "Notes"))
+            .collect::<Vec<_>>();
+        assert!(notes.iter().all(|value| !value.is_empty()));
+        assert_eq!(
+            notes
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            2,
+            "{sample}: boolean value map selects mapped and default branches"
+        );
+        assert_eq!(
+            notes.iter().filter(|note| **note == notes[0]).count(),
+            1,
+            "{sample}: one expense selects the non-default note"
+        );
+    }
+
     let generated_input = case_dir.join("source.json");
     std::fs::write(&generated_input, source_json)?;
     let project_path = case_dir.join("project.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
+    let xml_host_schemas = if mapped_xml_output {
+        let source_schema = case_dir.join("source-schema.json");
+        let target_schema = case_dir.join("target-schema.json");
+        std::fs::write(&source_schema, serde_json::to_vec(&project.source)?)?;
+        std::fs::write(&target_schema, serde_json::to_vec(&project.target)?)?;
+        Some((source_schema, target_schema))
+    } else {
+        None
+    };
 
     let rust_output = case_dir.join("rust");
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
@@ -611,8 +703,25 @@ fn run_case(
             runtime_path: runtime,
         },
     )?;
-    std::fs::write(
-        rust_output.join("src/main.rs"),
+    let rust_harness = if mapped_xml_output {
+        r#"use codegen_runtime::{Value, parse_json, serialize_xml};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let input = std::fs::read_to_string(args.next().expect("input path"))?;
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema path"))?;
+    let target_schema = std::fs::read_to_string(args.next().expect("target schema path"))?;
+    let source = parse_json(&source_schema, &input)?;
+    let output = execute(&source)?;
+    let Value::String(xml) = serialize_xml(0, &target_schema, &output, false, false, None)? else {
+        unreachable!("XML serialization returns a string");
+    };
+    print!("{xml}");
+    Ok(())
+}
+"#
+    } else {
         r#"use ferrule_generated_mapping::{NamedJsonInput, execute_json_with_sources};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -637,8 +746,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print!("{}", execute_json_with_sources(&input, &named_inputs)?);
     Ok(())
 }
-"#,
-    )?;
+"#
+    };
+    std::fs::write(rust_output.join("src/main.rs"), rust_harness)?;
     let rust_build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_output)
@@ -656,8 +766,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(&generated_input)
         .current_dir(&rust_output)
         .env("CARGO_TARGET_DIR", rust_target);
-    for (name, path) in &named_input_paths {
-        rust_run_command.arg(name).arg(path);
+    if let Some((source_schema, target_schema)) = &xml_host_schemas {
+        rust_run_command.arg(source_schema).arg(target_schema);
+    } else {
+        for (name, path) in &named_input_paths {
+            rust_run_command.arg(name).arg(path);
+        }
     }
     let rust_run = rust_run_command.isolated_output()?;
     assert!(
@@ -666,11 +780,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         String::from_utf8_lossy(&rust_run.stdout),
         String::from_utf8_lossy(&rust_run.stderr)
     );
-    let rust_json: serde_json::Value = serde_json::from_slice(&rust_run.stdout)?;
-    assert_eq!(
-        rust_json, expected_json,
-        "{sample}: generated Rust differs from engine"
-    );
+    if let Some(expected_xml) = &expected_xml {
+        assert!(
+            rust_run.stdout == expected_xml.as_bytes(),
+            "{sample}: generated Rust XML differs from engine"
+        );
+    } else {
+        let rust_json: serde_json::Value = serde_json::from_slice(&rust_run.stdout)?;
+        assert_eq!(
+            rust_json, expected_json,
+            "{sample}: generated Rust differs from engine"
+        );
+    }
 
     let csharp_output = case_dir.join("csharp");
     generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
@@ -693,8 +814,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 </Project>
 "#,
     )?;
-    std::fs::write(
-        harness.join("Program.cs"),
+    let csharp_harness = if mapped_xml_output {
+        r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var input = File.ReadAllText(args[0]);
+var sourceSchema = File.ReadAllText(args[1]);
+var targetSchema = File.ReadAllText(args[2]);
+var source = FerruleJson.Parse(sourceSchema, input);
+var output = GeneratedMapping.Execute(source);
+Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue);
+"#
+    } else {
         r#"using Ferrule.Generated;
 
 var input = File.ReadAllText(args[0]);
@@ -708,8 +839,9 @@ for (var index = 1; index < args.Length; index += 2)
     namedInputs.Add(new NamedJsonInput(args[index], File.ReadAllText(args[index + 1])));
 }
 Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
-"#,
-    )?;
+"#
+    };
+    std::fs::write(harness.join("Program.cs"), csharp_harness)?;
     let csharp_build = dotnet_command(&csharp_output)
         .args([
             "build",
@@ -739,8 +871,12 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
         ])
         .arg(&generated_input)
         .current_dir(&csharp_output);
-    for (name, path) in &named_input_paths {
-        csharp_run_command.arg(name).arg(path);
+    if let Some((source_schema, target_schema)) = &xml_host_schemas {
+        csharp_run_command.arg(source_schema).arg(target_schema);
+    } else {
+        for (name, path) in &named_input_paths {
+            csharp_run_command.arg(name).arg(path);
+        }
     }
     let csharp_run = csharp_run_command.isolated_output()?;
     assert!(
@@ -749,11 +885,30 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
         String::from_utf8_lossy(&csharp_run.stdout),
         String::from_utf8_lossy(&csharp_run.stderr)
     );
-    let csharp_json: serde_json::Value = serde_json::from_slice(&csharp_run.stdout)?;
-    assert_eq!(
-        csharp_json, expected_json,
-        "{sample}: generated C# differs from engine"
-    );
+    if let Some(expected_xml) = &expected_xml {
+        assert!(
+            csharp_run.stdout == expected_xml.as_bytes(),
+            "{sample}: generated C# XML differs from engine"
+        );
+    } else {
+        let csharp_json: serde_json::Value = serde_json::from_slice(&csharp_run.stdout)?;
+        assert_eq!(
+            csharp_json, expected_json,
+            "{sample}: generated C# differs from engine"
+        );
+    }
     println!("{sample}: generated Rust and C# match the interpreter");
     Ok(())
+}
+
+fn corpus_string_field<'a>(instance: &'a Instance, name: &str) -> &'a str {
+    let Instance::Group(fields) = instance else {
+        panic!("mapped item is not a group");
+    };
+    let Some((_, Instance::Scalar(Value::String(value)))) =
+        fields.iter().find(|(field, _)| field == name)
+    else {
+        panic!("mapped {name} is not a string");
+    };
+    value
 }

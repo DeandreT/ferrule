@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports fifteen warning-free designs: JSON to
+An opt-in local-corpus smoke test imports sixteen warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -457,11 +457,14 @@ The fourteenth reads transposed XLSX columns and maps them to CSV with
 position-indexed item-at aggregates. The fifteenth reads a recursive XML
 hierarchy and collects 90 distinct nested file paths into XML; its
 schema-shaped JSON input retains recursive group fields in both generated
-backends.
+backends. The sixteenth maps four expense items through integer and boolean
+value maps into XML. Its nominally nonrepeating XSD group receives several
+mapped XML occurrences, so this case compares the public generated Instance
+APIs and XML serializers while retaining schema-shaped JSON input parsing.
 It executes them in the interpreter, then compiles
 and runs their generated Rust and C# hosts against
-schema-shaped JSON input. Both backends must match the interpreter's JSON
-result. Run it with
+schema-shaped JSON input. The first fifteen compare JSON results; the sixteenth
+compares XML bytes from the generated and interpreter serializers. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
 when the ignored `samples/ReferenceSamples` corpus and .NET 10 SDK are present.
 The corpus files are never added to the repository. This checks generated
