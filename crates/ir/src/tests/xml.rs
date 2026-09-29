@@ -78,6 +78,49 @@ fn xml_restricted_alternatives_are_explicit_and_validated() {
 }
 
 #[test]
+fn xsd_type_alternative_resolution_is_opt_in_and_serde_compatible() {
+    let mut schema = SchemaNode::group(
+        "Contact",
+        vec![
+            SchemaNode::scalar("id", ScalarType::String),
+            SchemaNode::scalar("address", ScalarType::String),
+        ],
+    )
+    .with_alternatives(vec![
+        GroupAlternative {
+            name: "Base".into(),
+            members: vec!["id".into()],
+            required: Vec::new(),
+            constraints: Vec::new(),
+        },
+        GroupAlternative {
+            name: "Derived".into(),
+            members: vec!["id".into(), "address".into()],
+            required: Vec::new(),
+            constraints: Vec::new(),
+        },
+    ])
+    .unwrap();
+    let legacy = serde_json::to_string(&schema).unwrap();
+    assert!(!legacy.contains("xml_type_alternatives"));
+    assert_eq!(serde_json::from_str::<SchemaNode>(&legacy).unwrap(), schema);
+
+    schema.xml_type_alternatives = true;
+    assert!(schema.metadata_is_valid());
+    let encoded = serde_json::to_string(&schema).unwrap();
+    assert!(encoded.contains(r#""xml_type_alternatives":true"#));
+    assert_eq!(
+        serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+        schema
+    );
+
+    let mut invalid = SchemaNode::group("Contact", Vec::new());
+    invalid.xml_type_alternatives = true;
+    assert!(!invalid.metadata_is_valid());
+    assert!(serde_json::from_str::<SchemaNode>(&serde_json::to_string(&invalid).unwrap()).is_err());
+}
+
+#[test]
 fn xml_defaults_are_scalar_only_exclusive_and_serde_defaulted() {
     let defaulted = SchemaNode::scalar("Count", ScalarType::Int)
         .with_default("7")

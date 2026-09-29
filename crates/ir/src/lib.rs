@@ -619,6 +619,11 @@ pub struct SchemaNode {
     /// How XML boundaries encode this group's exclusive alternatives.
     #[serde(default, skip_serializing_if = "XmlAlternativeKind::is_xsi_type")]
     pub xml_alternative_kind: XmlAlternativeKind,
+    /// These alternatives came from XSD `xsi:type` derivation. A JSON host
+    /// may resolve overlapping projections only when one matching type has
+    /// strictly fewer members than every other matching derived type.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub xml_type_alternatives: bool,
     /// Repeating anonymous XML sequences flattened into this group's named
     /// children for mapping-port compatibility. XML adapters use this metadata
     /// to retain document order and recreate the original compositor.
@@ -741,6 +746,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_alternative_kind: XmlAlternativeKind,
             #[serde(default)]
+            xml_type_alternatives: bool,
+            #[serde(default)]
             xml_repeating_sequences: Vec<XmlRepeatingSequence>,
             #[serde(default)]
             xml_repeating_choices: Vec<XmlRepeatingChoice>,
@@ -784,6 +791,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             value_generation: repr.value_generation,
             alternative_mode: repr.alternative_mode,
             xml_alternative_kind: repr.xml_alternative_kind,
+            xml_type_alternatives: repr.xml_type_alternatives,
             xml_repeating_sequences: repr.xml_repeating_sequences,
             xml_repeating_choices: repr.xml_repeating_choices,
             database_relation: repr.database_relation,
@@ -1035,6 +1043,7 @@ impl SchemaNode {
             && self.default_is_valid()
             && self.alternative_mode_is_valid()
             && self.xml_alternative_kind_is_valid()
+            && self.xml_type_alternatives_are_valid()
             && self.xml_repeating_sequences_are_valid()
             && self.xml_repeating_choices_are_valid()
             && self.database_relation_is_valid()
@@ -1070,6 +1079,7 @@ impl SchemaNode {
             && self.default_is_valid()
             && self.alternative_mode_is_valid()
             && self.xml_alternative_kind_is_valid()
+            && self.xml_type_alternatives_are_valid()
             && self.xml_repeating_sequences_are_valid()
             && self.xml_repeating_choices_are_valid()
             && self.database_relation_is_valid()
@@ -1114,6 +1124,7 @@ impl SchemaNode {
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
+            xml_type_alternatives: false,
             xml_repeating_sequences: Vec::new(),
             xml_repeating_choices: Vec::new(),
             database_relation: None,
@@ -1161,6 +1172,7 @@ impl SchemaNode {
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
+            xml_type_alternatives: false,
             xml_repeating_sequences: Vec::new(),
             xml_repeating_choices: Vec::new(),
             database_relation: None,
@@ -1217,6 +1229,7 @@ impl SchemaNode {
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
+            xml_type_alternatives: false,
             xml_repeating_sequences: Vec::new(),
             xml_repeating_choices: Vec::new(),
             database_relation: None,
@@ -2593,6 +2606,8 @@ impl SchemaNode {
         };
         let previous_mode = std::mem::replace(&mut self.alternative_mode, mode);
         let previous_xml_kind = std::mem::replace(&mut self.xml_alternative_kind, xml_kind);
+        let previous_xml_type_alternatives =
+            std::mem::replace(&mut self.xml_type_alternatives, false);
         if self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_pattern_property_names_are_valid()
@@ -2612,6 +2627,7 @@ impl SchemaNode {
             *xml_restricted_alternatives = previous_restricted;
             self.alternative_mode = previous_mode;
             self.xml_alternative_kind = previous_xml_kind;
+            self.xml_type_alternatives = previous_xml_type_alternatives;
             false
         }
     }
@@ -2707,6 +2723,26 @@ impl SchemaNode {
                     )
             }
         }
+    }
+
+    /// XSD-derived type projections use member-set refinement rather than
+    /// JSON Schema's exclusive `oneOf` interpretation.
+    pub fn xml_type_alternatives_are_valid(&self) -> bool {
+        if !self.xml_type_alternatives {
+            return true;
+        }
+        self.alternative_mode == GroupAlternativeMode::Exclusive
+            && self.xml_alternative_kind == XmlAlternativeKind::XsiType
+            && matches!(
+                &self.kind,
+                SchemaKind::Group { alternatives, .. }
+                    if !alternatives.is_empty()
+                        && alternatives.iter().all(|alternative| {
+                            !alternative.name.is_empty()
+                                && alternative.required.is_empty()
+                                && alternative.constraints.is_empty()
+                        })
+            )
     }
 
     pub fn alternative_mode(&self) -> GroupAlternativeMode {

@@ -1112,19 +1112,39 @@ fn validate_alternative_fields(
                         .is_none_or(|value| constraint_matches(&constraint.value, value))
                 })
         })
-        .count();
-    match matches {
+        .collect::<Vec<_>>();
+    match matches.len() {
         0 => Err(JsonFormatError::NoMatchingAlternative {
             name: schema.name.clone(),
         }),
         1 => Ok(()),
         _ if schema.alternative_mode() == GroupAlternativeMode::Exclusive => {
-            Err(JsonFormatError::AmbiguousAlternative {
-                name: schema.name.clone(),
-            })
+            if schema.xml_type_alternatives && has_unique_narrowest_xml_type(&matches) {
+                Ok(())
+            } else {
+                Err(JsonFormatError::AmbiguousAlternative {
+                    name: schema.name.clone(),
+                })
+            }
         }
         _ => Ok(()),
     }
+}
+
+fn has_unique_narrowest_xml_type(matches: &[&ir::GroupAlternative]) -> bool {
+    matches
+        .iter()
+        .enumerate()
+        .any(|(candidate_index, candidate)| {
+            matches.iter().enumerate().all(|(other_index, other)| {
+                candidate_index == other_index
+                    || candidate.members.len() < other.members.len()
+                        && candidate
+                            .members
+                            .iter()
+                            .all(|member| other.members.contains(member))
+            })
+        })
 }
 
 fn constraint_matches(
@@ -1526,6 +1546,85 @@ mod tests {
                 Err(JsonFormatError::NoMatchingAlternative { .. })
             ));
         }
+    }
+
+    #[test]
+    fn xsd_type_alternatives_accept_only_unique_member_set_refinement() {
+        let mut derived = SchemaNode::group(
+            "Contact",
+            ["ID", "First", "Last", "Address"]
+                .into_iter()
+                .map(|name| SchemaNode::scalar(name, ScalarType::String))
+                .collect(),
+        )
+        .with_alternatives(vec![
+            ir::GroupAlternative {
+                name: "ContactType".into(),
+                members: ["ID", "First", "Last"].map(str::to_owned).to_vec(),
+                required: Vec::new(),
+                constraints: Vec::new(),
+            },
+            ir::GroupAlternative {
+                name: "ContactTypeWithAddress".into(),
+                members: ["ID", "First", "Last", "Address"]
+                    .map(str::to_owned)
+                    .to_vec(),
+                required: Vec::new(),
+                constraints: Vec::new(),
+            },
+        ])
+        .unwrap();
+        let base_value = serde_json::json!({"ID": "1", "First": "Loby", "Last": "Matise"});
+        assert!(matches!(
+            read_node(&base_value, &derived),
+            Err(JsonFormatError::AmbiguousAlternative { .. })
+        ));
+        derived.xml_type_alternatives = true;
+        let base_instance = read_node(&base_value, &derived).unwrap();
+        assert_eq!(write_node(&derived, &base_instance).unwrap(), base_value);
+        let extended = serde_json::json!({
+            "ID": "2", "First": "Alex", "Last": "Martin", "Address": "Main Street"
+        });
+        let extended_instance = read_node(&extended, &derived).unwrap();
+        assert_eq!(write_node(&derived, &extended_instance).unwrap(), extended);
+
+        let mut incomparable = SchemaNode::group(
+            "Contact",
+            ["ID", "First", "Last"]
+                .into_iter()
+                .map(|name| SchemaNode::scalar(name, ScalarType::String))
+                .collect(),
+        )
+        .with_alternatives(vec![
+            ir::GroupAlternative {
+                name: "FirstContact".into(),
+                members: ["ID", "First"].map(str::to_owned).to_vec(),
+                required: Vec::new(),
+                constraints: Vec::new(),
+            },
+            ir::GroupAlternative {
+                name: "LastContact".into(),
+                members: ["ID", "Last"].map(str::to_owned).to_vec(),
+                required: Vec::new(),
+                constraints: Vec::new(),
+            },
+        ])
+        .unwrap();
+        incomparable.xml_type_alternatives = true;
+        assert!(matches!(
+            read_node(&serde_json::json!({"ID": "3"}), &incomparable),
+            Err(JsonFormatError::AmbiguousAlternative { .. })
+        ));
+        assert!(matches!(
+            write_node(
+                &incomparable,
+                &Instance::Group(vec![(
+                    "ID".into(),
+                    Instance::Scalar(Value::String("3".into()))
+                )])
+            ),
+            Err(JsonFormatError::AmbiguousAlternative { .. })
+        ));
     }
 
     #[test]

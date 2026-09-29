@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against seven local, gitignored mappings.
+//! Opt-in generated-backend execution against eight local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -26,7 +26,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 7] = [
+const CASES: [CorpusCase; 8] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -66,6 +66,12 @@ const CASES: [CorpusCase; 7] = [
     CorpusCase {
         sample: "FindHighestTemperatures.mfd",
         input: "Temperatures.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "PositionInFilteredSequence.mfd",
+        input: "BranchOffices.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
@@ -248,6 +254,24 @@ fn run_case(
         );
         assert_eq!(data[0]["month"], "2008-07");
         assert_eq!(data[9]["month"], "2007-08");
+    }
+    if sample == "PositionInFilteredSequence.mfd" {
+        let contacts = expected_json["Contact"]
+            .as_array()
+            .expect("filtered contacts");
+        assert_eq!(contacts.len(), 8, "{sample}: last names after M");
+        assert_eq!(
+            contacts
+                .iter()
+                .map(|contact| contact["ID"].as_str().expect("position ID").to_owned())
+                .collect::<Vec<_>>(),
+            (1..=8).map(|id| id.to_string()).collect::<Vec<_>>(),
+            "{sample}: filtered positions are compact and one-based"
+        );
+        assert_eq!(contacts[0]["First"], "Loby");
+        assert_eq!(contacts[0]["Last"], "Matise");
+        assert_eq!(contacts[7]["First"], "Mark");
+        assert_eq!(contacts[7]["Last"], "Redgreen");
     }
 
     let generated_input = case_dir.join("source.json");
