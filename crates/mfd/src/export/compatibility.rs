@@ -146,6 +146,8 @@ pub(super) fn profile(xml: &str, warnings: Vec<String>) -> Result<ExportReport, 
                     ExportCompatibilityFeature::UnresolvedEdiConfiguration,
                     "the native EDI configuration is missing or unresolved",
                 ),
+                // Native XML string serializers use indentation by default.
+                // Export emits this extension only for an explicit false override.
                 "ferrule-indent" => push_issue(
                     &mut issues,
                     node,

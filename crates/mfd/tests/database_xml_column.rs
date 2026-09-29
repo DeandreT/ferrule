@@ -156,6 +156,20 @@ fn embedded_xml_database_columns_execute_compactly_and_round_trip() {
     assert_eq!(stored, payloads(&output));
 
     let exported_path = dir.0.join("roundtrip.mfd");
+    let native_report = mfd::preflight_export(&imported.project, &exported_path).unwrap();
+    assert!(
+        native_report.issues.iter().any(|issue| {
+            issue.feature == mfd::ExportCompatibilityFeature::XmlSerializationIndent
+        })
+    );
+    let error = mfd::export_with_profile(
+        &imported.project,
+        &exported_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err();
+    assert!(matches!(error, mfd::MfdError::IncompatibleExport(_)));
+    assert!(!exported_path.exists());
     let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let exported = std::fs::read_to_string(&exported_path).unwrap();

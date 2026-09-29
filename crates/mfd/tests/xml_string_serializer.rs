@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
+use mapping::Node;
+use mfd::{ExportCompatibility, ExportCompatibilityFeature, ExportProfile};
 
 struct TempDir(PathBuf);
 
@@ -102,6 +104,14 @@ fn imports_executes_and_exports_structured_xml_string_serializer() {
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
+    assert!(imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::XmlSerialize {
+            declaration: false,
+            indent: true,
+            ..
+        }
+    )));
 
     let output = engine::run(&imported.project, &input()).unwrap();
     assert_eq!(
@@ -110,8 +120,21 @@ fn imports_executes_and_exports_structured_xml_string_serializer() {
     );
 
     let exported_path = dir.0.join("roundtrip.mfd");
-    let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
-    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let report = mfd::preflight_export(&imported.project, &exported_path).unwrap();
+    assert_eq!(
+        report.compatibility,
+        ExportCompatibility::NativeMfd,
+        "{report}"
+    );
+    assert!(report.is_native_compatible());
+    assert!(!exported_path.exists());
+    let published =
+        mfd::export_with_profile(&imported.project, &exported_path, ExportProfile::NativeMfd)
+            .unwrap();
+    assert_eq!(published, report);
+    let exported = std::fs::read_to_string(&exported_path).unwrap();
+    assert!(exported.contains(r#"WriteXMLDeclaration="0""#));
+    assert!(!exported.contains("ferrule-indent"));
     assert!(dir.0.join("roundtrip-serializer-0.xsd").is_file());
     assert!(dir.0.join("roundtrip-serializer-0-ns1.xsd").is_file());
     assert!(dir.0.join("roundtrip-source-ns1.xsd").is_file());
@@ -121,4 +144,81 @@ fn imports_executes_and_exports_structured_xml_string_serializer() {
     assert!(engine::validate(&roundtrip.project).is_empty());
     let roundtrip_output = engine::run(&roundtrip.project, &input()).unwrap();
     assert_eq!(payload(&roundtrip_output), payload(&output));
+    assert!(
+        roundtrip
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::XmlSerialize { indent: true, .. }))
+    );
+
+    let mut compact_project = imported.project.clone();
+    let compact_indent = compact_project
+        .graph
+        .nodes
+        .values_mut()
+        .find_map(|node| match node {
+            Node::XmlSerialize { indent, .. } => Some(indent),
+            _ => None,
+        })
+        .expect("imported serializer");
+    *compact_indent = false;
+    let compact_output = engine::run(&compact_project, &input()).unwrap();
+    assert!(!payload(&compact_output).contains('\n'));
+
+    let compact_path = dir.0.join("compact.mfd");
+    let compact_report = mfd::preflight_export(&compact_project, &compact_path).unwrap();
+    assert_eq!(
+        compact_report.compatibility,
+        ExportCompatibility::FerruleExtensions
+    );
+    assert!(compact_report.warnings.is_empty());
+    assert_eq!(compact_report.issues.len(), 1);
+    assert_eq!(
+        compact_report.issues[0].feature,
+        ExportCompatibilityFeature::XmlSerializationIndent
+    );
+    let error = mfd::export_with_profile(&compact_project, &compact_path, ExportProfile::NativeMfd)
+        .unwrap_err();
+    let mfd::MfdError::IncompatibleExport(rejected_report) = error else {
+        panic!("expected native-profile rejection, got {error}");
+    };
+    assert_eq!(*rejected_report, compact_report);
+    assert!(!compact_path.exists());
+    assert!(!std::fs::read_dir(&dir.0).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("compact-")
+    }));
+
+    assert!(
+        mfd::export(&compact_project, &compact_path)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        std::fs::read_to_string(&compact_path)
+            .unwrap()
+            .contains(r#"ferrule-indent="0""#)
+    );
+    let compact_roundtrip = mfd::import(&compact_path).unwrap();
+    assert!(
+        compact_roundtrip.warnings.is_empty(),
+        "{:?}",
+        compact_roundtrip.warnings
+    );
+    assert!(engine::validate(&compact_roundtrip.project).is_empty());
+    assert!(
+        compact_roundtrip
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::XmlSerialize { indent: false, .. }))
+    );
+    let compact_roundtrip_output = engine::run(&compact_roundtrip.project, &input()).unwrap();
+    assert_eq!(payload(&compact_roundtrip_output), payload(&compact_output));
 }
