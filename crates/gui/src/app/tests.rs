@@ -1478,6 +1478,21 @@ fn cancelling_ordinary_file_run_suppresses_late_success_and_publication() {
     std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
 }
 
+#[test]
+fn conditional_file_run_skips_nonmatching_write_and_can_cancel() {
+    let (mut app, project_path, output) = two_field_file_run_app("file-run-condition");
+    app.file_run_value_condition.enabled = true;
+    app.file_run_value_condition.text = "B".into();
+    app.debug_run(&egui::Context::default());
+    let pending = wait_for_file_run_pause(&mut app);
+    assert_eq!(pending.field, "second");
+    assert_eq!(pending.draft.fields[0].name, "first");
+    app.file_run_command(run_ui::FileRunCommand::Cancel);
+    wait_for_file_run_completion(&mut app);
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
+}
+
 fn three_field_debug_preview_app() -> FerruleApp {
     let mut app = two_field_debug_preview_app();
     app.project.target = SchemaNode::group(
@@ -1567,6 +1582,62 @@ fn debug_preview_steps_before_target_writes_and_continues() {
             .count(),
         2
     );
+}
+
+#[test]
+fn conditional_preview_matches_scalar_type_and_step_ignores_condition() {
+    let mut app = three_field_debug_preview_app();
+    app.project.target = SchemaNode::group(
+        "root",
+        vec![
+            SchemaNode::scalar("first", ScalarType::Int),
+            SchemaNode::scalar("second", ScalarType::String),
+            SchemaNode::scalar("third", ScalarType::String),
+        ],
+    );
+    app.project.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::Int(1),
+        },
+    );
+    app.project.graph.nodes.insert(
+        1,
+        Node::Const {
+            value: ir::Value::String("1".into()),
+        },
+    );
+    app.preview_value_condition.enabled = true;
+    app.preview_value_condition.text = "1".into();
+
+    app.execute_debug_preview();
+    let second = wait_for_debug_pause(&mut app);
+    assert_eq!(second.field, "second");
+    assert_eq!(second.draft.fields[0].name, "first");
+
+    app.preview_command(preview_ui::PreviewCommand::Step);
+    let third = wait_for_debug_pause(&mut app);
+    assert_eq!(third.field, "third");
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
+}
+
+#[test]
+fn conditional_preview_never_matches_truncated_string_prefix() {
+    let mut app = two_field_debug_preview_app();
+    app.project.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::String("x".repeat(161)),
+        },
+    );
+    app.preview_value_condition.enabled = true;
+    app.preview_value_condition.text = "x".repeat(160);
+
+    app.execute_debug_preview();
+    wait_for_preview_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
 }
 
 #[test]
@@ -1822,6 +1893,8 @@ fn stage_breakpoint_skips_earlier_stage_and_cancel_preserves_outputs() -> anyhow
                     && candidate.field.field == "Value"
             });
     assert!(app.pipeline_run_breakpoint.is_some());
+    app.pipeline_run_value_condition.enabled = true;
+    app.pipeline_run_value_condition.text = "B".into();
     app.start_pipeline_debug_run();
     let (stage, write) = wait_for_pipeline_pause(&mut app);
     assert_eq!(stage, "finish");

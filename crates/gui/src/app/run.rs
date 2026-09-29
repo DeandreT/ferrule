@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::preview::{PreviewBreakpoint, PreviewTarget};
+use crate::preview::{DebugScalarCondition, PreviewBreakpoint, PreviewTarget};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct FileBreakpoint {
@@ -133,6 +133,7 @@ struct FileRunDebugHook {
     cancelled: Arc<AtomicBool>,
     pause_each_write: Cell<bool>,
     breakpoint: Option<FileBreakpoint>,
+    value_condition: Option<DebugScalarCondition>,
 }
 
 impl FileRunDebugHook {
@@ -177,12 +178,16 @@ impl engine::DebugHook for FileRunDebugHook {
                 Ok(FileRunCommand::Publish) | Err(TryRecvError::Empty) => break,
             }
         }
-        if !self.pause_each_write.get()
-            && !self
-                .breakpoint
-                .as_ref()
-                .is_some_and(|breakpoint| breakpoint.matches(write))
-        {
+        let matches_selection = self
+            .breakpoint
+            .as_ref()
+            .is_none_or(|breakpoint| breakpoint.matches(write));
+        let matches_value = self
+            .value_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
+        let has_breakpoint = self.breakpoint.is_some() || self.value_condition.is_some();
+        if !self.pause_each_write.get() && !(has_breakpoint && matches_selection && matches_value) {
             return engine::DebugDecision::Resume;
         }
         if self
@@ -233,6 +238,11 @@ impl FerruleApp {
         if self.pending_file_run.is_some() || self.pending_pipeline_run.is_some() {
             return;
         }
+        if debug && let Err(error) = self.file_run_value_condition.compile() {
+            self.status = "debug run blocked".into();
+            self.diagnostics.error("Debug Run blocked", error);
+            return;
+        }
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("run blocked by {} validation issue(s)", issues.len());
@@ -250,6 +260,18 @@ impl FerruleApp {
     }
 
     pub(super) fn run_saved(&mut self, debug: bool) {
+        let value_condition = if debug {
+            match self.file_run_value_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug run blocked".into();
+                    self.diagnostics.error("Debug Run blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let Some(project_path) = self.document.saved_path().map(PathBuf::from) else {
             self.status = "run failed".to_string();
             self.diagnostics
@@ -275,8 +297,11 @@ impl FerruleApp {
                 events: events.clone(),
                 commands: command_receiver,
                 cancelled: worker_cancelled,
-                pause_each_write: Cell::new(debug && breakpoint.is_none()),
+                pause_each_write: Cell::new(
+                    debug && breakpoint.is_none() && value_condition.is_none(),
+                ),
                 breakpoint,
+                value_condition,
             };
             let gate = || hook.before_publish();
             let mut options = cli::RunOptions::new()
@@ -517,10 +542,18 @@ impl FerruleApp {
                         );
                     }
                 });
-            if ui.button("Debug Run").clicked() {
-                self.debug_run(ui.ctx());
-            }
         });
+        let condition_valid = preview_ui::show_breakpoint_value_condition(
+            ui,
+            &mut self.file_run_value_condition,
+            "file_run_debug_value_type",
+        );
+        if ui
+            .add_enabled(condition_valid, egui::Button::new("Debug Run"))
+            .clicked()
+        {
+            self.debug_run(ui.ctx());
+        }
         ui.weak("Breakpoints cover declared static fields in primary and named targets.");
     }
 }

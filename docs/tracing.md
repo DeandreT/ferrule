@@ -171,6 +171,12 @@ The optional Debug breakpoint selector pauses at one declared static target
 field in one target-scope path. After **Continue**, it pauses again when that
 field is written in a later source row; **Step** still stops at the next
 ordinary write. Runtime-named dynamic fields are not listed in the selector.
+An optional scalar condition pauses only when the pending write has the chosen
+type and complete value; it combines with a selected field and scope. It
+distinguishes absent, JSON, and XML nulls, normalizes entered finite numbers
+and booleans, and does not match a truncated string preview. Strings over 160
+Unicode characters cannot be matched this way. **Step** and **Pause at next
+write** still stop at the next ordinary write regardless of the condition.
 Runs with no ordinary target-field insertion finish without a live pause.
 
 **Debug Run** offers the same controls for a saved, file-backed mapping and
@@ -179,8 +185,8 @@ executes on a worker. Evaluation finishes before the file host begins staging
 outputs; Cancel before that publication boundary leaves existing target files
 unchanged. Once publishing begins, the GUI waits for the worker to finish and
 defers app close. Completed output and trace appear in the run report.
-Saved pipeline runs offer the same live controls, with pauses labeled by stage
-and target. A breakpoint can select a declared static field and scope in one
-stage and target. Cancel before pipeline publication preserves every selected
-output, including targets of earlier completed stages. Once publication begins,
-the GUI waits for the worker and defers app close.
+Saved pipeline runs offer the same live controls and scalar condition, with
+pauses labeled by stage and target. A breakpoint can select a declared static
+field and scope in one stage and target. Cancel before pipeline publication
+preserves every selected output, including targets of earlier completed stages.
+Once publication begins, the GUI waits for the worker and defers app close.
