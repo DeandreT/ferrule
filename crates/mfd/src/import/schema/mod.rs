@@ -1130,17 +1130,22 @@ pub(super) fn read_csv_component(
         }
         options.has_header_row = Some(settings.attribute("firstrownames") == Some("true"));
         if let Some(raw_quote) = settings.attribute("quote") {
-            let mut characters = raw_quote.chars();
-            match (characters.next(), characters.next()) {
-                (Some(quote), None)
-                    if quote.is_ascii_graphic() && quote != options.delimiter.unwrap_or(',') =>
-                {
-                    options.csv_quote = (quote != '"').then_some(quote);
+            if raw_quote.is_empty() {
+                options.csv_quote_disabled = true;
+            } else {
+                let mut characters = raw_quote.chars();
+                match (characters.next(), characters.next()) {
+                    (Some(quote), None)
+                        if quote.is_ascii_graphic()
+                            && quote != options.delimiter.unwrap_or(',') =>
+                    {
+                        options.csv_quote = (quote != '"').then_some(quote);
+                    }
+                    _ => warnings.push(format!(
+                        "csv component `{name}`: quote setting `{raw_quote}` must be one \
+                         printable ASCII character distinct from the separator"
+                    )),
                 }
-                _ => warnings.push(format!(
-                    "csv component `{name}`: quote setting `{raw_quote}` must be one \
-                     printable ASCII character distinct from the separator"
-                )),
             }
         }
     }

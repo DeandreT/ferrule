@@ -103,6 +103,50 @@ fn native_csv_quote_setting_roundtrips_and_executes_locally()
         assert_eq!(reimported.project.source_options.csv_quote, Some(quote));
         assert_eq!(reimported.project.target_options.csv_quote, Some(quote));
     }
+    project.source_options.csv_quote = None;
+    project.target_options.csv_quote = None;
+    project.source_options.csv_quote_disabled = true;
+    project.target_options.csv_quote_disabled = true;
+    assert!(engine::validate(&project).is_empty());
+    let raw_quote_text = "Name,Age\n\"Jane\",29\n";
+    let rows = format_csv::from_str_with_dialect(
+        raw_quote_text,
+        &project.source,
+        project.source_options.delimiter,
+        project.source_options.csv_quote,
+        project.source_options.csv_quote_disabled,
+        true,
+    )?;
+    let output = engine::run(&project, &Instance::Repeated(rows))?;
+    assert_eq!(
+        format_csv::to_string_with_dialect(
+            &project.target,
+            output
+                .as_repeated()
+                .ok_or("CSV target did not produce rows")?,
+            project.target_options.delimiter,
+            project.target_options.csv_quote,
+            project.target_options.csv_quote_disabled,
+            true,
+        )?,
+        raw_quote_text
+    );
+    let no_quote_design = temp.0.join("no-quote.mfd");
+    mfd::export_with_profile(&project, &no_quote_design, mfd::ExportProfile::NativeMfd)?;
+    assert_eq!(
+        std::fs::read_to_string(&no_quote_design)?
+            .matches("quote=\"\"")
+            .count(),
+        2
+    );
+    let reimported = mfd::import(&no_quote_design)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(reimported.project.source_options.csv_quote_disabled);
+    assert!(reimported.project.target_options.csv_quote_disabled);
+    project.source_options.csv_quote = Some('\'');
+    assert!(mfd::preflight_export(&project, &temp.0.join("conflicting.mfd")).is_err());
+    project.source_options.csv_quote = None;
+
     let invalid = temp.0.join("invalid-quote.mfd");
     let original = std::fs::read_to_string(&design)?;
     std::fs::write(&invalid, original.replace("quote=\"'\"", "quote=\"||\""))?;
