@@ -82,7 +82,7 @@ are preserved.
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Complete applicable validation/autocompletion behavior, configuration commands, dialects, and versioned release packs |
 | Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
-| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, and a validated ordered stage DAG with a file host | Fully general named N-to-M endpoints, `.mfd` stage-graph import, service hosts, and GUI authoring |
+| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, and a validated ordered stage DAG with a file host and optional per-stage mapping paths | Fully general named N-to-M endpoints, `.mfd` stage-graph import, service hosts, and GUI authoring |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
@@ -347,8 +347,9 @@ complete projects through primary or named target outputs into primary or
 static named inputs. It validates IDs, references, schemas, and cycles before
 execution, then runs stages in stable dependency order. The file host publishes
 selected outputs atomically only after the complete graph succeeds. `.mfd`
-stage-graph import, service hosts, stage-specific runtime paths, general driver
-cardinality, and GUI authoring remain.
+stage-graph import, service hosts, general driver cardinality, and GUI authoring
+remain. The file host can supply a distinct active mapping path for each stage
+while retaining the pipeline path as the top-level mapping path.
 
 - Named source and target endpoints with runtime-overridable locations.
 - Ordered target writes and deterministic failure semantics.

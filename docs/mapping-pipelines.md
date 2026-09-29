@@ -36,6 +36,13 @@ Ferrule project:
 ```
 
 Add `"target": "NAME"` to a `stage_target` reference to read a named target.
+For file-host runs, an optional
+`"mapping_path": "stages/prepare.ferrule.json"` on a stage gives that stage
+its active mapping-file identity for runtime expressions. Relative paths
+resolve from the pipeline file's directory. When omitted, the pipeline file
+remains the active mapping path, preserving existing pipelines. In-memory
+callers can supply per-stage runtime paths through
+`engine::run_pipeline_with_stage_contexts`.
 Every static named source declared by the stage project needs exactly one
 pipeline binding. Dynamic named sources continue to use the supplied
 `ExecutionContext` loader. The primary and named output schema of a producing
@@ -86,6 +93,7 @@ library API preserves its output request order.
 `cli::run_pipeline_file` exposes this file host to Rust callers, with
 `PipelineHostFile` and `PipelineOutputFile` selectors. The
 `run_pipeline_file_with_options` variant accepts bounded typed runtime
-parameters. All stages currently share the pipeline file as their active
-mapping path and one captured date-time value. Ordinary `Project` JSON and
-single-project execution remain valid.
+parameters. Each stage can use its own active mapping path while the pipeline
+file remains the main mapping path. Referenced local mapping files are
+protected from output overwrite. All stages share one captured date-time
+value. Ordinary `Project` JSON and single-project execution remain valid.
