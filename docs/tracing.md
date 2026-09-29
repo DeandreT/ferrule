@@ -167,4 +167,8 @@ write** can stop a continued run at a later write. **Cancel** discards the
 preview result. A plain Preview also runs on a worker and remains responsive
 while it executes. The completed output and trace appear in Preview results;
 the Replay tab remains a separate navigation view over that recorded trace.
+The optional Debug breakpoint selector pauses at one declared static target
+field in one target-scope path. After **Continue**, it pauses again when that
+field is written in a later source row; **Step** still stops at the next
+ordinary write. Runtime-named dynamic fields are not listed in the selector.
 Runs with no ordinary target-field insertion finish without a live pause.
