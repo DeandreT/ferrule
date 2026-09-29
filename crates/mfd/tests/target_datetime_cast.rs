@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{Instance, Value};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::Node;
 
 struct TempDir(PathBuf);
@@ -126,15 +126,140 @@ fn cast_in_subtree_coerces_connected_datetime_leaves_and_serializes_them() {
     assert!(xml.contains("<Existing>2031-08-17T06:07:08.9Z</Existing>"));
 
     let exported = directory.0.join("round-trip.mfd");
-    assert!(
-        mfd::export(&imported.project, &exported)
-            .unwrap()
-            .is_empty()
+    let report = mfd::preflight_export(&imported.project, &exported).unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    assert!(!exported.exists());
+    let published =
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(published.is_native_compatible(), "{published:?}");
+    let design_xml = std::fs::read_to_string(&exported).unwrap();
+    let document = roxmltree::Document::parse(&design_xml).unwrap();
+    assert!(!document.descendants().any(|node| {
+        node.has_tag_name("component") && node.attribute("library") == Some("ferrule")
+    }));
+    let target = document
+        .descendants()
+        .find(|node| node.has_tag_name("component") && node.attribute("name") == Some("Target"))
+        .unwrap();
+    let target_document = target
+        .descendants()
+        .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("document"))
+        .unwrap();
+    assert_eq!(
+        target_document.attribute("casttotargettypemode"),
+        Some("cast-in-subtree")
     );
+    let schema_file = target
+        .descendants()
+        .find(|node| node.has_tag_name("document"))
+        .and_then(|node| node.attribute("schema"))
+        .unwrap();
+    let schema_xml = std::fs::read_to_string(directory.0.join(schema_file)).unwrap();
+    let schema = roxmltree::Document::parse(&schema_xml).unwrap();
+    for field in ["Received", "Existing"] {
+        assert_eq!(
+            schema
+                .descendants()
+                .find(|node| node.has_tag_name("element") && node.attribute("name") == Some(field))
+                .and_then(|node| node.attribute("type")),
+            Some("xs:dateTime"),
+            "{field}"
+        );
+    }
     let reimported = mfd::import(&exported).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     let round_trip = engine::run(&reimported.project, &source()).unwrap();
     assert_eq!(round_trip, output);
+
+    let null_day = Instance::Group(vec![
+        ("Day".into(), Instance::Scalar(Value::Null)),
+        (
+            "Timestamp".into(),
+            Instance::Scalar(Value::String("2031-08-17T06:07:08.9Z".into())),
+        ),
+    ]);
+    assert_eq!(
+        engine::run(&imported.project, &null_day).unwrap(),
+        engine::run(&reimported.project, &null_day).unwrap()
+    );
+    let bad_day = Instance::Group(vec![
+        (
+            "Day".into(),
+            Instance::Scalar(Value::String("2031-02-29".into())),
+        ),
+        (
+            "Timestamp".into(),
+            Instance::Scalar(Value::String("2031-08-17T06:07:08.9Z".into())),
+        ),
+    ]);
+    for project in [&imported.project, &reimported.project] {
+        let error = engine::run(project, &bad_day).unwrap_err().to_string();
+        assert!(error.contains("coerce_datetime"), "{error}");
+    }
+}
+
+#[test]
+fn shared_datetime_cast_stays_an_extension_and_native_export_writes_nothing() {
+    let directory = TempDir::new();
+    let design = write_design(&directory.0, true);
+    let mut project = mfd::import(&design).unwrap().project;
+    let received = project
+        .root
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Received")
+        .unwrap()
+        .node;
+    project
+        .root
+        .bindings
+        .iter_mut()
+        .find(|binding| binding.target_field == "Existing")
+        .unwrap()
+        .node = received;
+    let rejected = directory.0.join("not-created/rejected.mfd");
+    let report = mfd::preflight_export(&project, &rejected).unwrap();
+    assert!(!report.is_native_compatible(), "{report:?}");
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.component == "coerce_datetime")
+    );
+    let error = mfd::export_with_profile(&project, &rejected, mfd::ExportProfile::NativeMfd)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("coerce_datetime"), "{error}");
+    assert!(!rejected.parent().unwrap().exists());
+}
+
+#[test]
+fn datetime_cast_with_defaulted_sibling_rejects_native_export_without_artifacts() {
+    let directory = TempDir::new();
+    let design = write_design(&directory.0, true);
+    let mut project = mfd::import(&design).unwrap().project;
+    let SchemaKind::Group { children, .. } = &mut project.target.kind else {
+        panic!("target must be a group");
+    };
+    let mut sibling = SchemaNode::scalar("Other", ScalarType::String);
+    sibling.default = Some("untouched".into());
+    children.push(sibling);
+
+    let rejected = directory.0.join("not-created/rejected.mfd");
+    let report = mfd::preflight_export(&project, &rejected).unwrap();
+    assert!(!report.is_native_compatible(), "{report:?}");
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.component == "coerce_datetime")
+    );
+    let error = mfd::export_with_profile(&project, &rejected, mfd::ExportProfile::NativeMfd)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("coerce_datetime"), "{error}");
+    assert!(!rejected.parent().unwrap().exists());
 }
 
 #[test]

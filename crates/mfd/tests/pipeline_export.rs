@@ -576,8 +576,8 @@ fn local_chains_keep_only_declared_intermediate_instance_paths_when_available() 
             "{relative}: intermediate input preview"
         );
 
-        let has_datetime_extension = relative.ends_with("Tut3-ChainedMapping.mfd");
-        let before = if has_datetime_extension {
+        let is_tut3 = relative.ends_with("Tut3-ChainedMapping.mfd");
+        let before = if is_tut3 {
             Some(execute_local_tut3(&imported.pipeline, &sample))
         } else {
             None
@@ -586,40 +586,72 @@ fn local_chains_keep_only_declared_intermediate_instance_paths_when_available() 
         let destination = directory.0.join("exported-chain.mfd");
         let report = mfd::preflight_pipeline_export(&imported.pipeline, &destination)
             .unwrap_or_else(|error| panic!("{relative}: {error}"));
-        if has_datetime_extension {
-            assert!(!report.is_native_compatible(), "{relative}: {report:?}");
-            assert_eq!(report.issues.len(), 2, "{relative}: {report:?}");
-            assert!(
-                report
-                    .issues
-                    .iter()
-                    .all(|issue| issue.component == "coerce_datetime")
-            );
-            let rejected = mfd::export_pipeline_with_profile(
-                &imported.pipeline,
-                &destination,
-                mfd::ExportProfile::NativeMfd,
-            )
-            .unwrap_err()
-            .to_string();
-            assert!(
-                rejected.contains("coerce_datetime"),
-                "{relative}: {rejected}"
-            );
-            assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 0);
-            mfd::export_pipeline(&imported.pipeline, &destination)
-                .unwrap_or_else(|error| panic!("{relative}: {error}"));
-        } else {
-            assert!(report.is_native_compatible(), "{relative}: {report:?}");
-            mfd::export_pipeline_with_profile(
-                &imported.pipeline,
-                &destination,
-                mfd::ExportProfile::NativeMfd,
-            )
-            .unwrap_or_else(|error| panic!("{relative}: {error}"));
-        }
+        assert!(report.is_native_compatible(), "{relative}: {report:?}");
+        mfd::export_pipeline_with_profile(
+            &imported.pipeline,
+            &destination,
+            mfd::ExportProfile::NativeMfd,
+        )
+        .unwrap_or_else(|error| panic!("{relative}: {error}"));
         let exported = std::fs::read_to_string(&destination).unwrap();
         let document = roxmltree::Document::parse(&exported).unwrap();
+        if is_tut3 {
+            assert!(!document.descendants().any(|node| {
+                node.has_tag_name("component") && node.attribute("library") == Some("ferrule")
+            }));
+            let typed_targets = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("component")
+                        && node.attribute("library") == Some("xml")
+                        && node.descendants().any(|entry| {
+                            entry.has_tag_name("entry")
+                                && entry.attribute("name") == Some("last_updated")
+                                && entry.attribute("inpkey").is_some()
+                        })
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(typed_targets.len(), 2, "{relative}: target count");
+            for component in typed_targets {
+                let target_document = component
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("entry") && node.attribute("name") == Some("document")
+                    })
+                    .unwrap();
+                assert_eq!(
+                    target_document.attribute("casttotargettypemode"),
+                    Some("cast-in-subtree")
+                );
+                let schema_file = component
+                    .descendants()
+                    .find(|node| node.has_tag_name("document"))
+                    .and_then(|node| node.attribute("schema"))
+                    .unwrap();
+                let schema_xml = std::fs::read_to_string(directory.0.join(schema_file)).unwrap();
+                let schema = roxmltree::Document::parse(&schema_xml).unwrap();
+                assert_eq!(
+                    schema
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("element")
+                                && node.attribute("name") == Some("last_updated")
+                        })
+                        .and_then(|node| node.attribute("type")),
+                    Some("xs:dateTime")
+                );
+                assert_eq!(
+                    schema
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("element")
+                                && node.attribute("name") == Some("publish_year")
+                        })
+                        .and_then(|node| node.attribute("type")),
+                    Some("xs:integer")
+                );
+            }
+        }
         let intermediate = document
             .descendants()
             .find(|node| {
@@ -651,17 +683,8 @@ fn local_chains_keep_only_declared_intermediate_instance_paths_when_available() 
             "{relative}: unexpected nested output instance"
         );
 
-        let reimported = mfd::import_pipeline(&destination);
-        if has_datetime_extension && let Err(error) = &reimported {
-            assert!(
-                error
-                    .to_string()
-                    .contains("pipeline import does not yet support `ferrule` components"),
-                "{relative}: {error}"
-            );
-            continue;
-        }
-        let reimported = reimported.unwrap_or_else(|error| panic!("{relative}: {error}"));
+        let reimported = mfd::import_pipeline(&destination)
+            .unwrap_or_else(|error| panic!("{relative}: {error}"));
         assert!(
             reimported.warnings.is_empty(),
             "{relative}: {:?}",
@@ -703,13 +726,16 @@ fn execute_local_tut3(pipeline: &mapping::Pipeline, sample: &Path) -> engine::Pi
         panic!("local chain needs a host primary source");
     };
     let directory = sample.parent().unwrap();
+    let input_path = |name: &str| {
+        ["Library.xml", "Books.xml"]
+            .into_iter()
+            .find(|file| file.trim_end_matches(".xml").eq_ignore_ascii_case(name))
+            .map(|file| directory.join(file))
+            .unwrap_or_else(|| panic!("unknown local source {name}"))
+    };
     let mut hosts = BTreeMap::from([(
         name.clone(),
-        format_xml::read(
-            &directory.join(format!("{name}.xml")),
-            &first.project.source,
-        )
-        .unwrap(),
+        format_xml::read(&input_path(name), &first.project.source).unwrap(),
     )]);
     for binding in &first.extra_sources {
         let PipelineInput::Host { name } = &binding.from else {
@@ -723,7 +749,7 @@ fn execute_local_tut3(pipeline: &mapping::Pipeline, sample: &Path) -> engine::Pi
             .unwrap();
         hosts.insert(
             name.clone(),
-            format_xml::read(&directory.join(format!("{name}.xml")), &source.schema).unwrap(),
+            format_xml::read(&input_path(name), &source.schema).unwrap(),
         );
     }
     let execution =

@@ -261,10 +261,14 @@ terminal fan-out, repeated named-host connections, and a CSV final target
 preserve their connected outputs. The CSV result also passes local write/read
 checks. A local chained-report sample and a synthetic distinct-path case
 preserve both intermediate instance identities across export/reimport.
-Three local chains reimport after strict native export. A fourth retains its
-intermediate metadata in best-effort export but requires date/time coercion
-extensions; strict native preflight rejects it, and its extension-bearing
-best-effort design is outside the current pipeline importer.
+All four local chains reimport after strict native export. The date/time chain
+lowers uniquely bound direct XML dateTime conversions to the document's native
+`cast-in-subtree` mode and restores `xs:dateTime` on precisely those generated
+XSD elements; local date-only, dateTime, null, and invalid-input checks retain
+the imported execution behavior. Calls shared with another graph consumer and
+target schemas with defaults or unsupported subtree shapes still reject before
+publishing artifacts. The internal schema does not retain general native cast
+provenance, so this lowering is limited to the proven direct-binding case.
 Acceptance by the proprietary application remains unverified.
 When an imported JSON boundary or JSON string parser fell back to its entry
 tree because its schema was unavailable, best-effort export records that

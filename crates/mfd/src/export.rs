@@ -28,6 +28,7 @@ mod join;
 mod json_parser;
 mod json_serializer;
 mod mapped_sequence;
+mod native_datetime_cast;
 mod node;
 mod pdf;
 mod pipeline;
@@ -321,6 +322,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
             &mut keys,
         )?);
     }
+    let native_datetime_casts = native_datetime_cast::NativeDatetimeCasts::plan(project, &targets);
     for (name, options) in sources
         .iter()
         .map(|source| (source.name, source.options))
@@ -381,6 +383,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         structural_edges: &mut structural_edges,
         warnings: &mut warnings,
         blocked_nodes: &blocked_nodes,
+        native_datetime_casts: native_datetime_casts.calls(),
         mfd_path: path,
         user_functions: &user_functions,
     });
@@ -742,7 +745,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         {
             continue;
         }
-        let rendered = if let Some(plan) = &target.dynamic_json {
+        let mut rendered = if let Some(plan) = &target.dynamic_json {
             dynamic_json::render_target(dynamic_json::RenderTargetArgs {
                 plan,
                 schema: target.schema,
@@ -779,6 +782,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 target.document_path_port,
             )?
         };
+        native_datetime_casts.apply_to_target(target_index, target.schema, &mut rendered)?;
         out.push_str(&rendered.xml);
         target_components.push(rendered);
     }
