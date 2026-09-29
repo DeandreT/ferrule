@@ -23,6 +23,7 @@ public static partial class FerruleJson
     private const int MaximumDistinctJsonPatterns = 64;
     private const int MaximumJsonPatternSourceBytes = 256 * 1024;
     private const int MaximumJsonPatternInstructions = 65_536;
+    private const int MaximumRecursiveReferences = 64;
 
     private static readonly JsonSerializerOptions CanonicalJsonOptions = new()
     {
@@ -183,7 +184,9 @@ public static partial class FerruleJson
                 });
             var budget = new NodeBudget();
             var patterns = new JsonPatternSchemaContext();
-            return ReadSchemaNode(parsed.RootElement, budget, patterns, 0);
+            var root = ReadSchemaNode(parsed.RootElement, budget, patterns, 0);
+            BindRecursiveReferences(root);
+            return root;
         }
         catch (FerruleRuntimeException)
         {
@@ -209,6 +212,7 @@ public static partial class FerruleJson
         RequireKind(kindElement, JsonValueKind.Object, $"schema node '{name}' kind", "object");
         var kind = RequiredString(kindElement, "kind");
         var repeating = OptionalBoolean(element, "repeating");
+        var recursiveReference = OptionalString(element, "recursive_ref");
         var jsonUniqueItems = ReadJsonUniqueItems(name, element, repeating);
         var scalarDomain = kind switch
         {
@@ -414,6 +418,29 @@ public static partial class FerruleJson
             throw Boundary(
                 $"Embedded JSON schema node '{name}' has invalid XML type alternatives.");
         }
+        if (recursiveReference is not null &&
+            (recursiveReference.Length == 0 || scalarDomain != JsonScalarDomain.None ||
+             children.Count != 0 || dynamic is not null || alternatives.Count != 0 ||
+             required.Length != 0 || jsonAny || nullable ||
+             OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
+             fixedLexical is not null ||
+             jsonAllowedValues is not null || numericRange is not null ||
+             jsonMultipleOf is not null || stringLengthRange is not null ||
+             jsonPatterns is not null || jsonFormats.Length != 0 ||
+             propertyCountRange is not null || propertyDependencies.Count != 0 ||
+             dependentSchemas.Count != 0 || propertyNames is not null ||
+             patternPropertyNames is not null || xmlTypeAlternatives ||
+             inclusiveAlternatives ||
+             (OptionalString(element, "alternative_mode") is { } modeName &&
+              !string.Equals(modeName, "exclusive", StringComparison.Ordinal)) ||
+             (OptionalString(element, "xml_alternative_kind") is { } xmlMode &&
+              !string.Equals(xmlMode, "xsi_type", StringComparison.Ordinal)) ||
+             (kindElement.TryGetProperty("xml_restricted_alternatives", out var restricted) &&
+              (restricted.ValueKind != JsonValueKind.Array || restricted.GetArrayLength() != 0))))
+        {
+            throw Boundary(
+                $"Embedded JSON recursive reference '{name}' is not an empty group occurrence.");
+        }
 
         return new JsonSchemaNode(
             name,
@@ -443,7 +470,47 @@ public static partial class FerruleJson
             required,
             alternatives,
             inclusiveAlternatives,
-            xmlTypeAlternatives);
+            xmlTypeAlternatives,
+            recursiveReference);
+    }
+
+    private static void BindRecursiveReferences(JsonSchemaNode root)
+    {
+        var nodes = new List<JsonSchemaNode>();
+        var pending = new Stack<JsonSchemaNode>();
+        pending.Push(root);
+        while (pending.Count != 0)
+        {
+            var node = pending.Pop();
+            nodes.Add(node);
+            foreach (var child in node.Children)
+            {
+                pending.Push(child);
+            }
+            if (node.Dynamic is { } dynamic)
+            {
+                pending.Push(dynamic);
+            }
+        }
+
+        foreach (var occurrence in nodes)
+        {
+            if (occurrence.RecursiveReference is not { } reference)
+            {
+                continue;
+            }
+            var anchors = nodes.Where(node =>
+                node.RecursiveReference is null && !node.IsScalar &&
+                string.Equals(node.Name, reference, StringComparison.Ordinal)).ToArray();
+            if (anchors.Length != 1)
+            {
+                throw Boundary(
+                    $"Embedded JSON recursive reference '{occurrence.Name}' has " +
+                    (anchors.Length == 0 ? $"no group anchor '{reference}'." :
+                        $"ambiguous group anchor '{reference}'."));
+            }
+            occurrence.BindRecursiveAnchor(anchors[0]);
+        }
     }
 
     private static string[] ReadJsonFormats(
@@ -1000,6 +1067,21 @@ public static partial class FerruleJson
         NodeBudget budget,
         int depth)
     {
+        if (schema.RecursiveReference is not null)
+        {
+            var resolved = schema.ResolvedRecursiveSchema ??
+                throw Boundary(
+                    $"Embedded JSON recursive reference '{schema.Name}' has no group anchor.");
+            budget.EnterRecursiveReference();
+            try
+            {
+                return ReadSingleNode(resolved, element, budget, depth);
+            }
+            finally
+            {
+                budget.ExitRecursiveReference();
+            }
+        }
         if (schema.JsonAny)
         {
             return new FerruleScalar(
@@ -1244,6 +1326,22 @@ public static partial class FerruleJson
         NodeBudget budget,
         int depth)
     {
+        if (schema.RecursiveReference is not null)
+        {
+            var resolved = schema.ResolvedRecursiveSchema ??
+                throw Boundary(
+                    $"Embedded JSON recursive reference '{schema.Name}' has no group anchor.");
+            budget.EnterRecursiveReference();
+            try
+            {
+                WriteSingleNode(writer, resolved, instance, budget, depth);
+            }
+            finally
+            {
+                budget.ExitRecursiveReference();
+            }
+            return;
+        }
         if (instance is FerruleMappedSequence mapped)
         {
             if (mapped.Items.Count != 1)
@@ -2565,7 +2663,8 @@ public static partial class FerruleJson
             IReadOnlyList<string> required,
             IReadOnlyList<JsonAlternative> alternatives,
             bool inclusiveAlternatives,
-            bool xmlTypeAlternatives)
+            bool xmlTypeAlternatives,
+            string? recursiveReference)
         {
             Name = name;
             Repeating = repeating;
@@ -2595,15 +2694,16 @@ public static partial class FerruleJson
             Alternatives = alternatives;
             InclusiveAlternatives = inclusiveAlternatives;
             XmlTypeAlternatives = xmlTypeAlternatives;
+            RecursiveReference = recursiveReference;
         }
 
-        public string Name { get; }
+        public string Name { get; private set; }
 
-        public bool Repeating { get; }
+        public bool Repeating { get; private set; }
 
         public bool Nullable { get; }
 
-        public bool ContainerNullable { get; }
+        public bool ContainerNullable { get; private set; }
 
         public bool JsonAny { get; }
 
@@ -2625,9 +2725,9 @@ public static partial class FerruleJson
 
         public JsonPatternConstraints? JsonPatterns { get; }
 
-        public JsonItemCountRange? ItemCountRange { get; }
+        public JsonItemCountRange? ItemCountRange { get; private set; }
 
-        public IReadOnlyList<JsonContainsConstraint> JsonContains { get; }
+        public IReadOnlyList<JsonContainsConstraint> JsonContains { get; private set; }
 
         public JsonPropertyCountRange? PropertyCountRange { get; }
 
@@ -2639,7 +2739,11 @@ public static partial class FerruleJson
 
         public JsonPatternPropertyNames? PatternPropertyNames { get; }
 
-        public bool JsonUniqueItems { get; }
+        public bool JsonUniqueItems { get; private set; }
+
+        public string? RecursiveReference { get; }
+
+        public JsonSchemaNode? ResolvedRecursiveSchema { get; private set; }
 
         public bool IsScalar => ScalarDomain != JsonScalarDomain.None;
 
@@ -2660,12 +2764,25 @@ public static partial class FerruleJson
         public JsonSchemaNode? Child(string name) =>
             Children.FirstOrDefault(child =>
                 string.Equals(child.Name, name, StringComparison.Ordinal));
+
+        public void BindRecursiveAnchor(JsonSchemaNode anchor)
+        {
+            var resolved = (JsonSchemaNode)anchor.MemberwiseClone();
+            resolved.Name = Name;
+            resolved.Repeating = Repeating;
+            resolved.ContainerNullable = ContainerNullable;
+            resolved.ItemCountRange = ItemCountRange;
+            resolved.JsonContains = JsonContains;
+            resolved.JsonUniqueItems = JsonUniqueItems;
+            ResolvedRecursiveSchema = resolved;
+        }
     }
 
     private sealed class NodeBudget
     {
         private readonly PatternWorkBudget _patternWork;
         private int _nodes;
+        private int _recursiveReferences;
         private bool _fatalTraversalLimit;
         private NodeBudget? _matcher;
 
@@ -2688,6 +2805,22 @@ public static partial class FerruleJson
         public void MarkFatalTraversalLimit()
         {
             _fatalTraversalLimit = true;
+        }
+
+        public void EnterRecursiveReference()
+        {
+            if (_recursiveReferences >= MaximumRecursiveReferences)
+            {
+                _fatalTraversalLimit = true;
+                throw Boundary(
+                    $"JSON recursive references exceed the {MaximumRecursiveReferences}-level limit.");
+            }
+            _recursiveReferences++;
+        }
+
+        public void ExitRecursiveReference()
+        {
+            _recursiveReferences--;
         }
 
         public void Visit(int depth)

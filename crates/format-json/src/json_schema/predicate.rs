@@ -69,11 +69,12 @@ pub(crate) fn matches(
     let JsonSchemaPredicate::Schema { schema } = predicate else {
         return Ok(false);
     };
+    let recursive = crate::RecursiveSchemas::new(schema)?;
     let matched = super::unique_items::validate_json_tree(schema, value).and_then(|()| {
         if schema.repeating {
-            crate::read_repeated(value, schema, patterns)
+            crate::read_repeated(value, schema, &recursive, 0, patterns)
         } else {
-            crate::read_node_with_patterns(value, schema, patterns)
+            crate::read_node_with_patterns(value, schema, &recursive, 0, patterns)
         }
     });
     match matched {
@@ -104,5 +105,8 @@ fn is_assertion_failure(error: &JsonFormatError) -> bool {
             | JsonFormatError::InvalidPropertyNameMetadata { .. }
             | JsonFormatError::InvalidContainsMetadata { .. }
             | JsonFormatError::PatternWorkLimit { .. }
+            | JsonFormatError::InvalidRecursiveReference { .. }
+            | JsonFormatError::MissingRecursiveAnchor { .. }
+            | JsonFormatError::RecursionLimit { .. }
     )
 }
