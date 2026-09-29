@@ -181,6 +181,7 @@ fn validate_format_identity(side: &str, options: &FormatOptions) -> Result<(), M
         || options.tabular_kind.is_some()
         || options.delimiter.is_some()
         || options.csv_quote.is_some()
+        || options.csv_quote_disabled
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()

@@ -250,6 +250,14 @@ fn csv_quote_must_be_a_distinct_single_byte_character() {
                 .message
                 .contains("CSV delimiter and quote must be different")
     }));
+    project.source_options.csv_quote_disabled = true;
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "source format options"
+            && issue
+                .message
+                .contains("quote cannot be set while quoting is disabled")
+    }));
 }
 
 #[test]

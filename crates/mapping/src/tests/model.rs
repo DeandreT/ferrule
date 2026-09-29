@@ -440,6 +440,16 @@ fn xlsx_layout_options_default_empty_and_roundtrip() {
     let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded.csv_quote, Some('\''));
     assert_eq!(FormatOptions::default().csv_quote, None);
+    assert!(!FormatOptions::default().csv_quote_disabled);
+
+    let unquoted_csv = FormatOptions {
+        csv_quote_disabled: true,
+        ..FormatOptions::default()
+    };
+    let encoded = serde_json::to_string(&unquoted_csv).unwrap();
+    assert!(encoded.contains("\"csv_quote_disabled\":true"));
+    let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+    assert!(decoded.csv_quote_disabled);
 
     let transposed = FormatOptions {
         xlsx_rows: vec![1, 3, 5],

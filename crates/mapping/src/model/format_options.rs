@@ -325,6 +325,10 @@ pub struct FormatOptions {
     /// CSV: the quoting character (default `"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub csv_quote: Option<char>,
+    /// CSV: disable quote recognition and emission. Mutually exclusive with
+    /// `csv_quote`; old projects default to ordinary `"` quoting.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub csv_quote_disabled: bool,
     /// CSV: whether the file's first row is a header (default true).
     #[serde(default)]
     pub has_header_row: Option<bool>,

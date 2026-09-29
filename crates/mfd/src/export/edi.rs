@@ -32,6 +32,7 @@ pub(super) fn validate_side(
     };
     if options.delimiter.is_some()
         || options.csv_quote.is_some()
+        || options.csv_quote_disabled
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
