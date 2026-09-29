@@ -1,5 +1,5 @@
 //! Canonical export for a bounded serial chain of XML mapping stages with
-//! an XML or CSV final primary target and optional independent final XML targets.
+//! an XML, CSV, or JSON final primary target and optional independent final XML targets.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -32,8 +32,8 @@ pub fn preflight_pipeline_export(
 /// also connect original static XML host sources, including an output port
 /// already used by another stage. Other connected later named inputs,
 /// independent intermediate targets, and non-XML intermediate boundaries
-/// reject explicitly. The final primary target may be CSV; independent final
-/// targets remain XML.
+/// reject explicitly. The final primary target may be CSV or JSON;
+/// independent final targets remain XML.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
         .map(|report| report.warnings)
@@ -87,8 +87,10 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
     let xml = combined.expect("validated pipeline has at least two stages");
     if pipeline.stages.last().is_some_and(|stage| {
         !stage.project.extra_targets.is_empty()
-            || side_format(&stage.project.target_path, &stage.project.target_options)
-                == SideFormat::Csv
+            || matches!(
+                side_format(&stage.project.target_path, &stage.project.target_options),
+                SideFormat::Csv | SideFormat::Json
+            )
     }) {
         crate::import::validate_pipeline_export_graph(&xml)?;
     }
@@ -180,8 +182,9 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
         }
         let target_format = side_format(&stage.project.target_path, &stage.project.target_options);
         if side_format(&stage.project.source_path, &stage.project.source_options) != SideFormat::Xml
-            || !matches!(target_format, SideFormat::Xml)
-                && !(index + 1 == pipeline.stages.len() && target_format == SideFormat::Csv)
+            || target_format != SideFormat::Xml
+                && !(index + 1 == pipeline.stages.len()
+                    && matches!(target_format, SideFormat::Csv | SideFormat::Json))
             || stage.project.source_options.external_source.is_some()
             || stage.project.source_options.http_get.is_some()
             || stage.project.source_options.local_xml_file_set
