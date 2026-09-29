@@ -197,6 +197,10 @@ impl FerruleApp {
                             self.run(ui.ctx());
                             ui.close();
                         }
+                        if ui.button("Debug Run...").clicked() {
+                            self.debug_run(ui.ctx());
+                            ui.close();
+                        }
                         if ui
                             .add_enabled(self.can_preview(), egui::Button::new("Preview..."))
                             .on_disabled_hover_text(
@@ -428,7 +432,10 @@ impl FerruleApp {
         if self.show_run_setup {
             ui.spacing_mut().item_spacing.y = item_spacing_y;
             ui.separator();
-            ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
+            ui.add_enabled_ui(editing_enabled, |ui| {
+                ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
+                self.show_file_debug_controls(ui);
+            });
             ui.spacing_mut().item_spacing.y = 0.0;
         }
         self.show_mapping_tabs(ui, editing_enabled);
