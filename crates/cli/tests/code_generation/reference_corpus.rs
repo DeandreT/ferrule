@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against seventeen local, gitignored mappings.
+//! Opt-in generated-backend execution against eighteen local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -29,7 +29,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 17] = [
+const CASES: [CorpusCase; 18] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -129,6 +129,12 @@ const CASES: [CorpusCase; 17] = [
     CorpusCase {
         sample: "KeyValueList.mfd",
         input: "KeyValueList.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "EmployeesToKeyValueList.mfd",
+        input: "Employees.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
@@ -292,12 +298,15 @@ fn run_case(
     } else {
         engine::run_with_sources(&project, &source, named_sources)?
     };
-    if sample == "FlattenHierarchy.mfd" {
+    if matches!(
+        sample,
+        "FlattenHierarchy.mfd" | "EmployeesToKeyValueList.mfd"
+    ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
         assert_eq!(
             expected,
             engine::run(&project, &round_tripped)?,
-            "{sample}: schema-shaped JSON boundary changed recursive mapping output"
+            "{sample}: schema-shaped JSON boundary changed mapping output"
         );
     }
     // A mapped XML sequence can contain multiple occurrences under a nominally
@@ -489,11 +498,9 @@ fn run_case(
             ],
             "{sample}: ordered source tools"
         );
-        assert!(
-            rows[2]["Tool"]
-                .as_str()
-                .is_some_and(|tool| !tool.is_empty())
-        );
+        assert!(rows[2]["Tool"]
+            .as_str()
+            .is_some_and(|tool| !tool.is_empty()));
         assert_eq!(
             rows.iter()
                 .map(|row| row["ExistsInMissionKit"].as_str())
@@ -526,11 +533,9 @@ fn run_case(
                 "{sample}: joined names are distinct"
             );
             assert!(row["City"].as_str().is_some_and(|city| !city.is_empty()));
-            assert!(
-                row["Street"]
-                    .as_str()
-                    .is_some_and(|street| !street.is_empty())
-            );
+            assert!(row["Street"]
+                .as_str()
+                .is_some_and(|street| !street.is_empty()));
             assert!(row["Email"].as_str().is_some_and(|email| !email.is_empty()));
         }
     }
@@ -714,15 +719,69 @@ fn run_case(
             .as_array()
             .expect("one summarized info item");
         assert_eq!(info.len(), 1, "{sample}: one summary item");
-        assert!(
-            info[0]["Title"]
+        assert!(info[0]["Title"]
+            .as_str()
+            .is_some_and(|text| !text.is_empty()));
+        assert!(info[0]["Description"]["#text"]
+            .as_str()
+            .is_some_and(|text| !text.is_empty()));
+    }
+    if sample == "EmployeesToKeyValueList.mfd" {
+        let source_fields = project
+            .graph
+            .nodes
+            .values()
+            .filter_map(|node| match node {
+                Node::SourceField {
+                    path,
+                    frame: Some(frame),
+                } if frame.len() == 3
+                    && frame[0] == "Employees"
+                    && frame[1] == "element()"
+                    && frame[2] == "element()" =>
+                {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(source_fields.len(), 2, "{sample}: generic XML frame fields");
+        for name in ["LocalName", "#text"] {
+            assert!(
+                source_fields
+                    .iter()
+                    .any(|path| path.len() == 1 && path[0] == name),
+                "{sample}: runtime element name and text stay pinned"
+            );
+        }
+        let items = expected_json["Item"].as_array().expect("mapped items");
+        assert_eq!(items.len(), 4, "{sample}: four source elements");
+        let properties = items
+            .iter()
+            .flat_map(|item| {
+                let properties = item["Property"].as_array().expect("item properties");
+                assert_eq!(properties.len(), 4, "{sample}: four fields per item");
+                properties.iter()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(properties.len(), 16, "{sample}: all generic fields map");
+        let keys = properties
+            .iter()
+            .map(|property| property["Key"].as_str().expect("property key"))
+            .collect::<Vec<_>>();
+        assert!(keys.iter().all(|key| !key.is_empty()));
+        assert!(properties.iter().all(|property| {
+            property["#text"]
                 .as_str()
-                .is_some_and(|text| !text.is_empty())
-        );
-        assert!(
-            info[0]["Description"]["#text"]
-                .as_str()
-                .is_some_and(|text| !text.is_empty())
+                .is_some_and(|value| !value.is_empty())
+        }));
+        assert_eq!(
+            keys.iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            4,
+            "{sample}: four distinct runtime field names"
         );
     }
 
