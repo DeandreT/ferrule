@@ -79,7 +79,10 @@ pub(super) enum PipelineRunCommand {
 enum PipelineRunEvent {
     Paused(String, Box<engine::PendingTargetWrite>),
     ReadyToPublish,
-    Finished(Result<cli::PipelineRunOutcome, PipelineRunError>),
+    Finished(
+        Result<cli::PipelineRunOutcome, PipelineRunError>,
+        crate::run_report::TraceReport,
+    ),
 }
 
 enum PipelineRunError {
@@ -603,6 +606,7 @@ impl FerruleApp {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         std::thread::spawn(move || {
+            let trace = crate::run_report::PipelineTraceCollector::new();
             let hook = PipelineRunHook {
                 events: events.clone(),
                 commands: command_receiver,
@@ -625,10 +629,12 @@ impl FerruleApp {
                 hook.before_target_write(stage, write)
             };
             let source_probe = |_stage: &str| hook.source_field_probe();
+            let stage_trace = |stage: &str, event: cli::TraceEvent| trace.record(stage, event);
             let gate = || hook.before_publish();
             let options = cli::PipelineRunOptions::default()
                 .with_stage_debug_hook(&stage_hook)
                 .with_stage_source_field_probe(&source_probe)
+                .with_stage_trace_sink(&stage_trace)
                 .with_before_publish(&gate);
             let result =
                 cli::run_pipeline_file_with_options(&worker_path, &inputs, &outputs, &options)
@@ -644,7 +650,7 @@ impl FerruleApp {
                             PipelineRunError::Failed(format!("{error:#}"))
                         }
                     });
-            let _ = events.send(PipelineRunEvent::Finished(result));
+            let _ = events.send(PipelineRunEvent::Finished(result, trace.finish()));
         });
         self.pending_pipeline_run = Some(PendingPipelineRun {
             receiver,
@@ -690,9 +696,12 @@ impl FerruleApp {
                 }
                 return;
             }
-            Err(TryRecvError::Disconnected) => PipelineRunEvent::Finished(Err(
-                PipelineRunError::Failed("pipeline worker stopped unexpectedly".into()),
-            )),
+            Err(TryRecvError::Disconnected) => PipelineRunEvent::Finished(
+                Err(PipelineRunError::Failed(
+                    "pipeline worker stopped unexpectedly".into(),
+                )),
+                crate::run_report::TraceReport::default(),
+            ),
         };
         match event {
             PipelineRunEvent::Paused(stage, write) => {
@@ -717,7 +726,7 @@ impl FerruleApp {
                 }
                 ctx.request_repaint();
             }
-            PipelineRunEvent::Finished(result) => {
+            PipelineRunEvent::Finished(result, trace) => {
                 let pending = self
                     .pending_pipeline_run
                     .take()
@@ -741,6 +750,7 @@ impl FerruleApp {
                             outcome,
                             pending.path.clone(),
                             pending.started.elapsed(),
+                            trace,
                         );
                         self.run_report = Some(crate::run_report::RunReportView::new(report));
                         self.show_run_report = true;
@@ -806,7 +816,10 @@ mod tests {
         assert!(!pending.cancelled.load(Ordering::Acquire));
 
         events
-            .send(PipelineRunEvent::Finished(Err(PipelineRunError::Cancelled)))
+            .send(PipelineRunEvent::Finished(
+                Err(PipelineRunError::Cancelled),
+                crate::run_report::TraceReport::default(),
+            ))
             .expect("completion event is sent");
         app.poll_pipeline_run(&context);
         assert!(app.pending_pipeline_run.is_none());

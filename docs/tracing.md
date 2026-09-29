@@ -216,3 +216,8 @@ pauses labeled by stage and target. A breakpoint can select a declared static
 field and scope in one stage and target. Cancel before pipeline publication
 preserves every selected output, including targets of earlier completed stages.
 Once publication begins, the GUI waits for the worker and defers app close.
+Completed pipeline reports retain one bounded, ordered trace across stages.
+Trace rows show their stage; Node History and Source Rows can select a stage so
+reused node IDs stay distinct. Selecting a stage in Replay jumps to its first
+retained event. The same 50,000-event prefix limit and dropped-event count
+apply to the whole pipeline, and the versioned trace-event format is unchanged.

@@ -37,6 +37,9 @@ pub type PipelineStageDebugCallback<'a> =
 /// An optional exact source-field probe for the active pipeline stage.
 pub type PipelineSourceFieldProbeCallback<'a> = dyn Fn(&str) -> Option<(usize, String)> + 'a;
 
+/// A host observer for one interpreter trace event in a named pipeline stage.
+pub type PipelineStageTraceCallback<'a> = dyn Fn(&str, engine::TraceEvent) + 'a;
+
 /// Optional host values shared by every stage in one execution.
 #[derive(Default)]
 pub struct PipelineRunOptions<'a> {
@@ -44,6 +47,7 @@ pub struct PipelineRunOptions<'a> {
     /// A live write hook receives the ID of the stage being evaluated.
     pub stage_debug_hook: Option<&'a PipelineStageDebugCallback<'a>>,
     pub stage_source_field_probe: Option<&'a PipelineSourceFieldProbeCallback<'a>>,
+    pub stage_trace_sink: Option<&'a PipelineStageTraceCallback<'a>>,
     /// Called after every stage succeeds, before any selected output is staged.
     pub before_publish: Option<&'a dyn Fn() -> bool>,
 }
@@ -59,6 +63,11 @@ impl<'a> PipelineRunOptions<'a> {
         probe: &'a PipelineSourceFieldProbeCallback<'a>,
     ) -> Self {
         self.stage_source_field_probe = Some(probe);
+        self
+    }
+
+    pub fn with_stage_trace_sink(mut self, sink: &'a PipelineStageTraceCallback<'a>) -> Self {
+        self.stage_trace_sink = Some(sink);
         self
     }
 
@@ -81,6 +90,17 @@ impl engine::DebugHook for StageDebugHook<'_> {
 
     fn before_target_write(&self, write: &engine::PendingTargetWrite) -> engine::DebugDecision {
         (self.hook)(&self.stage.borrow(), write)
+    }
+}
+
+struct StageTraceSink<'a> {
+    stage: RefCell<String>,
+    sink: &'a PipelineStageTraceCallback<'a>,
+}
+
+impl engine::TraceSink for StageTraceSink<'_> {
+    fn record(&self, event: engine::TraceEvent) {
+        (self.sink)(&self.stage.borrow(), event);
     }
 }
 
@@ -215,6 +235,10 @@ fn run_pipeline_value_with_options(
         hook,
         probe: options.stage_source_field_probe,
     });
+    let stage_trace_sink = options.stage_trace_sink.map(|sink| StageTraceSink {
+        stage: RefCell::new(String::new()),
+        sink,
+    });
     let results = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
         let mut execution = engine::ExecutionContext::with_main_mapping_file_path(
             &stage_mapping_paths[stage],
@@ -228,6 +252,10 @@ fn run_pipeline_value_with_options(
         if let Some(hook) = &stage_debug_hook {
             hook.stage.replace(stage.to_owned());
             execution = execution.with_debug_hook(hook);
+        }
+        if let Some(sink) = &stage_trace_sink {
+            sink.stage.replace(stage.to_owned());
+            execution = execution.with_trace_sink(sink);
         }
         execution
     })?;
