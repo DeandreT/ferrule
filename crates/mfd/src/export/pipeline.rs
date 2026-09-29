@@ -10,8 +10,8 @@ use roxmltree::{Document, Node};
 
 use super::artifact::write_artifacts;
 use super::compatibility::{ExportProfile, ExportReport};
-use super::schema::{side_format, SideFormat};
-use super::{compatibility, prepare_export, PreparedExport};
+use super::schema::{SideFormat, side_format};
+use super::{PreparedExport, compatibility, prepare_export};
 use crate::MfdError;
 
 const MAX_STAGES: usize = 65;
@@ -28,11 +28,11 @@ pub fn preflight_pipeline_export(
 ///
 /// Unsupported stage graphs reject before any design or schema sibling is
 /// published. The supported shape has one host primary source, then each
-/// stage reads the preceding stage's primary XML target. A two-stage chain
-/// may also connect an original static XML host source only in its final
-/// stage. Other connected later named inputs, independent intermediate
-/// targets, and non-XML boundaries reject explicitly. The final stage may
-/// write connected independent XML targets.
+/// stage reads the preceding stage's primary XML target. A later stage may
+/// also connect a previously unused original static XML host source. Other
+/// connected later named inputs, independent intermediate targets, and non-XML
+/// boundaries reject explicitly. The final stage may write connected
+/// independent XML targets.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
         .map(|report| report.warnings)
@@ -88,14 +88,7 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
         })?;
         combined = Some(match combined {
             None => stage_xml,
-            Some(previous) => append_stage(
-                &previous,
-                &stage_xml,
-                &pipeline.stages[0],
-                stage,
-                index,
-                pipeline.stages.len(),
-            )?,
+            Some(previous) => append_stage(&previous, &stage_xml, &pipeline.stages[0], stage)?,
         });
     }
     let xml = combined.expect("validated pipeline has at least two stages");
@@ -311,8 +304,6 @@ fn append_stage(
     next: &str,
     first_stage: &PipelineStage,
     stage: &PipelineStage,
-    stage_index: usize,
-    stage_count: usize,
 ) -> Result<String, MfdError> {
     let previous_doc = Document::parse(previous)?;
     let next_doc = Document::parse(next)?;
@@ -343,7 +334,6 @@ fn append_stage(
     let source_keys = late_named_source_key_remap(
         first_stage,
         stage,
-        stage_index == 1 && stage_count == 2,
         previous_children,
         previous_vertices,
         &source_components,
@@ -426,7 +416,6 @@ fn append_stage(
 fn late_named_source_key_remap(
     first_stage: &PipelineStage,
     stage: &PipelineStage,
-    is_two_stage_final_stage: bool,
     previous_children: Node<'_, '_>,
     previous_vertices: Node<'_, '_>,
     source_components: &[Node<'_, '_>],
@@ -463,12 +452,6 @@ fn late_named_source_key_remap(
             continue;
         }
         let late_source = &stage.project.extra_sources[index - 1];
-        if !is_two_stage_final_stage {
-            return Err(MfdError::Unsupported(format!(
-                "stage named source `{}` requires a two-stage serial chain",
-                late_source.name
-            )));
-        }
         let host_name = stage
             .extra_sources
             .iter()
