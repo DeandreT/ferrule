@@ -406,7 +406,7 @@ fn boundary_format(project: &Project, side: DataSide, current: DataFormat) -> Da
         DataFormat::Xbrl
     } else if options.xml_document {
         DataFormat::Xml
-    } else if options.json_document || options.json_lines {
+    } else if options.json_document || options.json5 || options.json_lines {
         DataFormat::Json
     } else if options.tabular_kind == Some(TabularBoundaryKind::Csv) {
         DataFormat::Csv

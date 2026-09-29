@@ -727,6 +727,66 @@ pub fn import_mfd(
     edi_catalog_roots: &[PathBuf],
     json_schema_catalog_roots: &[PathBuf],
 ) -> anyhow::Result<Vec<String>> {
+    let options = mfd_import_options(
+        package_root,
+        package_manifest,
+        edi_catalog_roots,
+        json_schema_catalog_roots,
+    )?;
+    let mut imported = mfd::import_with_options(mfd_path, &options)
+        .with_context(|| format!("importing {}", mfd_path.display()))?;
+    rebase_project_paths(&mut imported.project, &imported.mapping_path, out_path)?;
+    let json = serde_json::to_string_pretty(&imported.project)?;
+    std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
+    Ok(imported.warnings)
+}
+
+/// Imports a connected two-stage `.mfd` design as a runnable typed pipeline.
+/// The complete pipeline is validated before its JSON file is written.
+pub fn import_mfd_pipeline(
+    mfd_path: &Path,
+    out_path: &Path,
+    package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
+) -> anyhow::Result<Vec<String>> {
+    let options = mfd_import_options(
+        package_root,
+        package_manifest,
+        edi_catalog_roots,
+        json_schema_catalog_roots,
+    )?;
+    let mut imported = mfd::import_pipeline_with_options(mfd_path, &options)
+        .with_context(|| format!("importing {} as a pipeline", mfd_path.display()))?;
+    let active_mapping_path =
+        project_paths::mapping_identity_relative_to(&imported.mapping_path, out_path)?;
+    for stage in &mut imported.pipeline.stages {
+        rebase_project_paths(&mut stage.project, &imported.mapping_path, out_path)?;
+        stage.mapping_path = Some(active_mapping_path.clone());
+    }
+    let issues = engine::validate_pipeline(&imported.pipeline);
+    if !issues.is_empty() {
+        anyhow::bail!(
+            "imported pipeline failed validation: {}",
+            issues
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
+    let json = serde_json::to_string_pretty(&imported.pipeline)?;
+    std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
+    Ok(imported.warnings)
+}
+
+fn mfd_import_options(
+    package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
+) -> anyhow::Result<mfd::ImportOptions> {
     let mut options = mfd::ImportOptions::default()
         .with_edi_catalog_roots(edi_catalog_roots.iter().cloned())
         .with_json_schema_catalog_roots(json_schema_catalog_roots.iter().cloned());
@@ -738,12 +798,7 @@ pub fn import_mfd(
     } else if let Some(root) = package_root {
         options = options.with_package_root(root);
     }
-    let mut imported = mfd::import_with_options(mfd_path, &options)
-        .with_context(|| format!("importing {}", mfd_path.display()))?;
-    rebase_project_paths(&mut imported.project, &imported.mapping_path, out_path)?;
-    let json = serde_json::to_string_pretty(&imported.project)?;
-    std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
-    Ok(imported.warnings)
+    Ok(options)
 }
 
 /// Converts a Ferrule project file into an `.mfd` design (plus
@@ -850,10 +905,13 @@ fn write_output(
             .with_context(|| format!("writing XML output {}", path.display()))?;
         return Ok(1);
     }
-    if options.json_document || options.json_lines {
+    if options.json_document || options.json5 || options.json_lines {
         reject_json_conflicts(options, "output")?;
+        let json5 = json5_selected(path, options)?;
         let write = if options.json_lines {
             format_json::write_lines
+        } else if json5 {
+            format_json::write_json5
         } else {
             format_json::write
         };
@@ -952,11 +1010,16 @@ fn write_output(
                 .with_context(|| format!("writing output {}", path.display()))?;
             Ok(1)
         }
-        "json" | "jsonl" | "ndjson" => {
+        "json" | "json5" | "jsonl" | "ndjson" => {
             let json_lines =
                 options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
+            if json_lines && json5_selected(path, options)? {
+                bail!("JSON5 cannot be combined with JSON Lines");
+            }
             if json_lines {
                 format_json::write_lines(path, schema, instance)
+            } else if json5_selected(path, options)? {
+                format_json::write_json5(path, schema, instance)
             } else {
                 format_json::write(path, schema, instance)
             }
@@ -1128,10 +1191,13 @@ fn read_instance(
             .with_context(|| format!("reading XML input {}", path.display()));
     }
 
-    if options.json_document || options.json_lines {
+    if options.json_document || options.json5 || options.json_lines {
         reject_json_conflicts(options, "input")?;
+        let json5 = json5_selected(path, options)?;
         let read = if options.json_lines {
             format_json::read_lines
+        } else if json5 {
+            format_json::read_json5
         } else {
             format_json::read
         };
@@ -1233,11 +1299,16 @@ fn read_instance(
         }
         "xml" => format_xml::read(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
-        "json" | "jsonl" | "ndjson" => {
+        "json" | "json5" | "jsonl" | "ndjson" => {
             let json_lines =
                 options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
+            if json_lines && json5_selected(path, options)? {
+                bail!("JSON5 cannot be combined with JSON Lines");
+            }
             if json_lines {
                 format_json::read_lines(path, schema)
+            } else if json5_selected(path, options)? {
+                format_json::read_json5(path, schema)
             } else {
                 format_json::read(path, schema)
             }
@@ -1429,6 +1500,7 @@ fn reject_idoc_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
         || options.xml_document
         || options.local_xml_file_set
         || options.json_document
+        || options.json5
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -1455,6 +1527,7 @@ fn reject_swift_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result
         || options.xml_document
         || options.local_xml_file_set
         || options.json_document
+        || options.json5
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -1480,6 +1553,7 @@ fn reject_xbrl_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
         || options.xml_document
         || options.local_xml_file_set
         || options.json_document
+        || options.json5
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -1504,6 +1578,7 @@ fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.xml_document
         || options.local_xml_file_set
         || options.json_document
+        || options.json5
         || options.json_lines
         || options.pdf.is_some()
         || options.xbrl.is_some()
@@ -1527,6 +1602,7 @@ fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.xml_document
         || options.local_xml_file_set
         || options.json_document
+        || options.json5
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -1552,6 +1628,7 @@ fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
         || options.xml_document
         || options.local_xml_file_set
         || options.json_document
+        || options.json5
         || options.json_lines
         || options.protobuf.is_some()
         || options.xbrl.is_some()
@@ -1601,6 +1678,7 @@ fn reject_edi_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
         || options.xml_document
         || options.local_xml_file_set
         || options.json_document
+        || options.json5
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -1631,10 +1709,22 @@ fn reject_json_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
         || has_any_xlsx_layout(options)
     {
         bail!(
-            "`json_document`/`json_lines` cannot be combined with another format's options for {side}"
+            "`json_document`/`json5`/`json_lines` cannot be combined with another format's options for {side}"
         );
     }
     Ok(())
+}
+
+fn json5_selected(path: &Path, options: &FormatOptions) -> anyhow::Result<bool> {
+    let selected = options.json5
+        || path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("json5"));
+    if selected && options.json_lines {
+        bail!("JSON5 cannot be combined with JSON Lines");
+    }
+    Ok(selected)
 }
 
 fn reject_xml_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
@@ -1652,6 +1742,7 @@ fn reject_xml_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
         || options.flextext.is_some()
         || options.pdf.is_some()
         || options.json_document
+        || options.json5
         || options.json_lines
         || options.protobuf.is_some()
         || options.xbrl.is_some()
@@ -1675,7 +1766,9 @@ fn reject_external_source_conflicts(options: &FormatOptions, side: &str) -> anyh
         .context("missing captured external source metadata")?;
     let owns_identity = match boundary.payload() {
         ExternalPayloadFormat::Json => !options.xml_document,
-        ExternalPayloadFormat::Xml => !options.json_document && !options.json_lines,
+        ExternalPayloadFormat::Xml => {
+            !options.json_document && !options.json5 && !options.json_lines
+        }
     };
     if !owns_identity
         || options.lenient_segments
@@ -1905,6 +1998,7 @@ fn is_recognized_instance_extension(extension: &str) -> bool {
             | "xlsx"
             | "xml"
             | "json"
+            | "json5"
             | "jsonl"
             | "ndjson"
             | "db"

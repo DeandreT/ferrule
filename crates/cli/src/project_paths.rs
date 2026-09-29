@@ -26,6 +26,37 @@ pub fn rebase(
     Ok(())
 }
 
+/// Stores an imported mapping's active-file identity relative to a saved
+/// pipeline, so moving the two files together preserves runtime path values.
+pub(crate) fn mapping_identity_relative_to(
+    mapping_path: &Path,
+    pipeline_path: &Path,
+) -> std::io::Result<String> {
+    let pipeline_dir = absolute_parent(pipeline_path)?;
+    let mapping_path = if mapping_path.is_absolute() {
+        mapping_path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(mapping_path)
+    };
+    let mapping_path = normalize_absolute(&mapping_path).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("mapping path `{}` is not absolute", mapping_path.display()),
+        )
+    })?;
+    let relative = relative_path(&pipeline_dir, &mapping_path).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "cannot make mapping path `{}` relative to `{}`",
+                mapping_path.display(),
+                pipeline_dir.display()
+            ),
+        )
+    })?;
+    path_to_portable(&relative)
+}
+
 fn rebase_optional(path: &mut Option<String>, from: &Path, to: &Path) -> std::io::Result<()> {
     if let Some(path) = path {
         rebase_required(path, from, to)?;

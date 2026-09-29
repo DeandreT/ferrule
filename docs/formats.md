@@ -9,6 +9,7 @@ layout and dialect details that an extension cannot express.
 | --- | :---: | :---: | --- |
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
 | JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact closed homogeneous `patternProperties`, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditionals, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON5 | Yes | Yes | One schema-shaped document using JSON5 instance syntax; selected by `.json5` or `FormatOptions.json5`, with ordinary JSON schemas and the same typed mapping boundary |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
@@ -24,6 +25,17 @@ layout and dialect details that an extension cannot express.
 
 ## Important Boundaries
 
+- JSON5 input accepts comments, trailing commas, single-quoted strings, and
+  other supported JSON5 syntax; comments are not represented in mapping values
+  or written back. Output omits quotes around property names when JSON5 allows
+  it. JSON5 uses one document, so `json5` and `json_lines` cannot be combined.
+  Input is limited to 64 MiB and 128 nested containers; exact `uniqueItems`
+  checks retain numeric token values, including hexadecimal numbers. Nonfinite
+  values are rejected. The generated Rust and C# library entry points
+  continue to exchange strict schema-shaped JSON with their hosts; JSON5 file
+  parsing and writing are provided by the CLI and browser runtime. Native
+  `.mfd` export rejects JSON5 boundaries until the native component setting is
+  represented and verified.
 - PDF targets are not supported.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.

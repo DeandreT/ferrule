@@ -168,7 +168,7 @@ pub(crate) fn validate_raw_json_lines_unique_items(
     Ok(())
 }
 
-fn tree_has_unique_items(schema: &SchemaNode) -> bool {
+pub(crate) fn tree_has_unique_items(schema: &SchemaNode) -> bool {
     schema.json_unique_items
         || match &schema.kind {
             SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,

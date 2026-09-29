@@ -8,7 +8,7 @@ use mapping::{EdiAutocomplete, EdiBoundaryKind, ExternalPayloadFormat, FormatOpt
 
 use super::{
     TraceSink, absolute_mapping_path, extension_for_dispatch, extension_of, formatted_edi_output,
-    has_legacy_xlsx_layout, protobuf_layout, reject_edi_conflicts,
+    has_legacy_xlsx_layout, json5_selected, protobuf_layout, reject_edi_conflicts,
     reject_external_source_conflicts, reject_fixed_width_csv_options, reject_flextext_conflicts,
     reject_idoc_conflicts, reject_json_conflicts, reject_pdf_conflicts, reject_protobuf_conflicts,
     reject_swift_conflicts, reject_xbrl_conflicts, reject_xml_conflicts, require_valid,
@@ -770,11 +770,14 @@ fn read_payload(
         }
         .context("parsing XML input payload");
     }
-    if options.json_document || options.json_lines {
+    if options.json_document || options.json5 || options.json_lines {
         reject_json_conflicts(options, "input")?;
-        let text = utf8(document, "JSON")?;
+        let json5 = json5_selected(document.path, options)?;
+        let text = utf8(document, if json5 { "JSON5" } else { "JSON" })?;
         return if options.json_lines {
             format_json::from_lines(text, schema)
+        } else if json5 {
+            format_json::from_json5_str(text, schema)
         } else {
             format_json::from_str(text, schema)
         }
@@ -800,11 +803,17 @@ fn read_payload(
         "xlsx" => read_xlsx_payload(document.bytes, schema, options),
         "xml" => format_xml::from_str(utf8(document, "XML")?, schema)
             .context("parsing XML input payload"),
-        "json" | "jsonl" | "ndjson" => {
+        "json" | "json5" | "jsonl" | "ndjson" => {
             let lines = options.json_lines
                 || matches!(extension_of(document.path)?.as_str(), "jsonl" | "ndjson");
+            let json5 = json5_selected(document.path, options)?;
+            if lines && json5 {
+                bail!("JSON5 cannot be combined with JSON Lines");
+            }
             if lines {
                 format_json::from_lines(utf8(document, "JSON")?, schema)
+            } else if json5 {
+                format_json::from_json5_str(utf8(document, "JSON5")?, schema)
             } else {
                 format_json::from_str(utf8(document, "JSON")?, schema)
             }
@@ -964,10 +973,13 @@ fn render_payload(
             .map(|text| (text.into_bytes(), 1))
             .context("rendering XML output payload");
     }
-    if options.json_document || options.json_lines {
+    if options.json_document || options.json5 || options.json_lines {
         reject_json_conflicts(options, "output")?;
+        let json5 = json5_selected(path, options)?;
         let text = if options.json_lines {
             format_json::to_lines(schema, instance)
+        } else if json5 {
+            format_json::to_json5_string(schema, instance)
         } else {
             format_json::to_string(schema, instance)
         }
@@ -1006,11 +1018,17 @@ fn render_payload(
         "xml" => format_xml::to_string(schema, instance)
             .map(|text| (text.into_bytes(), 1))
             .context("rendering XML output payload"),
-        "json" | "jsonl" | "ndjson" => {
+        "json" | "json5" | "jsonl" | "ndjson" => {
             let lines =
                 options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
+            let json5 = json5_selected(path, options)?;
+            if lines && json5 {
+                bail!("JSON5 cannot be combined with JSON Lines");
+            }
             let text = if lines {
                 format_json::to_lines(schema, instance)
+            } else if json5 {
+                format_json::to_json5_string(schema, instance)
             } else {
                 format_json::to_string(schema, instance)
             }

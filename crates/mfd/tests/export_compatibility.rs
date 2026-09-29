@@ -82,6 +82,32 @@ fn assert_rejected(project: &Project, path: &Path, expected: &ExportReport) {
 }
 
 #[test]
+fn json5_boundary_rejects_mfd_export_before_publishing() -> Result<(), Box<dyn Error>> {
+    let temp = TempDir::new()?;
+    let design = temp.0.join("mapping.mfd");
+    let mut project = project();
+    project.source_options.json5 = true;
+    let error = mfd::preflight_export(&project, &design).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("source uses JSON5 document syntax")
+    );
+    assert!(!design.exists());
+
+    project.source_options.json5 = false;
+    project.target_path = Some("output.JSON5".into());
+    let error = mfd::preflight_export(&project, &design).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("target uses JSON5 document syntax")
+    );
+    assert!(!design.exists());
+    Ok(())
+}
+
+#[test]
 fn native_preflight_is_read_only_and_matches_published_report() -> Result<(), Box<dyn Error>> {
     let temp = TempDir::new()?;
     let path = temp.0.join("new-directory/mapping.mfd");

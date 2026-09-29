@@ -151,6 +151,35 @@ fn json_lines_component_sets_runtime_format_option_without_a_downgrade_warning()
 }
 
 #[test]
+fn json5_instance_paths_warn_without_guessing_the_native_setting() {
+    for (attribute, path, port) in [
+        ("inputinstance", "data/input.JsOn5", "outkey"),
+        ("outputinstance", "data/output.JSON5", "inpkey"),
+    ] {
+        let xml = format!(
+            r#"<component name="Records"><data><root><entry name="FileInstance"><entry name="document"><entry name="root" {port}="1"/></entry></entry></root><json {attribute}="{path}"/></data></component>"#
+        );
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let mut warnings = Vec::new();
+        let component = read_json_component(
+            &document.root_element(),
+            Path::new("mapping.mfd"),
+            &mut warnings,
+        )
+        .unwrap();
+
+        assert!(component.options.json_document);
+        assert!(!component.options.json5);
+        let json5_warnings: Vec<_> = warnings
+            .iter()
+            .filter(|warning| warning.contains("JSON5 setting is unverified"))
+            .collect();
+        assert_eq!(json5_warnings.len(), 1, "{warnings:?}");
+        assert!(json5_warnings[0].contains(attribute), "{warnings:?}");
+    }
+}
+
+#[test]
 fn nullable_json_target_uses_one_typed_property_port() {
     let document = roxmltree::Document::parse(
         r#"

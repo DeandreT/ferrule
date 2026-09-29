@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 
 use ir::SchemaKind;
 use mapping::{
-    Graph, NamedSource, NamedTarget, Project, Scope, ScopeIteration, ScopeSequence, SequenceExpr,
+    Graph, NamedSource, NamedTarget, Pipeline, PipelineInput, PipelineNamedInput, PipelineStage,
+    Project, Scope, ScopeIteration, ScopeSequence, SequenceExpr,
 };
 
 use crate::{
@@ -89,6 +90,40 @@ pub struct Imported {
     pub warnings: Vec<String>,
     /// Canonical path used as the base for imported relative instance paths.
     pub mapping_path: PathBuf,
+}
+
+/// A connected two-stage design imported without flattening its intermediate
+/// output into an independent target.
+pub struct ImportedPipeline {
+    pub pipeline: Pipeline,
+    pub warnings: Vec<String>,
+    /// Canonical path used as the active mapping identity for both stages.
+    pub mapping_path: PathBuf,
+}
+
+#[derive(Clone, Copy)]
+enum StageSelection<'a> {
+    Ordinary,
+    Into {
+        intermediate_key: u32,
+        label: &'a str,
+    },
+    OutOf {
+        intermediate_key: u32,
+        final_key: u32,
+        label: &'a str,
+    },
+}
+
+struct SourceIdentity {
+    name: String,
+    key: u32,
+}
+
+struct LoweredStage {
+    imported: Imported,
+    /// Original component identities in primary-then-secondary source order.
+    source_components: Vec<SourceIdentity>,
 }
 
 /// Filesystem policy for importing one mapping package.
@@ -259,6 +294,172 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 }
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
+    let resources = resolved_resources(path, options)?;
+    Ok(import_resolved(&resources, StageSelection::Ordinary)?.imported)
+}
+
+/// Import a connected, file-based two-stage design as a typed pipeline.
+///
+/// This first profile accepts one XML pass-through intermediate and one final
+/// target. Other stage graph shapes reject explicitly instead of silently
+/// flattening the computed intermediate output.
+pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
+    import_pipeline_with_options(path, &ImportOptions::default())
+}
+
+pub fn import_pipeline_with_options(
+    path: &Path,
+    options: &ImportOptions,
+) -> Result<ImportedPipeline, MfdError> {
+    let resources = resolved_resources(path, options)?;
+    let chain = discover_two_stage_chain(resources.mapping_path())?;
+    let first = import_resolved(
+        &resources,
+        StageSelection::Into {
+            intermediate_key: chain.intermediate_key,
+            label: &chain.intermediate,
+        },
+    )?;
+    let second = import_resolved(
+        &resources,
+        StageSelection::OutOf {
+            intermediate_key: chain.intermediate_key,
+            final_key: chain.final_key,
+            label: &chain.intermediate,
+        },
+    )?;
+
+    let mut warnings = first.imported.warnings;
+    warnings.extend(second.imported.warnings);
+    if !warnings.is_empty() {
+        return Err(MfdError::UnsupportedImport(format!(
+            "chained design has unsupported stage behavior: {}",
+            warnings.join("; ")
+        )));
+    }
+    let first_project = first.imported.project;
+    let second_project = second.imported.project;
+    let names = first
+        .source_components
+        .iter()
+        .fold(BTreeMap::new(), |mut counts, source| {
+            *counts.entry(source.name.as_str()).or_insert(0usize) += 1;
+            counts
+        });
+    let mut used_host_names = BTreeSet::new();
+    let mut host_names = BTreeMap::new();
+    for source in &first.source_components {
+        let preferred = if !source.name.is_empty()
+            && source.name.len() <= 256
+            && names.get(source.name.as_str()) == Some(&1)
+        {
+            source.name.clone()
+        } else {
+            format!("mfd-source-{}", source.key)
+        };
+        let name = if used_host_names.insert(preferred.clone()) {
+            preferred
+        } else {
+            let fallback = format!("mfd-source-{}", source.key);
+            if !used_host_names.insert(fallback.clone()) {
+                return Err(MfdError::UnsupportedImport(
+                    "pipeline source port identities are not unique".into(),
+                ));
+            }
+            fallback
+        };
+        if host_names.insert(source.key, name).is_some() {
+            return Err(MfdError::UnsupportedImport(
+                "pipeline source port identities are not unique".into(),
+            ));
+        }
+    }
+    if first_project.extra_sources.len() + 1 != first.source_components.len()
+        || second_project.extra_sources.len() + 1 != second.source_components.len()
+    {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline source boundaries do not match imported stages".into(),
+        ));
+    }
+    let mut first_sources = first.source_components.into_iter();
+    let first_primary = first_sources
+        .next()
+        .ok_or_else(|| MfdError::UnsupportedImport("first pipeline stage has no source".into()))?;
+    let mut first_extra = Vec::new();
+    for (source, identity) in first_project.extra_sources.iter().zip(first_sources) {
+        if source.dynamic_path.is_none() {
+            first_extra.push(PipelineNamedInput {
+                name: source.name.clone(),
+                from: PipelineInput::Host {
+                    name: host_names[&identity.key].clone(),
+                },
+            });
+        }
+    }
+    let mut second_extra = Vec::new();
+    for (source, identity) in second_project
+        .extra_sources
+        .iter()
+        .zip(second.source_components.into_iter().skip(1))
+    {
+        if source.dynamic_path.is_none() {
+            let Some(host_name) = host_names.get(&identity.key) else {
+                return Err(MfdError::UnsupportedImport(format!(
+                    "second pipeline stage reads an unbound source `{}`",
+                    identity.name
+                )));
+            };
+            second_extra.push(PipelineNamedInput {
+                name: source.name.clone(),
+                from: PipelineInput::Host {
+                    name: host_name.clone(),
+                },
+            });
+        }
+    }
+    let mapping_path = resources.mapping_path().to_path_buf();
+    let pipeline = Pipeline {
+        stages: vec![
+            PipelineStage {
+                id: "mfd-stage-1".into(),
+                mapping_path: Some(mapping_path.to_string_lossy().into_owned()),
+                project: first_project,
+                source: PipelineInput::Host {
+                    name: host_names[&first_primary.key].clone(),
+                },
+                extra_sources: first_extra,
+            },
+            PipelineStage {
+                id: "mfd-stage-2".into(),
+                mapping_path: Some(mapping_path.to_string_lossy().into_owned()),
+                project: second_project,
+                source: PipelineInput::StageTarget {
+                    stage: "mfd-stage-1".into(),
+                    target: None,
+                },
+                extra_sources: second_extra,
+            },
+        ],
+    };
+    let issues = engine::validate_pipeline(&pipeline);
+    if !issues.is_empty() {
+        return Err(MfdError::UnsupportedImport(format!(
+            "chained design does not form an executable pipeline: {}",
+            issues
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
+        )));
+    }
+    Ok(ImportedPipeline {
+        pipeline,
+        warnings,
+        mapping_path,
+    })
+}
+
+fn resolved_resources(path: &Path, options: &ImportOptions) -> Result<ResourceResolver, MfdError> {
     let discovered_manifest =
         if options.package_root.is_none() && options.package_manifest.is_none() {
             discover_package_manifest(path)?
@@ -296,7 +497,7 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
             .with_package_edi_catalog_roots(manifest.edi_catalog_roots())?
             .with_package_json_schema_catalog_roots(manifest.json_schema_catalog_roots())?;
     }
-    import_resolved(&resources)
+    Ok(resources)
 }
 
 fn discover_package_manifest(path: &Path) -> Result<Option<PathBuf>, MfdError> {
@@ -321,7 +522,232 @@ fn discover_package_manifest(path: &Path) -> Result<Option<PathBuf>, MfdError> {
     }
 }
 
-fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
+struct TwoStageChain {
+    intermediate: String,
+    intermediate_key: u32,
+    final_key: u32,
+}
+
+fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
+    let text = std::fs::read_to_string(path)?;
+    let doc = roxmltree::Document::parse(&text)?;
+    let mapping = doc.root_element();
+    if !mapping.has_tag_name("mapping") {
+        return Err(MfdError::NotMfd("root element is not <mapping>"));
+    }
+    let wrapper = mapping
+        .children()
+        .find(|node| node.has_tag_name("component"))
+        .ok_or(MfdError::NotMfd("no wrapper component"))?;
+    let structure = wrapper
+        .children()
+        .find(|node| node.has_tag_name("structure"))
+        .ok_or(MfdError::NotMfd("wrapper has no structure"))?;
+    let components = structure
+        .children()
+        .find(|node| node.has_tag_name("children"))
+        .into_iter()
+        .flat_map(|children| {
+            children
+                .children()
+                .filter(|node| node.has_tag_name("component"))
+        })
+        .collect::<Vec<_>>();
+    if let Some(component) = components.iter().find(|component| {
+        !matches!(
+            component.attribute("library"),
+            Some("xml" | "core" | "lang" | "xpath2")
+        )
+    }) {
+        return Err(MfdError::UnsupportedImport(format!(
+            "pipeline import does not yet support `{}` components",
+            component.attribute("library").unwrap_or_default()
+        )));
+    }
+    let edge_from = read_edges(&structure, Some(&wrapper));
+    let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
+    let connected_inputs = |component: &roxmltree::Node<'_, '_>| {
+        component.descendants().any(|node| {
+            node.has_tag_name("entry")
+                && schema::parse_u32(node.attribute("inpkey"))
+                    .is_some_and(|key| edge_from.contains_key(&key))
+        })
+    };
+    let connected_component_outputs = |component: &roxmltree::Node<'_, '_>| {
+        component.descendants().any(|node| {
+            node.has_tag_name("entry")
+                && schema::parse_u32(node.attribute("outkey"))
+                    .is_some_and(|key| connected_outputs.contains(&key))
+        })
+    };
+    let pass_through = |component: &&roxmltree::Node<'_, '_>| {
+        component.attribute("library") == Some("xml")
+            && component.children().any(|node| {
+                node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1")
+            })
+            && connected_inputs(component)
+            && connected_component_outputs(component)
+    };
+    let mut intermediates = components.iter().filter(pass_through);
+    let intermediate = intermediates.next().ok_or_else(|| {
+        MfdError::UnsupportedImport(
+            "pipeline import currently needs one connected XML pass-through target".into(),
+        )
+    })?;
+    if intermediates.next().is_some() {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import currently supports one intermediate target".into(),
+        ));
+    }
+    let final_outputs = components
+        .iter()
+        .filter(|component| {
+            component.attribute("library") == Some("xml")
+                && component.children().any(|node| {
+                    node.has_tag_name("properties")
+                        && node.attribute("XSLTDefaultOutput") == Some("1")
+                })
+                && connected_inputs(component)
+        })
+        .collect::<Vec<_>>();
+    let [final_target] = final_outputs.as_slice() else {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import currently needs one connected XML final target".into(),
+        ));
+    };
+    let connected_input_key = |component: &roxmltree::Node<'_, '_>| {
+        component.descendants().find_map(|node| {
+            node.has_tag_name("entry")
+                .then(|| schema::parse_u32(node.attribute("inpkey")))
+                .flatten()
+                .filter(|key| edge_from.contains_key(key))
+        })
+    };
+    let intermediate_key = connected_input_key(intermediate).ok_or_else(|| {
+        MfdError::UnsupportedImport("intermediate target has no connected input".into())
+    })?;
+    let final_key = connected_input_key(final_target)
+        .ok_or_else(|| MfdError::UnsupportedImport("final target has no connected input".into()))?;
+    let final_inputs = final_target
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|node| schema::parse_u32(node.attribute("inpkey")))
+        .collect::<BTreeSet<_>>();
+    let intermediate_outputs = intermediate
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|node| schema::parse_u32(node.attribute("outkey")))
+        .collect::<Vec<_>>();
+    let mut consumers = BTreeMap::<u32, Vec<u32>>::new();
+    for (&input, &output) in &edge_from {
+        consumers.entry(output).or_default().push(input);
+    }
+    let mut function_outputs = BTreeMap::<u32, Vec<u32>>::new();
+    for component in &components {
+        if component.attribute("library") == Some("xml") {
+            continue;
+        }
+        let outputs = component
+            .children()
+            .find(|node| node.has_tag_name("targets"))
+            .into_iter()
+            .flat_map(|node| {
+                node.descendants()
+                    .filter(|node| node.has_tag_name("datapoint"))
+            })
+            .filter_map(|node| schema::parse_u32(node.attribute("key")))
+            .collect::<Vec<_>>();
+        for input in component
+            .children()
+            .find(|node| node.has_tag_name("sources"))
+            .into_iter()
+            .flat_map(|node| {
+                node.descendants()
+                    .filter(|node| node.has_tag_name("datapoint"))
+            })
+            .filter_map(|node| schema::parse_u32(node.attribute("key")))
+        {
+            function_outputs.insert(input, outputs.clone());
+        }
+    }
+    let mut frontier = intermediate_outputs;
+    let mut visited = BTreeSet::new();
+    let mut reaches_final = false;
+    while let Some(output) = frontier.pop() {
+        if !visited.insert(output) {
+            continue;
+        }
+        for input in consumers.get(&output).into_iter().flatten() {
+            if final_inputs.contains(input) {
+                reaches_final = true;
+                break;
+            }
+            if let Some(outputs) = function_outputs.get(input) {
+                frontier.extend(outputs);
+            }
+        }
+        if reaches_final {
+            break;
+        }
+    }
+    if !reaches_final {
+        return Err(MfdError::UnsupportedImport(
+            "pass-through target does not feed the selected final target".into(),
+        ));
+    }
+    for component in &components {
+        if component.attribute("library") == Some("core")
+            && component.attribute("kind") == Some("7")
+        {
+            return Err(MfdError::UnsupportedImport(
+                "pipeline import does not yet support standalone output parameters".into(),
+            ));
+        }
+        if component.attribute("library") != Some("xml") {
+            continue;
+        }
+        if *component == *intermediate || *component == **final_target {
+            continue;
+        }
+        if component.children().any(|node| {
+            node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1")
+        }) || connected_inputs(component)
+            || !connected_component_outputs(component)
+        {
+            return Err(MfdError::UnsupportedImport(format!(
+                "pipeline import cannot classify component `{}` as an original source",
+                component.attribute("name").unwrap_or_default()
+            )));
+        }
+    }
+    let original_sources = components
+        .iter()
+        .filter(|component| {
+            component.attribute("library") == Some("xml")
+                && **component != *intermediate
+                && **component != **final_target
+                && connected_component_outputs(component)
+        })
+        .count();
+    if original_sources == 0 {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import needs an XML source component".into(),
+        ));
+    }
+    Ok(TwoStageChain {
+        intermediate: intermediate
+            .attribute("name")
+            .unwrap_or_default()
+            .to_string(),
+        intermediate_key,
+        final_key,
+    })
+}
+
+fn import_resolved(
+    resources: &ResourceResolver,
+    selection: StageSelection<'_>,
+) -> Result<LoweredStage, MfdError> {
     let path = resources.mapping_path();
     let text = std::fs::read_to_string(path)?;
     let doc = roxmltree::Document::parse(&text)?;
@@ -727,8 +1153,68 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
     // scalar-only mappings, where repetition-based primary scoring is tied.
     schema_components.extend(udf_registry.take_sources());
 
+    match selection {
+        StageSelection::Ordinary => {}
+        StageSelection::Into {
+            intermediate_key,
+            label,
+        } => {
+            let component = schema_components
+                .iter_mut()
+                .find(|component| {
+                    component.input_keys.contains(&intermediate_key) && component.is_pass_through
+                })
+                .ok_or_else(|| {
+                    MfdError::UnsupportedImport(format!(
+                        "intermediate target `{label}` could not be imported"
+                    ))
+                })?;
+            component.is_variable = false;
+            component.is_source = false;
+        }
+        StageSelection::OutOf {
+            intermediate_key,
+            label,
+            ..
+        } => {
+            let component = schema_components
+                .iter_mut()
+                .find(|component| {
+                    component.input_keys.contains(&intermediate_key) && component.is_pass_through
+                })
+                .ok_or_else(|| {
+                    MfdError::UnsupportedImport(format!(
+                        "intermediate source `{label}` could not be imported"
+                    ))
+                })?;
+            component.is_variable = false;
+            component.is_source = true;
+            component.is_pass_through = false;
+            component.input_instance = None;
+        }
+    }
+
     // Edges are indexed as to-key -> from-key; each input has at most one feed.
     let edge_from = read_edges(&structure, Some(&wrapper));
+    let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
+    for component in &schema_components {
+        if matches!(selection, StageSelection::Ordinary)
+            && component.is_pass_through
+            && component
+                .input_keys
+                .iter()
+                .any(|key| edge_from.contains_key(key))
+            && component
+                .output_keys
+                .iter()
+                .any(|key| connected_outputs.contains(key))
+        {
+            warnings.push(format!(
+                "chained target `{}` feeds a later mapping, but single-project import cannot make its computed output the later mapping's input; import the chain as a pipeline to preserve this behavior",
+                component.name
+            ));
+        }
+    }
     refine_database_roles(&mut schema_components, &edge_from);
     udf::refine_source_schemas(
         &mut schema_components,
@@ -777,7 +1263,6 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         &mut warnings,
     );
 
-    let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
     let mut sources: Vec<&SchemaComponent> = schema_components
         .iter()
         .filter(|c| {
@@ -801,33 +1286,68 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         .iter()
         .copied()
         .find(|component| component.is_default_output);
-    let target = default_target
-        .or_else(|| {
-            targets
-                .iter()
-                .copied()
-                .find(|component| !component.is_pass_through)
-        })
-        .or_else(|| targets.first().copied())
-        .ok_or_else(|| unsupported("target"))?;
-    let connected_targets = std::iter::once(target)
-        .chain(targets.iter().copied().filter(|component| {
-            !std::ptr::eq(*component, target)
-                && component
-                    .ports
-                    .keys()
-                    .any(|key| edge_from.contains_key(key))
-        }))
-        .collect::<Vec<_>>();
+    let target = match selection {
+        StageSelection::Ordinary => default_target
+            .or_else(|| {
+                targets
+                    .iter()
+                    .copied()
+                    .find(|component| !component.is_pass_through)
+            })
+            .or_else(|| targets.first().copied()),
+        StageSelection::Into {
+            intermediate_key, ..
+        } => targets
+            .iter()
+            .copied()
+            .find(|component| component.input_keys.contains(&intermediate_key)),
+        StageSelection::OutOf { final_key, .. } => targets
+            .iter()
+            .copied()
+            .find(|component| component.input_keys.contains(&final_key)),
+    }
+    .ok_or_else(|| unsupported("target"))?;
+    let connected_targets = if matches!(selection, StageSelection::Ordinary) {
+        std::iter::once(target)
+            .chain(targets.iter().copied().filter(|component| {
+                !std::ptr::eq(*component, target)
+                    && component
+                        .ports
+                        .keys()
+                        .any(|key| edge_from.contains_key(key))
+            }))
+            .collect::<Vec<_>>()
+    } else {
+        vec![target]
+    };
     let target_names = runtime_names(&connected_targets);
     if sources.is_empty() {
         return Err(unsupported("source"));
     }
-    let primary_source = primary_source_hint
-        .as_ref()
-        .and_then(|hint| hinted_primary_index(&sources, hint))
-        .unwrap_or_else(|| primary_index(&sources, target, &edge_from, &fn_components));
+    let primary_source = match selection {
+        StageSelection::OutOf {
+            intermediate_key,
+            label,
+            ..
+        } => sources
+            .iter()
+            .position(|source| source.input_keys.contains(&intermediate_key))
+            .ok_or_else(|| {
+                MfdError::UnsupportedImport(format!("intermediate source `{label}` is unavailable"))
+            })?,
+        _ => primary_source_hint
+            .as_ref()
+            .and_then(|hint| hinted_primary_index(&sources, hint))
+            .unwrap_or_else(|| primary_index(&sources, target, &edge_from, &fn_components)),
+    };
     sources.swap(0, primary_source);
+    let source_components = sources
+        .iter()
+        .map(|source| SourceIdentity {
+            name: source.name.clone(),
+            key: source.output_keys.first().copied().unwrap_or_default(),
+        })
+        .collect();
     let source_names = runtime_names(&sources);
     let primary = sources[0];
     let joins = pending_joins.resolve(&edge_from, &sources, &source_names, &mut warnings);
@@ -1006,11 +1526,15 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
         });
     }
 
-    let source_path = primary
-        .input_instance
-        .clone()
-        .or_else(|| builder.static_component_input_path(primary))
-        .map(|stored| instance_path::resolve_static_input(path, &stored));
+    let source_path = if matches!(selection, StageSelection::OutOf { .. }) {
+        None
+    } else {
+        primary
+            .input_instance
+            .clone()
+            .or_else(|| builder.static_component_input_path(primary))
+            .map(|stored| instance_path::resolve_static_input(path, &stored))
+    };
     let target_path = if root.output_path().is_some() {
         None
     } else {
@@ -1039,10 +1563,13 @@ fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
     };
     project.prune_unreachable_nodes();
     enrich_unresolved_edi_source_schemas(&mut project);
-    Ok(Imported {
-        project,
-        warnings,
-        mapping_path: path.to_path_buf(),
+    Ok(LoweredStage {
+        imported: Imported {
+            project,
+            warnings,
+            mapping_path: path.to_path_buf(),
+        },
+        source_components,
     })
 }
 

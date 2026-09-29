@@ -74,6 +74,27 @@ fn accepts_a_valid_project_and_relative_source_paths() {
 }
 
 #[test]
+fn json5_documents_reject_lines_and_other_format_options() {
+    let mut project = valid_project();
+    project.source_options.json_document = true;
+    project.source_options.json5 = true;
+    assert!(validate(&project).is_empty());
+
+    project.source_options.json_lines = true;
+    project.target_options.json5 = true;
+    project.target_options.xml_document = true;
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "source format options"
+            && issue.message.contains("cannot be combined with JSON Lines")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target format options"
+            && issue.message.contains("another format's options")
+    }));
+}
+
+#[test]
 fn validates_flat_xlsx_header_and_update_options_before_execution() {
     let mut project = valid_project();
     project.source_options.xlsx_update_existing = true;

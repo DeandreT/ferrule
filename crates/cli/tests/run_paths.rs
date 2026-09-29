@@ -190,6 +190,43 @@ fn json_lines_extensions_run_as_repeated_json_documents() {
 }
 
 #[test]
+fn json5_extension_and_explicit_mode_run_schema_shaped_mappings() {
+    for (name, extension, explicit) in [
+        ("json5_extension", "json5", false),
+        ("json5_explicit", "json", true),
+    ] {
+        let dir = test_dir(name);
+        let input = format!("input.{extension}");
+        let output = format!("output.{extension}");
+        std::fs::write(
+            dir.join(&input),
+            "// source comment\n[{first_name:'Jane',last_name:'Doe',age:29,},]",
+        )
+        .unwrap();
+        let mut project = project_with_paths(Some(&input), Some(&output));
+        project.source.repeating = true;
+        project.source_options.json5 = explicit;
+        project.target_options.json5 = explicit;
+        let project_path = write_project(&dir, &project);
+
+        let run = ferrule(&dir, &["run", "--project", project_path.to_str().unwrap()]);
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let rendered = std::fs::read_to_string(dir.join(output)).unwrap();
+        assert!(rendered.contains("full_name:"));
+        assert!(rendered.contains("Jane Doe"));
+        assert!(!rendered.contains("source comment"));
+        assert!(
+            format_json::from_json5_str(&rendered, &project.target.clone().repeating()).is_ok()
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
 fn missing_input_default_reports_how_to_configure_it() {
     let dir = test_dir("missing_input");
     let project = write_project(&dir, &project_with_paths(None, Some("output.csv")));

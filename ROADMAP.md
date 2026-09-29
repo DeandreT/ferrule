@@ -55,22 +55,27 @@ are preserved.
   undo/redo, persisted primary/function/named-target canvases, and deterministic
   JSON Lines execution traces; plus a WASM XML/JSON/CSV/XBRL playground.
 - `.mfd` survey: all 187 designs in the local ReferenceSamples corpus import;
-  175 import warning-free and are dependency-complete and engine-valid, while
-  twelve retain typed
-  unresolved external EDI-catalog dependencies and remain deliberately
+  171 import warning-free and 175 are dependency-complete and engine-valid.
+  Four connected-chain designs report a semantic-loss warning in single-project
+  mode and can instead be imported as typed two-stage pipelines. Twelve retain
+  typed unresolved external EDI-catalog dependencies and remain deliberately
   non-executable. All 187 export and re-import warning-free, and all 175
   dependency-complete round trips remain engine-valid. The
   read-only execution profile attempts 168 safe-input designs and all 168 pass,
   publishing 165 captured outputs; seven network or captured-service inputs are
-  unavailable. All 168 safe
-  export/re-import executions match semantically with zero drift. Across the
+  unavailable. All 168 safe export/re-import executions match semantically with
+  zero drift. Across the
   latest isolated behavioral manifests, all 79 available deterministic
-  references match exactly.
-  These measurements describe the local sample profile, not commercial-product parity.
+  references match exactly. These measurements describe the local sample
+  profile, not commercial-product parity.
+  The single-project execution counts do not establish faithful behavior for
+  the newly warned connected chains. The typed pipeline path is measured
+  separately.
 - Known architectural constraints: each mapping stage has one primary driver,
-  scalar graph outputs, no `.mfd` stage-graph import, no connector history or
-  interactive stepping, and reusable functions limited to the currently typed
-  scalar, record, sequence, recursive, hierarchy, and adjacency profiles.
+  scalar graph outputs, no general `.mfd` stage-graph import, no connector
+  history or interactive stepping, and reusable functions limited to the
+  currently typed scalar, record, sequence, recursive, hierarchy, and adjacency
+  profiles.
 
 ## Capability Matrix
 
@@ -82,12 +87,12 @@ are preserved.
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Complete applicable validation/autocompletion behavior, configuration commands, dialects, and versioned release packs |
 | Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
-| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, and a validated ordered stage DAG with a file host and optional per-stage mapping paths | Fully general named N-to-M endpoints, `.mfd` stage-graph import, service hosts, and GUI authoring |
+| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded two-stage XML chain import, and GUI editing/inspection/running of saved pipelines | Fully general named N-to-M endpoints, general `.mfd` stage-graph import, service hosts, and embedded per-stage graph editing |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
-| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, and a bounded searchable GUI run report | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 187/187 imports (175 warning-free and engine-valid), warning-free Ferrule export/re-import for all 187, 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Versioned native-compatible export profile plus reference-application open/validate/execute/re-save verification; complete deterministic behavioral-reference coverage and explicit extension-dependent export reporting |
+| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, and post-run graph-node output history with nested row/join context | Input-connector consumption history, full source-row inspection, stepping, breakpoints |
+| `.mfd` | 187/187 imports (171 warning-free; 175 engine-valid, including four warned chains), warning-free Ferrule export/re-import for all 187, 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Versioned native-compatible export profile plus reference-application open/validate/execute/re-save verification; complete deterministic behavioral-reference coverage and explicit extension-dependent export reporting |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
 
 ## Workstreams
@@ -303,8 +308,11 @@ during export; per-item dynamic XML sources and captured HTTP POST response
 boundaries also round-trip with their typed contracts.
 The versioned compatibility survey records import, engine validation, export,
 re-import, and post-export validation separately. All 187 local designs import;
-175 do so warning-free and are dependency-complete and engine-valid. All 187
-export and re-import warning-free, with all 175 dependency-complete round trips
+171 do so warning-free, and 175 are dependency-complete and engine-valid. Four
+connected chains now warn because a single project cannot represent their
+intermediate target as the next target's source; the bounded pipeline importer
+validates all four. All 187 export and re-import warning-free, with all 175
+dependency-complete round trips
 remaining engine-valid. Twelve designs preserve typed unresolved external
 EDI-catalog dependencies. A broad isolated execution survey runs all
 168 safe-input originals successfully, publishing 165 captured outputs and
@@ -314,10 +322,12 @@ executes the same 168 safe originals; all 168 exportable/re-importable
 executions match semantically. The latest
 isolated manifests provide 79 deterministic references, all of which match
 exactly. Reference manifests remain a separate behavioral measure and are not
-inferred from structural success.
+inferred from structural success. Single-project runs of the four newly warned
+chains cannot establish faithful chain execution; pipeline import and execution
+are tracked separately.
 
-- Preserve complete warning-free, engine-valid import coverage while expanding
-  the supported component surface.
+- Restore warning-free, engine-valid import coverage by faithfully representing
+  connected stages while expanding the supported component surface.
 - Preserve isolated, safely redirected execution and semantic reference comparison
   without writing into the read-only vendor sample tree.
 - Expand behavioral reference coverage across format-specific and mixed-content edge
@@ -346,10 +356,14 @@ Progress: the typed [pipeline model](docs/mapping-pipelines.md) connects
 complete projects through primary or named target outputs into primary or
 static named inputs. It validates IDs, references, schemas, and cycles before
 execution, then runs stages in stable dependency order. The file host publishes
-selected outputs atomically only after the complete graph succeeds. `.mfd`
-stage-graph import, service hosts, general driver cardinality, and GUI authoring
-remain. The file host can supply a distinct active mapping path for each stage
-while retaining the pipeline path as the top-level mapping path.
+selected outputs atomically only after the complete graph succeeds. General `.mfd`
+stage-graph import, service hosts, general driver cardinality, and embedded
+per-stage graph editing remain. The file host can supply a distinct active
+mapping path for each stage
+while retaining the pipeline path as the top-level mapping path. The native
+GUI can edit, validate, atomically save, inspect, and run a saved pipeline
+independently of the open project; each stage's Project internals are still
+edited in the ordinary Project editor.
 
 - Named source and target endpoints with runtime-overridable locations.
 - Ordered target writes and deterministic failure semantics.
@@ -456,7 +470,9 @@ validation focus, and interactive debugging remain.
 Prioritize connectors that align existing strengths before product-catalog
 breadth.
 
-1. Complete remaining `xsi:type` shapes, JSON compositions, and JSON5.
+1. Complete remaining `xsi:type` shapes and JSON compositions; finish JSON5
+   native `.mfd` component interop and generated-host coverage beyond the
+   schema-shaped CLI/browser document adapters.
 2. Add a general query/database mutation IR; qualify every in-scope relational
    driver and the MongoDB, CouchDB, and Cosmos DB profiles.
 3. Complete applicable XLSX, FlexText, EDI, Protobuf, XBRL, and PDF extraction
@@ -574,8 +590,9 @@ Runtime support proceeds in parallel:
 Update these numbers with each parity increment:
 
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
-- `.mfd` import: 187/187 import; 175 are warning-free and twelve retain typed
-  missing EDI-catalog dependencies.
+- `.mfd` import: 187/187 import; 171 are warning-free, four connected chains
+  warn in single-project mode, and twelve retain typed missing EDI-catalog
+  dependencies. The four chains validate as typed two-stage pipelines.
 - `.mfd` validation: all 175 dependency-complete projects are engine-valid;
   twelve are explicitly dependency-blocked.
 - `.mfd` export/re-import: all 187 designs export and re-import with zero
@@ -587,7 +604,9 @@ Update these numbers with each parity increment:
 - `.mfd` execution round trips: all 168 safe projects export, re-import,
   validate, execute, and produce semantically identical outputs.
 - Code generation: 175/175 dependency-complete designs lower and emit for both
-  Rust and C#.
+  Rust and C#. One opt-in local JSON sample also compiles and executes in both
+  generated backends with output equal to the interpreter; the remaining
+  survey designs are not yet execution-checked after generation.
 - Behavioral references: 79/79 available deterministic outputs across the current
   isolated manifests match exactly; these are not inferred from structural success.
 - Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample

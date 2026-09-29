@@ -1,5 +1,24 @@
 # Mapping pipelines
 
+## Importing a connected `.mfd` design
+
+The CLI can import the currently supported connected two-stage XML profile as
+a runnable pipeline:
+
+```sh
+cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
+cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
+  --input source source.xml --output mfd-stage-2 final.xml
+```
+
+The imported host name comes from the source component and is recorded in
+`flow.json`. Supply that name and the desired output path to `run-pipeline`.
+The same trusted package manifest and ordered EDI/JSON catalog options used
+by ordinary `import-mfd` apply. Unsupported stage shapes fail before the
+pipeline file is written. Each imported stage records the original `.mfd`
+identity as a path relative to the saved pipeline, so moving both files
+together preserves runtime mapping-path expressions.
+
 `mapping::Pipeline` connects complete Ferrule projects into a stage graph. A
 stage's primary source and each static named source can read a host-owned input,
 the primary target of another stage, or one of that stage's named targets.
@@ -97,3 +116,18 @@ parameters. Each stage can use its own active mapping path while the pipeline
 file remains the main mapping path. Referenced local mapping files are
 protected from output overwrite. All stages share one captured date-time
 value. Ordinary `Project` JSON and single-project execution remain valid.
+
+## Editing in the GUI
+
+Use **File → Edit Pipeline** to open a saved pipeline as a separate document,
+or **File → New Pipeline** to choose a new file path. The pipeline editor does
+not replace the open mapping project or its canvas history. Add a stage from an
+existing Ferrule project file; the editor embeds a copy, rebases its static
+instance paths to the pipeline location, and starts its primary and static
+named inputs as host bindings. Select a stage to rename its ID, change an input
+to a host name or another stage's primary or named target, or remove a stage
+that no other stage uses. Renaming rewires every downstream reference in one
+edit. The editor shows whole-pipeline validation issues and saves only a valid
+pipeline. It detects external file changes before an atomic save, and asks
+before discarding unsaved pipeline edits. Input and publication file paths for
+a run remain choices in the separate **Run Pipeline** dialog.

@@ -52,6 +52,10 @@ mod extra_target_ui;
 mod function_workspace;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
+#[path = "pipeline_editor.rs"]
+mod pipeline_editor_ui;
+#[path = "pipeline.rs"]
+mod pipeline_ui;
 #[path = "preview.rs"]
 mod preview_ui;
 #[path = "run.rs"]
@@ -393,6 +397,10 @@ pub struct FerruleApp {
     last_layout_class: Option<LayoutClass>,
     show_run_setup: bool,
     preview_draft: Option<crate::preview::PreviewDraft>,
+    pipeline_run_draft: Option<crate::pipeline_run::PipelineRunDraft>,
+    pending_pipeline_run: Option<pipeline_ui::PendingPipelineRun>,
+    pipeline_editor: Option<pipeline_editor_ui::PipelineEditorUi>,
+    pending_pipeline_editor_action: Option<pipeline_editor_ui::PipelineEditorAction>,
     show_run_report: bool,
     show_appearance_editor: bool,
     appearance_tab: AppearanceTab,
@@ -437,6 +445,10 @@ struct PendingHistory {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DialogKind {
     OpenProject,
+    OpenPipeline,
+    OpenPipelineEditor,
+    CreatePipeline,
+    AddPipelineStageProject,
     SaveProjectAs,
     BrowseInput,
     BrowseOutput,
@@ -493,6 +505,10 @@ impl Default for FerruleApp {
             last_layout_class: None,
             show_run_setup: false,
             preview_draft: None,
+            pipeline_run_draft: None,
+            pending_pipeline_run: None,
+            pipeline_editor: None,
+            pending_pipeline_editor_action: None,
             show_run_report: false,
             show_appearance_editor: false,
             appearance_tab: AppearanceTab::default(),
@@ -1094,6 +1110,22 @@ impl FerruleApp {
             DialogKind::OpenProject => {
                 self.load_project_from(std::path::Path::new(&path));
             }
+            DialogKind::OpenPipeline => {
+                self.load_pipeline_for_run(std::path::Path::new(&path));
+            }
+            DialogKind::OpenPipelineEditor => {
+                self.request_pipeline_editor_action(
+                    pipeline_editor_ui::PipelineEditorAction::Open(PathBuf::from(path)),
+                );
+            }
+            DialogKind::CreatePipeline => {
+                self.request_pipeline_editor_action(
+                    pipeline_editor_ui::PipelineEditorAction::Create(PathBuf::from(path)),
+                );
+            }
+            DialogKind::AddPipelineStageProject => {
+                self.add_pipeline_stage_from_path(std::path::Path::new(&path));
+            }
             DialogKind::SaveProjectAs => {
                 let continuation = self.pending_save_continuation.take();
                 let path = PathBuf::from(path);
@@ -1234,13 +1266,9 @@ impl eframe::App for FerruleApp {
             self.reset_canvas_view();
         }
         self.poll_dialog(ui.ctx());
+        self.poll_pipeline_run(ui.ctx());
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
-        if close_requested && !self.allow_close && self.is_dirty() {
-            ui.ctx()
-                .send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.pending_destructive_action
-                .get_or_insert(DestructiveAction::Close);
-        }
+        self.guard_app_close_requested(ui.ctx(), close_requested);
         let project_editing_enabled = self.pending_dialog.is_none()
             && self.pending_destructive_action.is_none()
             && self.new_mapping_setup.is_none()
@@ -1373,6 +1401,9 @@ impl eframe::App for FerruleApp {
         self.show_extra_target_removal_confirmation(ui.ctx());
         self.show_auto_connect_confirmation(ui.ctx());
         self.show_preview_setup(ui.ctx());
+        self.show_pipeline_run_setup(ui.ctx());
+        self.show_pipeline_editor(ui.ctx());
+        self.show_pipeline_editor_guard(ui.ctx());
         self.show_new_function_dialog(ui.ctx());
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
         self.show_floating_function_windows(ui.ctx(), project_editing_enabled);

@@ -210,6 +210,35 @@ fn payload_run_returns_dynamic_primary_then_extra_artifacts() -> anyhow::Result<
 }
 
 #[test]
+fn payload_run_reads_and_writes_json5_documents() -> anyhow::Result<()> {
+    let mut project = dynamic_output_project();
+    project.source_options.json5 = true;
+    project.target_options.json5 = true;
+    let primary = cli::PayloadDocument::new(
+        Path::new("input.json5"),
+        b"{Rows:[{File:'a.json5',Value:'A',},],}",
+    )?;
+    let catalog = cli::PayloadDocument::new(Path::new("catalog.json"), br#"{"Label":"shared"}"#)?;
+    let named = [cli::NamedPayloadInput::new("catalog", catalog)?];
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("correlation_id", Value::String("txn-json5".into()))?;
+
+    let outcome = cli::run_project_value_payloads(
+        &project,
+        Path::new("/virtual/project.json"),
+        &cli::PayloadRunOptions::new(primary)
+            .with_extra_sources(&named)
+            .with_runtime_parameters(&parameters),
+    )?;
+    let text = std::str::from_utf8(&outcome.artifacts[0].bytes)?;
+    assert_eq!(outcome.artifacts[0].path, Path::new("/virtual/a.json5"));
+    assert!(text.contains("Value:"));
+    assert!(text.contains("txn-json5"));
+    assert!(format_json::from_json5_str(text, &project.target).is_ok());
+    Ok(())
+}
+
+#[test]
 fn payload_run_can_select_one_named_target_without_evaluating_primary() -> anyhow::Result<()> {
     let source = br#"{"Rows":[{"Value":"primary path is intentionally absent"}]}"#;
     let catalog = br#"{"Label":"selected"}"#;

@@ -144,12 +144,15 @@ enum Command {
         #[arg(long)]
         table: String,
     },
-    /// Convert an .mfd design into a Ferrule project file.
+    /// Convert an .mfd design into a Ferrule project or runnable pipeline.
     ImportMfd {
         #[arg(long)]
         mfd: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Import a connected two-stage design as a typed pipeline.
+        #[arg(long)]
+        pipeline: bool,
         /// Trusted root containing the mapping and all referenced resources.
         #[arg(long, conflicts_with = "package_manifest")]
         package_root: Option<PathBuf>,
@@ -564,12 +567,18 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
         Command::ImportMfd {
             mfd,
             out,
+            pipeline,
             package_root,
             package_manifest,
             edi_catalog_roots,
             json_schema_catalog_roots,
         } => {
-            let warnings = cli::import_mfd(
+            let import = if pipeline {
+                cli::import_mfd_pipeline
+            } else {
+                cli::import_mfd
+            };
+            let warnings = import(
                 &mfd,
                 &out,
                 package_root.as_deref(),
