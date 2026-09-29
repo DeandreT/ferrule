@@ -843,6 +843,33 @@ pub fn preflight_mfd_export(
         .with_context(|| format!("checking export to {}", out_path.display()))
 }
 
+/// Inspect a bounded serial XML pipeline export without writing artifacts.
+pub fn preflight_mfd_pipeline_export(
+    pipeline_path: &Path,
+    out_path: &Path,
+) -> anyhow::Result<mfd::ExportReport> {
+    let encoded = std::fs::read_to_string(pipeline_path)
+        .with_context(|| format!("reading {}", pipeline_path.display()))?;
+    let pipeline: mapping::Pipeline = serde_json::from_str(&encoded)
+        .with_context(|| format!("parsing {}", pipeline_path.display()))?;
+    mfd::preflight_pipeline_export(&pipeline, out_path)
+        .with_context(|| format!("checking pipeline export to {}", out_path.display()))
+}
+
+/// Write a bounded serial XML pipeline as one connected `.mfd` design.
+pub fn export_mfd_pipeline_with_profile(
+    pipeline_path: &Path,
+    out_path: &Path,
+    profile: mfd::ExportProfile,
+) -> anyhow::Result<mfd::ExportReport> {
+    let encoded = std::fs::read_to_string(pipeline_path)
+        .with_context(|| format!("reading {}", pipeline_path.display()))?;
+    let pipeline: mapping::Pipeline = serde_json::from_str(&encoded)
+        .with_context(|| format!("parsing {}", pipeline_path.display()))?;
+    mfd::export_pipeline_with_profile(&pipeline, out_path, profile)
+        .with_context(|| format!("writing {}", out_path.display()))
+}
+
 /// Exports under the selected compatibility policy. Native MFD mode
 /// rejects known extension dependencies and lossy export warnings before any
 /// artifacts are published; the error retains the complete export report.

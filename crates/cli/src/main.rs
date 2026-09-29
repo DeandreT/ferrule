@@ -150,7 +150,7 @@ enum Command {
         mfd: PathBuf,
         #[arg(long)]
         out: PathBuf,
-        /// Import a connected XML design with one or two pass-through targets as a typed pipeline.
+        /// Import a connected serial XML design as a typed pipeline.
         #[arg(long)]
         pipeline: bool,
         /// Trusted root containing the mapping and all referenced resources.
@@ -177,6 +177,9 @@ enum Command {
         project: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Export a typed serial XML pipeline instead of a single project.
+        #[arg(long)]
+        pipeline: bool,
         /// Preserve Ferrule extensions or require a native MFD export.
         #[arg(long, value_enum, default_value_t = MfdExportProfile::FerruleExtensions)]
         profile: MfdExportProfile,
@@ -595,6 +598,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
         Command::ExportMfd {
             project,
             out,
+            pipeline,
             profile,
             check,
             report_json,
@@ -602,6 +606,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             diagnostics,
             &project,
             &out,
+            pipeline,
             profile.into(),
             check,
             report_json,
@@ -613,11 +618,16 @@ fn export_mfd_command(
     diagnostics: DiagnosticFormat,
     project: &std::path::Path,
     out: &std::path::Path,
+    pipeline: bool,
     profile: mfd::ExportProfile,
     check: bool,
     report_json: bool,
 ) -> anyhow::Result<ExitCode> {
-    let result = if check {
+    let result = if pipeline && check {
+        cli::preflight_mfd_pipeline_export(project, out)
+    } else if pipeline {
+        cli::export_mfd_pipeline_with_profile(project, out, profile)
+    } else if check {
         cli::preflight_mfd_export(project, out)
     } else {
         cli::export_mfd_with_profile(project, out, profile)
