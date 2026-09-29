@@ -1203,7 +1203,7 @@ pub(super) fn read_csv_component(
     })
 }
 
-/// Reads an EDI text component from the visible entry tree. the reference application's
+/// Reads an EDI text component from the visible entry tree. The reference application's
 /// external configuration files are not portable with the design, so the
 /// fallback preserves connected paths while being explicit about the lost
 /// types, qualifiers, and exact cardinalities.

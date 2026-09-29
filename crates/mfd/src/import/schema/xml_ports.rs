@@ -429,7 +429,7 @@ fn schema_node_at_mut<'a>(
     Some(schema)
 }
 
-/// The design format puts a non-repeating simple-content value on its parent element's
+/// The reference application puts a non-repeating simple-content value on its parent element's
 /// port. Ferrule stores that value under `#text`; repeating and mixed-content
 /// parent ports stay structural because their port carries the node sequence.
 pub(super) fn normalize_xml_text_ports(

@@ -151,7 +151,7 @@ impl GraphBuilder<'_> {
     }
 
     /// Recognizes a computed sequence filtered by equality across two physical
-    /// collections. the reference application uses this shape for implicit relational joins;
+    /// collections. The reference application uses this shape for implicit relational joins;
     /// reducing it as either collection alone leaves the other source frame
     /// unavailable while the aggregate expression is evaluated.
     fn filtered_equality_join_aggregate(

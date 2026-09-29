@@ -816,105 +816,135 @@ impl<'a> Expander<'a> {
                 })?;
         self.bump_node_count()?;
         self.active.push(name);
-        let result =
-            match &declaration.content {
-                Content::Any => {
-                    self.bump_node_count()?;
-                    let mut children =
-                        vec![SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text()];
-                    children.push(self.expand_any_elements()?);
-                    children.extend(self.expand_attributes(&declaration.attributes)?);
-                    Ok(SchemaNode::group(name, children))
-                }
-                Content::Text if declaration.attributes.is_empty() => {
-                    Ok(SchemaNode::scalar(name, ScalarType::String))
-                }
-                Content::Text => {
-                    self.bump_node_count()?;
-                    let mut children =
-                        vec![SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text()];
-                    children.extend(self.expand_attributes(&declaration.attributes)?);
-                    Ok(SchemaNode::group(name, children))
-                }
-                Content::Mixed(names) => {
-                    self.bump_node_count()?;
-                    let mut children =
-                        Vec::with_capacity(names.len() + declaration.attributes.len() + 1);
-                    children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
-                    let mut seen = BTreeSet::new();
-                    for child_name in names {
-                        if !seen.insert(child_name.as_str()) {
-                            return Err(DtdError::DuplicateMixedChild {
-                                element: name.to_string(),
-                                child: child_name.clone(),
-                            });
-                        }
-                        let (child_name, _) = self
-                            .document
-                            .elements
-                            .get_key_value(child_name)
-                            .ok_or_else(|| DtdError::UnresolvedElement {
-                                parent: name.to_string(),
-                                child: child_name.clone(),
-                            })?;
-                        let mut child = self.expand_element(child_name)?;
-                        child.repeating = true;
-                        children.push(child);
-                    }
-                    if let Some(attribute) = declaration
-                        .attributes
-                        .iter()
-                        .find(|attribute| children.iter().any(|child| child.name == attribute.name))
-                    {
-                        return Err(DtdError::AttributeElementNameCollision {
-                            element: name.to_string(),
-                            name: attribute.name.clone(),
-                        });
-                    }
-                    children.extend(self.expand_attributes(&declaration.attributes)?);
-                    Ok(SchemaNode::group(name, children))
-                }
-                Content::Empty => Ok(SchemaNode::group(
-                    name,
-                    self.expand_attributes(&declaration.attributes)?,
-                )),
-                Content::Children(particle) => {
-                    if let Some(names) = heterogeneous_repeating_names(particle) {
-                        let mut children = vec![self.expand_generic_elements(name, names)?];
-                        children.extend(self.expand_attributes(&declaration.attributes)?);
-                        Ok(SchemaNode::group(name, children))
-                    } else {
-                        let uses = child_uses(name, particle)?;
-                        let mut children =
-                            Vec::with_capacity(uses.len() + declaration.attributes.len());
-                        for child_use in uses {
-                            let (child_name, _) = self
-                                .document
-                                .elements
-                                .get_key_value(child_use.name)
-                                .ok_or_else(|| DtdError::UnresolvedElement {
-                                    parent: name.to_string(),
-                                    child: child_use.name.to_string(),
-                                })?;
-                            let mut child = self.expand_element(child_name)?;
-                            child.repeating = child_use.repeating;
-                            children.push(child);
-                        }
-                        if let Some(attribute) = declaration.attributes.iter().find(|attribute| {
-                            children.iter().any(|child| child.name == attribute.name)
-                        }) {
-                            return Err(DtdError::AttributeElementNameCollision {
-                                element: name.to_string(),
-                                name: attribute.name.clone(),
-                            });
-                        }
-                        children.extend(self.expand_attributes(&declaration.attributes)?);
-                        Ok(SchemaNode::group(name, children))
-                    }
-                }
-            };
+        let result = match &declaration.content {
+            Content::Any => self.expand_any_content(name, &declaration.attributes),
+            Content::Text => self.expand_text_content(name, &declaration.attributes),
+            Content::Mixed(names) => {
+                self.expand_mixed_content(name, names, &declaration.attributes)
+            }
+            Content::Empty => self.expand_empty_content(name, &declaration.attributes),
+            Content::Children(particle) => {
+                self.expand_children_content(name, particle, &declaration.attributes)
+            }
+        };
         self.active.pop();
         result
+    }
+
+    fn expand_any_content(
+        &mut self,
+        name: &str,
+        attributes: &[AttributeDecl],
+    ) -> Result<SchemaNode, DtdError> {
+        self.bump_node_count()?;
+        let mut children = vec![SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text()];
+        children.push(self.expand_any_elements()?);
+        children.extend(self.expand_attributes(attributes)?);
+        Ok(SchemaNode::group(name, children))
+    }
+
+    fn expand_text_content(
+        &mut self,
+        name: &str,
+        attributes: &[AttributeDecl],
+    ) -> Result<SchemaNode, DtdError> {
+        if attributes.is_empty() {
+            return Ok(SchemaNode::scalar(name, ScalarType::String));
+        }
+        self.bump_node_count()?;
+        let mut children = vec![SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text()];
+        children.extend(self.expand_attributes(attributes)?);
+        Ok(SchemaNode::group(name, children))
+    }
+
+    fn expand_empty_content(
+        &mut self,
+        name: &str,
+        attributes: &[AttributeDecl],
+    ) -> Result<SchemaNode, DtdError> {
+        Ok(SchemaNode::group(name, self.expand_attributes(attributes)?))
+    }
+
+    fn expand_mixed_content(
+        &mut self,
+        name: &str,
+        names: &[String],
+        attributes: &[AttributeDecl],
+    ) -> Result<SchemaNode, DtdError> {
+        self.bump_node_count()?;
+        let mut children = Vec::with_capacity(names.len() + attributes.len() + 1);
+        children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+        let mut seen = BTreeSet::new();
+        for child_name in names {
+            if !seen.insert(child_name.as_str()) {
+                return Err(DtdError::DuplicateMixedChild {
+                    element: name.to_string(),
+                    child: child_name.clone(),
+                });
+            }
+            let (child_name, _) = self
+                .document
+                .elements
+                .get_key_value(child_name)
+                .ok_or_else(|| DtdError::UnresolvedElement {
+                    parent: name.to_string(),
+                    child: child_name.clone(),
+                })?;
+            let mut child = self.expand_element(child_name)?;
+            child.repeating = true;
+            children.push(child);
+        }
+        if let Some(attribute) = attributes
+            .iter()
+            .find(|attribute| children.iter().any(|child| child.name == attribute.name))
+        {
+            return Err(DtdError::AttributeElementNameCollision {
+                element: name.to_string(),
+                name: attribute.name.clone(),
+            });
+        }
+        children.extend(self.expand_attributes(attributes)?);
+        Ok(SchemaNode::group(name, children))
+    }
+
+    fn expand_children_content(
+        &mut self,
+        name: &str,
+        particle: &Particle,
+        attributes: &[AttributeDecl],
+    ) -> Result<SchemaNode, DtdError> {
+        if let Some(names) = heterogeneous_repeating_names(particle) {
+            let mut children = vec![self.expand_generic_elements(name, names)?];
+            children.extend(self.expand_attributes(attributes)?);
+            return Ok(SchemaNode::group(name, children));
+        }
+
+        let uses = child_uses(name, particle)?;
+        let mut children = Vec::with_capacity(uses.len() + attributes.len());
+        for child_use in uses {
+            let (child_name, _) = self
+                .document
+                .elements
+                .get_key_value(child_use.name)
+                .ok_or_else(|| DtdError::UnresolvedElement {
+                    parent: name.to_string(),
+                    child: child_use.name.to_string(),
+                })?;
+            let mut child = self.expand_element(child_name)?;
+            child.repeating = child_use.repeating;
+            children.push(child);
+        }
+        if let Some(attribute) = attributes
+            .iter()
+            .find(|attribute| children.iter().any(|child| child.name == attribute.name))
+        {
+            return Err(DtdError::AttributeElementNameCollision {
+                element: name.to_string(),
+                name: attribute.name.clone(),
+            });
+        }
+        children.extend(self.expand_attributes(attributes)?);
+        Ok(SchemaNode::group(name, children))
     }
 
     fn expand_attributes(

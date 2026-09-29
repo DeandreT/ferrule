@@ -174,7 +174,7 @@ impl FerruleApp {
                     if issues.is_empty() {
                         self.diagnostics.clear();
                     } else {
-                        self.diagnostics.validation(issues);
+                        self.diagnostics.validation(&self.project, issues);
                     }
                 }
             }

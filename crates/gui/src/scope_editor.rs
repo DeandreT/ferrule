@@ -360,9 +360,22 @@ pub fn binding_target_fields(target: &SchemaNode, chain: &[String]) -> Vec<Strin
 
 /// Renders the scope tree as clickable labels; returns the newly selected
 /// path, if the user clicked one.
-pub fn show_scope_tree(ui: &mut Ui, root: &Scope, selected: &ScopePath) -> Option<ScopePath> {
+pub fn show_scope_tree(
+    ui: &mut Ui,
+    root: &Scope,
+    selected: &ScopePath,
+    reveal_selected: bool,
+) -> Option<ScopePath> {
     let mut new_selection = None;
-    show_scope_node(ui, root, "root", &mut vec![], selected, &mut new_selection);
+    show_scope_node(
+        ui,
+        root,
+        "root",
+        &mut vec![],
+        selected,
+        reveal_selected,
+        &mut new_selection,
+    );
     new_selection
 }
 
@@ -372,6 +385,7 @@ fn show_scope_node(
     label: &str,
     path: &mut ScopePath,
     selected: &ScopePath,
+    reveal_selected: bool,
     new_selection: &mut Option<ScopePath>,
 ) {
     let is_selected = path == selected;
@@ -391,12 +405,23 @@ fn show_scope_node(
                 } else {
                     child.target_field.clone()
                 };
-                show_scope_node(ui, child, &child_label, path, selected, new_selection);
+                show_scope_node(
+                    ui,
+                    child,
+                    &child_label,
+                    path,
+                    selected,
+                    reveal_selected,
+                    new_selection,
+                );
                 path.pop();
             }
         });
     if response.header_response.clicked() {
         *new_selection = Some(path.clone());
+    }
+    if is_selected && reveal_selected {
+        response.header_response.scroll_to_me(None);
     }
 }
 

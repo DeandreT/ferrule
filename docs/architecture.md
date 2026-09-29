@@ -18,7 +18,7 @@ flowchart TB
     subgraph design["Mapping design"]
         direction TB
         projectFile["Ferrule project JSON"]
-        mfdFile[".mfd"]
+        mfdFile[".mfd design"]
         mfd["mfd importer/exporter<br/>confined resource resolution<br/>and actionable warnings"]
         project["mapping::Project<br/>schemas, expression graph, scopes,<br/>endpoints, options, UDFs, and failures"]
     end

@@ -139,7 +139,7 @@ cargo +nightly run -p cli -- import-json-schema --schema customers.schema.json
 cargo +nightly run -p cli -- import-db --db warehouse.db --table orders
 ```
 
-Import or export an .mfd design:
+Import or export a `.mfd` design:
 
 ```sh
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --out project.json
@@ -148,7 +148,17 @@ cargo +nightly run -p cli -- import-mfd --mfd package/maps/design.mfd --package-
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --edi-catalog-root edi-configs --out project.json
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --json-schema-root schemas --out project.json
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
+cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
+cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
 ```
+
+`export-mfd` defaults to `--profile ferrule-extensions`, preserving Ferrule's
+round-trip features. `--profile native-mfd` refuses known Ferrule-only
+dependencies and lossy exports before writing any artifacts. `--check` renders
+the export for compatibility inspection without writing files or directories;
+`--report-json` prints a versioned, deterministic report on stdout. See
+[`.mfd` interoperability](docs/mfd-interop.md#export) for the report's
+limits.
 
 Emit machine-readable validation diagnostics:
 
@@ -163,15 +173,25 @@ output:
 cargo +nightly run -p cli -- run --project project.json --trace-json run.trace.jsonl
 ```
 
+Run a [mapping pipeline](docs/mapping-pipelines.md) and publish only selected
+stage targets after the complete graph succeeds:
+
+```sh
+cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
+  --input orders orders.json --output invoice invoice.json \
+  --named-output prepare audit audit.json
+```
+
 ## Documentation
 
 - [Mapping model and workspace architecture](docs/architecture.md)
+- [Mapping pipelines](docs/mapping-pipelines.md)
 - [Execution trace JSON Lines contract](docs/tracing.md)
 - [Supported formats](docs/formats.md)
-- [MFD interoperability](docs/mfd-interop.md)
+- [`.mfd` interoperability](docs/mfd-interop.md)
 - [Rust and C# code generation](docs/code-generation.md)
 - [Runnable generated Rust and C# hosts](examples/codegen/)
-- [Workflow-parity roadmap](ROADMAP.md)
+- [Compatibility and product-parity roadmap](ROADMAP.md)
 
 The integration fixtures under `crates/cli/tests/fixtures/` are executable
 examples covering XML, JSON, CSV, SQLite, X12, EDIFACT, and cross-source

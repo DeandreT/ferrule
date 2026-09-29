@@ -2,7 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mapping::{FunctionId, Graph, Node, NodeId, Project, UserFunction};
 
-use super::{ValidationIssue, validate_builtin_call, validate_runtime_parameter_name};
+use super::{
+    ValidationIssue, ValidationOwner, own_issues, validate_builtin_call,
+    validate_runtime_parameter_name,
+};
 use crate::user_function::MAX_USER_FUNCTION_DEPTH;
 
 pub(super) fn validate_user_functions(project: &Project, issues: &mut Vec<ValidationIssue>) {
@@ -10,6 +13,7 @@ pub(super) fn validate_user_functions(project: &Project, issues: &mut Vec<Valida
 
     let mut names = BTreeMap::new();
     for (&id, function) in &project.user_functions {
+        let ownership_start = issues.len();
         let location = function_location(id, function);
         let library = function.library.trim();
         let name = function.name.trim();
@@ -41,12 +45,17 @@ pub(super) fn validate_user_functions(project: &Project, issues: &mut Vec<Valida
         }
         validate_parameters(&location, function, issues);
         validate_body(project, id, function, issues);
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::UserFunction(id),
+        );
     }
     validate_call_graph(project, issues);
 }
 
 fn validate_main_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
     for (&node_id, node) in &project.graph.nodes {
+        let ownership_start = issues.len();
         let location = format!("graph node {node_id}");
         match node {
             Node::FunctionParameter { .. } => issues.push(ValidationIssue::new(
@@ -58,6 +67,13 @@ fn validate_main_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
             }
             _ => {}
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::GraphNode {
+                function: None,
+                node: node_id,
+            },
+        );
     }
 }
 
@@ -105,6 +121,7 @@ fn validate_body(
         .map(|parameter| parameter.id)
         .collect();
     for (&node_id, node) in &function.body.nodes {
+        let ownership_start = issues.len();
         let node_location = format!("{location} body node {node_id}");
         for dependency in node.dependencies() {
             if !function.body.nodes.contains_key(&dependency) {
@@ -142,8 +159,15 @@ fn validate_body(
                 "node kind is not supported in an isolated scalar user-defined function",
             )),
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::GraphNode {
+                function: Some(function_id),
+                node: node_id,
+            },
+        );
     }
-    validate_body_cycles(&location, &function.body, issues);
+    validate_body_cycles(&location, function_id, &function.body, issues);
 }
 
 fn validate_call(
@@ -175,28 +199,48 @@ fn validate_call(
     }
 }
 
-fn validate_body_cycles(location: &str, graph: &Graph, issues: &mut Vec<ValidationIssue>) {
+fn validate_body_cycles(
+    location: &str,
+    function: FunctionId,
+    graph: &Graph,
+    issues: &mut Vec<ValidationIssue>,
+) {
     fn visit(
         id: NodeId,
         graph: &Graph,
         active: &mut BTreeSet<NodeId>,
         done: &mut BTreeSet<NodeId>,
         reported: &mut BTreeSet<NodeId>,
-        location: &str,
+        location: (&str, FunctionId),
         issues: &mut Vec<ValidationIssue>,
     ) {
+        let (location, function) = location;
         active.insert(id);
         if let Some(node) = graph.nodes.get(&id) {
             for dependency in node.dependencies() {
                 if active.contains(&dependency) {
                     if reported.insert(dependency) {
-                        issues.push(ValidationIssue::new(
-                            format!("{location} body node {id}"),
-                            format!("cycle reaches body node {dependency}"),
-                        ));
+                        issues.push(
+                            ValidationIssue::new(
+                                format!("{location} body node {id}"),
+                                format!("cycle reaches body node {dependency}"),
+                            )
+                            .with_owner(ValidationOwner::GraphNode {
+                                function: Some(function),
+                                node: id,
+                            }),
+                        );
                     }
                 } else if graph.nodes.contains_key(&dependency) && !done.contains(&dependency) {
-                    visit(dependency, graph, active, done, reported, location, issues);
+                    visit(
+                        dependency,
+                        graph,
+                        active,
+                        done,
+                        reported,
+                        (location, function),
+                        issues,
+                    );
                 }
             }
         }
@@ -215,7 +259,7 @@ fn validate_body_cycles(location: &str, graph: &Graph, issues: &mut Vec<Validati
                 &mut active,
                 &mut done,
                 &mut reported,
-                location,
+                (location, function),
                 issues,
             );
         }
@@ -272,12 +316,15 @@ fn validate_call_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
                 .and_modify(|current| *current = (*current).max(next_depth))
                 .or_insert(next_depth);
             if next_depth > MAX_USER_FUNCTION_DEPTH && !reported_depth {
-                issues.push(ValidationIssue::new(
-                    format!("user function {}", callee.get()),
-                    format!(
-                        "call nesting exceeds the limit of {MAX_USER_FUNCTION_DEPTH} functions"
-                    ),
-                ));
+                issues.push(
+                    ValidationIssue::new(
+                        format!("user function {}", callee.get()),
+                        format!(
+                            "call nesting exceeds the limit of {MAX_USER_FUNCTION_DEPTH} functions"
+                        ),
+                    )
+                    .with_owner(ValidationOwner::UserFunction(callee)),
+                );
                 reported_depth = true;
             }
             let Some(count) = incoming.get_mut(&callee) else {

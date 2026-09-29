@@ -411,11 +411,7 @@ fn print_drifts(outcomes: &[RoundtripOutcome]) {
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
     let samples_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
-    if !samples_root.is_dir() {
-        eprintln!(
-            "samples dir not found at {}; skipping",
-            samples_root.display()
-        );
+    if !super::survey_gate::corpus_available(&samples_root)? {
         return Ok(());
     }
     let import_context = SurveyResourceSelection::from_environment().resolve(&samples_root)?;
@@ -464,6 +460,29 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
         )?;
         println!("json report: {}", report_path.display());
     }
+    super::survey_gate::enforce_exact(
+        "MFD export/re-import execution survey",
+        &[
+            ("total", summary.total, 187),
+            ("dependency_blocked", summary.dependency_blocked, 12),
+            ("safe_inputs", summary.safe_inputs, 168),
+            (
+                "original_execution_passed",
+                summary.original_execution_passed,
+                168,
+            ),
+            ("exported", summary.exported, 168),
+            ("reimported", summary.reimported, 168),
+            ("roundtrip_valid", summary.roundtrip_valid, 168),
+            (
+                "roundtrip_execution_passed",
+                summary.roundtrip_execution_passed,
+                168,
+            ),
+            ("outputs_matched", summary.outputs_matched, 168),
+            ("semantic_drifts", summary.semantic_drifts, 0),
+        ],
+    )?;
     Ok(())
 }
 

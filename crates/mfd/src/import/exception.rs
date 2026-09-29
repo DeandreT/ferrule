@@ -132,7 +132,7 @@ fn direct_selection(
         warn(
             builder,
             name,
-            "does not have two distinct connected filter branches; the native design does not throw this exception",
+            "does not have two distinct connected filter branches; the reference application does not throw this exception",
         );
         return None;
     }

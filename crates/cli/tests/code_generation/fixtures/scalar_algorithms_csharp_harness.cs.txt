@@ -1,39 +1,33 @@
 using Ferrule.Generated;
 using Ferrule.Runtime;
 
-var output = (FerruleGroup)GeneratedMapping.Execute(Source(false, false, false, false, false, false));
+var output = (FerruleGroup)GeneratedMapping.Execute(Source(false, false, false, false, false));
 foreach (var (group, name, expected) in ExpectedValues())
 {
     AssertValue(output, group, name, expected);
 }
 AssertError(
-    () => GeneratedMapping.Execute(Source(true, false, false, false, false, false)),
+    () => GeneratedMapping.Execute(Source(true, false, false, false, false)),
     FerruleRuntimeError.FunctionType,
     "substring",
     found: FerruleValueKind.Int64);
 AssertError(
-    () => GeneratedMapping.Execute(Source(false, true, false, false, false, false)),
+    () => GeneratedMapping.Execute(Source(false, true, false, false, false)),
     FerruleRuntimeError.FunctionInvalidArgument,
     "isbn10_to_isbn13",
     detail: "ISBN-10 check digit is invalid");
 AssertError(
-    () => GeneratedMapping.Execute(Source(false, false, true, false, false, false)),
-    FerruleRuntimeError.FunctionArity,
-    "date_from_datetime",
-    expectedArity: 1,
-    actualArity: 0);
-AssertError(
-    () => GeneratedMapping.Execute(Source(false, false, false, true, false, false)),
+    () => GeneratedMapping.Execute(Source(false, false, true, false, false)),
     FerruleRuntimeError.FunctionInvalidArgument,
     "to_number",
     detail: "requires a finite numeric value");
 AssertError(
-    () => GeneratedMapping.Execute(Source(false, false, false, false, true, false)),
+    () => GeneratedMapping.Execute(Source(false, false, false, true, false)),
     FerruleRuntimeError.FunctionType,
     "delay_passthrough",
     found: FerruleValueKind.Bool);
 AssertError(
-    () => GeneratedMapping.Execute(Source(false, false, false, false, false, true)),
+    () => GeneratedMapping.Execute(Source(false, false, false, false, true)),
     FerruleRuntimeError.FunctionInvalidArgument,
     "delay_passthrough",
     detail: "requires a finite nonnegative duration");
@@ -41,14 +35,12 @@ AssertError(
 static FerruleGroup Source(
     bool failType,
     bool failInvalid,
-    bool failArity,
     bool failNumberInvalid,
     bool failDelayType,
     bool failDelayInvalid) => new(new FerruleField[]
 {
     new("FailType", new FerruleScalar(FerruleValue.FromBoolean(failType))),
     new("FailInvalid", new FerruleScalar(FerruleValue.FromBoolean(failInvalid))),
-    new("FailArity", new FerruleScalar(FerruleValue.FromBoolean(failArity))),
     new("FailNumberInvalid", new FerruleScalar(FerruleValue.FromBoolean(failNumberInvalid))),
     new("FailDelayType", new FerruleScalar(FerruleValue.FromBoolean(failDelayType))),
     new("FailDelayInvalid", new FerruleScalar(FerruleValue.FromBoolean(failDelayInvalid))),
@@ -70,8 +62,6 @@ static void AssertError(
     Action action,
     FerruleRuntimeError expected,
     string function,
-    int? expectedArity = null,
-    int? actualArity = null,
     FerruleValueKind? found = null,
     string? detail = null)
 {
@@ -82,8 +72,6 @@ static void AssertError(
     catch (FerruleRuntimeException error) when (
         error.Error == expected &&
         error.Function == function &&
-        error.ExpectedArity == expectedArity &&
-        error.ActualArity == actualArity &&
         error.FoundKind == found &&
         error.Detail == detail)
     {
@@ -143,7 +131,6 @@ static IEnumerable<(string Group, string Name, FerruleValue Value)> ExpectedValu
     yield return ("Conversions", "DelayNil", FerruleValue.XmlNil);
     yield return ("Errors", "Type", Text("safe-type"));
     yield return ("Errors", "Invalid", Text("safe-invalid"));
-    yield return ("Errors", "Arity", Text("safe-arity"));
     yield return ("Errors", "NumberInvalid", Text("safe-number"));
     yield return ("Errors", "DelayType", Text("safe-delay-type"));
     yield return ("Errors", "DelayInvalid", Text("safe-delay-invalid"));

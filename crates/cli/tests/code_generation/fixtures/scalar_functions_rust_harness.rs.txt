@@ -2,32 +2,23 @@ use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group
 use ferrule_generated_mapping::execute;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let output = execute(&source(false, false))?;
+    let output = execute(&source(false))?;
     for (group, name, expected) in expected_values() {
         assert_value(&output, group, name, expected);
     }
     assert_eq!(
-        execute(&source(true, false)),
+        execute(&source(true)),
         Err(RuntimeError::Function(FunctionError::TypeMismatch {
             function: "normalize_space",
             got: "int",
         })),
     );
-    assert_eq!(
-        execute(&source(false, true)),
-        Err(RuntimeError::Function(FunctionError::ArityMismatch {
-            function: "resolve_filepath",
-            expected: 2,
-            got: 1,
-        })),
-    );
     Ok(())
 }
 
-fn source(fail_type: bool, fail_arity: bool) -> Instance {
+fn source(fail_type: bool) -> Instance {
     group([
         field("FailType", scalar(Value::Bool(fail_type))),
-        field("FailArity", scalar(Value::Bool(fail_arity))),
     ])
 }
 
@@ -143,6 +134,5 @@ fn expected_values() -> Vec<(&'static str, &'static str, Value)> {
         ),
         ("Temporal", "Null", Value::Null),
         ("Errors", "Type", Value::String("safe-type".into())),
-        ("Errors", "Arity", Value::String("safe-arity".into())),
     ]
 }

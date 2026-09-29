@@ -15,7 +15,7 @@ pub enum ExternalPayloadFormat {
     Xml,
 }
 
-/// The reference application HTTP POST authoring mode retained for inspection.
+/// .mfd HTTP POST authoring mode retained for inspection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExternalHttpMode {

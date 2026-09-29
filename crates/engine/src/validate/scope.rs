@@ -3,18 +3,21 @@ use std::collections::{BTreeMap, BTreeSet};
 use ir::{SchemaKind, SchemaNode, XML_TYPE_FIELD};
 use mapping::{IterationOutput, JoinId, Node, Project, Scope, ScopeConstruction, ScopeIteration};
 
-use super::ValidationIssue;
 use super::graph::validate_adjacency_string_field;
 use super::join::{
     validate_plan as validate_join_plan, validate_roots as validate_join_roots,
     validate_scope_nodes as validate_scope_join_nodes,
 };
 use super::schema::{current_source_schema, display_path, source_path_matches, source_schema_at};
+use super::{
+    ValidationIssue, ValidationOwner, ValidationScopeLocation, ValidationScopeStep, own_issues,
+};
 
 #[derive(Clone, Copy)]
 pub(super) struct ScopeSchemas<'a> {
     pub(super) target: Option<&'a SchemaNode>,
     pub(super) parent_source: Option<&'a SchemaNode>,
+    pub(super) owner: &'a ValidationScopeLocation,
 }
 
 pub(super) fn validate_scope(
@@ -26,6 +29,7 @@ pub(super) fn validate_scope(
     join_owners: &mut BTreeMap<JoinId, String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    let start = issues.len();
     let target = schemas.target;
     let location = if path.is_empty() {
         "root scope".to_string()
@@ -128,6 +132,9 @@ pub(super) fn validate_scope(
                 ScopeSchemas {
                     target: schemas.target,
                     parent_source: schemas.parent_source,
+                    owner: &schemas
+                        .owner
+                        .descendant(ValidationScopeStep::Segment(index)),
                 },
                 path,
                 active_joins,
@@ -136,6 +143,10 @@ pub(super) fn validate_scope(
             );
             path.pop();
         }
+        own_issues(
+            &mut issues[start..],
+            ValidationOwner::Scope(schemas.owner.clone()),
+        );
         return;
     }
     let current_source = current_source_schema(project, schemas.parent_source, &scope.iteration);
@@ -898,7 +909,7 @@ pub(super) fn validate_scope(
     }
 
     let mut child_fields = BTreeSet::new();
-    for child in &scope.children {
+    for (index, child) in scope.children.iter().enumerate() {
         if !child_fields.insert(&child.target_field) {
             issues.push(ValidationIssue::new(
                 &location,
@@ -909,6 +920,8 @@ pub(super) fn validate_scope(
             ));
         }
         path.push(child.target_field.clone());
+        let child_owner = schemas.owner.descendant(ValidationScopeStep::Child(index));
+        let child_start = issues.len();
         let child_target = target.and_then(|target| target.child(&child.target_field));
         match child_target {
             Some(node)
@@ -930,11 +943,16 @@ pub(super) fn validate_scope(
             ScopeSchemas {
                 target: child_target,
                 parent_source: current_source,
+                owner: &child_owner,
             },
             path,
             &active_joins,
             join_owners,
             issues,
+        );
+        own_issues(
+            &mut issues[child_start..],
+            ValidationOwner::Scope(child_owner),
         );
         path.pop();
     }
@@ -958,7 +976,7 @@ pub(super) fn validate_scope(
             ));
         }
     }
-    for child in &scope.dynamic_children {
+    for (index, child) in scope.dynamic_children.iter().enumerate() {
         if !project.graph.nodes.contains_key(&child.key) {
             issues.push(ValidationIssue::new(
                 &location,
@@ -996,6 +1014,9 @@ pub(super) fn validate_scope(
             ScopeSchemas {
                 target: dynamic_target,
                 parent_source: current_source,
+                owner: &schemas
+                    .owner
+                    .descendant(ValidationScopeStep::DynamicChild(index)),
             },
             path,
             &active_joins,
@@ -1004,4 +1025,8 @@ pub(super) fn validate_scope(
         );
         path.pop();
     }
+    own_issues(
+        &mut issues[start..],
+        ValidationOwner::Scope(schemas.owner.clone()),
+    );
 }

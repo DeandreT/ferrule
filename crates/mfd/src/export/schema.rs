@@ -15,7 +15,7 @@ use super::flextext;
 const XLSX_MAX_ROW: u32 = 1_048_576;
 const XLSX_MAX_COLUMN: u32 = 16_384;
 
-/// Which MFD component family a mapping side exports as.
+/// Which .mfd component family a mapping side exports as.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum SideFormat {
     Xbrl,

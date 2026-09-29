@@ -39,14 +39,23 @@ pub fn show_schema_tree(
     state: &SchemaExplorerState,
     id_salt: impl egui::AsIdSalt,
     x12_descriptions: bool,
+    focus: Option<(&[usize], bool)>,
 ) -> bool {
     let query = SearchQuery::new(state.query());
     let plan = MatchPlan::build(schema, &query, &mut Vec::new());
-    if state.is_filtering() && plan.matches == 0 {
+    if state.is_filtering() && plan.matches == 0 && focus.is_none() {
         return false;
     }
     ui.push_id(id_salt, |ui| {
-        show_node(ui, &plan, 0, state.is_filtering(), false, x12_descriptions)
+        show_node(
+            ui,
+            &plan,
+            &mut Vec::new(),
+            state.is_filtering(),
+            false,
+            x12_descriptions,
+            focus,
+        )
     });
     true
 }
@@ -129,46 +138,60 @@ impl<'a> MatchPlan<'a> {
 fn show_node(
     ui: &mut Ui,
     plan: &MatchPlan<'_>,
-    depth: usize,
+    path: &mut Vec<usize>,
     filtering: bool,
     reveal_subtree: bool,
     x12_descriptions: bool,
+    focus: Option<(&[usize], bool)>,
 ) {
-    if filtering && !reveal_subtree && plan.matches == 0 {
+    let focused = focus.is_some_and(|(wanted, _)| wanted == path.as_slice());
+    let focus_descendant = focus.is_some_and(|(wanted, _)| wanted.starts_with(path));
+    if filtering && !reveal_subtree && plan.matches == 0 && !focus_descendant {
         return;
     }
     let label = node_label(plan.node);
+    let text = if focused {
+        RichText::new(label)
+            .strong()
+            .background_color(ui.visuals().selection.bg_fill)
+    } else if filtering && plan.self_matches {
+        RichText::new(label).strong()
+    } else {
+        RichText::new(label)
+    };
     match &plan.node.kind {
         SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
-            ui.label(match (filtering, plan.self_matches) {
-                (true, true) => RichText::new(label).strong(),
-                _ => RichText::new(label),
-            });
+            let response = ui.label(text);
+            if focused && focus.is_some_and(|(_, scroll)| scroll) {
+                response.scroll_to_me(None);
+            }
         }
         SchemaKind::Group { .. } => {
             let leaves = schema_field_count(plan.node);
-            let header = match (filtering, plan.self_matches) {
-                (true, true) => RichText::new(label).strong(),
-                _ => RichText::new(label),
-            };
-            let force_open = filtering && plan.descendant_matches();
-            let response = egui::CollapsingHeader::new(header)
-                .id_salt((depth, plan.node.name.as_str()))
-                .default_open(depth == 0 || leaves <= 12)
+            let force_open = (filtering && plan.descendant_matches()) || focus_descendant;
+            let response = egui::CollapsingHeader::new(text)
+                .id_salt(path.clone())
+                .default_open(path.is_empty() || leaves <= 12)
                 .open(force_open.then_some(true))
                 .show(ui, |ui| {
                     let reveal_children = reveal_subtree || plan.self_matches;
-                    for child in &plan.children {
+                    for (index, child) in plan.children.iter().enumerate() {
+                        path.push(index);
                         show_node(
                             ui,
                             child,
-                            depth + 1,
+                            path,
                             filtering,
                             reveal_children,
                             x12_descriptions,
+                            focus,
                         );
+                        path.pop();
                     }
                 });
+            if focused && focus.is_some_and(|(_, scroll)| scroll) {
+                response.header_response.scroll_to_me(None);
+            }
             response.header_response.on_hover_text(node_hover_text(
                 plan.node,
                 leaves,
