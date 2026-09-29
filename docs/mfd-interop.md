@@ -293,6 +293,11 @@ their row and column boundaries; the reference application's raw-emission
 behavior for those values has not been verified. Invalid or ambiguous dialect
 options reject before output publication.
 
+The fixed-per-run current date/time value exports as the corpus-backed native
+`xpath2/current-dateTime` component. Both that component and `lang/now` import
+to the same typed runtime value and round trip under a fixed execution clock.
+Target-type date/time coercion remains a separate extension dependency.
+
 The default `ferrule-extensions` profile preserves the existing Ferrule
 round-trip representation. Export now reports whether the rendered design has
 known native `.mfd` compatibility dependencies, Ferrule extension

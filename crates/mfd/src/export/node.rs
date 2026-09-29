@@ -889,14 +889,14 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 let out = keys.next();
                 node_out_key.insert(id, out);
                 *uid += 1;
-                let name = match value {
-                    RuntimeValue::MappingFilePath => "mfd-filepath",
-                    RuntimeValue::MainMappingFilePath => "main-mfd-filepath",
-                    RuntimeValue::CurrentDateTime => "now",
+                let (name, library) = match value {
+                    RuntimeValue::MappingFilePath => ("mfd-filepath", "core"),
+                    RuntimeValue::MainMappingFilePath => ("main-mfd-filepath", "core"),
+                    RuntimeValue::CurrentDateTime => ("current-dateTime", "xpath2"),
                 };
                 let _ = write!(
                     components,
-                    "\t\t\t\t<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                    "\t\t\t\t<component name=\"{name}\" library=\"{library}\" uid=\"{uid}\" kind=\"5\">\n\
                      \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
                      \t\t\t\t</component>\n"
