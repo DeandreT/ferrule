@@ -15,6 +15,7 @@ mod json5_unique;
 pub mod json_schema;
 mod pattern_runtime;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::Path;
 
@@ -27,6 +28,7 @@ use thiserror::Error;
 use pattern_runtime::PatternRuntime;
 
 pub(crate) const MAX_JSON5_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_JSON_RECURSION_DEPTH: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum JsonFormatError {
@@ -174,6 +176,113 @@ pub enum JsonFormatError {
     PatternWorkLimit { name: String },
     #[error("JSON Lines cannot encode nullable array container `{name}`")]
     NullableJsonLinesContainer { name: String },
+    #[error("recursive JSON schema reference `{node}` is malformed")]
+    InvalidRecursiveReference { node: String },
+    #[error(
+        "recursive JSON schema reference `{node}` has no unique concrete group anchor `{anchor}`"
+    )]
+    MissingRecursiveAnchor { node: String, anchor: String },
+    #[error("JSON recursion exceeds the {limit}-reference depth limit")]
+    RecursionLimit { limit: usize },
+}
+
+struct RecursiveSchemas<'a> {
+    anchors: BTreeMap<String, &'a SchemaNode>,
+}
+
+impl<'a> RecursiveSchemas<'a> {
+    fn new(root: &'a SchemaNode) -> Result<Self, JsonFormatError> {
+        let mut anchors = BTreeMap::new();
+        let mut duplicates = BTreeSet::new();
+        let mut references = Vec::new();
+        let mut pending = vec![root];
+        while let Some(node) = pending.pop() {
+            if let Some(anchor) = &node.recursive_ref {
+                if !node.recursive_ref_is_valid() || !Self::supported_occurrence_metadata(node) {
+                    return Err(JsonFormatError::InvalidRecursiveReference {
+                        node: node.name.clone(),
+                    });
+                }
+                references.push((node.name.clone(), anchor.clone()));
+            } else if matches!(node.kind, SchemaKind::Group { .. })
+                && anchors.insert(node.name.clone(), node).is_some()
+            {
+                duplicates.insert(node.name.clone());
+            }
+            if let SchemaKind::Group {
+                children, dynamic, ..
+            } = &node.kind
+            {
+                pending.extend(children.iter());
+                if let Some(dynamic) = dynamic {
+                    pending.push(dynamic);
+                }
+            }
+        }
+        for (node, anchor) in references {
+            if !anchors.contains_key(&anchor) || duplicates.contains(&anchor) {
+                return Err(JsonFormatError::MissingRecursiveAnchor { node, anchor });
+            }
+        }
+        Ok(Self { anchors })
+    }
+
+    fn supported_occurrence_metadata(node: &SchemaNode) -> bool {
+        // Only the JSON object/array occurrence metadata copied in `resolve`
+        // may be set here. A marker with additional assertions cannot silently
+        // inherit the anchor's different assertions instead.
+        !node.json_any
+            && node.fixed.is_none()
+            && !node.nullable
+            && node.json_allowed_values.is_none()
+            && node.numeric_range.is_none()
+            && node.json_multiple_of.is_none()
+            && node.json_dependent_schemas.is_none()
+            && node.property_count_range.is_none()
+            && node.json_property_dependencies.is_none()
+            && node.json_pattern_property_names.is_none()
+            && node.json_property_names.is_none()
+            && node.string_length_range.is_none()
+            && node.json_patterns.is_none()
+            && node.json_formats.is_empty()
+            && (node.repeating
+                || (node.item_count_range.is_none()
+                    && node.json_contains.is_none()
+                    && !node.json_unique_items))
+    }
+
+    fn resolve(
+        &self,
+        occurrence: &SchemaNode,
+        recursion_depth: usize,
+    ) -> Result<(SchemaNode, usize), JsonFormatError> {
+        let Some(anchor) = &occurrence.recursive_ref else {
+            unreachable!("resolve is only called for a recursive occurrence");
+        };
+        if recursion_depth >= MAX_JSON_RECURSION_DEPTH {
+            return Err(JsonFormatError::RecursionLimit {
+                limit: MAX_JSON_RECURSION_DEPTH,
+            });
+        }
+        let mut resolved =
+            (*self
+                .anchors
+                .get(anchor)
+                .ok_or_else(|| JsonFormatError::MissingRecursiveAnchor {
+                    node: occurrence.name.clone(),
+                    anchor: anchor.clone(),
+                })?)
+            .clone();
+        resolved.name.clone_from(&occurrence.name);
+        resolved.repeating = occurrence.repeating;
+        resolved.container_nullable = occurrence.container_nullable;
+        resolved
+            .item_count_range
+            .clone_from(&occurrence.item_count_range);
+        resolved.json_contains.clone_from(&occurrence.json_contains);
+        resolved.json_unique_items = occurrence.json_unique_items;
+        Ok((resolved, recursion_depth + 1))
+    }
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
@@ -275,20 +384,27 @@ pub fn from_json5_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonF
 }
 
 fn from_value(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    let recursive = RecursiveSchemas::new(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
     if schema.repeating {
-        read_repeated(value, schema, &mut patterns)
+        read_repeated(value, schema, &recursive, 0, &mut patterns)
     } else if let (SchemaKind::Group { .. }, serde_json::Value::Array(rows)) = (&schema.kind, value)
     {
         // Flat-row sources retain a non-repeating row schema while presenting
         // the root records as one repeated instance, like the JSON writer.
         let mut parsed = Vec::with_capacity(rows.len());
         for row in rows {
-            parsed.push(read_node_with_patterns(row, schema, &mut patterns)?);
+            parsed.push(read_node_with_patterns(
+                row,
+                schema,
+                &recursive,
+                0,
+                &mut patterns,
+            )?);
         }
         Ok(Instance::Repeated(parsed))
     } else {
-        read_node_with_patterns(value, schema, &mut patterns)
+        read_node_with_patterns(value, schema, &recursive, 0, &mut patterns)
     }
 }
 
@@ -351,6 +467,7 @@ fn check_json5_nesting(text: &str) -> Result<(), JsonFormatError> {
 /// Reads JSON Lines text into a repeated instance.
 pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
+    let recursive = RecursiveSchemas::new(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
     let lines = strip_utf8_bom(text)
         .lines()
@@ -366,7 +483,13 @@ pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonForma
     }
     let mut items = Vec::with_capacity(values.len());
     for value in &values {
-        items.push(read_node_with_patterns(value, schema, &mut patterns)?);
+        items.push(read_node_with_patterns(
+            value,
+            schema,
+            &recursive,
+            0,
+            &mut patterns,
+        )?);
     }
     if schema.repeating {
         json_schema::contains::validate_values(schema, &values, &mut patterns)?;
@@ -381,8 +504,18 @@ fn strip_utf8_bom(text: &str) -> &str {
 fn read_repeated(
     value: &serde_json::Value,
     schema: &SchemaNode,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
     patterns: &mut PatternRuntime,
 ) -> Result<Instance, JsonFormatError> {
+    let resolved;
+    let (schema, recursion_depth) = if schema.recursive_ref.is_some() {
+        let (value, next_depth) = recursive.resolve(schema, recursion_depth)?;
+        resolved = value;
+        (&resolved, next_depth)
+    } else {
+        (schema, recursion_depth)
+    };
     if value.is_null() && schema.container_nullable {
         return Ok(Instance::Scalar(Value::json_null()));
     }
@@ -396,7 +529,13 @@ fn read_repeated(
     json_schema::item_counts::validate_len(schema, items.len())?;
     let mut parsed = Vec::with_capacity(items.len());
     for item in items {
-        parsed.push(read_node_with_patterns(item, schema, patterns)?);
+        parsed.push(read_node_with_patterns(
+            item,
+            schema,
+            recursive,
+            recursion_depth,
+            patterns,
+        )?);
     }
     json_schema::contains::validate_values(schema, items, patterns)?;
     let items = parsed;
@@ -405,15 +544,26 @@ fn read_repeated(
 
 #[cfg(test)]
 fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    let recursive = RecursiveSchemas::new(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
-    read_node_with_patterns(value, schema, &mut patterns)
+    read_node_with_patterns(value, schema, &recursive, 0, &mut patterns)
 }
 
 fn read_node_with_patterns(
     value: &serde_json::Value,
     schema: &SchemaNode,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
     patterns: &mut PatternRuntime,
 ) -> Result<Instance, JsonFormatError> {
+    let resolved;
+    let (schema, recursion_depth) = if schema.recursive_ref.is_some() {
+        let (value, next_depth) = recursive.resolve(schema, recursion_depth)?;
+        resolved = value;
+        (&resolved, next_depth)
+    } else {
+        (schema, recursion_depth)
+    };
     if schema.json_any {
         return Ok(Instance::Scalar(Value::String(serde_json::to_string(
             value,
@@ -500,9 +650,21 @@ fn read_node_with_patterns(
                             dynamic
                         };
                     let field = if field_schema.repeating {
-                        read_repeated(field_value, field_schema, patterns)?
+                        read_repeated(
+                            field_value,
+                            field_schema,
+                            recursive,
+                            recursion_depth,
+                            patterns,
+                        )?
                     } else {
-                        read_node_with_patterns(field_value, field_schema, patterns)?
+                        read_node_with_patterns(
+                            field_value,
+                            field_schema,
+                            recursive,
+                            recursion_depth,
+                            patterns,
+                        )?
                     };
                     out.push((name.clone(), field));
                 }
@@ -519,13 +681,25 @@ fn read_node_with_patterns(
                     Some(field_value) if child.repeating => {
                         out.push((
                             child.name.clone(),
-                            read_repeated(field_value, child, patterns)?,
+                            read_repeated(
+                                field_value,
+                                child,
+                                recursive,
+                                recursion_depth,
+                                patterns,
+                            )?,
                         ));
                     }
                     Some(field_value) => {
                         out.push((
                             child.name.clone(),
-                            read_node_with_patterns(field_value, child, patterns)?,
+                            read_node_with_patterns(
+                                field_value,
+                                child,
+                                recursive,
+                                recursion_depth,
+                                patterns,
+                            )?,
                         ));
                     }
                     None if child.repeating && !child.container_nullable => {
@@ -672,6 +846,7 @@ pub fn write_lines(
 /// The returned document ends with a newline, matching [`write`]. This is
 /// the in-memory counterpart used by hosts without filesystem access.
 pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
+    let recursive = RecursiveSchemas::new(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
     // A root scope can produce flat rows even though the row schema itself
     // is not repeating (the same convention used by CSV). Preserve that
@@ -684,12 +859,14 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Jso
                 values.push(write_single_node_with_patterns(
                     schema,
                     item,
+                    &recursive,
+                    0,
                     &mut patterns,
                 )?);
             }
             serde_json::Value::Array(values)
         }
-        _ => write_node_with_patterns(schema, instance, &mut patterns)?,
+        _ => write_node_with_patterns(schema, instance, &recursive, 0, &mut patterns)?,
     };
     let mut text = serde_json::to_string_pretty(&value)?;
     text.push('\n');
@@ -713,6 +890,7 @@ pub fn to_json5_string(
 /// line. A non-repeated instance becomes a single line.
 pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
+    let recursive = RecursiveSchemas::new(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
     let values = match instance {
         Instance::Repeated(items) => {
@@ -724,6 +902,8 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
                 values.push(write_single_node_with_patterns(
                     schema,
                     item,
+                    &recursive,
+                    0,
                     &mut patterns,
                 )?);
             }
@@ -736,6 +916,8 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
             vec![write_single_node_with_patterns(
                 schema,
                 item,
+                &recursive,
+                0,
                 &mut patterns,
             )?]
         }
@@ -766,15 +948,26 @@ fn write_node(
     schema: &SchemaNode,
     instance: &Instance,
 ) -> Result<serde_json::Value, JsonFormatError> {
+    let recursive = RecursiveSchemas::new(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
-    write_node_with_patterns(schema, instance, &mut patterns)
+    write_node_with_patterns(schema, instance, &recursive, 0, &mut patterns)
 }
 
 fn write_node_with_patterns(
     schema: &SchemaNode,
     instance: &Instance,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
     patterns: &mut PatternRuntime,
 ) -> Result<serde_json::Value, JsonFormatError> {
+    let resolved;
+    let (schema, recursion_depth) = if schema.recursive_ref.is_some() {
+        let (value, next_depth) = recursive.resolve(schema, recursion_depth)?;
+        resolved = value;
+        (&resolved, next_depth)
+    } else {
+        (schema, recursion_depth)
+    };
     if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
         return Ok(serde_json::Value::Null);
     }
@@ -792,20 +985,36 @@ fn write_node_with_patterns(
         json_schema::item_counts::validate_len(schema, items.len())?;
         let mut values = Vec::with_capacity(items.len());
         for item in items {
-            values.push(write_single_node_with_patterns(schema, item, patterns)?);
+            values.push(write_single_node_with_patterns(
+                schema,
+                item,
+                recursive,
+                recursion_depth,
+                patterns,
+            )?);
         }
         json_schema::contains::validate_values(schema, &values, patterns)?;
         json_schema::unique_items::validate(schema, &values)?;
         return Ok(serde_json::Value::Array(values));
     }
-    write_single_node_with_patterns(schema, instance, patterns)
+    write_single_node_with_patterns(schema, instance, recursive, recursion_depth, patterns)
 }
 
 fn write_single_node_with_patterns(
     schema: &SchemaNode,
     instance: &Instance,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
     patterns: &mut PatternRuntime,
 ) -> Result<serde_json::Value, JsonFormatError> {
+    let resolved;
+    let (schema, recursion_depth) = if schema.recursive_ref.is_some() {
+        let (value, next_depth) = recursive.resolve(schema, recursion_depth)?;
+        resolved = value;
+        (&resolved, next_depth)
+    } else {
+        (schema, recursion_depth)
+    };
     let instance = match instance {
         Instance::MappedSequence(items) => match items.as_slice() {
             [item] => item,
@@ -884,7 +1093,13 @@ fn write_single_node_with_patterns(
                     }
                     out.insert(
                         name.clone(),
-                        write_node_with_patterns(child_schema, child_instance, patterns)?,
+                        write_node_with_patterns(
+                            child_schema,
+                            child_instance,
+                            recursive,
+                            recursion_depth,
+                            patterns,
+                        )?,
                     );
                 }
                 for property in out.keys() {
@@ -919,7 +1134,13 @@ fn write_single_node_with_patterns(
                     }
                     out.insert(
                         child_schema.name.clone(),
-                        write_node_with_patterns(child_schema, child_instance, patterns)?,
+                        write_node_with_patterns(
+                            child_schema,
+                            child_instance,
+                            recursive,
+                            recursion_depth,
+                            patterns,
+                        )?,
                     );
                 }
             }
@@ -1271,6 +1492,161 @@ fn write_shape_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recursive_groups_round_trip_without_losing_descendants() -> Result<(), JsonFormatError> {
+        let schema = SchemaNode::group(
+            "directory",
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::scalar("file", ScalarType::String).repeating(),
+                SchemaNode::recursive_group("directory", "directory").repeating(),
+            ],
+        );
+        let source = serde_json::json!({
+            "name": "root",
+            "file": ["a"],
+            "directory": [{
+                "name": "child",
+                "file": ["b"],
+                "directory": [{"name": "grandchild", "file": ["c"]}]
+            }]
+        });
+        let parsed = from_str(&source.to_string(), &schema)?;
+        let child = &parsed.field("directory").unwrap().as_repeated().unwrap()[0];
+        let grandchild = &child.field("directory").unwrap().as_repeated().unwrap()[0];
+        assert_eq!(
+            grandchild.field("name").and_then(Instance::as_scalar),
+            Some(&Value::String("grandchild".into()))
+        );
+        assert_eq!(
+            grandchild.field("file").unwrap().as_repeated().unwrap()[0].as_scalar(),
+            Some(&Value::String("c".into()))
+        );
+        let written = to_string(&schema, &parsed)?;
+        assert_eq!(from_str(&written, &schema)?, parsed);
+        let rendered: serde_json::Value = serde_json::from_str(&written)?;
+        assert_eq!(
+            rendered["directory"][0]["directory"][0]["name"],
+            "grandchild"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn recursive_occurrence_keeps_its_local_name_and_repetition() -> Result<(), JsonFormatError> {
+        let branch = SchemaNode::group(
+            "Branch",
+            vec![
+                SchemaNode::scalar("value", ScalarType::Int),
+                SchemaNode::recursive_group("child", "Branch").repeating(),
+            ],
+        );
+        let schema = SchemaNode::group("root", vec![branch]);
+        let source = r#"{"Branch":{"value":1,"child":[{"value":2,"child":[{"value":3}]}]}}"#;
+        let parsed = from_str(source, &schema)?;
+        let written = to_string(&schema, &parsed)?;
+        assert_eq!(from_str(&written, &schema)?, parsed);
+        let rendered: serde_json::Value = serde_json::from_str(&written)?;
+        assert_eq!(rendered["Branch"]["child"][0]["child"][0]["value"], 3);
+        Ok(())
+    }
+
+    #[test]
+    fn recursive_schema_rejects_missing_ambiguous_and_malformed_anchors() {
+        let missing =
+            SchemaNode::group("root", vec![SchemaNode::recursive_group("child", "absent")]);
+        assert!(matches!(
+            from_str("{}", &missing),
+            Err(JsonFormatError::MissingRecursiveAnchor { .. })
+        ));
+        assert!(matches!(
+            to_string(&missing, &Instance::Group(Vec::new())),
+            Err(JsonFormatError::MissingRecursiveAnchor { .. })
+        ));
+
+        let ambiguous = SchemaNode::group(
+            "root",
+            vec![
+                SchemaNode::group("Branch", Vec::new()),
+                SchemaNode::group("Branch", Vec::new()),
+                SchemaNode::recursive_group("child", "Branch"),
+            ],
+        );
+        assert!(matches!(
+            from_str("{}", &ambiguous),
+            Err(JsonFormatError::MissingRecursiveAnchor { .. })
+        ));
+
+        let mut malformed = SchemaNode::recursive_group("child", "root");
+        if let SchemaKind::Group { children, .. } = &mut malformed.kind {
+            children.push(SchemaNode::scalar("unexpected", ScalarType::String));
+        }
+        let malformed = SchemaNode::group("root", vec![malformed]);
+        assert!(matches!(
+            from_str("{}", &malformed),
+            Err(JsonFormatError::InvalidRecursiveReference { .. })
+        ));
+
+        let mut constrained = SchemaNode::recursive_group("child", "root");
+        constrained.property_count_range = ir::PropertyCountRange::new(1, None);
+        let constrained = SchemaNode::group("root", vec![constrained]);
+        assert!(matches!(
+            from_str("{}", &constrained),
+            Err(JsonFormatError::InvalidRecursiveReference { .. })
+        ));
+        assert!(matches!(
+            to_string(&constrained, &Instance::Group(Vec::new())),
+            Err(JsonFormatError::InvalidRecursiveReference { .. })
+        ));
+    }
+
+    #[test]
+    fn recursive_json_reads_and_writes_are_depth_bounded() {
+        let schema = SchemaNode::group("node", vec![SchemaNode::recursive_group("node", "node")]);
+        let mut value = serde_json::json!({});
+        let mut instance = Instance::Group(Vec::new());
+        for _ in 0..=MAX_JSON_RECURSION_DEPTH {
+            value = serde_json::json!({"node": value});
+            instance = Instance::Group(vec![("node".into(), instance)]);
+        }
+        assert!(matches!(
+            from_str(&value.to_string(), &schema),
+            Err(JsonFormatError::RecursionLimit {
+                limit: MAX_JSON_RECURSION_DEPTH
+            })
+        ));
+        assert!(matches!(
+            to_string(&schema, &instance),
+            Err(JsonFormatError::RecursionLimit {
+                limit: MAX_JSON_RECURSION_DEPTH
+            })
+        ));
+    }
+
+    #[test]
+    fn recursive_descendants_enforce_exact_unique_items() {
+        let mut values = SchemaNode::scalar("values", ScalarType::Float).repeating();
+        values.json_unique_items = true;
+        let schema = SchemaNode::group(
+            "node",
+            vec![values, SchemaNode::recursive_group("node", "node")],
+        );
+        let duplicate = r#"{"node":{"node":{"values":[1,1.0]}}}"#;
+        assert!(matches!(
+            from_str(duplicate, &schema),
+            Err(JsonFormatError::UniqueItemsMismatch { .. })
+        ));
+        assert!(matches!(
+            from_lines(duplicate, &schema),
+            Err(JsonFormatError::UniqueItemsMismatch { .. })
+        ));
+
+        // Raw decimal comparison must not collapse these distinct values to
+        // the same f64 while checking a recursive descendant's uniqueItems.
+        let distinct = r#"{"node":{"node":{"values":[1,1.0000000000000000000001]}}}"#;
+        assert!(from_str(distinct, &schema).is_ok());
+    }
 
     #[test]
     fn json5_reads_and_writes_schema_shaped_documents() {

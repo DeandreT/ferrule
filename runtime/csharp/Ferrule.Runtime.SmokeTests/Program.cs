@@ -29,6 +29,7 @@ internal static partial class Program
             ("runtime parameters", RuntimeParameters),
             ("source document path", SourceDocumentPath),
             ("JSON document boundaries", JsonDocumentBoundaries),
+            ("JSON recursive references", JsonRecursiveReferences),
             ("JSON mapped-sequence output", JsonMappedSequenceOutput),
             ("JSON root rows", JsonRootRows),
             ("XML type alternatives", XmlTypeAlternatives),

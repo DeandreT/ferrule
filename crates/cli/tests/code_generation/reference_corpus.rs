@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against fourteen local, gitignored mappings.
+//! Opt-in generated-backend execution against fifteen local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -29,7 +29,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 14] = [
+const CASES: [CorpusCase; 15] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -113,6 +113,12 @@ const CASES: [CorpusCase; 14] = [
         input: "ValuesByRegion.xlsx",
         source_kind: SourceKind::XlsxTransposed,
         target_kind: TargetKind::Csv,
+    },
+    CorpusCase {
+        sample: "FlattenHierarchy.mfd",
+        input: "Directory.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
     },
 ];
 
@@ -274,6 +280,14 @@ fn run_case(
     } else {
         engine::run_with_sources(&project, &source, named_sources)?
     };
+    if sample == "FlattenHierarchy.mfd" {
+        let round_tripped = format_json::from_str(&source_json, &project.source)?;
+        assert_eq!(
+            expected,
+            engine::run(&project, &round_tripped)?,
+            "{sample}: schema-shaped JSON boundary changed recursive mapping output"
+        );
+    }
     let expected_json: serde_json::Value =
         serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?;
     if sample == "BuildHierarchyFromTextfile.mfd" {
@@ -542,6 +556,45 @@ fn run_case(
         }
         assert_eq!(rows[0]["Revenues"], 2_406_000_000.0);
         assert_eq!(rows[3]["Revenues"], 4_954_000_000.0);
+    }
+    if sample == "FlattenHierarchy.mfd" {
+        let paths = expected_json["File"]
+            .as_array()
+            .expect("recursively collected file paths");
+        assert_eq!(paths.len(), 90, "{sample}: all nested files are collected");
+        let depths = paths
+            .iter()
+            .map(|path| {
+                let path = path.as_str().expect("scalar file path");
+                assert!(path.starts_with('\\'), "{sample}: root prefix");
+                assert!(!path.contains("\\\\"), "{sample}: no empty path segment");
+                path.matches('\\').count()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            depths.iter().filter(|depth| **depth == 3).count(),
+            61,
+            "{sample}: immediate child files"
+        );
+        assert_eq!(
+            depths.iter().filter(|depth| **depth == 4).count(),
+            24,
+            "{sample}: nested child files"
+        );
+        assert_eq!(
+            depths.iter().filter(|depth| **depth == 5).count(),
+            5,
+            "{sample}: deepest child files"
+        );
+        assert_eq!(
+            paths
+                .iter()
+                .map(|path| path.as_str().expect("scalar file path"))
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            paths.len(),
+            "{sample}: each collected path is distinct"
+        );
     }
 
     let generated_input = case_dir.join("source.json");
