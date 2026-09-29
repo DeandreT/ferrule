@@ -1,4 +1,5 @@
-//! Canonical export for a bounded serial chain of XML mapping stages.
+//! Canonical export for a bounded serial chain of XML mapping stages with
+//! optional independent final XML targets.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -15,7 +16,7 @@ use crate::MfdError;
 
 const MAX_STAGES: usize = 65;
 
-/// Inspect the exact serial XML pipeline export without writing artifacts.
+/// Inspect the supported XML pipeline export without writing artifacts.
 pub fn preflight_pipeline_export(
     pipeline: &Pipeline,
     path: &Path,
@@ -23,19 +24,20 @@ pub fn preflight_pipeline_export(
     prepare_pipeline_export(pipeline, path).map(|prepared| prepared.report)
 }
 
-/// Write a bounded serial XML pipeline as one connected `.mfd` design.
+/// Write a bounded XML pipeline as one connected `.mfd` design.
 ///
 /// Unsupported stage graphs reject before any design or schema sibling is
 /// published. The supported shape has one host primary source, then each
 /// stage reads the preceding stage's primary XML target. Later stages may
 /// retain unused references to original host inputs. Connected later named
-/// inputs, independent targets, and non-XML boundaries reject explicitly.
+/// inputs, independent intermediate targets, and non-XML boundaries reject
+/// explicitly. The final stage may write connected independent XML targets.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
         .map(|report| report.warnings)
 }
 
-/// Export a serial XML pipeline under the selected compatibility policy.
+/// Export a supported XML pipeline under the selected compatibility policy.
 pub fn export_pipeline_with_profile(
     pipeline: &Pipeline,
     path: &Path,
@@ -91,6 +93,13 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
         });
     }
     let xml = combined.expect("validated pipeline has at least two stages");
+    if pipeline
+        .stages
+        .last()
+        .is_some_and(|stage| !stage.project.extra_targets.is_empty())
+    {
+        crate::import::validate_pipeline_export_graph(&xml)?;
+    }
     let report = compatibility::profile(&xml, warnings)?;
     artifacts.push((path.to_path_buf(), xml));
     Ok(PreparedExport { artifacts, report })
@@ -135,9 +144,18 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
                 stage.id
             )));
         }
-        if !stage.project.extra_targets.is_empty() {
+        if index + 1 < pipeline.stages.len() && !stage.project.extra_targets.is_empty() {
             return Err(MfdError::Unsupported(format!(
-                "pipeline stage `{}` has independent targets; serial XML export currently supports primary targets only",
+                "pipeline stage `{}` has independent targets before the final stage",
+                stage.id
+            )));
+        }
+        if stage.project.extra_targets.iter().any(|target| {
+            side_format(&target.path, &target.options) != SideFormat::Xml
+                || target.options.wsdl.is_some()
+        }) {
+            return Err(MfdError::Unsupported(format!(
+                "pipeline stage `{}` has a non-file-XML named target",
                 stage.id
             )));
         }

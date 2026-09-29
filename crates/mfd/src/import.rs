@@ -305,8 +305,9 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
 
 /// Import a connected, file-based design as a typed pipeline.
 ///
-/// This profile accepts a bounded serial XML pass-through chain and one final
-/// target. Other stage graph shapes reject explicitly.
+/// This profile accepts a bounded serial XML pass-through chain whose final
+/// stage may write multiple connected XML targets. Other stage graph shapes
+/// reject explicitly.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
 }
@@ -555,7 +556,19 @@ const MAX_IMPORTED_PIPELINE_INTERMEDIATES: usize = 64;
 
 fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdError> {
     let text = std::fs::read_to_string(path)?;
-    let doc = roxmltree::Document::parse(&text)?;
+    discover_pipeline_chain_text(&text)
+}
+
+pub(crate) fn validate_pipeline_export_graph(xml: &str) -> Result<(), MfdError> {
+    discover_pipeline_chain_text(xml)
+        .map(|_| ())
+        .map_err(|error| {
+            MfdError::Unsupported(format!("pipeline export graph is not supported: {error}"))
+        })
+}
+
+fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, MfdError> {
+    let doc = roxmltree::Document::parse(text)?;
     let mapping = doc.root_element();
     if !mapping.has_tag_name("mapping") {
         return Err(MfdError::NotMfd("root element is not <mapping>"));
@@ -640,6 +653,21 @@ fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdEr
             "pipeline import currently needs one connected XML final target".into(),
         ));
     };
+    let terminal_targets = components
+        .iter()
+        .filter(|component| {
+            component.attribute("library") == Some("xml")
+                && connected_inputs(component)
+                && !component.children().any(|node| {
+                    node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1")
+                })
+        })
+        .collect::<Vec<_>>();
+    if terminal_targets.len() > 256 {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import supports at most 256 final XML targets".into(),
+        ));
+    }
     let connected_input_key = |component: &roxmltree::Node<'_, '_>| {
         component.descendants().find_map(|node| {
             node.has_tag_name("entry")
@@ -701,7 +729,7 @@ fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdEr
         if component.attribute("library") != Some("xml") {
             continue;
         }
-        if intermediates.contains(&component) || *component == **final_target {
+        if intermediates.contains(&component) || terminal_targets.contains(&component) {
             continue;
         }
         if component.children().any(|node| {
@@ -720,7 +748,7 @@ fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdEr
         .filter(|component| {
             component.attribute("library") == Some("xml")
                 && !intermediates.contains(component)
-                && **component != **final_target
+                && !terminal_targets.contains(component)
                 && connected_component_outputs(component)
         })
         .count();
@@ -732,7 +760,7 @@ fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdEr
     let order = strict_serial_stage_order(
         &components,
         &intermediates,
-        final_target,
+        &terminal_targets,
         &connected_outputs,
         &consumers,
         &function_outputs,
@@ -760,14 +788,15 @@ fn entry_keys(component: &roxmltree::Node<'_, '_>, attribute: &str) -> BTreeSet<
         .collect()
 }
 
-/// Keep imported stages to one linear chain of XML boundaries. Multiple field
-/// connections to the same next boundary are valid; an intermediate connection
-/// that reaches any other XML boundary would read a bypassed stage value.
-/// Original XML host sources may supplement any stage.
+/// Keep imported stages to one linear chain of XML boundaries, allowing the
+/// last intermediate to feed multiple final targets. Multiple field connections
+/// to the same next boundary are valid; an earlier connection to a final target
+/// would read a bypassed stage value. Original host sources may supplement any
+/// stage.
 fn strict_serial_stage_order(
     components: &[roxmltree::Node<'_, '_>],
     intermediates: &[&roxmltree::Node<'_, '_>],
-    final_target: &roxmltree::Node<'_, '_>,
+    terminal_targets: &[&roxmltree::Node<'_, '_>],
     connected_outputs: &BTreeSet<u32>,
     consumers: &BTreeMap<u32, Vec<u32>>,
     function_outputs: &BTreeMap<u32, Vec<u32>>,
@@ -781,10 +810,15 @@ fn strict_serial_stage_order(
                 .expect("selected intermediate belongs to the mapping")
         })
         .collect::<Vec<_>>();
-    let final_index = components
+    let terminal_indices = terminal_targets
         .iter()
-        .position(|component| component.id() == final_target.id())
-        .expect("selected final target belongs to the mapping");
+        .map(|target| {
+            components
+                .iter()
+                .position(|component| component.id() == target.id())
+                .expect("selected final target belongs to the mapping")
+        })
+        .collect::<BTreeSet<_>>();
     let mut xml_input_owners = BTreeMap::new();
     for (index, component) in components.iter().enumerate() {
         if component.attribute("library") != Some("xml") {
@@ -824,7 +858,10 @@ fn strict_serial_stage_order(
         }
         sinks_by_component.insert(index, sinks);
     }
-    if sinks_by_component.contains_key(&final_index) {
+    if terminal_indices
+        .iter()
+        .any(|index| sinks_by_component.contains_key(index))
+    {
         return Err(MfdError::UnsupportedImport(
             "serial pipeline final XML target feeds another component".into(),
         ));
@@ -837,11 +874,11 @@ fn strict_serial_stage_order(
     if !components.iter().enumerate().all(|(index, component)| {
         component.attribute("library") != Some("xml")
             || intermediate_indices.contains(&index)
-            || index == final_index
+            || terminal_indices.contains(&index)
             || sinks_by_component.get(&index).is_some_and(|sinks| {
-                sinks
-                    .iter()
-                    .all(|sink| intermediate_indices.contains(sink) || *sink == final_index)
+                sinks.iter().all(|sink| {
+                    intermediate_indices.contains(sink) || terminal_indices.contains(sink)
+                })
             })
     }) {
         return Err(invalid_chain());
@@ -851,15 +888,20 @@ fn strict_serial_stage_order(
     let mut predecessor_counts = BTreeMap::<usize, usize>::new();
     for &index in &intermediate_indices {
         let sinks = sinks_by_component.get(&index).ok_or_else(invalid_chain)?;
-        if sinks.len() != 1 {
-            return Err(invalid_chain());
-        }
-        let next = *sinks.iter().next().expect("one sink");
-        if next != final_index && !intermediate_indices.contains(&next) {
-            return Err(invalid_chain());
-        }
+        let next = if sinks == &terminal_indices {
+            None
+        } else {
+            let mut remaining = sinks.iter();
+            let (Some(&next), None) = (remaining.next(), remaining.next()) else {
+                return Err(invalid_chain());
+            };
+            if !intermediate_indices.contains(&next) {
+                return Err(invalid_chain());
+            }
+            Some(next)
+        };
         successors.insert(index, next);
-        if next != final_index {
+        if let Some(next) = next {
             *predecessor_counts.entry(next).or_default() += 1;
         }
     }
@@ -882,11 +924,11 @@ fn strict_serial_stage_order(
                 .expect("intermediate belongs to the chain"),
         );
         let next = successors[&current];
-        if next == final_index {
+        let Some(next) = next else {
             return (ordered.len() == intermediate_indices.len())
                 .then_some(ordered)
                 .ok_or_else(invalid_chain);
-        }
+        };
         current = next;
     }
     Err(invalid_chain())
@@ -1535,10 +1577,14 @@ fn import_resolved(
             .find(|component| component.input_keys.contains(&final_key)),
     }
     .ok_or_else(|| unsupported("target"))?;
-    let connected_targets = if matches!(selection, StageSelection::Ordinary) {
+    let connected_targets = if matches!(
+        selection,
+        StageSelection::Ordinary | StageSelection::OutOf { .. }
+    ) {
         std::iter::once(target)
             .chain(targets.iter().copied().filter(|component| {
                 !std::ptr::eq(*component, target)
+                    && (matches!(selection, StageSelection::Ordinary) || !component.is_pass_through)
                     && component
                         .ports
                         .keys()

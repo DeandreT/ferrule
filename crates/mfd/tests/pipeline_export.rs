@@ -54,6 +54,23 @@ fn make_chain(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_terminal_fanout(directory: &Path) -> PathBuf {
+    let path = make_chain(directory);
+    write_schema(&directory.join("secondary.xsd"), "Secondary", "Copy");
+    let original = std::fs::read_to_string(&path).unwrap();
+    let with_target = original.replace(
+        "</children><graph>",
+        r#"<component name="secondary" library="xml" kind="14"><data><root><entry name="Secondary"><entry name="Copy" inpkey="50"/></entry></root><document schema="secondary.xsd" outputinstance="secondary.xml" instanceroot="{}Secondary"/></data></component></children><graph>"#,
+    );
+    let with_fanout = with_target.replace(
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"50\"/></edges></vertex>",
+    );
+    assert_ne!(with_fanout, original);
+    std::fs::write(&path, with_fanout).unwrap();
+    path
+}
+
 fn make_four_stage_chain(directory: &Path) -> PathBuf {
     write_schema(&directory.join("source.xsd"), "Source", "Start");
     write_schema(&directory.join("target.xsd"), "Target", "Result");
@@ -179,6 +196,99 @@ fn four_stage_pipeline_remaps_every_stage_and_preserves_execution() {
             index + 1,
         );
     }
+}
+
+#[test]
+fn synthetic_terminal_xml_fanout_imports_exports_and_runs() {
+    let directory = TempDir::new();
+    let source_path = make_terminal_fanout(&directory.0);
+    let original = mfd::import_pipeline(&source_path).unwrap();
+    assert!(original.warnings.is_empty(), "{:?}", original.warnings);
+    assert_eq!(original.pipeline.stages.len(), 2);
+    let [secondary] = original.pipeline.stages[1].project.extra_targets.as_slice() else {
+        panic!("expected terminal named target");
+    };
+    assert_eq!(secondary.name, "secondary");
+    assert_eq!(secondary.path.as_deref(), Some("secondary.xml"));
+    let original_outputs = execute(&original.pipeline);
+    let final_output = original_outputs.stage("mfd-stage-2").unwrap();
+    assert_eq!(final_output.extras.len(), 1);
+    assert_eq!(final_output.extras[0].name, "secondary");
+    assert_eq!(
+        final_output.extras[0]
+            .instance
+            .field("Copy")
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("serial value".into()))
+    );
+
+    let exported_path = directory.0.join("fanout-export.mfd");
+    let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    assert!(
+        mfd::export_pipeline(&original.pipeline, &exported_path)
+            .unwrap()
+            .is_empty()
+    );
+    let exported = std::fs::read_to_string(&exported_path).unwrap();
+    assert_eq!(exported.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(exported.matches("XSLTDefaultOutput=\"1\"").count(), 1);
+    let reimported = mfd::import_pipeline(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate_pipeline(&reimported.pipeline).is_empty());
+    let reimported_outputs = execute(&reimported.pipeline);
+    let reimported_final = reimported_outputs.stage("mfd-stage-2").unwrap();
+    assert_eq!(final_output.primary, reimported_final.primary);
+    assert_eq!(final_output.extras.len(), reimported_final.extras.len());
+    assert_eq!(
+        final_output.extras[0].instance,
+        reimported_final.extras[0].instance
+    );
+
+    // A secondary target reading the original host would bypass the last
+    // intermediate, so it cannot be represented as this stage's named output.
+    let bypass = std::fs::read_to_string(&source_path)
+        .unwrap()
+        .replace(
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"50\"/></edges></vertex>",
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+        )
+        .replace(
+            "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/></edges></vertex>",
+            "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/><edge vertexkey=\"50\"/></edges></vertex>",
+        );
+    std::fs::write(&source_path, bypass).unwrap();
+    let error = mfd::import_pipeline(&source_path)
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(
+        error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
+}
+
+#[test]
+fn disconnected_terminal_target_rejects_before_publishing() {
+    let directory = TempDir::new();
+    let mut pipeline = mfd::import_pipeline(&make_terminal_fanout(&directory.0))
+        .unwrap()
+        .pipeline;
+    pipeline.stages[1].project.extra_targets[0]
+        .root
+        .bindings
+        .clear();
+    let destination = directory.0.join("not-created").join("disconnected.mfd");
+    let error = mfd::export_pipeline(&pipeline, &destination)
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(
+        error.contains("pipeline export graph is not supported"),
+        "{error}"
+    );
+    assert!(!destination.exists());
+    assert!(!destination.parent().unwrap().exists());
 }
 
 #[test]
