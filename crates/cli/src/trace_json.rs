@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use anyhow::{Context, bail};
 use engine::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
-    TraceScope, TraceSink, TraceTarget, TraceTargetFieldBinding, TraceValue, TraceWindow,
+    TraceScope, TraceSink, TraceSourceRow, TraceTarget, TraceTargetFieldBinding, TraceValue,
+    TraceWindow,
 };
 use serde_json::{Value as JsonValue, json};
 
@@ -277,12 +278,19 @@ fn event_value(event: &TraceEvent) -> JsonValue {
             scope,
             ordinal,
             positions,
-        } => json!({
-            "kind": "iteration_candidate",
-            "scope": scope_value(scope),
-            "ordinal": ordinal,
-            "positions": positions_value(positions),
-        }),
+            source_row,
+        } => {
+            let mut value = json!({
+                "kind": "iteration_candidate",
+                "scope": scope_value(scope),
+                "ordinal": ordinal,
+                "positions": positions_value(positions),
+            });
+            if let Some(source_row) = source_row {
+                value["source_row"] = source_row_value(source_row);
+            }
+            value
+        }
         TraceEvent::FilterDecision {
             scope,
             node,
@@ -480,6 +488,20 @@ fn trace_value(value: &TraceValue) -> JsonValue {
     })
 }
 
+fn source_row_value(row: &TraceSourceRow) -> JsonValue {
+    json!({
+        "kind": output_kind(row.kind),
+        "value": row.value.as_ref().map(trace_value),
+        "fields": row.fields.iter().map(|field| json!({
+            "name": field.name,
+            "name_truncated": field.name_truncated,
+            "kind": output_kind(field.kind),
+            "value": field.value.as_ref().map(trace_value),
+        })).collect::<Vec<_>>(),
+        "omitted_fields": row.omitted_fields,
+    })
+}
+
 fn window_value(window: TraceWindow) -> JsonValue {
     match window {
         TraceWindow::SkipFirst(count) => json!({"kind": "skip_first", "count": count}),
@@ -520,7 +542,7 @@ fn target_field_binding(binding: TraceTargetFieldBinding) -> JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine::{TraceSortKey, TraceTarget};
+    use engine::{TraceSortKey, TraceSourceField, TraceTarget};
 
     fn scope() -> TraceScope {
         TraceScope {
@@ -570,6 +592,7 @@ mod tests {
                 scope: scope(),
                 ordinal: 1,
                 positions: vec![position.clone()],
+                source_row: None,
             },
             TraceEvent::FilterDecision {
                 scope: scope(),
@@ -678,5 +701,51 @@ mod tests {
         assert_eq!(field["event"]["binding"]["value_node"], 6);
         assert_eq!(field["event"]["output_kind"], "scalar");
         assert_eq!(field["event"]["value"]["preview"], "accepted");
+    }
+
+    #[test]
+    fn source_row_is_an_optional_addition_to_v3_candidates() {
+        let source_row = TraceSourceRow {
+            kind: TraceOutputKind::Group,
+            value: None,
+            fields: vec![TraceSourceField {
+                name: "Value".into(),
+                name_truncated: false,
+                kind: TraceOutputKind::Scalar,
+                value: Some(TraceValue {
+                    value_type: "string",
+                    preview: "a".into(),
+                    truncated: false,
+                }),
+            }],
+            omitted_fields: 2,
+        };
+        let event = TraceEvent::IterationCandidate {
+            scope: scope(),
+            ordinal: 3,
+            positions: Vec::new(),
+            source_row: Some(source_row),
+        };
+
+        let line = trace_line(9, &event);
+
+        assert_eq!(line["schema_version"], 3);
+        assert_eq!(line["sequence"], 9);
+        assert_eq!(line["event"]["kind"], "iteration_candidate");
+        assert_eq!(line["event"]["source_row"]["kind"], "group");
+        assert_eq!(line["event"]["source_row"]["fields"][0]["name"], "Value");
+        assert_eq!(
+            line["event"]["source_row"]["fields"][0]["value"]["preview"],
+            "a"
+        );
+        assert_eq!(line["event"]["source_row"]["omitted_fields"], 2);
+
+        let absent = TraceEvent::IterationCandidate {
+            scope: scope(),
+            ordinal: 1,
+            positions: Vec::new(),
+            source_row: None,
+        };
+        assert!(trace_line(10, &absent)["event"].get("source_row").is_none());
     }
 }
