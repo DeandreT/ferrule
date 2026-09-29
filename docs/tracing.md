@@ -37,7 +37,7 @@ Every line is one JSON object:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "sequence": 0,
   "event": {
     "kind": "node_value",
@@ -55,6 +55,9 @@ Every line is one JSON object:
 `sequence` is zero-based, contiguous, and follows deterministic interpreter
 evaluation order. Consumers must reject unsupported `schema_version` values and
 ignore unknown fields within a supported version.
+Version 3 adds graph input-consumption events. It leaves the payloads of all
+version 1 and 2 event kinds unchanged; previously saved trace files retain
+their declared versions. JSON diagnostics on stderr use a separate schema.
 
 Scalar previews retain their Ferrule domain and are capped at 160 Unicode
 scalar values:
@@ -78,6 +81,7 @@ The `event.kind` tag selects the event payload:
 | Kind | Purpose |
 | --- | --- |
 | `node_value` | Successful graph-node result with active positions |
+| `node_input_value` | Successful value delivered from a graph node to one input pin of a consuming node |
 | `scope_started` | Scope identity, iteration source, and parent positions |
 | `iteration_candidate` | Candidate ordinal and its source positions |
 | `filter_decision` | Predicate node, control phase, and boolean result |
@@ -104,4 +108,15 @@ are never copied into this event.
 Position records contain the source collection path, one-based index, grouping
 state, optional join identity and tuple position, and optional document path.
 All scalar previews are Unicode-safe and bounded, including `node_value`
-records.
+and `node_input_value` records.
+
+`node_input_value` identifies the `consumer` node, its zero-based `input_index`,
+and the producing `input` node. It is emitted immediately after the producer
+returns a value, before the consumer continues. Ordinary built-in and user
+function calls, conditional expressions, value maps, lookups, and dynamic
+source-field keys emit these events. An untaken conditional branch and a
+producer that errors do not emit an input event. Aggregate, generated-sequence,
+mixed-content, and collection-search inputs are not yet recorded as input-pin
+events, though their successful graph-node outputs remain visible. The native
+GUI's History tab groups the retained input and output events by graph node;
+it does not provide live stepping or full source-row inspection.

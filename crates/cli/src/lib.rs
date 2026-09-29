@@ -761,6 +761,7 @@ pub fn import_mfd_pipeline(
         .with_context(|| format!("importing {} as a pipeline", mfd_path.display()))?;
     let active_mapping_path =
         project_paths::mapping_identity_relative_to(&imported.mapping_path, out_path)?;
+    imported.pipeline.main_mapping_path = Some(active_mapping_path.clone());
     for stage in &mut imported.pipeline.stages {
         rebase_project_paths(&mut stage.project, &imported.mapping_path, out_path)?;
         stage.mapping_path = Some(active_mapping_path.clone());

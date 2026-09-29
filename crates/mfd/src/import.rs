@@ -419,6 +419,7 @@ pub fn import_pipeline_with_options(
     }
     let mapping_path = resources.mapping_path().to_path_buf();
     let pipeline = Pipeline {
+        main_mapping_path: Some(mapping_path.to_string_lossy().into_owned()),
         stages: vec![
             PipelineStage {
                 id: "mfd-stage-1".into(),

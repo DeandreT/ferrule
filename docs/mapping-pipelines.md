@@ -55,6 +55,11 @@ Ferrule project:
 ```
 
 Add `"target": "NAME"` to a `stage_target` reference to read a named target.
+An optional top-level `"main_mapping_path": "maps/original.mfd"` sets the
+main mapping-file identity seen by runtime path expressions. Its relative path
+resolves from the pipeline file's directory. Imported chained designs preserve
+their original `.mfd` identity here; older pipelines without this field use the
+pipeline JSON path.
 For file-host runs, an optional
 `"mapping_path": "stages/prepare.ferrule.json"` on a stage gives that stage
 its active mapping-file identity for runtime expressions. Relative paths
@@ -112,8 +117,9 @@ library API preserves its output request order.
 `cli::run_pipeline_file` exposes this file host to Rust callers, with
 `PipelineHostFile` and `PipelineOutputFile` selectors. The
 `run_pipeline_file_with_options` variant accepts bounded typed runtime
-parameters. Each stage can use its own active mapping path while the pipeline
-file remains the main mapping path. Referenced local mapping files are
+parameters. Each stage can use its own active mapping path while the optional
+top-level main mapping path supplies the shared main identity; without it, the
+pipeline file remains the main mapping path. Referenced local mapping files are
 protected from output overwrite. All stages share one captured date-time
 value. Ordinary `Project` JSON and single-project execution remain valid.
 
@@ -127,7 +133,9 @@ instance paths to the pipeline location, and starts its primary and static
 named inputs as host bindings. Select a stage to rename its ID, change an input
 to a host name or another stage's primary or named target, or remove a stage
 that no other stage uses. Renaming rewires every downstream reference in one
-edit. The editor shows whole-pipeline validation issues and saves only a valid
-pipeline. It detects external file changes before an atomic save, and asks
-before discarding unsaved pipeline edits. Input and publication file paths for
-a run remain choices in the separate **Run Pipeline** dialog.
+edit. A loaded pipeline with missing static named-source bindings can add host
+bindings for them from the selected stage. The editor shows whole-pipeline
+validation issues and saves only a valid pipeline. It detects external file
+changes before an atomic save and asks before discarding unsaved pipeline edits.
+Input and publication file paths for a run remain choices in the separate
+**Run Pipeline** dialog.
