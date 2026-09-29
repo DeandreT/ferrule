@@ -3,8 +3,8 @@
 ## Importing a connected `.mfd` design
 
 The CLI can import a connected design with up to 64 serial XML pass-through
-targets as a runnable pipeline. Its final primary target may be XML or
-delimited CSV:
+targets as a runnable pipeline. Its final primary target may be XML, delimited
+CSV, fixed-width text, JSON, or a new XLSX workbook:
 
 ```sh
 cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
@@ -19,17 +19,22 @@ final stage ID is `mfd-stage-4`.
 The last pass-through target may also feed connected named XML targets in that
 final stage. Use `--named-output STAGE TARGET PATH` to publish one. Intermediate
 fan-out and targets that bypass the last pass-through stage reject during import.
-CSV is supported only as the final primary target; intermediate and named
-targets in this native-design profile remain XML. The exact XML-chain-to-CSV
-shape is covered by synthetic local round trips, not native-app acceptance.
+CSV, fixed-width text, JSON, and XLSX are supported only as the final primary
+target; intermediate and named targets in this native-design profile remain XML.
+XLSX targets that update an existing workbook are outside this profile.
+Synthetic local round trips cover CSV and JSON final targets. Local
+fixed-width and hierarchical XLSX mappings run after an identity XML stage.
+Fixed-width output retains exact serialized bytes and parsed rows; XLSX retains
+decoded worksheet cells through strict export and reimport. These checks do not
+establish reference-application acceptance.
 An intermediate XML pass-through component can retain its declared output
 instance and the next stage's source preview instance, even when those paths
 differ. Import and export preserve both paths on that one component; the local
 chained-report sample and a distinct-path synthetic case pass round trips.
 Import does not infer an output file from a source preview path or an absent
-instance. Three local chains export and reimport in the strict native profile;
-a fourth uses date/time coercion extensions and rejects strict export before
-publishing artifacts.
+instance. All four local chains export and reimport in the strict native
+profile; one requires bounded native XML date/time casting and exact XSD
+restoration. Unsupported casts reject before publishing artifacts.
 A serial chain can also connect an original static XML host source to named
 inputs in later stages, including intermediate stages and repeated use of the
 same source. Export reuses that original component when its name, schema, path,
