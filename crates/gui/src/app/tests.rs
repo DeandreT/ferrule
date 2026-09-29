@@ -147,6 +147,68 @@ fn two_stage_pin_pipeline_app(test_name: &str) -> anyhow::Result<(FerruleApp, Pa
     Ok((app, pipeline_path))
 }
 
+#[test]
+fn pipeline_runner_uses_unambiguous_stored_host_paths() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("pipeline-stored-host-paths");
+    pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    let mut pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    let stage = &mut pipeline.stages[0];
+    stage.mapping_path = Some("designs/first.mfd".into());
+    stage.project.source_path = Some("inputs/orders.json".into());
+    stage.project.extra_sources.push(mapping::NamedSource {
+        name: "lookup".into(),
+        path: "inputs/lookup.json".into(),
+        schema: stage.project.source.clone(),
+        options: stage.project.source_options.clone(),
+        dynamic_path: None,
+    });
+    stage.extra_sources.push(mapping::PipelineNamedInput {
+        name: "lookup".into(),
+        from: mapping::PipelineInput::Host {
+            name: "lookup-file".into(),
+        },
+    });
+    std::fs::write(&pipeline_path, serde_json::to_vec_pretty(&pipeline)?)?;
+
+    let mut draft = crate::pipeline_run::PipelineRunDraft::load(&pipeline_path)?;
+    assert!(draft.issues.is_empty(), "{:?}", draft.issues);
+    assert_eq!(draft.inputs[0].name, "lookup-file");
+    assert_eq!(
+        draft.inputs[0].path,
+        directory
+            .join("designs/inputs/lookup.json")
+            .to_string_lossy()
+    );
+    assert_eq!(draft.inputs[1].name, "orders");
+    assert_eq!(
+        draft.inputs[1].path,
+        directory
+            .join("designs/inputs/orders.json")
+            .to_string_lossy()
+    );
+    assert!(draft.outputs[0].path.is_empty());
+    draft.outputs[0].path = "result.json".into();
+    let (inputs, _) = draft.requests()?;
+    assert_eq!(inputs[1].path, directory.join("designs/inputs/orders.json"));
+
+    let mut second = pipeline.stages[0].clone();
+    second.id = "second".into();
+    second.mapping_path = None;
+    second.project.source_path = Some("different.json".into());
+    second.extra_sources.clear();
+    second.project.extra_sources.clear();
+    pipeline.stages.push(second);
+    std::fs::write(&pipeline_path, serde_json::to_vec_pretty(&pipeline)?)?;
+    let draft = crate::pipeline_run::PipelineRunDraft::load(&pipeline_path)?;
+    assert!(draft.issues.is_empty(), "{:?}", draft.issues);
+    assert_eq!(draft.inputs[1].name, "orders");
+    assert!(draft.inputs[1].path.is_empty());
+
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
 fn wait_for_pipeline_completion(app: &mut FerruleApp) {
     let context = egui::Context::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
