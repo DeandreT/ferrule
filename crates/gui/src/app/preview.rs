@@ -8,11 +8,40 @@ use anyhow::{Context as _, bail};
 
 use super::*;
 use crate::preview::{
-    BreakpointPositionConditionDraft, BreakpointSourceConditionDraft,
-    BreakpointValueConditionDraft, DebugPositionCondition, DebugScalarCondition,
-    DebugSourceCondition, LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget,
-    ScalarValueType,
+    BreakpointNodeConditionDraft, BreakpointPositionConditionDraft, BreakpointSourceConditionDraft,
+    BreakpointValueConditionDraft, DebugNodeCondition, DebugPositionCondition,
+    DebugScalarCondition, DebugSourceCondition, LoadedPreviewSource, PreviewBreakpoint,
+    PreviewDraft, PreviewTarget, ScalarValueType,
 };
+
+pub(super) fn show_breakpoint_node_condition(
+    ui: &mut egui::Ui,
+    condition: &mut BreakpointNodeConditionDraft,
+) -> bool {
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(
+            &mut condition.enabled,
+            "Only when target write uses value node #",
+        );
+        if condition.enabled {
+            ui.add(
+                egui::TextEdit::singleline(&mut condition.text)
+                    .desired_width(100.0)
+                    .hint_text("Graph node ID"),
+            );
+        }
+    });
+    if condition.enabled {
+        ui.weak("Pauses before a target write driven by this node, not during intermediate graph evaluation. Child-scope writes have no value node.");
+    }
+    match condition.compile() {
+        Ok(_) => true,
+        Err(error) => {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+            false
+        }
+    }
+}
 
 pub(super) fn show_breakpoint_source_condition(
     ui: &mut egui::Ui,
@@ -209,6 +238,7 @@ struct PreviewDebugHook {
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
     source_condition: Option<DebugSourceCondition>,
+    node_condition: Option<DebugNodeCondition>,
 }
 
 impl engine::DebugHook for PreviewDebugHook {
@@ -250,16 +280,22 @@ impl engine::DebugHook for PreviewDebugHook {
             .source_condition
             .as_ref()
             .is_none_or(|condition| condition.matches(write));
+        let matches_node = self
+            .node_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
         let has_breakpoint = self.breakpoint.is_some()
             || self.value_condition.is_some()
             || self.position_condition.is_some()
-            || self.source_condition.is_some();
+            || self.source_condition.is_some()
+            || self.node_condition.is_some();
         if !self.pause_each_write.get()
             && !(has_breakpoint
                 && matches_selection
                 && matches_value
                 && matches_position
-                && matches_source)
+                && matches_source
+                && matches_node)
         {
             return engine::DebugDecision::Resume;
         }
@@ -432,6 +468,10 @@ impl FerruleApp {
                         ui,
                         &mut self.preview_source_condition,
                         "preview_debug_source_type",
+                    );
+                    condition_valid &= show_breakpoint_node_condition(
+                        ui,
+                        &mut self.preview_node_condition,
                     );
                 });
                 if draft.input_identity.trim().is_empty() {
@@ -612,6 +652,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let node_condition = if debug {
+            match self.preview_node_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "preview blocked".into();
+                    self.diagnostics.error("Preview blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("preview blocked by {} validation issue(s)", issues.len());
@@ -657,6 +709,7 @@ impl FerruleApp {
                 value_condition,
                 position_condition,
                 source_condition,
+                node_condition,
                 event_tx,
                 command_rx,
                 worker_cancelled,
@@ -785,6 +838,7 @@ fn run_preview_worker(
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
     source_condition: Option<DebugSourceCondition>,
+    node_condition: Option<DebugNodeCondition>,
     events: Sender<PreviewWorkerEvent>,
     commands: Receiver<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
@@ -804,12 +858,14 @@ fn run_preview_worker(
                 && breakpoint.is_none()
                 && value_condition.is_none()
                 && position_condition.is_none()
-                && source_condition.is_none(),
+                && source_condition.is_none()
+                && node_condition.is_none(),
         ),
         breakpoint,
         value_condition,
         position_condition,
         source_condition,
+        node_condition,
     };
     let result = run_preview_payload(
         &project,

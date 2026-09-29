@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 
 use super::*;
 use crate::preview::{
-    DebugPositionCondition, DebugScalarCondition, DebugSourceCondition, PreviewBreakpoint,
-    PreviewTarget,
+    DebugNodeCondition, DebugPositionCondition, DebugScalarCondition, DebugSourceCondition,
+    PreviewBreakpoint, PreviewTarget,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,6 +139,7 @@ struct FileRunDebugHook {
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
     source_condition: Option<DebugSourceCondition>,
+    node_condition: Option<DebugNodeCondition>,
 }
 
 impl FileRunDebugHook {
@@ -205,16 +206,22 @@ impl engine::DebugHook for FileRunDebugHook {
             .source_condition
             .as_ref()
             .is_none_or(|condition| condition.matches(write));
+        let matches_node = self
+            .node_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
         let has_breakpoint = self.breakpoint.is_some()
             || self.value_condition.is_some()
             || self.position_condition.is_some()
-            || self.source_condition.is_some();
+            || self.source_condition.is_some()
+            || self.node_condition.is_some();
         if !self.pause_each_write.get()
             && !(has_breakpoint
                 && matches_selection
                 && matches_value
                 && matches_position
-                && matches_source)
+                && matches_source
+                && matches_node)
         {
             return engine::DebugDecision::Resume;
         }
@@ -281,6 +288,11 @@ impl FerruleApp {
             self.diagnostics.error("Debug Run blocked", error);
             return;
         }
+        if debug && let Err(error) = self.file_run_node_condition.compile() {
+            self.status = "debug run blocked".into();
+            self.diagnostics.error("Debug Run blocked", error);
+            return;
+        }
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("run blocked by {} validation issue(s)", issues.len());
@@ -334,6 +346,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let node_condition = if debug {
+            match self.file_run_node_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug run blocked".into();
+                    self.diagnostics.error("Debug Run blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let Some(project_path) = self.document.saved_path().map(PathBuf::from) else {
             self.status = "run failed".to_string();
             self.diagnostics
@@ -364,12 +388,14 @@ impl FerruleApp {
                         && breakpoint.is_none()
                         && value_condition.is_none()
                         && position_condition.is_none()
-                        && source_condition.is_none(),
+                        && source_condition.is_none()
+                        && node_condition.is_none(),
                 ),
                 breakpoint,
                 value_condition,
                 position_condition,
                 source_condition,
+                node_condition,
             };
             let gate = || hook.before_publish();
             let mut options = cli::RunOptions::new()
@@ -625,6 +651,8 @@ impl FerruleApp {
             &mut self.file_run_source_condition,
             "file_run_debug_source_type",
         );
+        condition_valid &=
+            preview_ui::show_breakpoint_node_condition(ui, &mut self.file_run_node_condition);
         if ui
             .add_enabled(condition_valid, egui::Button::new("Debug Run"))
             .clicked()

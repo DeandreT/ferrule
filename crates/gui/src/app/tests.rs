@@ -1546,6 +1546,40 @@ fn source_field_condition_combines_with_target_write_in_file_run() {
     std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
 }
 
+#[test]
+fn value_node_condition_distinguishes_equal_file_run_values() {
+    let (mut app, project_path, output) = two_field_file_run_app("file-value-node");
+    app.project.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::String("B".into()),
+        },
+    );
+    app.file_run_node_condition.enabled = true;
+    app.file_run_node_condition.text = "1".into();
+    app.debug_run(&egui::Context::default());
+    let pending = wait_for_file_run_pause(&mut app);
+    assert_eq!(pending.field, "second");
+    assert_eq!(
+        pending.binding,
+        engine::TraceTargetFieldBinding::StaticBinding { value: 1 }
+    );
+    assert_eq!(pending.draft.fields[0].name, "first");
+    assert_eq!(
+        pending.draft.fields[0]
+            .preview
+            .value
+            .as_ref()
+            .unwrap()
+            .preview,
+        "B"
+    );
+    app.file_run_command(run_ui::FileRunCommand::Cancel);
+    wait_for_file_run_completion(&mut app);
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
+}
+
 fn three_field_debug_preview_app() -> FerruleApp {
     let mut app = two_field_debug_preview_app();
     app.project.target = SchemaNode::group(
@@ -1869,6 +1903,45 @@ fn source_field_breakpoint_selects_active_row_and_step_overrides_it() {
 }
 
 #[test]
+fn value_node_breakpoint_selects_equal_preview_value_and_step_overrides_it() {
+    let mut app = three_field_debug_preview_app();
+    for node in [0, 1, 2] {
+        app.project.graph.nodes.insert(
+            node,
+            Node::Const {
+                value: ir::Value::String("B".into()),
+            },
+        );
+    }
+    app.preview_node_condition.enabled = true;
+    app.preview_node_condition.text = "1".into();
+    app.execute_debug_preview();
+
+    let second = wait_for_debug_pause(&mut app);
+    assert_eq!(second.field, "second");
+    assert_eq!(second.draft.fields[0].name, "first");
+    assert_eq!(
+        second.draft.fields[0]
+            .preview
+            .value
+            .as_ref()
+            .unwrap()
+            .preview,
+        "B"
+    );
+    app.preview_command(preview_ui::PreviewCommand::Step);
+    let third = wait_for_debug_pause(&mut app);
+    assert_eq!(third.field, "third");
+    assert_eq!(
+        third.binding,
+        engine::TraceTargetFieldBinding::StaticBinding { value: 2 }
+    );
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
+}
+
+#[test]
 fn source_field_condition_rejects_invalid_frame_and_field() {
     let mut condition = crate::preview::BreakpointSourceConditionDraft {
         enabled: true,
@@ -2136,6 +2209,67 @@ fn pipeline_source_condition_matches_only_the_later_stage_input() -> anyhow::Res
     app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
     wait_for_pipeline_completion(&mut app);
     assert_eq!(app.status, "pipeline cancelled");
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn value_node_breakpoint_combines_with_pipeline_stage_selection() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-value-node-stage")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.pipeline_run_breakpoint =
+        pipeline_ui::breakpoint_candidates(&app.pipeline_run_draft.as_ref().unwrap().pipeline)
+            .into_iter()
+            .find(|candidate| candidate.stage == "finish" && candidate.field.field == "Value");
+    assert!(app.pipeline_run_breakpoint.is_some());
+    app.pipeline_run_node_condition.enabled = true;
+    app.pipeline_run_node_condition.text = "0".into();
+    app.start_pipeline_debug_run();
+    let (stage, write) = wait_for_pipeline_pause(&mut app);
+    assert_eq!(stage, "finish");
+    assert_eq!(
+        write.binding,
+        engine::TraceTargetFieldBinding::StaticBinding { value: 0 }
+    );
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
+    wait_for_pipeline_completion(&mut app);
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_step_overrides_value_node_and_stage_conditions() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-value-node-step")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.pipeline_run_breakpoint =
+        pipeline_ui::breakpoint_candidates(&app.pipeline_run_draft.as_ref().unwrap().pipeline)
+            .into_iter()
+            .find(|candidate| candidate.stage == "prepare" && candidate.field.field == "Value");
+    assert!(app.pipeline_run_breakpoint.is_some());
+    app.pipeline_run_node_condition.enabled = true;
+    app.pipeline_run_node_condition.text = "0".into();
+    app.start_pipeline_debug_run();
+    assert_eq!(wait_for_pipeline_pause(&mut app).0, "prepare");
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Step);
+    assert_eq!(wait_for_pipeline_pause(&mut app).0, "finish");
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
+    wait_for_pipeline_completion(&mut app);
     assert_eq!(
         std::fs::read_to_string(directory.join("prepare.json"))?,
         "old prepare"
