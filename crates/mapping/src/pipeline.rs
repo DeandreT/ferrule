@@ -20,6 +20,10 @@ pub struct Pipeline {
 pub struct PipelineStage {
     /// Stable identity used by downstream stage references.
     pub id: String,
+    /// Optional local identity for the active mapping file at this stage.
+    /// Relative paths are resolved from the pipeline file by file hosts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mapping_path: Option<String>,
     pub project: Project,
     pub source: PipelineInput,
     /// Bindings for static named sources declared by `project.extra_sources`.

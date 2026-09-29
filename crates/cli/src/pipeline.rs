@@ -126,14 +126,26 @@ fn run_pipeline_value_with_options(
         hosts.insert((*name).to_owned(), instance);
     }
 
-    let runtime_path = absolute_mapping_path(pipeline_path)?;
-    let current_datetime = jiff::Zoned::now()
-        .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
-        .to_string();
     let pipeline_dir = pipeline_path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    let runtime_path = absolute_mapping_path(pipeline_path)?;
+    let stage_mapping_paths = pipeline
+        .stages
+        .iter()
+        .map(|stage| {
+            let path = match &stage.mapping_path {
+                Some(path) => absolute_mapping_path(&pipeline_dir.join(path))?.into_owned(),
+                None => runtime_path.to_path_buf(),
+            };
+            Ok((stage.id.as_str(), path))
+        })
+        .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
+    protected.extend(stage_mapping_paths.values().cloned());
+    let current_datetime = jiff::Zoned::now()
+        .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
+        .to_string();
     let dynamic_loaders = pipeline
         .stages
         .iter()
@@ -144,13 +156,17 @@ fn run_pipeline_value_with_options(
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let mut execution =
-        engine::ExecutionContext::new(&runtime_path).with_current_datetime(&current_datetime);
-    if let Some(parameters) = options.runtime_parameters {
-        execution = execution.with_parameters(parameters);
-    }
     let results = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
-        execution.with_dynamic_source_loader(&dynamic_loaders[stage])
+        let mut execution = engine::ExecutionContext::with_main_mapping_file_path(
+            &stage_mapping_paths[stage],
+            &runtime_path,
+        )
+        .with_current_datetime(&current_datetime)
+        .with_dynamic_source_loader(&dynamic_loaders[stage]);
+        if let Some(parameters) = options.runtime_parameters {
+            execution = execution.with_parameters(parameters);
+        }
+        execution
     })?;
     for loader in dynamic_loaders.values() {
         for ((_, path), instance) in loader.cache.borrow().iter() {
