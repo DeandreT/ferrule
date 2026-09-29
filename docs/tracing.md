@@ -212,6 +212,17 @@ write. Step from this pause advances to the next evaluated node. The pause
 shows a bounded value, source-frame snapshot, and active positions; pipeline
 expressions can be limited to one selected stage. Cancel at this point aborts
 before output publication.
+An independent input-pin breakpoint selects a consumer graph node ID and a
+1-based input number, optionally with a complete typed delivered scalar value.
+It pauses just after that input's `NodeInputValue` event is recorded, including
+in filters that produce no target write. The pause identifies the producer,
+consumer, delivered value, source context, and active positions. Step advances
+to the next recorded input delivery, even in another pipeline stage; a pipeline
+breakpoint itself can be limited to one stage. Cancel aborts before output
+publication. Only graph pins that currently produce `NodeInputValue` events
+participate: untaken lazy branches, target bindings, and scope-control edges do
+not. The UI numbers pins from 1, while trace event `input_index` remains
+zero-based.
 
 **Debug Run** offers the same controls for a saved, file-backed mapping and
 can select a static field in the primary or a named target. Ordinary Run also

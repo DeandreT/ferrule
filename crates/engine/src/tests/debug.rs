@@ -10,8 +10,8 @@ use mapping::{
 };
 
 use crate::{
-    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingNodeValue, PendingTargetWrite,
-    TraceEvent, TraceSink, TraceTargetFieldBinding, run_with_context,
+    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingNodeInput, PendingNodeValue,
+    PendingTargetWrite, TraceEvent, TraceSink, TraceTargetFieldBinding, run_with_context,
 };
 
 struct PausingHook {
@@ -385,4 +385,234 @@ fn uninterested_debug_hook_skips_node_snapshots() {
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&hook);
     let output = run_with_context(&two_field_project(), &source, &execution).unwrap();
     assert!(output.field("first").is_some());
+}
+
+struct PinHook {
+    inputs: RefCell<Vec<PendingNodeInput>>,
+    cancel_at: Option<(mapping::NodeId, usize)>,
+}
+
+impl DebugHook for PinHook {
+    fn wants_node_values(&self) -> bool {
+        false
+    }
+
+    fn before_target_write(&self, _write: &PendingTargetWrite) -> DebugDecision {
+        DebugDecision::Resume
+    }
+
+    fn after_node_value(&self, _value: &PendingNodeValue) -> DebugDecision {
+        panic!("pin-only debugging must not pause on producer nodes")
+    }
+
+    fn after_node_input(&self, input: &PendingNodeInput) -> DebugDecision {
+        self.inputs.borrow_mut().push(input.clone());
+        if self.cancel_at == Some((input.consumer, input.input_index)) {
+            DebugDecision::Cancel
+        } else {
+            DebugDecision::Resume
+        }
+    }
+}
+
+#[test]
+fn pin_hook_distinguishes_equal_values_across_consumer_pins_and_cancels_before_write() {
+    let mut project = two_field_project();
+    project.graph.nodes = [
+        (
+            0,
+            Node::Const {
+                value: Value::String("A".into()),
+            },
+        ),
+        (
+            1,
+            Node::Const {
+                value: Value::String("A".into()),
+            },
+        ),
+        (
+            2,
+            Node::Call {
+                function: "concat".into(),
+                args: vec![0, 1],
+            },
+        ),
+        (
+            3,
+            Node::Call {
+                function: "concat".into(),
+                args: vec![0, 1],
+            },
+        ),
+    ]
+    .into();
+    project.root.bindings[0].node = 2;
+    project.root.bindings[1].node = 3;
+    let source = Instance::Group(vec![(
+        "input".into(),
+        Instance::Scalar(Value::String("source".into())),
+    )]);
+    let hook = PinHook {
+        inputs: RefCell::new(Vec::new()),
+        cancel_at: Some((2, 1)),
+    };
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json"))
+        .with_debug_hook(&hook)
+        .with_trace_sink(&trace);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    let inputs = hook.inputs.into_inner();
+    assert_eq!(
+        inputs
+            .iter()
+            .map(|input| (
+                input.consumer,
+                input.input,
+                input.input_index,
+                input.value.preview.as_str()
+            ))
+            .collect::<Vec<_>>(),
+        [(2, 0, 0, "A"), (2, 1, 1, "A")]
+    );
+    assert!(trace.0.borrow().iter().any(|event| matches!(
+        event,
+        TraceEvent::NodeInputValue {
+            consumer: 2,
+            input_index: 1,
+            ..
+        }
+    )));
+    assert!(
+        !trace
+            .0
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn pin_hook_skips_untaken_if_branch() {
+    let mut project = two_field_project();
+    project.graph.nodes = [
+        (
+            0,
+            Node::Const {
+                value: Value::Bool(true),
+            },
+        ),
+        (
+            1,
+            Node::Const {
+                value: Value::String("then".into()),
+            },
+        ),
+        (
+            2,
+            Node::RuntimeParameter {
+                name: "missing".into(),
+                ty: ScalarType::String,
+            },
+        ),
+        (
+            3,
+            Node::If {
+                condition: 0,
+                then: 1,
+                else_: 2,
+            },
+        ),
+    ]
+    .into();
+    project.root.bindings.truncate(1);
+    project.root.bindings[0].node = 3;
+    let source = Instance::Group(vec![(
+        "input".into(),
+        Instance::Scalar(Value::String("source".into())),
+    )]);
+    let hook = PinHook {
+        inputs: RefCell::new(Vec::new()),
+        cancel_at: Some((3, 2)),
+    };
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&hook);
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("first").and_then(Instance::as_scalar),
+        Some(&Value::String("then".into()))
+    );
+    assert_eq!(
+        hook.inputs
+            .into_inner()
+            .iter()
+            .map(|input| (input.consumer, input.input_index))
+            .collect::<Vec<_>>(),
+        [(3, 0), (3, 1)]
+    );
+}
+
+#[test]
+fn pin_hook_cancels_filter_before_any_target_write() {
+    let mut project = two_field_project();
+    project.source =
+        SchemaNode::group("Source", vec![SchemaNode::group("Row", vec![]).repeating()]);
+    project.target =
+        SchemaNode::group("Target", vec![SchemaNode::group("Row", vec![]).repeating()]);
+    project.graph.nodes = [
+        (
+            0,
+            Node::Const {
+                value: Value::Bool(true),
+            },
+        ),
+        (
+            1,
+            Node::Const {
+                value: Value::Bool(false),
+            },
+        ),
+        (
+            2,
+            Node::If {
+                condition: 0,
+                then: 1,
+                else_: 1,
+            },
+        ),
+    ]
+    .into();
+    project.root = Scope {
+        children: vec![Scope {
+            target_field: "Row".into(),
+            iteration: ScopeIteration::Source(vec!["Row".into()]),
+            filter: Some(2),
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    };
+    let source = Instance::Group(vec![(
+        "Row".into(),
+        Instance::Repeated(vec![Instance::Group(vec![])]),
+    )]);
+    let hook = PinHook {
+        inputs: RefCell::new(Vec::new()),
+        cancel_at: Some((2, 1)),
+    };
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&hook);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    let inputs = hook.inputs.into_inner();
+    assert_eq!(
+        inputs
+            .iter()
+            .map(|input| input.input_index)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+    assert_eq!(inputs[1].positions.last().unwrap().index, 1);
 }

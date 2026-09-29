@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use engine::{DebugDecision, EngineError, PendingNodeValue, PendingTargetWrite};
+use engine::{DebugDecision, EngineError, PendingNodeInput, PendingNodeValue, PendingTargetWrite};
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Pipeline, PipelineInput, PipelineStage, Project, Scope};
 
@@ -178,6 +178,57 @@ fn stage_node_hook_alone_cancels_later_stage_before_publication() -> anyhow::Res
         Some(EngineError::DebugCancelled)
     )));
     assert_eq!(*seen.borrow(), ["prepare:A", "finish:B"]);
+    assert_old_outputs(&outputs)?;
+    Ok(())
+}
+
+#[test]
+fn stage_input_hook_alone_cancels_recorded_pin_before_publication() -> anyhow::Result<()> {
+    let directory = TempDir::new()?;
+    let (pipeline_path, inputs, outputs) = prepare(&directory)?;
+    let mut pipeline: Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    for stage in &mut pipeline.stages {
+        stage.project.graph.nodes.insert(
+            1,
+            Node::Const {
+                value: Value::String("!".into()),
+            },
+        );
+        stage.project.graph.nodes.insert(
+            2,
+            Node::Call {
+                function: "concat".into(),
+                args: vec![0, 1],
+            },
+        );
+        stage.project.root.bindings[0].node = 2;
+    }
+    std::fs::write(&pipeline_path, serde_json::to_vec(&pipeline)?)?;
+    let seen = RefCell::new(Vec::<String>::new());
+    let hook = |stage: &str, input: &PendingNodeInput| {
+        assert_eq!(input.consumer, 2);
+        seen.borrow_mut().push(format!(
+            "{stage}:{}:{}",
+            input.input_index + 1,
+            input.value.preview
+        ));
+        if stage == "finish" && input.input_index == 1 {
+            DebugDecision::Cancel
+        } else {
+            DebugDecision::Resume
+        }
+    };
+    let options = cli::PipelineRunOptions::default().with_stage_input_debug_hook(&hook);
+    let error = cli::run_pipeline_file_with_options(&pipeline_path, &inputs, &outputs, &options)
+        .unwrap_err();
+    assert!(error.chain().any(|cause| matches!(
+        cause.downcast_ref::<EngineError>(),
+        Some(EngineError::DebugCancelled)
+    )));
+    assert_eq!(
+        *seen.borrow(),
+        ["prepare:1:A", "prepare:2:!", "finish:1:B", "finish:2:!"]
+    );
     assert_old_outputs(&outputs)?;
     Ok(())
 }
