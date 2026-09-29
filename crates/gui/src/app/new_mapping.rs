@@ -1,5 +1,5 @@
 use super::*;
-use crate::new_mapping::{CsvBoundaryDraft, CsvColumnDraft, MappingBoundary};
+use crate::new_mapping::{CsvBoundaryDraft, CsvColumnDraft, MappingBoundary, SqliteBoundaryDraft};
 
 impl FerruleApp {
     pub(super) fn begin_new_mapping(&mut self) {
@@ -58,6 +58,79 @@ impl FerruleApp {
         }
     }
 
+    pub(super) fn stage_mapping_sqlite(&mut self, side: SchemaSide, path: PathBuf) {
+        let result = match side {
+            SchemaSide::Source => SqliteBoundaryDraft::source(path),
+            SchemaSide::Target => SqliteBoundaryDraft::target(path),
+        };
+        match result {
+            Ok(draft) => {
+                if let Some(setup) = self.new_mapping_setup.as_mut() {
+                    match side {
+                        SchemaSide::Source => {
+                            setup.source = Some(MappingBoundary::Sqlite(Box::new(draft)))
+                        }
+                        SchemaSide::Target => {
+                            setup.target = Some(MappingBoundary::Sqlite(Box::new(draft)))
+                        }
+                    }
+                    self.status =
+                        format!("selected {} SQLite database", side.label().to_lowercase());
+                    self.diagnostics.clear();
+                }
+            }
+            Err(error) => {
+                self.status = format!(
+                    "failed to select {} SQLite database",
+                    side.label().to_lowercase()
+                );
+                self.diagnostics
+                    .error("SQLite database selection failed", error.to_string());
+            }
+        }
+    }
+
+    pub(super) fn stage_mapping_sqlite_table(&mut self, side: SchemaSide) {
+        let Some(draft) = self
+            .new_mapping_setup
+            .as_mut()
+            .and_then(|setup| match side {
+                SchemaSide::Source => setup.source.as_mut(),
+                SchemaSide::Target => setup.target.as_mut(),
+            })
+            .and_then(|boundary| match boundary {
+                MappingBoundary::Sqlite(draft) => Some(draft),
+                _ => None,
+            })
+        else {
+            return;
+        };
+        match draft.load_schema() {
+            Ok(()) => {
+                self.status = format!("loaded {} SQLite table", side.label().to_lowercase());
+                self.diagnostics.clear();
+            }
+            Err(error) => {
+                self.status = format!(
+                    "failed to load {} SQLite table",
+                    side.label().to_lowercase()
+                );
+                self.diagnostics
+                    .error("SQLite table import failed", error.to_string());
+            }
+        }
+    }
+
+    pub(super) fn stage_mapping_sqlite_target_output(&mut self, path: String) {
+        if let Some(MappingBoundary::Sqlite(draft)) = self
+            .new_mapping_setup
+            .as_mut()
+            .and_then(|setup| setup.target.as_mut())
+        {
+            draft.output_path = path;
+        }
+    }
+
     pub(super) fn show_new_mapping_setup(&mut self, ctx: &egui::Context) {
         let Some(setup) = self.new_mapping_setup.as_mut() else {
             return;
@@ -89,6 +162,12 @@ impl FerruleApp {
                     {
                         action = Some(NewMappingAction::ChooseCsvSource);
                     }
+                    if ui
+                        .add_enabled(dialog_idle, egui::Button::new("Choose SQLite..."))
+                        .clicked()
+                    {
+                        action = Some(NewMappingAction::ChooseSqlite(SchemaSide::Source));
+                    }
                 });
                 if let Some(MappingBoundary::Csv(draft)) = setup.source.as_mut() {
                     refresh_source = show_csv_options(ui, draft, "source");
@@ -96,6 +175,11 @@ impl FerruleApp {
                     show_csv_columns(ui, draft, true);
                     show_csv_preview(ui, draft);
                     show_csv_validation(ui, draft);
+                }
+                if let Some(MappingBoundary::Sqlite(draft)) = setup.source.as_mut()
+                    && show_sqlite_table(ui, draft, "source", false)
+                {
+                    action = Some(NewMappingAction::LoadSqliteTable(SchemaSide::Source));
                 }
 
                 ui.separator();
@@ -114,6 +198,12 @@ impl FerruleApp {
                             .clicked()
                     {
                         action = Some(NewMappingAction::ConfigureCsvTarget);
+                    }
+                    if ui
+                        .add_enabled(dialog_idle, egui::Button::new("Choose SQLite..."))
+                        .clicked()
+                    {
+                        action = Some(NewMappingAction::ChooseSqlite(SchemaSide::Target));
                     }
                 });
                 if let Some(MappingBoundary::Csv(draft)) = setup.target.as_mut() {
@@ -149,6 +239,29 @@ impl FerruleApp {
                         });
                     }
                     show_csv_validation(ui, draft);
+                }
+                if let Some(MappingBoundary::Sqlite(draft)) = setup.target.as_mut() {
+                    if show_sqlite_table(ui, draft, "target", true) {
+                        action = Some(NewMappingAction::LoadSqliteTable(SchemaSide::Target));
+                    }
+                    ui.horizontal(|ui| {
+                        ui.label("Output path");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut draft.output_path)
+                                .desired_width(380.0)
+                                .hint_text("output.db"),
+                        );
+                        if ui
+                            .add_enabled(dialog_idle, egui::Button::new("Choose..."))
+                            .clicked()
+                        {
+                            action = Some(NewMappingAction::ChooseSqliteTargetOutput);
+                        }
+                    });
+                    ui.weak(
+                        "Running the mapping replaces this table's rows in the output database.",
+                    );
+                    show_sqlite_validation(ui, draft, true);
                 }
 
                 ui.separator();
@@ -200,6 +313,19 @@ impl FerruleApp {
                     pick_file("CSV source", &["csv", "txt", "tsv"]),
                 ));
             }
+            Some(NewMappingAction::ChooseSqlite(side)) => {
+                let kind = match side {
+                    SchemaSide::Source => DialogKind::BrowseSourceSqlite,
+                    SchemaSide::Target => DialogKind::BrowseTargetSqlite,
+                };
+                self.pending_dialog = Some((
+                    kind,
+                    pick_file("SQLite database", &["db", "sqlite", "sqlite3"]),
+                ));
+            }
+            Some(NewMappingAction::LoadSqliteTable(side)) => {
+                self.stage_mapping_sqlite_table(side);
+            }
             Some(NewMappingAction::ConfigureCsvTarget) => {
                 if let Some(setup) = self.new_mapping_setup.as_mut() {
                     setup.target = Some(MappingBoundary::Csv(CsvBoundaryDraft::target()));
@@ -212,13 +338,29 @@ impl FerruleApp {
                     .and_then(|setup| setup.target.as_ref())
                     .and_then(|boundary| match boundary {
                         MappingBoundary::Csv(draft) => Some(draft.path.as_str()),
-                        MappingBoundary::Schema(_) => None,
+                        MappingBoundary::Schema(_) | MappingBoundary::Sqlite(_) => None,
                     })
                     .filter(|path| !path.is_empty())
                     .unwrap_or("output.csv");
                 self.pending_dialog = Some((
                     DialogKind::BrowseTargetCsvOutput,
                     save_file("CSV output", &["csv", "txt", "tsv"], current),
+                ));
+            }
+            Some(NewMappingAction::ChooseSqliteTargetOutput) => {
+                let current = self
+                    .new_mapping_setup
+                    .as_ref()
+                    .and_then(|setup| setup.target.as_ref())
+                    .and_then(|boundary| match boundary {
+                        MappingBoundary::Sqlite(draft) => Some(draft.output_path.as_str()),
+                        _ => None,
+                    })
+                    .filter(|path| !path.is_empty())
+                    .unwrap_or("output.db");
+                self.pending_dialog = Some((
+                    DialogKind::BrowseTargetSqliteOutput,
+                    save_file("SQLite output", &["db", "sqlite", "sqlite3"], current),
                 ));
             }
             Some(NewMappingAction::Cancel) => {
@@ -266,6 +408,84 @@ fn boundary_label(boundary: Option<&MappingBoundary>) -> String {
         Some(MappingBoundary::Schema(imported)) => imported.path.display().to_string(),
         Some(MappingBoundary::Csv(draft)) if draft.path.is_empty() => "CSV".to_owned(),
         Some(MappingBoundary::Csv(draft)) => format!("CSV: {}", draft.path),
+        Some(MappingBoundary::Sqlite(draft)) if draft.table.is_empty() => {
+            format!("SQLite: {}", draft.schema_path)
+        }
+        Some(MappingBoundary::Sqlite(draft)) => {
+            format!("SQLite: {} / {}", draft.schema_path, draft.table)
+        }
+    }
+}
+
+fn show_sqlite_table(
+    ui: &mut egui::Ui,
+    draft: &mut SqliteBoundaryDraft,
+    side: &str,
+    target: bool,
+) -> bool {
+    let mut load = false;
+    ui.horizontal(|ui| {
+        ui.label("Table");
+        let mut table = draft.table.clone();
+        if ui
+            .add(
+                egui::TextEdit::singleline(&mut table)
+                    .desired_width(260.0)
+                    .char_limit(256)
+                    .hint_text("Existing table name"),
+            )
+            .changed()
+        {
+            draft.set_table(table);
+        }
+        if ui
+            .add_enabled(
+                !draft.table.trim().is_empty(),
+                egui::Button::new("Load table"),
+            )
+            .clicked()
+        {
+            load = true;
+        }
+    });
+    if let Some(schema) = &draft.schema
+        && let ir::SchemaKind::Group { children, .. } = &schema.kind
+    {
+        ui.label(format!("{} columns from `{}`", children.len(), schema.name));
+        egui::ScrollArea::vertical()
+            .id_salt(("new_mapping_sqlite_columns", side))
+            .max_height(180.0)
+            .show(ui, |ui| {
+                egui::Grid::new(("new_mapping_sqlite_columns_grid", side))
+                    .num_columns(3)
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        for column in children {
+                            ui.monospace(short_preview_text(&column.name));
+                            let ty = match &column.kind {
+                                ir::SchemaKind::Scalar { ty } => scalar_type_label(*ty),
+                                _ => "Other",
+                            };
+                            ui.label(ty);
+                            if column.value_generation.is_some() {
+                                ui.weak("Generated");
+                            } else {
+                                ui.label("");
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
+    }
+    if !target {
+        show_sqlite_validation(ui, draft, false);
+    }
+    load
+}
+
+fn show_sqlite_validation(ui: &mut egui::Ui, draft: &SqliteBoundaryDraft, target: bool) {
+    if let Err(error) = draft.schema(target) {
+        ui.colored_label(ui.visuals().error_fg_color, error.to_string());
     }
 }
 
@@ -419,8 +639,11 @@ fn show_csv_validation(ui: &mut egui::Ui, draft: &CsvBoundaryDraft) {
 enum NewMappingAction {
     ChooseSchema(SchemaSide),
     ChooseCsvSource,
+    ChooseSqlite(SchemaSide),
+    LoadSqliteTable(SchemaSide),
     ConfigureCsvTarget,
     ChooseCsvTargetOutput,
+    ChooseSqliteTargetOutput,
     Cancel,
     Create,
 }
@@ -428,6 +651,24 @@ enum NewMappingAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn bind_flat_columns(project: &mut mapping::Project, columns: &[&str]) {
+        project.root.iteration = mapping::ScopeIteration::Source(vec![]);
+        for (index, column) in columns.iter().enumerate() {
+            let id = index as mapping::NodeId + 1;
+            project.graph.nodes.insert(
+                id,
+                mapping::Node::SourceField {
+                    path: vec![(*column).to_owned()],
+                    frame: project.source.repeating.then(Vec::new),
+                },
+            );
+            project.root.bindings.push(mapping::Binding {
+                target_field: (*column).to_owned(),
+                node: id,
+            });
+        }
+    }
 
     #[test]
     fn csv_mapping_paths_survive_first_save_reopen_and_run() -> anyhow::Result<()> {
@@ -477,6 +718,106 @@ mod tests {
         let outcome = cli::run_project_with_paths(&project_path, None, None)?;
         assert_eq!(outcome.output_path, target_path);
         assert_eq!(std::fs::read_to_string(&target_path)?, "Name\nJane\n");
+        std::fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn sqlite_boundary_paths_survive_save_reopen_and_run() -> anyhow::Result<()> {
+        let directory = std::env::temp_dir().join(format!(
+            "ferrule-gui-sqlite-new-mapping-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory)?;
+        let csv_path = directory.join("source.csv");
+        let schema_db_path = directory.join("schema.sqlite");
+        let output_db_path = directory.join("output.sqlite3");
+        let readback_path = directory.join("readback.csv");
+        std::fs::write(&csv_path, "Name,Quantity\nJane,2\n")?;
+
+        // Build an existing table for introspection using the public CLI path.
+        let columns = vec![
+            ir::SchemaNode::scalar("Name", ir::ScalarType::String),
+            ir::SchemaNode::scalar("Quantity", ir::ScalarType::Int),
+        ];
+        let mut seed = crate::new_mapping::blank_project();
+        seed.source = ir::SchemaNode::group("row", columns.clone());
+        seed.target = ir::SchemaNode::group("orders", columns).repeating();
+        seed.source_path = Some(csv_path.to_str().unwrap().to_owned());
+        seed.target_path = Some(schema_db_path.to_str().unwrap().to_owned());
+        bind_flat_columns(&mut seed, &["Name", "Quantity"]);
+        let seed_project_path = directory.join("seed.json");
+        std::fs::write(&seed_project_path, serde_json::to_vec_pretty(&seed)?)?;
+        cli::run_project_with_paths(&seed_project_path, None, None)?;
+
+        let mut app = FerruleApp::default();
+        app.begin_new_mapping();
+        app.stage_mapping_csv_source(csv_path.clone());
+        app.stage_mapping_sqlite(SchemaSide::Target, schema_db_path.clone());
+        let target = app
+            .new_mapping_setup
+            .as_mut()
+            .and_then(|setup| setup.target.as_mut());
+        let Some(MappingBoundary::Sqlite(target)) = target else {
+            panic!("SQLite target was not staged");
+        };
+        target.set_table("orders".to_owned());
+        app.stage_mapping_sqlite_table(SchemaSide::Target);
+        app.stage_mapping_sqlite_target_output(output_db_path.to_str().unwrap().to_owned());
+        app.finish_new_mapping();
+        assert!(app.project.target.repeating);
+        assert_eq!(app.project.target.name, "orders");
+        assert_eq!(app.project.target_path.as_deref(), output_db_path.to_str());
+        bind_flat_columns(&mut app.project, &["Name", "Quantity"]);
+        let project_path = directory.join("csv-to-db.json");
+        app.save_document_to(&project_path)?;
+        app.load_project_from(&project_path);
+        assert!(cli::validate(&app.project).is_empty());
+        cli::run_project_with_paths(&project_path, None, None)?;
+        assert!(output_db_path.is_file());
+
+        let mut readback = FerruleApp::default();
+        readback.begin_new_mapping();
+        readback.stage_mapping_sqlite(SchemaSide::Source, output_db_path.clone());
+        let source = readback
+            .new_mapping_setup
+            .as_mut()
+            .and_then(|setup| setup.source.as_mut());
+        let Some(MappingBoundary::Sqlite(source)) = source else {
+            panic!("SQLite source was not staged");
+        };
+        source.set_table("orders".to_owned());
+        readback.stage_mapping_sqlite_table(SchemaSide::Source);
+        let target = readback.new_mapping_setup.as_mut().unwrap();
+        let mut csv_target = CsvBoundaryDraft::target();
+        csv_target.path = readback_path.to_str().unwrap().to_owned();
+        csv_target.columns = vec![
+            CsvColumnDraft {
+                name: "Name".to_owned(),
+                ty: ir::ScalarType::String,
+            },
+            CsvColumnDraft {
+                name: "Quantity".to_owned(),
+                ty: ir::ScalarType::Int,
+            },
+        ];
+        target.target = Some(MappingBoundary::Csv(csv_target));
+        readback.finish_new_mapping();
+        assert!(readback.project.source.repeating);
+        assert_eq!(
+            readback.project.source_path.as_deref(),
+            output_db_path.to_str()
+        );
+        bind_flat_columns(&mut readback.project, &["Name", "Quantity"]);
+        let readback_project_path = directory.join("db-to-csv.json");
+        readback.save_document_to(&readback_project_path)?;
+        readback.load_project_from(&readback_project_path);
+        assert!(cli::validate(&readback.project).is_empty());
+        cli::run_project_with_paths(&readback_project_path, None, None)?;
+        assert_eq!(
+            std::fs::read_to_string(&readback_path)?,
+            "Name,Quantity\nJane,2\n"
+        );
         std::fs::remove_dir_all(directory)?;
         Ok(())
     }

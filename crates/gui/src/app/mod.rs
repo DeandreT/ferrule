@@ -459,6 +459,9 @@ enum DialogKind {
     BrowseTargetSchema,
     BrowseSourceCsv,
     BrowseTargetCsvOutput,
+    BrowseSourceSqlite,
+    BrowseTargetSqlite,
+    BrowseTargetSqliteOutput,
     BrowseExtraSourceSchema,
     BrowseExtraSourceInstance,
     BrowseExtraTargetSchema,
@@ -1156,12 +1159,21 @@ impl FerruleApp {
             DialogKind::BrowseTargetCsvOutput => {
                 self.stage_mapping_csv_target_output(path);
             }
+            DialogKind::BrowseSourceSqlite => {
+                self.stage_mapping_sqlite(SchemaSide::Source, PathBuf::from(path));
+            }
+            DialogKind::BrowseTargetSqlite => {
+                self.stage_mapping_sqlite(SchemaSide::Target, PathBuf::from(path));
+            }
+            DialogKind::BrowseTargetSqliteOutput => {
+                self.stage_mapping_sqlite_target_output(path);
+            }
             DialogKind::BrowseExtraSourceSchema => {
                 self.stage_extra_source_schema(PathBuf::from(path));
             }
             DialogKind::BrowseExtraSourceInstance => {
                 if let Some(draft) = &mut self.extra_source_draft {
-                    draft.instance_path = path;
+                    draft.set_instance_path(path);
                 }
             }
             DialogKind::BrowseExtraTargetSchema => {
