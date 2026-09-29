@@ -7,8 +7,8 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use crate::preview::{
-    DebugNodeCondition, DebugPositionCondition, DebugScalarCondition, DebugSourceCondition,
-    PreviewBreakpoint, PreviewTarget,
+    DebugExpressionCondition, DebugNodeCondition, DebugPositionCondition, DebugScalarCondition,
+    DebugSourceCondition, PreviewBreakpoint, PreviewTarget,
 };
 use mapping::PipelineInput;
 
@@ -78,6 +78,7 @@ pub(super) enum PipelineRunCommand {
 
 enum PipelineRunEvent {
     Paused(String, Box<engine::PendingTargetWrite>),
+    PausedNode(String, Box<engine::PendingNodeValue>),
     ReadyToPublish,
     Finished(
         Result<cli::PipelineRunOutcome, PipelineRunError>,
@@ -94,6 +95,7 @@ enum PipelineRunError {
 pub(super) enum PipelineRunPhase {
     Running,
     Paused(String, Box<engine::PendingTargetWrite>),
+    PausedNode(String, Box<engine::PendingNodeValue>),
     Publishing,
     Stopping,
 }
@@ -145,11 +147,14 @@ struct PipelineRunHook {
     commands: Receiver<PipelineRunCommand>,
     cancelled: Arc<AtomicBool>,
     pause_each_write: Cell<bool>,
+    pause_next_node: Cell<bool>,
     breakpoint: Option<PipelineBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
     source_condition: Option<DebugSourceCondition>,
     node_condition: Option<DebugNodeCondition>,
+    expression_condition: Option<DebugExpressionCondition>,
+    expression_stage: Option<String>,
 }
 
 impl PipelineRunHook {
@@ -172,7 +177,10 @@ impl PipelineRunHook {
                 Ok(PipelineRunCommand::Pause | PipelineRunCommand::Step) => {
                     self.pause_each_write.set(true);
                 }
-                Ok(PipelineRunCommand::Continue) => self.pause_each_write.set(false),
+                Ok(PipelineRunCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                }
                 Ok(PipelineRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
                     return engine::DebugDecision::Cancel;
                 }
@@ -234,6 +242,72 @@ impl PipelineRunHook {
                     return engine::DebugDecision::Resume;
                 }
                 Ok(PipelineRunCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Publish)
+                | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Ok(PipelineRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+            }
+        }
+    }
+
+    fn after_node_value(
+        &self,
+        stage: &str,
+        value: &engine::PendingNodeValue,
+    ) -> engine::DebugDecision {
+        if self.cancelled.load(Ordering::Acquire) {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            match self.commands.try_recv() {
+                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Step) => {
+                    self.pause_each_write.set(true);
+                }
+                Ok(PipelineRunCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                }
+                Ok(PipelineRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Ok(PipelineRunCommand::Publish) | Err(TryRecvError::Empty) => break,
+            }
+        }
+        let matches_expression = self.expression_condition.as_ref().is_some_and(|condition| {
+            self.expression_stage
+                .as_deref()
+                .is_none_or(|id| id == stage)
+                && condition.matches(value)
+        });
+        if !self.pause_next_node.replace(false) && !matches_expression {
+            return engine::DebugDecision::Resume;
+        }
+        if self
+            .events
+            .send(PipelineRunEvent::PausedNode(
+                stage.into(),
+                Box::new(value.clone()),
+            ))
+            .is_err()
+        {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            if self.cancelled.load(Ordering::Acquire) {
+                return engine::DebugDecision::Cancel;
+            }
+            match self.commands.recv_timeout(Duration::from_millis(100)) {
+                Ok(PipelineRunCommand::Step) => {
+                    self.pause_next_node.set(true);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(PipelineRunCommand::Continue) => {
+                    self.pause_next_node.set(false);
                     self.pause_each_write.set(false);
                     return engine::DebugDecision::Resume;
                 }
@@ -434,6 +508,46 @@ impl FerruleApp {
                         ui,
                         &mut self.pipeline_run_node_condition,
                     );
+                    condition_valid &= preview_ui::show_breakpoint_expression_condition(
+                        ui,
+                        &mut self.pipeline_run_expression_condition,
+                        "pipeline_debug_expression_value_type",
+                    );
+                    if self.pipeline_run_expression_condition.enabled {
+                        if self
+                            .pipeline_run_expression_stage
+                            .as_ref()
+                            .is_some_and(|selected| {
+                                !draft
+                                    .pipeline
+                                    .stages
+                                    .iter()
+                                    .any(|stage| stage.id == selected.as_str())
+                            })
+                        {
+                            self.pipeline_run_expression_stage = None;
+                        }
+                        egui::ComboBox::from_id_salt("pipeline_debug_expression_stage")
+                            .selected_text(
+                                self.pipeline_run_expression_stage
+                                    .as_deref()
+                                    .unwrap_or("Every stage"),
+                            )
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.pipeline_run_expression_stage,
+                                    None,
+                                    "Every stage",
+                                );
+                                for stage in &draft.pipeline.stages {
+                                    ui.selectable_value(
+                                        &mut self.pipeline_run_expression_stage,
+                                        Some(stage.id.clone()),
+                                        &stage.id,
+                                    );
+                                }
+                            });
+                    }
                 }
                 match &phase {
                     Some(PipelineRunPhase::Running) => {
@@ -453,6 +567,10 @@ impl FerruleApp {
                             &preview_ui::PreviewPhase::Paused(write.clone()),
                             true,
                         );
+                    }
+                    Some(PipelineRunPhase::PausedNode(stage, value)) => {
+                        ui.strong(format!("Paused in stage `{stage}`"));
+                        preview_ui::show_live_node_debug_state(ui, value);
                     }
                     Some(PipelineRunPhase::Publishing) => {
                         ui.horizontal(|ui| {
@@ -490,7 +608,7 @@ impl FerruleApp {
                                 command = Some(PipelineRunCommand::Cancel);
                             }
                         }
-                        Some(PipelineRunPhase::Paused(..)) => {
+                        Some(PipelineRunPhase::Paused(..) | PipelineRunPhase::PausedNode(..)) => {
                             if ui.button("Step").clicked() {
                                 command = Some(PipelineRunCommand::Step);
                             }
@@ -579,6 +697,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let expression_condition = if debug {
+            match self.pipeline_run_expression_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug pipeline blocked".into();
+                    self.diagnostics.error("Debug pipeline blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let Some(draft) = self.pipeline_run_draft.as_ref() else {
             return;
         };
@@ -601,6 +731,16 @@ impl FerruleApp {
         } else {
             None
         };
+        let expression_stage = self
+            .pipeline_run_expression_stage
+            .clone()
+            .filter(|selected| {
+                draft
+                    .pipeline
+                    .stages
+                    .iter()
+                    .any(|stage| stage.id == selected.as_str())
+            });
         let (events, receiver) = mpsc::channel();
         let (commands, command_receiver) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -617,25 +757,34 @@ impl FerruleApp {
                         && value_condition.is_none()
                         && position_condition.is_none()
                         && source_condition.is_none()
-                        && node_condition.is_none(),
+                        && node_condition.is_none()
+                        && expression_condition.is_none(),
                 ),
+                pause_next_node: Cell::new(false),
                 breakpoint,
                 value_condition,
                 position_condition,
                 source_condition,
                 node_condition,
+                expression_condition,
+                expression_stage,
             };
             let stage_hook = |stage: &str, write: &engine::PendingTargetWrite| {
                 hook.before_target_write(stage, write)
             };
+            let stage_node_hook =
+                |stage: &str, value: &engine::PendingNodeValue| hook.after_node_value(stage, value);
             let source_probe = |_stage: &str| hook.source_field_probe();
             let stage_trace = |stage: &str, event: cli::TraceEvent| trace.record(stage, event);
             let gate = || hook.before_publish();
-            let options = cli::PipelineRunOptions::default()
+            let mut options = cli::PipelineRunOptions::default()
                 .with_stage_debug_hook(&stage_hook)
                 .with_stage_source_field_probe(&source_probe)
                 .with_stage_trace_sink(&stage_trace)
                 .with_before_publish(&gate);
+            if hook.expression_condition.is_some() {
+                options = options.with_stage_node_debug_hook(&stage_node_hook);
+            }
             let result =
                 cli::run_pipeline_file_with_options(&worker_path, &inputs, &outputs, &options)
                     .map_err(|error| {
@@ -691,7 +840,10 @@ impl FerruleApp {
         let event = match pending.receiver.try_recv() {
             Ok(event) => event,
             Err(TryRecvError::Empty) => {
-                if !matches!(pending.phase, PipelineRunPhase::Paused(..)) {
+                if !matches!(
+                    pending.phase,
+                    PipelineRunPhase::Paused(..) | PipelineRunPhase::PausedNode(..)
+                ) {
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }
                 return;
@@ -713,6 +865,16 @@ impl FerruleApp {
                         write.field
                     );
                     pending.phase = PipelineRunPhase::Paused(stage, write);
+                }
+                ctx.request_repaint();
+            }
+            PipelineRunEvent::PausedNode(stage, value) => {
+                if matches!(pending.phase, PipelineRunPhase::Stopping) {
+                    let _ = pending.commands.send(PipelineRunCommand::Cancel);
+                } else {
+                    self.status =
+                        format!("paused in stage `{stage}` after graph node #{}", value.node);
+                    pending.phase = PipelineRunPhase::PausedNode(stage, value);
                 }
                 ctx.request_repaint();
             }

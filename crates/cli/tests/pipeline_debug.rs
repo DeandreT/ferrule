@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use engine::{DebugDecision, EngineError, PendingTargetWrite};
+use engine::{DebugDecision, EngineError, PendingNodeValue, PendingTargetWrite};
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Pipeline, PipelineInput, PipelineStage, Project, Scope};
 
@@ -150,6 +150,34 @@ fn stage_debug_hook_cancels_later_stage_without_publishing() -> anyhow::Result<(
         Some(EngineError::DebugCancelled)
     )));
     assert_eq!(*seen.borrow(), ["prepare", "finish"]);
+    assert_old_outputs(&outputs)?;
+    Ok(())
+}
+
+#[test]
+fn stage_node_hook_alone_cancels_later_stage_before_publication() -> anyhow::Result<()> {
+    let directory = TempDir::new()?;
+    let (pipeline, inputs, outputs) = prepare(&directory)?;
+    let seen = RefCell::new(Vec::<String>::new());
+    let hook = |stage: &str, value: &PendingNodeValue| {
+        assert_eq!(value.node, 0);
+        assert_eq!(value.value.value_type, "string");
+        seen.borrow_mut()
+            .push(format!("{stage}:{}", value.value.preview));
+        if stage == "finish" {
+            DebugDecision::Cancel
+        } else {
+            DebugDecision::Resume
+        }
+    };
+    let options = cli::PipelineRunOptions::default().with_stage_node_debug_hook(&hook);
+    let error =
+        cli::run_pipeline_file_with_options(&pipeline, &inputs, &outputs, &options).unwrap_err();
+    assert!(error.chain().any(|cause| matches!(
+        cause.downcast_ref::<EngineError>(),
+        Some(EngineError::DebugCancelled)
+    )));
+    assert_eq!(*seen.borrow(), ["prepare:A", "finish:B"]);
     assert_old_outputs(&outputs)?;
     Ok(())
 }

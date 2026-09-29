@@ -110,6 +110,52 @@ pub(super) struct BreakpointNodeConditionDraft {
     pub(super) text: String,
 }
 
+/// A graph-evaluation breakpoint, independent of target-field writes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct BreakpointExpressionConditionDraft {
+    pub(super) enabled: bool,
+    pub(super) node_text: String,
+    pub(super) value: BreakpointValueConditionDraft,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DebugExpressionCondition {
+    node: mapping::NodeId,
+    value: Option<DebugScalarCondition>,
+}
+
+impl BreakpointExpressionConditionDraft {
+    pub(super) fn compile(&self) -> Result<Option<DebugExpressionCondition>, &'static str> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let text = self.node_text.trim();
+        if text.len() > 10 {
+            return Err("Expression node ID exceeds the supported range.");
+        }
+        if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("Enter a nonnegative numeric expression node ID.");
+        }
+        let node = text
+            .parse::<mapping::NodeId>()
+            .map_err(|_| "Expression node ID exceeds the supported range.")?;
+        Ok(Some(DebugExpressionCondition {
+            node,
+            value: self.value.compile()?,
+        }))
+    }
+}
+
+impl DebugExpressionCondition {
+    pub(super) fn matches(&self, value: &engine::PendingNodeValue) -> bool {
+        self.node == value.node
+            && self
+                .value
+                .as_ref()
+                .is_none_or(|condition| condition.matches_trace_value(&value.value))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct DebugNodeCondition {
     node: mapping::NodeId,
@@ -311,11 +357,16 @@ impl DebugScalarCondition {
         if preview.kind != engine::TraceOutputKind::Scalar {
             return false;
         }
-        preview.value.as_ref().is_some_and(|value| {
-            !value.truncated
-                && value.value_type == self.value_type.trace_type()
-                && value.preview == self.canonical_preview
-        })
+        preview
+            .value
+            .as_ref()
+            .is_some_and(|value| self.matches_trace_value(value))
+    }
+
+    fn matches_trace_value(&self, value: &engine::TraceValue) -> bool {
+        !value.truncated
+            && value.value_type == self.value_type.trace_type()
+            && value.preview == self.canonical_preview
     }
 }
 
