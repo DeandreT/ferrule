@@ -6,7 +6,6 @@ use ir::{
 };
 use mapping::{FunctionId, Graph, Node, NodeId, UserFunction};
 
-use crate::EngineError;
 use crate::aggregate::aggregate;
 use crate::context::{runtime_field, runtime_parameter_field};
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
@@ -18,12 +17,14 @@ use crate::sequence::{eval_sequence_aggregate, eval_sequence_exists, eval_sequen
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{TraceSink, record_node_input_value, record_node_value};
 use crate::user_function;
+use crate::{DebugHook, EngineError};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EvalProgram<'a> {
     pub(crate) graph: &'a Graph,
     pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
     pub(crate) trace_sink: Option<&'a dyn TraceSink>,
+    pub(crate) debug_hook: Option<&'a dyn DebugHook>,
 }
 
 impl<'a> EvalProgram<'a> {
@@ -36,7 +37,13 @@ impl<'a> EvalProgram<'a> {
             graph,
             user_functions,
             trace_sink,
+            debug_hook: None,
         }
+    }
+
+    pub(crate) fn with_debug_hook(mut self, hook: Option<&'a dyn DebugHook>) -> Self {
+        self.debug_hook = hook;
+        self
     }
 }
 

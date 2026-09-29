@@ -10,6 +10,7 @@ use mapping::{
 };
 
 use crate::aggregate::sort_value_ordering;
+use crate::debug::before_target_write;
 use crate::dynamic_target::{self, eval_dynamic_key, insert_target_field};
 use crate::eval_expr::{EvalProgram, eval_expr};
 use crate::grouping::GroupingMode;
@@ -977,6 +978,17 @@ impl ItemEvaluator<'_> {
                 false => Instance::Scalar(value),
             };
             let traced_value = trace_field_value(&value);
+            before_target_write(
+                program.debug_hook,
+                trace_scope,
+                TraceTargetFieldBinding::StaticBinding {
+                    value: binding.node,
+                },
+                output_positions,
+                &binding.target_field,
+                &value,
+                &fields,
+            )?;
             insert_static_binding(&mut fields, binding.target_field.clone(), value, repeating)?;
             record_target_field(
                 program,
@@ -1003,6 +1015,18 @@ impl ItemEvaluator<'_> {
             let value = Instance::Scalar(value);
             let traced_key = bounded_text(&key);
             let traced_value = trace_field_value(&value);
+            before_target_write(
+                program.debug_hook,
+                trace_scope,
+                TraceTargetFieldBinding::DynamicBinding {
+                    key: binding.key,
+                    value: binding.value,
+                },
+                output_positions,
+                &key,
+                &value,
+                &fields,
+            )?;
             dynamic_target::insert_dynamic_target_field(&mut fields, key, value, target)?;
             record_target_field(
                 program,
@@ -1029,6 +1053,15 @@ impl ItemEvaluator<'_> {
                 &trace_scope.child(&child.target_field, index),
             )?;
             let traced_value = trace_field_value(&child_instance);
+            before_target_write(
+                program.debug_hook,
+                trace_scope,
+                TraceTargetFieldBinding::StaticChild,
+                output_positions,
+                &child.target_field,
+                &child_instance,
+                &fields,
+            )?;
             insert_target_field(&mut fields, child.target_field.clone(), child_instance)?;
             record_target_field(
                 program,
@@ -1057,6 +1090,15 @@ impl ItemEvaluator<'_> {
             )?;
             let traced_key = bounded_text(&key);
             let traced_value = trace_field_value(&child_instance);
+            before_target_write(
+                program.debug_hook,
+                trace_scope,
+                TraceTargetFieldBinding::DynamicChild { key: child.key },
+                output_positions,
+                &key,
+                &child_instance,
+                &fields,
+            )?;
             dynamic_target::insert_dynamic_target_field(&mut fields, key, child_instance, target)?;
             record_target_field(
                 program,
