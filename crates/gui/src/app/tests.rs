@@ -1192,6 +1192,7 @@ fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> a
             input_identity: "input.xml".into(),
             output_identity: logical_output.display().to_string(),
             input_text: "<root/>".into(),
+            debug_breakpoint: None,
         }),
         ..FerruleApp::default()
     };
@@ -1287,8 +1288,45 @@ fn two_field_debug_preview_app() -> FerruleApp {
         input_identity: "input.xml".into(),
         output_identity: "output.xml".into(),
         input_text: "<root/>".into(),
+        debug_breakpoint: None,
     });
     app
+}
+
+fn three_field_debug_preview_app() -> FerruleApp {
+    let mut app = two_field_debug_preview_app();
+    app.project.target = SchemaNode::group(
+        "root",
+        vec![
+            SchemaNode::scalar("first", ScalarType::String),
+            SchemaNode::scalar("second", ScalarType::String),
+            SchemaNode::scalar("third", ScalarType::String),
+        ],
+    );
+    app.project.graph.nodes.insert(
+        2,
+        Node::Const {
+            value: ir::Value::String("C".into()),
+        },
+    );
+    app.project.root.bindings.push(Binding {
+        target_field: "third".into(),
+        node: 2,
+    });
+    app
+}
+
+fn select_debug_breakpoint(app: &mut FerruleApp, target_path: &[&str], field: &str) {
+    let draft = app.preview_draft.as_mut().expect("preview draft exists");
+    let choice = crate::preview::PreviewBreakpoint {
+        target_path: target_path.iter().map(|part| (*part).into()).collect(),
+        field: field.into(),
+    };
+    assert!(
+        crate::preview::breakpoint_candidates(&app.project, &draft.target).contains(&choice),
+        "breakpoint is selectable from declared target writes"
+    );
+    draft.debug_breakpoint = Some(choice);
 }
 
 #[test]
@@ -1344,6 +1382,133 @@ fn debug_preview_steps_before_target_writes_and_continues() {
             .count(),
         2
     );
+}
+
+#[test]
+fn debug_breakpoint_skips_earlier_field_then_step_pauses_at_next_write() {
+    let mut app = three_field_debug_preview_app();
+    select_debug_breakpoint(&mut app, &[], "second");
+    app.execute_debug_preview();
+
+    let second = wait_for_debug_pause(&mut app);
+    assert_eq!(second.field, "second");
+    assert_eq!(second.scope.target_path, Vec::<String>::new());
+    assert_eq!(second.draft.fields.len(), 1);
+    assert_eq!(second.draft.fields[0].name, "first");
+
+    app.preview_command(preview_ui::PreviewCommand::Step);
+    let third = wait_for_debug_pause(&mut app);
+    assert_eq!(third.field, "third");
+    assert_eq!(third.draft.fields.len(), 2);
+
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.show_run_report);
+}
+
+#[test]
+fn debug_breakpoint_continue_skips_other_fields() {
+    let mut app = three_field_debug_preview_app();
+    select_debug_breakpoint(&mut app, &[], "second");
+    app.execute_debug_preview();
+    assert_eq!(wait_for_debug_pause(&mut app).field, "second");
+
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    let report = app.run_report.as_mut().expect("completed preview report");
+    assert!(matches!(
+        report.report.outputs[0].preview(),
+        crate::run_report::OutputPreview::Text { content, .. }
+            if content.contains("<third>C</third>")
+    ));
+}
+
+#[test]
+fn debug_breakpoint_continue_stops_at_next_matching_row() {
+    let mut app = FerruleApp::default();
+    let mut source_row = SchemaNode::group("row", Vec::new());
+    source_row.repeating = true;
+    let mut target_row =
+        SchemaNode::group("row", vec![SchemaNode::scalar("value", ScalarType::String)]);
+    target_row.repeating = true;
+    app.project.source = SchemaNode::group("root", vec![source_row]);
+    app.project.target = SchemaNode::group("root", vec![target_row]);
+    app.project.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::String("X".into()),
+        },
+    );
+    app.project.root.children.push(Scope {
+        target_field: "row".into(),
+        iteration: mapping::ScopeIteration::Source(vec!["row".into()]),
+        bindings: vec![Binding {
+            target_field: "value".into(),
+            node: 0,
+        }],
+        ..Scope::default()
+    });
+    app.preview_draft = Some(crate::preview::PreviewDraft {
+        target: crate::preview::PreviewTarget::Primary,
+        input_identity: "input.xml".into(),
+        output_identity: "output.xml".into(),
+        input_text: "<root><row/><row/></root>".into(),
+        debug_breakpoint: None,
+    });
+    select_debug_breakpoint(&mut app, &["row"], "value");
+    app.execute_debug_preview();
+
+    let first = wait_for_debug_pause(&mut app);
+    assert_eq!(first.field, "value");
+    assert_eq!(
+        first.positions.last().map(|position| position.index),
+        Some(1)
+    );
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+
+    let second = wait_for_debug_pause(&mut app);
+    assert_eq!(second.field, "value");
+    assert_eq!(
+        second.positions.last().map(|position| position.index),
+        Some(2)
+    );
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.run_report.is_some());
+}
+
+#[test]
+fn debug_breakpoint_scope_distinguishes_equal_field_names() {
+    let mut app = two_field_debug_preview_app();
+    app.project.target = SchemaNode::group(
+        "root",
+        vec![
+            SchemaNode::scalar("first", ScalarType::String),
+            SchemaNode::group(
+                "nested",
+                vec![SchemaNode::scalar("first", ScalarType::String)],
+            ),
+        ],
+    );
+    app.project.root.bindings.pop();
+    app.project.root.children.push(Scope {
+        target_field: "nested".into(),
+        bindings: vec![Binding {
+            target_field: "first".into(),
+            node: 1,
+        }],
+        ..Scope::default()
+    });
+    select_debug_breakpoint(&mut app, &["nested"], "first");
+    app.execute_debug_preview();
+
+    let nested = wait_for_debug_pause(&mut app);
+    assert_eq!(nested.field, "first");
+    assert_eq!(nested.scope.target_path, ["nested"]);
+    assert!(nested.draft.fields.is_empty());
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.run_report.is_some());
 }
 
 #[test]
