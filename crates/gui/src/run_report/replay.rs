@@ -63,6 +63,7 @@ pub(super) fn show_replay(ui: &mut egui::Ui, view: &mut RunReportView) {
             ui.strong(format!("Event {} of {retained}", index + 1));
         }
     });
+    show_history_stage_selector(ui, view);
     ui.horizontal_wrapped(|ui| {
         ui.label("Selected graph node");
         if let Some(node) = view.history_node {
@@ -94,8 +95,9 @@ pub(super) fn show_replay(ui: &mut egui::Ui, view: &mut RunReportView) {
     let Some(index) = view.replay_event else {
         return;
     };
-    let event = &view.report.trace.events[index];
-    let details = replay_event_details(index, event);
+    let Some(details) = replay_event_details_for_view(view, index) else {
+        return;
+    };
     egui::ScrollArea::both()
         .id_salt("run_replay_detail")
         .auto_shrink([false, false])
@@ -108,6 +110,18 @@ pub(super) fn show_replay(ui: &mut egui::Ui, view: &mut RunReportView) {
                 );
             }
         });
+}
+
+pub(super) fn replay_event_details_for_view(
+    view: &RunReportView,
+    index: usize,
+) -> Option<Vec<String>> {
+    let event = view.report.trace.events.get(index)?;
+    let mut details = replay_event_details(index, event);
+    if let Some(stage) = view.report.trace.stage_at(index) {
+        details.insert(0, format!("Stage: {stage}"));
+    }
+    Some(details)
 }
 
 pub(super) fn replay_event_details(index: usize, event: &cli::TraceEvent) -> Vec<String> {

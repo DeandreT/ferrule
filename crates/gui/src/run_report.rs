@@ -22,6 +22,16 @@ pub const MAX_TRACE_EVENTS: usize = 50_000;
 pub struct TraceReport {
     pub events: Vec<cli::TraceEvent>,
     pub dropped: usize,
+    /// Empty for single-project runs; pipeline events reference these stage IDs.
+    pub stages: Vec<String>,
+    pub event_stages: Vec<u16>,
+}
+
+impl TraceReport {
+    fn stage_at(&self, index: usize) -> Option<&str> {
+        let stage = usize::from(*self.event_stages.get(index)?);
+        self.stages.get(stage).map(String::as_str)
+    }
 }
 
 /// Bounded synchronous trace collector used by native runs.
@@ -48,7 +58,76 @@ impl TraceCollector {
         TraceReport {
             events: self.events.into_inner(),
             dropped: self.dropped.get(),
+            stages: Vec::new(),
+            event_stages: Vec::new(),
         }
+    }
+}
+
+#[derive(Default)]
+struct PipelineTraceState {
+    events: Vec<cli::TraceEvent>,
+    event_stages: Vec<u16>,
+    stages: Vec<String>,
+    stage_indices: BTreeMap<String, u16>,
+    dropped: usize,
+}
+
+/// One global retained prefix across all stages, with each stage ID stored once.
+pub struct PipelineTraceCollector {
+    state: RefCell<PipelineTraceState>,
+    limit: usize,
+}
+
+impl PipelineTraceCollector {
+    pub fn new() -> Self {
+        Self::with_limit(MAX_TRACE_EVENTS)
+    }
+
+    fn with_limit(limit: usize) -> Self {
+        Self {
+            state: RefCell::new(PipelineTraceState::default()),
+            limit,
+        }
+    }
+
+    pub fn record(&self, stage: &str, event: cli::TraceEvent) {
+        let mut state = self.state.borrow_mut();
+        if state.events.len() >= self.limit {
+            state.dropped = state.dropped.saturating_add(1);
+            return;
+        }
+        let stage_index = match state.stage_indices.get(stage).copied() {
+            Some(index) => index,
+            None => {
+                // Pipeline validation limits stages to 1,024 and IDs to 256 bytes.
+                let Ok(index) = u16::try_from(state.stages.len()) else {
+                    state.dropped = state.dropped.saturating_add(1);
+                    return;
+                };
+                state.stages.push(stage.to_owned());
+                state.stage_indices.insert(stage.to_owned(), index);
+                index
+            }
+        };
+        state.events.push(event);
+        state.event_stages.push(stage_index);
+    }
+
+    pub fn finish(self) -> TraceReport {
+        let state = self.state.into_inner();
+        TraceReport {
+            events: state.events,
+            dropped: state.dropped,
+            stages: state.stages,
+            event_stages: state.event_stages,
+        }
+    }
+}
+
+impl Default for PipelineTraceCollector {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -91,6 +170,7 @@ impl RunReport {
         outcome: cli::PipelineRunOutcome,
         pipeline_path: PathBuf,
         duration: Duration,
+        trace: TraceReport,
     ) -> Self {
         let records_written = outcome.artifacts.iter().fold(0usize, |sum, artifact| {
             sum.saturating_add(artifact.records_written)
@@ -127,7 +207,7 @@ impl RunReport {
             records_written,
             input_path: pipeline_path,
             outputs,
-            trace: TraceReport::default(),
+            trace,
         }
     }
 
@@ -210,6 +290,7 @@ pub struct RunReportView {
     history_mode: HistoryMode,
     history_by_node: BTreeMap<mapping::NodeId, Vec<usize>>,
     history_node: Option<mapping::NodeId>,
+    history_stage: Option<u16>,
     source_rows: Vec<usize>,
     selected_source_row: Option<usize>,
     replay_event: Option<usize>,
@@ -218,14 +299,11 @@ pub struct RunReportView {
 impl RunReportView {
     pub fn new(report: RunReport) -> Self {
         let replay_event = (!report.trace.events.is_empty()).then_some(0);
-        let history_by_node = index_node_history(&report.trace.events);
+        let history_stage = report.trace.event_stages.first().copied();
+        let history_by_node = index_node_history_for_stage(&report.trace, history_stage);
         let source_rows = index_source_rows(&report.trace.events);
         let selected_source_row = source_rows.first().copied();
-        let history_node = report.trace.events.iter().find_map(|event| match event {
-            cli::TraceEvent::NodeValue { node, .. } => Some(*node),
-            cli::TraceEvent::NodeInputValue { consumer, .. } => Some(*consumer),
-            _ => None,
-        });
+        let history_node = first_node_in_stage(&report.trace, history_stage);
         Self {
             report,
             selected_output: 0,
@@ -234,6 +312,7 @@ impl RunReportView {
             history_mode: HistoryMode::Nodes,
             history_by_node,
             history_node,
+            history_stage,
             source_rows,
             selected_source_row,
             replay_event,
@@ -263,11 +342,84 @@ impl RunReportView {
             .iter()
             .enumerate()
             .filter_map(|(index, event)| {
-                (filter.is_empty() || trace_row(index, event).to_lowercase().contains(&filter))
-                    .then_some(index)
+                (filter.is_empty()
+                    || self
+                        .trace_row(index, event)
+                        .to_lowercase()
+                        .contains(&filter))
+                .then_some(index)
             })
             .collect()
     }
+
+    fn trace_row(&self, index: usize, event: &cli::TraceEvent) -> String {
+        let row = trace_row(index, event);
+        match self.report.trace.stage_at(index) {
+            Some(stage) => format!("stage {stage}  {row}"),
+            None => row,
+        }
+    }
+
+    fn select_history_stage(&mut self, stage: u16) {
+        if usize::from(stage) >= self.report.trace.stages.len() {
+            return;
+        }
+        self.history_stage = Some(stage);
+        if let Some(index) = self
+            .report
+            .trace
+            .event_stages
+            .iter()
+            .position(|&event_stage| event_stage == stage)
+        {
+            self.replay_event = Some(index);
+        }
+        self.history_by_node = index_node_history_for_stage(&self.report.trace, Some(stage));
+        self.history_node = first_node_in_stage(&self.report.trace, Some(stage));
+        self.selected_source_row = self
+            .source_rows
+            .iter()
+            .copied()
+            .find(|&index| self.report.trace.event_stages.get(index) == Some(&stage));
+    }
+}
+
+fn first_node_in_stage(trace: &TraceReport, stage: Option<u16>) -> Option<mapping::NodeId> {
+    trace.events.iter().enumerate().find_map(|(index, event)| {
+        if stage.is_some_and(|stage| trace.event_stages.get(index) != Some(&stage)) {
+            return None;
+        }
+        match event {
+            cli::TraceEvent::NodeValue { node, .. } => Some(*node),
+            cli::TraceEvent::NodeInputValue { consumer, .. } => Some(*consumer),
+            _ => None,
+        }
+    })
+}
+
+fn index_node_history_for_stage(
+    trace: &TraceReport,
+    stage: Option<u16>,
+) -> BTreeMap<mapping::NodeId, Vec<usize>> {
+    if stage.is_none() {
+        return index_node_history(&trace.events);
+    }
+    let mut history = BTreeMap::<mapping::NodeId, Vec<usize>>::new();
+    for (index, event) in trace.events.iter().enumerate() {
+        if trace.event_stages.get(index) != stage.as_ref() {
+            continue;
+        }
+        match event {
+            cli::TraceEvent::NodeValue { node, .. } => {
+                history.entry(*node).or_default().push(index);
+            }
+            cli::TraceEvent::NodeInputValue { consumer, .. } => {
+                history.entry(*consumer).or_default().push(index);
+            }
+            _ => {}
+        }
+    }
+    history
 }
 
 fn index_node_history(events: &[cli::TraceEvent]) -> BTreeMap<mapping::NodeId, Vec<usize>> {
@@ -700,7 +852,7 @@ fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
         .auto_shrink([false, false])
         .show_rows(ui, row_height, rows.len(), |ui, range| {
             for index in &rows[range] {
-                let row = trace_row(*index, &view.report.trace.events[*index]);
+                let row = view.trace_row(*index, &view.report.trace.events[*index]);
                 if replayable_trace_row(ui, *index, row) {
                     replay_from = Some(*index);
                 }
@@ -728,6 +880,7 @@ fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
 }
 
 fn show_node_history(ui: &mut egui::Ui, view: &mut RunReportView) {
+    show_history_stage_selector(ui, view);
     ui.horizontal_wrapped(|ui| {
         ui.label("Graph node value history");
         if let Some(node) = view.history_node {
@@ -774,6 +927,10 @@ fn show_node_history(ui: &mut egui::Ui, view: &mut RunReportView) {
                 let Some(row) = history_row(occurrence, index, event) else {
                     continue;
                 };
+                let row = match view.report.trace.stage_at(index) {
+                    Some(stage) => format!("stage {stage}  {row}"),
+                    None => row,
+                };
                 if replayable_trace_row(ui, index, row) {
                     replay_from = Some(index);
                 }
@@ -781,6 +938,33 @@ fn show_node_history(ui: &mut egui::Ui, view: &mut RunReportView) {
         });
     if let Some(index) = replay_from {
         view.replay_from(index);
+    }
+}
+
+pub(super) fn show_history_stage_selector(ui: &mut egui::Ui, view: &mut RunReportView) {
+    if view.report.trace.stages.is_empty() {
+        return;
+    }
+    let mut selected = view.history_stage;
+    ui.horizontal(|ui| {
+        ui.label("Pipeline stage");
+        let label = selected
+            .and_then(|index| view.report.trace.stages.get(usize::from(index)))
+            .map_or("Select stage", String::as_str);
+        egui::ComboBox::from_id_salt("run_history_stage")
+            .selected_text(label)
+            .show_ui(ui, |ui| {
+                for (index, stage) in view.report.trace.stages.iter().enumerate() {
+                    if let Ok(index) = u16::try_from(index) {
+                        ui.selectable_value(&mut selected, Some(index), stage);
+                    }
+                }
+            });
+    });
+    if selected != view.history_stage
+        && let Some(stage) = selected
+    {
+        view.select_history_stage(stage);
     }
 }
 
