@@ -260,12 +260,110 @@ fn node_history_keeps_each_evaluation_in_trace_order() {
         records_written: 0,
         input_path: PathBuf::from("input.json"),
         outputs: Vec::new(),
-        trace: TraceReport { events, dropped: 2 },
+        trace: TraceReport {
+            events,
+            dropped: 2,
+            ..Default::default()
+        },
     });
     assert_eq!(view.history_node, Some(8));
     assert_eq!(view.history_by_node[&8], [0, 3, 4, 5]);
     assert_eq!(view.report.trace.dropped, 2);
     assert!(trace_row(3, &view.report.trace.events[3]).contains("node 8 input 1 <- node 9"));
+}
+
+#[test]
+fn pipeline_history_and_replay_disambiguate_reused_node_ids_by_stage() {
+    let collector = PipelineTraceCollector::new();
+    collector.record("prepare", trace_event(7, ir::Value::String("A".into())));
+    collector.record("finish", trace_event(7, ir::Value::String("B".into())));
+    collector.record("finish", trace_event(7, ir::Value::String("C".into())));
+    let trace = collector.finish();
+    assert_eq!(trace.stages, ["prepare", "finish"]);
+    assert_eq!(trace.event_stages, [0, 1, 1]);
+    let report = RunReport::from_pipeline_outcome(
+        cli::PipelineRunOutcome {
+            stages_executed: vec!["prepare".into(), "finish".into()],
+            artifacts: Vec::new(),
+        },
+        PathBuf::from("pipeline.json"),
+        Duration::ZERO,
+        trace,
+    );
+    let mut view = RunReportView::new(report);
+    assert_eq!(view.history_stage, Some(0));
+    assert_eq!(view.history_node, Some(7));
+    assert_eq!(view.history_by_node[&7], [0]);
+    assert!(
+        view.trace_row(0, &view.report.trace.events[0])
+            .contains("stage prepare")
+    );
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
+        None
+    );
+
+    view.select_history_stage(1);
+    assert_eq!(view.replay_event, Some(1));
+    assert_eq!(view.history_by_node[&7], [1, 2]);
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
+        Some(2)
+    );
+    assert_eq!(
+        replay::replay_event_details_for_view(&view, 1).unwrap()[0],
+        "Stage: finish"
+    );
+    view.select_history_stage(0);
+    assert_eq!(view.replay_event, Some(0));
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
+        None
+    );
+}
+
+#[test]
+fn pipeline_trace_collector_bounds_events_across_all_stages() {
+    let collector = PipelineTraceCollector::with_limit(2);
+    collector.record("prepare", trace_event(0, ir::Value::Int(1)));
+    collector.record("finish", trace_event(0, ir::Value::Int(2)));
+    collector.record("finish", trace_event(0, ir::Value::Int(3)));
+    let trace = collector.finish();
+    assert_eq!(trace.events.len(), 2);
+    assert_eq!(trace.dropped, 1);
+    assert_eq!(trace.stages, ["prepare", "finish"]);
+    assert_eq!(trace.event_stages, [0, 1]);
+}
+
+#[test]
+fn pipeline_source_row_history_follows_the_selected_stage() {
+    let collector = PipelineTraceCollector::new();
+    let candidate = cli::TraceEvent::IterationCandidate {
+        scope: trace_scope(),
+        ordinal: 1,
+        positions: Vec::new(),
+        source_row: Some(cli::TraceSourceRow {
+            kind: cli::TraceOutputKind::Group,
+            value: None,
+            fields: Vec::new(),
+            omitted_fields: 0,
+        }),
+    };
+    collector.record("prepare", candidate.clone());
+    collector.record("finish", candidate);
+    let view = RunReport::from_pipeline_outcome(
+        cli::PipelineRunOutcome {
+            stages_executed: vec!["prepare".into(), "finish".into()],
+            artifacts: Vec::new(),
+        },
+        PathBuf::from("pipeline.json"),
+        Duration::ZERO,
+        collector.finish(),
+    );
+    let mut view = RunReportView::new(view);
+    assert_eq!(source_rows::filtered_source_row_indices(&view), [0]);
+    view.select_history_stage(1);
+    assert_eq!(source_rows::filtered_source_row_indices(&view), [1]);
 }
 
 #[test]
@@ -334,7 +432,11 @@ fn source_row_history_indexes_candidates_and_shows_bounded_fields() {
         records_written: 0,
         input_path: PathBuf::from("input.xml"),
         outputs: Vec::new(),
-        trace: TraceReport { events, dropped: 1 },
+        trace: TraceReport {
+            events,
+            dropped: 1,
+            ..Default::default()
+        },
     };
     let mut view = RunReportView::new(report);
     assert_eq!(view.source_rows, [2]);
@@ -511,6 +613,7 @@ fn replay_action_click_opens_the_chosen_retained_event() {
                 trace_event(3, ir::Value::Int(3)),
             ],
             dropped: 0,
+            ..Default::default()
         },
     });
     let mut button_rect = egui::Rect::NOTHING;
@@ -781,6 +884,7 @@ fn results_window_renders_and_loads_only_the_selected_preview() {
         trace: TraceReport {
             events: vec![trace_event(7, ir::Value::String("ok".into()))],
             dropped: 0,
+            ..Default::default()
         },
     };
     let mut view = RunReportView::new(report);

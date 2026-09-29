@@ -186,3 +186,6 @@ wait for all stages to finish before publishing selected outputs together; the
 dialog and app close wait while publication is
 in progress. Runs with no ordinary target-field write finish without a live
 pause.
+The completed run report retains a bounded trace with stage labels. Its Node
+History, Source Rows, and Replay views can select a stage, keeping node IDs
+from different stages separate while preserving global event order.

@@ -23,6 +23,12 @@ pub(super) fn filtered_source_row_indices(view: &RunReportView) -> Vec<usize> {
         .iter()
         .copied()
         .filter(|&index| {
+            if view
+                .history_stage
+                .is_some_and(|stage| view.report.trace.event_stages.get(index) != Some(&stage))
+            {
+                return false;
+            }
             view.report.trace.events.get(index).is_some_and(|event| {
                 filter.is_empty()
                     || source_row_summary(index, event)
@@ -33,8 +39,17 @@ pub(super) fn filtered_source_row_indices(view: &RunReportView) -> Vec<usize> {
 }
 
 pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
+    show_history_stage_selector(ui, view);
+    let stage_count = view
+        .source_rows
+        .iter()
+        .filter(|&&index| {
+            view.history_stage
+                .is_none_or(|stage| view.report.trace.event_stages.get(index) == Some(&stage))
+        })
+        .count();
     ui.horizontal_wrapped(|ui| {
-        ui.label(format!("{} source rows", view.source_rows.len()));
+        ui.label(format!("{stage_count} source rows"));
         ui.add(
             egui::TextEdit::singleline(&mut view.trace_filter)
                 .hint_text("Filter source rows")

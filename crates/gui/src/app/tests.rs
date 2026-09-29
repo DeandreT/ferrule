@@ -2092,6 +2092,41 @@ fn pipeline_runner_keeps_dirty_project_open_and_reports_written_output() -> anyh
 }
 
 #[test]
+fn pipeline_report_retains_stage_attributed_node_events() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-stage-trace")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.start_pipeline_run();
+    wait_for_pipeline_completion(&mut app);
+    let report = &app.run_report.as_ref().expect("pipeline report").report;
+    assert_eq!(report.trace.stages, ["prepare", "finish"]);
+    assert_eq!(report.trace.event_stages.len(), report.trace.events.len());
+    assert!(
+        report
+            .trace
+            .events
+            .iter()
+            .enumerate()
+            .any(|(index, event)| {
+                report.trace.event_stages[index] == 0
+                    && matches!(event, cli::TraceEvent::NodeValue { node: 0, .. })
+            })
+    );
+    assert!(
+        report
+            .trace
+            .events
+            .iter()
+            .enumerate()
+            .any(|(index, event)| {
+                report.trace.event_stages[index] == 1
+                    && matches!(event, cli::TraceEvent::NodeValue { node: 0, .. })
+            })
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
 fn debug_pipeline_steps_across_stages_then_publishes() -> anyhow::Result<()> {
     let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-debug-step")?;
     let directory = pipeline_path.parent().unwrap();
