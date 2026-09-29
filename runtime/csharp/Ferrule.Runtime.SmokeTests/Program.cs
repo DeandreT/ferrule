@@ -34,6 +34,7 @@ internal static partial class Program
             ("JSON root rows", JsonRootRows),
             ("XML type alternatives", XmlTypeAlternatives),
             ("XML repeating choices", XmlRepeatingChoices),
+            ("XML virtual text name", XmlVirtualTextName),
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),
             ("scalar functions", ScalarFunctions),
