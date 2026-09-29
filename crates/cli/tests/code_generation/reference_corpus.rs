@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against eight local, gitignored mappings.
+//! Opt-in generated-backend execution against nine local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -26,7 +26,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 8] = [
+const CASES: [CorpusCase; 9] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -71,6 +71,12 @@ const CASES: [CorpusCase; 8] = [
     },
     CorpusCase {
         sample: "PositionInFilteredSequence.mfd",
+        input: "BranchOffices.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "StringJoin.mfd",
         input: "BranchOffices.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
@@ -272,6 +278,21 @@ fn run_case(
         assert_eq!(contacts[0]["Last"], "Matise");
         assert_eq!(contacts[7]["First"], "Mark");
         assert_eq!(contacts[7]["Last"], "Redgreen");
+    }
+    if sample == "StringJoin.mfd" {
+        let info = expected_json["Info"].as_array().expect("one joined notice");
+        assert_eq!(info.len(), 1, "{sample}: one notice");
+        let title = info[0]["Title"].as_str().expect("joined title");
+        assert!(
+            title.starts_with("Dear Vernon, Frank, Loby, "),
+            "{sample}: {title}"
+        );
+        assert!(
+            title.ends_with(", Valentin, Carl, Mark"),
+            "{sample}: {title}"
+        );
+        assert_eq!(title.split(", ").count(), 21, "{sample}: joined contacts");
+        assert_eq!(info[0]["Description"]["#text"], "You are all promoted.");
     }
 
     let generated_input = case_dir.join("source.json");
