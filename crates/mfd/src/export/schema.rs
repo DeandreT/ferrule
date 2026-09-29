@@ -65,6 +65,7 @@ pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOption
         _ if options.tabular_kind == Some(TabularBoundaryKind::Xlsx) => SideFormat::Xlsx,
         _ if options.delimiter.is_some()
             || options.csv_quote.is_some()
+            || options.csv_quote_disabled
             || options.has_header_row.is_some() =>
         {
             SideFormat::Csv
@@ -489,7 +490,11 @@ pub(super) fn render_schema_component(
                  \t\t\t\t</component>\n",
                 xml_escape(component_name),
                 xml_escape(&options.delimiter.unwrap_or(',').to_string()),
-                xml_escape(&options.csv_quote.unwrap_or('"').to_string()),
+                if options.csv_quote_disabled {
+                    String::new()
+                } else {
+                    xml_escape(&options.csv_quote.unwrap_or('"').to_string())
+                },
                 options.has_header_row.unwrap_or(true),
                 xml_escape(&schema.name),
             );
@@ -497,6 +502,7 @@ pub(super) fn render_schema_component(
         SideFormat::FixedWidth => {
             if options.delimiter.is_some()
                 || options.csv_quote.is_some()
+                || options.csv_quote_disabled
                 || options.has_header_row.is_some()
             {
                 return Err(MfdError::Unsupported(format!(

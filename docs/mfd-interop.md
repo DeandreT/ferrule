@@ -257,10 +257,14 @@ siblings and structural source connections. Explicit compact serialization
 still uses a Ferrule extension and is rejected by the native export profile.
 Declared local SQLite relations round-trip with their owning
 database connection.
-CSV components retain a single-byte quote character beside the delimiter and
-header setting. Non-default quotes apply to file and in-memory execution and
-round-trip through the native `<settings quote>` attribute; invalid or
-ambiguous quote/delimiter pairs reject before output publication.
+CSV components retain a printable single-byte quote character or an explicit
+disabled-quoting mode (`quote=""`) beside the delimiter and header setting.
+Both modes apply to file and in-memory execution and round-trip through the
+native `<settings quote>` attribute. With quoting disabled, Ferrule refuses to
+write fields containing the separator or a newline because they cannot retain
+their row and column boundaries; the reference application's raw-emission
+behavior for those values has not been verified. Invalid or ambiguous dialect
+options reject before output publication.
 
 The default `ferrule-extensions` profile preserves the existing Ferrule
 round-trip representation. Export now reports whether the rendered design has

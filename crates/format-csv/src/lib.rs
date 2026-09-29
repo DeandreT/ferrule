@@ -64,6 +64,20 @@ pub enum CsvFormatError {
     BadQuote(char),
     #[error("CSV delimiter and quote must be different characters")]
     DelimiterQuoteConflict,
+    #[error("CSV quote character cannot be set while quoting is disabled")]
+    ConflictingQuoteSettings,
+    #[error(
+        "row {row}: column `{field}` contains a separator or record boundary and cannot be written without quoting"
+    )]
+    UnquotedFieldBoundary { row: usize, field: String },
+    #[error(
+        "header `{field}` contains a separator or record boundary and cannot be written without quoting"
+    )]
+    UnquotedHeaderBoundary { field: String },
+    #[error(
+        "row {row}: a single empty field cannot be written as a distinguishable row without quoting"
+    )]
+    UnquotedSingleEmptyRow { row: usize },
     #[error("CSV file has no rows to infer columns from")]
     EmptySample,
     #[error("CSV sample exceeds the 1 MiB preview limit")]
@@ -125,14 +139,26 @@ pub fn sample_with_quote(
     quote: Option<char>,
     has_headers: bool,
 ) -> Result<CsvSample, CsvFormatError> {
-    let (delimiter, quote) = dialect_bytes(delimiter, quote)?;
+    sample_with_dialect(path, delimiter, quote, false, has_headers)
+}
+
+/// Sample a CSV source with optional quote recognition disabled.
+pub fn sample_with_dialect(
+    path: &Path,
+    delimiter: Option<char>,
+    quote: Option<char>,
+    quote_disabled: bool,
+    has_headers: bool,
+) -> Result<CsvSample, CsvFormatError> {
+    let (delimiter, quote) = dialect_bytes(delimiter, quote, quote_disabled)?;
     let file = std::fs::File::open(path)?;
     let file_exceeds_limit = file.metadata()?.len() > MAX_SAMPLE_BYTES as u64;
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
         .delimiter(delimiter)
-        .quote(quote)
+        .quote(quote.unwrap_or(b'"'))
+        .quoting(quote.is_some())
         .from_reader(file.take((MAX_SAMPLE_BYTES + 1) as u64));
     let mut records = Vec::new();
     let record_limit = MAX_SAMPLE_ROWS + usize::from(has_headers);
@@ -185,10 +211,20 @@ fn delimiter_byte(delimiter: Option<char>) -> Result<u8, CsvFormatError> {
     }
 }
 
-fn dialect_bytes(delimiter: Option<char>, quote: Option<char>) -> Result<(u8, u8), CsvFormatError> {
+fn dialect_bytes(
+    delimiter: Option<char>,
+    quote: Option<char>,
+    quote_disabled: bool,
+) -> Result<(u8, Option<u8>), CsvFormatError> {
     let delimiter = delimiter_byte(delimiter)?;
     if matches!(delimiter, b'\r' | b'\n' | 0) {
         return Err(CsvFormatError::BadDelimiter(delimiter as char));
+    }
+    if quote_disabled {
+        if quote.is_some() {
+            return Err(CsvFormatError::ConflictingQuoteSettings);
+        }
+        return Ok((delimiter, None));
     }
     let quote = quote.unwrap_or('"');
     if !quote.is_ascii_graphic() {
@@ -197,7 +233,7 @@ fn dialect_bytes(delimiter: Option<char>, quote: Option<char>) -> Result<(u8, u8
     if delimiter == quote as u8 {
         return Err(CsvFormatError::DelimiterQuoteConflict);
     }
-    Ok((delimiter, quote as u8))
+    Ok((delimiter, Some(quote as u8)))
 }
 
 fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatError> {
@@ -242,13 +278,26 @@ pub fn read_with_quote(
     quote: Option<char>,
     has_headers: bool,
 ) -> Result<Vec<Instance>, CsvFormatError> {
+    read_with_dialect(path, schema, delimiter, quote, false, has_headers)
+}
+
+/// Read CSV rows with optional quote recognition disabled.
+pub fn read_with_dialect(
+    path: &Path,
+    schema: &SchemaNode,
+    delimiter: Option<char>,
+    quote: Option<char>,
+    quote_disabled: bool,
+    has_headers: bool,
+) -> Result<Vec<Instance>, CsvFormatError> {
     let fields = row_fields(schema)?;
-    let (delimiter, quote) = dialect_bytes(delimiter, quote)?;
+    let (delimiter, quote) = dialect_bytes(delimiter, quote, quote_disabled)?;
     let reader = csv::ReaderBuilder::new()
         .has_headers(has_headers)
         .flexible(true)
         .delimiter(delimiter)
-        .quote(quote)
+        .quote(quote.unwrap_or(b'"'))
+        .quoting(quote.is_some())
         .from_path(path)?;
     read_records(reader, &fields)
 }
@@ -274,13 +323,26 @@ pub fn from_str_with_quote(
     quote: Option<char>,
     has_headers: bool,
 ) -> Result<Vec<Instance>, CsvFormatError> {
+    from_str_with_dialect(text, schema, delimiter, quote, false, has_headers)
+}
+
+/// Parse CSV text with optional quote recognition disabled.
+pub fn from_str_with_dialect(
+    text: &str,
+    schema: &SchemaNode,
+    delimiter: Option<char>,
+    quote: Option<char>,
+    quote_disabled: bool,
+    has_headers: bool,
+) -> Result<Vec<Instance>, CsvFormatError> {
     let fields = row_fields(schema)?;
-    let (delimiter, quote) = dialect_bytes(delimiter, quote)?;
+    let (delimiter, quote) = dialect_bytes(delimiter, quote, quote_disabled)?;
     let reader = csv::ReaderBuilder::new()
         .has_headers(has_headers)
         .flexible(true)
         .delimiter(delimiter)
-        .quote(quote)
+        .quote(quote.unwrap_or(b'"'))
+        .quoting(quote.is_some())
         .from_reader(text.as_bytes());
     read_records(reader, &fields)
 }
@@ -371,9 +433,22 @@ pub fn write_with_quote(
     quote: Option<char>,
     has_headers: bool,
 ) -> Result<(), CsvFormatError> {
+    write_with_dialect(path, schema, rows, delimiter, quote, false, has_headers)
+}
+
+/// Write CSV rows with optional quote emission disabled.
+pub fn write_with_dialect(
+    path: &Path,
+    schema: &SchemaNode,
+    rows: &[Instance],
+    delimiter: Option<char>,
+    quote: Option<char>,
+    quote_disabled: bool,
+    has_headers: bool,
+) -> Result<(), CsvFormatError> {
     std::fs::write(
         path,
-        to_string_with_quote(schema, rows, delimiter, quote, has_headers)?,
+        to_string_with_dialect(schema, rows, delimiter, quote, quote_disabled, has_headers)?,
     )?;
     Ok(())
 }
@@ -399,8 +474,21 @@ pub fn to_string_with_quote(
     quote: Option<char>,
     has_headers: bool,
 ) -> Result<String, CsvFormatError> {
+    to_string_with_dialect(schema, rows, delimiter, quote, false, has_headers)
+}
+
+/// Render CSV rows with optional quote emission disabled. Fields that require
+/// quoting to preserve their column or row boundary reject before any output.
+pub fn to_string_with_dialect(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    delimiter: Option<char>,
+    quote: Option<char>,
+    quote_disabled: bool,
+    has_headers: bool,
+) -> Result<String, CsvFormatError> {
     let fields = row_fields(schema)?;
-    let (delimiter, quote) = dialect_bytes(delimiter, quote)?;
+    let (delimiter, quote) = dialect_bytes(delimiter, quote, quote_disabled)?;
     // Validate and materialize every record before producing output. A
     // shape/type error must not truncate a previously valid output file.
     let records = rows
@@ -408,9 +496,36 @@ pub fn to_string_with_quote(
         .enumerate()
         .map(|(row, instance)| format_row(row, instance, &fields))
         .collect::<Result<Vec<_>, _>>()?;
+    if quote_disabled {
+        for (name, _) in &fields {
+            if has_headers && requires_quoting(name, delimiter) {
+                return Err(CsvFormatError::UnquotedHeaderBoundary {
+                    field: (*name).to_string(),
+                });
+            }
+        }
+        for (row, record) in records.iter().enumerate() {
+            if record.len() == 1 && record[0].is_empty() {
+                return Err(CsvFormatError::UnquotedSingleEmptyRow { row });
+            }
+            for ((field, _), value) in fields.iter().zip(record) {
+                if requires_quoting(value, delimiter) {
+                    return Err(CsvFormatError::UnquotedFieldBoundary {
+                        row,
+                        field: (*field).to_string(),
+                    });
+                }
+            }
+        }
+    }
     let mut writer = csv::WriterBuilder::new()
         .delimiter(delimiter)
-        .quote(quote)
+        .quote(quote.unwrap_or(b'"'))
+        .quote_style(if quote_disabled {
+            csv::QuoteStyle::Never
+        } else {
+            csv::QuoteStyle::Necessary
+        })
         .from_writer(Vec::new());
     if has_headers {
         writer.write_record(fields.iter().map(|(n, _)| *n))?;
@@ -422,6 +537,10 @@ pub fn to_string_with_quote(
     let bytes = writer.into_inner().map_err(|error| error.into_error())?;
     String::from_utf8(bytes)
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error).into())
+}
+
+fn requires_quoting(value: &str, delimiter: u8) -> bool {
+    value.contains(delimiter as char) || value.contains(['\r', '\n'])
 }
 
 fn format_row(
@@ -665,6 +784,39 @@ mod tests {
             from_str_with_quote(&text, &schema(), None, Some('\''), true).unwrap(),
             vec![row]
         );
+    }
+
+    #[test]
+    fn disabled_quoting_treats_quote_characters_as_data() {
+        let text = "name;age\n\"Jane\";29\n";
+        let rows = from_str_with_dialect(text, &schema(), Some(';'), None, true, true).unwrap();
+        assert_eq!(
+            rows[0].field("name").and_then(Instance::as_scalar),
+            Some(&Value::String("\"Jane\"".into()))
+        );
+        assert_eq!(
+            to_string_with_dialect(&schema(), &rows, Some(';'), None, true, true).unwrap(),
+            text
+        );
+    }
+
+    #[test]
+    fn disabled_quoting_rejects_ambiguous_output_before_writing() {
+        let row = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Jane; Jr.".into())),
+            ),
+            ("age".into(), Instance::Scalar(Value::Int(29))),
+        ]);
+        assert!(matches!(
+            to_string_with_dialect(&schema(), &[row], Some(';'), None, true, true),
+            Err(CsvFormatError::UnquotedFieldBoundary { field, .. }) if field == "name"
+        ));
+        assert!(matches!(
+            from_str_with_dialect("", &schema(), None, Some('\''), true, true),
+            Err(CsvFormatError::ConflictingQuoteSettings)
+        ));
     }
 
     #[test]
