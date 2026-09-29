@@ -2048,7 +2048,7 @@ fn render_scope_item(
     }
     if matches!(&scope.construction, TargetConstruction::CopyCurrentSource) {
         output.push_str(&format!(
-            "{indent}let output = {context}.copy_current_group()?;\n"
+            "{indent}let output = ({context}).copy_current_group()?;\n"
         ));
         return output;
     }

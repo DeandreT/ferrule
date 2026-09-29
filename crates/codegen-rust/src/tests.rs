@@ -15,6 +15,7 @@ use mapping::{FunctionId, FunctionParameterId};
 
 mod collection_find;
 mod concatenate;
+mod copy_current_source;
 mod correlated_joins;
 mod dynamic_documents;
 mod dynamic_source;
