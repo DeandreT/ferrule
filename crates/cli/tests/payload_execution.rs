@@ -1,8 +1,11 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use engine::RuntimeParameters;
+use engine::{
+    DebugDecision, DebugHook, EngineError, PendingTargetWrite, RuntimeParameters, TraceTarget,
+};
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
     Binding, DynamicSourcePath, FormatOptions, Graph, NamedSource, NamedTarget, Node, Project,
@@ -157,6 +160,142 @@ fn dynamic_output_project() -> Project {
             ..Scope::default()
         },
     }
+}
+
+struct CancelAtWriteHook {
+    writes: RefCell<Vec<PendingTargetWrite>>,
+    cancel_at: usize,
+}
+
+impl CancelAtWriteHook {
+    fn new(cancel_at: usize) -> Self {
+        Self {
+            writes: RefCell::new(Vec::new()),
+            cancel_at,
+        }
+    }
+}
+
+impl DebugHook for CancelAtWriteHook {
+    fn before_target_write(&self, write: &PendingTargetWrite) -> DebugDecision {
+        let mut writes = self.writes.borrow_mut();
+        writes.push(write.clone());
+        if writes.len() == self.cancel_at {
+            DebugDecision::Cancel
+        } else {
+            DebugDecision::Resume
+        }
+    }
+}
+
+#[test]
+fn payload_debug_cancellation_discards_all_target_artifacts() -> anyhow::Result<()> {
+    let target = SchemaNode::group(
+        "Result",
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    );
+    let project = Project {
+        source: SchemaNode::group("Input", Vec::new()),
+        target: target.clone(),
+        source_path: None,
+        target_path: Some("primary.json".into()),
+        source_options: json_options(),
+        target_options: json_options(),
+        extra_sources: Vec::new(),
+        extra_targets: vec![NamedTarget {
+            name: "named".into(),
+            path: Some("named.json".into()),
+            schema: target,
+            options: json_options(),
+            root: Scope {
+                bindings: vec![Binding {
+                    target_field: "Value".into(),
+                    node: 1,
+                }],
+                ..Scope::default()
+            },
+        }],
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::Const {
+                        value: Value::String("primary".into()),
+                    },
+                ),
+                (
+                    1,
+                    Node::Const {
+                        value: Value::String("named".into()),
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 0,
+            }],
+            ..Scope::default()
+        },
+    };
+    let directory = TempDir::new()?;
+    let project_path = directory.0.join("project.json");
+    let primary_output = directory.0.join("primary.json");
+    let named_output = directory.0.join("named.json");
+    std::fs::write(&primary_output, b"existing output")?;
+    let source = cli::PayloadDocument::new(Path::new("input.json"), br#"{}"#)?;
+
+    let successful = cli::run_project_value_payloads(
+        &project,
+        &project_path,
+        &cli::PayloadRunOptions::new(source),
+    )?;
+    assert_eq!(successful.artifacts.len(), 2);
+
+    let hook = CancelAtWriteHook::new(2);
+    let error = cli::run_project_value_payloads(
+        &project,
+        &project_path,
+        &cli::PayloadRunOptions::new(source).with_debug_hook(&hook),
+    )
+    .expect_err("cancelling a named target write must discard the complete payload result");
+    assert!(matches!(
+        error.downcast_ref::<EngineError>(),
+        Some(EngineError::DebugCancelled)
+    ));
+    let writes = hook.writes.borrow();
+    assert_eq!(writes.len(), 2);
+    assert_eq!(writes[0].scope.target, TraceTarget::Primary);
+    assert_eq!(writes[1].scope.target, TraceTarget::Named("named".into()));
+    assert_eq!(writes[1].field, "Value");
+    assert_eq!(std::fs::read(&primary_output)?, b"existing output");
+    assert!(!named_output.exists());
+
+    let selected_hook = CancelAtWriteHook::new(1);
+    let selected_error = cli::run_project_value_payloads(
+        &project,
+        &project_path,
+        &cli::PayloadRunOptions::new(source)
+            .with_target(cli::TargetSelection::Named("named"))
+            .with_debug_hook(&selected_hook),
+    )
+    .expect_err("cancelling a selected target write must discard its payload result");
+    assert!(matches!(
+        selected_error.downcast_ref::<EngineError>(),
+        Some(EngineError::DebugCancelled)
+    ));
+    let selected_writes = selected_hook.writes.borrow();
+    assert_eq!(selected_writes.len(), 1);
+    assert_eq!(
+        selected_writes[0].scope.target,
+        TraceTarget::Named("named".into())
+    );
+    assert_eq!(std::fs::read(&primary_output)?, b"existing output");
+    assert!(!named_output.exists());
+    Ok(())
 }
 
 #[test]

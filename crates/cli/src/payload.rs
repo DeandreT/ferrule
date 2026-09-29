@@ -86,6 +86,7 @@ pub struct PayloadRunOptions<'a> {
     target: Option<engine::TargetSelection<'a>>,
     runtime_parameters: Option<&'a engine::RuntimeParameters>,
     trace_sink: Option<&'a dyn TraceSink>,
+    debug_hook: Option<&'a dyn engine::DebugHook>,
 }
 
 impl<'a> PayloadRunOptions<'a> {
@@ -97,6 +98,7 @@ impl<'a> PayloadRunOptions<'a> {
             target: None,
             runtime_parameters: None,
             trace_sink: None,
+            debug_hook: None,
         }
     }
 
@@ -122,6 +124,13 @@ impl<'a> PayloadRunOptions<'a> {
 
     pub fn with_trace_sink(mut self, trace_sink: &'a dyn TraceSink) -> Self {
         self.trace_sink = Some(trace_sink);
+        self
+    }
+
+    /// Supplies a synchronous host control point before ordinary target writes.
+    /// Cancelling returns an error before any payload artifacts are rendered.
+    pub fn with_debug_hook(mut self, debug_hook: &'a dyn engine::DebugHook) -> Self {
+        self.debug_hook = Some(debug_hook);
         self
     }
 }
@@ -202,6 +211,9 @@ pub fn run_project_value_payloads(
     }
     if let Some(trace_sink) = options.trace_sink {
         execution = execution.with_trace_sink(trace_sink);
+    }
+    if let Some(debug_hook) = options.debug_hook {
+        execution = execution.with_debug_hook(debug_hook);
     }
     let (records_written, artifacts) = match options.target {
         Some(selection) => {
