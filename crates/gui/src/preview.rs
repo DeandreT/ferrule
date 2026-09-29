@@ -104,6 +104,47 @@ pub(super) struct BreakpointPositionConditionDraft {
     pub(super) text: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct BreakpointNodeConditionDraft {
+    pub(super) enabled: bool,
+    pub(super) text: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DebugNodeCondition {
+    node: mapping::NodeId,
+}
+
+impl BreakpointNodeConditionDraft {
+    pub(super) fn compile(&self) -> Result<Option<DebugNodeCondition>, &'static str> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let text = self.text.trim();
+        if text.len() > 10 {
+            return Err("Value node ID exceeds the supported range.");
+        }
+        if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("Enter a nonnegative numeric value node ID.");
+        }
+        let node = text
+            .parse::<mapping::NodeId>()
+            .map_err(|_| "Value node ID exceeds the supported range.")?;
+        Ok(Some(DebugNodeCondition { node }))
+    }
+}
+
+impl DebugNodeCondition {
+    pub(super) fn matches(&self, write: &engine::PendingTargetWrite) -> bool {
+        match write.binding {
+            engine::TraceTargetFieldBinding::StaticBinding { value }
+            | engine::TraceTargetFieldBinding::DynamicBinding { value, .. } => value == self.node,
+            engine::TraceTargetFieldBinding::StaticChild
+            | engine::TraceTargetFieldBinding::DynamicChild { .. } => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct BreakpointSourceConditionDraft {
     pub(super) enabled: bool,
@@ -581,6 +622,36 @@ mod tests {
             !condition.matches(&write),
             "only the innermost position matches"
         );
+    }
+
+    #[test]
+    fn value_node_condition_matches_only_binding_value_ids() {
+        let mut draft = BreakpointNodeConditionDraft {
+            enabled: true,
+            text: "0".into(),
+        };
+        let condition = draft.compile().unwrap().unwrap();
+        let mut write = pending("string", "same", false);
+        write.binding = engine::TraceTargetFieldBinding::StaticBinding { value: 0 };
+        assert!(condition.matches(&write));
+        write.binding = engine::TraceTargetFieldBinding::DynamicBinding { key: 0, value: 1 };
+        assert!(
+            !condition.matches(&write),
+            "dynamic key node is not the value node"
+        );
+        write.binding = engine::TraceTargetFieldBinding::DynamicBinding { key: 1, value: 0 };
+        assert!(condition.matches(&write));
+        write.binding = engine::TraceTargetFieldBinding::DynamicChild { key: 0 };
+        assert!(!condition.matches(&write));
+        write.binding = engine::TraceTargetFieldBinding::StaticChild;
+        assert!(!condition.matches(&write));
+
+        for invalid in ["", "-1", "1.0", "4294967296", "999999999999"] {
+            draft.text = invalid.into();
+            assert!(draft.compile().is_err(), "{invalid:?} must be rejected");
+        }
+        draft.text = u32::MAX.to_string();
+        assert!(draft.compile().is_ok());
     }
 
     #[test]
