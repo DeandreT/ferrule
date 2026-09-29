@@ -143,6 +143,8 @@ positions may change during sorting or grouping. The Replay tab navigates the
 completed trace one recorded event at a time (first, previous, next, or next
 recorded input or output of a selected graph node). Its detail shows the selected event's
 positions and, for a source candidate, that same event's bounded row fields.
+Trace rows, node-history occurrences, and selected source-row details can open
+Replay at their exact retained event, including when the report is filtered.
 This is navigation of recorded history, not a live pause or re-execution. The
 GUI retains at most 50,000 trace events and reports when later events were
 omitted; replay ends at the retained prefix. Run and Preview currently show

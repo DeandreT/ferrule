@@ -244,6 +244,30 @@ impl RunReportView {
     pub fn selected_output(&self) -> usize {
         self.selected_output
     }
+
+    /// Trace indices are stable only within the retained prefix of this report.
+    fn replay_from(&mut self, index: usize) -> bool {
+        if index >= self.report.trace.events.len() {
+            return false;
+        }
+        self.replay_event = Some(index);
+        self.page = ReportPage::Replay;
+        true
+    }
+
+    fn filtered_trace_indices(&self) -> Vec<usize> {
+        let filter = self.trace_filter.trim().to_lowercase();
+        self.report
+            .trace
+            .events
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                (filter.is_empty() || trace_row(index, event).to_lowercase().contains(&filter))
+                    .then_some(index)
+            })
+            .collect()
+    }
 }
 
 fn index_node_history(events: &[cli::TraceEvent]) -> BTreeMap<mapping::NodeId, Vec<usize>> {
@@ -486,6 +510,25 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
     }
 }
 
+fn replay_action(ui: &mut egui::Ui, index: usize, label: &str) -> egui::Response {
+    ui.small_button(label)
+        .on_hover_text(format!("Replay from event {}", index.saturating_add(1)))
+}
+
+fn replayable_trace_row(ui: &mut egui::Ui, index: usize, row: String) -> bool {
+    let mut replay = false;
+    ui.horizontal(|ui| {
+        replay = replay_action(ui, index, "Replay").clicked();
+        ui.add(
+            egui::Label::new(egui::RichText::new(&row).monospace())
+                .selectable(true)
+                .wrap_mode(egui::TextWrapMode::Truncate),
+        )
+        .on_hover_text(row);
+    });
+    replay
+}
+
 fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
     view.selected_output = view
         .selected_output
@@ -644,38 +687,28 @@ fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
     });
     ui.separator();
 
-    let filter = view.trace_filter.trim().to_lowercase();
-    let rows = view
-        .report
-        .trace
-        .events
-        .iter()
-        .enumerate()
-        .filter_map(|(index, event)| {
-            (filter.is_empty() || trace_row(index, event).to_lowercase().contains(&filter))
-                .then_some(index)
-        })
-        .collect::<Vec<_>>();
+    let rows = view.filtered_trace_indices();
     if rows.is_empty() {
         ui.weak("No matching trace events.");
         return;
     }
 
     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 6.0;
+    let mut replay_from = None;
     egui::ScrollArea::vertical()
         .id_salt("run_trace")
         .auto_shrink([false, false])
         .show_rows(ui, row_height, rows.len(), |ui, range| {
             for index in &rows[range] {
                 let row = trace_row(*index, &view.report.trace.events[*index]);
-                ui.add(
-                    egui::Label::new(egui::RichText::new(&row).monospace())
-                        .selectable(true)
-                        .wrap_mode(egui::TextWrapMode::Truncate),
-                )
-                .on_hover_text(row);
+                if replayable_trace_row(ui, *index, row) {
+                    replay_from = Some(*index);
+                }
             }
         });
+    if let Some(index) = replay_from {
+        view.replay_from(index);
+    }
 }
 
 fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
@@ -728,24 +761,27 @@ fn show_node_history(ui: &mut egui::Ui, view: &mut RunReportView) {
         return;
     };
     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 6.0;
+    let mut replay_from = None;
     egui::ScrollArea::vertical()
         .id_salt("run_history")
         .auto_shrink([false, false])
         .show_rows(ui, row_height, indices.len(), |ui, range| {
             for (offset, &index) in indices[range.clone()].iter().enumerate() {
                 let occurrence = range.start + offset + 1;
-                let Some(row) = history_row(occurrence, index, &view.report.trace.events[index])
-                else {
+                let Some(event) = view.report.trace.events.get(index) else {
                     continue;
                 };
-                ui.add(
-                    egui::Label::new(egui::RichText::new(&row).monospace())
-                        .selectable(true)
-                        .wrap_mode(egui::TextWrapMode::Truncate),
-                )
-                .on_hover_text(row);
+                let Some(row) = history_row(occurrence, index, event) else {
+                    continue;
+                };
+                if replayable_trace_row(ui, index, row) {
+                    replay_from = Some(index);
+                }
             }
         });
+    if let Some(index) = replay_from {
+        view.replay_from(index);
+    }
 }
 
 fn history_row(occurrence: usize, event_index: usize, event: &cli::TraceEvent) -> Option<String> {
