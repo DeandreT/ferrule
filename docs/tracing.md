@@ -155,5 +155,16 @@ preview, source positions, and at most eight already inserted fields from the
 current scope draft. It can wait for a host decision and resume, or cancel with
 the typed `EngineError::DebugCancelled` before that field is inserted. Existing
 post-insertion trace events are unchanged. Scalar, copy, recursive, and other
-special constructors do not use this ordinary-field hook. The CLI and GUI do
-not yet provide a live stepping host for it.
+special constructors do not use this ordinary-field hook. The callback's
+partial draft is not a complete target document.
+
+The GUI's **Debug preview** runs an in-memory mapping on a worker and pauses
+before each ordinary target-field insertion. The paused view shows the
+pending value, target scope, source positions, and up to eight fields already
+inserted in that scope. **Step** inserts the pending field and pauses at the
+next ordinary write; **Continue** runs until completion, and **Pause at next
+write** can stop a continued run at a later write. **Cancel** discards the
+preview result. A plain Preview also runs on a worker and remains responsive
+while it executes. The completed output and trace appear in Preview results;
+the Replay tab remains a separate navigation view over that recorded trace.
+Runs with no ordinary target-field insertion finish without a live pause.
