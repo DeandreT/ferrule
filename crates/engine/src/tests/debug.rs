@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
-    Binding, FailureIteration, FailureRule, FailureSelection, Graph, Node, Project, Scope,
-    ScopeIteration, SequenceExpr, XmlMixedContentReplacement,
+    AggregateOp, Binding, FailureIteration, FailureRule, FailureSelection, Graph, Node, Project,
+    Scope, ScopeIteration, SequenceExpr, XmlMixedContentReplacement,
 };
 
 use crate::{
@@ -1311,4 +1311,469 @@ fn sequence_exists_non_boolean_predicate_keeps_typed_error_after_delivery() {
             ..
         } if value.preview == "wrong"
     )));
+}
+
+fn sequence_aggregate_expression_project(with_predicate: bool) -> Project {
+    let mut project = two_field_project();
+    project.source = SchemaNode::group("Source", vec![]);
+    project.target =
+        SchemaNode::group("Target", vec![SchemaNode::scalar("first", ScalarType::Int)]);
+    project.graph.nodes = [
+        (
+            0,
+            Node::Const {
+                value: Value::Int(4),
+            },
+        ),
+        (
+            1,
+            Node::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        ),
+        (
+            2,
+            Node::Position {
+                collection: Vec::new(),
+            },
+        ),
+        (
+            3,
+            Node::Const {
+                value: Value::Int(2),
+            },
+        ),
+        (
+            4,
+            Node::Call {
+                function: "greater_than".into(),
+                args: vec![2, 3],
+            },
+        ),
+        (
+            5,
+            Node::Const {
+                value: Value::Int(3),
+            },
+        ),
+        (
+            6,
+            Node::Call {
+                function: "multiply".into(),
+                args: vec![1, 5],
+            },
+        ),
+        (
+            7,
+            Node::SequenceAggregate {
+                function: AggregateOp::Sum,
+                sequence: SequenceExpr::Generate {
+                    from: None,
+                    to: 0,
+                    item: 1,
+                },
+                predicate: with_predicate.then_some(4),
+                expression: Some(6),
+                arg: None,
+            },
+        ),
+    ]
+    .into();
+    project.root.bindings.truncate(1);
+    project.root.bindings[0].node = 7;
+    project
+}
+
+#[test]
+fn sequence_aggregate_expression_pin_skips_rejected_items_and_keeps_raw_positions() {
+    let project = sequence_aggregate_expression_project(true);
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("first").and_then(Instance::as_scalar),
+        Some(&Value::Int(21))
+    );
+    let deliveries = trace
+        .0
+        .into_inner()
+        .into_iter()
+        .filter_map(|event| match event {
+            TraceEvent::NodeInputValue {
+                consumer: 7,
+                input,
+                input_index,
+                positions,
+                value,
+            } => Some((
+                input,
+                input_index,
+                positions.last().map(|position| position.index),
+                value.preview,
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        deliveries,
+        [
+            (4, 1, Some(1), "false".into()),
+            (4, 1, Some(2), "false".into()),
+            (4, 1, Some(3), "true".into()),
+            (6, 2, Some(3), "9".into()),
+            (4, 1, Some(4), "true".into()),
+            (6, 2, Some(4), "12".into()),
+        ]
+    );
+}
+
+#[test]
+fn sequence_aggregate_expression_pin_shifts_when_predicate_is_absent() {
+    let project = sequence_aggregate_expression_project(false);
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("first").and_then(Instance::as_scalar),
+        Some(&Value::Int(30))
+    );
+    assert_eq!(
+        trace
+            .0
+            .into_inner()
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 7,
+                    input_index,
+                    positions,
+                    ..
+                } => Some((
+                    *input_index,
+                    positions.last().map(|position| position.index)
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [(1, Some(1)), (1, Some(2)), (1, Some(3)), (1, Some(4))]
+    );
+}
+
+fn add_missing_sequence_aggregate_arg(project: &mut Project) {
+    project.graph.nodes.insert(
+        8,
+        Node::RuntimeParameter {
+            name: "missing-argument".into(),
+            ty: ScalarType::Int,
+        },
+    );
+    let Some(Node::SequenceAggregate { arg, .. }) = project.graph.nodes.get_mut(&7) else {
+        panic!("sequence aggregate exists");
+    };
+    *arg = Some(8);
+}
+
+fn add_constant_sequence_aggregate_arg(project: &mut Project) {
+    project.graph.nodes.insert(
+        8,
+        Node::Const {
+            value: Value::Int(99),
+        },
+    );
+    let Some(Node::SequenceAggregate { arg, .. }) = project.graph.nodes.get_mut(&7) else {
+        panic!("sequence aggregate exists");
+    };
+    *arg = Some(8);
+}
+
+#[test]
+fn sequence_aggregate_parent_arg_pin_follows_items_in_parent_context() {
+    for (with_predicate, expected_arg_index) in [(true, 3), (false, 2)] {
+        let mut project = sequence_aggregate_expression_project(with_predicate);
+        add_constant_sequence_aggregate_arg(&mut project);
+        let source = Instance::Group(vec![]);
+        let trace = Collector::default();
+        let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+        let output = run_with_context(&project, &source, &execution).unwrap();
+        assert_eq!(
+            output.field("first").and_then(Instance::as_scalar),
+            Some(&Value::Int(if with_predicate { 21 } else { 30 }))
+        );
+        let deliveries = trace
+            .0
+            .into_inner()
+            .into_iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 7,
+                    input,
+                    input_index,
+                    positions,
+                    value,
+                } => Some((input, input_index, positions.len(), value.preview)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let arg = deliveries.last().expect("parent argument is delivered");
+        assert_eq!(arg, &(8, expected_arg_index, 0, "99".into()));
+        assert_eq!(
+            deliveries
+                .iter()
+                .filter(|(input, _, _, _)| *input == 8)
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn sequence_aggregate_parent_arg_pin_can_cancel_before_target_write() {
+    let mut project = sequence_aggregate_expression_project(true);
+    add_constant_sequence_aggregate_arg(&mut project);
+    let source = Instance::Group(vec![]);
+    let hook = PinHook {
+        inputs: RefCell::new(Vec::new()),
+        cancel_at: Some((7, 3)),
+    };
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json"))
+        .with_trace_sink(&trace)
+        .with_debug_hook(&hook);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    let deliveries = hook
+        .inputs
+        .into_inner()
+        .into_iter()
+        .filter(|input| input.consumer == 7)
+        .collect::<Vec<_>>();
+    let arg = deliveries.last().unwrap();
+    assert_eq!((arg.input, arg.input_index), (8, 3));
+    assert!(arg.positions.is_empty());
+    let events = trace.0.into_inner();
+    assert!(matches!(
+        events.last(),
+        Some(TraceEvent::NodeInputValue {
+            consumer: 7,
+            input: 8,
+            input_index: 3,
+            ..
+        })
+    ));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn sequence_aggregate_failed_parent_arg_has_no_delivery_or_target_write() {
+    let mut project = sequence_aggregate_expression_project(true);
+    add_missing_sequence_aggregate_arg(&mut project);
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::MissingRuntimeParameter { node: 8, .. })
+    ));
+    let events = trace.0.into_inner();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        TraceEvent::NodeInputValue {
+            consumer: 7,
+            input_index: 2,
+            ..
+        }
+    )));
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        TraceEvent::NodeInputValue {
+            consumer: 7,
+            input_index: 3,
+            ..
+        }
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn sequence_aggregate_predicate_pin_cancel_skips_expression_and_parent_arg() {
+    let mut project = sequence_aggregate_expression_project(true);
+    add_missing_sequence_aggregate_arg(&mut project);
+    let source = Instance::Group(vec![]);
+    let hook = PinHook {
+        inputs: RefCell::new(Vec::new()),
+        cancel_at: Some((7, 1)),
+    };
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json"))
+        .with_trace_sink(&trace)
+        .with_debug_hook(&hook);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    let events = trace.0.into_inner();
+    assert!(matches!(
+        events.last(),
+        Some(TraceEvent::NodeInputValue {
+            consumer: 7,
+            input: 4,
+            input_index: 1,
+            ..
+        })
+    ));
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        TraceEvent::NodeInputValue {
+            consumer: 7,
+            input_index: 2 | 3,
+            ..
+        }
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn sequence_aggregate_non_boolean_predicate_retains_typed_error() {
+    let mut project = sequence_aggregate_expression_project(true);
+    add_missing_sequence_aggregate_arg(&mut project);
+    project.graph.nodes.insert(
+        4,
+        Node::Const {
+            value: Value::String("wrong".into()),
+        },
+    );
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::NotABool { node: 4, .. })
+    ));
+    let events = trace.0.into_inner();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        TraceEvent::NodeInputValue {
+            consumer: 7,
+            input: 4,
+            input_index: 1,
+            value,
+            ..
+        } if value.preview == "wrong"
+    )));
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        TraceEvent::NodeInputValue {
+            consumer: 7,
+            input_index: 2 | 3,
+            ..
+        }
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn sequence_aggregate_expression_pin_cancel_skips_parent_arg_and_target_write() {
+    let mut project = sequence_aggregate_expression_project(true);
+    add_missing_sequence_aggregate_arg(&mut project);
+    let source = Instance::Group(vec![]);
+    let hook = PinHook {
+        inputs: RefCell::new(Vec::new()),
+        cancel_at: Some((7, 2)),
+    };
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json"))
+        .with_trace_sink(&trace)
+        .with_debug_hook(&hook);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    let delivered = hook
+        .inputs
+        .into_inner()
+        .into_iter()
+        .filter(|input| input.consumer == 7 && input.input_index == 2)
+        .collect::<Vec<_>>();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].input_index, 2);
+    assert_eq!(delivered[0].positions.last().unwrap().index, 3);
+    let events = trace.0.into_inner();
+    assert!(matches!(
+        events.last(),
+        Some(TraceEvent::NodeInputValue {
+            consumer: 7,
+            input_index: 2,
+            ..
+        })
+    ));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::NodeValue { node: 8, .. }))
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
+}
+
+#[test]
+fn sequence_aggregate_failed_expression_delivers_no_pin_or_parent_arg() {
+    let mut project = sequence_aggregate_expression_project(true);
+    add_missing_sequence_aggregate_arg(&mut project);
+    project.graph.nodes.insert(
+        6,
+        Node::RuntimeParameter {
+            name: "missing-expression".into(),
+            ty: ScalarType::Int,
+        },
+    );
+    let source = Instance::Group(vec![]);
+    let trace = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
+    assert!(matches!(
+        run_with_context(&project, &source, &execution),
+        Err(EngineError::MissingRuntimeParameter { node: 6, .. })
+    ));
+    let events = trace.0.into_inner();
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        TraceEvent::NodeInputValue {
+            consumer: 7,
+            input_index: 2 | 3,
+            ..
+        }
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::NodeValue { node: 8, .. }))
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::TargetFieldWritten { .. }))
+    );
 }
