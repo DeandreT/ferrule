@@ -84,6 +84,30 @@ fn write_three_stage_chain(directory: &Path) -> Result<PathBuf, Box<dyn Error>> 
     Ok(mapping)
 }
 
+fn write_four_stage_chain(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let mapping = write_three_stage_chain(directory)?;
+    let maps = mapping.parent().unwrap();
+    std::fs::write(
+        maps.join("third.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="ThirdBuffer"><xs:complexType><xs:sequence><xs:element name="Third" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    let design = std::fs::read_to_string(&mapping)?
+        .replace(
+            "<component name=\"target\" library=\"xml\"",
+            "<component name=\"third-buffer\" library=\"xml\" kind=\"14\"><properties PassThrough=\"1\"/><data><root><entry name=\"ThirdBuffer\"><entry name=\"Third\" inpkey=\"60\" outkey=\"70\"/></entry></root><document schema=\"third.xsd\" instanceroot=\"{}ThirdBuffer\"/></data></component><component name=\"target\" library=\"xml\"",
+        )
+        .replace(
+            "<entry name=\"Result\" inpkey=\"60\"/>",
+            "<entry name=\"Result\" inpkey=\"80\"/>",
+        )
+        .replace(
+            "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/></edges></vertex>",
+            "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/></edges></vertex><vertex vertexkey=\"70\"><edges><edge vertexkey=\"80\"/></edges></vertex>",
+        );
+    std::fs::write(&mapping, design)?;
+    Ok(mapping)
+}
+
 fn output_message(result: &std::process::Output) -> String {
     format!(
         "stdout: {}\nstderr: {}",
@@ -226,6 +250,59 @@ fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error
             path.display()
         );
     }
+    Ok(())
+}
+
+#[test]
+fn imports_and_runs_a_connected_four_stage_design() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new()?;
+    let mapping = write_four_stage_chain(&directory.0)?;
+    let output = directory.0.join("flow.json");
+    let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&mapping)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&output)
+        .output()?;
+    assert!(imported.status.success(), "{}", output_message(&imported));
+    let pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&output)?)?;
+    assert_eq!(pipeline.stages.len(), 4);
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+    for (index, (source, target)) in [
+        ("Source", "FirstBuffer"),
+        ("FirstBuffer", "SecondBuffer"),
+        ("SecondBuffer", "ThirdBuffer"),
+        ("ThirdBuffer", "Target"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let stage = &pipeline.stages[index];
+        assert_eq!(stage.id, format!("mfd-stage-{}", index + 1));
+        assert_eq!(stage.project.source.name, source);
+        assert_eq!(stage.project.target.name, target);
+    }
+    let PipelineInput::Host { name } = &pipeline.stages[0].source else {
+        panic!("first stage must have a host input");
+    };
+    let result = directory.0.join("result.xml");
+    let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&output)
+        .args(["--input"])
+        .arg(name)
+        .arg(directory.0.join("maps/source.xml"))
+        .args(["--output", "mfd-stage-4"])
+        .arg(&result)
+        .output()?;
+    assert!(run.status.success(), "{}", output_message(&run));
+    let xml = std::fs::read_to_string(&result)?;
+    assert!(
+        xml.contains("<Result>crossed every stage</Result>"),
+        "{xml}"
+    );
     Ok(())
 }
 

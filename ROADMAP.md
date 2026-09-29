@@ -91,11 +91,11 @@ are preserved.
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Complete applicable validation/autocompletion behavior, configuration commands, dialects, and versioned release packs |
 | Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
-| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded two-stage XML chain import, and GUI editing/inspection/running of saved pipelines | Fully general named N-to-M endpoints, general `.mfd` stage-graph import, service hosts, and embedded per-stage graph editing |
+| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML chain import for up to 64 pass-through targets, and GUI editing/inspection/running of saved pipelines | Fully general named N-to-M endpoints, general `.mfd` stage-graph import, service hosts, and embedded per-stage graph editing |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
-| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, and post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, and dynamic keys with nested row/join context | Remaining connector classes, full source-row inspection, stepping, breakpoints |
+| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, and post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, dynamic keys, and aggregate expressions/arguments with nested row/join context | Remaining connector classes, full source-row inspection, stepping, breakpoints |
 | `.mfd` | 187/187 imports (171 warning-free; 175 engine-valid, including four warned chains), warning-free Ferrule export/re-import for all 187, 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Versioned native-compatible export profile plus reference-application open/validate/execute/re-save verification; complete deterministic behavioral-reference coverage and explicit extension-dependent export reporting |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
 
@@ -460,9 +460,10 @@ The GUI shows a bounded, searchable run report and can execute the current
 unsaved project against bounded editable input without writing output files.
 Preview selects the active primary or named target and preflights every required
 secondary source. Direct graph input consumption is now recorded for calls,
-conditionals, value maps, lookups, and dynamic keys, and the GUI groups those
-events with node outputs. Remaining connector classes, full context/row
-inspection, navigable validation focus, and interactive debugging remain.
+conditionals, value maps, lookups, dynamic keys, and aggregate expressions and
+arguments. The GUI groups those events with node outputs. Remaining connector
+classes, full context/row inspection, navigable validation focus, and
+interactive debugging remain.
 
 #### B4. Shared Native and Browser Editor
 
@@ -598,7 +599,8 @@ Update these numbers with each parity increment:
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
 - `.mfd` import: 187/187 import; 171 are warning-free, four connected chains
   warn in single-project mode, and twelve retain typed missing EDI-catalog
-  dependencies. The four chains validate as typed two-stage pipelines.
+  dependencies. The four corpus chains validate as typed two-stage pipelines;
+  synthetic linear three- and four-stage XML chains also import and execute.
 - `.mfd` validation: all 175 dependency-complete projects are engine-valid;
   twelve are explicitly dependency-blocked.
 - `.mfd` export/re-import: all 187 designs export and re-import with zero
@@ -610,8 +612,9 @@ Update these numbers with each parity increment:
 - `.mfd` execution round trips: all 168 safe projects export, re-import,
   validate, execute, and produce semantically identical outputs.
 - Code generation: 175/175 dependency-complete designs lower and emit for both
-  Rust and C#. One opt-in local JSON sample also compiles and executes in both
-  generated backends with output equal to the interpreter; the remaining
+  Rust and C#. Three opt-in local samples (JSON-to-JSON, XML-to-JSON, and
+  FlexText-to-XML) also compile and execute in both generated backends with
+  output equal to the interpreter; the remaining
   survey designs are not yet execution-checked after generation.
 - Behavioral references: 79/79 available deterministic outputs across the current
   isolated manifests match exactly; these are not inferred from structural success.
@@ -623,7 +626,7 @@ Update these numbers with each parity increment:
   non-path resource selection provenance and effective root counts.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
   warnings, runtime failures, and invalid command usage; execution traces use
-  a separate bounded version-2 JSON Lines contract.
+  a separate bounded version-3 JSON Lines contract.
 - CLI run paths: explicit flags override project-relative `source_path` and
   primary `target_path` defaults while stored extra targets retain their own paths.
 

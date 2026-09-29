@@ -305,8 +305,8 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
 
 /// Import a connected, file-based design as a typed pipeline.
 ///
-/// This profile accepts one or two serial XML pass-through intermediates and
-/// one final target. Other stage graph shapes reject explicitly.
+/// This profile accepts a bounded serial XML pass-through chain and one final
+/// target. Other stage graph shapes reject explicitly.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
 }
@@ -325,8 +325,10 @@ pub fn import_pipeline_with_options(
             label: &first_intermediate.label,
         },
     )?];
-    if chain.intermediates.len() == 2 {
-        let second_intermediate = &chain.intermediates[1];
+    for pair in chain.intermediates.windows(2) {
+        let [first_intermediate, second_intermediate] = pair else {
+            unreachable!("adjacent intermediate window has two entries")
+        };
         lowered.push(import_resolved(
             &resources,
             StageSelection::Between {
@@ -547,6 +549,10 @@ struct DiscoveredPipelineChain {
     final_key: u32,
 }
 
+// Every stage reimports the design to retain the original component semantics.
+// Bound that repeated work before lowering begins.
+const MAX_IMPORTED_PIPELINE_INTERMEDIATES: usize = 64;
+
 fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdError> {
     let text = std::fs::read_to_string(path)?;
     let doc = roxmltree::Document::parse(&text)?;
@@ -613,10 +619,10 @@ fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdEr
             "pipeline import currently needs one connected XML pass-through target".into(),
         ));
     }
-    if intermediates.len() > 2 {
-        return Err(MfdError::UnsupportedImport(
-            "pipeline import currently supports at most two intermediate targets".into(),
-        ));
+    if intermediates.len() > MAX_IMPORTED_PIPELINE_INTERMEDIATES {
+        return Err(MfdError::UnsupportedImport(format!(
+            "pipeline import supports at most {MAX_IMPORTED_PIPELINE_INTERMEDIATES} intermediate targets"
+        )));
     }
     let final_outputs = components
         .iter()
@@ -652,11 +658,6 @@ fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdEr
         .collect::<Result<Vec<_>, _>>()?;
     let final_key = connected_input_key(final_target)
         .ok_or_else(|| MfdError::UnsupportedImport("final target has no connected input".into()))?;
-    let final_inputs = final_target
-        .descendants()
-        .filter(|node| node.has_tag_name("entry"))
-        .filter_map(|node| schema::parse_u32(node.attribute("inpkey")))
-        .collect::<BTreeSet<_>>();
     let mut consumers = BTreeMap::<u32, Vec<u32>>::new();
     for (&input, &output) in &edge_from {
         consumers.entry(output).or_default().push(input);
@@ -687,35 +688,6 @@ fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdEr
             .filter_map(|node| schema::parse_u32(node.attribute("key")))
         {
             function_outputs.insert(input, outputs.clone());
-        }
-    }
-    if intermediates.len() == 1 {
-        let mut frontier = entry_keys(intermediates[0], "outkey")
-            .into_iter()
-            .collect::<Vec<_>>();
-        let mut visited = BTreeSet::new();
-        let mut reaches_final = false;
-        while let Some(output) = frontier.pop() {
-            if !visited.insert(output) {
-                continue;
-            }
-            for input in consumers.get(&output).into_iter().flatten() {
-                if final_inputs.contains(input) {
-                    reaches_final = true;
-                    break;
-                }
-                if let Some(outputs) = function_outputs.get(input) {
-                    frontier.extend(outputs);
-                }
-            }
-            if reaches_final {
-                break;
-            }
-        }
-        if !reaches_final {
-            return Err(MfdError::UnsupportedImport(
-                "pass-through target does not feed the selected final target".into(),
-            ));
         }
     }
     for component in &components {
@@ -757,18 +729,14 @@ fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdEr
             "pipeline import needs an XML source component".into(),
         ));
     }
-    let order = if intermediates.len() == 2 {
-        strict_three_stage_order(
-            &components,
-            &intermediates,
-            final_target,
-            &connected_outputs,
-            &consumers,
-            &function_outputs,
-        )?
-    } else {
-        vec![0]
-    };
+    let order = strict_serial_stage_order(
+        &components,
+        &intermediates,
+        final_target,
+        &connected_outputs,
+        &consumers,
+        &function_outputs,
+    )?;
     Ok(DiscoveredPipelineChain {
         intermediates: order
             .into_iter()
@@ -792,11 +760,11 @@ fn entry_keys(component: &roxmltree::Node<'_, '_>, attribute: &str) -> BTreeSet<
         .collect()
 }
 
-/// Keep three-stage import to one linear chain of XML boundaries. Multiple
-/// field connections to the same next boundary are valid; an intermediate
-/// connection that reaches any other XML boundary would read a bypassed stage
-/// value. Original XML host sources may supplement any stage.
-fn strict_three_stage_order(
+/// Keep imported stages to one linear chain of XML boundaries. Multiple field
+/// connections to the same next boundary are valid; an intermediate connection
+/// that reaches any other XML boundary would read a bypassed stage value.
+/// Original XML host sources may supplement any stage.
+fn strict_serial_stage_order(
     components: &[roxmltree::Node<'_, '_>],
     intermediates: &[&roxmltree::Node<'_, '_>],
     final_target: &roxmltree::Node<'_, '_>,
@@ -825,7 +793,7 @@ fn strict_three_stage_order(
         for key in entry_keys(component, "inpkey") {
             if xml_input_owners.insert(key, index).is_some() {
                 return Err(MfdError::UnsupportedImport(
-                    "three-stage pipeline has duplicate XML input port identities".into(),
+                    "serial pipeline has duplicate XML input port identities".into(),
                 ));
             }
         }
@@ -851,52 +819,77 @@ fn strict_three_stage_order(
         )?;
         if sinks.is_empty() {
             return Err(MfdError::UnsupportedImport(
-                "three-stage pipeline has a connected XML output with no downstream XML target"
-                    .into(),
+                "serial pipeline has a connected XML output with no downstream XML target".into(),
             ));
         }
         sinks_by_component.insert(index, sinks);
     }
     if sinks_by_component.contains_key(&final_index) {
         return Err(MfdError::UnsupportedImport(
-            "three-stage pipeline final XML target feeds another component".into(),
+            "serial pipeline final XML target feeds another component".into(),
         ));
     }
-    let [left, right] = intermediate_indices.as_slice() else {
-        unreachable!("three-stage discovery selects two intermediates")
+    let invalid_chain = || {
+        MfdError::UnsupportedImport(
+            "pipeline needs a serial XML chain without branches, cycles, or bypasses".into(),
+        )
     };
-    let candidates = [(*left, *right), (*right, *left)];
-    let order = candidates.into_iter().find(|&(first, second)| {
-        sinks_by_component.get(&first) == Some(&BTreeSet::from([second]))
-            && sinks_by_component.get(&second) == Some(&BTreeSet::from([final_index]))
-            && components.iter().enumerate().all(|(index, component)| {
-                component.attribute("library") != Some("xml")
-                    || index == first
-                    || index == second
-                    || index == final_index
-                    || sinks_by_component.get(&index).is_some_and(|sinks| {
-                        sinks
-                            .iter()
-                            .all(|sink| [first, second, final_index].contains(sink))
-                    })
+    if !components.iter().enumerate().all(|(index, component)| {
+        component.attribute("library") != Some("xml")
+            || intermediate_indices.contains(&index)
+            || index == final_index
+            || sinks_by_component.get(&index).is_some_and(|sinks| {
+                sinks
+                    .iter()
+                    .all(|sink| intermediate_indices.contains(sink) || *sink == final_index)
             })
-    });
-    let Some((first, second)) = order else {
-        return Err(MfdError::UnsupportedImport(
-            "three-stage pipeline needs a serial XML chain without branches, cycles, or bypasses"
-                .into(),
-        ));
+    }) {
+        return Err(invalid_chain());
+    }
+
+    let mut successors = BTreeMap::new();
+    let mut predecessor_counts = BTreeMap::<usize, usize>::new();
+    for &index in &intermediate_indices {
+        let sinks = sinks_by_component.get(&index).ok_or_else(invalid_chain)?;
+        if sinks.len() != 1 {
+            return Err(invalid_chain());
+        }
+        let next = *sinks.iter().next().expect("one sink");
+        if next != final_index && !intermediate_indices.contains(&next) {
+            return Err(invalid_chain());
+        }
+        successors.insert(index, next);
+        if next != final_index {
+            *predecessor_counts.entry(next).or_default() += 1;
+        }
+    }
+    let heads = intermediate_indices
+        .iter()
+        .copied()
+        .filter(|index| !predecessor_counts.contains_key(index))
+        .collect::<Vec<_>>();
+    let [head] = heads.as_slice() else {
+        return Err(invalid_chain());
     };
-    Ok(vec![
-        intermediate_indices
-            .iter()
-            .position(|&index| index == first)
-            .expect("first intermediate index"),
-        intermediate_indices
-            .iter()
-            .position(|&index| index == second)
-            .expect("second intermediate index"),
-    ])
+    let mut current = *head;
+    let mut seen = BTreeSet::new();
+    let mut ordered = Vec::with_capacity(intermediate_indices.len());
+    while seen.insert(current) {
+        ordered.push(
+            intermediate_indices
+                .iter()
+                .position(|&index| index == current)
+                .expect("intermediate belongs to the chain"),
+        );
+        let next = successors[&current];
+        if next == final_index {
+            return (ordered.len() == intermediate_indices.len())
+                .then_some(ordered)
+                .ok_or_else(invalid_chain);
+        }
+        current = next;
+    }
+    Err(invalid_chain())
 }
 
 fn trace_xml_sinks(
@@ -924,12 +917,12 @@ fn trace_xml_sinks(
         }
         if !active.insert(output) {
             return Err(MfdError::UnsupportedImport(
-                "three-stage pipeline contains a function-feed cycle".into(),
+                "serial pipeline contains a function-feed cycle".into(),
             ));
         }
         if active.len() + done.len() > 65_536 {
             return Err(MfdError::UnsupportedImport(
-                "three-stage pipeline exceeds 65536 connected output ports".into(),
+                "serial pipeline exceeds 65536 connected output ports".into(),
             ));
         }
         stack.push((output, true));
@@ -944,14 +937,13 @@ fn trace_xml_sinks(
                     .collect::<Vec<_>>();
                 if next_outputs.is_empty() {
                     return Err(MfdError::UnsupportedImport(
-                        "three-stage pipeline has a function branch without a downstream target"
-                            .into(),
+                        "serial pipeline has a function branch without a downstream target".into(),
                     ));
                 }
                 stack.extend(next_outputs.into_iter().map(|next| (next, false)));
             } else {
                 return Err(MfdError::UnsupportedImport(
-                    "three-stage pipeline has a feed to an unclassified component".into(),
+                    "serial pipeline has a feed to an unclassified component".into(),
                 ));
             }
         }

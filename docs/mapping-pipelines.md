@@ -2,8 +2,8 @@
 
 ## Importing a connected `.mfd` design
 
-The CLI can import a connected XML design with one or two serial pass-through
-targets as a runnable two- or three-stage pipeline:
+The CLI can import a connected XML design with up to 64 serial pass-through
+targets as a runnable pipeline:
 
 ```sh
 cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
@@ -13,8 +13,8 @@ cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
 
 The imported host name comes from the source component and is recorded in
 `flow.json`. Supply that name and the desired output path to `run-pipeline`.
-The example has one pass-through target; with two, the final stage ID is
-`mfd-stage-3`.
+The example has one pass-through target. With three pass-through targets, the
+final stage ID is `mfd-stage-4`.
 The same trusted package manifest and ordered EDI/JSON catalog options used
 by ordinary `import-mfd` apply. Unsupported stage shapes fail before the
 pipeline file is written. Each imported stage records the original `.mfd`

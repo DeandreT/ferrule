@@ -67,6 +67,167 @@ fn write_three_stage_chain(directory: &Path) -> PathBuf {
     mapping
 }
 
+fn write_serial_chain(directory: &Path, intermediate_count: usize) -> PathBuf {
+    assert!(intermediate_count > 0);
+    let schema = |root: &str, field: &str| {
+        format!(
+            "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{field}\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
+        )
+    };
+    write(&directory.join("source.xsd"), &schema("Source", "Start"));
+    write(&directory.join("target.xsd"), &schema("Target", "Result"));
+    let mut children = String::from(
+        r#"<component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Start" outkey="10"/></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>"#,
+    );
+    // Declare the pass-through components in reverse order. Stage order must
+    // come from graph feeds, never from component position.
+    for index in (1..=intermediate_count).rev() {
+        let root = format!("Buffer{index}");
+        let field = format!("Step{index}");
+        write(
+            &directory.join(format!("buffer{index}.xsd")),
+            &schema(&root, &field),
+        );
+        children.push_str(&format!(
+            "<component name=\"buffer-{index}\" library=\"xml\" kind=\"14\"><properties PassThrough=\"1\"/><data><root><entry name=\"{root}\"><entry name=\"{field}\" inpkey=\"{}\" outkey=\"{}\"/></entry></root><document schema=\"buffer{index}.xsd\" instanceroot=\"{{}}{root}\"/></data></component>",
+            index * 20,
+            index * 20 + 10,
+        ));
+    }
+    children.push_str(&format!(
+        "<component name=\"target\" library=\"xml\" kind=\"14\"><properties XSLTDefaultOutput=\"1\"/><data><root><entry name=\"Target\"><entry name=\"Result\" inpkey=\"{}\"/></entry></root><document schema=\"target.xsd\" outputinstance=\"target.xml\" instanceroot=\"{{}}Target\"/></data></component>",
+        (intermediate_count + 1) * 20,
+    ));
+    let mut vertices = String::new();
+    for index in 0..=intermediate_count {
+        vertices.push_str(&format!(
+            "<vertex vertexkey=\"{}\"><edges><edge vertexkey=\"{}\"/></edges></vertex>",
+            index * 20 + 10,
+            (index + 1) * 20,
+        ));
+    }
+    let mapping = directory.join("serial-chain.mfd");
+    write(
+        &mapping,
+        &format!(
+            "<mapping version=\"26\"><component name=\"map\"><structure><children>{children}</children><graph><vertices>{vertices}</vertices></graph></structure></component></mapping>"
+        ),
+    );
+    mapping
+}
+
+#[test]
+fn four_serial_xml_stages_import_and_execute_in_graph_order() {
+    let dir = TempDir::new();
+    let mapping = write_serial_chain(&dir.0, 3);
+    let imported = mfd::import_pipeline(&mapping).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.pipeline.stages.len(), 4);
+    assert!(engine::validate_pipeline(&imported.pipeline).is_empty());
+    for (index, stage) in imported.pipeline.stages.iter().enumerate() {
+        assert_eq!(stage.id, format!("mfd-stage-{}", index + 1));
+        if index == 0 {
+            assert_eq!(
+                stage.source,
+                mapping::PipelineInput::Host {
+                    name: "source".into()
+                }
+            );
+        } else {
+            assert_eq!(
+                stage.source,
+                mapping::PipelineInput::StageTarget {
+                    stage: format!("mfd-stage-{index}"),
+                    target: None,
+                }
+            );
+        }
+    }
+    let source = Instance::Group(vec![(
+        "Start".into(),
+        Instance::Scalar(Value::String("four stages".into())),
+    )]);
+    let outputs = engine::run_pipeline(
+        &imported.pipeline,
+        &BTreeMap::from([("source".to_string(), source)]),
+    )
+    .unwrap();
+    for (id, field) in [
+        ("mfd-stage-1", "Step1"),
+        ("mfd-stage-2", "Step2"),
+        ("mfd-stage-3", "Step3"),
+        ("mfd-stage-4", "Result"),
+    ] {
+        assert_eq!(
+            outputs
+                .stage(id)
+                .unwrap()
+                .primary
+                .field(field)
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("four stages".into())),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn serial_xml_chain_rejects_bypass_cycle_and_disconnected_component() {
+    let dir = TempDir::new();
+    let mapping = write_serial_chain(&dir.0, 3);
+    let original = std::fs::read_to_string(&mapping).unwrap();
+    let bypass = original
+        .replace(
+            "<entry name=\"Result\" inpkey=\"80\"/>",
+            "<entry name=\"Result\" inpkey=\"80\"/><entry name=\"Bypass\" inpkey=\"81\"/>",
+        )
+        .replace(
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"81\"/></edges></vertex>",
+        );
+    write(&mapping, &bypass);
+    let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
+    assert!(
+        error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
+
+    let cycle = original
+        .replace(
+            "<entry name=\"Step1\" inpkey=\"20\" outkey=\"30\"/>",
+            "<entry name=\"Step1\" inpkey=\"20\" outkey=\"30\"/><entry name=\"Cycle\" inpkey=\"21\" outkey=\"31\"/>",
+        )
+        .replace(
+            "<vertex vertexkey=\"70\"><edges><edge vertexkey=\"80\"/></edges></vertex>",
+            "<vertex vertexkey=\"70\"><edges><edge vertexkey=\"80\"/><edge vertexkey=\"21\"/></edges></vertex>",
+        );
+    write(&mapping, &cycle);
+    let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
+    assert!(
+        error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
+
+    let disconnected = original.replace(
+        "</children><graph>",
+        "<component name=\"detached\" library=\"xml\" kind=\"14\"><properties PassThrough=\"1\"/><data><root><entry name=\"Buffer1\"><entry name=\"Step1\" inpkey=\"91\" outkey=\"90\"/></entry></root><document schema=\"buffer1.xsd\" instanceroot=\"{}Buffer1\"/></data></component></children><graph>",
+    );
+    write(&mapping, &disconnected);
+    let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
+    assert!(
+        error.contains("cannot classify component `detached`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn serial_xml_chain_rejects_more_than_64_intermediates_before_lowering() {
+    let dir = TempDir::new();
+    let mapping = write_serial_chain(&dir.0, 65);
+    let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
+    assert!(error.contains("at most 64 intermediate targets"), "{error}");
+}
+
 #[test]
 fn three_serial_xml_stages_import_and_execute_in_graph_order() {
     let dir = TempDir::new();
@@ -348,10 +509,7 @@ fn connected_xml_passthrough_reports_unrepresented_chain() {
         );
     write(&mapping, &disconnected);
     let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
-    assert!(
-        error.contains("does not feed the selected final target"),
-        "{error}"
-    );
+    assert!(error.contains("unclassified component"), "{error}");
 }
 
 #[test]
