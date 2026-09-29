@@ -8,6 +8,8 @@
 //! containers, explicit nulls, and empty objects/arrays remain distinct.
 //! Unconstrained dynamic properties retain arbitrary values as canonical JSON
 //! text in the graph's string domain and restore them at the output boundary.
+//! A root array of objects can reuse a non-repeating object schema as flat
+//! rows; nested arrays still require a repeating child schema.
 
 mod json5_unique;
 pub mod json_schema;
@@ -248,7 +250,8 @@ pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonForm
 /// Reads JSON text into an [`Instance`] tree shaped by `schema`.
 ///
 /// This is the in-memory equivalent of [`read`], suitable for hosts without
-/// filesystem access such as WebAssembly applications.
+/// filesystem access such as WebAssembly applications. A root array under a
+/// non-repeating group schema is read as flat rows, matching [`to_string`].
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     let text = strip_utf8_bom(text);
     json_schema::unique_items::validate_raw_json_unique_items(schema, text)?;
@@ -275,6 +278,15 @@ fn from_value(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance
     let mut patterns = PatternRuntime::new(schema)?;
     if schema.repeating {
         read_repeated(value, schema, &mut patterns)
+    } else if let (SchemaKind::Group { .. }, serde_json::Value::Array(rows)) = (&schema.kind, value)
+    {
+        // Flat-row sources retain a non-repeating row schema while presenting
+        // the root records as one repeated instance, like the JSON writer.
+        let mut parsed = Vec::with_capacity(rows.len());
+        for row in rows {
+            parsed.push(read_node_with_patterns(row, schema, &mut patterns)?);
+        }
+        Ok(Instance::Repeated(parsed))
     } else {
         read_node_with_patterns(value, schema, &mut patterns)
     }
@@ -767,12 +779,15 @@ fn write_node_with_patterns(
         return Ok(serde_json::Value::Null);
     }
     if schema.repeating {
-        let Instance::Repeated(items) = instance else {
-            return Err(write_shape_error(
-                schema,
-                "array",
-                instance_type_name(instance),
-            ));
+        let items = match instance {
+            Instance::Repeated(items) | Instance::MappedSequence(items) => items,
+            _ => {
+                return Err(write_shape_error(
+                    schema,
+                    "array",
+                    instance_type_name(instance),
+                ));
+            }
         };
         json_schema::item_counts::validate_len(schema, items.len())?;
         let mut values = Vec::with_capacity(items.len());
@@ -791,6 +806,19 @@ fn write_single_node_with_patterns(
     instance: &Instance,
     patterns: &mut PatternRuntime,
 ) -> Result<serde_json::Value, JsonFormatError> {
+    let instance = match instance {
+        Instance::MappedSequence(items) => match items.as_slice() {
+            [item] => item,
+            _ => {
+                return Err(write_shape_error(
+                    schema,
+                    "one mapped item",
+                    "mapped sequence",
+                ));
+            }
+        },
+        item => item,
+    };
     if schema.json_any {
         return write_json_any(schema, instance);
     }
@@ -982,9 +1010,15 @@ fn write_json_any(
 }
 
 fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> bool {
+    if let Instance::MappedSequence(items) = instance
+        && items.is_empty()
+        && !schema.repeating
+    {
+        return true;
+    }
     matches!(instance, Instance::Scalar(Value::Null))
         && (schema.container_nullable || (!schema.repeating && schema.is_scalar()))
-        || matches!(instance, Instance::Repeated(items) if items.is_empty())
+        || matches!(instance, Instance::Repeated(items) | Instance::MappedSequence(items) if items.is_empty())
             && schema
                 .item_count_range
                 .is_some_and(|range| range.minimum() > 0)
@@ -1990,25 +2024,111 @@ mod tests {
             } if name == "Field"
         ));
 
-        for mapped in [
-            Instance::MappedSequence(Vec::new()),
-            Instance::Group(vec![("Field".into(), Instance::MappedSequence(Vec::new()))]),
+        let error = write_node(
+            &SchemaNode::scalar("Field", ScalarType::Bool),
+            &Instance::MappedSequence(Vec::new()),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            JsonFormatError::Shape {
+                got: "mapped sequence",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn json_output_normalizes_bounded_mapped_sequences() -> Result<(), Box<dyn std::error::Error>> {
+        let scalar = SchemaNode::scalar("Field", ScalarType::String);
+        let root = SchemaNode::group("Root", vec![scalar.clone()]);
+        let item = |value: &str| Instance::Scalar(Value::String(value.into()));
+        let field =
+            |items| Instance::Group(vec![("Field".into(), Instance::MappedSequence(items))]);
+
+        let omitted: serde_json::Value = serde_json::from_str(&to_string(&root, &field(vec![]))?)?;
+        assert_eq!(omitted, serde_json::json!({}));
+        let one: serde_json::Value =
+            serde_json::from_str(&to_string(&root, &field(vec![item("one")]))?)?;
+        assert_eq!(one, serde_json::json!({"Field": "one"}));
+        let error = to_string(&root, &field(vec![item("one"), item("two")])).unwrap_err();
+        assert!(matches!(
+            error,
+            JsonFormatError::Shape {
+                ref name,
+                expected: "one mapped item",
+                got: "mapped sequence"
+            } if name == "Field"
+        ));
+
+        let required = root
+            .clone()
+            .with_required_fields(vec!["Field".into()])
+            .expect("valid required field");
+        assert!(matches!(
+            to_string(&required, &field(vec![])),
+            Err(JsonFormatError::MissingRequiredProperty { ref property, .. }) if property == "Field"
+        ));
+
+        let repeating = scalar.repeating();
+        for (items, expected) in [
+            (vec![], serde_json::json!([])),
+            (vec![item("one")], serde_json::json!(["one"])),
+            (
+                vec![item("one"), item("two")],
+                serde_json::json!(["one", "two"]),
+            ),
         ] {
-            let (schema, instance) = match mapped {
-                Instance::Group(_) => (
-                    SchemaNode::group("Root", vec![SchemaNode::scalar("Field", ScalarType::Bool)]),
-                    mapped,
-                ),
-                _ => (SchemaNode::scalar("Field", ScalarType::Bool), mapped),
-            };
-            let error = write_node(&schema, &instance).unwrap_err();
-            assert!(matches!(
-                error,
-                JsonFormatError::Shape {
-                    got: "mapped sequence",
-                    ..
-                }
-            ));
+            let actual: serde_json::Value =
+                serde_json::from_str(&to_string(&repeating, &Instance::MappedSequence(items))?)?;
+            assert_eq!(actual, expected);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn root_row_arrays_validate_every_object_and_nested_assertion()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let range = ir::StringLengthRange::new(2, Some(5)).expect("valid length range");
+        let name = SchemaNode::scalar("Name", ScalarType::String)
+            .with_string_length_range(range)
+            .expect("string length applies to string");
+        let tags = SchemaNode::scalar("Tags", ScalarType::Int)
+            .repeating()
+            .with_json_unique_items()
+            .expect("uniqueItems applies to arrays");
+        let nested = SchemaNode::group("Nested", vec![]);
+        let schema = SchemaNode::group("Row", vec![name, tags, nested])
+            .with_required_fields(vec!["Name".into()])
+            .expect("required field exists");
+
+        assert_eq!(from_str("[]", &schema)?, Instance::Repeated(vec![]));
+        let rows = from_str(
+            r#"[{"Name":"Ada","Tags":[1,2]},{"Name":"Eve","Tags":[3]}]"#,
+            &schema,
+        )?;
+        assert!(matches!(rows, Instance::Repeated(ref items) if items.len() == 2));
+        assert!(matches!(
+            from_str(r#"[{"Name":"Ada"},{}]"#, &schema),
+            Err(JsonFormatError::MissingRequiredProperty { ref property, .. }) if property == "Name"
+        ));
+        assert!(matches!(
+            from_str(r#"[{"Name":"Ada"},{"Name":"X"}]"#, &schema),
+            Err(JsonFormatError::StringLengthMismatch { .. })
+        ));
+        assert!(matches!(
+            from_str(r#"[{"Name":"Ada"},{"Name":"Eve","Nested":[]}]"#, &schema),
+            Err(JsonFormatError::Shape { ref name, expected: "object", got: "array" })
+                if name == "Nested"
+        ));
+        assert!(matches!(
+            from_str(r#"[{"Name":"Ada"},{"Name":"Eve","Tags":[1,1]}]"#, &schema),
+            Err(JsonFormatError::UniqueItemsMismatch { .. })
+        ));
+        assert!(matches!(
+            from_json5_str("[{Name: 'Ada'}, {Name: 'Eve', Tags: [1, 1]}]", &schema),
+            Err(JsonFormatError::UniqueItemsMismatch { .. })
+        ));
+        Ok(())
     }
 }

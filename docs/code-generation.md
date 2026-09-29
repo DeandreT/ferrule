@@ -438,13 +438,17 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports three warning-free designs (JSON to
-JSON, XML to JSON, and FlexText to XML), executes them in the interpreter, then
-compiles and runs their generated Rust and C# hosts against schema-shaped JSON input. Both
-backends must match the interpreter's JSON result. Run it with
+An opt-in local-corpus smoke test imports four warning-free designs (JSON to
+JSON, XML to JSON, FlexText to XML, and grouped CSV to XML), executes them in
+the interpreter, then compiles and runs their generated Rust and C# hosts
+against schema-shaped JSON input. Both backends must match the interpreter's
+JSON result. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
 when the ignored `samples/ReferenceSamples` corpus and .NET 10 SDK are present.
 The corpus files are never added to the repository.
+For flat CSV-style sources, the JSON host input is a root array of row objects
+even when the embedded row schema itself is non-repeating. Each row is checked
+against that schema; arrays inside a row still require repeating fields.
 
 ## Output Safety
 
