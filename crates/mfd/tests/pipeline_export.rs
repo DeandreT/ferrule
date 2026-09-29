@@ -136,6 +136,51 @@ fn make_late_named_source_chain(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_four_stage_late_named_source_chain(directory: &Path, late_stage: usize) -> PathBuf {
+    let path = make_four_stage_chain(directory);
+    write_schema(&directory.join("catalog.xsd"), "Catalog", "Item");
+    let (schema_path, root, field, entry) = match late_stage {
+        3 => (
+            "buffer3.xsd",
+            "Buffer3",
+            "Step3",
+            "<entry name=\"Step3\" inpkey=\"60\" outkey=\"70\"/>",
+        ),
+        4 => (
+            "target.xsd",
+            "Target",
+            "Result",
+            "<entry name=\"Result\" inpkey=\"80\"/>",
+        ),
+        _ => panic!("late source fixture needs stage three or four"),
+    };
+    std::fs::write(
+        directory.join(schema_path),
+        format!(
+            "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{field}\" type=\"xs:string\"/><xs:element name=\"Lookup\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
+        ),
+    )
+    .unwrap();
+    let original = std::fs::read_to_string(&path).unwrap();
+    let with_catalog = original.replace(
+        "<component name=\"buffer-3\"",
+        r#"<component name="catalog" library="xml" kind="14"><data><root><entry name="Catalog"><entry name="Item" outkey="90"/></entry></root><document schema="catalog.xsd" inputinstance="catalog.xml" instanceroot="{}Catalog"/></data></component><component name="buffer-3""#,
+    );
+    let lookup_entry = if late_stage == 3 {
+        "<entry name=\"Lookup\" inpkey=\"100\" outkey=\"110\"/>"
+    } else {
+        "<entry name=\"Lookup\" inpkey=\"100\"/>"
+    };
+    let with_lookup = with_catalog.replace(entry, &format!("{entry}{lookup_entry}"));
+    let with_edge = with_lookup.replace(
+        "</vertices></graph>",
+        "<vertex vertexkey=\"90\"><edges><edge vertexkey=\"100\"/></edges></vertex></vertices></graph>",
+    );
+    assert_ne!(with_edge, original);
+    std::fs::write(&path, with_edge).unwrap();
+    path
+}
+
 fn execute(pipeline: &mapping::Pipeline) -> engine::PipelineOutputs {
     let PipelineInput::Host { name } = &pipeline.stages[0].source else {
         panic!("first stage must read a host source");
@@ -223,9 +268,11 @@ fn four_stage_pipeline_remaps_every_stage_and_preserves_execution() {
     assert_eq!(original.pipeline.stages.len(), 4);
     let original_outputs = execute(&original.pipeline);
     let exported_path = directory.0.join("exported-four-stage.mfd");
-    assert!(mfd::export_pipeline(&original.pipeline, &exported_path)
-        .unwrap()
-        .is_empty());
+    assert!(
+        mfd::export_pipeline(&original.pipeline, &exported_path)
+            .unwrap()
+            .is_empty()
+    );
     let exported = std::fs::read_to_string(&exported_path).unwrap();
     assert_eq!(exported.matches("PassThrough=\"1\"").count(), 3);
     let reimported = mfd::import_pipeline(&exported_path).unwrap();
@@ -257,13 +304,15 @@ fn late_named_xml_source_reuses_one_original_host_component() {
         original.pipeline.stages[0].project.extra_sources[0].name,
         "catalog"
     );
-    assert!(original.pipeline.stages[1]
-        .extra_sources
-        .iter()
-        .any(|binding| {
-            binding.name == "catalog"
-                && matches!(&binding.from, PipelineInput::Host { name } if name == "catalog")
-        }));
+    assert!(
+        original.pipeline.stages[1]
+            .extra_sources
+            .iter()
+            .any(|binding| {
+                binding.name == "catalog"
+                    && matches!(&binding.from, PipelineInput::Host { name } if name == "catalog")
+            })
+    );
     let original_outputs =
         engine::run_pipeline(&original.pipeline, &late_named_inputs(&original.pipeline)).unwrap();
     let original_final = &original_outputs.stage("mfd-stage-2").unwrap().primary;
@@ -303,6 +352,113 @@ fn late_named_xml_source_reuses_one_original_host_component() {
         reimported_outputs.stage("mfd-stage-2").unwrap().primary,
         *original_final
     );
+}
+
+#[test]
+fn four_stage_chain_reuses_unused_original_host_in_intermediate_or_final_stage() {
+    for late_stage in [3, 4] {
+        let directory = TempDir::new();
+        let original = mfd::import_pipeline(&make_four_stage_late_named_source_chain(
+            &directory.0,
+            late_stage,
+        ))
+        .unwrap();
+        assert!(original.warnings.is_empty(), "{:?}", original.warnings);
+        assert_eq!(original.pipeline.stages.len(), 4);
+        assert!(original.pipeline.stages[late_stage - 1]
+            .extra_sources
+            .iter()
+            .any(|binding| {
+                binding.name == "catalog"
+                    && matches!(&binding.from, PipelineInput::Host { name } if name == "catalog")
+            }));
+        let inputs = late_named_inputs(&original.pipeline);
+        let original_outputs = engine::run_pipeline(&original.pipeline, &inputs).unwrap();
+        let named_output = &original_outputs
+            .stage(&format!("mfd-stage-{late_stage}"))
+            .unwrap()
+            .primary;
+        assert_eq!(
+            named_output.field("Lookup").and_then(Instance::as_scalar),
+            Some(&Value::String("host value".into()))
+        );
+
+        let exported_path = directory
+            .0
+            .join(format!("late-host-stage-{late_stage}.mfd"));
+        let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
+        assert!(report.is_native_compatible(), "{report:?}");
+        let published = mfd::export_pipeline_with_profile(
+            &original.pipeline,
+            &exported_path,
+            mfd::ExportProfile::NativeMfd,
+        )
+        .unwrap();
+        assert!(published.is_native_compatible(), "{published:?}");
+        let exported = std::fs::read_to_string(&exported_path).unwrap();
+        assert_eq!(
+            exported.matches("name=\"catalog\" library=\"xml\"").count(),
+            1
+        );
+        let reimported = mfd::import_pipeline(&exported_path).unwrap();
+        assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+        assert!(engine::validate_pipeline(&reimported.pipeline).is_empty());
+        let reimported_outputs = engine::run_pipeline(
+            &reimported.pipeline,
+            &late_named_inputs(&reimported.pipeline),
+        )
+        .unwrap();
+        for index in 0..4 {
+            let original_id = &original.pipeline.stages[index].id;
+            let reimported_id = &reimported.pipeline.stages[index].id;
+            assert_eq!(
+                original_outputs.stage(original_id).unwrap().primary,
+                reimported_outputs.stage(reimported_id).unwrap().primary,
+                "late source at stage {late_stage}, output stage {}",
+                index + 1,
+            );
+        }
+    }
+}
+
+#[test]
+fn four_stage_late_host_rejects_changed_boundary_or_earlier_use_without_publishing() {
+    let directory = TempDir::new();
+    let imported =
+        mfd::import_pipeline(&make_four_stage_late_named_source_chain(&directory.0, 4)).unwrap();
+
+    let mut changed = imported.pipeline.clone();
+    changed.stages[3].project.extra_sources[0].path = "different.xml".into();
+    let destination = directory.0.join("not-created/changed.mfd");
+    let error = mfd::export_pipeline(&changed, &destination)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("does not match its original XML boundary"),
+        "{error}"
+    );
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut used = imported.pipeline;
+    let second = &mut used.stages[1].project;
+    let node = second.graph.nodes.keys().next_back().copied().unwrap_or(0) + 1;
+    second.graph.nodes.insert(
+        node,
+        Node::SourceField {
+            path: vec!["catalog".into(), "Item".into()],
+            frame: None,
+        },
+    );
+    second.root.bindings[0].node = node;
+    let destination = directory.0.join("not-created/used.mfd");
+    let error = mfd::export_pipeline(&used, &destination)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("already connected before this stage"),
+        "{error}"
+    );
+    assert!(!destination.parent().unwrap().exists());
 }
 
 #[test]
@@ -377,9 +533,11 @@ fn synthetic_terminal_xml_fanout_imports_exports_and_runs() {
     let exported_path = directory.0.join("fanout-export.mfd");
     let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert!(mfd::export_pipeline(&original.pipeline, &exported_path)
-        .unwrap()
-        .is_empty());
+    assert!(
+        mfd::export_pipeline(&original.pipeline, &exported_path)
+            .unwrap()
+            .is_empty()
+    );
     let exported = std::fs::read_to_string(&exported_path).unwrap();
     assert_eq!(exported.matches("PassThrough=\"1\"").count(), 1);
     assert_eq!(exported.matches("XSLTDefaultOutput=\"1\"").count(), 1);
