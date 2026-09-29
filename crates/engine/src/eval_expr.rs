@@ -244,6 +244,7 @@ pub(crate) fn eval_expr(
             replacements,
         } => eval_xml_mixed_content(
             program,
+            node_id,
             path,
             frame.as_deref(),
             replacements,
@@ -286,6 +287,7 @@ pub(crate) fn eval_expr(
             value,
         } => eval_collection_find(
             program,
+            node_id,
             collection,
             *predicate,
             *value,
@@ -298,6 +300,7 @@ pub(crate) fn eval_expr(
             predicate,
         } => eval_sequence_exists(
             program,
+            node_id,
             sequence,
             *predicate,
             context,
@@ -440,6 +443,7 @@ pub(super) fn eval_node_input(
 #[allow(clippy::too_many_arguments)]
 fn eval_xml_mixed_content(
     program: EvalProgram<'_>,
+    consumer: NodeId,
     path: &[String],
     frame: Option<&[String]>,
     replacements: &[mapping::XmlMixedContentReplacement],
@@ -481,7 +485,11 @@ fn eval_xml_mixed_content(
                 _ => None,
             })
             .unwrap_or_default();
-        let Some(replacement) = replacements.iter().find(|rule| rule.element == name) else {
+        let Some((input_index, replacement)) = replacements
+            .iter()
+            .enumerate()
+            .find(|(_, rule)| rule.element == name)
+        else {
             output.push_str(text);
             continue;
         };
@@ -502,9 +510,11 @@ fn eval_xml_mixed_content(
                 document_path: None,
             });
         }
-        let value = eval_expr(
+        let value = eval_node_input(
             program,
+            consumer,
             replacement.expression,
+            input_index,
             &item_context,
             &item_positions,
             in_progress,
@@ -544,8 +554,10 @@ fn collection_items<'a>(
     base.map(|base| walk(base, collection, &[], &[], &[]))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn eval_collection_find(
     program: EvalProgram<'_>,
+    consumer: NodeId,
     collection: &[String],
     predicate: NodeId,
     value: NodeId,
@@ -571,6 +583,7 @@ fn eval_collection_find(
     let mut item_positions = positions.to_vec();
     visit_collection_find(
         program,
+        consumer,
         root,
         collection,
         0,
@@ -586,6 +599,7 @@ fn eval_collection_find(
 #[allow(clippy::too_many_arguments)]
 fn visit_collection_find<'a>(
     program: EvalProgram<'_>,
+    consumer: NodeId,
     current: &'a Instance,
     collection: &[String],
     consumed: usize,
@@ -608,6 +622,7 @@ fn visit_collection_find<'a>(
             });
             let found = visit_collection_find(
                 program,
+                consumer,
                 item,
                 collection,
                 consumed,
@@ -629,6 +644,7 @@ fn visit_collection_find<'a>(
         return match current.field(&collection[consumed]) {
             Some(next) => visit_collection_find(
                 program,
+                consumer,
                 next,
                 collection,
                 consumed + 1,
@@ -641,8 +657,18 @@ fn visit_collection_find<'a>(
             None => Ok(None),
         };
     }
-    match eval_expr(program, predicate, context, positions, in_progress)? {
-        Value::Bool(true) => eval_expr(program, value, context, positions, in_progress).map(Some),
+    match eval_node_input(
+        program,
+        consumer,
+        predicate,
+        0,
+        context,
+        positions,
+        in_progress,
+    )? {
+        Value::Bool(true) => {
+            eval_node_input(program, consumer, value, 1, context, positions, in_progress).map(Some)
+        }
         Value::Bool(false) | Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => Ok(None),
         other => Err(EngineError::NotABool {
             node: predicate,
