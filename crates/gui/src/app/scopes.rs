@@ -27,6 +27,16 @@ impl FerruleApp {
             )
             .unwrap_or_default(),
         };
+        let selected = match target_index {
+            Some(index) => self.project.extra_targets.get(index).and_then(|target| {
+                crate::auto_connect::scope_at(&target.root, &self.selected_scope)
+            }),
+            None => crate::auto_connect::scope_at(&self.project.root, &self.selected_scope),
+        };
+        let can_expand = selected.is_some_and(|scope| {
+            matches!(scope.construction, mapping::ScopeConstruction::Constructed)
+                && scope.concatenated().is_none()
+        });
         let mut action = None;
         ui.horizontal(|ui| {
             ui.add_enabled_ui(!candidates.is_empty(), |ui| {
@@ -47,6 +57,13 @@ impl FerruleApp {
             .response
             .on_disabled_hover_text("No unrepresented target groups");
             if ui
+                .add_enabled(can_expand, egui::Button::new("Expand subtree"))
+                .on_hover_text("Add missing target group scopes below this scope. Configure source iteration separately for repeating groups.")
+                .clicked()
+            {
+                action = Some(ScopeAction::Expand);
+            }
+            if ui
                 .add_enabled(
                     !self.selected_scope.is_empty(),
                     egui::Button::new("Remove scope"),
@@ -56,6 +73,11 @@ impl FerruleApp {
                 action = Some(ScopeAction::Remove);
             }
         });
+
+        if matches!(action, Some(ScopeAction::Expand)) {
+            self.expand_selected_target_subtree();
+            return;
+        }
 
         let result = match (target_index, action) {
             (Some(index), Some(ScopeAction::Add(target_field))) => {
@@ -84,6 +106,7 @@ impl FerruleApp {
             (None, Some(ScopeAction::Remove)) => {
                 remove_child_scope(&mut self.project.root, &self.selected_scope)
             }
+            (_, Some(ScopeAction::Expand)) => unreachable!("expansion handled above"),
             (_, None) => return,
         };
         match result {
@@ -97,6 +120,49 @@ impl FerruleApp {
                 self.status = "scope edit failed".to_string();
                 self.diagnostics
                     .error("Scope edit failed", error.to_string());
+            }
+        }
+    }
+
+    pub(super) fn expand_selected_target_subtree(&mut self) {
+        let result = match self.mapping_workspace.active {
+            MappingDocument::Target(index) => {
+                let Some(target) = self.project.extra_targets.get_mut(index) else {
+                    return;
+                };
+                expand_static_target_subtree(&mut target.root, &target.schema, &self.selected_scope)
+            }
+            MappingDocument::Main => expand_static_target_subtree(
+                &mut self.project.root,
+                &self.project.target,
+                &self.selected_scope,
+            ),
+            MappingDocument::Function(_) => return,
+        };
+        match result {
+            Ok(expansion) => {
+                if expansion.created > 0 {
+                    self.rebuild_snarl_preserving_positions();
+                    self.diagnostics.clear();
+                }
+                self.status = format!("created {} target scopes", expansion.created);
+                if expansion.repeating_unconfigured > 0 {
+                    self.status.push_str(&format!(
+                        "; {} repeating scopes need source paths",
+                        expansion.repeating_unconfigured
+                    ));
+                }
+                if expansion.skipped_incompatible > 0 {
+                    self.status.push_str(&format!(
+                        "; skipped {} incompatible branches",
+                        expansion.skipped_incompatible
+                    ));
+                }
+            }
+            Err(error) => {
+                self.status = "scope expansion failed".to_string();
+                self.diagnostics
+                    .error("Scope expansion failed", error.to_string());
             }
         }
     }
@@ -127,5 +193,6 @@ impl FerruleApp {
 
 enum ScopeAction {
     Add(String),
+    Expand,
     Remove,
 }

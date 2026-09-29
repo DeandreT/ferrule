@@ -5,7 +5,7 @@
 
 use egui::Ui;
 use ir::{SchemaKind, SchemaNode};
-use mapping::{Binding, Graph, NodeId, Scope, ScopeIteration, SequenceWindow};
+use mapping::{Binding, Graph, NodeId, Scope, ScopeConstruction, ScopeIteration, SequenceWindow};
 
 use crate::path_picker::SourcePathCatalog;
 
@@ -17,6 +17,17 @@ pub struct StaticChildScopeCandidate {
     pub target_field: String,
     pub repeating: bool,
 }
+
+/// A bulk expansion changes only ordinary static child scopes. Repeating
+/// targets still need their source iteration configured by the author.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScopeExpansion {
+    pub created: usize,
+    pub repeating_unconfigured: usize,
+    pub skipped_incompatible: usize,
+}
+
+const MAX_SUBTREE_EXPANSION_GROUPS: usize = 512;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScopeTreeError {
@@ -35,6 +46,8 @@ pub enum ScopeTreeError {
         parent: Vec<String>,
         target_field: String,
     },
+    CannotExpandScope(Vec<String>),
+    ExpansionLimitExceeded(usize),
     CannotRemoveRoot,
 }
 
@@ -85,6 +98,15 @@ impl std::fmt::Display for ScopeTreeError {
                 "target child {}/{} already has a scope",
                 path_label(parent),
                 target_field
+            ),
+            Self::CannotExpandScope(path) => write!(
+                formatter,
+                "target scope {} uses a construction or iteration mode that cannot contain an expanded subtree",
+                path_label(path)
+            ),
+            Self::ExpansionLimitExceeded(limit) => write!(
+                formatter,
+                "target subtree exceeds the {limit}-group expansion limit; select a smaller subtree"
             ),
             Self::CannotRemoveRoot => formatter.write_str("the root scope cannot be removed"),
         }
@@ -302,6 +324,88 @@ pub fn create_static_child_scope(
     let mut created = parent_path.to_vec();
     created.push(index);
     Ok(created)
+}
+
+/// Adds every missing schema-declared group below `parent_path` without
+/// changing existing scopes, graph nodes, bindings, or source iteration. An
+/// incompatible existing branch is left intact and reported in the result.
+/// Work is applied from a clone so over-budget expansion is atomic.
+pub fn expand_static_target_subtree(
+    root: &mut Scope,
+    target: &SchemaNode,
+    parent_path: &[usize],
+) -> Result<ScopeExpansion, ScopeTreeError> {
+    let selected = scope_at(root, parent_path)
+        .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
+    let (target_parent, target_chain) = target_scope_for_path(root, target, parent_path)?;
+    if !can_expand_scope(selected) {
+        return Err(ScopeTreeError::CannotExpandScope(target_chain));
+    }
+    let mut expanded = selected.clone();
+    let mut visited = 0;
+    let mut result = ScopeExpansion::default();
+    expand_schema_groups(&mut expanded, target_parent, &mut visited, &mut result)?;
+    if result.created > 0 {
+        let selected = scope_at_checked_mut(root, parent_path)
+            .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
+        *selected = expanded;
+    }
+    Ok(result)
+}
+
+fn can_expand_scope(scope: &Scope) -> bool {
+    matches!(scope.construction, ScopeConstruction::Constructed) && scope.concatenated().is_none()
+}
+
+fn expand_schema_groups(
+    scope: &mut Scope,
+    schema: &SchemaNode,
+    visited: &mut usize,
+    result: &mut ScopeExpansion,
+) -> Result<(), ScopeTreeError> {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Ok(());
+    };
+    for child in children
+        .iter()
+        .filter(|child| matches!(child.kind, SchemaKind::Group { .. }))
+    {
+        *visited += 1;
+        if *visited > MAX_SUBTREE_EXPANSION_GROUPS {
+            return Err(ScopeTreeError::ExpansionLimitExceeded(
+                MAX_SUBTREE_EXPANSION_GROUPS,
+            ));
+        }
+        let mut matches = scope
+            .children
+            .iter()
+            .enumerate()
+            .filter(|(_, existing)| existing.target_field == child.name);
+        let first = matches.next().map(|(index, _)| index);
+        if matches.next().is_some() {
+            result.skipped_incompatible += 1;
+            continue;
+        }
+        let index = match first {
+            Some(index) => index,
+            None => {
+                scope.children.push(Scope {
+                    target_field: child.name.clone(),
+                    ..Scope::default()
+                });
+                result.created += 1;
+                result.repeating_unconfigured += usize::from(child.repeating);
+                scope.children.len() - 1
+            }
+        };
+        let nested = &mut scope.children[index];
+        if can_expand_scope(nested) {
+            expand_schema_groups(nested, child, visited, result)?;
+        } else {
+            result.skipped_incompatible += 1;
+        }
+    }
+    Ok(())
 }
 
 pub fn remove_child_scope(
@@ -1028,6 +1132,124 @@ mod tests {
             create_static_child_scope(&mut root, &target, &[9], "Lines"),
             Err(ScopeTreeError::InvalidScopePath(vec![9]))
         );
+    }
+
+    #[test]
+    fn target_subtree_expansion_preserves_configured_scopes_and_is_idempotent() {
+        let configured_order = Scope {
+            target_field: "Orders".into(),
+            iteration: ScopeIteration::Source(vec!["SourceOrders".into()]),
+            bindings: vec![Binding {
+                target_field: "Number".into(),
+                node: 7,
+            }],
+            ..Scope::default()
+        };
+        let mut root = Scope {
+            children: vec![configured_order.clone()],
+            ..Scope::default()
+        };
+        let target = scope_management_target();
+
+        assert_eq!(
+            expand_static_target_subtree(&mut root, &target, &[]),
+            Ok(ScopeExpansion {
+                created: 2,
+                repeating_unconfigured: 1,
+                skipped_incompatible: 0,
+            })
+        );
+        assert_eq!(root.children[0].source(), configured_order.source());
+        assert_eq!(root.children[0].bindings.len(), 1);
+        assert_eq!(root.children[0].bindings[0].target_field, "Number");
+        assert_eq!(root.children[0].bindings[0].node, 7);
+        assert_eq!(root.children[0].children[0].target_field, "Lines");
+        assert!(!root.children[0].children[0].iterates());
+        assert_eq!(root.children[1].target_field, "Customer");
+        let snapshot = root.clone();
+        assert_eq!(
+            expand_static_target_subtree(&mut root, &target, &[]),
+            Ok(ScopeExpansion::default())
+        );
+        assert_eq!(
+            serde_json::to_value(&root).unwrap(),
+            serde_json::to_value(&snapshot).unwrap()
+        );
+    }
+
+    #[test]
+    fn target_subtree_expansion_skips_incompatible_branches() {
+        let target = SchemaNode::group(
+            "root",
+            vec![
+                SchemaNode::group("Locked", vec![SchemaNode::group("Nested", vec![])]),
+                SchemaNode::group("Sequence", vec![SchemaNode::group("Nested", vec![])]),
+                SchemaNode::group("Open", vec![SchemaNode::group("Nested", vec![])]),
+            ],
+        );
+        let locked = Scope {
+            target_field: "Locked".into(),
+            construction: ScopeConstruction::CopyCurrentSource,
+            ..Scope::default()
+        };
+        let sequence = Scope {
+            target_field: "Sequence".into(),
+            iteration: ScopeIteration::Concatenate(mapping::ScopeSequence::new(
+                Scope::default(),
+                Vec::new(),
+            )),
+            ..Scope::default()
+        };
+        let mut root = Scope {
+            children: vec![locked.clone(), sequence.clone()],
+            ..Scope::default()
+        };
+
+        assert_eq!(
+            expand_static_target_subtree(&mut root, &target, &[]),
+            Ok(ScopeExpansion {
+                created: 2,
+                repeating_unconfigured: 0,
+                skipped_incompatible: 2,
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&root.children[0]).unwrap(),
+            serde_json::to_value(&locked).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&root.children[1]).unwrap(),
+            serde_json::to_value(&sequence).unwrap()
+        );
+        assert_eq!(root.children[2].target_field, "Open");
+        assert_eq!(root.children[2].children[0].target_field, "Nested");
+        let snapshot = root.clone();
+        assert_eq!(
+            expand_static_target_subtree(&mut root, &target, &[0]),
+            Err(ScopeTreeError::CannotExpandScope(vec!["Locked".into()]))
+        );
+        assert_eq!(
+            serde_json::to_value(&root).unwrap(),
+            serde_json::to_value(&snapshot).unwrap()
+        );
+    }
+
+    #[test]
+    fn target_subtree_expansion_limit_is_atomic() {
+        let target = SchemaNode::group(
+            "root",
+            (0..=MAX_SUBTREE_EXPANSION_GROUPS)
+                .map(|index| SchemaNode::group(format!("Group{index}"), vec![]))
+                .collect(),
+        );
+        let mut root = Scope::default();
+        assert_eq!(
+            expand_static_target_subtree(&mut root, &target, &[]),
+            Err(ScopeTreeError::ExpansionLimitExceeded(
+                MAX_SUBTREE_EXPANSION_GROUPS
+            ))
+        );
+        assert!(root.children.is_empty());
     }
 
     #[test]
