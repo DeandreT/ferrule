@@ -10,6 +10,8 @@ pub struct ExtraSourceDraft {
     pub instance_path: String,
     pub schema: Option<SchemaNode>,
     pub options: FormatOptions,
+    pub sqlite_table: String,
+    sqlite_loaded_from: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +20,7 @@ pub enum ExtraSourceDraftError {
     DuplicateName(String),
     EmptyInstancePath,
     MissingSchema,
+    StaleSqliteSchema,
 }
 
 impl fmt::Display for ExtraSourceDraftError {
@@ -29,6 +32,9 @@ impl fmt::Display for ExtraSourceDraftError {
             }
             Self::EmptyInstancePath => formatter.write_str("instance path cannot be empty"),
             Self::MissingSchema => formatter.write_str("a source schema is required"),
+            Self::StaleSqliteSchema => {
+                formatter.write_str("reload the SQLite table after changing its path or name")
+            }
         }
     }
 }
@@ -36,6 +42,40 @@ impl fmt::Display for ExtraSourceDraftError {
 impl std::error::Error for ExtraSourceDraftError {}
 
 impl ExtraSourceDraft {
+    pub fn set_instance_path(&mut self, path: String) {
+        if self.instance_path.trim() != path.trim() && self.sqlite_loaded_from.is_some() {
+            self.schema = None;
+            self.sqlite_loaded_from = None;
+        }
+        self.instance_path = path;
+    }
+
+    pub fn set_sqlite_table(&mut self, table: String) {
+        if self.sqlite_table != table && self.sqlite_loaded_from.is_some() {
+            self.schema = None;
+            self.sqlite_loaded_from = None;
+        }
+        self.sqlite_table = table;
+    }
+
+    pub fn set_schema(&mut self, schema: SchemaNode) {
+        self.schema = Some(schema);
+        self.sqlite_loaded_from = None;
+    }
+
+    pub fn set_sqlite_schema(&mut self, schema: SchemaNode) {
+        self.sqlite_loaded_from = Some((
+            self.instance_path.trim().to_owned(),
+            self.sqlite_table.trim().to_owned(),
+        ));
+        self.schema = Some(schema);
+    }
+
+    pub fn clear_schema(&mut self) {
+        self.schema = None;
+        self.sqlite_loaded_from = None;
+    }
+
     /// Converts complete staged input into a project source.
     ///
     /// Source names are case-sensitive because they become path segments in
@@ -52,6 +92,15 @@ impl ExtraSourceDraft {
         let path = self.instance_path.trim();
         if path.is_empty() {
             return Err(ExtraSourceDraftError::EmptyInstancePath);
+        }
+        if self
+            .sqlite_loaded_from
+            .as_ref()
+            .is_some_and(|(loaded_path, table)| {
+                loaded_path != path || table != self.sqlite_table.trim()
+            })
+        {
+            return Err(ExtraSourceDraftError::StaleSqliteSchema);
         }
         let schema = self.schema.ok_or(ExtraSourceDraftError::MissingSchema)?;
 
@@ -88,6 +137,8 @@ mod tests {
             instance_path: "catalog.json".to_owned(),
             schema: Some(schema("catalog")),
             options: FormatOptions::default(),
+            sqlite_table: String::new(),
+            sqlite_loaded_from: None,
         }
     }
 
