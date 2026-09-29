@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 
 use super::*;
 use crate::preview::{
-    DebugNodeCondition, DebugPositionCondition, DebugScalarCondition, DebugSourceCondition,
-    PreviewBreakpoint, PreviewTarget,
+    DebugExpressionCondition, DebugNodeCondition, DebugPositionCondition, DebugScalarCondition,
+    DebugSourceCondition, PreviewBreakpoint, PreviewTarget,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +69,7 @@ pub(super) enum FileRunCommand {
 
 enum FileRunEvent {
     Paused(Box<engine::PendingTargetWrite>),
+    PausedNode(Box<engine::PendingNodeValue>),
     ReadyToPublish,
     Finished(
         Result<cli::RunOutcome, FileRunError>,
@@ -85,6 +86,7 @@ enum FileRunError {
 pub(super) enum FileRunPhase {
     Running,
     Paused(Box<engine::PendingTargetWrite>),
+    PausedNode(Box<engine::PendingNodeValue>),
     Publishing,
     Stopping,
 }
@@ -135,11 +137,13 @@ struct FileRunDebugHook {
     commands: Receiver<FileRunCommand>,
     cancelled: Arc<AtomicBool>,
     pause_each_write: Cell<bool>,
+    pause_next_node: Cell<bool>,
     breakpoint: Option<FileBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
     source_condition: Option<DebugSourceCondition>,
     node_condition: Option<DebugNodeCondition>,
+    expression_condition: Option<DebugExpressionCondition>,
 }
 
 impl FileRunDebugHook {
@@ -168,6 +172,12 @@ impl FileRunDebugHook {
 }
 
 impl engine::DebugHook for FileRunDebugHook {
+    fn wants_node_values(&self) -> bool {
+        self.expression_condition.is_some()
+            || self.pause_next_node.get()
+            || self.cancelled.load(Ordering::Acquire)
+    }
+
     fn source_field_probe(&self) -> Option<(usize, String)> {
         self.source_condition
             .as_ref()
@@ -183,7 +193,10 @@ impl engine::DebugHook for FileRunDebugHook {
                 Ok(FileRunCommand::Pause | FileRunCommand::Step) => {
                     self.pause_each_write.set(true);
                 }
-                Ok(FileRunCommand::Continue) => self.pause_each_write.set(false),
+                Ok(FileRunCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                }
                 Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
                     return engine::DebugDecision::Cancel;
                 }
@@ -243,6 +256,63 @@ impl engine::DebugHook for FileRunDebugHook {
                 }
                 Ok(FileRunCommand::Continue) => {
                     self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(FileRunCommand::Pause | FileRunCommand::Publish)
+                | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+            }
+        }
+    }
+
+    fn after_node_value(&self, value: &engine::PendingNodeValue) -> engine::DebugDecision {
+        if self.cancelled.load(Ordering::Acquire) {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            match self.commands.try_recv() {
+                Ok(FileRunCommand::Pause | FileRunCommand::Step) => {
+                    self.pause_each_write.set(true);
+                }
+                Ok(FileRunCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                }
+                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Ok(FileRunCommand::Publish) | Err(TryRecvError::Empty) => break,
+            }
+        }
+        let matches_expression = self
+            .expression_condition
+            .as_ref()
+            .is_some_and(|condition| condition.matches(value));
+        if !self.pause_next_node.replace(false) && !matches_expression {
+            return engine::DebugDecision::Resume;
+        }
+        if self
+            .events
+            .send(FileRunEvent::PausedNode(Box::new(value.clone())))
+            .is_err()
+        {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            if self.cancelled.load(Ordering::Acquire) {
+                return engine::DebugDecision::Cancel;
+            }
+            match self.commands.recv_timeout(Duration::from_millis(100)) {
+                Ok(FileRunCommand::Step) => {
+                    self.pause_next_node.set(true);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(FileRunCommand::Continue) => {
+                    self.pause_next_node.set(false);
+                    self.pause_each_write.set(false);
                     return engine::DebugDecision::Resume;
                 }
                 Ok(FileRunCommand::Pause | FileRunCommand::Publish)
@@ -289,6 +359,11 @@ impl FerruleApp {
             return;
         }
         if debug && let Err(error) = self.file_run_node_condition.compile() {
+            self.status = "debug run blocked".into();
+            self.diagnostics.error("Debug Run blocked", error);
+            return;
+        }
+        if debug && let Err(error) = self.file_run_expression_condition.compile() {
             self.status = "debug run blocked".into();
             self.diagnostics.error("Debug Run blocked", error);
             return;
@@ -358,6 +433,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let expression_condition = if debug {
+            match self.file_run_expression_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug run blocked".into();
+                    self.diagnostics.error("Debug Run blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let Some(project_path) = self.document.saved_path().map(PathBuf::from) else {
             self.status = "run failed".to_string();
             self.diagnostics
@@ -389,13 +476,16 @@ impl FerruleApp {
                         && value_condition.is_none()
                         && position_condition.is_none()
                         && source_condition.is_none()
-                        && node_condition.is_none(),
+                        && node_condition.is_none()
+                        && expression_condition.is_none(),
                 ),
+                pause_next_node: Cell::new(false),
                 breakpoint,
                 value_condition,
                 position_condition,
                 source_condition,
                 node_condition,
+                expression_condition,
             };
             let gate = || hook.before_publish();
             let mut options = cli::RunOptions::new()
@@ -458,7 +548,10 @@ impl FerruleApp {
         let event = match pending.receiver.try_recv() {
             Ok(event) => event,
             Err(TryRecvError::Empty) => {
-                if !matches!(pending.phase, FileRunPhase::Paused(_)) {
+                if !matches!(
+                    pending.phase,
+                    FileRunPhase::Paused(_) | FileRunPhase::PausedNode(_)
+                ) {
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }
                 return;
@@ -477,6 +570,15 @@ impl FerruleApp {
                 } else {
                     self.status = format!("paused before target field `{}`", write.field);
                     pending.phase = FileRunPhase::Paused(write);
+                }
+                ctx.request_repaint();
+            }
+            FileRunEvent::PausedNode(value) => {
+                if matches!(pending.phase, FileRunPhase::Stopping) {
+                    let _ = pending.commands.send(FileRunCommand::Cancel);
+                } else {
+                    self.status = format!("paused after graph node #{}", value.node);
+                    pending.phase = FileRunPhase::PausedNode(value);
                 }
                 ctx.request_repaint();
             }
@@ -563,6 +665,9 @@ impl FerruleApp {
                             true,
                         );
                     }
+                    FileRunPhase::PausedNode(value) => {
+                        preview_ui::show_live_node_debug_state(ui, value);
+                    }
                     FileRunPhase::Publishing => {
                         ui.horizontal(|ui| {
                             ui.spinner();
@@ -578,7 +683,7 @@ impl FerruleApp {
                 }
                 ui.separator();
                 ui.horizontal(|ui| match &phase {
-                    FileRunPhase::Paused(_) => {
+                    FileRunPhase::Paused(_) | FileRunPhase::PausedNode(_) => {
                         if ui.button("Step").clicked() {
                             action = Some(FileRunCommand::Step);
                         }
@@ -653,6 +758,11 @@ impl FerruleApp {
         );
         condition_valid &=
             preview_ui::show_breakpoint_node_condition(ui, &mut self.file_run_node_condition);
+        condition_valid &= preview_ui::show_breakpoint_expression_condition(
+            ui,
+            &mut self.file_run_expression_condition,
+            "file_run_debug_expression_value_type",
+        );
         if ui
             .add_enabled(condition_valid, egui::Button::new("Debug Run"))
             .clicked()
