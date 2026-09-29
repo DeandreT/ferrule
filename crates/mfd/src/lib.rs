@@ -52,6 +52,7 @@
 mod canonical_function;
 mod export;
 mod import;
+mod json_parser_recipe;
 mod resource;
 
 pub use export::{

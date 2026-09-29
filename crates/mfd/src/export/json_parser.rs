@@ -8,7 +8,8 @@ use ir::{SchemaKind, SchemaNode, Value};
 use mapping::{Graph, Node, NodeId};
 
 use super::json_serializer::entries_xml;
-use super::schema::{GeneratedSibling, KeyAlloc, xml_escape};
+use super::schema::{GeneratedSibling, KeyAlloc, unresolved_json_schema_attribute, xml_escape};
+use crate::MfdError;
 
 const MAX_COMPONENTS: usize = 1_024;
 const MAX_OUTPUTS: usize = 4_096;
@@ -31,16 +32,78 @@ impl Exports {
     }
 }
 
+/// Annotated recipes must be well formed before preflight can report a
+/// compatibility result. Legacy unannotated parser calls keep best-effort
+/// export behavior.
+pub(super) fn validate_provenance(graph: &Graph) -> Result<(), MfdError> {
+    for (&node, value) in &graph.nodes {
+        let Node::Call { function, args } = value else {
+            continue;
+        };
+        if function != "json_parse_field" {
+            continue;
+        }
+        let Some(schema_node) = args.get(1) else {
+            continue;
+        };
+        let Some(Node::Const {
+            value: Value::String(schema_text),
+        }) = graph.nodes.get(schema_node)
+        else {
+            continue;
+        };
+        if crate::json_parser_recipe::contains_metadata(schema_text) {
+            read_candidate(args, graph).map_err(|reason| {
+                MfdError::Unsupported(format!(
+                    "JSON string parser node {node} has invalid unresolved-schema provenance: {reason}"
+                ))
+            })?;
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn ensure_provenance_emitted(
+    graph: &Graph,
+    emitted: &BTreeSet<NodeId>,
+) -> Result<(), MfdError> {
+    for (&node, value) in &graph.nodes {
+        let Node::Call { function, args } = value else {
+            continue;
+        };
+        if function != "json_parse_field" {
+            continue;
+        }
+        let Some(schema_node) = args.get(1) else {
+            continue;
+        };
+        let Some(Node::Const {
+            value: Value::String(schema_text),
+        }) = graph.nodes.get(schema_node)
+        else {
+            continue;
+        };
+        if crate::json_parser_recipe::contains_metadata(schema_text) && !emitted.contains(&node) {
+            return Err(MfdError::Unsupported(format!(
+                "JSON string parser node {node} with unresolved-schema provenance was not emitted"
+            )));
+        }
+    }
+    Ok(())
+}
+
 struct Candidate {
     input: NodeId,
     schema_text: String,
     schema: SchemaNode,
+    unresolved_schema_reference: Option<String>,
     path: Vec<String>,
 }
 
 struct Group {
     input: NodeId,
     schema: SchemaNode,
+    unresolved_schema_reference: Option<String>,
     first_node: NodeId,
     fields: BTreeMap<Vec<String>, Vec<NodeId>>,
 }
@@ -76,6 +139,7 @@ pub(super) fn render(
         let group = groups.entry(key).or_insert_with(|| Group {
             input: candidate.input,
             schema: candidate.schema,
+            unresolved_schema_reference: candidate.unresolved_schema_reference,
             first_node: node,
             fields: BTreeMap::new(),
         });
@@ -105,12 +169,18 @@ pub(super) fn render(
             continue;
         }
         let nodes = group.fields.values().flatten().copied().collect::<Vec<_>>();
+        let provenance = group.unresolved_schema_reference.clone();
+        let first_node = group.first_node;
         if let Err(reason) = render_group(group, keys, uid, mfd_path, &mut exports) {
             for node in nodes {
                 warnings.push(format!(
                     "JSON string parser node {node} is unsupported: {reason}; skipped"
                 ));
             }
+        } else if let Some(reference) = provenance {
+            warnings.push(format!(
+                "JSON string parser node {first_node} uses a generated entry-tree schema because original schema `{reference}` was unavailable at import"
+            ));
         }
     }
     exports
@@ -124,8 +194,8 @@ fn read_candidate(args: &[NodeId], graph: &Graph) -> Result<Candidate, String> {
     if schema_text.len() > MAX_SCHEMA_DESCRIPTOR_BYTES {
         return Err("schema descriptor exceeds 1 MiB".to_string());
     }
-    let schema = serde_json::from_str::<SchemaNode>(schema_text)
-        .map_err(|_| "schema descriptor is invalid".to_string())?;
+    let (schema, unresolved_schema_reference) =
+        crate::json_parser_recipe::decode_schema(schema_text)?;
     if schema.repeating {
         return Err("root arrays are not representable as scalar parser outputs".to_string());
     }
@@ -161,6 +231,7 @@ fn read_candidate(args: &[NodeId], graph: &Graph) -> Result<Candidate, String> {
         input: *input,
         schema_text: schema_text.to_string(),
         schema,
+        unresolved_schema_reference,
         path,
     })
 }
@@ -190,6 +261,8 @@ fn render_group(
         .and_then(|stem| stem.to_str())
         .unwrap_or("mapping");
     let schema_file = format!("{stem}-json-parser-{}.schema.json", group.first_node);
+    let unresolved_json_schema =
+        unresolved_json_schema_attribute(group.unresolved_schema_reference.as_deref());
     exports.siblings.push(GeneratedSibling {
         path: mfd_path
             .parent()
@@ -209,7 +282,7 @@ fn render_group(
          {entries}\
          \t\t\t\t\t\t\t</entry></entry></entry></root>\n\
          \t\t\t\t\t\t<parameter usageKind=\"stringparse\"/>\n\
-         \t\t\t\t\t\t<json schema=\"{}\"/>\n\
+         \t\t\t\t\t\t<json schema=\"{}\"{unresolved_json_schema}/>\n\
          \t\t\t\t\t</data>\n\
          \t\t\t\t</component>\n",
         xml_escape(&group.schema.name),

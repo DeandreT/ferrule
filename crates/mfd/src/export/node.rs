@@ -37,6 +37,7 @@ pub(super) struct RenderedNodes {
     pub(super) position_inputs: BTreeMap<NodeId, u32>,
     pub(super) sequence_context_pins: Vec<SequenceContextPins>,
     pub(super) siblings: Vec<GeneratedSibling>,
+    pub(super) json_parser_outputs: BTreeSet<NodeId>,
 }
 
 pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
@@ -1131,6 +1132,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         position_inputs,
         sequence_context_pins,
         siblings,
+        json_parser_outputs: json_parsers.outputs.keys().copied().collect(),
     }
 }
 

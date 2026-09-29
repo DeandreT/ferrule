@@ -9,6 +9,7 @@ use super::schema::{SchemaComponent, parse_u32, schema_node_at};
 pub(super) struct Recipe {
     input: u32,
     schema: SchemaNode,
+    unresolved_schema_reference: Option<String>,
     pub(super) outputs: BTreeMap<u32, Vec<String>>,
 }
 
@@ -76,6 +77,7 @@ pub(super) fn read(
     Ok(Some(Recipe {
         input: *input,
         schema: schema.schema.clone(),
+        unresolved_schema_reference: schema.options.json_schema_unresolved_reference.clone(),
         outputs,
     }))
 }
@@ -103,7 +105,11 @@ impl GraphBuilder<'_> {
             .iter()
             .find(|parser| parser.outputs.contains_key(&output))?;
         let path = parser.outputs.get(&output)?.clone();
-        let schema = serde_json::to_string(&parser.schema).ok()?;
+        let schema = crate::json_parser_recipe::encode_schema(
+            &parser.schema,
+            parser.unresolved_schema_reference.as_deref(),
+        )
+        .ok()?;
         let input_key = parser.input;
         let path = serde_json::to_string(&path).ok()?;
         let input = self

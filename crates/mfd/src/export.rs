@@ -368,6 +368,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         position_inputs,
         sequence_context_pins,
         siblings: node_siblings,
+        json_parser_outputs,
     } = node::render(node::RenderArgs {
         project,
         sources: &sources,
@@ -383,6 +384,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         mfd_path: path,
         user_functions: &user_functions,
     });
+    json_parser::ensure_provenance_emitted(&project.graph, &json_parser_outputs)?;
     dynamic_sources.render_nodes(
         &mut keys,
         &mut uid,
