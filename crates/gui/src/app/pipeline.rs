@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
-use crate::preview::{PreviewBreakpoint, PreviewTarget};
+use crate::preview::{DebugScalarCondition, PreviewBreakpoint, PreviewTarget};
 use mapping::PipelineInput;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -140,6 +140,7 @@ struct PipelineRunHook {
     cancelled: Arc<AtomicBool>,
     pause_each_write: Cell<bool>,
     breakpoint: Option<PipelineBreakpoint>,
+    value_condition: Option<DebugScalarCondition>,
 }
 
 impl PipelineRunHook {
@@ -163,12 +164,16 @@ impl PipelineRunHook {
                 Ok(PipelineRunCommand::Publish) | Err(TryRecvError::Empty) => break,
             }
         }
-        if !self.pause_each_write.get()
-            && !self
-                .breakpoint
-                .as_ref()
-                .is_some_and(|breakpoint| breakpoint.matches(stage, write))
-        {
+        let matches_selection = self
+            .breakpoint
+            .as_ref()
+            .is_none_or(|breakpoint| breakpoint.matches(stage, write));
+        let matches_value = self
+            .value_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
+        let has_breakpoint = self.breakpoint.is_some() || self.value_condition.is_some();
+        if !self.pause_each_write.get() && !(has_breakpoint && matches_selection && matches_value) {
             return engine::DebugDecision::Resume;
         }
         if self
@@ -267,6 +272,7 @@ impl FerruleApp {
         let mut close = false;
         let mut run = None;
         let mut command = None;
+        let mut condition_valid = true;
         egui::Window::new("Run pipeline")
             .default_width(650.0)
             .min_width(480.0)
@@ -369,6 +375,11 @@ impl FerruleApp {
                             });
                     });
                     ui.weak("Breakpoints cover declared static fields in each stage and target.");
+                    condition_valid = preview_ui::show_breakpoint_value_condition(
+                        ui,
+                        &mut self.pipeline_run_value_condition,
+                        "pipeline_debug_value_type",
+                    );
                 }
                 match &phase {
                     Some(PipelineRunPhase::Running) => {
@@ -413,7 +424,7 @@ impl FerruleApp {
                             if ui.add_enabled(can_run, egui::Button::new("Run pipeline")).clicked() {
                                 run = Some(false);
                             }
-                            if ui.add_enabled(can_run, egui::Button::new("Debug pipeline")).clicked() {
+                            if ui.add_enabled(can_run && condition_valid, egui::Button::new("Debug pipeline")).clicked() {
                                 run = Some(true);
                             }
                         }
@@ -464,6 +475,18 @@ impl FerruleApp {
         if self.pending_pipeline_run.is_some() || self.pending_file_run.is_some() {
             return;
         }
+        let value_condition = if debug {
+            match self.pipeline_run_value_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug pipeline blocked".into();
+                    self.diagnostics.error("Debug pipeline blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let Some(draft) = self.pipeline_run_draft.as_ref() else {
             return;
         };
@@ -495,8 +518,11 @@ impl FerruleApp {
                 events: events.clone(),
                 commands: command_receiver,
                 cancelled: worker_cancelled,
-                pause_each_write: Cell::new(debug && breakpoint.is_none()),
+                pause_each_write: Cell::new(
+                    debug && breakpoint.is_none() && value_condition.is_none(),
+                ),
                 breakpoint,
+                value_condition,
             };
             let stage_hook = |stage: &str, write: &engine::PendingTargetWrite| {
                 hook.before_target_write(stage, write)

@@ -7,7 +7,48 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, bail};
 
 use super::*;
-use crate::preview::{LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget};
+use crate::preview::{
+    BreakpointValueConditionDraft, DebugScalarCondition, LoadedPreviewSource, PreviewBreakpoint,
+    PreviewDraft, PreviewTarget, ScalarValueType,
+};
+
+pub(super) fn show_breakpoint_value_condition(
+    ui: &mut egui::Ui,
+    condition: &mut BreakpointValueConditionDraft,
+    id: &str,
+) -> bool {
+    ui.checkbox(&mut condition.enabled, "Only when pending scalar equals");
+    if condition.enabled {
+        ui.horizontal_wrapped(|ui| {
+            egui::ComboBox::from_id_salt(id)
+                .selected_text(condition.value_type.label())
+                .show_ui(ui, |ui| {
+                    for value_type in ScalarValueType::ALL {
+                        ui.selectable_value(
+                            &mut condition.value_type,
+                            value_type,
+                            value_type.label(),
+                        );
+                    }
+                });
+            if condition.value_type.needs_text() {
+                ui.add(
+                    egui::TextEdit::singleline(&mut condition.text)
+                        .char_limit(160)
+                        .hint_text("Exact scalar value"),
+                );
+            }
+        });
+        ui.weak("Scalar type and complete value must match; strings over 160 characters and non-finite numbers cannot match.");
+    }
+    match condition.compile() {
+        Ok(_) => true,
+        Err(error) => {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+            false
+        }
+    }
+}
 
 enum PreviewAction {
     Cancel,
@@ -86,6 +127,7 @@ struct PreviewDebugHook {
     cancelled: Arc<AtomicBool>,
     pause_each_write: std::cell::Cell<bool>,
     breakpoint: Option<PreviewBreakpoint>,
+    value_condition: Option<DebugScalarCondition>,
 }
 
 impl engine::DebugHook for PreviewDebugHook {
@@ -105,12 +147,16 @@ impl engine::DebugHook for PreviewDebugHook {
                 Err(TryRecvError::Empty) => break,
             }
         }
-        if !self.pause_each_write.get()
-            && !self
-                .breakpoint
-                .as_ref()
-                .is_some_and(|breakpoint| breakpoint.matches(write))
-        {
+        let matches_selection = self
+            .breakpoint
+            .as_ref()
+            .is_none_or(|breakpoint| breakpoint.matches(write));
+        let matches_value = self
+            .value_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
+        let has_breakpoint = self.breakpoint.is_some() || self.value_condition.is_some();
+        if !self.pause_each_write.get() && !(has_breakpoint && matches_selection && matches_value) {
             return engine::DebugDecision::Resume;
         }
         if self
@@ -208,6 +254,7 @@ impl FerruleApp {
         };
         let input_size = draft.input_text.len();
         let input_too_large = input_size > cli::MAX_PAYLOAD_DOCUMENT_BYTES;
+        let mut condition_valid = true;
         egui::Window::new("Preview mapping")
             .collapsible(false)
             .resizable(true)
@@ -267,6 +314,13 @@ impl FerruleApp {
                     });
                 });
                 ui.weak("The selector covers declared static scope writes; runtime-named fields are not listed.");
+                ui.add_enabled_ui(!running, |ui| {
+                    condition_valid = show_breakpoint_value_condition(
+                        ui,
+                        &mut self.preview_value_condition,
+                        "preview_debug_value_type",
+                    );
+                });
                 if draft.input_identity.trim().is_empty() {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
@@ -367,7 +421,7 @@ impl FerruleApp {
                             action = Some(PreviewAction::Execute);
                         }
                         if ui
-                            .add_enabled(draft.can_execute(), egui::Button::new("Debug preview"))
+                            .add_enabled(draft.can_execute() && condition_valid, egui::Button::new("Debug preview"))
                             .clicked()
                         {
                             action = Some(PreviewAction::Debug);
@@ -409,6 +463,18 @@ impl FerruleApp {
         if self.pending_preview.is_some() {
             return;
         }
+        let value_condition = if debug {
+            match self.preview_value_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "preview blocked".into();
+                    self.diagnostics.error("Preview blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("preview blocked by {} validation issue(s)", issues.len());
@@ -451,6 +517,7 @@ impl FerruleApp {
                 project_path,
                 saved_path,
                 debug,
+                value_condition,
                 event_tx,
                 command_rx,
                 worker_cancelled,
@@ -576,6 +643,7 @@ fn run_preview_worker(
     project_path: PathBuf,
     saved_path: Option<PathBuf>,
     debug: bool,
+    value_condition: Option<DebugScalarCondition>,
     events: Sender<PreviewWorkerEvent>,
     commands: Receiver<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
@@ -590,8 +658,11 @@ fn run_preview_worker(
         events: events.clone(),
         commands,
         cancelled: Arc::clone(&cancelled),
-        pause_each_write: std::cell::Cell::new(debug && breakpoint.is_none()),
+        pause_each_write: std::cell::Cell::new(
+            debug && breakpoint.is_none() && value_condition.is_none(),
+        ),
         breakpoint,
+        value_condition,
     };
     let result = run_preview_payload(
         &project,

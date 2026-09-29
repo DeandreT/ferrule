@@ -33,6 +33,130 @@ impl PreviewBreakpoint {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum ScalarValueType {
+    #[default]
+    String,
+    Bool,
+    Int,
+    Float,
+    Null,
+    JsonNull,
+    XmlNil,
+}
+
+impl ScalarValueType {
+    pub(super) const ALL: [Self; 7] = [
+        Self::String,
+        Self::Bool,
+        Self::Int,
+        Self::Float,
+        Self::Null,
+        Self::JsonNull,
+        Self::XmlNil,
+    ];
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::String => "String",
+            Self::Bool => "Boolean",
+            Self::Int => "Integer",
+            Self::Float => "Number",
+            Self::Null => "Absent null",
+            Self::JsonNull => "JSON null",
+            Self::XmlNil => "XML nil",
+        }
+    }
+
+    fn trace_type(self) -> &'static str {
+        match self {
+            Self::String => "string",
+            Self::Bool => "bool",
+            Self::Int => "int",
+            Self::Float => "float",
+            Self::Null => "null",
+            Self::JsonNull => "json null",
+            Self::XmlNil => "xml nil",
+        }
+    }
+
+    pub(super) fn needs_text(self) -> bool {
+        matches!(self, Self::String | Self::Bool | Self::Int | Self::Float)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct BreakpointValueConditionDraft {
+    pub(super) enabled: bool,
+    pub(super) value_type: ScalarValueType,
+    pub(super) text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DebugScalarCondition {
+    value_type: ScalarValueType,
+    canonical_preview: String,
+}
+
+impl BreakpointValueConditionDraft {
+    pub(super) fn compile(&self) -> Result<Option<DebugScalarCondition>, &'static str> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let canonical_preview = match self.value_type {
+            ScalarValueType::String => {
+                if self.text.chars().count() > 160 {
+                    return Err("String conditions are limited to 160 characters.");
+                }
+                self.text.clone()
+            }
+            ScalarValueType::Bool => self
+                .text
+                .trim()
+                .parse::<bool>()
+                .map_err(|_| "Enter true or false for a Boolean condition.")?
+                .to_string(),
+            ScalarValueType::Int => self
+                .text
+                .trim()
+                .parse::<i64>()
+                .map_err(|_| "Enter a signed 64-bit integer.")?
+                .to_string(),
+            ScalarValueType::Float => {
+                let value = self
+                    .text
+                    .trim()
+                    .parse::<f64>()
+                    .map_err(|_| "Enter a finite number.")?;
+                if !value.is_finite() {
+                    return Err("Number conditions must be finite.");
+                }
+                value.to_string()
+            }
+            ScalarValueType::Null => "null".into(),
+            ScalarValueType::JsonNull => "json-null".into(),
+            ScalarValueType::XmlNil => "xml-nil".into(),
+        };
+        Ok(Some(DebugScalarCondition {
+            value_type: self.value_type,
+            canonical_preview,
+        }))
+    }
+}
+
+impl DebugScalarCondition {
+    pub(super) fn matches(&self, write: &engine::PendingTargetWrite) -> bool {
+        if write.pending.kind != engine::TraceOutputKind::Scalar {
+            return false;
+        }
+        write.pending.value.as_ref().is_some_and(|value| {
+            !value.truncated
+                && value.value_type == self.value_type.trace_type()
+                && value.preview == self.canonical_preview
+        })
+    }
+}
+
 impl PreviewTarget {
     pub(super) fn selection(&self) -> cli::TargetSelection<'_> {
         match self {
@@ -260,6 +384,79 @@ mod tests {
     use super::*;
     use ir::{ScalarType, SchemaNode};
     use mapping::{DynamicSourcePath, FormatOptions, NamedSource, Node, Scope};
+
+    #[test]
+    fn scalar_condition_rejects_overlong_strings_and_invalid_numbers() {
+        let mut draft = BreakpointValueConditionDraft {
+            enabled: true,
+            text: "x".repeat(161),
+            ..Default::default()
+        };
+        assert!(draft.compile().is_err());
+        draft.value_type = ScalarValueType::Int;
+        draft.text = "1.0".into();
+        assert!(draft.compile().is_err());
+        draft.text = "0001".into();
+        assert_eq!(draft.compile().unwrap().unwrap().canonical_preview, "1");
+        draft.value_type = ScalarValueType::Float;
+        draft.text = "1.00".into();
+        assert_eq!(draft.compile().unwrap().unwrap().canonical_preview, "1");
+        for nonfinite in ["NaN", "inf", "-inf"] {
+            draft.text = nonfinite.into();
+            assert!(draft.compile().is_err(), "{nonfinite} must be rejected");
+        }
+    }
+
+    #[test]
+    fn scalar_condition_distinguishes_null_kinds_and_rejects_truncated_values() {
+        let pending =
+            |value_type: &'static str, preview: &str, truncated: bool| engine::PendingTargetWrite {
+                scope: engine::TraceScope {
+                    target: engine::TraceTarget::Primary,
+                    target_path: Vec::new(),
+                    structural_path: Vec::new(),
+                },
+                positions: Vec::new(),
+                field: "value".into(),
+                field_truncated: false,
+                binding: engine::TraceTargetFieldBinding::StaticChild,
+                pending: engine::DebugInstancePreview {
+                    kind: engine::TraceOutputKind::Scalar,
+                    value: Some(engine::TraceValue {
+                        value_type,
+                        preview: preview.into(),
+                        truncated,
+                    }),
+                    length: None,
+                },
+                draft: engine::DebugScopeDraft {
+                    fields: Vec::new(),
+                    omitted_fields: 0,
+                },
+            };
+        let mut draft = BreakpointValueConditionDraft {
+            enabled: true,
+            value_type: ScalarValueType::Null,
+            ..Default::default()
+        };
+        let absent = pending("null", "null", false);
+        let json_null = pending("json null", "json-null", false);
+        let xml_nil = pending("xml nil", "xml-nil", false);
+        assert!(draft.compile().unwrap().unwrap().matches(&absent));
+        assert!(!draft.compile().unwrap().unwrap().matches(&json_null));
+        assert!(!draft.compile().unwrap().unwrap().matches(&xml_nil));
+        draft.value_type = ScalarValueType::JsonNull;
+        assert!(draft.compile().unwrap().unwrap().matches(&json_null));
+        assert!(!draft.compile().unwrap().unwrap().matches(&absent));
+        draft.value_type = ScalarValueType::XmlNil;
+        assert!(draft.compile().unwrap().unwrap().matches(&xml_nil));
+        assert!(!draft.compile().unwrap().unwrap().matches(&json_null));
+
+        draft.value_type = ScalarValueType::String;
+        draft.text = "x".repeat(160);
+        let truncated = pending("string", &"x".repeat(160), true);
+        assert!(!draft.compile().unwrap().unwrap().matches(&truncated));
+    }
 
     fn project_with_source(source: NamedSource) -> mapping::Project {
         let mut project = mapping::Project {
