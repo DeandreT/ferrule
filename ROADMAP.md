@@ -73,7 +73,7 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Generated Rust and C# hosts have compiled and executed eighteen warning-free
+- Generated Rust and C# hosts have compiled and executed nineteen warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -84,13 +84,15 @@ are preserved.
   XLSX-to-CSV mapping through position-indexed item-at aggregates; a recursive
   XML hierarchy collecting 90 nested file paths; four XML expense items mapped
   through integer and boolean value maps; a summary join aggregate with two
-  keyed lookups per item; and sixteen key/value properties from runtime-named
-  generic XML elements. Cases one through fifteen, seventeen, and eighteen
+  keyed lookups per item; sixteen key/value properties from runtime-named
+  generic XML elements; and two dynamically named XML outputs from a local
+  two-document file set. Cases one through fifteen, seventeen, and eighteen
   compare schema-shaped JSON results across both backends. Case sixteen uses
   typed execution APIs and compares XML bytes because its mapped output has
-  multiple occurrences of a nominally singular XSD group. This small
-  execution sample does not establish that all emitted survey designs execute
-  equivalently.
+  multiple occurrences of a nominally singular XSD group. Case nineteen uses
+  typed APIs for the file set and compares ordered paths, XML, and typed JSON
+  for each output document. This small execution sample does not establish
+  that all emitted survey designs execute equivalently.
 - Known architectural constraints: each mapping stage has one primary driver,
   scalar graph outputs, no general `.mfd` stage-graph import, incomplete
   connector history and no general expression/context breakpoints, and
