@@ -179,4 +179,8 @@ executes on a worker. Evaluation finishes before the file host begins staging
 outputs; Cancel before that publication boundary leaves existing target files
 unchanged. Once publishing begins, the GUI waits for the worker to finish and
 defers app close. Completed output and trace appear in the run report.
-Pipeline runs do not yet offer live stepping.
+Saved pipeline runs offer the same live controls, with pauses labeled by stage
+and target. A breakpoint can select a declared static field and scope in one
+stage and target. Cancel before pipeline publication preserves every selected
+output, including targets of earlier completed stages. Once publication begins,
+the GUI waits for the worker and defers app close.

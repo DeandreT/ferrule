@@ -1,5 +1,6 @@
 //! File host for a typed mapping stage graph.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -33,6 +34,37 @@ pub struct PipelineOutputFile {
 #[derive(Default)]
 pub struct PipelineRunOptions<'a> {
     pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
+    /// A live write hook receives the ID of the stage being evaluated.
+    pub stage_debug_hook:
+        Option<&'a dyn Fn(&str, &engine::PendingTargetWrite) -> engine::DebugDecision>,
+    /// Called after every stage succeeds, before any selected output is staged.
+    pub before_publish: Option<&'a dyn Fn() -> bool>,
+}
+
+impl<'a> PipelineRunOptions<'a> {
+    pub fn with_stage_debug_hook(
+        mut self,
+        hook: &'a dyn Fn(&str, &engine::PendingTargetWrite) -> engine::DebugDecision,
+    ) -> Self {
+        self.stage_debug_hook = Some(hook);
+        self
+    }
+
+    pub fn with_before_publish(mut self, gate: &'a dyn Fn() -> bool) -> Self {
+        self.before_publish = Some(gate);
+        self
+    }
+}
+
+struct StageDebugHook<'a> {
+    stage: RefCell<String>,
+    hook: &'a dyn Fn(&str, &engine::PendingTargetWrite) -> engine::DebugDecision,
+}
+
+impl engine::DebugHook for StageDebugHook<'_> {
+    fn before_target_write(&self, write: &engine::PendingTargetWrite) -> engine::DebugDecision {
+        (self.hook)(&self.stage.borrow(), write)
+    }
 }
 
 /// One published file. Dynamic document targets may produce several artifacts
@@ -161,6 +193,10 @@ fn run_pipeline_value_with_options(
             )
         })
         .collect::<BTreeMap<_, _>>();
+    let stage_debug_hook = options.stage_debug_hook.map(|hook| StageDebugHook {
+        stage: RefCell::new(String::new()),
+        hook,
+    });
     let results = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
         let mut execution = engine::ExecutionContext::with_main_mapping_file_path(
             &stage_mapping_paths[stage],
@@ -170,6 +206,10 @@ fn run_pipeline_value_with_options(
         .with_dynamic_source_loader(&dynamic_loaders[stage]);
         if let Some(parameters) = options.runtime_parameters {
             execution = execution.with_parameters(parameters);
+        }
+        if let Some(hook) = &stage_debug_hook {
+            hook.stage.replace(stage.to_owned());
+            execution = execution.with_debug_hook(hook);
         }
         execution
     })?;
@@ -222,6 +262,9 @@ fn run_pipeline_value_with_options(
         })
         .collect::<Vec<_>>();
     let protected_refs = protected.iter().map(PathBuf::as_path).collect::<Vec<_>>();
+    if options.before_publish.is_some_and(|gate| !gate()) {
+        return Err(engine::EngineError::DebugCancelled.into());
+    }
     let published = write_target_outputs(&writes, &protected_refs)?;
     let artifacts = selected
         .iter()

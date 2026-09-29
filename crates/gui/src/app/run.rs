@@ -230,7 +230,7 @@ impl FerruleApp {
     }
 
     fn start_saved_run(&mut self, debug: bool, ctx: &egui::Context) {
-        if self.pending_file_run.is_some() {
+        if self.pending_file_run.is_some() || self.pending_pipeline_run.is_some() {
             return;
         }
         let issues = cli::validate(&self.project);
