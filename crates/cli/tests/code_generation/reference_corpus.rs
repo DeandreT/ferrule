@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against four local, gitignored mappings.
+//! Opt-in generated-backend execution against five local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -26,7 +26,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 4] = [
+const CASES: [CorpusCase; 5] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -49,6 +49,12 @@ const CASES: [CorpusCase; 4] = [
         sample: "BuildHierarchyFromTextfile.mfd",
         input: "People.txt",
         source_kind: SourceKind::Csv,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "GroupTemperaturesByYear.mfd",
+        input: "Temperatures.xml",
+        source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
 ];
@@ -178,6 +184,23 @@ fn run_case(
             30,
             "{sample}: mapped people"
         );
+    }
+    if sample == "GroupTemperaturesByYear.mfd" {
+        let years = expected_json["YearlyStats"]
+            .as_array()
+            .expect("yearly temperature groups");
+        assert_eq!(years.len(), 5, "{sample}: one group per year");
+        assert_eq!(
+            years
+                .iter()
+                .map(|year| year["Year"].as_i64())
+                .collect::<Vec<_>>(),
+            vec![Some(2006), Some(2007), Some(2008), Some(2009), Some(2010)],
+            "{sample}: groups retain first-seen year order"
+        );
+        assert_eq!(years[0]["MinimumTemp"], -3.6);
+        assert_eq!(years[0]["MaximumTemp"], 23.2);
+        assert_eq!(years[0]["AverageTemp"], 11.375);
     }
 
     let generated_input = case_dir.join("source.json");
