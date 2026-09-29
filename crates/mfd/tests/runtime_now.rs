@@ -53,51 +53,78 @@ fn assert_now(output: &Instance) {
 }
 
 #[test]
-fn now_imports_as_one_stable_runtime_value_and_round_trips() {
-    let dir = TempDir::new();
-    let design = dir.0.join("now.mfd");
-    write_design(&design, "now", "lang");
+fn native_runtime_datetime_export_round_trips_both_import_spellings() {
+    for (name, library) in [("now", "lang"), ("current-dateTime", "xpath2")] {
+        let dir = TempDir::new();
+        let design = dir.0.join("runtime-datetime.mfd");
+        write_design(&design, name, library);
 
-    let imported = mfd::import(&design).unwrap();
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    assert_eq!(
-        imported
-            .project
-            .graph
-            .nodes
-            .values()
-            .filter(|node| matches!(
-                node,
-                Node::RuntimeValue {
-                    value: RuntimeValue::CurrentDateTime
-                }
-            ))
-            .count(),
-        1
-    );
-    assert_now(&run(&imported.project));
+        let imported = mfd::import(&design).unwrap();
+        assert!(
+            imported.warnings.is_empty(),
+            "{name}: {:?}",
+            imported.warnings
+        );
+        assert!(engine::validate(&imported.project).is_empty());
+        assert_eq!(
+            imported
+                .project
+                .graph
+                .nodes
+                .values()
+                .filter(|node| matches!(
+                    node,
+                    Node::RuntimeValue {
+                        value: RuntimeValue::CurrentDateTime
+                    }
+                ))
+                .count(),
+            1,
+            "{name}"
+        );
+        let original_output = run(&imported.project);
+        assert_now(&original_output);
 
-    let exported = dir.0.join("round-trip.mfd");
-    assert!(
-        mfd::export(&imported.project, &exported)
-            .unwrap()
-            .is_empty()
-    );
-    let reimported = mfd::import(&exported).unwrap();
-    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
-    assert_now(&run(&reimported.project));
-}
+        let exported = dir.0.join("native-round-trip.mfd");
+        let report = mfd::preflight_export(&imported.project, &exported).unwrap();
+        assert!(report.is_native_compatible(), "{name}: {report:?}");
+        assert!(!exported.exists());
+        let published =
+            mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
+                .unwrap();
+        assert!(published.is_native_compatible(), "{name}: {published:?}");
+        let xml = std::fs::read_to_string(&exported).unwrap();
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let runtime_components = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("component")
+                    && matches!(node.attribute("name"), Some("now" | "current-dateTime"))
+            })
+            .collect::<Vec<_>>();
+        let [runtime] = runtime_components.as_slice() else {
+            panic!("{name}: expected one native date-time component");
+        };
+        assert_eq!(runtime.attribute("name"), Some("current-dateTime"));
+        assert_eq!(runtime.attribute("library"), Some("xpath2"));
+        assert_eq!(runtime.attribute("kind"), Some("5"));
+        assert_eq!(
+            runtime
+                .descendants()
+                .find(|node| node.has_tag_name("datapoint"))
+                .and_then(|node| node.attribute("pos")),
+            Some("0")
+        );
 
-#[test]
-fn xpath2_current_datetime_uses_the_stable_execution_clock() {
-    let dir = TempDir::new();
-    let design = dir.0.join("current-datetime.mfd");
-    write_design(&design, "current-dateTime", "xpath2");
-
-    let imported = mfd::import(&design).unwrap();
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    assert!(engine::validate(&imported.project).is_empty());
-    assert_now(&run(&imported.project));
+        let reimported = mfd::import(&exported).unwrap();
+        assert!(
+            reimported.warnings.is_empty(),
+            "{name}: {:?}",
+            reimported.warnings
+        );
+        assert!(engine::validate(&reimported.project).is_empty());
+        assert_eq!(run(&reimported.project), original_output, "{name}");
+    }
 }
 
 #[test]
