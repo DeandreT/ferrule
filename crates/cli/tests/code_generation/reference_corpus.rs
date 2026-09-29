@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against six local, gitignored mappings.
+//! Opt-in generated-backend execution against seven local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -26,7 +26,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 6] = [
+const CASES: [CorpusCase; 7] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -60,6 +60,12 @@ const CASES: [CorpusCase; 6] = [
     CorpusCase {
         sample: "SortByMultipleKeys.mfd",
         input: "OrgChart.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "FindHighestTemperatures.mfd",
+        input: "Temperatures.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
@@ -227,6 +233,21 @@ fn run_case(
         assert_eq!(people[4]["Last"], "Butler");
         assert_eq!(people[5]["Shares"], 1500);
         assert_eq!(people[5]["Last"], "Callaby");
+    }
+    if sample == "FindHighestTemperatures.mfd" {
+        let data = expected_json["data"]
+            .as_array()
+            .expect("selected temperatures");
+        assert_eq!(data.len(), 10, "{sample}: top ten temperatures");
+        assert_eq!(
+            data.iter()
+                .map(|item| item["temp"].as_f64().expect("numeric temperature"))
+                .collect::<Vec<_>>(),
+            vec![24.0, 23.8, 23.2, 22.7, 22.3, 22.3, 21.5, 21.4, 21.1, 20.7],
+            "{sample}: selected temperatures retain descending order"
+        );
+        assert_eq!(data[0]["month"], "2008-07");
+        assert_eq!(data[9]["month"], "2007-08");
     }
 
     let generated_input = case_dir.join("source.json");
