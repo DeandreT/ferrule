@@ -15,6 +15,9 @@ The imported host name comes from the source component and is recorded in
 `flow.json`. Supply that name and the desired output path to `run-pipeline`.
 The example has one pass-through target. With three pass-through targets, the
 final stage ID is `mfd-stage-4`.
+The last pass-through target may also feed connected named XML targets in that
+final stage. Use `--named-output STAGE TARGET PATH` to publish one. Intermediate
+fan-out and targets that bypass the last pass-through stage reject during import.
 The same trusted package manifest and ordered EDI/JSON catalog options used
 by ordinary `import-mfd` apply. Unsupported stage shapes fail before the
 pipeline file is written. Each imported stage records the original `.mfd`

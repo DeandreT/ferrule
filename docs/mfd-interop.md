@@ -218,9 +218,10 @@ cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.
 ```
 
 Each computed intermediate target supplies the next stage's source, with
-original source components bound as host inputs. The import validates the
-whole stage graph before writing `flow.json`; branches, cycles, bypasses, and
-disconnected XML boundaries reject explicitly. See
+original source components bound as host inputs. The final intermediate may
+feed one default and up to 255 connected named XML targets. The import validates
+the whole stage graph before writing `flow.json`; intermediate branches,
+cycles, bypasses, and disconnected XML boundaries reject explicitly. See
 [mapping pipelines](mapping-pipelines.md) for input binding and execution.
 
 Static source, target, named-source, and named-target paths are rebased when
@@ -241,11 +242,13 @@ Export writes the representable project subset plus generated schema or layout
 siblings. Component kinds are selected from endpoint format metadata and paths.
 Pipeline export writes one connected design for a validated serial XML chain
 of 2–65 stages. Each intermediate primary target becomes the next stage's
-pass-through source. Preflight and native-profile checks run before any design
-or schema sibling is published. Independent targets, connected later-stage
-named sources, and non-XML boundaries reject explicitly. Synthetic two- and
-four-stage export/re-import runs preserve stage results; acceptance by the
-proprietary application remains unverified.
+pass-through source. The final stage may also write connected named XML
+targets. Preflight and native-profile checks run before any design or schema
+sibling is published. Independent intermediate targets, disconnected final
+targets, connected later-stage named sources, and non-XML boundaries reject
+explicitly. Synthetic two- and four-stage export/re-import runs preserve stage
+results; a synthetic terminal fan-out round trip also preserves both final
+outputs. Acceptance by the proprietary application remains unverified.
 JSON5 endpoint syntax currently rejects before export because the native
 component setting has not been verified; emitting an ordinary JSON component
 would change the document syntax.
