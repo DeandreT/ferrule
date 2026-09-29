@@ -73,13 +73,14 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Generated Rust and C# hosts have compiled and executed twelve warning-free
+- Generated Rust and C# hosts have compiled and executed thirteen warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
   positions, plus an ordered string-join over nested contacts and lazy
   temperature classification, XML-to-CSV lookup-fed token existence, and a
-  composite join across primary and named XML inputs.
+  composite join across primary and named XML inputs, and Protobuf-to-CSV
+  mapping through a value map and numeric user-defined function.
   Schema-shaped JSON
   results match the interpreter. This small execution
   sample does not establish that all emitted survey designs execute equivalently.
@@ -634,10 +635,9 @@ Update these numbers with each parity increment:
 - `.mfd` execution round trips: all 168 safe projects export, re-import,
   validate, execute, and produce semantically identical outputs.
 - Code generation: 175/175 dependency-complete designs lower and emit for both
-  Rust and C#. Five opt-in local samples (JSON-to-JSON, XML-to-JSON,
-  FlexText-to-XML, grouped CSV-to-XML, and grouped XML-to-XML with annual
-  reductions) also compile and execute in both generated backends with output
-  equal to the interpreter; the remaining survey designs are not yet
+  Rust and C#. Thirteen opt-in local samples across JSON, XML, FlexText, CSV,
+  and Protobuf inputs also compile and execute in both generated backends with
+  output equal to the interpreter; the remaining survey designs are not yet
   execution-checked after generation.
 - Behavioral references: 79/79 available deterministic outputs across the current
   isolated manifests match exactly; these are not inferred from structural success.
