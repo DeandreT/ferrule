@@ -425,6 +425,15 @@ pub(super) fn eval_node_input(
         positions,
         &value,
     );
+    crate::debug::after_node_input(
+        program.debug_hook,
+        consumer,
+        input,
+        input_index,
+        &value,
+        positions,
+        context,
+    )?;
     Ok(value)
 }
 
