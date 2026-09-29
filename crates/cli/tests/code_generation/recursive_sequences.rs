@@ -219,7 +219,9 @@ fn recursive_sequences_match_engine_and_generated_backends() -> TestResult<()> {
         .find("recursive_collect(")
         .ok_or("generated Rust recursive collector")?;
     assert!(rust_prefix < rust_separator && rust_separator < rust_collect);
-    assert!(rust_source.contains("let output = scalar(expression_3(&item_context)?);"));
+    assert!(rust_source.contains(
+        "let output = scalar(adapt_target_value(expression_3(&item_context)?, ScalarType::String));"
+    ));
     std::fs::write(
         rust_output.join("src/main.rs"),
         include_str!("fixtures/recursive_sequences_rust_harness.rs.txt"),
@@ -251,7 +253,7 @@ fn recursive_sequences_match_engine_and_generated_backends() -> TestResult<()> {
     assert!(csharp_prefix < csharp_separator && csharp_separator < csharp_collect);
     assert!(
         csharp_source
-            .contains("return new global::Ferrule.Runtime.FerruleScalar(Node_3(context));")
+            .contains("return TargetBuilder.Scalar(Node_3(context), TargetScalarDomain.String);")
     );
     let harness = csharp_output.join("Harness");
     std::fs::create_dir(&harness)?;

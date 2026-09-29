@@ -1,4 +1,4 @@
-//! Canonical export for MapForce's runtime-named JSON property ports.
+//! Canonical export for the reference application's runtime-named JSON property ports.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;

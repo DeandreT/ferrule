@@ -6,7 +6,7 @@ use super::schema::SchemaComponent;
 
 impl GraphBuilder<'_> {
     /// Lowers a bounded XML variable pattern that pivots key/value rows into
-    /// statically named output fields. MapForce represents this by constructing
+    /// statically named output fields. The reference application represents this by constructing
     /// generic elements whose names come from one row field and whose text comes
     /// from another, then exposing ordinary schema fields on the variable.
     pub(super) fn dynamic_xml_variable_lookup_node(&mut self, output_key: u32) -> Option<NodeId> {

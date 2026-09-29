@@ -5,6 +5,8 @@
 //! Host-selected resources use `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` plus
 //! path lists in `FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
 //! `FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS`.
+//! Set `FERRULE_MFD_SURVEY_ENFORCE_BASELINE=1` in the private qualification
+//! environment to require the corpus and enforce the reviewed coverage counts.
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -12,6 +14,8 @@ use std::path::Path;
 
 #[path = "support/sample_discovery.rs"]
 mod sample_discovery;
+#[path = "support/survey_gate.rs"]
+mod survey_gate;
 #[path = "support/survey_import_options.rs"]
 mod survey_import_options;
 
@@ -106,11 +110,7 @@ fn diagnostic_categories_hide_sample_specific_identifiers() {
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
     let samples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
-    if !samples_dir.is_dir() {
-        eprintln!(
-            "samples dir not found at {}; skipping",
-            samples_dir.display()
-        );
+    if !survey_gate::corpus_available(&samples_dir)? {
         return Ok(());
     }
 
@@ -199,5 +199,16 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
         import_context.provenance.to_json()
     );
     print_failures(&failures);
+    survey_gate::enforce_exact(
+        "MFD generated-backend survey",
+        &[
+            ("total", paths.len(), 187),
+            ("lowered", lowered, 175),
+            ("rust_emitted", rust_emitted, 175),
+            ("csharp_emitted", csharp_emitted, 175),
+            ("dependency_blocked", dependency_blocked, 12),
+            ("failures", failures.len(), 0),
+        ],
+    )?;
     Ok(())
 }

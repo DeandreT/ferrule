@@ -5,7 +5,6 @@ enum ErrorMode {
     None,
     Type,
     Invalid,
-    Arity,
     NumberInvalid,
     DelayType,
     DelayInvalid,
@@ -407,10 +406,6 @@ fn scalar_algorithm_project() -> Project {
     let bad_invalid = graph.call("isbn10_to_isbn13", vec![bad_isbn_value]);
     let safe_invalid = graph.literal(Value::String("safe-invalid".into()));
     let invalid_probe = graph.if_(fail_invalid, bad_invalid, safe_invalid);
-    let fail_arity = graph.source("FailArity");
-    let bad_arity = graph.call("date_from_datetime", Vec::new());
-    let safe_arity = graph.literal(Value::String("safe-arity".into()));
-    let arity_probe = graph.if_(fail_arity, bad_arity, safe_arity);
     let fail_number_invalid = graph.source("FailNumberInvalid");
     let bad_number_input = graph.literal(Value::Bool(true));
     let bad_number = graph.call("to_number", vec![bad_number_input]);
@@ -441,7 +436,6 @@ fn scalar_algorithm_project() -> Project {
         vec![
             ("Type", ScalarType::String, type_probe),
             ("Invalid", ScalarType::String, invalid_probe),
-            ("Arity", ScalarType::String, arity_probe),
             ("NumberInvalid", ScalarType::String, number_probe),
             ("DelayType", ScalarType::String, delay_type_probe),
             ("DelayInvalid", ScalarType::String, delay_invalid_probe),
@@ -454,7 +448,6 @@ fn scalar_algorithm_project() -> Project {
             vec![
                 bool_("FailType"),
                 bool_("FailInvalid"),
-                bool_("FailArity"),
                 bool_("FailNumberInvalid"),
                 bool_("FailDelayType"),
                 bool_("FailDelayInvalid"),
@@ -488,10 +481,6 @@ fn source(mode: ErrorMode) -> Instance {
         (
             "FailInvalid".into(),
             Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Invalid))),
-        ),
-        (
-            "FailArity".into(),
-            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Arity))),
         ),
         (
             "FailNumberInvalid".into(),
@@ -610,7 +599,6 @@ fn expected() -> Instance {
             values(vec![
                 ("Type", Value::String("safe-type".into())),
                 ("Invalid", Value::String("safe-invalid".into())),
-                ("Arity", Value::String("safe-arity".into())),
                 ("NumberInvalid", Value::String("safe-number".into())),
                 ("DelayType", Value::String("safe-delay-type".into())),
                 ("DelayInvalid", Value::String("safe-delay-invalid".into())),
@@ -620,19 +608,43 @@ fn expected() -> Instance {
 }
 
 #[test]
+fn scalar_algorithm_wrong_arity_is_rejected_before_codegen() {
+    let mut project = scalar_algorithm_project();
+    let (node_id, args) = project
+        .graph
+        .nodes
+        .iter_mut()
+        .find_map(|(&id, node)| match node {
+            Node::Call { function, args }
+                if function == "date_from_datetime" && args.len() == 1 =>
+            {
+                Some((id, args))
+            }
+            _ => None,
+        })
+        .expect("scalar algorithm fixture has a valid date_from_datetime call");
+    args.clear();
+
+    let issues = engine::validate(&project);
+    assert_eq!(issues.len(), 1, "{issues:#?}");
+    assert_eq!(issues[0].location, format!("graph node {node_id}"));
+    assert_eq!(
+        issues[0].message,
+        "function `date_from_datetime` expects exactly 1 argument(s), got 0"
+    );
+}
+
+#[test]
 fn scalar_algorithms_match_engine_and_generated_backends() -> TestResult<()> {
     let project = scalar_algorithm_project();
-    assert!(engine::validate(&project).is_empty());
+    let issues = engine::validate(&project);
+    assert!(issues.is_empty(), "validation issues: {issues:#?}");
     assert_eq!(engine::run(&project, &source(ErrorMode::None))?, expected());
     for (mode, expected) in [
         (ErrorMode::Type, "`substring` cannot accept a int argument"),
         (
             ErrorMode::Invalid,
             "`isbn10_to_isbn13` ISBN-10 check digit is invalid",
-        ),
-        (
-            ErrorMode::Arity,
-            "`date_from_datetime` expected 1 argument(s), got 0",
         ),
         (
             ErrorMode::NumberInvalid,

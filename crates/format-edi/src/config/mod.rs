@@ -1,4 +1,4 @@
-//! Bounded import of MapForce-style EDI configuration files.
+//! Bounded import of .mfd-style EDI configuration files.
 //!
 //! The configuration is a library of positional data, composite, and
 //! segment definitions plus a message/envelope tree. Import expands that

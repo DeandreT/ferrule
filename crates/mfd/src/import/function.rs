@@ -5,7 +5,7 @@ use crate::canonical_function;
 
 use super::schema::parse_u32;
 
-/// Typed lookup data declared by a MapForce value-map component.
+/// Typed lookup data declared by a native .mfd value-map component.
 #[derive(Clone, Default)]
 pub(super) struct ValueMapData {
     pub(super) table: Vec<(Value, Value)>,

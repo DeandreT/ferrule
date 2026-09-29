@@ -95,7 +95,7 @@ pub enum Node {
     /// its paired value, falling back to `default` if there's no match.
     ValueMap {
         input: NodeId,
-        /// Scalar type MapForce applies to the input before matching. Native
+        /// Scalar type the reference application applies to the input before matching. Native
         /// ferrule maps leave this unset and compare the input as-is.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         input_type: Option<ScalarType>,
@@ -363,7 +363,7 @@ pub enum SequenceExpr {
         item: NodeId,
     },
     /// Splits a string around regular-expression matches. `flags` is absent
-    /// when MapForce's optional third input is disconnected.
+    /// when the reference application's optional third input is disconnected.
     TokenizeRegex {
         input: NodeId,
         pattern: NodeId,
@@ -372,7 +372,7 @@ pub enum SequenceExpr {
         item: NodeId,
     },
     /// Generates the inclusive integer range `from..=to`. When `from` is
-    /// omitted, MapForce's default lower boundary of 1 applies.
+    /// omitted, the reference application's default lower boundary of 1 applies.
     Generate {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         from: Option<NodeId>,

@@ -18,7 +18,7 @@ flowchart TB
     subgraph design["Mapping design"]
         direction TB
         projectFile["Ferrule project JSON"]
-        mfdFile["MapForce .mfd"]
+        mfdFile[".mfd design"]
         mfd["mfd importer/exporter<br/>confined resource resolution<br/>and actionable warnings"]
         project["mapping::Project<br/>schemas, expression graph, scopes,<br/>endpoints, options, UDFs, and failures"]
     end
@@ -186,7 +186,7 @@ See [Supported formats](formats.md) for adapter direction and boundaries.
 
 ### Interfaces and interoperability
 
-- `crates/mfd` - MapForce `.mfd` import and export
+- `crates/mfd` - `.mfd` import and export
 - `crates/cli` - headless validation, filesystem and raw-payload execution,
   host run options and ordered artifact reports, schema import, interop, and
   code generation

@@ -1,4 +1,4 @@
-//! Export of one MapForce database component that owns both read and write ports.
+//! Export of one .mfd database component that owns both read and write ports.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;

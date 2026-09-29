@@ -159,9 +159,9 @@ h2 {
 .card p { margin: 0; color: var(--ink-dim); font-size: 0.96rem; }
 .card code { color: var(--ink); }
 
-/* mapforce + start */
-.mapforce, .start { padding: 56px 0; border-top: 1px solid var(--line); }
-.mapforce p, .start p { max-width: 46rem; color: var(--ink-dim); }
+/* interop + start */
+.interop, .start { padding: 56px 0; border-top: 1px solid var(--line); }
+.interop p, .start p { max-width: 46rem; color: var(--ink-dim); }
 .fine { font-size: 0.8rem; }
 
 footer {

@@ -1,3 +1,13 @@
+use std::path::PathBuf;
+
+/// Ownership belongs to the project snapshot that produced these diagnostics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DiagnosticLocation {
+    Validation(engine::ValidationOwner),
+    /// Import warnings currently carry file provenance, not component identity.
+    ImportFile(PathBuf),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiagnosticLevel {
     Warning,
@@ -8,6 +18,44 @@ pub enum DiagnosticLevel {
 pub struct Diagnostic {
     pub level: DiagnosticLevel,
     pub message: String,
+    pub location: Option<DiagnosticLocation>,
+    /// Fingerprint of the project that produced a validation owner.
+    pub project_fingerprint: Option<String>,
+}
+
+impl Diagnostic {
+    pub fn warning(message: impl Into<String>) -> Self {
+        Self {
+            level: DiagnosticLevel::Warning,
+            message: message.into(),
+            location: None,
+            project_fingerprint: None,
+        }
+    }
+
+    pub fn import_warning(message: impl Into<String>, path: impl Into<PathBuf>) -> Self {
+        Self {
+            location: Some(DiagnosticLocation::ImportFile(path.into())),
+            ..Self::warning(message)
+        }
+    }
+
+    #[cfg(test)]
+    pub fn validation(project: &mapping::Project, issue: engine::ValidationIssue) -> Self {
+        Self::validation_with_fingerprint(issue, &crate::layout_store::project_fingerprint(project))
+    }
+
+    pub(crate) fn validation_with_fingerprint(
+        issue: engine::ValidationIssue,
+        fingerprint: &str,
+    ) -> Self {
+        Self {
+            level: DiagnosticLevel::Error,
+            message: issue.to_string(),
+            location: issue.owner.map(DiagnosticLocation::Validation),
+            project_fingerprint: Some(fingerprint.to_string()),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -37,6 +85,8 @@ impl Diagnostics {
             [Diagnostic {
                 level: DiagnosticLevel::Error,
                 message: message.into(),
+                location: None,
+                project_fingerprint: None,
             }],
         );
     }
@@ -46,22 +96,20 @@ impl Diagnostics {
         title: impl Into<String>,
         warnings: impl IntoIterator<Item = String>,
     ) {
-        self.replace(
-            title,
-            warnings.into_iter().map(|message| Diagnostic {
-                level: DiagnosticLevel::Warning,
-                message,
-            }),
-        );
+        self.replace(title, warnings.into_iter().map(Diagnostic::warning));
     }
 
-    pub fn validation<T: ToString>(&mut self, issues: impl IntoIterator<Item = T>) {
+    pub fn validation(
+        &mut self,
+        project: &mapping::Project,
+        issues: impl IntoIterator<Item = engine::ValidationIssue>,
+    ) {
+        let fingerprint = crate::layout_store::project_fingerprint(project);
         self.replace(
             "Validation",
-            issues.into_iter().map(|issue| Diagnostic {
-                level: DiagnosticLevel::Error,
-                message: issue.to_string(),
-            }),
+            issues
+                .into_iter()
+                .map(|issue| Diagnostic::validation_with_fingerprint(issue, &fingerprint)),
         );
     }
 
@@ -78,7 +126,10 @@ impl Diagnostics {
         &self.items
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui) {
+    /// Returns a clicked diagnostic so the app can resolve its owner against
+    /// the current project after this panel finishes borrowing the list.
+    pub fn show(&mut self, ui: &mut egui::Ui) -> Option<Diagnostic> {
+        let mut navigate = None;
         let errors = self
             .items
             .iter()
@@ -107,10 +158,19 @@ impl Diagnostics {
                     };
                     ui.horizontal_wrapped(|ui| {
                         ui.strong(prefix);
-                        ui.label(&item.message);
+                        let label = ui.label(&item.message);
+                        if let Some(DiagnosticLocation::ImportFile(path)) = &item.location {
+                            label.on_hover_text(format!("Imported from {}", path.display()));
+                        }
+                        if matches!(item.location, Some(DiagnosticLocation::Validation(_)))
+                            && ui.button("Go to").clicked()
+                        {
+                            navigate = Some(item.clone());
+                        }
                     });
                 }
             });
+        navigate
     }
 }
 
@@ -125,5 +185,46 @@ mod tests {
         assert_eq!(diagnostics.items().len(), 2);
         assert_eq!(diagnostics.items()[0].message, "first");
         assert_eq!(diagnostics.items()[1].message, "second");
+    }
+
+    #[test]
+    fn validation_preserves_typed_ownership_and_existing_display_text() {
+        let owner = engine::ValidationOwner::GraphNode {
+            function: Some(mapping::FunctionId::new(3)),
+            node: 12,
+        };
+        let mut diagnostics = Diagnostics::default();
+        let project = crate::new_mapping::blank_project();
+        diagnostics.validation(
+            &project,
+            [engine::ValidationIssue {
+                location: "the existing location text".into(),
+                message: "the existing message".into(),
+                owner: Some(owner.clone()),
+            }],
+        );
+
+        let diagnostic = &diagnostics.items()[0];
+        assert_eq!(
+            diagnostic.message,
+            "the existing location text: the existing message"
+        );
+        assert_eq!(
+            diagnostic.location,
+            Some(DiagnosticLocation::Validation(owner))
+        );
+    }
+
+    #[test]
+    fn import_warning_preserves_file_provenance_without_inventing_a_node() {
+        let diagnostic = Diagnostic::import_warning("component is unsupported", "/package/map.mfd");
+        assert_eq!(diagnostic.message, "component is unsupported");
+        assert_eq!(
+            diagnostic.location,
+            Some(DiagnosticLocation::ImportFile(PathBuf::from(
+                "/package/map.mfd"
+            )))
+        );
+        assert_eq!(Diagnostic::warning("ordinary warning").location, None);
     }
 }

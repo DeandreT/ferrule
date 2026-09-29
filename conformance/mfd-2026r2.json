@@ -1,0 +1,967 @@
+{
+  "schema_version": 1,
+  "target": {"product": ".mfd-compatible application", "release": "2026r2", "edition": "Enterprise"},
+  "inventory_complete": false,
+  "description": "Seeded, non-exhaustive capability inventory. Statuses describe the documented Ferrule subset, not measured product parity. Vendor acceptance, Ferrule self-roundtrip, interpreter execution, authoring, debugging and generated backends are independent. Corpus totals are historical repository evidence, not fresh measurements.",
+  "profiles": [
+    {"id": "mfd-2026r2-enterprise", "kind": "native_mfd", "description": "Native components and workflows supported by the pinned Enterprise 2026r2 application; no Ferrule-only semantic dependencies."},
+    {"id": "ferrule-native-extensions", "kind": "ferrule_native_extensions", "description": "Explicit Ferrule-only components and retained metadata; successful Ferrule re-import is not vendor compatibility."}
+  ],
+  "evidence": [
+    {"id": "vendor-editions", "kind": "vendor_documentation", "location": "https://www.altova.com/mapforce/editions", "description": "Official edition capability baseline; the inventory is not yet exhaustive."},
+    {"id": "vendor-release", "kind": "vendor_documentation", "location": "https://www.altova.com/mapforce/whatsnew", "description": "Official release history; target release is pinned independently of the latest release."},
+    {"id": "vendor-formats", "kind": "vendor_documentation", "location": "https://www.altova.com/manual/mapforce/mapforceenterprise/appendices_supportnotes_sourcestargets.html", "description": "Official source and target support notes."},
+    {"id": "vendor-codegen", "kind": "vendor_documentation", "location": "https://www.altova.com/manual/mapforce/mapforceenterprise/appendices_supportnotes_featingencode.html", "description": "Official generated-code feature support; capability availability differs by backend."},
+    {"id": "vendor-manual", "kind": "vendor_documentation", "location": "https://www.altova.com/manual/mapforce/mapforceenterprise/index.html", "description": "Official Enterprise manual used to expand the seeded inventory."},
+    {"id": "roadmap", "kind": "repository", "location": "ROADMAP.md", "description": "Recorded baseline and explicitly remaining workflow gaps; not a fresh vendor run."},
+    {"id": "interop-docs", "kind": "repository", "location": "docs/mfd-interop.md", "description": "Supported import/export subset and resource boundaries."},
+    {"id": "codegen-docs", "kind": "repository", "location": "docs/code-generation.md", "description": "Generated Rust and C# library support and host contracts."},
+    {"id": "survey-structural", "kind": "repository", "location": "crates/mfd/tests/samples_survey.rs", "description": "Informational import/validation/export/Ferrule re-import survey; no vendor execution proof."},
+    {"id": "survey-execution", "kind": "repository", "location": "crates/mfd/tests/samples_execution_survey.rs", "description": "Safe execution survey distinguishes execution, output publication, expected failures and reference matches."},
+    {"id": "survey-codegen", "kind": "repository", "location": "crates/mfd/tests/codegen_samples_survey.rs", "description": "Corpus lowering/emission survey; does not compile and execute the whole corpus."},
+    {"id": "survey-vendor-harness", "kind": "repository", "location": "crates/mfd/tests/samples_reference_survey.rs", "description": "Isolated local vendor oracle harness; code presence is not a vendor-execution result."},
+    {"id": "mfd-import", "kind": "repository", "location": "crates/mfd/src/import.rs", "description": "Resilient semantic importer and project conversion."},
+    {"id": "mfd-export", "kind": "repository", "location": "crates/mfd/src/export.rs", "description": "Canonical mapping export, including Ferrule-specific metadata."},
+    {"id": "sequence-lowering", "kind": "repository", "location": "crates/mfd/src/import/feed.rs", "description": "Bounded sequence/control and structured-variable lowering."},
+    {"id": "join-lowering", "kind": "repository", "location": "crates/mfd/src/import/join/mod.rs", "description": "Typed join import and explicit unsupported combinations."},
+    {"id": "udf-lowering", "kind": "repository", "location": "crates/mfd/src/import/udf/mod.rs", "description": "Recognized scalar and structured user-defined mapping functions."},
+    {"id": "external-lowering", "kind": "repository", "location": "crates/mfd/src/import/external_scalar/mod.rs", "description": "Recognized external code wrappers; no general arbitrary-code runtime."},
+    {"id": "graph-model", "kind": "repository", "location": "crates/mapping/src/model/graph.rs", "description": "Typed graph node model."},
+    {"id": "scope-model", "kind": "repository", "location": "crates/mapping/src/model/scope.rs", "description": "Typed scope, sequence and construction model."},
+    {"id": "endpoint-model", "kind": "repository", "location": "crates/mapping/src/model/project.rs", "description": "Primary and named source/target project model."},
+    {"id": "gui-scopes", "kind": "repository", "location": "crates/gui/src/scope_editor.rs", "description": "Native scope authoring controls."},
+    {"id": "gui-reports", "kind": "repository", "location": "crates/gui/src/run_report.rs", "description": "Bounded searchable run reports."},
+    {"id": "recursive-export", "kind": "repository", "location": "crates/mfd/src/export/recursive.rs", "description": "Ferrule library components for recursive and hierarchy constructions."},
+    {"id": "edi-export", "kind": "repository", "location": "crates/mfd/src/export/edi.rs", "description": "Retained Ferrule EDI layout and lexical metadata."},
+    {"id": "external-export", "kind": "repository", "location": "crates/mfd/src/export/external_source.rs", "description": "Captured-response boundaries and Ferrule provenance."},
+    {"id": "stage-pipeline", "kind": "repository", "location": "crates/engine/src/pipeline.rs", "description": "Typed in-memory stage DAG execution and validation; MFD stage import, GUI authoring and host effects are separate."},
+    {"id": "pipeline-file-host", "kind": "repository", "location": "crates/cli/src/pipeline.rs", "description": "Typed pipeline file host with explicit inputs and selected atomic output publication."}
+  ],
+  "capabilities": [
+    {
+      "id": "interop.mfd-designs",
+      "title": "MFD semantic import and canonical export",
+      "category": "interoperability",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs", "survey-structural"], "detail": "Best-effort conversion supports the documented common profile; importing a design is not proof that every connected feature is preserved."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs", "survey-structural"], "detail": "Best-effort conversion supports the documented common profile; importing a design is not proof that every connected feature is preserved."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "interop.vendor-roundtrip",
+      "title": "Vendor acceptance and bidirectional execution",
+      "category": "interoperability",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "unverified", "evidence": [], "detail": "Vendor re-save and version migration need a dedicated matrix."},
+        "interpreter": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "native_export": {"status": "unverified", "evidence": ["survey-structural", "mfd-export"], "detail": "Ferrule self-roundtrips do not establish vendor acceptance."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-execution"], "detail": "The local corpus has a separate Ferrule export/re-import execution survey."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "interop.package-resources",
+      "title": "Relocatable schemas, layouts and release catalogs",
+      "category": "interoperability",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": ["interop.mfd-designs"],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs"], "detail": "Confined package roots, manifests and ordered EDI/JSON catalogs are supported; some corpus catalog dependencies remain unavailable."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs"], "detail": "Confined package roots, manifests and ordered EDI/JSON catalogs are supported; some corpus catalog dependencies remain unavailable."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "interop.document-fidelity",
+      "title": "Native document metadata and editor fidelity",
+      "category": "interoperability",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["mfd-import"], "detail": "The project model retains execution semantics and selected metadata."},
+        "interpreter": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "native_export": {"status": "unverified", "evidence": ["mfd-export"], "detail": "Lossless edit/re-save fidelity is not demonstrated."},
+        "ferrule_roundtrip": {"status": "unverified", "evidence": ["survey-structural"], "detail": "Full original-document fidelity is outside semantic self-roundtrip measurements."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "mapping.iteration",
+      "title": "Nested iteration, broadcast and positions",
+      "category": "mapping",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["scope-model", "graph-model"], "detail": "Nested source iteration, broadcasting and context-bound positions execute within the typed model."},
+        "interpreter": {"status": "partial", "evidence": ["scope-model", "graph-model"], "detail": "Nested source iteration, broadcasting and context-bound positions execute within the typed model."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "partial", "evidence": ["gui-scopes"], "detail": "Scope authoring exists; full vendor interaction parity is not established."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "mapping.controls",
+      "title": "Filtering, sorting, grouping and windows",
+      "category": "mapping",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": ["mapping.iteration"],
+      "support": {
+        "import": {"status": "partial", "evidence": ["sequence-lowering"], "detail": "Common controls execute; multiple grouping and certain distinct-before-control compositions still reject."},
+        "interpreter": {"status": "partial", "evidence": ["sequence-lowering"], "detail": "Common controls execute; multiple grouping and certain distinct-before-control compositions still reject."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "mapping.general-sequences",
+      "title": "First-class ordered sequence composition",
+      "category": "mapping",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": ["mapping.iteration"],
+      "support": {
+        "import": {"status": "partial", "evidence": ["sequence-lowering", "scope-model"], "detail": "Bounded sequence forms and reductions exist; arbitrary graph-backed sequence composition remains incomplete."},
+        "interpreter": {"status": "partial", "evidence": ["sequence-lowering", "scope-model"], "detail": "Bounded sequence forms and reductions exist; arbitrary graph-backed sequence composition remains incomplete."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "mapping.joins",
+      "title": "Joined tuples and custom join conditions",
+      "category": "mapping",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": ["mapping.iteration"],
+      "support": {
+        "import": {"status": "partial", "evidence": ["join-lowering"], "detail": "Left-deep equality joins and selected tuple controls work; custom conditions and direct joined-tuple grouping reject."},
+        "interpreter": {"status": "partial", "evidence": ["join-lowering"], "detail": "Left-deep equality joins and selected tuple controls work; custom conditions and direct joined-tuple grouping reject."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "mapping.stage-dag",
+      "title": "Independent endpoints and intermediate mapping stages",
+      "category": "mapping",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": ["mapping.iteration"],
+      "support": {
+        "import": {"status": "partial", "evidence": ["endpoint-model", "roadmap"], "detail": "Named endpoints and multiple targets exist; MFD import does not construct a general intermediate target-as-source stage DAG."},
+        "interpreter": {"status": "partial", "evidence": ["endpoint-model", "stage-pipeline", "pipeline-file-host"], "detail": "Typed stage DAGs execute in memory and through a file host with selected output publication; MFD graph import and full vendor behavior remain unverified."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "mapping.dynamic-documents",
+      "title": "Dynamic filenames and document collections",
+      "category": "mapping",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": ["mapping.iteration", "interop.package-resources"],
+      "support": {
+        "import": {"status": "partial", "evidence": ["endpoint-model", "interop-docs"], "detail": "Typed per-driver inputs and document outputs exist; format and export combinations remain bounded."},
+        "interpreter": {"status": "partial", "evidence": ["endpoint-model", "interop-docs"], "detail": "Typed per-driver inputs and document outputs exist; format and export combinations remain bounded."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "functions.builtins",
+      "title": "Built-in function catalog and scalar semantics",
+      "category": "functions",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["roadmap", "graph-model"], "detail": "The native catalog is a tested subset; complete signature and edge-case comparison with the vendor catalog is not yet inventoried."},
+        "interpreter": {"status": "partial", "evidence": ["roadmap", "graph-model"], "detail": "The native catalog is a tested subset; complete signature and edge-case comparison with the vendor catalog is not yet inventoried."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "functions.graph-udfs",
+      "title": "Reusable scalar, record and sequence mapping functions",
+      "category": "functions",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": ["mapping.general-sequences", "functions.builtins"],
+      "support": {
+        "import": {"status": "partial", "evidence": ["udf-lowering"], "detail": "Recognized scalar and structured UDF profiles lower; general higher-order and arbitrary sequence/record functions remain incomplete."},
+        "interpreter": {"status": "partial", "evidence": ["udf-lowering"], "detail": "Recognized scalar and structured UDF profiles lower; general higher-order and arbitrary sequence/record functions remain incomplete."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "functions.external-code",
+      "title": "Custom Java, C#, XSLT and XQuery functions",
+      "category": "functions",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["external-lowering", "interop-docs"], "detail": "Selected source wrappers lower to native operations; arbitrary external modules are not executed."},
+        "interpreter": {"status": "partial", "evidence": ["external-lowering", "interop-docs"], "detail": "Selected source wrappers lower to native operations; arbitrary external modules are not executed."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.xml",
+      "title": "XML, DTD, XSD and mixed-content contracts",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Broad XML/XSD subset exists; remaining derivation, wildcard and schema-semantic cases are explicitly bounded."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Broad XML/XSD subset exists; remaining derivation, wildcard and schema-semantic cases are explicitly bounded."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.json",
+      "title": "JSON and complete JSON Schema composition",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Exact bounded scalar/object/array constraints exist; general heterogeneous and correlated compositions remain incomplete."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Exact bounded scalar/object/array constraints exist; general heterogeneous and correlated compositions remain incomplete."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.flat-files",
+      "title": "Delimited and fixed-width text",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "CSV and Unicode fixed-width boundaries execute; all native encoding, dialect and authoring variants need inventory."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "CSV and Unicode fixed-width boundaries execute; all native encoding, dialect and authoring variants need inventory."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.xlsx",
+      "title": "Spreadsheet mapping and workbook updates",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["roadmap"], "detail": "Flat, composite, grid, worksheet-set, hierarchical and update-existing profiles exist; general layout parity remains incomplete."},
+        "interpreter": {"status": "partial", "evidence": ["roadmap"], "detail": "Flat, composite, grid, worksheet-set, hierarchical and update-existing profiles exist; general layout parity remains incomplete."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.flextext",
+      "title": "FlexText layouts and string parsing",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Bounded compiled layout and string-parser commands execute; remaining native commands and parser variants need implementation."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Bounded compiled layout and string-parser commands execute; remaining native commands and parser variants need implementation."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.edi",
+      "title": "EDI families, release catalogs and validation",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": ["interop.package-resources"],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs", "edi-export"], "detail": "X12, EDIFACT, HL7, TRADACOMS and embedded IDoc/SWIFT profiles exist; catalog completeness and command variants remain open."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs", "edi-export"], "detail": "X12, EDIFACT, HL7, TRADACOMS and embedded IDoc/SWIFT profiles exist; catalog completeness and command variants remain open."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.protobuf",
+      "title": "Protocol Buffers schemas and binary documents",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Bounded proto2/proto3 I/O and confined import graphs exist; dynamic sources and full configuration combinations need inventory."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Bounded proto2/proto3 I/O and confined import graphs exist; dynamic sources and full configuration combinations need inventory."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.xbrl",
+      "title": "XBRL instances and taxonomy-level semantics",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["roadmap"], "detail": "Typed native instances execute; taxonomy, formula and linkbase execution is not complete."},
+        "interpreter": {"status": "partial", "evidence": ["roadmap"], "detail": "Typed native instances execute; taxonomy, formula and linkbase execution is not complete."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "formats.pdf",
+      "title": "Visual PDF extraction and OCR-related workflows",
+      "category": "formats",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["roadmap"], "detail": "Bounded visual extraction is input-only; additional extraction and OCR applicability require vendor-specific inventory."},
+        "interpreter": {"status": "partial", "evidence": ["roadmap"], "detail": "Bounded visual extraction is input-only; additional extraction and OCR applicability require vendor-specific inventory."},
+        "native_export": {"status": "unverified", "evidence": ["interop-docs"], "detail": "Native PDF component acceptance must be tested using vendor execution."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "connectors.sqlite",
+      "title": "Relational reads, queries and database mutation",
+      "category": "connectors",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["roadmap"], "detail": "SQLite reads and full-replace writes exist; general SQL and insert/update/delete semantics remain incomplete."},
+        "interpreter": {"status": "partial", "evidence": ["roadmap"], "detail": "SQLite reads and full-replace writes exist; general SQL and insert/update/delete semantics remain incomplete."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "connectors.enterprise-databases",
+      "title": "Enterprise database connectors and driver semantics",
+      "category": "connectors",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "unsupported", "evidence": ["roadmap"], "detail": "Native import/runtime is SQLite-centered; the complete vendor driver matrix is not implemented."},
+        "interpreter": {"status": "unsupported", "evidence": ["roadmap"], "detail": "Additional database engines require adapters and type/query/mutation contracts."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "connectors.http-services",
+      "title": "Live HTTP, SOAP and REST service integration",
+      "category": "connectors",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Static XML GET and typed WSDL/captured-response boundaries exist; general live service request execution is incomplete."},
+        "interpreter": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Static XML GET and typed WSDL/captured-response boundaries exist; general live service request execution is incomplete."},
+        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."}
+        }
+      }
+    },
+    {
+      "id": "connectors.graphql",
+      "title": "GraphQL and specialized API integrations",
+      "category": "connectors",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "unassessed", "evidence": [], "detail": "Native GraphQL component and connector formats need itemization."},
+        "interpreter": {"status": "unsupported", "evidence": ["roadmap"], "detail": "Generic GraphQL endpoints are a roadmap item."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "authoring.blank-project",
+      "title": "Create, wire, preview and run a mapping",
+      "category": "authoring",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "interpreter": {"status": "partial", "evidence": ["roadmap"], "detail": "Preview and normal execution share the interpreter for supported mappings."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "partial", "evidence": ["roadmap"], "detail": "Common blank-project workflows work; complete no-JSON-edit authoring coverage remains a release gate."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "authoring.format-wizards",
+      "title": "Schema, format and connector setup wizards",
+      "category": "authoring",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "interpreter": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "partial", "evidence": ["roadmap"], "detail": "Initial schema setup exists; remaining format and connector wizards require implementation."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "authoring.editor-integrity",
+      "title": "Undo, layout, named canvases and edit integrity",
+      "category": "authoring",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "interpreter": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "partial", "evidence": ["roadmap"], "detail": "Documented native editing workflows are implemented; the complete vendor authoring inventory is not established."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "debug.execution-traces",
+      "title": "Execution trace and run report inspection",
+      "category": "debugging",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "interpreter": {"status": "partial", "evidence": ["roadmap"], "detail": "Interpreter execution emits bounded structured traces."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "partial", "evidence": ["gui-reports"], "detail": "Run report supports search and navigation."},
+        "debug": {"status": "partial", "evidence": ["gui-reports", "roadmap"], "detail": "Trace collection and inspection exist; complete provenance workflows remain broader."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "debug.interactive-stepping",
+      "title": "Connector history, context inspection and breakpoints",
+      "category": "debugging",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "interpreter": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "unsupported", "evidence": ["roadmap"], "detail": "Interactive debug UI is a remaining roadmap item."},
+        "debug": {"status": "unsupported", "evidence": ["roadmap"], "detail": "Breakpoints, stepping and connector history are not implemented."},
+        "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "deployment.host-api",
+      "title": "Headless execution and embeddable mapping hosts",
+      "category": "deployment",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "interpreter": {"status": "partial", "evidence": ["roadmap"], "detail": "Bounded file/payload execution and typed runtime parameters exist."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs"], "detail": "Generated Rust host API is documented."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs"], "detail": "Generated C# host API is documented."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."}
+        }
+      }
+    },
+    {
+      "id": "deployment.vendor-backends",
+      "title": "Vendor-compatible generated target languages",
+      "category": "deployment",
+      "profiles": ["mfd-2026r2-enterprise"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "interpreter": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "ferrule_roundtrip": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs"], "detail": "Ferrule-specific Rust code generation exists."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs"], "detail": "Ferrule-specific C# code generation exists."},
+        "vendor_backends": {
+          "xslt1": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."},
+          "xslt2": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."},
+          "xquery1": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."},
+          "cpp": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."},
+          "java": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."},
+          "csharp": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."}
+        }
+      }
+    },
+    {
+      "id": "extensions.recursive-construction",
+      "title": "Ferrule recursive, hierarchy and adjacency components",
+      "category": "extensions",
+      "profiles": ["ferrule-native-extensions"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["recursive-export"], "detail": "Typed recursive/hierarchy constructions have Ferrule-specific MFD components."},
+        "interpreter": {"status": "partial", "evidence": ["recursive-export"], "detail": "Typed recursive/hierarchy constructions have Ferrule-specific MFD components."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "Ferrule library components are outside the native vendor profile."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["recursive-export"], "detail": "Ferrule importer interprets the emitted recursive metadata."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."}
+        }
+      }
+    },
+    {
+      "id": "extensions.edi-metadata",
+      "title": "Ferrule retained EDI layout and lexical metadata",
+      "category": "extensions",
+      "profiles": ["ferrule-native-extensions"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["edi-export"], "detail": "Ferrule-specific metadata retains compiled layout and lexical contracts."},
+        "interpreter": {"status": "partial", "evidence": ["edi-export"], "detail": "Ferrule-specific metadata retains compiled layout and lexical contracts."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "These metadata extensions do not establish native vendor semantics."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["edi-export"], "detail": "Retained metadata supports Ferrule re-import."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."}
+        }
+      }
+    },
+    {
+      "id": "extensions.captured-services",
+      "title": "Captured service and opaque-function result boundaries",
+      "category": "extensions",
+      "profiles": ["ferrule-native-extensions"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["external-export"], "detail": "Captured JSON contracts preserve result shape and provenance; opaque bodies and live services are not executed."},
+        "interpreter": {"status": "partial", "evidence": ["external-export"], "detail": "Captured JSON contracts preserve result shape and provenance; opaque bodies and live services are not executed."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "Captured-response provenance is a Ferrule extension, not native service execution."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["external-export"], "detail": "Canonical export retains the captured boundary contract."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."}
+        }
+      }
+    },
+    {
+      "id": "extensions.roundtrip-metadata",
+      "title": "Ferrule source ownership and schema metadata",
+      "category": "extensions",
+      "profiles": ["ferrule-native-extensions"],
+      "depends_on": [],
+      "support": {
+        "import": {"status": "partial", "evidence": ["mfd-export"], "detail": "Ferrule source/scope/schema metadata supports canonical self-roundtrips."},
+        "interpreter": {"status": "partial", "evidence": ["mfd-export"], "detail": "Ferrule source/scope/schema metadata supports canonical self-roundtrips."},
+        "native_export": {"status": "not_applicable", "evidence": [], "detail": "These metadata extensions do not establish native vendor interpretation."},
+        "ferrule_roundtrip": {"status": "partial", "evidence": ["mfd-export"], "detail": "Ferrule exports retain primary-source and scope ownership metadata."},
+        "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
+        "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
+        "vendor_backends": {
+          "xslt1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "xslt2": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "xquery1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "cpp": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "java": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
+          "csharp": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."}
+        }
+      }
+    }
+  ]
+}

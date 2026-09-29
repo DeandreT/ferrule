@@ -434,6 +434,7 @@ impl FerruleApp {
                     show_minimap: self.show_minimap,
                     view_generation: canvas.view_generation,
                     style: self.appearance.to_snarl_style_with_palette(self.palette),
+                    focus: canvas.pending_focus.take(),
                 },
                 ui,
             );
@@ -553,6 +554,7 @@ impl FerruleApp {
                     show_minimap: self.show_minimap,
                     view_generation: canvas.view_generation,
                     style: self.appearance.to_snarl_style_with_palette(self.palette),
+                    focus: canvas.pending_focus.take(),
                 },
                 ui,
             );

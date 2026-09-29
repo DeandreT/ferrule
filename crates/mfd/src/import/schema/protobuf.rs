@@ -25,7 +25,7 @@ impl Direction {
     }
 }
 
-/// Imports MapForce binary boundaries backed by a proto2/proto3 schema.
+/// Imports .mfd binary boundaries backed by a proto2/proto3 schema.
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     resources: &ResourceResolver,
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn expands_mapforce_namespace_root_notation() {
+    fn expands_mfd_namespace_root_notation() {
         assert_eq!(
             normalize_root_name("{demo.people}Directory"),
             "demo.people.Directory"

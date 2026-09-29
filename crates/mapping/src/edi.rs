@@ -214,7 +214,7 @@ impl<'de> Deserialize<'de> for EdiImpliedDecimal {
 
 /// Envelope data that an EDI target asks the runtime to derive.
 ///
-/// MapForce's `autocompletedata` setting is dialect-sensitive: X12 derives
+/// The reference application's `autocompletedata` setting is dialect-sensitive: X12 derives
 /// transaction, group, and interchange trailers, while EDIFACT derives
 /// message and interchange trailers. Keeping the dialect in the value makes
 /// incompatible retained settings rejectable before output is attempted.

@@ -1,14 +1,18 @@
 use ir::{SchemaKind, SchemaNode};
 use mapping::{Project, ScopeIteration};
 
-use super::ValidationIssue;
+use super::{
+    ValidationIssue, ValidationOwner, ValidationSchemaLocation, ValidationSchemaStep, own_issues,
+};
 
 pub(super) fn validate_schema(
     root: &str,
     schema: &SchemaNode,
+    owner: &ValidationSchemaLocation,
     path: &mut Vec<String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    let start = issues.len();
     let suffix = if path.is_empty() {
         String::new()
     } else {
@@ -204,11 +208,21 @@ pub(super) fn validate_schema(
             format!("arbitrary-JSON metadata{suffix} requires one non-repeating string scalar"),
         ));
     }
+    own_issues(
+        &mut issues[start..],
+        ValidationOwner::SchemaNode(owner.clone()),
+    );
     if let Some(constraints) = &schema.json_contains {
         for (index, constraint) in constraints.as_slice().iter().enumerate() {
             if let Some(predicate) = constraint.predicate().as_schema() {
                 path.push(format!("<contains:{}>", index + 1));
-                validate_schema(root, predicate, path, issues);
+                validate_schema(
+                    root,
+                    predicate,
+                    &owner.descendant(ValidationSchemaStep::Contains(index)),
+                    path,
+                    issues,
+                );
                 path.pop();
             }
         }
@@ -221,7 +235,13 @@ pub(super) fn validate_schema(
                     index + 1,
                     constraint.trigger()
                 ));
-                validate_schema(root, predicate, path, issues);
+                validate_schema(
+                    root,
+                    predicate,
+                    &owner.descendant(ValidationSchemaStep::DependentSchema(index)),
+                    path,
+                    issues,
+                );
                 path.pop();
             }
         }
@@ -229,14 +249,26 @@ pub(super) fn validate_schema(
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return;
     };
-    for child in children {
+    for (index, child) in children.iter().enumerate() {
         path.push(child.name.clone());
-        validate_schema(root, child, path, issues);
+        validate_schema(
+            root,
+            child,
+            &owner.descendant(ValidationSchemaStep::Child(index)),
+            path,
+            issues,
+        );
         path.pop();
     }
     if let Some(dynamic) = schema.dynamic_fields() {
         path.push("*".to_string());
-        validate_schema(root, dynamic, path, issues);
+        validate_schema(
+            root,
+            dynamic,
+            &owner.descendant(ValidationSchemaStep::DynamicField),
+            path,
+            issues,
+        );
         path.pop();
     }
 }

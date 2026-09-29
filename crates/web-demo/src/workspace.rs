@@ -176,7 +176,8 @@ impl AssetRole {
 #[serde(rename_all = "snake_case")]
 pub enum AssetMediaType {
     FerruleProject,
-    MapForceDesign,
+    #[serde(alias = "map_force_design")]
+    MfdDesign,
     Xml,
     XmlSchema,
     Json,
@@ -520,6 +521,17 @@ fn invalid_path(path: &str, reason: &'static str) -> WorkspaceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_mfd_media_type_deserializes_without_changing_new_output() {
+        let media_type: AssetMediaType =
+            serde_json::from_str("\"map_force_design\"").expect("legacy tag remains readable");
+        assert_eq!(media_type, AssetMediaType::MfdDesign);
+        assert_eq!(
+            serde_json::to_string(&media_type).expect("media type serializes"),
+            "\"mfd_design\""
+        );
+    }
 
     fn asset(path: &str, role: AssetRole, bytes: usize) -> WorkspaceAsset {
         WorkspaceAsset::new(path, role, AssetMediaType::Xml, vec![b'x'; bytes])

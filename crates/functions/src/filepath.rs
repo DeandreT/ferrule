@@ -98,7 +98,7 @@ fn common_separator(base: &str, path: &str) -> char {
     match (path_separator(base), path_separator(path)) {
         (Some(left), Some(right)) if left == right => left,
         (Some(separator), None) | (None, Some(separator)) => separator,
-        // MapForce's format-neutral implementation uses backslash when the
+        // The reference application's format-neutral implementation uses backslash when the
         // inputs disagree or provide no separator preference.
         _ => '\\',
     }

@@ -6,6 +6,7 @@ use mapping::{Project, XbrlBoundaryMode};
 mod graph;
 mod join;
 mod options;
+mod owner;
 mod schema;
 mod scope;
 mod user_function;
@@ -19,11 +20,18 @@ use schema::{display_path, source_path_matches, validate_schema};
 use scope::{ScopeSchemas, validate_scope};
 use user_function::validate_user_functions;
 
+pub use owner::{
+    ValidationEndpoint, ValidationOwner, ValidationSchemaLocation, ValidationSchemaStep,
+    ValidationScopeLocation, ValidationScopeStep,
+};
+
 /// One actionable problem found before a mapping is executed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationIssue {
     pub location: String,
     pub message: String,
+    /// Optional machine-readable owner; display text remains unchanged.
+    pub owner: Option<ValidationOwner>,
 }
 
 impl ValidationIssue {
@@ -31,6 +39,21 @@ impl ValidationIssue {
         Self {
             location: location.into(),
             message: message.into(),
+            owner: None,
+        }
+    }
+
+    pub(super) fn with_owner(mut self, owner: ValidationOwner) -> Self {
+        self.owner = Some(owner);
+        self
+    }
+}
+
+/// Apply an enclosing owner without replacing a more specific nested owner.
+pub(super) fn own_issues(issues: &mut [ValidationIssue], owner: ValidationOwner) {
+    for issue in issues {
+        if issue.owner.is_none() {
+            issue.owner = Some(owner.clone());
         }
     }
 }
@@ -109,11 +132,15 @@ pub(super) fn validate_runtime_parameter_name(
 pub fn validate(project: &Project) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
     if project.root.output_path().is_some() && project.target_path.is_some() {
-        issues.push(ValidationIssue::new(
-            "target path",
-            "a dynamic target path cannot be combined with a stored target path",
-        ));
+        issues.push(
+            ValidationIssue::new(
+                "target path",
+                "a dynamic target path cannot be combined with a stored target path",
+            )
+            .with_owner(ValidationOwner::Endpoint(ValidationEndpoint::Target)),
+        );
     }
+    let source_options_start = issues.len();
     validate_xbrl_options(
         "source format options",
         &project.source_options,
@@ -144,6 +171,11 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         true,
         &mut issues,
     );
+    own_issues(
+        &mut issues[source_options_start..],
+        ValidationOwner::Endpoint(ValidationEndpoint::Source),
+    );
+    let target_options_start = issues.len();
     validate_target_options(
         "target format options",
         &project.target_options,
@@ -162,28 +194,42 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         false,
         &mut issues,
     );
+    own_issues(
+        &mut issues[target_options_start..],
+        ValidationOwner::Endpoint(ValidationEndpoint::Target),
+    );
     if let Some(layout) = &project.source_options.pdf
         && layout.schema() != project.source
     {
-        issues.push(ValidationIssue::new(
-            "source format options",
-            "PDF extraction layout does not match the source schema",
-        ));
+        issues.push(
+            ValidationIssue::new(
+                "source format options",
+                "PDF extraction layout does not match the source schema",
+            )
+            .with_owner(ValidationOwner::Endpoint(ValidationEndpoint::Source)),
+        );
     }
     validate_schema(
         "source schema",
         &project.source,
+        &ValidationSchemaLocation::root(ValidationEndpoint::Source),
         &mut Vec::new(),
         &mut issues,
     );
     validate_schema(
         "target schema",
         &project.target,
+        &ValidationSchemaLocation::root(ValidationEndpoint::Target),
         &mut Vec::new(),
         &mut issues,
     );
     let mut target_names = BTreeSet::new();
-    for target in &project.extra_targets {
+    for (index, target) in project.extra_targets.iter().enumerate() {
+        let start = issues.len();
+        let endpoint = ValidationEndpoint::NamedTarget {
+            index,
+            name: target.name.clone(),
+        };
         let name = target.name.trim();
         if name.is_empty() {
             issues.push(ValidationIssue::new(
@@ -217,6 +263,7 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         validate_schema(
             &format!("extra target `{name}` schema"),
             &target.schema,
+            &ValidationSchemaLocation::root(endpoint.clone()),
             &mut Vec::new(),
             &mut issues,
         );
@@ -226,9 +273,15 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
                 "a dynamic target path cannot be combined with a stored target path",
             ));
         }
+        own_issues(&mut issues[start..], ValidationOwner::Endpoint(endpoint));
     }
     let mut source_names = BTreeSet::new();
-    for source in &project.extra_sources {
+    for (index, source) in project.extra_sources.iter().enumerate() {
+        let start = issues.len();
+        let endpoint = ValidationEndpoint::NamedSource {
+            index,
+            name: source.name.clone(),
+        };
         let name = source.name.trim();
         let location = format!("extra source `{name}`");
         if name.is_empty() {
@@ -283,6 +336,7 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         validate_schema(
             &format!("{location} schema"),
             &source.schema,
+            &ValidationSchemaLocation::root(endpoint.clone()),
             &mut Vec::new(),
             &mut issues,
         );
@@ -306,6 +360,7 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
                 ));
             }
         }
+        own_issues(&mut issues[start..], ValidationOwner::Endpoint(endpoint));
     }
     validate_user_functions(project, &mut issues);
     validate_graph(project, &mut issues);
@@ -316,19 +371,24 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         ScopeSchemas {
             target: Some(&project.target),
             parent_source: Some(&project.source),
+            owner: &ValidationScopeLocation::root(ValidationEndpoint::Target),
         },
         &mut Vec::new(),
         &[],
         &mut BTreeMap::new(),
         &mut issues,
     );
-    for target in &project.extra_targets {
+    for (index, target) in project.extra_targets.iter().enumerate() {
         validate_scope(
             project,
             &target.root,
             ScopeSchemas {
                 target: Some(&target.schema),
                 parent_source: Some(&project.source),
+                owner: &ValidationScopeLocation::root(ValidationEndpoint::NamedTarget {
+                    index,
+                    name: target.name.clone(),
+                }),
             },
             &mut Vec::new(),
             &[],
@@ -341,3 +401,6 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod owner_tests;

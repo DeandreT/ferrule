@@ -1,6 +1,6 @@
-# MapForce Interoperability
+# `.mfd` Interoperability
 
-ferrule provides clean-room, best-effort import and export for MapForce
+ferrule provides clean-room, best-effort import and export for
 `.mfd` mapping designs. Vendor samples may be used as black-box behavioral
 references, but ferrule's implementation and committed fixtures are original.
 
@@ -216,6 +216,8 @@ project applies the same rebasing rule, including wildcard input paths.
 
 ```sh
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
+cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
+cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
 ```
 
 Export writes the representable project subset plus generated schema or layout
@@ -226,6 +228,27 @@ retain their ownership in the exported design. Structured XML string serializers
 round-trip as native components with generated XSD siblings and structural
 source connections. Declared local SQLite relations round-trip with their owning
 database connection.
+
+The default `ferrule-extensions` profile preserves the existing Ferrule
+round-trip representation. Export now reports whether the rendered design has
+known native `.mfd` compatibility dependencies, Ferrule extension
+dependencies, or lossy omissions. These findings are separate from the legacy
+export warnings and identify their owning component and feature where possible.
+`--diagnostics json` writes each finding as a versioned JSON Line on stderr;
+`--report-json` writes the complete deterministic report as one JSON object on
+stdout. A report contains `schema_version`, `command`, `profile`, `mode`,
+`accepted`, and a nested `report` with `compatibility`, `issues`, and
+`warnings`.
+
+`--profile native-mfd` refuses known Ferrule-only components, retained
+metadata required for execution, captured-source behavior differences, and
+lossy export warnings before publishing any design or sibling files. `--check`
+renders the same export for inspection without creating the target directory or
+files. A strict check exits nonzero when native export would be refused.
+The compatibility result is a static assessment of the emitted design. It does
+not certify that a particular release of the reference application can open or
+execute it, or that external schemas and connections are available; those
+require vendor execution tests against the versioned conformance suite.
 
 Export is atomic: a shape that cannot be represented safely is rejected instead
 of publishing a partially wired design. Successfully exported designs are
@@ -397,7 +420,7 @@ The exact supported surface evolves quickly. The
 `mfd` test suite contains self-authored regression designs for executable
 behavior.
 
-## Trademark
+## Independence
 
-MapForce is a trademark of its owner. ferrule is an independent project and is
-not affiliated with or endorsed by that owner.
+ferrule is an independent project and is not affiliated with or endorsed by
+the developer of the reference application.

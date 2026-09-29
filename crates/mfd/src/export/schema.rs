@@ -15,7 +15,7 @@ use super::flextext;
 const XLSX_MAX_ROW: u32 = 1_048_576;
 const XLSX_MAX_COLUMN: u32 = 16_384;
 
-/// Which MapForce component family a mapping side exports as.
+/// Which .mfd component family a mapping side exports as.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum SideFormat {
     Xbrl,
@@ -1620,7 +1620,7 @@ impl PortTree {
         out
     }
 
-    /// Entry-tree XML for a json component, mirroring MapForce's
+    /// Entry-tree XML for a json component, mirroring the reference application's
     /// normalized shape (and the importer's inverse): property entries
     /// carry `type="json-property"`, structural `object`/`array`/`item`
     /// entries carry the keys -- object/iteration keys on `object`, scalar

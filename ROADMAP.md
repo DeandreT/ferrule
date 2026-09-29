@@ -1,25 +1,42 @@
-# Ferrule MapForce Workflow-Parity Roadmap
+# Ferrule `.mfd` Compatibility and Product-Parity Roadmap
 
-Updated: 2026-07-28
+Updated: 2026-09-28
 
 ## Goal
 
-Ferrule targets **workflow parity** for common data-mapping work: design a
-mapping without editing JSON, run it locally or in automation, inspect how
-values were produced, and migrate supported `.mfd` designs with equivalent
-results.
+Ferrule targets full behavioral compatibility and product-workflow parity with
+the Enterprise 2026 Release 2 reference application. A compatibility claim
+covers the applicable combination of mapping feature, data format, execution
+language, connector, platform, and product workflow. It requires equivalent
+values, ordering, artifacts, failures, and external effects; syntactic import
+alone is not enough.
 
-Literal MapForce Enterprise parity is not a useful near-term target. That
-would include a commercial connector catalog, several language generators,
-Windows IDE integrations, AI services, and a scheduling/deployment suite.
-Ferrule instead prioritizes a portable Rust runtime, open project format,
-clean-room interoperability, and extensible adapters.
+Ferrule remains an independent, portable Rust data-mapping platform. Its open
+project format, native Rust backend, browser support, bounded execution model,
+and Ferrule-specific extensions are first-class capabilities. Compatibility is
+implemented as a tested profile over the general Ferrule model rather than by
+restricting that model to the reference application's feature or backend matrix.
+
+The implementation tracks six independent promises:
+
+1. `.mfd`/project import and executable behavior.
+2. Reference-application acceptance and execution of Ferrule exports.
+3. Complete visual authoring and maintenance without hand-editing project JSON.
+4. Interpreter and generated-backend behavior for each applicable feature.
+5. Debugging, project, library, configuration, packaging, and automation workflows.
+6. Ferrule-native behavior and backward compatibility outside the native `.mfd` profile.
+
+Optional AI services and separately licensed server products are versioned
+profiles with their own evidence. Pixel-identical UI and byte-identical `.mfd`
+serialization are unnecessary when the editable document and workflow semantics
+are preserved.
 
 ## Current Baseline
 
 - Formats, both directions: XML, JSON, CSV/fixed-width/FlexText, SQLite, XLSX,
-  XBRL instances, X12, EDIFACT, HL7 v2, TRADACOMS, embedded IDoc/SWIFT MT layouts,
-  and proto2/proto3 Protocol Buffers; visual PDF extraction is source-only.
+  XBRL instances, X12, EDIFACT, HL7 v2, TRADACOMS, embedded IDoc layouts,
+  and proto2/proto3 Protocol Buffers. SWIFT MT and visual PDF extraction are
+  source-only.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, literal/length/regex tokenizer and integer-range sequences,
   bounded existential reduction, 1-based scalar selection, and
@@ -50,30 +67,64 @@ clean-room interoperability, and extensible adapters.
   latest isolated behavioral manifests, all 79 available deterministic
   references match exactly.
   These measurements describe the local sample profile, not commercial-product parity.
-- Known architectural constraints: one primary driver input per run, scalar graph
-  outputs, no general endpoint/stage DAG, no connector history or interactive
-  stepping, and reusable functions limited to the currently typed scalar, record,
-  sequence, recursive, hierarchy, and adjacency profiles.
+- Known architectural constraints: each mapping stage has one primary driver,
+  scalar graph outputs, no `.mfd` stage-graph import, no connector history or
+  interactive stepping, and reusable functions limited to the currently typed
+  scalar, record, sequence, recursive, hierarchy, and adjacency profiles.
 
 ## Capability Matrix
 
-| Area | Ferrule now | Workflow-parity target |
+| Area | Ferrule now | Full-compatibility target |
 | --- | --- | --- |
 | XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, lax element and attribute wildcards with typed known declarations plus nonduplicating generic fallback, closed strict wildcards resolved to exact singular or repeating typed choices, strict known-attribute projection, direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes, XSD 1.1 wildcard exclusions, unordered wildcard compositors, and unresolved strict wildcard declaration sets |
 | JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, bounded exact scalar `const`/`enum` value sets including finite `anyOf`/`oneOf` composition, exact numeric ranges including contiguous same-type `anyOf` unions, exact decimal `multipleOf` constraints, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded exact homogeneous Draft 2020-12/undeclared `prefixItems` and Draft 4/6/7/2019-09/undeclared tuple-form `items` normalization, bounded portable string `pattern` assertions, exact closed homogeneous `patternProperties`, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditional normalization for Draft 7/2019-09/2020-12/undeclared schemas including guarded nullable objects and representable `else: false`, property-name constraints including exact finite and portable-pattern `not` complements, and open/closed object semantics, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties, and bounded ordered `format` annotation preservation without vocabulary assertion | Incompatible or correlated validation composition, correlated property-name unions and complements involving length, format, or mixed assertions, distinct per-selector `patternProperties` schemas, pattern-property objects under active `allOf`, alternatives, or structural `$ref` siblings, open or typed pattern-property fallbacks, general overlap intersection, pattern-property value shapes outside the ordinary exact JSON profile, `unevaluatedProperties`, value-sensitive, multi-trigger, general-`if`, `else: false` over object alternatives or a closed undeclared trigger, or other nontrivial-`else` conditional schemas, general heterogeneous positional array schemas, heterogeneous or correlated numeric-range scalar unions, heterogeneous array composition, overlapping cross-mode or incompatible typed-wrapper union composition, structured discriminator values, mixed arrays, and remaining validation-keyword enforcement |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
-| EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Validation reports, additional configuration commands, and pluggable release packs |
-| Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/formula/linkbase execution plus remaining PDF extraction variants and PDF targets |
-| Dataflow | One primary driver plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, and dynamic per-document output paths | Fully general named N-to-M endpoints and an ordered stage DAG |
+| EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Complete applicable validation/autocompletion behavior, configuration commands, dialects, and versioned release packs |
+| Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
+| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, and a validated ordered stage DAG with a file host | Fully general named N-to-M endpoints, `.mfd` stage-graph import, service hosts, and GUI authoring |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
 | Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, and a bounded searchable GUI run report | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 187/187 imports (175 warning-free and engine-valid), warning-free export and re-import for all 187, 175 dependency-complete engine-valid round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact export/re-import executions there, and 79/79 available deterministic references exact | Broader behavioral-reference coverage with supplied release catalogs and additional semantic references |
-| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, 75 scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Publish the Rust runtime and consider optional XML-specific XSLT |
+| `.mfd` | 187/187 imports (175 warning-free and engine-valid), warning-free Ferrule export/re-import for all 187, 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Versioned native-compatible export profile plus reference-application open/validate/execute/re-save verification; complete deterministic behavioral-reference coverage and explicit extension-dependent export reporting |
+| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
 
 ## Workstreams
+
+### 0. Versioned Conformance and Compatibility Profiles
+
+Progress: a versioned ledger records independent status cells and supports
+strict profile gates; its inventory is explicitly incomplete. Export preflight
+classifies known Ferrule extension dependencies and blocks a selected native
+profile before publication. Strict executable import now rejects warnings,
+unresolved runtime dependencies, and invalid mappings while the default import
+remains repair-oriented. Selected private survey counts are enforceable in a
+qualification environment; native reference-application execution evidence remains absent.
+
+- Maintain a checked-in, machine-readable Enterprise 2026r2 `.mfd`
+  capability ledger.
+  Track import, interpreter execution, Ferrule self-roundtrip, native `.mfd`
+  export, GUI authoring, debugging, and every generated backend independently.
+- Keep best-effort import for repair workflows, and add a strict compatibility
+  check that rejects connected behavior which would otherwise be lost.
+- Separate native-compatible `.mfd` exports from exports that require Ferrule
+  extensions. Native claims require reference-application validation and
+  execution evidence.
+- Turn selected private-corpus survey baselines into assertion-based qualification
+  gates. Missing expected resources, reduced coverage, new warnings, or semantic
+  drift must fail the qualification run instead of producing a false green.
+- Record the exact reference-application build, edition, platform, backend,
+  driver, schema dialect, and catalog versions for each result.
+
+Exit criteria:
+
+- Every official baseline capability has a stable identifier and an explicit
+  applicability/status entry. Unknown or untested is never counted as supported.
+- Imported-design execution, native-export execution, and a native
+  re-save back into Ferrule agree for every native-export claim.
+- Ferrule-native extensions remain executable and round-trip losslessly even when
+  they have no native reference-application representation.
 
 ### A. Mapping Semantics and Interoperability
 
@@ -291,6 +342,14 @@ Exit criteria:
 
 Replace the single-target assumption before adding multi-file special cases.
 
+Progress: the typed [pipeline model](docs/mapping-pipelines.md) connects
+complete projects through primary or named target outputs into primary or
+static named inputs. It validates IDs, references, schemas, and cycles before
+execution, then runs stages in stable dependency order. The file host publishes
+selected outputs atomically only after the complete graph succeeds. `.mfd`
+stage-graph import, service hosts, stage-specific runtime paths, general driver
+cardinality, and GUI authoring remain.
+
 - Named source and target endpoints with runtime-overridable locations.
 - Ordered target writes and deterministic failure semantics.
 - Intermediate target-as-source stages represented as a DAG.
@@ -396,11 +455,15 @@ validation focus, and interactive debugging remain.
 Prioritize connectors that align existing strengths before product-catalog
 breadth.
 
-1. Complete remaining `xsi:type` shapes and JSON union semantics.
-2. Add a general query/database mutation IR and PostgreSQL adapter.
-3. Expand remaining XLSX, FlexText, EDI, and PDF layout variants by measured demand.
-4. Add generic HTTP/OpenAPI/GraphQL endpoints and dynamic protobuf document sources.
-5. Add XBRL taxonomy/formula/linkbase execution only with maintainable libraries.
+1. Complete remaining `xsi:type` shapes, JSON compositions, and JSON5.
+2. Add a general query/database mutation IR; qualify every in-scope relational
+   driver and the MongoDB, CouchDB, and Cosmos DB profiles.
+3. Complete applicable XLSX, FlexText, EDI, Protobuf, XBRL, and PDF extraction
+   profiles, including versioned catalogs, template editors, and OCR.
+4. Add live HTTP/OpenAPI, SOAP/WSDL, GraphQL/Shopify endpoints and service-host
+   workflows with explicit authentication and external-effect contracts.
+5. Keep unsupported standards or releases explicit in the conformance ledger
+   until their native and generated execution paths are verified.
 
 Runtime support proceeds in parallel:
 
@@ -408,54 +471,102 @@ Runtime support proceeds in parallel:
 - Evolving Rust library API, JSON diagnostics/traces, stdin/stdout, parameters,
   and deterministic CLI exit codes. Stabilization follows the mapping and endpoint
   model rather than constraining pre-1.0 refactors.
-- HTTP service adapter. External schedulers remain preferred over building a
-  FlowForce equivalent.
+- HTTP/service adapters with controlled integration fixtures and credential
+  references. Workflow/server integrations are tracked as separate product
+  profiles over the same execution core.
+
+### D. Generated and Packaged Execution
+
+- Close all applicable interpreter-versus-Rust/C# gaps and execute the corpus
+  through generated artifacts instead of treating emission as completion.
+- Add generated format/endpoint hosts and publish versioned runtime packages.
+- Implement Java, C++, XSLT 1.0/2.0/3.0, and XQuery backends according to the
+  reference product's per-format and per-feature support matrices.
+- Qualify compilers, runtimes, deployment layouts, parameters, configuration,
+  diagnostics, and external effects on every claimed platform.
+
+### E. Product and Ecosystem Workflows
+
+- Complete native authoring for every supported graph/scope/endpoint construct,
+  reusable library, decision table, schema, and format template.
+- Add cancellable debug sessions, connector value history, context/row
+  inspection, conditional breakpoints, stepping, and partial-output inspection.
+- Support multi-mapping projects, shared libraries, global/environment resources,
+  relocatable packages, generated mapping documentation, and dependency repair.
+- Provide versioned automation and IDE integration adapters for in-scope COM,
+  Java, OLE/ActiveX, Visual Studio, and Eclipse workflows.
+- Track proprietary server execution files, FlowForce deployment, and optional AI
+  assistance as explicit profiles. A Ferrule package or scheduler is an extension,
+  not evidence of compatibility with a proprietary artifact or service.
 
 ## Release Gates
 
-### 0.2 - Trustworthy Migration and Editing
+### M0 - Measurable Contract
 
-- A1 common-profile work underway with regression fixtures.
-- B1 editor integrity complete.
-- `.mfd` warning report is structured and navigable.
+- The versioned capability ledger covers the full selected edition/build.
+- Survey qualification fails on missing expected resources, coverage regression,
+  new warnings, semantic drift, or an unreviewed skip.
+- Import, interpreter, self-roundtrip, native export, GUI/debugging, and each
+  generated backend have independent evidence states.
 
-### 0.3 - Self-Hosting Mapper
+### M1 - Trustworthy Native Interchange
 
-- B2 blank-project authoring complete.
-- B3 in-memory preview and navigable validation complete.
-- CLI can use stored endpoint defaults and machine-readable diagnostics.
+- Strict compatibility diagnostics prevent silent connected-behavior loss.
+- Native-compatible exports open, validate, execute, and re-save in the reference application.
+- Ferrule-extension exports remain lossless and are identified before publish.
+- Missing local catalog and controlled-service evidence in the current corpus is
+  closed or remains an explicit blocked cell rather than a compatibility pass.
 
-### 0.4 - Multi-Endpoint Runtime
+### M2 - General Semantic Foundation
 
 - A2 endpoint/stage DAG complete.
-- Packaged runtime plus trace API.
-- Multi-output and chained mappings execute in GUI and CLI.
+- First-class scalar, record, sequence, and document values compose through
+  reusable mappings and ordered stages.
+- Value, cardinality, context, laziness, state, error timing, and side-effect
+  semantics match the reference behavior for the in-scope matrix.
+- Existing Ferrule projects migrate without behavioral loss.
 
-### 0.5 - Professional Data Integration
+### M3 - Complete Authoring and Debugging
 
-- Existing EDI runtime integrated with `.mfd` EDI components.
-- Multi-table SQLite/PostgreSQL, FLF, and XLSX production paths.
-- Reusable UDFs and shared native/browser editor core.
+- Every existing engine capability can be created, edited, undone/redone,
+  saved/reopened, previewed, debugged, and exported without hand-edited JSON.
+- Validation and runtime diagnostics navigate to stable graph/scope/schema/
+  endpoint owners.
+- Large and remote runs are cancellable and never freeze the editor or publish
+  partial file artifacts as successful outputs.
 
-### 1.0 - Common Workflow Parity
+### M4 - Enterprise Execution Breadth
 
-Five release journeys require no hand-edited project JSON:
+- Schema/format, database, service, standards-catalog, and external-function
+  cells in the selected Enterprise matrix have native and GUI conformance tests.
+- Database/service tests verify requests, effects, ordering, generated keys,
+  transactions, rollback, faults, cancellation, and retry policy.
+- Performance envelopes and resource limits are published and qualified.
 
-1. Create XML-to-JSON, auto-connect matching fields, preview, and run.
-2. Enrich CSV from a database source and write two target formats.
-3. Inspect a nested filtered/grouped/sorted aggregate through a trace.
-4. Import `.mfd`, navigate warnings, repair, run, and export the common subset.
-5. Reuse one UDF in two mappings and run a packaged project headlessly.
+### M5 - Full Compatibility and Product Parity
 
-## Explicit Non-Goals
+- Every applicable generated backend compiles and executes the conformance suite
+  on its qualified environment and agrees with the interpreter and reference application.
+- Project, library, resource, documentation, automation, IDE, deployment, and
+  optional product profiles meet their recorded workflow gates.
+- Every in-scope ledger cell is verified. Remaining blocked, unsupported, or
+  untested cells narrow the published claim instead of being counted as parity.
 
-- Byte-identical `.mfd` output or execution of proprietary `.mfx` binaries.
-- Recreating the MapForce Windows UI, AI Server, FlowForce scheduler, or IDE
-  integrations.
-- Near-term C++/Java or commercial generator-catalog parity.
-- Bundling every database driver, EDI release, XBRL taxonomy, Shopify
-  specialization, or PDF/OCR engine.
-- Copying vendor sample content into this repository.
+## Compatibility Boundaries
+
+- Ferrule does not copy vendor source code, generated code, proprietary catalog
+  content, or sample content. Vendor samples remain local, read-only black-box
+  references; all checked-in fixtures are self-authored.
+- Byte-identical `.mfd` serialization and pixel-identical UI are not required;
+  executable semantics, editable document structure, and workflows are.
+- Ferrule-native features are never disabled to mimic a narrower backend. The
+  native `.mfd` profile validates applicability while the general Ferrule model
+  continues to evolve.
+- Proprietary `.mfx`, licensed catalogs, drivers, services, and optional AI may
+  require a user-supplied licensed dependency or a documented vendor bridge.
+  Ferrule does not label its own package format as a compatible vendor artifact.
+- A capability without direct evidence remains unverified even when a nearby
+  feature or a Ferrule self-roundtrip succeeds.
 
 ## Scorecard
 
@@ -492,8 +603,8 @@ Update these numbers with each parity increment:
 
 ## Primary References
 
-- [MapForce 2026r2 changes](https://www.altova.com/mapforce/whatsnew)
-- [MapForce product and format scope](https://www.altova.com/mapforce)
+- [2026r2 release changes](https://www.altova.com/mapforce/whatsnew)
+- [Reference product and format scope](https://www.altova.com/mapforce)
 - [Edition comparison](https://www.altova.com/mapforce/editions)
 - [Database mapping](https://www.altova.com/mapforce/database-mapping)
 - [Function library](https://www.altova.com/manual/Mapforce/mapforceenterprise/mf_func_lib.html)

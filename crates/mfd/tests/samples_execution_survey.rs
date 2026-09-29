@@ -10,6 +10,8 @@
 //! Host-selected resources use `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` plus
 //! path lists in `FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
 //! `FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS`.
+//! Set `FERRULE_MFD_SURVEY_ENFORCE_BASELINE=1` in the private qualification
+//! environment to require the corpus, reference manifest, and reviewed counts.
 //!
 //! The harness resolves every input beneath the sample directory, including
 //! data-dependent secondary sources through a contained host loader, rejects
@@ -28,6 +30,8 @@ mod reference_support;
 mod roundtrip;
 #[path = "support/sample_discovery.rs"]
 mod sample_discovery;
+#[path = "support/survey_gate.rs"]
+mod survey_gate;
 #[path = "support/survey_import_options.rs"]
 mod survey_import_options;
 
@@ -1396,11 +1400,7 @@ fn dynamic_document_paths_reject_escape_duplicates_and_ancestor_overlap() {
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
     let samples_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
-    if !samples_root.is_dir() {
-        eprintln!(
-            "samples dir not found at {}; skipping",
-            samples_root.display()
-        );
+    if !survey_gate::corpus_available(&samples_root)? {
         return Ok(());
     }
     let import_context = SurveyResourceSelection::from_environment().resolve(&samples_root)?;
@@ -1463,5 +1463,25 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
         )?;
         println!("json report: {}", report_path.display());
     }
+    survey_gate::enforce_exact(
+        "MFD execution/reference survey",
+        &[
+            ("total", summary.total, 187),
+            ("imported", summary.imported, 187),
+            ("valid", summary.valid, 175),
+            ("dependency_blocked", summary.dependency_blocked, 12),
+            ("execution_attempted", summary.execution_attempted, 168),
+            ("execution_passed", summary.execution_passed, 168),
+            ("outputs_written", summary.outputs_written, 165),
+            (
+                "output_expected_failures",
+                summary.output_expected_failures,
+                1,
+            ),
+            ("references_available", summary.references_available, 79),
+            ("references_matched", summary.references_matched, 79),
+            ("references_mismatched", summary.references_mismatched, 0),
+        ],
+    )?;
     Ok(())
 }

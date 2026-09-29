@@ -25,7 +25,7 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             FailureSelection::All => {
                 return Err(unsupported_rule(
                     index,
-                    "unconditional failures have no executable MapForce exception representation",
+                    "unconditional failures have no executable native exception representation",
                 ));
             }
             FailureSelection::WhenTrue { .. } => {
@@ -51,7 +51,7 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         {
             return Err(unsupported_rule(
                 index,
-                "secondary-source failures cannot own MapForce exception filters",
+                "secondary-source failures cannot own native exception filters",
             ));
         }
         let matches = matching_scopes(project, collection, predicate);

@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ir::{SchemaKind, SchemaNode};
 use mapping::{
@@ -14,6 +14,7 @@ use crate::MfdError;
 
 mod artifact;
 mod auto_number;
+mod compatibility;
 mod concatenation;
 mod database;
 mod dynamic_json;
@@ -45,6 +46,10 @@ mod xbrl;
 mod xlsx;
 
 use artifact::write_artifacts;
+pub use compatibility::{
+    ExportCompatibility, ExportCompatibilityFeature, ExportCompatibilityIssue, ExportProfile,
+    ExportReport,
+};
 use mapped_sequence::{ScopePlans, preflight_mapped_sequences, render_edge_metadata};
 use position::connect_position_roots;
 use schema::{
@@ -233,9 +238,51 @@ fn render_scope_source_metadata(targets: &[TargetExport<'_>]) -> String {
     }
 }
 
-/// Writes a MapForce design and generated schema siblings, returning warnings
+/// Writes an `.mfd` design and generated schema siblings, returning warnings
 /// for project features that have no export representation.
+///
+/// This preserves Ferrule extensions. Use [`export_with_profile`] with
+/// [`ExportProfile::NativeMfd`] to reject known compatibility dependencies
+/// before publishing, or [`preflight_export`] to inspect them without writing.
 pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
+    export_with_profile(project, path, ExportProfile::default()).map(|report| report.warnings)
+}
+
+/// Renders and profiles the exact export without creating any output files or
+/// directories. `path` determines the names of the generated schema siblings.
+///
+/// A native result means no known semantic extension dependencies or export
+/// warnings were found; it does not certify execution in a particular reference application
+/// version, resolve external resources, or run the exported mapping.
+pub fn preflight_export(project: &Project, path: &Path) -> Result<ExportReport, MfdError> {
+    prepare_export(project, path).map(|prepared| prepared.report)
+}
+
+/// Writes a design and its schema siblings under the selected compatibility
+/// policy. Native mode rejects known Ferrule dependencies, captured-source
+/// behavior differences, and lossy export warnings before publishing anything.
+pub fn export_with_profile(
+    project: &Project,
+    path: &Path,
+    profile: ExportProfile,
+) -> Result<ExportReport, MfdError> {
+    let prepared = prepare_export(project, path)?;
+    if profile == ExportProfile::NativeMfd && !prepared.report.is_native_compatible() {
+        return Err(MfdError::IncompatibleExport(Box::new(prepared.report)));
+    }
+    write_artifacts(
+        path.parent().unwrap_or_else(|| Path::new(".")),
+        prepared.artifacts,
+    )?;
+    Ok(prepared.report)
+}
+
+struct PreparedExport {
+    artifacts: Vec<(PathBuf, String)>,
+    report: ExportReport,
+}
+
+fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
     let mut warnings = Vec::new();
 
     preflight::validate(project)?;
@@ -752,10 +799,10 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     {
         artifacts.push((sibling.path, sibling.contents));
     }
+    let report = compatibility::profile(&out, warnings)?;
     // Publish the design after its schema siblings reach their final paths.
     artifacts.push((path.to_path_buf(), out));
-    write_artifacts(path.parent().unwrap_or_else(|| Path::new(".")), artifacts)?;
-    Ok(warnings)
+    Ok(PreparedExport { artifacts, report })
 }
 
 fn pair_mixed_databases(

@@ -1,4 +1,4 @@
-//! Canonical MapForce XLSX source components for retained non-flat layouts.
+//! Canonical .mfd XLSX source components for retained non-flat layouts.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -1020,7 +1020,7 @@ fn validate_grid_names(layout: &XlsxGridLayout) -> Result<(), MfdError> {
         || layout.cell_position_field != "CellColumn"
     {
         return Err(unsupported(
-            "XLSX grid generated field names are not canonical MapForce names",
+            "XLSX grid generated field names are not canonical .mfd names",
         ));
     }
     if layout.data_start_row.get() <= layout.header_row.get() {
