@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports twenty-seven warning-free designs: JSON to
+An opt-in local-corpus smoke test imports twenty-nine warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -524,6 +524,21 @@ test-owned in-memory variant moves that value below the limit and checks the
 successful result as typed JSON and exact XML bytes. The source XML must
 survive schema-shaped JSON transport unchanged; no native reference output is
 pinned for this design.
+The twenty-eighth reads four XML name strings and applies the imported,
+embedded FlexText delimiter layout to project first, last, mother, and father
+fields into a headerless CSV table. It checks the four ordered rows and
+compares generated Rust/C# typed JSON and exact CSV bytes with the interpreter
+through the same CSV writer. The generated hosts receive schema-shaped JSON
+from the native XML reader; they execute the embedded string parser without
+reopening its `.mft` configuration. No native reference output is pinned for
+this design.
+The twenty-ninth reads local XML temperatures and constructs one yearly result
+through an inclusive generated sequence. Three expression-valued aggregates
+select the 2008 readings inside that generated-item scope, producing minimum
+−0.5, maximum 24, and average 11.6. The test proves native XML survives
+schema-shaped JSON transport, then compares generated Rust/C# typed and JSON
+APIs with the interpreter as typed JSON and exact XML bytes. No native
+reference output is pinned for this design.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`

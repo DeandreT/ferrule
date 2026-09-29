@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twenty-seven local, gitignored mappings.
+//! Opt-in generated-backend execution against twenty-nine local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -32,7 +32,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 27] = [
+const CASES: [CorpusCase; 29] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -192,6 +192,18 @@ const CASES: [CorpusCase; 27] = [
     CorpusCase {
         sample: "ExpenseLimit.mfd",
         input: "ExpReport.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "ParseStringWithFlexText.mfd",
+        input: "Names.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Csv,
+    },
+    CorpusCase {
+        sample: "InputIsSequence.mfd",
+        input: "Temperatures.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
@@ -430,9 +442,19 @@ fn run_case(
     };
     if matches!(
         sample,
-        "FlattenHierarchy.mfd" | "EmployeesToKeyValueList.mfd" | "ArticlesInStock.mfd"
+        "FlattenHierarchy.mfd"
+            | "EmployeesToKeyValueList.mfd"
+            | "ArticlesInStock.mfd"
+            | "ParseStringWithFlexText.mfd"
+            | "InputIsSequence.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
+        if sample == "InputIsSequence.mfd" {
+            assert_eq!(
+                round_tripped, source,
+                "{sample}: native XML source changes across JSON transport"
+            );
+        }
         assert_eq!(
             expected,
             engine::run(&project, &round_tripped)?,
@@ -484,7 +506,8 @@ fn run_case(
     // case through the generated Instance API and XML serializers instead.
     let mapped_xml_output = sample == "Tutorial/Expense-valmap.mfd";
     let recursive_xml_output = sample == "RecursiveDirectoryFilter.mfd";
-    let expected_xml = if mapped_xml_output || recursive_xml_output {
+    let typed_xml_output = recursive_xml_output || sample == "InputIsSequence.mfd";
+    let expected_xml = if mapped_xml_output || typed_xml_output {
         Some(format_xml::to_string_with_options(
             &project.target,
             &expected,
@@ -1015,6 +1038,42 @@ fn run_case(
             assert!(!names.contains(&name), "{sample}: retained {name}");
         }
     }
+    if sample == "InputIsSequence.mfd" {
+        let [year_scope] = project.root.children.as_slice() else {
+            panic!("{sample}: one generated YearlyStats scope");
+        };
+        assert!(
+            matches!(
+                &year_scope.iteration,
+                ScopeIteration::Sequence(mapping::SequenceExpr::Generate { .. })
+            ),
+            "{sample}: generated singleton sequence drives the target"
+        );
+        assert_eq!(
+            project
+                .graph
+                .nodes
+                .values()
+                .filter(|node| matches!(
+                    node,
+                    Node::Aggregate {
+                        expression: Some(_),
+                        ..
+                    }
+                ))
+                .count(),
+            3,
+            "{sample}: min/max/avg use per-source-item expressions"
+        );
+        let years = expected_json["YearlyStats"]
+            .as_array()
+            .expect("generated yearly statistics");
+        assert_eq!(years.len(), 1, "{sample}: one generated item");
+        assert_eq!(years[0]["Year"], 2008);
+        assert_eq!(years[0]["MinimumTemp"], -0.5);
+        assert_eq!(years[0]["MaximumTemp"], 24.0);
+        assert_eq!(years[0]["AverageTemp"], 11.6);
+    }
     let expected_csv = if sample == "Tutorial/ExtractCustomEDIFACT.mfd" {
         assert_eq!(
             project.target_options.delimiter,
@@ -1037,6 +1096,34 @@ fn run_case(
             "{sample}: EDIFACT 2379 date-time conversion"
         );
         Some(corpus_csv_bytes(&project, &expected)?)
+    } else if sample == "ParseStringWithFlexText.mfd" {
+        assert_eq!(
+            project
+                .graph
+                .nodes
+                .values()
+                .filter(|node| matches!(node, Node::Call { function, .. } if function == "flextext_parse_field"))
+                .count(),
+            4,
+            "{sample}: all four embedded FlexText field projections"
+        );
+        assert_eq!(project.target_options.delimiter, Some(','));
+        assert_eq!(project.target_options.has_header_row, Some(false));
+        let rows = expected_json.as_array().expect("parsed name rows");
+        let names = [
+            ("Ted", "McAllister", "Agathe", "Steve"),
+            ("Susan", "Edwards", "Sue", "Max"),
+            ("Fred", "Landis", "Ann", "Martin"),
+            ("George", "Hammer", "Jessica", "Robert"),
+        ];
+        assert_eq!(rows.len(), names.len(), "{sample}: all source names");
+        for (row, (first, last, mother, father)) in rows.iter().zip(names) {
+            assert_eq!(row["First"], first);
+            assert_eq!(row["Last"], last);
+            assert_eq!(row["Mother's Name"], mother);
+            assert_eq!(row["Father's Name"], father);
+        }
+        Some(corpus_csv_bytes(&project, &expected)?)
     } else {
         None
     };
@@ -1045,7 +1132,7 @@ fn run_case(
     std::fs::write(&generated_input, source_json)?;
     let project_path = case_dir.join("project.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
-    let xml_host_schemas = if mapped_xml_output || recursive_xml_output {
+    let xml_host_schemas = if mapped_xml_output || typed_xml_output {
         let source_schema = case_dir.join("source-schema.json");
         let target_schema = case_dir.join("target-schema.json");
         std::fs::write(&source_schema, serde_json::to_vec(&project.source)?)?;
@@ -1082,7 +1169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 "#
-    } else if recursive_xml_output {
+    } else if typed_xml_output {
         RECURSIVE_FILTER_RUST_HARNESS
     } else {
         r#"use ferrule_generated_mapping::{NamedJsonInput, execute_json_with_sources};
@@ -1143,15 +1230,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         String::from_utf8_lossy(&rust_run.stdout),
         String::from_utf8_lossy(&rust_run.stderr)
     );
-    if recursive_xml_output {
+    if typed_xml_output {
         assert_eq!(
             parse_multi_target_outputs(&rust_run.stdout)?,
             vec![CorpusTargetOutput {
                 name: String::new(),
-                xml: expected_xml.clone().expect("recursive XML output"),
+                xml: expected_xml.clone().expect("typed XML output"),
                 value: expected_json.clone(),
             }],
-            "{sample}: generated Rust recursive XML/JSON differs from engine"
+            "{sample}: generated Rust typed XML/JSON differs from engine"
         );
     } else if let Some(expected_xml) = &expected_xml {
         assert!(
@@ -1208,7 +1295,7 @@ var source = FerruleJson.Parse(sourceSchema, input);
 var output = GeneratedMapping.Execute(source);
 Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue);
 "#
-    } else if recursive_xml_output {
+    } else if typed_xml_output {
         RECURSIVE_FILTER_CSHARP_HARNESS
     } else {
         r#"using Ferrule.Generated;
@@ -1270,15 +1357,15 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
         String::from_utf8_lossy(&csharp_run.stdout),
         String::from_utf8_lossy(&csharp_run.stderr)
     );
-    if recursive_xml_output {
+    if typed_xml_output {
         assert_eq!(
             parse_multi_target_outputs(&csharp_run.stdout)?,
             vec![CorpusTargetOutput {
                 name: String::new(),
-                xml: expected_xml.clone().expect("recursive XML output"),
+                xml: expected_xml.clone().expect("typed XML output"),
                 value: expected_json.clone(),
             }],
-            "{sample}: generated C# recursive XML/JSON differs from engine"
+            "{sample}: generated C# typed XML/JSON differs from engine"
         );
     } else if let Some(expected_xml) = &expected_xml {
         assert!(
@@ -1378,7 +1465,7 @@ Console.Out.Write('\0');
 
 fn corpus_csv_bytes(project: &Project, instance: &Instance) -> TestResult<Vec<u8>> {
     let Instance::Repeated(rows) = instance else {
-        panic!("EDIFACT CSV target should contain repeated rows");
+        panic!("CSV target should contain repeated rows");
     };
     Ok(format_csv::to_string_with_dialect(
         &project.target,
