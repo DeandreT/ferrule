@@ -1,6 +1,6 @@
 //! File-backed pipeline inspection and run setup, separate from the project editor.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
@@ -38,12 +38,30 @@ impl PipelineRunDraft {
             .into_iter()
             .map(|issue| issue.to_string())
             .collect();
-        let mut input_names = BTreeSet::new();
+        let mut input_names: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let mut outputs = Vec::new();
         for stage in &pipeline.stages {
-            collect_host(&stage.source, &mut input_names);
+            collect_host(
+                &stage.source,
+                stage.project.source_path.as_deref(),
+                stage.mapping_path.as_deref(),
+                path,
+                &mut input_names,
+            );
             for binding in &stage.extra_sources {
-                collect_host(&binding.from, &mut input_names);
+                let source_path = stage
+                    .project
+                    .extra_sources
+                    .iter()
+                    .find(|source| source.name == binding.name)
+                    .map(|source| source.path.as_str());
+                collect_host(
+                    &binding.from,
+                    source_path,
+                    stage.mapping_path.as_deref(),
+                    path,
+                    &mut input_names,
+                );
             }
             outputs.push(PipelineOutputDraft {
                 stage: stage.id.clone(),
@@ -64,9 +82,13 @@ impl PipelineRunDraft {
         }
         let inputs = input_names
             .into_iter()
-            .map(|name| PipelineInputDraft {
+            .map(|(name, paths)| PipelineInputDraft {
                 name,
-                path: String::new(),
+                path: if paths.len() == 1 {
+                    paths.into_iter().next().unwrap_or_default()
+                } else {
+                    String::new()
+                },
             })
             .collect();
         Ok(Self {
@@ -146,10 +168,60 @@ impl PipelineRunDraft {
     }
 }
 
-fn collect_host(input: &PipelineInput, names: &mut BTreeSet<String>) {
+fn collect_host(
+    input: &PipelineInput,
+    stored_path: Option<&str>,
+    mapping_path: Option<&str>,
+    pipeline_path: &Path,
+    names: &mut BTreeMap<String, BTreeSet<String>>,
+) {
     if let PipelineInput::Host { name } = input {
-        names.insert(name.clone());
+        let paths = names.entry(name.clone()).or_default();
+        if let Some(path) =
+            stored_path.and_then(|path| stored_host_path(path, mapping_path, pipeline_path))
+        {
+            paths.insert(path);
+        }
     }
+}
+
+fn stored_host_path(
+    value: &str,
+    mapping_path: Option<&str>,
+    pipeline_path: &Path,
+) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if value.split_once("://").is_some_and(|(scheme, _)| {
+        scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+    }) {
+        return Some(value.into());
+    }
+    let path = Path::new(value);
+    if path.is_absolute() {
+        return Some(path.to_string_lossy().into_owned());
+    }
+    let pipeline_dir = pipeline_path.parent().unwrap_or_else(|| Path::new("."));
+    let pipeline_dir = if pipeline_dir.is_absolute() {
+        pipeline_dir.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(pipeline_dir)
+    };
+    let mapping_dir = mapping_path
+        .filter(|path| !path.trim().is_empty())
+        .map(Path::new)
+        .map(|path| {
+            let path = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                pipeline_dir.join(path)
+            };
+            path.parent().unwrap_or(&pipeline_dir).to_path_buf()
+        })
+        .unwrap_or(pipeline_dir);
+    Some(mapping_dir.join(path).to_string_lossy().into_owned())
 }
 
 fn read_pipeline(path: &Path) -> anyhow::Result<Vec<u8>> {
