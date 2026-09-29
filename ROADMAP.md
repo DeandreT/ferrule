@@ -71,12 +71,13 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Generated Rust and C# hosts have compiled and executed ten warning-free
+- Generated Rust and C# hosts have compiled and executed eleven warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
   positions, plus an ordered string-join over nested contacts and lazy
-  temperature classification. Schema-shaped JSON
+  temperature classification and XML-to-CSV lookup-fed token existence.
+  Schema-shaped JSON
   results match the interpreter. This small execution
   sample does not establish that all emitted survey designs execute equivalently.
 - Known architectural constraints: each mapping stage has one primary driver,
