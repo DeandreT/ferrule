@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twenty-two local, gitignored mappings.
+//! Opt-in generated-backend execution against twenty-three local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -31,7 +31,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 22] = [
+const CASES: [CorpusCase; 23] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -163,6 +163,12 @@ const CASES: [CorpusCase; 22] = [
         input: "ClothingStockData2024.pdf",
         source_kind: SourceKind::Pdf,
         target_kind: TargetKind::Json,
+    },
+    CorpusCase {
+        sample: "HandlingXsiNil.mfd",
+        input: "BranchOffice2.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
     },
 ];
 
@@ -311,6 +317,9 @@ fn run_case(
     }
     if sample == "Tutorial/Tut-ExpReport-multi.mfd" {
         return run_multi_target_case(case_dir, rust_target, &project, &source, sample);
+    }
+    if sample == "HandlingXsiNil.mfd" {
+        return run_xml_nil_case(case_dir, rust_target, &project, &source, sample);
     }
     // Generated hosts expose a schema-shaped JSON API. Preserve each native
     // reader's typed instance while crossing that host API.
@@ -1486,6 +1495,364 @@ static void WriteOutput(string name, FerruleInstance value, string xmlSchema, st
     Console.Out.Write('\0');
     Console.Out.Write(json);
     Console.Out.Write('\0');
+}
+"#;
+
+fn run_xml_nil_case(
+    case_dir: &Path,
+    rust_target: &Path,
+    project: &Project,
+    source: &Instance,
+    sample: &str,
+) -> TestResult<()> {
+    assert!(project.extra_targets.is_empty(), "{sample}: one XML target");
+    let mut nil_paths = Vec::new();
+    collect_corpus_nil_paths(source, &mut Vec::new(), &mut nil_paths);
+    assert_eq!(
+        nil_paths
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>(),
+        [
+            "Office/0/Fax",
+            "Office/0/Address/0/state",
+            "Office/0/Address/0/street",
+            "Office/0/Address/0/zip",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect(),
+        "{sample}: four intended XML nil source values"
+    );
+    let mut json_source = source.clone();
+    replace_corpus_nil_with_null(&mut json_source);
+    let source_json = format_json::to_string(&project.source, &json_source)?;
+    let mut restored = format_json::from_str(&source_json, &project.source)?;
+    for path in XML_NIL_PATHS {
+        restore_corpus_nil(&mut restored, path);
+    }
+    let expected = engine::run(project, source)?;
+    assert_eq!(
+        engine::run(project, &restored)?,
+        expected,
+        "{sample}: typed XML nil restoration changed mapping output"
+    );
+    let expected_xml = format_xml::to_string_with_options(
+        &project.target,
+        &expected,
+        &format_xml::XmlWriteOptions {
+            declaration: false,
+            indent: false,
+            default_namespace: None,
+        },
+    )?;
+    assert_eq!(
+        expected_xml.matches("xsi:nil=\"true\"").count(),
+        1,
+        "{sample}: explicit nil target"
+    );
+    assert!(
+        expected_xml.contains("<Fax>n/a</Fax>"),
+        "{sample}: missing-value substitution"
+    );
+    assert!(
+        !expected_xml.contains("<Address>"),
+        "{sample}: nil-sensitive address filter"
+    );
+
+    let source_path = case_dir.join("source.json");
+    let source_schema = case_dir.join("source-schema.json");
+    let target_schema = case_dir.join("target-schema.json");
+    let project_path = case_dir.join("project.json");
+    std::fs::write(&source_path, source_json)?;
+    std::fs::write(&source_schema, serde_json::to_vec(&project.source)?)?;
+    std::fs::write(&target_schema, serde_json::to_vec(&project.target)?)?;
+    std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
+
+    let rust_output = case_dir.join("rust");
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
+    generate_project(
+        &project_path,
+        &rust_output,
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+    )?;
+    std::fs::write(rust_output.join("src/main.rs"), XML_NIL_RUST_HARNESS)?;
+    let rust_build = Command::new("cargo")
+        .args(["build", "--quiet"])
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_build.status.success(),
+        "{sample}: generated Rust compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_build.stdout),
+        String::from_utf8_lossy(&rust_build.stderr)
+    );
+    let rust_run = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .arg(&source_schema)
+        .arg(&target_schema)
+        .arg(&source_path)
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_run.status.success(),
+        "{sample}: generated Rust execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_run.stdout),
+        String::from_utf8_lossy(&rust_run.stderr)
+    );
+    assert_eq!(
+        rust_run.stdout,
+        expected_xml.as_bytes(),
+        "{sample}: generated Rust XML nil output differs from engine"
+    );
+
+    let csharp_output = case_dir.join("csharp");
+    generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
+    let harness = csharp_output.join("Harness");
+    std::fs::create_dir(&harness)?;
+    std::fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj" />
+  </ItemGroup>
+</Project>
+"#,
+    )?;
+    std::fs::write(harness.join("Program.cs"), XML_NIL_CSHARP_HARNESS)?;
+    let csharp_build = dotnet_command(&csharp_output)
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "Harness/Harness.csproj",
+        ])
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_build.status.success(),
+        "{sample}: generated C# compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_build.stdout),
+        String::from_utf8_lossy(&csharp_build.stderr)
+    );
+    let csharp_run = dotnet_command(&csharp_output)
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+            "--no-build",
+            "--no-restore",
+            "--",
+        ])
+        .arg(&source_schema)
+        .arg(&target_schema)
+        .arg(&source_path)
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_run.status.success(),
+        "{sample}: generated C# execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_run.stdout),
+        String::from_utf8_lossy(&csharp_run.stderr)
+    );
+    assert_eq!(
+        csharp_run.stdout,
+        expected_xml.as_bytes(),
+        "{sample}: generated C# XML nil output differs from engine"
+    );
+    println!("{sample}: generated Rust and C# XML nil results match the interpreter");
+    Ok(())
+}
+
+const XML_NIL_PATHS: &[&[&str]] = &[
+    &["Office", "0", "Fax"],
+    &["Office", "0", "Address", "0", "state"],
+    &["Office", "0", "Address", "0", "street"],
+    &["Office", "0", "Address", "0", "zip"],
+];
+
+fn collect_corpus_nil_paths(instance: &Instance, path: &mut Vec<String>, result: &mut Vec<String>) {
+    match instance {
+        Instance::Scalar(Value::XmlNil(_)) => result.push(path.join("/")),
+        Instance::Scalar(_) => {}
+        Instance::Group(fields) => {
+            for (name, value) in fields {
+                path.push(name.clone());
+                collect_corpus_nil_paths(value, path, result);
+                path.pop();
+            }
+        }
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            for (index, value) in items.iter().enumerate() {
+                path.push(index.to_string());
+                collect_corpus_nil_paths(value, path, result);
+                path.pop();
+            }
+        }
+        Instance::DocumentSet(_) => panic!("XML nil sample has one source document"),
+    }
+}
+
+fn replace_corpus_nil_with_null(instance: &mut Instance) {
+    match instance {
+        Instance::Scalar(value @ Value::XmlNil(_)) => *value = Value::Null,
+        Instance::Scalar(_) => {}
+        Instance::Group(fields) => {
+            for (_, value) in fields {
+                replace_corpus_nil_with_null(value);
+            }
+        }
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            for value in items {
+                replace_corpus_nil_with_null(value);
+            }
+        }
+        Instance::DocumentSet(_) => panic!("XML nil sample has one source document"),
+    }
+}
+
+fn restore_corpus_nil(instance: &mut Instance, path: &[&str]) {
+    if path.is_empty() {
+        *instance = Instance::Scalar(Value::xml_nil());
+        return;
+    }
+    match instance {
+        Instance::Group(fields) => {
+            if let Some((_, value)) = fields.iter_mut().find(|(name, _)| name == path[0]) {
+                restore_corpus_nil(value, &path[1..]);
+            } else {
+                assert_eq!(path.len(), 1, "only a terminal nil field may be absent");
+                fields.push((path[0].to_owned(), Instance::Scalar(Value::xml_nil())));
+            }
+        }
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            let index = path[0].parse::<usize>().expect("source item index");
+            restore_corpus_nil(&mut items[index], &path[1..]);
+        }
+        _ => panic!("XML nil path traverses a non-container"),
+    }
+}
+
+const XML_NIL_RUST_HARNESS: &str = r#"use codegen_runtime::{Instance, Value, parse_json, serialize_xml};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema"))?;
+    let target_schema = std::fs::read_to_string(args.next().expect("target schema"))?;
+    let source_json = std::fs::read_to_string(args.next().expect("source JSON"))?;
+    let mut source = parse_json(&source_schema, &source_json)?;
+    for path in [
+        &["Office", "0", "Fax"][..],
+        &["Office", "0", "Address", "0", "state"][..],
+        &["Office", "0", "Address", "0", "street"][..],
+        &["Office", "0", "Address", "0", "zip"][..],
+    ] {
+        restore_nil(&mut source, path);
+    }
+    let output = execute(&source)?;
+    let Value::String(xml) = serialize_xml(0, &target_schema, &output, false, false, None)? else {
+        unreachable!("XML serialization returns a string");
+    };
+    print!("{xml}");
+    Ok(())
+}
+
+fn restore_nil(instance: &mut Instance, path: &[&str]) {
+    if path.is_empty() {
+        *instance = Instance::Scalar(Value::xml_nil());
+        return;
+    }
+    match instance {
+        Instance::Group(fields) => {
+            if let Some((_, value)) = fields.iter_mut().find(|(name, _)| name == path[0]) {
+                restore_nil(value, &path[1..]);
+            } else {
+                assert_eq!(path.len(), 1, "only a terminal nil field may be absent");
+                fields.push((path[0].to_owned(), Instance::Scalar(Value::xml_nil())));
+            }
+        }
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            let index = path[0].parse::<usize>().expect("source item index");
+            restore_nil(&mut items[index], &path[1..]);
+        }
+        _ => panic!("XML nil path traverses a non-container"),
+    }
+}
+"#;
+
+const XML_NIL_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var sourceSchema = File.ReadAllText(args[0]);
+var targetSchema = File.ReadAllText(args[1]);
+var source = FerruleJson.Parse(sourceSchema, File.ReadAllText(args[2]));
+foreach (var path in new[]
+{
+    new[] { "Office", "0", "Fax" },
+    new[] { "Office", "0", "Address", "0", "state" },
+    new[] { "Office", "0", "Address", "0", "street" },
+    new[] { "Office", "0", "Address", "0", "zip" },
+})
+{
+    source = RestoreNil(source, path, 0);
+}
+var output = GeneratedMapping.Execute(source);
+Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue);
+
+static FerruleInstance RestoreNil(FerruleInstance instance, string[] path, int offset)
+{
+    if (offset == path.Length)
+    {
+        return new FerruleScalar(FerruleValue.XmlNil);
+    }
+    if (instance is FerruleGroup group)
+    {
+        var fields = group.Fields.ToList();
+        var index = fields.FindIndex(field => field.Name == path[offset]);
+        if (index < 0)
+        {
+            if (offset + 1 != path.Length)
+            {
+                throw new InvalidOperationException("Only a terminal nil field may be absent.");
+            }
+            fields.Add(new FerruleField(path[offset], new FerruleScalar(FerruleValue.XmlNil)));
+        }
+        else
+        {
+            fields[index] = new FerruleField(
+                path[offset], RestoreNil(fields[index].Value, path, offset + 1));
+        }
+        return new FerruleGroup(fields);
+    }
+    if (instance is FerruleRepeated repeated)
+    {
+        var items = repeated.Items.ToArray();
+        var index = int.Parse(path[offset], System.Globalization.CultureInfo.InvariantCulture);
+        items[index] = RestoreNil(items[index], path, offset + 1);
+        return new FerruleRepeated(items);
+    }
+    if (instance is FerruleMappedSequence mapped)
+    {
+        var items = mapped.Items.ToArray();
+        var index = int.Parse(path[offset], System.Globalization.CultureInfo.InvariantCulture);
+        items[index] = RestoreNil(items[index], path, offset + 1);
+        return new FerruleMappedSequence(items);
+    }
+    throw new InvalidOperationException("XML nil path traverses a non-container.");
 }
 "#;
 

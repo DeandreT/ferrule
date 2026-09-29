@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports twenty-two warning-free designs: JSON to
+An opt-in local-corpus smoke test imports twenty-three warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -489,11 +489,15 @@ imported visual-extraction layout, then maps eleven articles and each store's
 runtime-named size quantities to JSON. Both generated hosts consume the same
 schema-shaped, host-extracted PDF instance through their JSON input APIs; the
 test compares typed JSON output and verifies transport preserves the interpreter
-result. The test executes every design in the interpreter, then compiles and
-runs generated Rust and C# hosts. Cases one through fifteen, seventeen, and
-eighteen compare
-JSON results; the sixteenth compares XML bytes from the generated and
-interpreter serializers. Run it with
+result. The twenty-third maps an XML source containing four explicit `xsi:nil`
+values to an XML target using nil-sensitive functions. Its test carries the
+non-nil fields through schema-shaped JSON, restores the four known nil values in
+the generated Rust and C# typed `Instance` hosts, verifies that this transport
+preserves the interpreter result, then compares exact XML serialization bytes.
+The JSON host boundary cannot represent XML nil directly, so this case exercises
+the generated typed host APIs rather than claiming JSON input parity for nil.
+The test executes every design in the interpreter, then compiles and runs
+generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
 when the ignored `samples/ReferenceSamples` corpus and .NET 10 SDK are present.
 The corpus files are never added to the repository. This checks generated
