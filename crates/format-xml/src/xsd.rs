@@ -722,9 +722,11 @@ fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
         return;
     };
     *children = retained;
-    if !node.set_alternatives(selected)
-        || !node.set_xml_restricted_alternatives(selected_restrictions)
+    if node.set_alternatives(selected)
+        && node.set_xml_restricted_alternatives(selected_restrictions)
     {
+        node.xml_type_alternatives = true;
+    } else {
         // The exported view is advisory metadata; malformed external metadata
         // leaves the ordinary XSD-derived alternatives intact.
         if let SchemaKind::Group { children, .. } = &mut node.kind {
@@ -853,9 +855,9 @@ fn attach_type_alternatives(
             .filter(|derived| derived.restriction)
             .map(|derived| derived.identity.clone())
             .collect();
-        if !node.set_xml_restricted_alternatives(restricted)
-            && let SchemaKind::Group { children, .. } = &mut node.kind
-        {
+        if node.set_xml_restricted_alternatives(restricted) {
+            node.xml_type_alternatives = true;
+        } else if let SchemaKind::Group { children, .. } = &mut node.kind {
             *children = original_children;
         }
     } else if let SchemaKind::Group { children, .. } = &mut node.kind {

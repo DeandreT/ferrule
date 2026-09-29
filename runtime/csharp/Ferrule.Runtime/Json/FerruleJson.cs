@@ -396,6 +396,25 @@ public static partial class FerruleJson
                 $"Embedded JSON scalar schema node '{name}' cannot declare required object fields.");
         }
 
+        var inclusiveAlternatives =
+            element.TryGetProperty("alternative_mode", out var mode) &&
+            mode.ValueKind == JsonValueKind.String &&
+            string.Equals(mode.GetString(), "inclusive", StringComparison.Ordinal);
+        var xmlTypeAlternatives = OptionalBoolean(element, "xml_type_alternatives");
+        if (xmlTypeAlternatives &&
+            (scalarDomain != JsonScalarDomain.None || alternatives.Count == 0 ||
+             inclusiveAlternatives ||
+             alternatives.Any(alternative =>
+                 alternative.Name.Length == 0 || alternative.Required.Count != 0 ||
+                 alternative.Constraints.Count != 0) ||
+             (element.TryGetProperty("xml_alternative_kind", out var xmlKind) &&
+              (xmlKind.ValueKind != JsonValueKind.String ||
+               !string.Equals(xmlKind.GetString(), "xsi_type", StringComparison.Ordinal)))))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has invalid XML type alternatives.");
+        }
+
         return new JsonSchemaNode(
             name,
             repeating,
@@ -423,9 +442,8 @@ public static partial class FerruleJson
             dynamic,
             required,
             alternatives,
-            element.TryGetProperty("alternative_mode", out var mode) &&
-            mode.ValueKind == JsonValueKind.String &&
-            string.Equals(mode.GetString(), "inclusive", StringComparison.Ordinal));
+            inclusiveAlternatives,
+            xmlTypeAlternatives);
     }
 
     private static string[] ReadJsonFormats(
@@ -1823,7 +1841,7 @@ public static partial class FerruleJson
             return;
         }
 
-        var matches = schema.Alternatives.Count(alternative =>
+        var matches = schema.Alternatives.Where(alternative =>
             alternative.Required.All(required =>
             {
                 var property = properties.FirstOrDefault(candidate =>
@@ -1840,13 +1858,14 @@ public static partial class FerruleJson
                 var property = properties.FirstOrDefault(candidate =>
                     string.Equals(candidate.Name, constraint.Member, StringComparison.Ordinal));
                 return property is null || ConstraintMatches(constraint, property.Value);
-            }));
-        if (matches == 0)
+            })).ToArray();
+        if (matches.Length == 0)
         {
             throw Boundary($"JSON object '{schema.Name}' matches no declared schema alternative.");
         }
 
-        if (matches > 1 && !schema.InclusiveAlternatives)
+        if (matches.Length > 1 && !schema.InclusiveAlternatives &&
+            (!schema.XmlTypeAlternatives || !HasUniqueNarrowestXmlType(matches)))
         {
             throw Boundary(
                 $"JSON object '{schema.Name}' matches more than one declared schema alternative.");
@@ -1872,7 +1891,7 @@ public static partial class FerruleJson
             }
         }
 
-        var matches = schema.Alternatives.Count(alternative =>
+        var matches = schema.Alternatives.Where(alternative =>
             alternative.Required.All(required =>
                 fields.Any(field =>
                     string.Equals(field.Schema.Name, required, StringComparison.Ordinal) &&
@@ -1889,17 +1908,46 @@ public static partial class FerruleJson
                         StringComparison.Ordinal));
                 return field is null ||
                        OutputConstraintMatches(constraint, field.Schema, field.Value);
-            }));
-        if (matches == 0)
+            })).ToArray();
+        if (matches.Length == 0)
         {
             throw Boundary($"JSON object '{schema.Name}' matches no declared schema alternative.");
         }
 
-        if (matches > 1 && !schema.InclusiveAlternatives)
+        if (matches.Length > 1 && !schema.InclusiveAlternatives &&
+            (!schema.XmlTypeAlternatives || !HasUniqueNarrowestXmlType(matches)))
         {
             throw Boundary(
                 $"JSON object '{schema.Name}' matches more than one declared schema alternative.");
         }
+    }
+
+    private static bool HasUniqueNarrowestXmlType(IReadOnlyList<JsonAlternative> matches)
+    {
+        for (var candidateIndex = 0; candidateIndex < matches.Count; candidateIndex++)
+        {
+            var members = matches[candidateIndex].Members;
+            var narrowest = true;
+            for (var otherIndex = 0; otherIndex < matches.Count; otherIndex++)
+            {
+                if (candidateIndex == otherIndex)
+                {
+                    continue;
+                }
+                var otherMembers = matches[otherIndex].Members;
+                if (members.Count >= otherMembers.Count ||
+                    members.Any(member => !otherMembers.Contains(member, StringComparer.Ordinal)))
+                {
+                    narrowest = false;
+                    break;
+                }
+            }
+            if (narrowest)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool OutputConstraintMatches(
@@ -2516,7 +2564,8 @@ public static partial class FerruleJson
             JsonSchemaNode? dynamic,
             IReadOnlyList<string> required,
             IReadOnlyList<JsonAlternative> alternatives,
-            bool inclusiveAlternatives)
+            bool inclusiveAlternatives,
+            bool xmlTypeAlternatives)
         {
             Name = name;
             Repeating = repeating;
@@ -2545,6 +2594,7 @@ public static partial class FerruleJson
             Required = required;
             Alternatives = alternatives;
             InclusiveAlternatives = inclusiveAlternatives;
+            XmlTypeAlternatives = xmlTypeAlternatives;
         }
 
         public string Name { get; }
@@ -2604,6 +2654,8 @@ public static partial class FerruleJson
         public IReadOnlyList<JsonAlternative> Alternatives { get; }
 
         public bool InclusiveAlternatives { get; }
+
+        public bool XmlTypeAlternatives { get; }
 
         public JsonSchemaNode? Child(string name) =>
             Children.FirstOrDefault(child =>

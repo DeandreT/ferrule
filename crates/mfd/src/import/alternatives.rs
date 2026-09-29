@@ -519,9 +519,11 @@ fn merge_alternatives_at(
             }
         }
     }
-    node.set_alternatives(metadata)
-        .then_some(())
-        .ok_or_else(|| "the derived type alternatives have inconsistent metadata".to_string())
+    if !node.set_alternatives(metadata) {
+        return Err("the derived type alternatives have inconsistent metadata".to_string());
+    }
+    node.xml_type_alternatives = true;
+    Ok(())
 }
 
 fn conditioned_type_name(entry: &roxmltree::Node) -> Option<String> {

@@ -653,6 +653,7 @@ fn imported_derived_types_select_xsi_type_across_an_include() {
 
     let schema = import_root(&root, Some("{urn:ferrule:orders}Order")).unwrap();
     let ship_to = schema.child("shipTo").unwrap();
+    assert!(ship_to.xml_type_alternatives);
     assert_eq!(
         ship_to
             .alternatives()
