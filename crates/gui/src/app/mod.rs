@@ -398,6 +398,7 @@ pub struct FerruleApp {
     last_layout_class: Option<LayoutClass>,
     show_run_setup: bool,
     preview_draft: Option<crate::preview::PreviewDraft>,
+    pending_preview: Option<preview_ui::PendingPreview>,
     pipeline_run_draft: Option<crate::pipeline_run::PipelineRunDraft>,
     pending_pipeline_run: Option<pipeline_ui::PendingPipelineRun>,
     pipeline_editor: Option<pipeline_editor_ui::PipelineEditorUi>,
@@ -511,6 +512,7 @@ impl Default for FerruleApp {
             last_layout_class: None,
             show_run_setup: false,
             preview_draft: None,
+            pending_preview: None,
             pipeline_run_draft: None,
             pending_pipeline_run: None,
             pipeline_editor: None,
@@ -1288,6 +1290,7 @@ impl eframe::App for FerruleApp {
         }
         self.poll_dialog(ui.ctx());
         self.poll_pipeline_run(ui.ctx());
+        self.poll_preview(ui.ctx());
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
         self.guard_app_close_requested(ui.ctx(), close_requested);
         let project_editing_enabled = self.pending_dialog.is_none()
@@ -1298,7 +1301,8 @@ impl eframe::App for FerruleApp {
             && self.extra_target_draft.is_none()
             && self.pending_extra_target_removal.is_none()
             && self.pending_auto_connect.is_none()
-            && self.preview_draft.is_none();
+            && self.preview_draft.is_none()
+            && self.pending_preview.is_none();
         let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
