@@ -1,5 +1,5 @@
 //! Canonical export for a bounded serial chain of XML mapping stages with
-//! optional independent final XML targets.
+//! an XML or CSV final primary target and optional independent final XML targets.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -16,7 +16,7 @@ use crate::MfdError;
 
 const MAX_STAGES: usize = 65;
 
-/// Inspect the supported XML pipeline export without writing artifacts.
+/// Inspect the supported serial pipeline export without writing artifacts.
 pub fn preflight_pipeline_export(
     pipeline: &Pipeline,
     path: &Path,
@@ -24,15 +24,16 @@ pub fn preflight_pipeline_export(
     prepare_pipeline_export(pipeline, path).map(|prepared| prepared.report)
 }
 
-/// Write a bounded XML pipeline as one connected `.mfd` design.
+/// Write a bounded serial pipeline as one connected `.mfd` design.
 ///
 /// Unsupported stage graphs reject before any design or schema sibling is
 /// published. The supported shape has one host primary source, then each
 /// stage reads the preceding stage's primary XML target. Later stages may
 /// also connect original static XML host sources, including an output port
 /// already used by another stage. Other connected later named inputs,
-/// independent intermediate targets, and non-XML boundaries reject
-/// explicitly. The final stage may write connected independent XML targets.
+/// independent intermediate targets, and non-XML intermediate boundaries
+/// reject explicitly. The final primary target may be CSV; independent final
+/// targets remain XML.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
         .map(|report| report.warnings)
@@ -92,11 +93,11 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
         });
     }
     let xml = combined.expect("validated pipeline has at least two stages");
-    if pipeline
-        .stages
-        .last()
-        .is_some_and(|stage| !stage.project.extra_targets.is_empty())
-    {
+    if pipeline.stages.last().is_some_and(|stage| {
+        !stage.project.extra_targets.is_empty()
+            || side_format(&stage.project.target_path, &stage.project.target_options)
+                == SideFormat::Csv
+    }) {
         crate::import::validate_pipeline_export_graph(&xml)?;
     }
     let report = compatibility::profile(&xml, warnings)?;
@@ -185,9 +186,10 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
                 stage.id
             )));
         }
+        let target_format = side_format(&stage.project.target_path, &stage.project.target_options);
         if side_format(&stage.project.source_path, &stage.project.source_options) != SideFormat::Xml
-            || side_format(&stage.project.target_path, &stage.project.target_options)
-                != SideFormat::Xml
+            || !matches!(target_format, SideFormat::Xml)
+                && !(index + 1 == pipeline.stages.len() && target_format == SideFormat::Csv)
             || stage.project.source_options.external_source.is_some()
             || stage.project.source_options.http_get.is_some()
             || stage.project.source_options.local_xml_file_set
@@ -195,7 +197,7 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
             || stage.project.target_options.wsdl.is_some()
         {
             return Err(MfdError::Unsupported(format!(
-                "pipeline stage `{}` has a non-file-XML boundary",
+                "pipeline stage `{}` has an unsupported file boundary",
                 stage.id
             )));
         }

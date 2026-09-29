@@ -54,6 +54,57 @@ fn make_chain(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_csv_final_chain(directory: &Path) -> PathBuf {
+    let path = make_chain(directory);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let xml_target = r#"<component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="Result" inpkey="40"/></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>"#;
+    let csv_target = r#"<component name="target" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Rows"><entry name="Result" inpkey="40"/></entry></entry></entry></root><text type="csv" outputinstance="target.csv"><settings separator=";" quote="&quot;" firstrownames="false"><names root="Target" block="Rows"><field0 name="Result" type="string"/></names></settings></text></data></component>"#;
+    let csv_chain = original.replace(xml_target, csv_target);
+    assert_ne!(csv_chain, original);
+    std::fs::write(&path, csv_chain).unwrap();
+    path
+}
+
+fn make_repeated_csv_final_chain(directory: &Path) -> PathBuf {
+    for (file, root) in [("source.xsd", "Source"), ("buffer.xsd", "Buffer")] {
+        std::fs::write(
+            directory.join(file),
+            format!(
+                "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"Row\" maxOccurs=\"unbounded\"><xs:complexType><xs:sequence><xs:element name=\"Value\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"
+            ),
+        )
+        .unwrap();
+    }
+    let path = directory.join("source-repeated-csv-chain.mfd");
+    std::fs::write(
+        &path,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Row" outkey="10"><entry name="Value" outkey="11"/></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+          <component name="buffer" library="xml" kind="14"><properties PassThrough="1"/><data><root><entry name="Buffer"><entry name="Row" inpkey="20" outkey="30"><entry name="Value" inpkey="21" outkey="31"/></entry></entry></root><document schema="buffer.xsd" instanceroot="{}Buffer"/></data></component>
+          <component name="target" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="40"><entry name="Result" inpkey="41"/></entry></entry></entry></root><text type="csv" outputinstance="target.csv"><settings separator=";" quote="&quot;" firstrownames="true"><names root="Target" block="Rows"><field0 name="Result" type="string"/></names></settings></text></data></component>
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex><vertex vertexkey="31"><edges><edge vertexkey="41"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+    path
+}
+
+fn make_csv_final_with_xml_named_target(directory: &Path) -> PathBuf {
+    let path = make_csv_final_chain(directory);
+    write_schema(&directory.join("secondary.xsd"), "Secondary", "Copy");
+    let original = std::fs::read_to_string(&path).unwrap();
+    let with_target = original.replace(
+        "</children><graph>",
+        r#"<component name="secondary" library="xml" kind="14"><data><root><entry name="Secondary"><entry name="Copy" inpkey="50"/></entry></root><document schema="secondary.xsd" outputinstance="secondary.xml" instanceroot="{}Secondary"/></data></component></children><graph>"#,
+    );
+    let with_fanout = with_target.replace(
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"50\"/></edges></vertex>",
+    );
+    assert_ne!(with_fanout, original);
+    std::fs::write(&path, with_fanout).unwrap();
+    path
+}
+
 fn make_terminal_fanout(directory: &Path) -> PathBuf {
     let path = make_chain(directory);
     write_schema(&directory.join("secondary.xsd"), "Secondary", "Copy");
@@ -372,6 +423,304 @@ fn serial_xml_pipeline_exports_one_design_and_preserves_execution() {
                 .primary
         );
     }
+}
+
+#[test]
+fn synthetic_xml_chain_with_csv_final_target_imports_executes_and_roundtrips() {
+    let directory = TempDir::new();
+    let imported = mfd::import_pipeline(&make_csv_final_chain(&directory.0)).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.pipeline.stages.len(), 2);
+    assert!(engine::validate_pipeline(&imported.pipeline).is_empty());
+    let final_stage = &imported.pipeline.stages[1];
+    assert_eq!(
+        final_stage.project.target_path.as_deref(),
+        Some("target.csv")
+    );
+    assert_eq!(final_stage.project.target_options.delimiter, Some(';'));
+    assert_eq!(
+        final_stage.project.target_options.has_header_row,
+        Some(false)
+    );
+    let original_outputs = execute(&imported.pipeline);
+    let final_instance = &original_outputs.stage(&final_stage.id).unwrap().primary;
+    let rows = final_instance.as_repeated().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].field("Result").and_then(Instance::as_scalar),
+        Some(&Value::String("serial value".into())),
+        "{final_instance:?}"
+    );
+    let csv_path = directory.0.join("result.csv");
+    let options = &final_stage.project.target_options;
+    format_csv::write_with_dialect(
+        &csv_path,
+        &final_stage.project.target,
+        rows,
+        options.delimiter,
+        options.csv_quote,
+        options.csv_quote_disabled,
+        options.has_header_row.unwrap_or(true),
+    )
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&csv_path).unwrap(),
+        "serial value\n"
+    );
+    let read_back = format_csv::read_with_dialect(
+        &csv_path,
+        &final_stage.project.target,
+        options.delimiter,
+        options.csv_quote,
+        options.csv_quote_disabled,
+        options.has_header_row.unwrap_or(true),
+    )
+    .unwrap();
+    assert_eq!(read_back, rows);
+
+    let exported_path = directory.0.join("csv-final-export.mfd");
+    let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    assert!(!exported_path.exists());
+    let published = mfd::export_pipeline_with_profile(
+        &imported.pipeline,
+        &exported_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    assert!(published.is_native_compatible(), "{published:?}");
+    let exported = std::fs::read_to_string(&exported_path).unwrap();
+    assert_eq!(exported.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(exported.matches("library=\"text\"").count(), 1);
+    assert!(exported.contains("<text type=\"csv\""));
+    let reimported = mfd::import_pipeline(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate_pipeline(&reimported.pipeline).is_empty());
+    let reimported_outputs = execute(&reimported.pipeline);
+    for index in 0..2 {
+        let original_stage = &imported.pipeline.stages[index];
+        let reimported_stage = &reimported.pipeline.stages[index];
+        assert_eq!(
+            original_outputs.stage(&original_stage.id).unwrap().primary,
+            reimported_outputs
+                .stage(&reimported_stage.id)
+                .unwrap()
+                .primary,
+        );
+    }
+}
+
+#[test]
+fn repeated_xml_rows_write_header_and_quoted_csv_after_pipeline_roundtrip() {
+    let directory = TempDir::new();
+    let imported = mfd::import_pipeline(&make_repeated_csv_final_chain(&directory.0)).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate_pipeline(&imported.pipeline).is_empty());
+    let PipelineInput::Host { name } = &imported.pipeline.stages[0].source else {
+        panic!("first stage must read a host source");
+    };
+    let source = Instance::Group(vec![(
+        "Row".into(),
+        Instance::Repeated(
+            ["alpha;beta", "say \"hi\""]
+                .into_iter()
+                .map(|value| {
+                    Instance::Group(vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String(value.into())),
+                    )])
+                })
+                .collect(),
+        ),
+    )]);
+    let input = BTreeMap::from([(name.clone(), source.clone())]);
+    let original_outputs = engine::run_pipeline(&imported.pipeline, &input).unwrap();
+    let final_stage = &imported.pipeline.stages[1];
+    assert_eq!(final_stage.project.target_options.delimiter, Some(';'));
+    assert_eq!(final_stage.project.target_options.csv_quote, None);
+    assert_eq!(
+        final_stage.project.target_options.has_header_row,
+        Some(true)
+    );
+    let original_rows = original_outputs
+        .stage(&final_stage.id)
+        .unwrap()
+        .primary
+        .as_repeated()
+        .unwrap();
+    assert_eq!(original_rows.len(), 2);
+    for (row, expected) in original_rows.iter().zip(["alpha;beta", "say \"hi\""]) {
+        assert_eq!(
+            row.field("Result").and_then(Instance::as_scalar),
+            Some(&Value::String(expected.into())),
+        );
+    }
+    let csv_path = directory.0.join("rows.csv");
+    let options = &final_stage.project.target_options;
+    format_csv::write_with_dialect(
+        &csv_path,
+        &final_stage.project.target,
+        original_rows,
+        options.delimiter,
+        options.csv_quote,
+        options.csv_quote_disabled,
+        options.has_header_row.unwrap_or(true),
+    )
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&csv_path).unwrap(),
+        "Result\n\"alpha;beta\"\n\"say \"\"hi\"\"\"\n"
+    );
+    let read_back = format_csv::read_with_dialect(
+        &csv_path,
+        &final_stage.project.target,
+        options.delimiter,
+        options.csv_quote,
+        options.csv_quote_disabled,
+        options.has_header_row.unwrap_or(true),
+    )
+    .unwrap();
+    assert_eq!(read_back, original_rows);
+
+    let exported_path = directory.0.join("repeated-csv-export.mfd");
+    let preflight = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported_path.exists());
+    let published = mfd::export_pipeline_with_profile(
+        &imported.pipeline,
+        &exported_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    assert!(published.is_native_compatible(), "{published:?}");
+    let reimported = mfd::import_pipeline(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate_pipeline(&reimported.pipeline).is_empty());
+    let PipelineInput::Host { name } = &reimported.pipeline.stages[0].source else {
+        panic!("reimported first stage must read a host source");
+    };
+    let reimported_input = BTreeMap::from([(name.clone(), source)]);
+    let reimported_outputs = engine::run_pipeline(&reimported.pipeline, &reimported_input).unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            original_outputs
+                .stage(&imported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            reimported_outputs
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+        );
+    }
+    let reimported_stage = &reimported.pipeline.stages[1];
+    let reimported_rows = reimported_outputs
+        .stage(&reimported_stage.id)
+        .unwrap()
+        .primary
+        .as_repeated()
+        .unwrap();
+    let reimported_csv_path = directory.0.join("reimported-rows.csv");
+    let options = &reimported_stage.project.target_options;
+    format_csv::write_with_dialect(
+        &reimported_csv_path,
+        &reimported_stage.project.target,
+        reimported_rows,
+        options.delimiter,
+        options.csv_quote,
+        options.csv_quote_disabled,
+        options.has_header_row.unwrap_or(true),
+    )
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(reimported_csv_path).unwrap(),
+        std::fs::read_to_string(csv_path).unwrap(),
+    );
+}
+
+#[test]
+fn csv_primary_may_keep_a_connected_xml_named_target() {
+    let directory = TempDir::new();
+    let imported =
+        mfd::import_pipeline(&make_csv_final_with_xml_named_target(&directory.0)).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.pipeline.stages[1].project.extra_targets.len(), 1);
+    let original_outputs = execute(&imported.pipeline);
+    let exported_path = directory.0.join("csv-and-xml-export.mfd");
+    let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    mfd::export_pipeline_with_profile(
+        &imported.pipeline,
+        &exported_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    let reimported = mfd::import_pipeline(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let reimported_outputs = execute(&reimported.pipeline);
+    let original_final = original_outputs.stage("mfd-stage-2").unwrap();
+    let reimported_final = reimported_outputs.stage("mfd-stage-2").unwrap();
+    assert_eq!(original_final.primary, reimported_final.primary);
+    assert_eq!(original_final.extras, reimported_final.extras);
+}
+
+#[test]
+fn csv_pipeline_rejects_non_xml_intermediate_and_non_csv_final_without_artifacts() {
+    let directory = TempDir::new();
+    let imported = mfd::import_pipeline(&make_csv_final_chain(&directory.0)).unwrap();
+
+    let mut intermediate_csv = imported.pipeline.clone();
+    intermediate_csv.stages[0].project.target_path = Some("buffer.csv".into());
+    let destination = directory.0.join("not-created/intermediate.mfd");
+    let error = mfd::export_pipeline(&intermediate_csv, &destination)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("unsupported file boundary"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut final_xlsx = imported.pipeline;
+    final_xlsx.stages[1].project.target_path = Some("target.xlsx".into());
+    let destination = directory.0.join("not-created/final.mfd");
+    let error = mfd::export_pipeline(&final_xlsx, &destination)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("unsupported file boundary"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut named_csv = mfd::import_pipeline(&make_csv_final_chain(&directory.0))
+        .unwrap()
+        .pipeline;
+    let final_project = &mut named_csv.stages[1].project;
+    final_project.extra_targets.push(mapping::NamedTarget {
+        name: "secondary".into(),
+        path: Some("secondary.csv".into()),
+        schema: final_project.target.clone(),
+        options: final_project.target_options.clone(),
+        root: final_project.root.clone(),
+    });
+    let destination = directory.0.join("not-created/named.mfd");
+    let error = mfd::export_pipeline(&named_csv, &destination)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("non-file-XML named target"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+}
+
+#[test]
+fn csv_pipeline_import_rejects_non_csv_text_terminal() {
+    let directory = TempDir::new();
+    let path = make_csv_final_chain(&directory.0);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let unsupported = original.replace("<text type=\"csv\"", "<text type=\"fixed-length\"");
+    assert_ne!(unsupported, original);
+    std::fs::write(&path, unsupported).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("non-CSV text terminal must reject")
+        .to_string();
+    assert!(error.contains("XML or CSV final target"), "{error}");
+    assert!(!directory.0.join("not-created").exists());
 }
 
 #[test]

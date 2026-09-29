@@ -2,8 +2,9 @@
 
 ## Importing a connected `.mfd` design
 
-The CLI can import a connected XML design with up to 64 serial pass-through
-targets as a runnable pipeline:
+The CLI can import a connected design with up to 64 serial XML pass-through
+targets as a runnable pipeline. Its final primary target may be XML or
+delimited CSV:
 
 ```sh
 cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
@@ -18,6 +19,9 @@ final stage ID is `mfd-stage-4`.
 The last pass-through target may also feed connected named XML targets in that
 final stage. Use `--named-output STAGE TARGET PATH` to publish one. Intermediate
 fan-out and targets that bypass the last pass-through stage reject during import.
+CSV is supported only as the final primary target; intermediate and named
+targets in this native-design profile remain XML. The exact XML-chain-to-CSV
+shape is covered by synthetic local round trips, not native-app acceptance.
 A serial chain can also connect an original static XML host source to named
 inputs in later stages, including intermediate stages and repeated use of the
 same source. Export reuses that original component when its name, schema, path,
