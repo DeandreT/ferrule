@@ -13,6 +13,7 @@ use thiserror::Error;
 mod adjacency_tree;
 mod aggregate;
 mod context;
+mod debug;
 mod dynamic_target;
 mod eval_expr;
 mod eval_scope;
@@ -36,6 +37,10 @@ use aggregate::aggregate;
 use context::{runtime_field, runtime_parameter_field};
 use eval_scope::eval_scope;
 
+pub use debug::{
+    DebugDecision, DebugDraftField, DebugHook, DebugInstancePreview, DebugScopeDraft,
+    PendingTargetWrite,
+};
 pub use pipeline::{
     PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue, run_pipeline,
     run_pipeline_with_context, run_pipeline_with_stage_contexts, validate_pipeline,
@@ -303,6 +308,8 @@ pub enum EngineError {
     DynamicPropertyName { node: NodeId, found: &'static str },
     #[error("dynamic target object contains duplicate or fixed-colliding property `{0}`")]
     DuplicateDynamicProperty(String),
+    #[error("debug run cancelled before target field insertion")]
+    DebugCancelled,
     #[error("a dynamic object merge can contain only object property fragments")]
     InvalidDynamicPropertyFragment,
     #[error("first-item output requires an iterating scope")]
@@ -416,6 +423,7 @@ pub struct ExecutionContext<'a> {
     parameters: Option<&'a RuntimeParameters>,
     dynamic_source_loader: Option<&'a dyn DynamicSourceLoader>,
     trace_sink: Option<&'a dyn TraceSink>,
+    debug_hook: Option<&'a dyn DebugHook>,
 }
 
 /// Host boundary for typed secondary sources whose path is computed during
@@ -433,6 +441,7 @@ impl<'a> ExecutionContext<'a> {
             parameters: None,
             dynamic_source_loader: None,
             trace_sink: None,
+            debug_hook: None,
         }
     }
 
@@ -448,6 +457,7 @@ impl<'a> ExecutionContext<'a> {
             parameters: None,
             dynamic_source_loader: None,
             trace_sink: None,
+            debug_hook: None,
         }
     }
 
@@ -472,6 +482,13 @@ impl<'a> ExecutionContext<'a> {
     /// Supplies an optional synchronous observer for successful graph values.
     pub fn with_trace_sink(mut self, sink: &'a dyn TraceSink) -> Self {
         self.trace_sink = Some(sink);
+        self
+    }
+
+    /// Supplies an optional synchronous hook before ordinary target-field
+    /// insertions. A host may pause in the callback and cancel the run.
+    pub fn with_debug_hook(mut self, hook: &'a dyn DebugHook) -> Self {
+        self.debug_hook = Some(hook);
         self
     }
 
@@ -670,7 +687,8 @@ fn evaluate_run<R>(
         &project.graph,
         &project.user_functions,
         execution.and_then(|execution| execution.trace_sink),
-    );
+    )
+    .with_debug_hook(execution.and_then(|execution| execution.debug_hook));
     failure::evaluate(program, &project.failure_rules, &context)?;
     evaluate(program, &context)
 }
@@ -687,6 +705,9 @@ mod collection_tests;
 #[cfg(test)]
 #[path = "tests/core.rs"]
 mod core_tests;
+#[cfg(test)]
+#[path = "tests/debug.rs"]
+mod debug_tests;
 #[cfg(test)]
 #[path = "tests/dynamic_document_output.rs"]
 mod dynamic_document_output_tests;

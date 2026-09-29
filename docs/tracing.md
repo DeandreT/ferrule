@@ -147,3 +147,13 @@ This is navigation of recorded history, not a live pause or re-execution. The
 GUI retains at most 50,000 trace events and reports when later events were
 omitted; replay ends at the retained prefix. Run and Preview currently show
 this trace only after successful completion.
+
+Library hosts can opt into a synchronous pre-insertion control point with
+`ExecutionContext::with_debug_hook`. For ordinary static and dynamic target
+bindings and child fields, the hook receives the pending field's bounded value
+preview, source positions, and at most eight already inserted fields from the
+current scope draft. It can wait for a host decision and resume, or cancel with
+the typed `EngineError::DebugCancelled` before that field is inserted. Existing
+post-insertion trace events are unchanged. Scalar, copy, recursive, and other
+special constructors do not use this ordinary-field hook. The CLI and GUI do
+not yet provide a live stepping host for it.
