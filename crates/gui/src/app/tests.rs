@@ -1197,6 +1197,7 @@ fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> a
     };
 
     app.execute_preview();
+    wait_for_preview_completion(&mut app);
 
     assert!(
         app.preview_draft.is_none(),
@@ -1221,6 +1222,154 @@ fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> a
     ));
     std::fs::remove_dir_all(directory)?;
     Ok(())
+}
+
+fn wait_for_preview_completion(app: &mut FerruleApp) {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while app.pending_preview.is_some() && std::time::Instant::now() < deadline {
+        app.poll_preview(&context);
+        if app.pending_preview.is_some() {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+    assert!(app.pending_preview.is_none(), "preview worker completes");
+}
+
+fn wait_for_debug_pause(app: &mut FerruleApp) -> engine::PendingTargetWrite {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_preview(&context);
+        match app.pending_preview.as_ref().map(|pending| &pending.phase) {
+            Some(preview_ui::PreviewPhase::Paused(write)) => return (**write).clone(),
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug preview did not pause before deadline: {other:?}"),
+        }
+    }
+}
+
+fn two_field_debug_preview_app() -> FerruleApp {
+    let mut app = FerruleApp::default();
+    app.project.target = SchemaNode::group(
+        "root",
+        vec![
+            SchemaNode::scalar("first", ScalarType::String),
+            SchemaNode::scalar("second", ScalarType::String),
+        ],
+    );
+    app.project.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::String("A".into()),
+        },
+    );
+    app.project.graph.nodes.insert(
+        1,
+        Node::Const {
+            value: ir::Value::String("B".into()),
+        },
+    );
+    app.project.root.bindings = vec![
+        Binding {
+            target_field: "first".into(),
+            node: 0,
+        },
+        Binding {
+            target_field: "second".into(),
+            node: 1,
+        },
+    ];
+    app.preview_draft = Some(crate::preview::PreviewDraft {
+        target: crate::preview::PreviewTarget::Primary,
+        input_identity: "input.xml".into(),
+        output_identity: "output.xml".into(),
+        input_text: "<root/>".into(),
+    });
+    app
+}
+
+#[test]
+fn debug_preview_steps_before_target_writes_and_continues() {
+    let mut app = two_field_debug_preview_app();
+    app.execute_debug_preview();
+    assert!(app.pending_preview.is_some());
+
+    let first = wait_for_debug_pause(&mut app);
+    assert_eq!(first.field, "first");
+    assert!(first.draft.fields.is_empty());
+    assert_eq!(first.pending.value.as_ref().unwrap().preview, "A");
+    assert!(app.run_report.is_none());
+
+    let context = egui::Context::default();
+    let _ = context.run_ui(Default::default(), |ui| app.show_preview_setup(ui.ctx()));
+    assert!(
+        app.pending_preview.is_some(),
+        "showing paused UI is nonblocking"
+    );
+
+    app.preview_command(preview_ui::PreviewCommand::Step);
+    let second = wait_for_debug_pause(&mut app);
+    assert_eq!(second.field, "second");
+    assert_eq!(second.draft.fields[0].name, "first");
+    assert_eq!(
+        second.draft.fields[0]
+            .preview
+            .value
+            .as_ref()
+            .unwrap()
+            .preview,
+        "A"
+    );
+
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.show_run_report);
+    assert_eq!(app.status, "previewed 1 record(s) for Primary");
+    let report = app.run_report.as_mut().expect("completed preview report");
+    assert!(matches!(
+        report.report.outputs[0].preview(),
+        crate::run_report::OutputPreview::Text { content, .. }
+            if content.contains("<first>A</first>") && content.contains("<second>B</second>")
+    ));
+    assert_eq!(
+        report
+            .report
+            .trace
+            .events
+            .iter()
+            .filter(|event| matches!(event, cli::TraceEvent::TargetFieldWritten { .. }))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn cancelling_paused_debug_preview_produces_no_report() {
+    let mut app = two_field_debug_preview_app();
+    app.execute_debug_preview();
+    let first = wait_for_debug_pause(&mut app);
+    assert_eq!(first.field, "first");
+    app.preview_command(preview_ui::PreviewCommand::Cancel);
+    wait_for_preview_completion(&mut app);
+    assert_eq!(app.status, "preview cancelled");
+    assert!(app.run_report.is_none());
+    assert!(app.preview_draft.is_none());
+    assert!(app.diagnostics.is_empty());
+}
+
+#[test]
+fn cancelling_ordinary_preview_discards_even_a_completed_worker_result() {
+    let mut app = two_field_debug_preview_app();
+    app.execute_preview();
+    assert!(app.pending_preview.is_some());
+    app.preview_command(preview_ui::PreviewCommand::Cancel);
+    wait_for_preview_completion(&mut app);
+    assert_eq!(app.status, "preview cancelled");
+    assert!(app.run_report.is_none());
+    assert!(app.preview_draft.is_none());
 }
 
 #[test]
@@ -1647,6 +1796,7 @@ fn preview_uses_the_active_named_target_only() -> anyhow::Result<()> {
     draft.input_text = "<root/>".into();
 
     app.execute_preview();
+    wait_for_preview_completion(&mut app);
 
     let Some(report) = app.run_report.as_ref() else {
         anyhow::bail!("successful preview has no report");
