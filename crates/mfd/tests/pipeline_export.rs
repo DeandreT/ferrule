@@ -1578,7 +1578,7 @@ fn fixed_width_final_chain_import_rejects_malformed_ambiguous_and_disconnected()
         .expect("ambiguous fixed-width final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, JSON, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
         "{error}"
     );
 
@@ -1589,7 +1589,9 @@ fn fixed_width_final_chain_import_rejects_malformed_ambiguous_and_disconnected()
         .expect("named fixed-width terminal must reject")
         .to_string();
     assert!(
-        error.contains("CSV and fixed-width text components only as the final primary target"),
+        error.contains(
+            "CSV, fixed-width text, and FlexText components only as the final primary target"
+        ),
         "{error}"
     );
 
@@ -1784,7 +1786,7 @@ fn xlsx_final_chain_import_rejects_ambiguous_disconnected_and_update_existing() 
         .expect("ambiguous XLSX final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, JSON, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
         "{error}"
     );
 
@@ -2033,7 +2035,7 @@ fn ambiguous_or_disconnected_json_final_import_rejects() {
         .expect("ambiguous JSON final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, JSON, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
         "{error}"
     );
     assert!(!directory.0.join("not-created").exists());
@@ -2094,9 +2096,385 @@ fn csv_pipeline_import_rejects_non_csv_text_terminal() {
         .expect("non-CSV text terminal must reject")
         .to_string();
     assert!(
-        error.contains("XML, CSV, fixed-width, JSON, or XLSX final target"),
+        error.contains("XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
         "{error}"
     );
+    assert!(!directory.0.join("not-created").exists());
+}
+
+fn identity_xml_to_flextext_pipeline(
+    mut final_project: mapping::Project,
+    input: &Path,
+) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
+    assert!(final_project.target_options.flextext.is_some());
+    let source = format_xml::read(input, &final_project.source).unwrap();
+    let source_schema = final_project.source.clone();
+    let source_options = final_project.source_options.clone();
+    final_project.source_path = None;
+    final_project.target_path = Some("converted.txt".into());
+    let copy_project = mapping::Project {
+        source: source_schema.clone(),
+        target: source_schema,
+        source_path: Some(input.file_name().unwrap().to_str().unwrap().into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: source_options.clone(),
+        target_options: source_options,
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: BTreeMap::new(),
+        graph: mapping::Graph::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..mapping::Scope::default()
+        },
+    };
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "flextext".into(),
+                mapping_path: None,
+                project: final_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+    (pipeline, BTreeMap::from([("input".into(), source)]))
+}
+
+fn assert_identity_xml_to_flextext_roundtrip(design: &Path, input: &Path, expected: Option<&Path>) {
+    let imported = mfd::import(design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let (pipeline, hosts) = identity_xml_to_flextext_pipeline(imported.project, input);
+    let before = engine::run_pipeline(&pipeline, &hosts).unwrap();
+    assert_eq!(before.stage("copy").unwrap().primary, hosts["input"]);
+    let final_project = &pipeline.stages[1].project;
+    let before_layout = final_project.target_options.flextext.as_ref().unwrap();
+    let before_text = format_flextext::to_string(
+        &final_project.target,
+        &before.stage("flextext").unwrap().primary,
+        before_layout,
+    )
+    .unwrap();
+    assert!(!before_text.is_empty());
+    if let Some(expected) = expected {
+        assert_eq!(before_text, std::fs::read_to_string(expected).unwrap());
+    }
+    let before_parsed =
+        format_flextext::from_str(&before_text, &final_project.target, before_layout).unwrap();
+
+    let directory = TempDir::new();
+    std::fs::copy(input, directory.0.join(input.file_name().unwrap())).unwrap();
+    let exported = directory.0.join("flextext-chain.mfd");
+    let sibling = directory.0.join("flextext-chain-stage-2-target.mft");
+    let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported.exists());
+    assert!(!sibling.exists());
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let xml = std::fs::read_to_string(&exported).unwrap();
+    assert_eq!(xml.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(xml.matches("<text type=\"txt\"").count(), 1);
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let config = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("type") == Some("txt"))
+        .and_then(|node| node.attribute("config"))
+        .unwrap();
+    assert_eq!(config, sibling.file_name().unwrap().to_str().unwrap());
+    assert!(sibling.is_file());
+
+    let reimported = mfd::import_pipeline(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let PipelineInput::Host { name } = &reimported.pipeline.stages[0].source else {
+        panic!("reimported first stage must read a host source");
+    };
+    let after = engine::run_pipeline(
+        &reimported.pipeline,
+        &BTreeMap::from([(name.clone(), hosts["input"].clone())]),
+    )
+    .unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            before.stage(&pipeline.stages[index].id).unwrap().primary,
+            after
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            "stage {}",
+            index + 1
+        );
+    }
+    let final_project = &reimported.pipeline.stages[1].project;
+    let after_layout = final_project.target_options.flextext.as_ref().unwrap();
+    let after_text = format_flextext::to_string(
+        &final_project.target,
+        &after
+            .stage(&reimported.pipeline.stages[1].id)
+            .unwrap()
+            .primary,
+        after_layout,
+    )
+    .unwrap();
+    assert_eq!(after_text, before_text);
+    let after_parsed =
+        format_flextext::from_str(&after_text, &final_project.target, after_layout).unwrap();
+    assert_eq!(after_parsed, before_parsed);
+}
+
+#[test]
+fn flextext_final_chain_roundtrips_exact_text_and_generated_config() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    assert_identity_xml_to_flextext_roundtrip(
+        &fixtures.join("flextext-target.mfd"),
+        &fixtures.join("flextext/target-source.xml"),
+        None,
+    );
+}
+
+#[test]
+fn local_xml_to_flextext_mapping_runs_after_an_identity_xml_stage() {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let design = samples.join("QuotationsDoc.mfd");
+    let input = samples.join("Quotations.xml");
+    let expected = samples.join("QuotationsDoc.txt");
+    if !design.is_file() || !input.is_file() || !expected.is_file() {
+        return;
+    }
+    assert_identity_xml_to_flextext_roundtrip(&design, &input, Some(&expected));
+}
+
+#[test]
+fn flextext_final_chain_rejects_unsupported_boundaries_before_artifacts() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("flextext-target.mfd")).unwrap();
+    let (pipeline, _) = identity_xml_to_flextext_pipeline(
+        imported.project,
+        &fixtures.join("flextext/target-source.xml"),
+    );
+    let directory = TempDir::new();
+
+    let mut intermediate = pipeline.clone();
+    intermediate.stages[0].project.target_path = Some("buffer.txt".into());
+    intermediate.stages[0].project.target_options =
+        pipeline.stages[1].project.target_options.clone();
+    let destination = directory.0.join("not-created/intermediate.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &intermediate,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("unsupported file boundary"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut named = pipeline.clone();
+    let final_project = &mut named.stages[1].project;
+    final_project.extra_targets.push(mapping::NamedTarget {
+        name: "secondary".into(),
+        path: Some("secondary.txt".into()),
+        schema: final_project.target.clone(),
+        options: final_project.target_options.clone(),
+        root: final_project.root.clone(),
+    });
+    let destination = directory.0.join("not-created/named.mfd");
+    let error =
+        mfd::export_pipeline_with_profile(&named, &destination, mfd::ExportProfile::NativeMfd)
+            .unwrap_err()
+            .to_string();
+    assert!(error.contains("non-file-XML named target"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut unsupported = pipeline;
+    let layout = unsupported.stages[1]
+        .project
+        .target_options
+        .flextext
+        .as_ref()
+        .unwrap()
+        .clone();
+    let mapping::FlexCommand::SplitOnce {
+        name,
+        first,
+        second,
+        ..
+    } = layout.command()
+    else {
+        panic!("fixture must have a single split");
+    };
+    unsupported.stages[1].project.target_options.flextext = Some(
+        mapping::FlexTextLayout::new(
+            layout.root_name(),
+            mapping::FlexCommand::SplitOnce {
+                name: name.clone(),
+                splitter: mapping::OnceSplitter::LineStartingWith("ITEM".into()),
+                first: first.clone(),
+                second: second.clone(),
+            },
+            layout.output_line_ending(),
+            layout.write_bom(),
+        )
+        .unwrap(),
+    );
+    let destination = directory.0.join("not-created/unsupported.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &unsupported,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("line-starting single split"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+}
+
+fn add_connected_flextext_target(xml: &str, config: &str, default_output: bool) -> String {
+    const EXTRA_KEY: &str = "4294967289";
+    let document = roxmltree::Document::parse(xml).unwrap();
+    let pass_through = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.children().any(|child| {
+                    child.has_tag_name("properties") && child.attribute("PassThrough") == Some("1")
+                })
+        })
+        .unwrap();
+    let vertex = document
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex"))
+        .find(|node| {
+            pass_through.descendants().any(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("outkey") == node.attribute("vertexkey")
+            })
+        })
+        .unwrap();
+    let edges = vertex
+        .children()
+        .find(|node| node.has_tag_name("edges"))
+        .unwrap();
+    let mut with_edge = xml.to_owned();
+    with_edge.insert_str(
+        edges.range().end - "</edges>".len(),
+        &format!("<edge vertexkey=\"{EXTRA_KEY}\"/>"),
+    );
+    let output_property = if default_output {
+        " XSLTDefaultOutput=\"1\""
+    } else {
+        ""
+    };
+    let component = format!(
+        "<component name=\"other\" library=\"text\" kind=\"16\"><properties{output_property}/><data><root><entry name=\"FileInstance\"><entry name=\"document\"><entry name=\"Sections\" inpkey=\"{EXTRA_KEY}\"/></entry></entry></root><text type=\"txt\" config=\"{config}\" outputinstance=\"other.txt\"/></data></component>"
+    );
+    let children_end = with_edge.rfind("</children>").unwrap();
+    with_edge.insert_str(children_end, &component);
+    with_edge
+}
+
+#[test]
+fn flextext_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("flextext-target.mfd")).unwrap();
+    let (pipeline, _) = identity_xml_to_flextext_pipeline(
+        imported.project,
+        &fixtures.join("flextext/target-source.xml"),
+    );
+    let directory = TempDir::new();
+    let design = directory.0.join("source-flextext-chain.mfd");
+    mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
+    let original = std::fs::read_to_string(&design).unwrap();
+    assert!(mfd::import_pipeline(&design).is_ok());
+    let config = "source-flextext-chain-stage-2-target.mft";
+
+    let ambiguous = add_connected_flextext_target(&original, config, true);
+    std::fs::write(&design, ambiguous).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("ambiguous FlexText final must reject")
+        .to_string();
+    assert!(
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
+        "{error}"
+    );
+
+    let named = add_connected_flextext_target(&original, config, false);
+    std::fs::write(&design, named).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("named FlexText terminal must reject")
+        .to_string();
+    assert!(
+        error.contains(
+            "CSV, fixed-width text, and FlexText components only as the final primary target"
+        ),
+        "{error}"
+    );
+
+    let document = roxmltree::Document::parse(&original).unwrap();
+    let flextext = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.attribute("library") == Some("text")
+                && node.descendants().any(|entry| {
+                    entry.has_tag_name("text") && entry.attribute("type") == Some("txt")
+                })
+        })
+        .unwrap();
+    let mut disconnected = original.clone();
+    for key in flextext
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|entry| entry.attribute("inpkey"))
+    {
+        disconnected = disconnected.replace(&format!("<edge vertexkey=\"{key}\"/>"), "");
+    }
+    assert_ne!(disconnected, original);
+    std::fs::write(&design, disconnected).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("disconnected FlexText final must reject")
+        .to_string();
+    assert!(error.contains("connected"), "{error}");
+
+    let no_config = original.replace(&format!("config=\"{config}\""), "config=\"\"");
+    assert_ne!(no_config, original);
+    std::fs::write(&design, no_config).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("empty FlexText configuration path must reject")
+        .to_string();
+    assert!(error.contains("final target"), "{error}");
+
+    let missing_config =
+        original.replace(&format!("config=\"{config}\""), "config=\"missing.mft\"");
+    assert_ne!(missing_config, original);
+    std::fs::write(&design, missing_config).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("missing FlexText configuration must reject")
+        .to_string();
+    assert!(error.contains("text/flextext"), "{error}");
     assert!(!directory.0.join("not-created").exists());
 }
 

@@ -243,10 +243,11 @@ siblings. Component kinds are selected from endpoint format metadata and paths.
 Pipeline export writes one connected design for a validated serial XML
 pass-through chain of 2–65 stages. Each intermediate primary target becomes
 the next stage's pass-through source. The final primary target may be XML,
-delimited CSV, fixed-width text, JSON, or a new XLSX workbook; connected named
-final targets remain XML. An original static XML host source may connect to
-named inputs in multiple stages, including the first and later intermediate
-stages, when its boundary and output ports still match. Connections from a
+delimited CSV, fixed-width text, configured FlexText, JSON, or a new XLSX
+workbook; connected named final targets remain XML. An original static XML
+host source may connect to named inputs in multiple stages, including the
+first and later intermediate stages, when its boundary and output ports still
+match. Connections from a
 reused output port share one vertex with multiple edges. Intermediate XML
 pass-through components retain their declared output instance and source
 preview instance, even when the two
@@ -260,17 +261,19 @@ later-stage named sources, and other non-XML intermediate boundaries reject
 explicitly. Non-XML targets remain final-primary only; updating an existing
 workbook is outside this profile.
 Synthetic two- and four-stage export/re-import runs preserve stage results;
-terminal fan-out, repeated named-host connections, and CSV, fixed-width, JSON,
-or XLSX final targets preserve their connected outputs. CSV and fixed-width
-results pass local write/read checks, fixed-width text and JSON retain exact
-serialized bytes after re-import, and XLSX retains decoded worksheet cells.
+terminal fan-out, repeated named-host connections, and CSV, fixed-width,
+FlexText, JSON, or XLSX final targets preserve their connected outputs. CSV and
+fixed-width results pass local write/read checks; fixed-width text, FlexText,
+and JSON retain exact serialized bytes after re-import, and XLSX retains decoded
+worksheet cells. FlexText export writes a new `.mft` beside the combined design
+and refers to that sibling by name; unsupported layouts reject before either
+artifact is published.
 XLSX stage-value checks match group fields by name while preserving worksheet
 and row order; workbook layout, rather than group field insertion order,
-determines cell coordinates. Local mappings to JSON, XLSX, and fixed-width
-text also run unchanged after an identity XML stage. A local chained-report
-sample and a synthetic distinct-path case preserve both
-intermediate instance
-identities across export/reimport.
+determines cell coordinates. Local mappings to JSON, XLSX, fixed-width text,
+and FlexText also run unchanged after an identity XML stage. A local
+chained-report sample and a synthetic distinct-path case preserve both
+intermediate instance identities across export/reimport.
 All four local chains reimport after strict native export. The date/time chain
 lowers uniquely bound direct XML dateTime conversions to the document's native
 `cast-in-subtree` mode and restores `xs:dateTime` on precisely those generated

@@ -4,7 +4,7 @@
 
 The CLI can import a connected design with up to 64 serial XML pass-through
 targets as a runnable pipeline. Its final primary target may be XML, delimited
-CSV, fixed-width text, JSON, or a new XLSX workbook:
+CSV, fixed-width text, configured FlexText, JSON, or a new XLSX workbook:
 
 ```sh
 cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
@@ -19,14 +19,15 @@ final stage ID is `mfd-stage-4`.
 The last pass-through target may also feed connected named XML targets in that
 final stage. Use `--named-output STAGE TARGET PATH` to publish one. Intermediate
 fan-out and targets that bypass the last pass-through stage reject during import.
-CSV, fixed-width text, JSON, and XLSX are supported only as the final primary
-target; intermediate and named targets in this native-design profile remain XML.
+CSV, fixed-width text, FlexText, JSON, and XLSX are supported only as the final
+primary target; intermediate and named targets in this native-design profile
+remain XML.
 XLSX targets that update an existing workbook are outside this profile.
-Synthetic local round trips cover CSV and JSON final targets. Local
-fixed-width and hierarchical XLSX mappings run after an identity XML stage.
-Fixed-width output retains exact serialized bytes and parsed rows; XLSX retains
-decoded worksheet cells through strict export and reimport. These checks do not
-establish reference-application acceptance.
+Synthetic local round trips cover CSV, FlexText, and JSON final targets. Local
+fixed-width, FlexText, and hierarchical XLSX mappings run after an identity XML
+stage. Fixed-width and FlexText output retain exact serialized bytes and parsed
+values; XLSX retains decoded worksheet cells through strict export and
+reimport. These checks do not establish reference-application acceptance.
 An intermediate XML pass-through component can retain its declared output
 instance and the next stage's source preview instance, even when those paths
 differ. Import and export preserve both paths on that one component; the local
@@ -169,8 +170,10 @@ edit. A loaded pipeline with missing static named-source bindings can add host
 bindings for them from the selected stage. The editor shows whole-pipeline
 validation issues and saves only a valid pipeline. It detects external file
 changes before an atomic save and asks before discarding unsaved pipeline edits.
-Input and publication file paths for a run remain choices in the separate
-**Run Pipeline** dialog.
+The **Run Pipeline** dialog prepopulates a host input path when stored paths
+from its bound stages resolve to one file through their mapping identities.
+Conflicting path hints leave that input blank. Output selection remains
+explicit in the dialog.
 
 The Run Pipeline dialog can run or debug a saved pipeline on a worker. Debug
 pauses before ordinary target-field writes, labels each pause with its stage
