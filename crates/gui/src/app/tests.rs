@@ -1520,6 +1520,32 @@ fn conditional_file_run_skips_nonmatching_write_and_can_cancel() {
     std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
 }
 
+#[test]
+fn source_field_condition_combines_with_target_write_in_file_run() {
+    let (mut app, project_path, output) = two_field_file_run_app("file-source-condition");
+    app.file_run_source_condition.enabled = true;
+    app.file_run_source_condition.field = "input".into();
+    app.file_run_source_condition.text = "source value".into();
+    app.file_run_value_condition.enabled = true;
+    app.file_run_value_condition.text = "B".into();
+    app.debug_run(&egui::Context::default());
+    let pending = wait_for_file_run_pause(&mut app);
+    assert_eq!(pending.field, "second");
+    assert_eq!(
+        pending
+            .source_field_probe
+            .as_ref()
+            .and_then(|probe| probe.preview.as_ref())
+            .and_then(|preview| preview.value.as_ref())
+            .map(|value| value.preview.as_str()),
+        Some("source value")
+    );
+    app.file_run_command(run_ui::FileRunCommand::Cancel);
+    wait_for_file_run_completion(&mut app);
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
+}
+
 fn three_field_debug_preview_app() -> FerruleApp {
     let mut app = two_field_debug_preview_app();
     app.project.target = SchemaNode::group(
@@ -1804,6 +1830,62 @@ fn position_breakpoint_combines_with_field_and_value_then_step_overrides_it() {
 }
 
 #[test]
+fn source_field_breakpoint_selects_active_row_and_step_overrides_it() {
+    let mut app = repeated_row_debug_preview_app(3);
+    let mut source_row =
+        SchemaNode::group("row", vec![SchemaNode::scalar("id", ScalarType::String)]);
+    source_row.repeating = true;
+    app.project.source = SchemaNode::group("root", vec![source_row]);
+    app.preview_draft.as_mut().unwrap().input_text =
+        "<root><row><id>A</id></row><row><id>B</id></row><row><id>C</id></row></root>".into();
+    app.preview_source_condition.enabled = true;
+    app.preview_source_condition.field = "id".into();
+    app.preview_source_condition.text = "B".into();
+    app.execute_debug_preview();
+
+    let second = wait_for_debug_pause(&mut app);
+    assert_eq!(
+        second.positions.last().map(|position| position.index),
+        Some(2)
+    );
+    assert_eq!(
+        second
+            .source_field_probe
+            .as_ref()
+            .and_then(|probe| probe.preview.as_ref())
+            .and_then(|preview| preview.value.as_ref())
+            .map(|value| value.preview.as_str()),
+        Some("B")
+    );
+    app.preview_command(preview_ui::PreviewCommand::Step);
+    let third = wait_for_debug_pause(&mut app);
+    assert_eq!(
+        third.positions.last().map(|position| position.index),
+        Some(3)
+    );
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
+}
+
+#[test]
+fn source_field_condition_rejects_invalid_frame_and_field() {
+    let mut condition = crate::preview::BreakpointSourceConditionDraft {
+        enabled: true,
+        frame_from_inner: "4".into(),
+        field: "id".into(),
+        value_type: crate::preview::ScalarValueType::String,
+        text: "B".into(),
+    };
+    assert!(condition.compile().is_err());
+    condition.frame_from_inner = "0".into();
+    condition.field.clear();
+    assert!(condition.compile().is_err());
+    condition.field = "x".repeat(161);
+    assert!(condition.compile().is_err());
+}
+
+#[test]
 fn position_condition_ui_rejects_zero_and_preserves_overlong_input() {
     let mut condition = crate::preview::BreakpointPositionConditionDraft {
         enabled: true,
@@ -2019,6 +2101,41 @@ fn stage_breakpoint_skips_earlier_stage_and_cancel_preserves_outputs() -> anyhow
     wait_for_pipeline_completion(&mut app);
     assert_eq!(app.status, "pipeline cancelled");
     assert!(!app.show_run_report);
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_source_condition_matches_only_the_later_stage_input() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-source-condition")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.pipeline_run_source_condition.enabled = true;
+    app.pipeline_run_source_condition.field = "Value".into();
+    app.pipeline_run_source_condition.text = "A".into();
+    app.start_pipeline_debug_run();
+    let (stage, write) = wait_for_pipeline_pause(&mut app);
+    assert_eq!(stage, "finish");
+    assert_eq!(write.field, "Value");
+    assert_eq!(
+        write
+            .source_field_probe
+            .as_ref()
+            .and_then(|probe| probe.preview.as_ref())
+            .and_then(|preview| preview.value.as_ref())
+            .map(|value| value.preview.as_str()),
+        Some("A")
+    );
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
+    wait_for_pipeline_completion(&mut app);
+    assert_eq!(app.status, "pipeline cancelled");
     assert_eq!(
         std::fs::read_to_string(directory.join("prepare.json"))?,
         "old prepare"

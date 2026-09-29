@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 
 use super::*;
 use crate::preview::{
-    DebugPositionCondition, DebugScalarCondition, PreviewBreakpoint, PreviewTarget,
+    DebugPositionCondition, DebugScalarCondition, DebugSourceCondition, PreviewBreakpoint,
+    PreviewTarget,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,7 +68,7 @@ pub(super) enum FileRunCommand {
 }
 
 enum FileRunEvent {
-    Paused(engine::PendingTargetWrite),
+    Paused(Box<engine::PendingTargetWrite>),
     ReadyToPublish,
     Finished(
         Result<cli::RunOutcome, FileRunError>,
@@ -137,6 +138,7 @@ struct FileRunDebugHook {
     breakpoint: Option<FileBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
+    source_condition: Option<DebugSourceCondition>,
 }
 
 impl FileRunDebugHook {
@@ -165,6 +167,12 @@ impl FileRunDebugHook {
 }
 
 impl engine::DebugHook for FileRunDebugHook {
+    fn source_field_probe(&self) -> Option<(usize, String)> {
+        self.source_condition
+            .as_ref()
+            .map(DebugSourceCondition::probe)
+    }
+
     fn before_target_write(&self, write: &engine::PendingTargetWrite) -> engine::DebugDecision {
         if self.cancelled.load(Ordering::Acquire) {
             return engine::DebugDecision::Cancel;
@@ -193,17 +201,26 @@ impl engine::DebugHook for FileRunDebugHook {
             .position_condition
             .as_ref()
             .is_none_or(|condition| condition.matches(write));
+        let matches_source = self
+            .source_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
         let has_breakpoint = self.breakpoint.is_some()
             || self.value_condition.is_some()
-            || self.position_condition.is_some();
+            || self.position_condition.is_some()
+            || self.source_condition.is_some();
         if !self.pause_each_write.get()
-            && !(has_breakpoint && matches_selection && matches_value && matches_position)
+            && !(has_breakpoint
+                && matches_selection
+                && matches_value
+                && matches_position
+                && matches_source)
         {
             return engine::DebugDecision::Resume;
         }
         if self
             .events
-            .send(FileRunEvent::Paused(write.clone()))
+            .send(FileRunEvent::Paused(Box::new(write.clone())))
             .is_err()
         {
             return engine::DebugDecision::Cancel;
@@ -259,6 +276,11 @@ impl FerruleApp {
             self.diagnostics.error("Debug Run blocked", error);
             return;
         }
+        if debug && let Err(error) = self.file_run_source_condition.compile() {
+            self.status = "debug run blocked".into();
+            self.diagnostics.error("Debug Run blocked", error);
+            return;
+        }
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("run blocked by {} validation issue(s)", issues.len());
@@ -300,6 +322,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let source_condition = if debug {
+            match self.file_run_source_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug run blocked".into();
+                    self.diagnostics.error("Debug Run blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let Some(project_path) = self.document.saved_path().map(PathBuf::from) else {
             self.status = "run failed".to_string();
             self.diagnostics
@@ -329,11 +363,13 @@ impl FerruleApp {
                     debug
                         && breakpoint.is_none()
                         && value_condition.is_none()
-                        && position_condition.is_none(),
+                        && position_condition.is_none()
+                        && source_condition.is_none(),
                 ),
                 breakpoint,
                 value_condition,
                 position_condition,
+                source_condition,
             };
             let gate = || hook.before_publish();
             let mut options = cli::RunOptions::new()
@@ -414,7 +450,7 @@ impl FerruleApp {
                     let _ = pending.commands.send(FileRunCommand::Cancel);
                 } else {
                     self.status = format!("paused before target field `{}`", write.field);
-                    pending.phase = FileRunPhase::Paused(Box::new(write));
+                    pending.phase = FileRunPhase::Paused(write);
                 }
                 ctx.request_repaint();
             }
@@ -583,6 +619,11 @@ impl FerruleApp {
         condition_valid &= preview_ui::show_breakpoint_position_condition(
             ui,
             &mut self.file_run_position_condition,
+        );
+        condition_valid &= preview_ui::show_breakpoint_source_condition(
+            ui,
+            &mut self.file_run_source_condition,
+            "file_run_debug_source_type",
         );
         if ui
             .add_enabled(condition_valid, egui::Button::new("Debug Run"))

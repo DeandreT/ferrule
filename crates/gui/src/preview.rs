@@ -104,6 +104,81 @@ pub(super) struct BreakpointPositionConditionDraft {
     pub(super) text: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct BreakpointSourceConditionDraft {
+    pub(super) enabled: bool,
+    pub(super) frame_from_inner: String,
+    pub(super) field: String,
+    pub(super) value_type: ScalarValueType,
+    pub(super) text: String,
+}
+
+impl Default for BreakpointSourceConditionDraft {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            frame_from_inner: "0".into(),
+            field: String::new(),
+            value_type: ScalarValueType::default(),
+            text: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DebugSourceCondition {
+    frame_from_inner: usize,
+    field: String,
+    expected: DebugScalarCondition,
+}
+
+impl BreakpointSourceConditionDraft {
+    pub(super) fn compile(&self) -> Result<Option<DebugSourceCondition>, &'static str> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let frame = self.frame_from_inner.trim();
+        if !matches!(frame, "0" | "1" | "2" | "3") {
+            return Err("Choose source frame 0, 1, 2, or 3 (0 is innermost).");
+        }
+        if self.field.is_empty()
+            || self.field.starts_with('\u{1f}')
+            || self.field.chars().count() > 160
+        {
+            return Err("Enter an immediate source field name of 1–160 characters.");
+        }
+        let expected = BreakpointValueConditionDraft {
+            enabled: true,
+            value_type: self.value_type,
+            text: self.text.clone(),
+        }
+        .compile()?
+        .expect("enabled scalar condition compiles to a value");
+        Ok(Some(DebugSourceCondition {
+            frame_from_inner: frame.parse().expect("validated frame digit"),
+            field: self.field.clone(),
+            expected,
+        }))
+    }
+}
+
+impl DebugSourceCondition {
+    pub(super) fn probe(&self) -> (usize, String) {
+        (self.frame_from_inner, self.field.clone())
+    }
+
+    pub(super) fn matches(&self, write: &engine::PendingTargetWrite) -> bool {
+        write.source_field_probe.as_ref().is_some_and(|probe| {
+            probe.frame_from_inner == self.frame_from_inner
+                && probe.field == self.field
+                && probe
+                    .preview
+                    .as_ref()
+                    .is_some_and(|preview| self.expected.matches_preview(preview))
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct DebugPositionCondition {
     index: usize,
@@ -188,10 +263,14 @@ impl BreakpointValueConditionDraft {
 
 impl DebugScalarCondition {
     pub(super) fn matches(&self, write: &engine::PendingTargetWrite) -> bool {
-        if write.pending.kind != engine::TraceOutputKind::Scalar {
+        self.matches_preview(&write.pending)
+    }
+
+    fn matches_preview(&self, preview: &engine::DebugInstancePreview) -> bool {
+        if preview.kind != engine::TraceOutputKind::Scalar {
             return false;
         }
-        write.pending.value.as_ref().is_some_and(|value| {
+        preview.value.as_ref().is_some_and(|value| {
             !value.truncated
                 && value.value_type == self.value_type.trace_type()
                 && value.preview == self.canonical_preview
@@ -443,6 +522,7 @@ mod tests {
                 frames: Vec::new(),
                 omitted_outer_frames: 0,
             },
+            source_field_probe: None,
             field: "value".into(),
             field_truncated: false,
             binding: engine::TraceTargetFieldBinding::StaticChild,

@@ -8,10 +8,62 @@ use anyhow::{Context as _, bail};
 
 use super::*;
 use crate::preview::{
-    BreakpointPositionConditionDraft, BreakpointValueConditionDraft, DebugPositionCondition,
-    DebugScalarCondition, LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget,
+    BreakpointPositionConditionDraft, BreakpointSourceConditionDraft,
+    BreakpointValueConditionDraft, DebugPositionCondition, DebugScalarCondition,
+    DebugSourceCondition, LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget,
     ScalarValueType,
 };
+
+pub(super) fn show_breakpoint_source_condition(
+    ui: &mut egui::Ui,
+    condition: &mut BreakpointSourceConditionDraft,
+    id: &str,
+) -> bool {
+    ui.checkbox(
+        &mut condition.enabled,
+        "Only when active source field equals",
+    );
+    if condition.enabled {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Frame from innermost");
+            ui.add(
+                egui::TextEdit::singleline(&mut condition.frame_from_inner)
+                    .desired_width(32.0)
+                    .hint_text("0–3"),
+            );
+            ui.label("Field");
+            ui.add(
+                egui::TextEdit::singleline(&mut condition.field)
+                    .desired_width(150.0)
+                    .hint_text("Immediate field name"),
+            );
+            egui::ComboBox::from_id_salt(id)
+                .selected_text(condition.value_type.label())
+                .show_ui(ui, |ui| {
+                    for value_type in ScalarValueType::ALL {
+                        ui.selectable_value(
+                            &mut condition.value_type,
+                            value_type,
+                            value_type.label(),
+                        );
+                    }
+                });
+            if condition.value_type.needs_text() {
+                ui.add(
+                    egui::TextEdit::singleline(&mut condition.text).hint_text("Exact scalar value"),
+                );
+            }
+        });
+        ui.weak("Matches one immediate field in an active source frame. Frame 0 is innermost; absent fields and truncated scalar previews never match.");
+    }
+    match condition.compile() {
+        Ok(_) => true,
+        Err(error) => {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+            false
+        }
+    }
+}
 
 pub(super) fn show_breakpoint_position_condition(
     ui: &mut egui::Ui,
@@ -156,9 +208,16 @@ struct PreviewDebugHook {
     breakpoint: Option<PreviewBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
+    source_condition: Option<DebugSourceCondition>,
 }
 
 impl engine::DebugHook for PreviewDebugHook {
+    fn source_field_probe(&self) -> Option<(usize, String)> {
+        self.source_condition
+            .as_ref()
+            .map(DebugSourceCondition::probe)
+    }
+
     fn before_target_write(&self, write: &engine::PendingTargetWrite) -> engine::DebugDecision {
         if self.cancelled.load(Ordering::Acquire) {
             return engine::DebugDecision::Cancel;
@@ -187,11 +246,20 @@ impl engine::DebugHook for PreviewDebugHook {
             .position_condition
             .as_ref()
             .is_none_or(|condition| condition.matches(write));
+        let matches_source = self
+            .source_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
         let has_breakpoint = self.breakpoint.is_some()
             || self.value_condition.is_some()
-            || self.position_condition.is_some();
+            || self.position_condition.is_some()
+            || self.source_condition.is_some();
         if !self.pause_each_write.get()
-            && !(has_breakpoint && matches_selection && matches_value && matches_position)
+            && !(has_breakpoint
+                && matches_selection
+                && matches_value
+                && matches_position
+                && matches_source)
         {
             return engine::DebugDecision::Resume;
         }
@@ -360,6 +428,11 @@ impl FerruleApp {
                         ui,
                         &mut self.preview_position_condition,
                     );
+                    condition_valid &= show_breakpoint_source_condition(
+                        ui,
+                        &mut self.preview_source_condition,
+                        "preview_debug_source_type",
+                    );
                 });
                 if draft.input_identity.trim().is_empty() {
                     ui.colored_label(
@@ -527,6 +600,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let source_condition = if debug {
+            match self.preview_source_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "preview blocked".into();
+                    self.diagnostics.error("Preview blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("preview blocked by {} validation issue(s)", issues.len());
@@ -571,6 +656,7 @@ impl FerruleApp {
                 debug,
                 value_condition,
                 position_condition,
+                source_condition,
                 event_tx,
                 command_rx,
                 worker_cancelled,
@@ -698,6 +784,7 @@ fn run_preview_worker(
     debug: bool,
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
+    source_condition: Option<DebugSourceCondition>,
     events: Sender<PreviewWorkerEvent>,
     commands: Receiver<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
@@ -716,11 +803,13 @@ fn run_preview_worker(
             debug
                 && breakpoint.is_none()
                 && value_condition.is_none()
-                && position_condition.is_none(),
+                && position_condition.is_none()
+                && source_condition.is_none(),
         ),
         breakpoint,
         value_condition,
         position_condition,
+        source_condition,
     };
     let result = run_preview_payload(
         &project,
@@ -872,6 +961,16 @@ pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, deb
                                 ui.weak(format!("{} more field(s) omitted", frame.omitted_fields));
                             }
                         });
+                    }
+                    if let Some(probe) = &write.source_field_probe {
+                        let value = probe
+                            .preview
+                            .as_ref()
+                            .map_or_else(|| "<absent>".to_owned(), debug_value);
+                        ui.monospace(format!(
+                            "Source probe: frame {} / {} = {value}",
+                            probe.frame_from_inner, probe.field
+                        ));
                     }
                     ui.separator();
                     ui.strong("Already inserted in this scope");
