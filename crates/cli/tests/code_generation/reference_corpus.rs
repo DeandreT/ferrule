@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twenty-five local, gitignored mappings.
+//! Opt-in generated-backend execution against twenty-seven local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -32,7 +32,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 25] = [
+const CASES: [CorpusCase; 27] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -183,6 +183,18 @@ const CASES: [CorpusCase; 25] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
+    CorpusCase {
+        sample: "MergeMultipleFiles_List.mfd",
+        input: "NanonullFiles.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "ExpenseLimit.mfd",
+        input: "ExpReport.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
 ];
 
 #[test]
@@ -232,9 +244,13 @@ fn run_case(
     let named_input = (sample == "Tutorial/JoinPeopleInfo.mfd")
         .then_some(("Addresses", "Tutorial/Addresses.xml"));
     assert_eq!(
-        project.extra_sources.len(),
+        project
+            .extra_sources
+            .iter()
+            .filter(|source| source.dynamic_path.is_none())
+            .count(),
         usize::from(named_input.is_some()),
-        "{sample}: unexpected named inputs"
+        "{sample}: unexpected static named inputs"
     );
     assert!(
         match case.target_kind {
@@ -347,6 +363,19 @@ fn run_case(
             &source,
             sample,
         );
+    }
+    if sample == "MergeMultipleFiles_List.mfd" {
+        return run_dynamic_source_case(
+            case_dir,
+            rust_target,
+            &mapping_path,
+            &project,
+            &source,
+            sample,
+        );
+    }
+    if sample == "ExpenseLimit.mfd" {
+        return run_failure_rule_case(case_dir, rust_target, &project, &source, sample);
     }
     if sample == "Tutorial/Tut-ExpReport-multi.mfd" {
         return run_multi_target_case(case_dir, rust_target, &project, &source, sample);
@@ -2124,6 +2153,737 @@ static FerruleInstance RestoreNil(FerruleInstance instance, string[] path, int o
         return new FerruleMappedSequence(items);
     }
     throw new InvalidOperationException("XML nil path traverses a non-container.");
+}
+"#;
+
+fn run_failure_rule_case(
+    case_dir: &Path,
+    rust_target: &Path,
+    project: &Project,
+    source: &Instance,
+    sample: &str,
+) -> TestResult<()> {
+    assert!(project.extra_sources.is_empty(), "{sample}: one XML source");
+    assert!(project.extra_targets.is_empty(), "{sample}: one XML target");
+    assert_eq!(project.failure_rules.len(), 1, "{sample}: one failure rule");
+    let expected_failure = engine::EngineError::MappingFailure {
+        rule: 1,
+        message: Some("Expense limit exceeded!".into()),
+    };
+    assert_eq!(
+        engine::run(project, source).unwrap_err(),
+        expected_failure,
+        "{sample}: native XML input must fail before target construction"
+    );
+    let failing_json = format_json::to_string(&project.source, source)?;
+    let transported = format_json::from_str(&failing_json, &project.source)?;
+    assert_eq!(
+        transported, *source,
+        "{sample}: XML source must survive schema-shaped JSON transport"
+    );
+    assert_eq!(
+        engine::run(project, &transported).unwrap_err(),
+        expected_failure,
+        "{sample}: source transport changed the controlled failure"
+    );
+
+    // Keep the original sample untouched. Moving its one over-limit expense
+    // below the threshold exercises the same mapping's successful branch.
+    let mut successful_document: serde_json::Value = serde_json::from_str(&failing_json)?;
+    let expenses = successful_document["expense-item"]
+        .as_array_mut()
+        .expect("sample has repeated expense items");
+    assert_eq!(expenses.len(), 4, "{sample}: four input expenses");
+    assert_eq!(expenses[2]["expense"], 299.45);
+    expenses[2]["expense"] = serde_json::json!(199.45);
+    let successful_json = serde_json::to_string(&successful_document)?;
+    let successful_source = format_json::from_str(&successful_json, &project.source)?;
+    let expected = engine::run(project, &successful_source)?;
+    let expected_json: serde_json::Value =
+        serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?;
+    assert_eq!(expected_json["Person"]["FullName"], "Fred Landis");
+    let mapped_expenses = expected_json["expense-item"]
+        .as_array()
+        .expect("successful output has expense items");
+    assert_eq!(mapped_expenses.len(), 4, "{sample}: all expenses pass");
+    assert_eq!(
+        mapped_expenses
+            .iter()
+            .map(|item| item["expense"].as_f64())
+            .collect::<Vec<_>>(),
+        [Some(122.11), Some(122.12), Some(199.45), Some(13.22)],
+        "{sample}: successful items retain source order"
+    );
+    let expected_xml = format_xml::to_string_with_options(
+        &project.target,
+        &expected,
+        &format_xml::XmlWriteOptions {
+            declaration: false,
+            indent: false,
+            default_namespace: None,
+        },
+    )?;
+    let expected_outputs = vec![CorpusTargetOutput {
+        name: String::new(),
+        xml: expected_xml,
+        value: expected_json,
+    }];
+
+    let project_path = case_dir.join("project.json");
+    let source_schema_path = case_dir.join("source-schema.json");
+    let target_schema_path = case_dir.join("target-schema.json");
+    let failing_path = case_dir.join("failing.json");
+    let successful_path = case_dir.join("successful.json");
+    std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
+    std::fs::write(&source_schema_path, serde_json::to_vec(&project.source)?)?;
+    std::fs::write(&target_schema_path, serde_json::to_vec(&project.target)?)?;
+    std::fs::write(&failing_path, failing_json)?;
+    std::fs::write(&successful_path, successful_json)?;
+
+    let rust_output = case_dir.join("rust");
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
+    generate_project(
+        &project_path,
+        &rust_output,
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+    )?;
+    std::fs::write(rust_output.join("src/main.rs"), FAILURE_RULE_RUST_HARNESS)?;
+    let rust_build = Command::new("cargo")
+        .args(["build", "--quiet"])
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_build.status.success(),
+        "{sample}: generated Rust compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_build.stdout),
+        String::from_utf8_lossy(&rust_build.stderr)
+    );
+    let rust_run = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .arg(&source_schema_path)
+        .arg(&target_schema_path)
+        .arg(&failing_path)
+        .arg(&successful_path)
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_run.status.success(),
+        "{sample}: generated Rust execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_run.stdout),
+        String::from_utf8_lossy(&rust_run.stderr)
+    );
+    assert_eq!(
+        parse_multi_target_outputs(&rust_run.stdout)?,
+        expected_outputs,
+        "{sample}: generated Rust successful XML/JSON differs from interpreter"
+    );
+
+    let csharp_output = case_dir.join("csharp");
+    generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
+    let harness = csharp_output.join("Harness");
+    std::fs::create_dir(&harness)?;
+    std::fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj" />
+  </ItemGroup>
+</Project>
+"#,
+    )?;
+    std::fs::write(harness.join("Program.cs"), FAILURE_RULE_CSHARP_HARNESS)?;
+    let csharp_build = dotnet_command(&csharp_output)
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "Harness/Harness.csproj",
+        ])
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_build.status.success(),
+        "{sample}: generated C# compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_build.stdout),
+        String::from_utf8_lossy(&csharp_build.stderr)
+    );
+    let csharp_run = dotnet_command(&csharp_output)
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+            "--no-build",
+            "--no-restore",
+            "--",
+        ])
+        .arg(&source_schema_path)
+        .arg(&target_schema_path)
+        .arg(&failing_path)
+        .arg(&successful_path)
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_run.status.success(),
+        "{sample}: generated C# execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_run.stdout),
+        String::from_utf8_lossy(&csharp_run.stderr)
+    );
+    assert_eq!(
+        parse_multi_target_outputs(&csharp_run.stdout)?,
+        expected_outputs,
+        "{sample}: generated C# successful XML/JSON differs from interpreter"
+    );
+    println!("{sample}: generated Rust and C# match controlled failure and successful output");
+    Ok(())
+}
+
+const FAILURE_RULE_RUST_HARNESS: &str = r#"use codegen_runtime::{
+    JsonBoundaryError, RuntimeError, Value, parse_json, serialize_json, serialize_xml,
+};
+use ferrule_generated_mapping::{execute, execute_json};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema"))?;
+    let target_schema = std::fs::read_to_string(args.next().expect("target schema"))?;
+    let failing_json = std::fs::read_to_string(args.next().expect("failing source"))?;
+    let successful_json = std::fs::read_to_string(args.next().expect("successful source"))?;
+    let failing_source = parse_json(&source_schema, &failing_json)?;
+    let failure = RuntimeError::MappingFailure {
+        rule: 1,
+        message: Some("Expense limit exceeded!".into()),
+    };
+    assert_eq!(execute(&failing_source), Err(failure));
+    assert_eq!(
+        execute_json(&failing_json),
+        Err(JsonBoundaryError::Execution(RuntimeError::MappingFailure {
+            rule: 1,
+            message: Some("Expense limit exceeded!".into()),
+        })),
+    );
+
+    let successful_source = parse_json(&source_schema, &successful_json)?;
+    let output = execute(&successful_source)?;
+    let json = serialize_json(&target_schema, &output)?;
+    assert_eq!(json, execute_json(&successful_json)?, "typed and JSON APIs agree");
+    let Value::String(xml) = serialize_xml(0, &target_schema, &output, false, false, None)? else {
+        unreachable!("XML serialization returns a string");
+    };
+    print!("\0{xml}\0{json}\0");
+    Ok(())
+}
+"#;
+
+const FAILURE_RULE_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var sourceSchema = File.ReadAllText(args[0]);
+var targetSchema = File.ReadAllText(args[1]);
+var failingJson = File.ReadAllText(args[2]);
+var successfulJson = File.ReadAllText(args[3]);
+var failingSource = FerruleJson.Parse(sourceSchema, failingJson);
+CheckFailure(() => GeneratedMapping.Execute(failingSource));
+CheckFailure(() => GeneratedMapping.ExecuteJson(failingJson));
+
+var successfulSource = FerruleJson.Parse(sourceSchema, successfulJson);
+var output = GeneratedMapping.Execute(successfulSource);
+var json = FerruleJson.Serialize(targetSchema, output);
+if (json != GeneratedMapping.ExecuteJson(successfulJson))
+{
+    throw new InvalidOperationException("Typed and JSON APIs disagree.");
+}
+var xml = FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue;
+Console.Out.Write('\0');
+Console.Out.Write(xml);
+Console.Out.Write('\0');
+Console.Out.Write(json);
+Console.Out.Write('\0');
+
+static void CheckFailure(Action action)
+{
+    try
+    {
+        action();
+        throw new InvalidOperationException("Expected the expense-limit failure.");
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        if (exception.Error != FerruleRuntimeError.MappingFailure
+            || exception.FailureRule != 1
+            || exception.MappingFailureMessage != "Expense limit exceeded!")
+        {
+            throw new InvalidOperationException("Controlled failure changed.", exception);
+        }
+    }
+}
+"#;
+
+struct CorpusDynamicXmlLoader {
+    source_name: String,
+    documents: Vec<(String, std::sync::Arc<Instance>)>,
+    calls: std::cell::RefCell<Vec<(String, String)>>,
+}
+
+impl engine::DynamicSourceLoader for CorpusDynamicXmlLoader {
+    fn load(&self, source: &str, path: &str) -> Result<std::sync::Arc<Instance>, String> {
+        self.calls
+            .borrow_mut()
+            .push((source.to_owned(), path.to_owned()));
+        if source != self.source_name {
+            return Err(format!("unexpected dynamic source `{source}`"));
+        }
+        self.documents
+            .iter()
+            .find(|(allowed, _)| allowed == path)
+            .map(|(_, document)| std::sync::Arc::clone(document))
+            .ok_or_else(|| format!("dynamic source path is outside the two-file corpus: {path}"))
+    }
+}
+
+fn run_dynamic_source_case(
+    case_dir: &Path,
+    rust_target: &Path,
+    mapping_path: &Path,
+    project: &Project,
+    source: &Instance,
+    sample: &str,
+) -> TestResult<()> {
+    assert!(project.extra_targets.is_empty(), "{sample}: one XML target");
+    let [dynamic] = project.extra_sources.as_slice() else {
+        panic!("{sample}: exactly one dynamic XML source");
+    };
+    assert!(
+        dynamic.dynamic_path.is_some(),
+        "{sample}: per-file source path"
+    );
+    assert!(dynamic.options.xml_document, "{sample}: dynamic XML source");
+    let files = source
+        .field("File")
+        .and_then(Instance::as_repeated)
+        .expect("file manifest has repeated File elements");
+    let file_names = files
+        .iter()
+        .map(|file| match file.as_scalar() {
+            Some(Value::String(name)) => name.as_str(),
+            _ => panic!("{sample}: manifest filename must be a string"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        file_names,
+        ["Nanonull-HQ.xml", "Nanonull-Branch.xml"],
+        "{sample}: only the two intended local files are loaded"
+    );
+
+    let source_json = format_json::to_string(&project.source, source)?;
+    let round_tripped = format_json::from_str(&source_json, &project.source)?;
+    assert_eq!(
+        round_tripped, *source,
+        "{sample}: manifest XML to schema-shaped JSON transport"
+    );
+    let source_json_path = case_dir.join("source.json");
+    std::fs::write(&source_json_path, &source_json)?;
+    let source_schema_path = case_dir.join("source-schema.json");
+    let dynamic_schema_path = case_dir.join("dynamic-schema.json");
+    let target_schema_path = case_dir.join("target-schema.json");
+    std::fs::write(&source_schema_path, serde_json::to_vec(&project.source)?)?;
+    std::fs::write(&dynamic_schema_path, serde_json::to_vec(&dynamic.schema)?)?;
+    std::fs::write(&target_schema_path, serde_json::to_vec(&project.target)?)?;
+
+    let sample_root = mapping_path.parent().expect("sample has a directory");
+    let mut documents = Vec::new();
+    let mut payloads = Vec::new();
+    for (index, name) in file_names.iter().enumerate() {
+        let path = sample_root.join(name).canonicalize()?;
+        assert!(
+            path.starts_with(sample_root),
+            "{sample}: confined source path"
+        );
+        let instance = format_xml::read(&path, &dynamic.schema)?;
+        let json = format_json::to_string(&dynamic.schema, &instance)?;
+        assert_eq!(
+            format_json::from_str(&json, &dynamic.schema)?,
+            instance,
+            "{sample}: dynamic XML document survives JSON transport"
+        );
+        let payload_path = case_dir.join(format!("dynamic-{index}.json"));
+        std::fs::write(&payload_path, json)?;
+        let path = path
+            .to_str()
+            .expect("local corpus source paths are UTF-8")
+            .to_owned();
+        documents.push((path.clone(), std::sync::Arc::new(instance)));
+        payloads.push((path, payload_path));
+    }
+    let loader = CorpusDynamicXmlLoader {
+        source_name: dynamic.name.clone(),
+        documents,
+        calls: std::cell::RefCell::new(Vec::new()),
+    };
+    let expected_calls = payloads
+        .iter()
+        .map(|(path, _)| (dynamic.name.clone(), path.clone()))
+        .collect::<Vec<_>>();
+    let execution = engine::ExecutionContext::new(mapping_path).with_dynamic_source_loader(&loader);
+    let native_expected = engine::run_with_context(project, source, &execution)?;
+    assert_eq!(
+        loader.calls.borrow().as_slice(),
+        expected_calls.as_slice(),
+        "{sample}: interpreter dynamic request order"
+    );
+    loader.calls.borrow_mut().clear();
+    let expected = engine::run_with_context(project, &round_tripped, &execution)?;
+    assert_eq!(
+        loader.calls.borrow().as_slice(),
+        expected_calls.as_slice(),
+        "{sample}: transported-source dynamic request order"
+    );
+    assert_eq!(
+        expected, native_expected,
+        "{sample}: schema-shaped JSON changed interpreter output"
+    );
+    let expected_json: serde_json::Value =
+        serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?;
+    assert_eq!(expected_json["Name"], "Organization Chart");
+    let offices = expected_json["Office"].as_array().expect("merged offices");
+    assert_eq!(offices.len(), 2, "{sample}: one office from each file");
+    assert_eq!(offices[0]["Name"], "Nanonull, Inc.");
+    assert_eq!(offices[1]["Name"], "Nanonull Partners, Inc.");
+    for (office, (path, _)) in offices.iter().zip(&payloads) {
+        assert_eq!(
+            office["Desc"],
+            format!("read from file: {path}"),
+            "{sample}: each dynamic document retains its own path"
+        );
+    }
+    let expected_xml = format_xml::to_string_with_options(
+        &project.target,
+        &expected,
+        &format_xml::XmlWriteOptions {
+            declaration: false,
+            indent: false,
+            default_namespace: None,
+        },
+    )?;
+    let expected_outputs = vec![CorpusTargetOutput {
+        name: String::new(),
+        xml: expected_xml,
+        value: expected_json,
+    }];
+
+    let project_path = case_dir.join("project.json");
+    std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
+    let rust_output = case_dir.join("rust");
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
+    generate_project(
+        &project_path,
+        &rust_output,
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+    )?;
+    std::fs::write(rust_output.join("src/main.rs"), DYNAMIC_SOURCE_RUST_HARNESS)?;
+    let rust_build = Command::new("cargo")
+        .args(["build", "--quiet"])
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_build.status.success(),
+        "{sample}: generated Rust compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_build.stdout),
+        String::from_utf8_lossy(&rust_build.stderr)
+    );
+    let mut rust_run = Command::new("cargo");
+    rust_run
+        .args(["run", "--quiet", "--"])
+        .arg(&source_json_path)
+        .arg(&source_schema_path)
+        .arg(&dynamic_schema_path)
+        .arg(&target_schema_path)
+        .arg(mapping_path)
+        .arg(&dynamic.name)
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target);
+    for (path, payload) in &payloads {
+        rust_run.arg(path).arg(payload);
+    }
+    let rust_run = rust_run.isolated_output()?;
+    assert!(
+        rust_run.status.success(),
+        "{sample}: generated Rust execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_run.stdout),
+        String::from_utf8_lossy(&rust_run.stderr)
+    );
+    assert_eq!(
+        parse_multi_target_outputs(&rust_run.stdout)?,
+        expected_outputs,
+        "{sample}: generated Rust dynamic XML/JSON differs from interpreter"
+    );
+
+    let csharp_output = case_dir.join("csharp");
+    generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
+    let harness = csharp_output.join("Harness");
+    std::fs::create_dir(&harness)?;
+    std::fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj" />
+  </ItemGroup>
+</Project>
+"#,
+    )?;
+    std::fs::write(harness.join("Program.cs"), DYNAMIC_SOURCE_CSHARP_HARNESS)?;
+    let csharp_build = dotnet_command(&csharp_output)
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "Harness/Harness.csproj",
+        ])
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_build.status.success(),
+        "{sample}: generated C# compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_build.stdout),
+        String::from_utf8_lossy(&csharp_build.stderr)
+    );
+    let mut csharp_run = dotnet_command(&csharp_output);
+    csharp_run
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+            "--no-build",
+            "--no-restore",
+            "--",
+        ])
+        .arg(&source_json_path)
+        .arg(&source_schema_path)
+        .arg(&dynamic_schema_path)
+        .arg(&target_schema_path)
+        .arg(mapping_path)
+        .arg(&dynamic.name)
+        .current_dir(&csharp_output);
+    for (path, payload) in &payloads {
+        csharp_run.arg(path).arg(payload);
+    }
+    let csharp_run = csharp_run.isolated_output()?;
+    assert!(
+        csharp_run.status.success(),
+        "{sample}: generated C# execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_run.stdout),
+        String::from_utf8_lossy(&csharp_run.stderr)
+    );
+    assert_eq!(
+        parse_multi_target_outputs(&csharp_run.stdout)?,
+        expected_outputs,
+        "{sample}: generated C# dynamic XML/JSON differs from interpreter"
+    );
+    println!("{sample}: generated Rust and C# dynamic loaders match the interpreter");
+    Ok(())
+}
+
+const DYNAMIC_SOURCE_RUST_HARNESS: &str = r#"use std::cell::RefCell;
+use std::path::PathBuf;
+use codegen_runtime::{
+    DynamicJsonSourceLoader, DynamicSourceLoader, ExecutionContext, Instance, Value,
+    parse_json, serialize_json, serialize_xml,
+};
+use ferrule_generated_mapping::{
+    execute_json_with_sources_context_and_dynamic_source_loader,
+    execute_with_sources_context_and_dynamic_source_loader,
+};
+
+struct Loader {
+    source_name: String,
+    dynamic_schema: String,
+    payloads: Vec<(String, Vec<u8>)>,
+    calls: RefCell<Vec<String>>,
+}
+
+impl Loader {
+    fn payload(&self, source: &str, path: &str) -> Result<Vec<u8>, String> {
+        if source != self.source_name {
+            return Err(format!("unexpected dynamic source {source}"));
+        }
+        self.calls.borrow_mut().push(path.to_owned());
+        self.payloads
+            .iter()
+            .find(|(allowed, _)| allowed == path)
+            .map(|(_, bytes)| bytes.clone())
+            .ok_or_else(|| format!("unconfined dynamic path {path}"))
+    }
+}
+
+impl DynamicSourceLoader for Loader {
+    fn load(&self, source: &str, path: &str) -> Result<Instance, String> {
+        let bytes = self.payload(source, path)?;
+        let text = std::str::from_utf8(&bytes).map_err(|error| error.to_string())?;
+        parse_json(&self.dynamic_schema, text).map_err(|error| error.to_string())
+    }
+}
+
+impl DynamicJsonSourceLoader for Loader {
+    fn load(&self, source: &str, path: &str) -> Result<Vec<u8>, String> {
+        self.payload(source, path)
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let input = std::fs::read_to_string(args.next().expect("source JSON"))?;
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema"))?;
+    let dynamic_schema = std::fs::read_to_string(args.next().expect("dynamic schema"))?;
+    let target_schema = std::fs::read_to_string(args.next().expect("target schema"))?;
+    let mapping_path = PathBuf::from(args.next().expect("mapping path"));
+    let source_name = args.next().expect("dynamic source name").to_string_lossy().into_owned();
+    let pairs = args.collect::<Vec<_>>();
+    assert_eq!(pairs.len(), 4, "exactly two dynamic source path/payload pairs");
+    let mut payloads = Vec::new();
+    for pair in pairs.chunks_exact(2) {
+        payloads.push((
+            pair[0].to_str().expect("UTF-8 dynamic path").to_owned(),
+            std::fs::read(&pair[1])?,
+        ));
+    }
+    let expected_paths = payloads.iter().map(|(path, _)| path.clone()).collect::<Vec<_>>();
+    let loader = Loader {
+        source_name,
+        dynamic_schema,
+        payloads,
+        calls: RefCell::new(Vec::new()),
+    };
+    let execution = ExecutionContext::new(&mapping_path);
+    let source = parse_json(&source_schema, &input)?;
+    let output = execute_with_sources_context_and_dynamic_source_loader(
+        &source, &[], &execution, &loader,
+    )?;
+    assert_eq!(loader.calls.borrow().as_slice(), expected_paths.as_slice());
+    loader.calls.borrow_mut().clear();
+    let json = serialize_json(&target_schema, &output)?;
+    assert_eq!(
+        json,
+        execute_json_with_sources_context_and_dynamic_source_loader(
+            &input, &[], &execution, &loader,
+        )?,
+        "typed and JSON generated APIs agree",
+    );
+    assert_eq!(loader.calls.borrow().as_slice(), expected_paths.as_slice());
+    let Value::String(xml) = serialize_xml(0, &target_schema, &output, false, false, None)? else {
+        unreachable!("XML serialization returns a string");
+    };
+    print!("\0{xml}\0{json}\0");
+    Ok(())
+}
+"#;
+
+const DYNAMIC_SOURCE_CSHARP_HARNESS: &str = r#"using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var input = File.ReadAllText(args[0]);
+var sourceSchema = File.ReadAllText(args[1]);
+var dynamicSchema = File.ReadAllText(args[2]);
+var targetSchema = File.ReadAllText(args[3]);
+var execution = new FerruleExecutionContext(args[4]);
+if (args.Length != 10)
+{
+    throw new ArgumentException("Exactly two dynamic source path/payload pairs are required.");
+}
+var payloads = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+var expectedPaths = new List<string>();
+for (var index = 6; index < args.Length; index += 2)
+{
+    expectedPaths.Add(args[index]);
+    if (!payloads.TryAdd(args[index], File.ReadAllBytes(args[index + 1])))
+    {
+        throw new InvalidOperationException("Duplicate dynamic source path.");
+    }
+}
+var loader = new Loader(args[5], dynamicSchema, payloads);
+var source = FerruleJson.Parse(sourceSchema, input);
+var output = GeneratedMapping.ExecuteWithSourcesContextAndDynamicSourceLoader(
+    source, Array.Empty<NamedInput>(), execution, loader);
+if (!loader.Calls.SequenceEqual(expectedPaths))
+{
+    throw new InvalidOperationException("Typed dynamic load order changed.");
+}
+loader.Calls.Clear();
+var json = FerruleJson.Serialize(targetSchema, output);
+var jsonApi = GeneratedMapping.ExecuteJsonWithSourcesContextAndDynamicSourceLoader(
+    input, Array.Empty<NamedJsonInput>(), execution, loader);
+if (json != jsonApi || !loader.Calls.SequenceEqual(expectedPaths))
+{
+    throw new InvalidOperationException("JSON dynamic loads or output changed.");
+}
+var xml = FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue;
+Console.Out.Write('\0');
+Console.Out.Write(xml);
+Console.Out.Write('\0');
+Console.Out.Write(json);
+Console.Out.Write('\0');
+
+sealed class Loader : IFerruleDynamicSourceLoader, IFerruleDynamicJsonSourceLoader
+{
+    private readonly string _sourceName;
+    private readonly string _dynamicSchema;
+    private readonly IReadOnlyDictionary<string, byte[]> _payloads;
+
+    internal Loader(
+        string sourceName,
+        string dynamicSchema,
+        IReadOnlyDictionary<string, byte[]> payloads)
+    {
+        _sourceName = sourceName;
+        _dynamicSchema = dynamicSchema;
+        _payloads = payloads;
+    }
+
+    internal List<string> Calls { get; } = new();
+
+    FerruleInstance IFerruleDynamicSourceLoader.Load(string sourceName, string logicalPath) =>
+        FerruleJson.Parse(_dynamicSchema, Encoding.UTF8.GetString(Read(sourceName, logicalPath)));
+
+    byte[] IFerruleDynamicJsonSourceLoader.Load(string sourceName, string logicalPath) =>
+        Read(sourceName, logicalPath);
+
+    private byte[] Read(string sourceName, string logicalPath)
+    {
+        if (sourceName != _sourceName)
+        {
+            throw new InvalidOperationException("Unexpected dynamic source.");
+        }
+        Calls.Add(logicalPath);
+        return _payloads.TryGetValue(logicalPath, out var payload)
+            ? payload
+            : throw new InvalidOperationException("Dynamic path is outside the two-file corpus.");
+    }
 }
 "#;
 
