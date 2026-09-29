@@ -290,6 +290,125 @@ fn imports_and_runs_a_connected_xlsx_workbook_design() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn imports_and_runs_a_connected_flextext_design_with_its_generated_layout()
+-> Result<(), Box<dyn Error>> {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let source_path = samples.join("Quotations.xml");
+    let sample_output = samples.join("QuotationsDoc.txt");
+    let sample_design = samples.join("QuotationsDoc.mfd");
+    if !source_path.is_file() || !sample_output.is_file() || !sample_design.is_file() {
+        return Ok(());
+    }
+    let imported = mfd::import(&sample_design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut text_project = imported.project;
+    let source_schema = text_project.source.clone();
+    let source_options = text_project.source_options.clone();
+    text_project.source_path = None;
+    text_project.target_path = Some("converted.txt".into());
+    let copy_project = mapping::Project {
+        source: source_schema.clone(),
+        target: source_schema,
+        source_path: Some("Quotations.xml".into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: source_options.clone(),
+        target_options: source_options,
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Default::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..Default::default()
+        },
+    };
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "text".into(),
+                mapping_path: None,
+                project: text_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+
+    let directory = TempDir::new()?;
+    let maps = directory.0.join("maps");
+    std::fs::create_dir_all(&maps)?;
+    let input = maps.join("Quotations.xml");
+    std::fs::copy(&source_path, &input)?;
+    let design = maps.join("quotations.mfd");
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
+    assert!(report.is_native_compatible(), "{report:?}");
+    let layout_path = maps.join("quotations-stage-2-target.mft");
+    assert!(layout_path.is_file());
+    assert!(std::fs::read_to_string(&design)?.contains("config=\"quotations-stage-2-target.mft\""));
+
+    let saved_pipeline = directory.0.join("flow.json");
+    let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&design)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&saved_pipeline)
+        .output()?;
+    assert!(import.status.success(), "{}", output_message(&import));
+    let imported_pipeline: mapping::Pipeline =
+        serde_json::from_slice(&std::fs::read(&saved_pipeline)?)?;
+    let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
+        panic!("first stage must read a host source");
+    };
+    let result = directory.0.join("result.txt");
+    let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&saved_pipeline)
+        .args(["--input"])
+        .arg(name)
+        .arg(&input)
+        .args(["--output", "mfd-stage-2"])
+        .arg(&result)
+        .output()?;
+    assert!(run.status.success(), "{}", output_message(&run));
+    let source = format_xml::read(&source_path, &pipeline.stages[0].project.source)?;
+    let direct = engine::run_pipeline(
+        &pipeline,
+        &std::collections::BTreeMap::from([("input".into(), source)]),
+    )?;
+    let expected = format_flextext::to_string(
+        &pipeline.stages[1].project.target,
+        &direct.stage("text").unwrap().primary,
+        pipeline.stages[1]
+            .project
+            .target_options
+            .flextext
+            .as_ref()
+            .unwrap(),
+    )?;
+    assert_eq!(std::fs::read(&result)?, expected.as_bytes());
+    assert_eq!(std::fs::read(&result)?, std::fs::read(&sample_output)?);
+    Ok(())
+}
+
+#[test]
 fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new()?;
     let mapping = write_three_stage_chain(&directory.0)?;

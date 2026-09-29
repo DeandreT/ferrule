@@ -306,8 +306,9 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
 /// Import a connected, file-based design as a typed pipeline.
 ///
 /// This profile accepts a bounded serial XML pass-through chain whose final
-/// primary target may be XML, CSV, fixed-width text, JSON, or a new XLSX workbook, with any connected named targets remaining
-/// XML. Other stage graph shapes reject explicitly.
+/// primary target may be XML, CSV, fixed-width text, FlexText, JSON, or a new
+/// XLSX workbook, with any connected named targets remaining XML. Other stage
+/// graph shapes reject explicitly.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
 }
@@ -643,6 +644,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
             (component.attribute("library") == Some("xml")
                 || is_csv_terminal_component(component)
                 || is_fixed_width_terminal_component(component)
+                || is_flextext_terminal_component(component)
                 || is_json_terminal_component(component)
                 || is_xlsx_terminal_component(component))
                 && component.children().any(|node| {
@@ -654,7 +656,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         .collect::<Vec<_>>();
     let [final_target] = final_outputs.as_slice() else {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import currently needs one connected XML, CSV, fixed-width, JSON, or XLSX final target"
+            "pipeline import currently needs one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"
                 .into(),
         ));
     };
@@ -672,7 +674,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
             && (component.id() != final_target.id() || connected_component_outputs(component))
     }) {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import supports CSV and fixed-width text components only as the final primary target".into(),
+            "pipeline import supports CSV, fixed-width text, and FlexText components only as the final primary target".into(),
         ));
     }
     if components.iter().any(|component| {
@@ -698,6 +700,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
                 || component.id() == final_target.id()
                     && (is_csv_terminal_component(component)
                         || is_fixed_width_terminal_component(component)
+                        || is_flextext_terminal_component(component)
                         || is_json_terminal_component(component)
                         || is_xlsx_terminal_component(component)))
                 && connected_inputs(component)
@@ -858,6 +861,23 @@ fn is_fixed_width_terminal_component(component: &roxmltree::Node<'_, '_>) -> boo
             })
 }
 
+fn is_flextext_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("library") == Some("text")
+        && component.attribute("kind") == Some("16")
+        && component
+            .children()
+            .find(|node| node.has_tag_name("data"))
+            .is_some_and(|data| {
+                data.children().any(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("type") == Some("txt")
+                        && node
+                            .attribute("config")
+                            .is_some_and(|config| !config.trim().is_empty())
+                })
+            })
+}
+
 fn is_json_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
     component.attribute("library") == Some("json")
         && component.attribute("kind") == Some("31")
@@ -913,6 +933,7 @@ fn strict_serial_stage_order(
             && !(terminal_indices.contains(&index)
                 && (is_csv_terminal_component(component)
                     || is_fixed_width_terminal_component(component)
+                    || is_flextext_terminal_component(component)
                     || is_json_terminal_component(component)
                     || is_xlsx_terminal_component(component)))
         {
