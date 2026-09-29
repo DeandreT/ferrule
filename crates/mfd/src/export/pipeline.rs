@@ -5,13 +5,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use mapping::{Pipeline, PipelineInput};
+use mapping::{Pipeline, PipelineInput, PipelineStage};
 use roxmltree::{Document, Node};
 
 use super::artifact::write_artifacts;
 use super::compatibility::{ExportProfile, ExportReport};
-use super::schema::{SideFormat, side_format};
-use super::{PreparedExport, compatibility, prepare_export};
+use super::schema::{side_format, SideFormat};
+use super::{compatibility, prepare_export, PreparedExport};
 use crate::MfdError;
 
 const MAX_STAGES: usize = 65;
@@ -28,10 +28,11 @@ pub fn preflight_pipeline_export(
 ///
 /// Unsupported stage graphs reject before any design or schema sibling is
 /// published. The supported shape has one host primary source, then each
-/// stage reads the preceding stage's primary XML target. Later stages may
-/// retain unused references to original host inputs. Connected later named
-/// inputs, independent intermediate targets, and non-XML boundaries reject
-/// explicitly. The final stage may write connected independent XML targets.
+/// stage reads the preceding stage's primary XML target. A two-stage chain
+/// may also connect an original static XML host source only in its final
+/// stage. Other connected later named inputs, independent intermediate
+/// targets, and non-XML boundaries reject explicitly. The final stage may
+/// write connected independent XML targets.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
         .map(|report| report.warnings)
@@ -87,9 +88,14 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
         })?;
         combined = Some(match combined {
             None => stage_xml,
-            Some(previous) => {
-                append_stage(&previous, &stage_xml, stage.project.extra_sources.len())?
-            }
+            Some(previous) => append_stage(
+                &previous,
+                &stage_xml,
+                &pipeline.stages[0],
+                stage,
+                index,
+                pipeline.stages.len(),
+            )?,
         });
     }
     let xml = combined.expect("validated pipeline has at least two stages");
@@ -300,7 +306,14 @@ fn remap_identifiers(
     Ok((apply_edits(xml.to_string(), edits)?, max_key, max_uid))
 }
 
-fn append_stage(previous: &str, next: &str, extra_sources: usize) -> Result<String, MfdError> {
+fn append_stage(
+    previous: &str,
+    next: &str,
+    first_stage: &PipelineStage,
+    stage: &PipelineStage,
+    stage_index: usize,
+    stage_count: usize,
+) -> Result<String, MfdError> {
     let previous_doc = Document::parse(previous)?;
     let next_doc = Document::parse(next)?;
     let previous_structure = structure(&previous_doc)?;
@@ -313,31 +326,29 @@ fn append_stage(previous: &str, next: &str, extra_sources: usize) -> Result<Stri
     let source_components = next_children
         .children()
         .filter(|node| node.has_tag_name("component"))
-        .take(extra_sources + 1)
+        .take(stage.project.extra_sources.len() + 1)
         .collect::<Vec<_>>();
     if source_components.first().copied() != Some(next_source) {
         return Err(MfdError::Unsupported(
             "rendered stage source component order changed".into(),
         ));
     }
-    let connected = child(child(next_structure, "graph")?, "vertices")?
+    let previous_vertices = child(child(previous_structure, "graph")?, "vertices")?;
+    let next_vertices = child(child(next_structure, "graph")?, "vertices")?;
+    let connected = next_vertices
         .children()
         .filter(|node| node.has_tag_name("vertex"))
         .filter_map(|node| node.attribute("vertexkey"))
         .collect::<std::collections::BTreeSet<_>>();
-    for source in source_components.iter().skip(1) {
-        if source
-            .descendants()
-            .filter(|node| node.has_tag_name("entry"))
-            .filter_map(|node| node.attribute("outkey"))
-            .any(|key| connected.contains(key))
-        {
-            return Err(MfdError::Unsupported(format!(
-                "stage named source `{}` is connected; serial XML export cannot merge that host component yet",
-                source.attribute("name").unwrap_or_default()
-            )));
-        }
-    }
+    let source_keys = late_named_source_key_remap(
+        first_stage,
+        stage,
+        stage_index == 1 && stage_count == 2,
+        previous_children,
+        previous_vertices,
+        &source_components,
+        &connected,
+    )?;
     let mut edits = Vec::new();
     connect_pass_through(previous, previous_target, next_source, &mut edits)?;
 
@@ -351,13 +362,7 @@ fn append_stage(previous: &str, next: &str, extra_sources: usize) -> Result<Stri
 
     let previous_graph = child(previous_structure, "graph")?;
     let next_graph = child(next_structure, "graph")?;
-    let previous_vertices = child(previous_graph, "vertices")?;
-    let next_vertices = child(next_graph, "vertices")?;
-    let vertices = next_vertices
-        .children()
-        .filter(Node::is_element)
-        .map(|vertex| &next[vertex.range()])
-        .collect::<String>();
+    let vertices = remapped_vertices(next, next_vertices, &source_keys)?;
     insert_before_close(previous, previous_vertices, vertices, &mut edits)?;
     let previous_edges = child(previous_graph, "edges")?;
     let next_edges = child(next_graph, "edges")?;
@@ -412,6 +417,165 @@ fn append_stage(previous: &str, next: &str, extra_sources: usize) -> Result<Stri
         }
     }
     apply_edits(previous.to_string(), edits)
+}
+
+/// Replace a late stage's duplicate host-source output ports with the ports
+/// of the one original source component retained from stage one. The source
+/// must be otherwise unused before this stage, so each remapped vertex still
+/// has exactly one owner in the combined graph.
+fn late_named_source_key_remap(
+    first_stage: &PipelineStage,
+    stage: &PipelineStage,
+    is_two_stage_final_stage: bool,
+    previous_children: Node<'_, '_>,
+    previous_vertices: Node<'_, '_>,
+    source_components: &[Node<'_, '_>],
+    connected: &BTreeSet<&str>,
+) -> Result<BTreeMap<u32, u32>, MfdError> {
+    let first_sources = previous_children
+        .children()
+        .filter(|node| node.has_tag_name("component"))
+        .take(first_stage.project.extra_sources.len() + 1)
+        .collect::<Vec<_>>();
+    if first_sources.len() != first_stage.project.extra_sources.len() + 1 {
+        return Err(MfdError::Unsupported(
+            "original pipeline source components are missing".into(),
+        ));
+    }
+    let previous_keys = previous_vertices
+        .children()
+        .filter(|node| node.has_tag_name("vertex"))
+        .map(|vertex| {
+            vertex
+                .attribute("vertexkey")
+                .and_then(|key| key.parse::<u32>().ok())
+                .ok_or_else(|| MfdError::Unsupported("pipeline vertex key is invalid".into()))
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    let mut remap = BTreeMap::new();
+    let mut used_hosts = BTreeSet::new();
+    for (index, component) in source_components.iter().enumerate().skip(1) {
+        let late_keys = entry_output_keys(*component)?;
+        if !late_keys
+            .values()
+            .any(|key| connected.contains(key.to_string().as_str()))
+        {
+            continue;
+        }
+        let late_source = &stage.project.extra_sources[index - 1];
+        if !is_two_stage_final_stage {
+            return Err(MfdError::Unsupported(format!(
+                "stage named source `{}` requires a two-stage serial chain",
+                late_source.name
+            )));
+        }
+        let host_name = stage
+            .extra_sources
+            .iter()
+            .find(|binding| binding.name == late_source.name)
+            .and_then(|binding| match &binding.from {
+                PipelineInput::Host { name } => Some(name.as_str()),
+                PipelineInput::StageTarget { .. } => None,
+            })
+            .ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "stage named source `{}` has no original host binding",
+                    late_source.name
+                ))
+            })?;
+        if !used_hosts.insert(host_name) {
+            return Err(MfdError::Unsupported(format!(
+                "original host `{host_name}` is connected through multiple late sources"
+            )));
+        }
+        let first_index = first_stage
+            .project
+            .extra_sources
+            .iter()
+            .position(|source| {
+                source.name == late_source.name
+                    && first_stage.extra_sources.iter().any(|binding| {
+                        binding.name == source.name
+                            && matches!(&binding.from, PipelineInput::Host { name } if name == host_name)
+                    })
+            })
+            .ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "stage named source `{}` is not an original named host source",
+                    late_source.name
+                ))
+            })?;
+        let original = &first_stage.project.extra_sources[first_index];
+        if original.schema != late_source.schema
+            || original.path != late_source.path
+            || original.options != late_source.options
+        {
+            return Err(MfdError::Unsupported(format!(
+                "stage named source `{}` does not match its original XML boundary",
+                late_source.name
+            )));
+        }
+        let original_component = first_sources[first_index + 1];
+        if original_component.attribute("name") != Some(original.name.as_str()) {
+            return Err(MfdError::Unsupported(
+                "original pipeline source component order changed".into(),
+            ));
+        }
+        let original_keys = entry_output_keys(original_component)?;
+        if !late_keys.keys().eq(original_keys.keys()) {
+            return Err(MfdError::Unsupported(format!(
+                "stage named source `{}` has different XML output ports",
+                late_source.name
+            )));
+        }
+        if original_keys
+            .values()
+            .any(|key| previous_keys.contains(key))
+        {
+            return Err(MfdError::Unsupported(format!(
+                "stage named source `{}` was already connected before this stage",
+                late_source.name
+            )));
+        }
+        for (path, late_key) in late_keys {
+            let original_key = original_keys[&path];
+            if remap.insert(late_key, original_key).is_some() {
+                return Err(MfdError::Unsupported(
+                    "late source output port identities overlap".into(),
+                ));
+            }
+        }
+    }
+    Ok(remap)
+}
+
+fn remapped_vertices(
+    xml: &str,
+    vertices: Node<'_, '_>,
+    source_keys: &BTreeMap<u32, u32>,
+) -> Result<String, MfdError> {
+    let mut rendered = String::new();
+    for vertex in vertices.children().filter(Node::is_element) {
+        let mut fragment = xml[vertex.range()].to_string();
+        if let Some(key) = vertex.attribute("vertexkey") {
+            let key = key
+                .parse::<u32>()
+                .map_err(|_| MfdError::Unsupported("pipeline vertex key is invalid".into()))?;
+            if let Some(&original) = source_keys.get(&key) {
+                let attribute = vertex
+                    .attributes()
+                    .find(|attribute| attribute.name() == "vertexkey")
+                    .expect("vertexkey attribute exists");
+                let range = attribute.range();
+                fragment.replace_range(
+                    range.start - vertex.range().start..range.end - vertex.range().start,
+                    &format!("vertexkey=\"{original}\""),
+                );
+            }
+        }
+        rendered.push_str(&fragment);
+    }
+    Ok(rendered)
 }
 
 fn structure<'a>(document: &'a Document<'a>) -> Result<Node<'a, 'a>, MfdError> {
