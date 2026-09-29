@@ -145,6 +145,19 @@ pub fn validate_raw_json_unique_items(
     }
     let document = document.strip_prefix('\u{feff}').unwrap_or(document);
     let raw = serde_json::from_str::<Box<RawValue>>(document)?;
+    if !schema.repeating
+        && matches!(schema.kind, SchemaKind::Group { .. })
+        && raw.get().trim_start().starts_with('[')
+    {
+        // A flat-row root reuses one object schema for each array member.
+        // Visit every raw row before number decoding so nested uniqueItems
+        // still compares exact JSON numeric lexemes.
+        let rows = serde_json::from_str::<Vec<Box<RawValue>>>(raw.get())?;
+        for row in &rows {
+            validate_raw_single_node(schema, row)?;
+        }
+        return Ok(());
+    }
     validate_raw_node(schema, &raw)
 }
 

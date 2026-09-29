@@ -299,11 +299,9 @@ fn validate_instance_document(
     schema: &SchemaNode,
     instance: &Instance,
 ) -> Result<(), ConstraintValidationError> {
-    if schema.repeating {
-        if let Instance::Repeated(items) = instance {
-            for item in items {
-                validate_instance_node(schema, item)?;
-            }
+    if let Instance::Repeated(items) = instance {
+        for item in items {
+            validate_instance_node(schema, item)?;
         }
         return Ok(());
     }
@@ -472,6 +470,38 @@ mod tests {
             Err(JsonBoundaryError::InvalidOutput { ref message })
                 if message.contains("numeric range")
         ));
+    }
+
+    #[test]
+    fn root_rows_validate_each_embedded_numeric_range() {
+        let Some(range) = IntegerRange::new(Some(5), Some(8)).map(NumericRange::Integer) else {
+            panic!("test range is valid");
+        };
+        let Some(count) = SchemaNode::scalar("Count", ScalarType::Int).with_numeric_range(range)
+        else {
+            panic!("test range matches its scalar type");
+        };
+        let encoded = serde_json::to_string(&SchemaNode::group("Row", vec![count]))
+            .expect("row schema serializes");
+        assert_eq!(
+            parse_json(&encoded, r#"[{"Count":5},{"Count":8}]"#),
+            Ok(Instance::Repeated(vec![
+                Instance::Group(vec![("Count".into(), Instance::Scalar(Value::Int(5)))]),
+                Instance::Group(vec![("Count".into(), Instance::Scalar(Value::Int(8)))]),
+            ]))
+        );
+        assert!(matches!(
+            parse_json(&encoded, r#"[{"Count":5},{"Count":9}]"#),
+            Err(JsonBoundaryError::InvalidInput { ref message })
+                if message.contains("numeric range")
+        ));
+        assert_eq!(
+            parse_json(&encoded, r#"{"Count":5}"#),
+            Ok(Instance::Group(vec![(
+                "Count".into(),
+                Instance::Scalar(Value::Int(5)),
+            )]))
+        );
     }
 
     #[test]

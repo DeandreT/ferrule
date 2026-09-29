@@ -29,6 +29,8 @@ internal static partial class Program
             ("runtime parameters", RuntimeParameters),
             ("source document path", SourceDocumentPath),
             ("JSON document boundaries", JsonDocumentBoundaries),
+            ("JSON mapped-sequence output", JsonMappedSequenceOutput),
+            ("JSON root rows", JsonRootRows),
             ("XML type alternatives", XmlTypeAlternatives),
             ("XML repeating choices", XmlRepeatingChoices),
             ("field order", FieldOrder),
@@ -156,6 +158,161 @@ internal static partial class Program
         });
 
         Error(FerruleRuntimeError.MissingSourceField, () => ScalarPathResolver.Resolve(sequence));
+    }
+
+    private static void JsonMappedSequenceOutput()
+    {
+        const string scalarSchema =
+            """{"name":"Value","kind":{"kind":"scalar","ty":"string"}}""";
+        Equal(
+            "\"mapped\"\n",
+            FerruleJson.Serialize(
+                scalarSchema,
+                new FerruleMappedSequence([Scalar(Text("mapped"))])));
+        var emptyRoot = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(scalarSchema, new FerruleMappedSequence([])));
+        Equal(true, emptyRoot.Message.Contains("one mapped item", StringComparison.Ordinal));
+        var multipleRoot = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                scalarSchema,
+                new FerruleMappedSequence([Scalar(Text("one")), Scalar(Text("two"))])));
+        Equal(true, multipleRoot.Message.Contains("one mapped item", StringComparison.Ordinal));
+
+        const string objectSchema =
+            """{"name":"Root","kind":{"kind":"group","children":[{"name":"First","kind":{"kind":"group","children":[{"name":"Value","kind":{"kind":"scalar","ty":"string"}}]}},{"name":"Names","repeating":true,"kind":{"kind":"scalar","ty":"string"}}]}}""";
+        var first = Group(Field("Value", Scalar(Text("first"))));
+        Equal(
+            "{\n  \"First\": {\n    \"Value\": \"first\"\n  },\n  \"Names\": [\n    \"one\",\n    \"two\"\n  ]\n}\n",
+            FerruleJson.Serialize(
+                objectSchema,
+                Group(
+                    Field("First", new FerruleMappedSequence([first])),
+                    Field("Names", new FerruleMappedSequence(
+                        [Scalar(Text("one")), Scalar(Text("two"))])))));
+        Equal(
+            "{\n  \"Names\": []\n}\n",
+            FerruleJson.Serialize(
+                objectSchema,
+                Group(
+                    Field("First", new FerruleMappedSequence([])),
+                    Field("Names", new FerruleMappedSequence([])))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                objectSchema,
+                Group(Field("First", new FerruleMappedSequence([first, first])))));
+        const string requiredObjectSchema =
+            """{"name":"Root","kind":{"kind":"group","children":[{"name":"First","kind":{"kind":"group","children":[{"name":"Value","kind":{"kind":"scalar","ty":"string"}}]}}],"required":["First"]}}""";
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                requiredObjectSchema,
+                Group(Field("First", new FerruleMappedSequence([])))));
+        Equal(
+            "{\n  \"Type\": \"text\",\n  \"Text\": \"value\"\n}\n",
+            FerruleJson.Serialize(
+                AlternativeJsonSchema,
+                Group(
+                    Field("Type", new FerruleMappedSequence([Scalar(Text("text"))])),
+                    Field("Text", Scalar(Text("value"))))));
+
+        const string constrainedArraySchema =
+            """{"name":"Values","repeating":true,"item_count_range":{"minimum":1,"maximum":2},"json_unique_items":true,"kind":{"kind":"scalar","ty":"int"}}""";
+        Equal(
+            "[\n  1,\n  2\n]\n",
+            FerruleJson.Serialize(
+                constrainedArraySchema,
+                new FerruleMappedSequence([
+                    Scalar(FerruleValue.FromInt64(1)),
+                    Scalar(FerruleValue.FromInt64(2)),
+                ])));
+        Equal(
+            "[\n  1\n]\n",
+            FerruleJson.Serialize(
+                constrainedArraySchema,
+                new FerruleMappedSequence([
+                    new FerruleMappedSequence([Scalar(FerruleValue.FromInt64(1))]),
+                ])));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                constrainedArraySchema,
+                new FerruleMappedSequence([])));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                constrainedArraySchema,
+                new FerruleMappedSequence([
+                    Scalar(FerruleValue.FromInt64(1)),
+                    Scalar(FerruleValue.FromInt64(1)),
+                ])));
+
+        Equal(
+            "[\n  \"one\",\n  \"two\"\n]\n",
+            FerruleJson.Serialize(
+                scalarSchema,
+                new FerruleRepeated([Scalar(Text("one")), Scalar(Text("two"))])));
+        var ordinaryInput = FerruleJson.Parse(constrainedArraySchema, "[1,2]");
+        Equal(true, ordinaryInput is FerruleRepeated);
+    }
+
+    private static void JsonRootRows()
+    {
+        const string rowSchema =
+            """{"name":"Person","kind":{"kind":"group","children":[{"name":"Name","kind":{"kind":"scalar","ty":"string"}}],"required":["Name"]}}""";
+        var empty = (FerruleRepeated)FerruleJson.Parse(rowSchema, "[]");
+        Equal(0, empty.Items.Count);
+
+        var one = (FerruleRepeated)FerruleJson.Parse(rowSchema, "[{\"Name\":\"one\"}]");
+        Equal(1, one.Items.Count);
+        Equal(Text("one"), ScalarPathResolver.Resolve(one.Items[0], "Name"));
+
+        var two = (FerruleRepeated)FerruleJson.Parse(
+            rowSchema,
+            "[{\"Name\":\"one\"},{\"Name\":\"two\"}]");
+        Equal(2, two.Items.Count);
+        Equal(Text("two"), ScalarPathResolver.Resolve(two.Items[1], "Name"));
+        Equal(
+            "[\n  {\n    \"Name\": \"one\"\n  },\n  {\n    \"Name\": \"two\"\n  }\n]\n",
+            FerruleJson.Serialize(rowSchema, two));
+
+        var objectInput = FerruleJson.Parse(rowSchema, "{\"Name\":\"single\"}");
+        Equal(true, objectInput is FerruleGroup);
+        Equal(Text("single"), ScalarPathResolver.Resolve(objectInput, "Name"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(rowSchema, "[{\"Name\":\"valid\"},{}]"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(rowSchema, "[{\"Name\":42}]"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(rowSchema, "[[]]"));
+
+        const string constrainedRowSchema =
+            """{"name":"Person","kind":{"kind":"group","children":[{"name":"Age","numeric_range":{"kind":"integer","bounds":{"minimum":0,"maximum":120}},"kind":{"kind":"scalar","ty":"int"}},{"name":"Tags","repeating":true,"json_unique_items":true,"kind":{"kind":"scalar","ty":"string"}}],"required":["Age","Tags"]}}""";
+        var validRows = (FerruleRepeated)FerruleJson.Parse(
+            constrainedRowSchema,
+            "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":40,\"Tags\":[\"b\"]}]");
+        Equal(2, validRows.Items.Count);
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                constrainedRowSchema,
+                "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":121,\"Tags\":[\"b\"]}]"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                constrainedRowSchema,
+                "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":40,\"Tags\":[\"b\",\"b\"]}]"));
+
+        const string arbitraryJsonSchema =
+            """{"name":"Any","json_any":true,"kind":{"kind":"scalar","ty":"string"}}""";
+        var arbitraryArray = FerruleJson.Parse(arbitraryJsonSchema, "[1,2]");
+        Equal(true, arbitraryArray is FerruleScalar);
+        Equal(Text("[1,2]"), ((FerruleScalar)arbitraryArray).Value);
     }
 
     private static void TypedResolverErrors()

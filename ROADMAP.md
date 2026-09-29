@@ -613,9 +613,9 @@ Update these numbers with each parity increment:
 - `.mfd` execution round trips: all 168 safe projects export, re-import,
   validate, execute, and produce semantically identical outputs.
 - Code generation: 175/175 dependency-complete designs lower and emit for both
-  Rust and C#. Three opt-in local samples (JSON-to-JSON, XML-to-JSON, and
-  FlexText-to-XML) also compile and execute in both generated backends with
-  output equal to the interpreter; the remaining
+  Rust and C#. Four opt-in local samples (JSON-to-JSON, XML-to-JSON,
+  FlexText-to-XML, and grouped CSV-to-XML) also compile and execute in both
+  generated backends with output equal to the interpreter; the remaining
   survey designs are not yet execution-checked after generation.
 - Behavioral references: 79/79 available deterministic outputs across the current
   isolated manifests match exactly; these are not inferred from structural success.
