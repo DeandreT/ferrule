@@ -54,6 +54,18 @@ fn make_chain(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_chain_with_intermediate_output(directory: &Path) -> PathBuf {
+    let path = make_chain(directory);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let marked = original.replace(
+        "<document schema=\"buffer.xsd\" instanceroot=\"{}Buffer\"/>",
+        "<document schema=\"buffer.xsd\" inputinstance=\"buffer-preview.xml\" outputinstance=\"buffer.xml\" instanceroot=\"{}Buffer\"/>",
+    );
+    assert_ne!(marked, original);
+    std::fs::write(&path, marked).unwrap();
+    path
+}
+
 fn make_csv_final_chain(directory: &Path) -> PathBuf {
     let path = make_chain(directory);
     let original = std::fs::read_to_string(&path).unwrap();
@@ -423,6 +435,140 @@ fn serial_xml_pipeline_exports_one_design_and_preserves_execution() {
                 .primary
         );
     }
+}
+
+#[test]
+fn serial_pipeline_preserves_intermediate_output_instance_and_execution() {
+    let directory = TempDir::new();
+    let imported = mfd::import_pipeline(&make_chain_with_intermediate_output(&directory.0))
+        .expect("connected intermediate output imports");
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        imported.pipeline.stages[0].project.target_path.as_deref(),
+        Some("buffer.xml")
+    );
+    assert_eq!(
+        imported.pipeline.stages[1].project.source_path.as_deref(),
+        Some("buffer-preview.xml")
+    );
+    let before = execute(&imported.pipeline);
+
+    let exported_path = directory.0.join("materialized-intermediate.mfd");
+    let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    assert!(!exported_path.exists());
+    mfd::export_pipeline_with_profile(
+        &imported.pipeline,
+        &exported_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    let exported = std::fs::read_to_string(&exported_path).unwrap();
+    let document = roxmltree::Document::parse(&exported).unwrap();
+    let intermediate = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.children().any(|child| {
+                    child.has_tag_name("properties") && child.attribute("PassThrough") == Some("1")
+                })
+        })
+        .expect("one pass-through component");
+    assert_eq!(
+        intermediate
+            .descendants()
+            .find(|node| node.has_tag_name("document"))
+            .and_then(|node| node.attribute("outputinstance")),
+        Some("buffer.xml")
+    );
+    assert_eq!(
+        intermediate
+            .descendants()
+            .find(|node| node.has_tag_name("document"))
+            .and_then(|node| node.attribute("inputinstance")),
+        Some("buffer-preview.xml")
+    );
+
+    let reimported = mfd::import_pipeline(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(
+        reimported.pipeline.stages[0].project.target_path.as_deref(),
+        Some("buffer.xml")
+    );
+    assert_eq!(
+        reimported.pipeline.stages[1].project.source_path.as_deref(),
+        Some("buffer-preview.xml")
+    );
+    let after = execute(&reimported.pipeline);
+    for index in 0..2 {
+        assert_eq!(
+            before
+                .stage(&imported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            after
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary
+        );
+    }
+
+    let mut unsupported = imported.pipeline;
+    unsupported.stages[0].project.target_path = Some("buffer.csv".into());
+    let rejected_path = directory.0.join("not-created/rejected.mfd");
+    let error = mfd::export_pipeline(&unsupported, &rejected_path)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("unsupported file boundary"), "{error}");
+    assert!(!rejected_path.parent().unwrap().exists());
+
+    let mut unsupported = reimported.pipeline;
+    unsupported.stages[1].project.source_path = Some("buffer-preview.csv".into());
+    let rejected_path = directory.0.join("not-created/source-rejected.mfd");
+    let error = mfd::export_pipeline(&unsupported, &rejected_path)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("unsupported file boundary"), "{error}");
+    assert!(!rejected_path.parent().unwrap().exists());
+}
+
+#[test]
+fn local_chain_retains_intermediate_preview_and_output_instances_when_available() {
+    let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples/Tutorial/ChainedReports.mfd");
+    if !sample.is_file() {
+        return;
+    }
+    let imported = mfd::import_pipeline(&sample).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        imported.pipeline.stages[0].project.target_path.as_deref(),
+        Some("ReportB.xml")
+    );
+    assert_eq!(
+        imported.pipeline.stages[1].project.source_path.as_deref(),
+        Some("ReportB.xml")
+    );
+    let directory = TempDir::new();
+    let destination = directory.0.join("reports-chain.mfd");
+    let report = mfd::preflight_pipeline_export(&imported.pipeline, &destination).unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    mfd::export_pipeline_with_profile(
+        &imported.pipeline,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    let reimported = mfd::import_pipeline(&destination).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(
+        reimported.pipeline.stages[0].project.target_path.as_deref(),
+        Some("ReportB.xml")
+    );
+    assert_eq!(
+        reimported.pipeline.stages[1].project.source_path.as_deref(),
+        Some("ReportB.xml")
+    );
 }
 
 #[test]

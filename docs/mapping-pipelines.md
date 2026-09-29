@@ -22,6 +22,10 @@ fan-out and targets that bypass the last pass-through stage reject during import
 CSV is supported only as the final primary target; intermediate and named
 targets in this native-design profile remain XML. The exact XML-chain-to-CSV
 shape is covered by synthetic local round trips, not native-app acceptance.
+An intermediate XML pass-through component can retain its declared output
+instance and the next stage's source preview instance, even when those paths
+differ. Import and export preserve both paths on that one component; the local
+chained-report sample and a distinct-path synthetic case pass round trips.
 A serial chain can also connect an original static XML host source to named
 inputs in later stages, including intermediate stages and repeated use of the
 same source. Export reuses that original component when its name, schema, path,
