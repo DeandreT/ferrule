@@ -1,6 +1,6 @@
 # Ferrule `.mfd` Compatibility and Product-Parity Roadmap
 
-Updated: 2026-09-28
+Updated: 2026-09-29
 
 ## Goal
 
@@ -71,10 +71,14 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
+- Generated Rust and C# hosts have compiled and executed two warning-free
+  local-corpus mappings, one JSON-to-JSON and one XML-to-JSON, with JSON results
+  matching the interpreter. This is a small execution sample, not a claim that
+  all emitted survey designs execute equivalently.
 - Known architectural constraints: each mapping stage has one primary driver,
-  scalar graph outputs, no general `.mfd` stage-graph import, no connector
-  history or interactive stepping, and reusable functions limited to the
-  currently typed scalar, record, sequence, recursive, hierarchy, and adjacency
+  scalar graph outputs, no general `.mfd` stage-graph import, incomplete
+  connector history and no interactive stepping, and reusable functions
+  limited to the currently typed scalar, record, sequence, recursive, hierarchy, and adjacency
   profiles.
 
 ## Capability Matrix
@@ -91,7 +95,7 @@ are preserved.
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
-| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, and post-run graph-node output history with nested row/join context | Input-connector consumption history, full source-row inspection, stepping, breakpoints |
+| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, and post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, and dynamic keys with nested row/join context | Remaining connector classes, full source-row inspection, stepping, breakpoints |
 | `.mfd` | 187/187 imports (171 warning-free; 175 engine-valid, including four warned chains), warning-free Ferrule export/re-import for all 187, 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Versioned native-compatible export profile plus reference-application open/validate/execute/re-save verification; complete deterministic behavioral-reference coverage and explicit extension-dependent export reporting |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
 
@@ -455,8 +459,10 @@ target-field events are exposed through the engine and versioned CLI JSONL.
 The GUI shows a bounded, searchable run report and can execute the current
 unsaved project against bounded editable input without writing output files.
 Preview selects the active primary or named target and preflights every required
-secondary source. Connector history, context/row inspection, navigable
-validation focus, and interactive debugging remain.
+secondary source. Direct graph input consumption is now recorded for calls,
+conditionals, value maps, lookups, and dynamic keys, and the GUI groups those
+events with node outputs. Remaining connector classes, full context/row
+inspection, navigable validation focus, and interactive debugging remain.
 
 #### B4. Shared Native and Browser Editor
 

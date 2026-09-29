@@ -201,6 +201,7 @@ impl RunReportView {
         let history_by_node = index_node_history(&report.trace.events);
         let history_node = report.trace.events.iter().find_map(|event| match event {
             cli::TraceEvent::NodeValue { node, .. } => Some(*node),
+            cli::TraceEvent::NodeInputValue { consumer, .. } => Some(*consumer),
             _ => None,
         });
         Self {
@@ -222,8 +223,14 @@ impl RunReportView {
 fn index_node_history(events: &[cli::TraceEvent]) -> BTreeMap<mapping::NodeId, Vec<usize>> {
     let mut history = BTreeMap::<mapping::NodeId, Vec<usize>>::new();
     for (index, event) in events.iter().enumerate() {
-        if let cli::TraceEvent::NodeValue { node, .. } = event {
-            history.entry(*node).or_default().push(index);
+        match event {
+            cli::TraceEvent::NodeValue { node, .. } => {
+                history.entry(*node).or_default().push(index);
+            }
+            cli::TraceEvent::NodeInputValue { consumer, .. } => {
+                history.entry(*consumer).or_default().push(index);
+            }
+            _ => {}
         }
     }
     history
@@ -645,7 +652,7 @@ fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
 
 fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
     ui.horizontal_wrapped(|ui| {
-        ui.label("Graph node output history");
+        ui.label("Graph node value history");
         if let Some(node) = view.history_node {
             egui::ComboBox::from_id_salt("run_history_node")
                 .selected_text(format!("Node {node}"))
@@ -654,7 +661,7 @@ fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
                         ui.selectable_value(
                             &mut view.history_node,
                             Some(candidate),
-                            format!("Node {candidate} ({} values)", events.len()),
+                            format!("Node {candidate} ({} events)", events.len()),
                         );
                     }
                 });
@@ -666,7 +673,7 @@ fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
             ));
         }
     });
-    ui.weak("Successful values in evaluation order; each row shows its source context.");
+    ui.weak("Successful inputs and outputs in evaluation order, with their source context.");
     ui.separator();
 
     let Some(indices) = view
@@ -683,13 +690,10 @@ fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
         .show_rows(ui, row_height, indices.len(), |ui, range| {
             for (offset, &index) in indices[range.clone()].iter().enumerate() {
                 let occurrence = range.start + offset + 1;
-                let cli::TraceEvent::NodeValue {
-                    positions, value, ..
-                } = &view.report.trace.events[index]
+                let Some(row) = history_row(occurrence, index, &view.report.trace.events[index])
                 else {
                     continue;
                 };
-                let row = history_row(occurrence, index, positions, value);
                 ui.add(
                     egui::Label::new(egui::RichText::new(&row).monospace())
                         .selectable(true)
@@ -700,12 +704,24 @@ fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
         });
 }
 
-fn history_row(
-    occurrence: usize,
-    event_index: usize,
-    positions: &[cli::TracePosition],
-    value: &cli::TraceValue,
-) -> String {
+fn history_row(occurrence: usize, event_index: usize, event: &cli::TraceEvent) -> Option<String> {
+    let (direction, positions, value) = match event {
+        cli::TraceEvent::NodeValue {
+            positions, value, ..
+        } => ("output".to_string(), positions, value),
+        cli::TraceEvent::NodeInputValue {
+            input,
+            input_index,
+            positions,
+            value,
+            ..
+        } => (
+            format!("input {} <- node {input}", input_index + 1),
+            positions,
+            value,
+        ),
+        _ => return None,
+    };
     let context = if positions.is_empty() {
         "<root>".to_string()
     } else {
@@ -716,12 +732,12 @@ fn history_row(
             .join(" > ")
     };
     let truncated = if value.truncated { " [truncated]" } else { "" };
-    format!(
-        "{:>6}  event {:>6}  {context}  {}{truncated}",
+    Some(format!(
+        "{:>6}  event {:>6}  {direction}  {context}  {}{truncated}",
         occurrence,
         event_index + 1,
         format_trace_value(value)
-    )
+    ))
 }
 
 fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
@@ -744,6 +760,18 @@ fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
                 format!("{prefix}  node {node:<6}  {context}  {value}")
             }
         }
+        cli::TraceEvent::NodeInputValue {
+            consumer,
+            input,
+            input_index,
+            positions,
+            value,
+        } => format!(
+            "{prefix}  node {consumer} input {} <- node {input}  {}{}",
+            input_index + 1,
+            format_trace_value(value),
+            format_trace_positions(positions)
+        ),
         cli::TraceEvent::ScopeStarted {
             scope,
             iteration,

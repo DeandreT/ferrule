@@ -13,7 +13,7 @@ use serde_json::{Value as JsonValue, json};
 
 use crate::WrittenOutput;
 
-const TRACE_SCHEMA_VERSION: u64 = 2;
+const TRACE_SCHEMA_VERSION: u64 = 3;
 const STAGE_ATTEMPTS: usize = 64;
 static STAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -246,6 +246,20 @@ fn event_value(event: &TraceEvent) -> JsonValue {
         } => json!({
             "kind": "node_value",
             "node": node,
+            "positions": positions_value(positions),
+            "value": trace_value(value),
+        }),
+        TraceEvent::NodeInputValue {
+            consumer,
+            input,
+            input_index,
+            positions,
+            value,
+        } => json!({
+            "kind": "node_input_value",
+            "consumer": consumer,
+            "input": input,
+            "input_index": input_index,
             "positions": positions_value(positions),
             "value": trace_value(value),
         }),
@@ -536,6 +550,17 @@ mod tests {
                     truncated: false,
                 },
             },
+            TraceEvent::NodeInputValue {
+                consumer: 8,
+                input: 1,
+                input_index: 2,
+                positions: vec![position.clone()],
+                value: TraceValue {
+                    value_type: "float",
+                    preview: "inf".into(),
+                    truncated: false,
+                },
+            },
             TraceEvent::ScopeStarted {
                 scope: scope(),
                 iteration: TraceIteration::Generated { kind: "tokenize" },
@@ -628,6 +653,7 @@ mod tests {
             kinds,
             [
                 "node_value",
+                "node_input_value",
                 "scope_started",
                 "iteration_candidate",
                 "filter_decision",
@@ -640,7 +666,12 @@ mod tests {
                 "scope_finished",
             ]
         );
-        let field = trace_line(8, &events[8]);
+        let input = trace_line(1, &events[1]);
+        assert_eq!(input["event"]["consumer"], 8);
+        assert_eq!(input["event"]["input"], 1);
+        assert_eq!(input["event"]["input_index"], 2);
+        assert_eq!(input["event"]["positions"][0]["join"], 7);
+        let field = trace_line(9, &events[9]);
         assert_eq!(field["event"]["field"], "status");
         assert_eq!(field["event"]["binding"]["kind"], "dynamic_binding");
         assert_eq!(field["event"]["binding"]["key_node"], 5);

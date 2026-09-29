@@ -438,6 +438,14 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
+An opt-in local-corpus smoke test imports two warning-free designs (JSON to
+JSON and XML to JSON), executes them in the interpreter, then compiles and runs
+their generated Rust and C# hosts against schema-shaped JSON input. Both
+backends must match the interpreter's JSON result. Run it with
+`cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
+when the ignored `samples/ReferenceSamples` corpus and .NET 10 SDK are present.
+The corpus files are never added to the repository.
+
 ## Output Safety
 
 The CLI validates and stages a complete artifact tree before publishing it.

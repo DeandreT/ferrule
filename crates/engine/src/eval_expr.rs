@@ -16,7 +16,7 @@ use crate::resolve::{
 };
 use crate::sequence::{eval_sequence_aggregate, eval_sequence_exists, eval_sequence_item_at};
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
-use crate::trace::{TraceSink, record_node_value};
+use crate::trace::{TraceSink, record_node_input_value, record_node_value};
 use crate::user_function;
 
 #[derive(Clone, Copy)]
@@ -120,15 +120,31 @@ pub(crate) fn eval_expr(
         }
         Node::Call { function, args } => {
             let mut values = Vec::with_capacity(args.len());
-            for arg in args {
-                values.push(eval_expr(program, *arg, context, positions, in_progress)?);
+            for (input_index, arg) in args.iter().enumerate() {
+                values.push(eval_node_input(
+                    program,
+                    node_id,
+                    *arg,
+                    input_index,
+                    context,
+                    positions,
+                    in_progress,
+                )?);
             }
             functions::call(function, &values).map_err(EngineError::from)
         }
         Node::UserFunctionCall { function, args } => {
             let mut values = Vec::with_capacity(args.len());
-            for arg in args {
-                values.push(eval_expr(program, *arg, context, positions, in_progress)?);
+            for (input_index, arg) in args.iter().enumerate() {
+                values.push(eval_node_input(
+                    program,
+                    node_id,
+                    *arg,
+                    input_index,
+                    context,
+                    positions,
+                    in_progress,
+                )?);
             }
             user_function::evaluate(
                 program.user_functions,
@@ -141,9 +157,21 @@ pub(crate) fn eval_expr(
             condition,
             then,
             else_,
-        } => match eval_expr(program, *condition, context, positions, in_progress)? {
-            Value::Bool(true) => eval_expr(program, *then, context, positions, in_progress),
-            Value::Bool(false) => eval_expr(program, *else_, context, positions, in_progress),
+        } => match eval_node_input(
+            program,
+            node_id,
+            *condition,
+            0,
+            context,
+            positions,
+            in_progress,
+        )? {
+            Value::Bool(true) => {
+                eval_node_input(program, node_id, *then, 1, context, positions, in_progress)
+            }
+            Value::Bool(false) => {
+                eval_node_input(program, node_id, *else_, 2, context, positions, in_progress)
+            }
             other => Err(EngineError::NotABool {
                 node: *condition,
                 found: other.type_name(),
@@ -155,7 +183,8 @@ pub(crate) fn eval_expr(
             table,
             default,
         } => {
-            let value = eval_expr(program, *input, context, positions, in_progress)?;
+            let value =
+                eval_node_input(program, node_id, *input, 0, context, positions, in_progress)?;
             let value = input_type
                 .and_then(|ty| coerce_value_map_input(&value, ty))
                 .unwrap_or(value);
@@ -172,7 +201,15 @@ pub(crate) fn eval_expr(
             matches,
             value,
         } => {
-            let needle = eval_expr(program, *matches, context, positions, in_progress)?;
+            let needle = eval_node_input(
+                program,
+                node_id,
+                *matches,
+                0,
+                context,
+                positions,
+                in_progress,
+            )?;
             let items = collection_items(context, collection)
                 .ok_or_else(|| EngineError::MissingSourceField(collection.join("/")))?;
             Ok(items
@@ -183,14 +220,16 @@ pub(crate) fn eval_expr(
                 .unwrap_or(Value::Null))
         }
         Node::DynamicSourceField { object, frame, key } => {
-            let key = eval_expr(program, *key, context, positions, in_progress)?;
-            let Value::String(key) = key else {
-                return Ok(Value::Null);
-            };
-            Ok(
-                dynamic_scalar(context, positions, frame.as_deref(), object, &key)
-                    .unwrap_or(Value::Null),
-            )
+            let key = eval_node_input(program, node_id, *key, 0, context, positions, in_progress)?;
+            match key {
+                Value::String(key) => {
+                    Ok(
+                        dynamic_scalar(context, positions, frame.as_deref(), object, &key)
+                            .unwrap_or(Value::Null),
+                    )
+                }
+                _ => Ok(Value::Null),
+            }
         }
         Node::XmlMixedContent {
             path,
@@ -347,6 +386,27 @@ pub(crate) fn eval_expr(
         record_node_value(program.trace_sink, node_id, positions, value);
     }
     result
+}
+
+fn eval_node_input(
+    program: EvalProgram<'_>,
+    consumer: NodeId,
+    input: NodeId,
+    input_index: usize,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let value = eval_expr(program, input, context, positions, in_progress)?;
+    record_node_input_value(
+        program.trace_sink,
+        consumer,
+        input,
+        input_index,
+        positions,
+        &value,
+    );
+    Ok(value)
 }
 
 #[allow(clippy::too_many_arguments)]

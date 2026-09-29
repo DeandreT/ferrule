@@ -42,6 +42,7 @@ fn pipeline_fixture(path: &Path) -> anyhow::Result<()> {
     project.target_options.json_document = true;
     project.root.construction = mapping::ScopeConstruction::CopyCurrentSource;
     let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
         stages: vec![mapping::PipelineStage {
             id: "prepare".into(),
             mapping_path: None,
@@ -1296,6 +1297,47 @@ fn pipeline_editor_embeds_project_rewires_rename_and_saves_independently() -> an
     );
     assert_eq!(serde_json::to_vec(&app.project)?, original_project);
     assert!(app.is_dirty());
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_editor_repairs_missing_static_named_source_bindings() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("pipeline-editor-missing-binding");
+    pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    let mut document = crate::pipeline_edit::PipelineEditorDocument::load(&pipeline_path)?;
+    let stage = &mut document.pipeline.stages[0];
+    stage.source = mapping::PipelineInput::Host {
+        name: "prepare-lookup".into(),
+    };
+    stage.project.extra_sources.push(mapping::NamedSource {
+        name: "lookup".into(),
+        path: "lookup.json".into(),
+        schema: stage.project.source.clone(),
+        options: stage.project.source_options.clone(),
+        dynamic_path: None,
+    });
+    assert!(
+        document
+            .issues()
+            .iter()
+            .any(|issue| issue.contains("static named source `lookup` has no pipeline binding"))
+    );
+
+    assert_eq!(document.add_missing_static_bindings(0)?, 1);
+    assert_eq!(document.add_missing_static_bindings(0)?, 0);
+    assert_eq!(
+        document.pipeline.stages[0].extra_sources,
+        vec![mapping::PipelineNamedInput {
+            name: "lookup".into(),
+            from: mapping::PipelineInput::Host {
+                name: "prepare-lookup-2".into(),
+            },
+        }]
+    );
+    assert!(document.issues().is_empty());
+    document.save()?;
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }

@@ -234,14 +234,25 @@ fn node_history_keeps_each_evaluation_in_trace_order() {
             iteration: cli::TraceIteration::Once,
             positions: Vec::new(),
         },
-        trace_event(8, ir::Value::String("second".into())),
         trace_event(9, ir::Value::Bool(true)),
+        cli::TraceEvent::NodeInputValue {
+            consumer: 8,
+            input: 9,
+            input_index: 0,
+            positions: Vec::new(),
+            value: cli::TraceValue {
+                value_type: "bool",
+                preview: "true".into(),
+                truncated: false,
+            },
+        },
+        trace_event(8, ir::Value::String("second".into())),
         trace_event(8, ir::Value::String("second".into())),
     ];
 
     let history = index_node_history(&events);
-    assert_eq!(history[&8], [0, 2, 4]);
-    assert_eq!(history[&9], [3]);
+    assert_eq!(history[&8], [0, 3, 4, 5]);
+    assert_eq!(history[&9], [2]);
 
     let view = RunReportView::new(RunReport {
         kind: RunReportKind::Preview,
@@ -252,8 +263,9 @@ fn node_history_keeps_each_evaluation_in_trace_order() {
         trace: TraceReport { events, dropped: 2 },
     });
     assert_eq!(view.history_node, Some(8));
-    assert_eq!(view.history_by_node[&8], [0, 2, 4]);
+    assert_eq!(view.history_by_node[&8], [0, 3, 4, 5]);
     assert_eq!(view.report.trace.dropped, 2);
+    assert!(trace_row(3, &view.report.trace.events[3]).contains("node 8 input 1 <- node 9"));
 }
 
 #[test]
@@ -277,32 +289,27 @@ fn history_rows_show_nested_join_context_and_bounded_values() {
             document_path: Some("nested/part.xml".into()),
         },
     ];
-    let row = history_row(
-        2,
-        6,
-        &positions,
-        &cli::TraceValue {
+    let input = cli::TraceEvent::NodeInputValue {
+        consumer: 8,
+        input: 9,
+        input_index: 1,
+        positions: positions.to_vec(),
+        value: cli::TraceValue {
             value_type: "string",
             preview: "é".into(),
             truncated: true,
         },
-    );
+    };
+    let row = history_row(2, 6, &input).expect("input history row");
 
     assert!(row.contains("     2  event      7"));
+    assert!(row.contains("input 2 <- node 9"));
     assert!(row.contains("Order[2] > Order/Line[3] group join=4 tuple=4[5] @nested/part.xml"));
     assert!(row.contains("string(é...) [truncated]"));
     assert!(
-        history_row(
-            1,
-            0,
-            &[],
-            &cli::TraceValue {
-                value_type: "null",
-                preview: "null".into(),
-                truncated: false,
-            }
-        )
-        .contains("<root>  null(null)")
+        history_row(1, 0, &trace_event(8, ir::Value::Null))
+            .expect("output history row")
+            .contains("output  <root>  null(null)")
     );
 }
 

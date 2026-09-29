@@ -190,6 +190,14 @@ fn input_value<'a>(
 
 fn plan_pipeline(pipeline: &Pipeline) -> Result<Plan, Vec<PipelineValidationIssue>> {
     let mut issues = Vec::new();
+    if let Some(path) = &pipeline.main_mapping_path
+        && (path.is_empty() || path.contains('\0') || path.len() > 4096)
+    {
+        issues.push(issue(
+            None,
+            "main mapping path must be nonempty, at most 4096 bytes, and contain no NUL",
+        ));
+    }
     if pipeline.stages.is_empty() {
         issues.push(issue(None, "pipeline has no stages"));
     }
@@ -523,6 +531,7 @@ mod tests {
 
         // The consumer is deliberately declared before its producer.
         let pipeline = Pipeline {
+            main_mapping_path: None,
             stages: vec![
                 PipelineStage {
                     extra_sources: vec![PipelineNamedInput {
@@ -558,6 +567,7 @@ mod tests {
     #[test]
     fn dependency_cycles_missing_targets_and_schema_mismatches_are_rejected() {
         let mut pipeline = Pipeline {
+            main_mapping_path: None,
             stages: vec![
                 stage(
                     "first",
@@ -600,6 +610,7 @@ mod tests {
         let mut consumer = copy_project(ScalarType::String);
         consumer.source.name = "RenamedInput".into();
         let pipeline = Pipeline {
+            main_mapping_path: None,
             stages: vec![
                 stage("producer", producer, host("main")),
                 stage("consumer", consumer, output("producer", None)),
@@ -635,6 +646,7 @@ mod tests {
             },
         );
         let pipeline = Pipeline {
+            main_mapping_path: None,
             stages: vec![
                 stage("first", copy_project(ScalarType::String), host("main")),
                 stage("failing", failing, output("first", None)),
@@ -675,6 +687,7 @@ mod tests {
             },
         );
         let pipeline = Pipeline {
+            main_mapping_path: None,
             stages: vec![
                 stage("first", first, host("main")),
                 stage("second", second, output("first", None)),
@@ -709,6 +722,7 @@ mod tests {
     #[test]
     fn invalid_stage_mapping_paths_are_rejected_before_execution() {
         let mut pipeline = Pipeline {
+            main_mapping_path: None,
             stages: vec![stage(
                 "first",
                 copy_project(ScalarType::String),
@@ -724,6 +738,16 @@ mod tests {
             );
         }
         pipeline.stages[0].mapping_path = Some("stages/first.json".into());
+        assert!(validate_pipeline(&pipeline).is_empty());
+        for path in [String::new(), "bad\0path".into(), "x".repeat(4097)] {
+            pipeline.main_mapping_path = Some(path);
+            assert!(
+                validate_pipeline(&pipeline)
+                    .iter()
+                    .any(|issue| issue.message.contains("main mapping path"))
+            );
+        }
+        pipeline.main_mapping_path = Some("maps/main.mfd".into());
         assert!(validate_pipeline(&pipeline).is_empty());
     }
 }

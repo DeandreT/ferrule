@@ -263,7 +263,7 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
     let lines = json_lines(&trace)?;
     assert!(!lines.is_empty());
     for (sequence, line) in lines.iter().enumerate() {
-        assert_eq!(line["schema_version"], 2);
+        assert_eq!(line["schema_version"], 3);
         assert_eq!(line["sequence"], sequence);
         assert!(line["event"]["kind"].is_string());
     }
@@ -272,6 +272,7 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
         .filter_map(|line| line["event"]["kind"].as_str())
         .collect::<BTreeSet<_>>();
     assert!(kinds.contains("node_value"), "{kinds:?}");
+    assert!(kinds.contains("node_input_value"), "{kinds:?}");
     assert!(kinds.contains("scope_started"), "{kinds:?}");
     assert!(kinds.contains("iteration_candidate"), "{kinds:?}");
     assert!(kinds.contains("filter_decision"), "{kinds:?}");
@@ -282,6 +283,19 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
     assert!(kinds.contains("target_field_written"), "{kinds:?}");
     assert!(kinds.contains("target_produced"), "{kinds:?}");
     assert!(kinds.contains("scope_finished"), "{kinds:?}");
+
+    let inputs = lines
+        .iter()
+        .filter(|line| line["event"]["kind"] == "node_input_value")
+        .map(|line| &line["event"])
+        .collect::<Vec<_>>();
+    assert!(inputs.iter().any(|event| {
+        event["consumer"] == 3
+            && event["input"] == 2
+            && event["input_index"] == 0
+            && event["positions"][0]["index"].is_number()
+            && event["value"]["type"] == "int"
+    }));
 
     let first_trace = std::fs::read(&trace)?;
     let second_trace = dir.0.join("second.trace.jsonl");

@@ -1,5 +1,6 @@
 //! A file-backed pipeline document independent of the current mapping canvas.
 
+use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
@@ -50,7 +51,10 @@ impl PipelineEditorDocument {
         }
         Ok(Self {
             path: path.to_path_buf(),
-            pipeline: Pipeline { stages: Vec::new() },
+            pipeline: Pipeline {
+                main_mapping_path: None,
+                stages: Vec::new(),
+            },
             original_bytes: None,
             saved_semantic: None,
         })
@@ -179,6 +183,66 @@ impl PipelineEditorDocument {
         }
         *destination = input;
         Ok(())
+    }
+
+    /// Adds host bindings for static named sources absent from a loaded stage.
+    /// Existing bindings, including ones with validation issues, are left for
+    /// the user to edit explicitly.
+    pub fn add_missing_static_bindings(&mut self, stage_index: usize) -> anyhow::Result<usize> {
+        let stage = self
+            .pipeline
+            .stages
+            .get(stage_index)
+            .context("stage no longer exists")?;
+        let missing = stage
+            .project
+            .extra_sources
+            .iter()
+            .enumerate()
+            .filter(|(_, source)| {
+                source.dynamic_path.is_none()
+                    && !stage
+                        .extra_sources
+                        .iter()
+                        .any(|binding| binding.name == source.name)
+            })
+            .map(|(index, source)| (index, source.name.clone()))
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            return Ok(0);
+        }
+        let mut used = self
+            .pipeline
+            .stages
+            .iter()
+            .flat_map(|stage| {
+                std::iter::once(&stage.source)
+                    .chain(stage.extra_sources.iter().map(|binding| &binding.from))
+            })
+            .filter_map(|input| match input {
+                PipelineInput::Host { name } => Some(name.clone()),
+                PipelineInput::StageTarget { .. } => None,
+            })
+            .collect::<BTreeSet<_>>();
+        let stage = &mut self.pipeline.stages[stage_index];
+        for (index, name) in &missing {
+            let mut base = format!("{}-{name}", stage.id);
+            if base.len() > 240 || base.contains('\0') {
+                base = format!("{}-input-{index}", stage_id_base(&stage.id));
+            }
+            let mut host = base.clone();
+            let mut suffix = 2usize;
+            while used.contains(&host) {
+                host = format!("{base}-{suffix}");
+                suffix += 1;
+            }
+            used.insert(host.clone());
+            stage.extra_sources.push(PipelineNamedInput {
+                name: name.clone(),
+                from: PipelineInput::Host { name: host },
+            });
+        }
+        Ok(missing.len())
     }
 
     pub fn remove_stage(&mut self, index: usize) -> anyhow::Result<()> {

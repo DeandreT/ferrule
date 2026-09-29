@@ -131,6 +131,11 @@ fn run_pipeline_value_with_options(
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let runtime_path = absolute_mapping_path(pipeline_path)?;
+    let main_mapping_path = match &pipeline.main_mapping_path {
+        Some(path) => absolute_mapping_path(&pipeline_dir.join(path))?.into_owned(),
+        None => runtime_path.to_path_buf(),
+    };
+    protected.push(main_mapping_path.clone());
     let stage_mapping_paths = pipeline
         .stages
         .iter()
@@ -159,7 +164,7 @@ fn run_pipeline_value_with_options(
     let results = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
         let mut execution = engine::ExecutionContext::with_main_mapping_file_path(
             &stage_mapping_paths[stage],
-            &runtime_path,
+            &main_mapping_path,
         )
         .with_current_datetime(&current_datetime)
         .with_dynamic_source_loader(&dynamic_loaders[stage]);
