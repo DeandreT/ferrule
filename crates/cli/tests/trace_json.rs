@@ -283,6 +283,12 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
     assert!(kinds.contains("target_field_written"), "{kinds:?}");
     assert!(kinds.contains("target_produced"), "{kinds:?}");
     assert!(kinds.contains("scope_finished"), "{kinds:?}");
+    assert!(
+        lines
+            .iter()
+            .filter(|line| line["event"]["kind"] == "iteration_candidate")
+            .all(|line| line["event"].get("source_row").is_none())
+    );
 
     let inputs = lines
         .iter()
@@ -316,6 +322,85 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
         String::from_utf8_lossy(&second_output.stderr)
     );
     assert_eq!(std::fs::read(second_trace)?, first_trace);
+    Ok(())
+}
+
+#[test]
+fn source_candidates_write_bounded_rows_to_v3_json_lines() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new("source-rows")?;
+    let mut project = control_project();
+    let rows = |name| {
+        SchemaNode::group(
+            name,
+            vec![
+                SchemaNode::group(
+                    "Rows",
+                    vec![SchemaNode::scalar("Value", ScalarType::String)],
+                )
+                .repeating(),
+            ],
+        )
+    };
+    project.source = rows("Input");
+    project.target = rows("Output");
+    project.graph = Graph {
+        nodes: [(
+            0,
+            Node::SourceField {
+                path: vec!["Value".into()],
+                frame: Some(vec!["Rows".into()]),
+            },
+        )]
+        .into(),
+    };
+    project.root = Scope {
+        children: vec![Scope {
+            target_field: "Rows".into(),
+            iteration: ScopeIteration::Source(vec!["Rows".into()]),
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 0,
+            }],
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    };
+    let project = write_project(&dir.0, &project)?;
+    std::fs::write(
+        dir.0.join("input.json"),
+        r#"{"Rows":[{"Value":"a"},{"Value":"b"}]}"#,
+    )?;
+    let trace = dir.0.join("run.trace.jsonl");
+
+    let output = ferrule(
+        &dir.0,
+        &[
+            "run",
+            "--project",
+            project.to_str().ok_or("non-UTF-8 project path")?,
+            "--trace-json",
+            trace.to_str().ok_or("non-UTF-8 trace path")?,
+        ],
+    )?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let lines = json_lines(&trace)?;
+    let source_rows = lines
+        .iter()
+        .filter(|line| line["event"]["kind"] == "iteration_candidate")
+        .filter_map(|line| line["event"].get("source_row"))
+        .collect::<Vec<_>>();
+    assert_eq!(source_rows.len(), 2);
+    assert_eq!(source_rows[0]["kind"], "group");
+    assert_eq!(source_rows[0]["fields"][0]["name"], "Value");
+    assert_eq!(source_rows[0]["fields"][0]["value"]["preview"], "a");
+    assert_eq!(source_rows[1]["fields"][0]["value"]["preview"], "b");
+    assert!(lines.iter().all(|line| line["schema_version"] == 3));
     Ok(())
 }
 

@@ -6,6 +6,12 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+mod source_rows;
+
+use source_rows::{format_source_row, index_source_rows, show_source_rows};
+#[cfg(test)]
+use source_rows::{source_row_details, source_row_summary};
+
 pub const MAX_PREVIEW_BYTES: usize = 1024 * 1024;
 const MAX_BINARY_PREVIEW_BYTES: usize = 4 * 1024;
 pub const MAX_TRACE_EVENTS: usize = 50_000;
@@ -186,19 +192,30 @@ enum ReportPage {
     History,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HistoryMode {
+    Nodes,
+    SourceRows,
+}
+
 #[derive(Debug)]
 pub struct RunReportView {
     pub report: RunReport,
     selected_output: usize,
     page: ReportPage,
     trace_filter: String,
+    history_mode: HistoryMode,
     history_by_node: BTreeMap<mapping::NodeId, Vec<usize>>,
     history_node: Option<mapping::NodeId>,
+    source_rows: Vec<usize>,
+    selected_source_row: Option<usize>,
 }
 
 impl RunReportView {
     pub fn new(report: RunReport) -> Self {
         let history_by_node = index_node_history(&report.trace.events);
+        let source_rows = index_source_rows(&report.trace.events);
+        let selected_source_row = source_rows.first().copied();
         let history_node = report.trace.events.iter().find_map(|event| match event {
             cli::TraceEvent::NodeValue { node, .. } => Some(*node),
             cli::TraceEvent::NodeInputValue { consumer, .. } => Some(*consumer),
@@ -209,8 +226,11 @@ impl RunReportView {
             selected_output: 0,
             page: ReportPage::Output,
             trace_filter: String::new(),
+            history_mode: HistoryMode::Nodes,
             history_by_node,
             history_node,
+            source_rows,
+            selected_source_row,
         }
     }
 
@@ -651,6 +671,22 @@ fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
 }
 
 fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut view.history_mode, HistoryMode::Nodes, "Graph nodes");
+        ui.selectable_value(
+            &mut view.history_mode,
+            HistoryMode::SourceRows,
+            "Source rows",
+        );
+    });
+    ui.separator();
+    match view.history_mode {
+        HistoryMode::Nodes => show_node_history(ui, view),
+        HistoryMode::SourceRows => show_source_rows(ui, view),
+    }
+}
+
+fn show_node_history(ui: &mut egui::Ui, view: &mut RunReportView) {
     ui.horizontal_wrapped(|ui| {
         ui.label("Graph node value history");
         if let Some(node) = view.history_node {
@@ -786,10 +822,15 @@ fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
             scope,
             ordinal,
             positions,
+            source_row,
         } => format!(
-            "{prefix}  scope {}  candidate {ordinal}{}",
+            "{prefix}  scope {}  candidate {ordinal}{}{}",
             format_trace_scope(scope),
-            format_trace_positions(positions)
+            format_trace_positions(positions),
+            source_row
+                .as_ref()
+                .map(|row| format!("  source row {}", format_source_row(row)))
+                .unwrap_or_default()
         ),
         cli::TraceEvent::FilterDecision {
             scope,
