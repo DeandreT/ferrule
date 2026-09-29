@@ -7,7 +7,7 @@ use ir::{
 use serde_json::value::RawValue;
 
 use super::unsupported_union;
-use crate::JsonFormatError;
+use crate::{JsonFormatError, RecursiveSchemas};
 
 pub(super) fn has_keyword(schema: &serde_json::Value) -> bool {
     schema.get("uniqueItems").is_some()
@@ -87,18 +87,36 @@ pub(crate) fn validate_json_tree(
     schema: &SchemaNode,
     value: &serde_json::Value,
 ) -> Result<(), JsonFormatError> {
+    let recursive = RecursiveSchemas::new(schema)?;
+    validate_json_node(schema, value, &recursive, 0)
+}
+
+fn validate_json_node(
+    schema: &SchemaNode,
+    value: &serde_json::Value,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
+) -> Result<(), JsonFormatError> {
+    let resolved;
+    let (schema, recursion_depth) = if schema.recursive_ref.is_some() {
+        let (value, next_depth) = recursive.resolve(schema, recursion_depth)?;
+        resolved = value;
+        (&resolved, next_depth)
+    } else {
+        (schema, recursion_depth)
+    };
     if schema.container_nullable && value.is_null() {
         return Ok(());
     }
     if !schema.repeating {
-        return validate_json_single_node(schema, value);
+        return validate_json_single_node(schema, value, recursive, recursion_depth);
     }
     let serde_json::Value::Array(items) = value else {
         return Ok(());
     };
     validate(schema, items)?;
     for item in items {
-        validate_json_single_node(schema, item)?;
+        validate_json_single_node(schema, item, recursive, recursion_depth)?;
     }
     Ok(())
 }
@@ -106,6 +124,8 @@ pub(crate) fn validate_json_tree(
 fn validate_json_single_node(
     schema: &SchemaNode,
     value: &serde_json::Value,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
 ) -> Result<(), JsonFormatError> {
     if schema.json_any || schema.container_nullable && value.is_null() {
         return Ok(());
@@ -121,13 +141,13 @@ fn validate_json_single_node(
     };
     for child in children {
         if let Some(value) = fields.get(&child.name) {
-            validate_json_tree(child, value)?;
+            validate_json_node(child, value, recursive, recursion_depth)?;
         }
     }
     if let Some(dynamic) = dynamic {
         for (name, value) in fields {
             if !children.iter().any(|child| child.name == *name) {
-                validate_json_tree(dynamic, value)?;
+                validate_json_node(dynamic, value, recursive, recursion_depth)?;
             }
         }
     }
@@ -143,6 +163,7 @@ pub fn validate_raw_json_unique_items(
     if !tree_has_unique_items(schema) {
         return Ok(());
     }
+    let recursive = RecursiveSchemas::new(schema)?;
     let document = document.strip_prefix('\u{feff}').unwrap_or(document);
     let raw = serde_json::from_str::<Box<RawValue>>(document)?;
     if !schema.repeating
@@ -154,11 +175,11 @@ pub fn validate_raw_json_unique_items(
         // still compares exact JSON numeric lexemes.
         let rows = serde_json::from_str::<Vec<Box<RawValue>>>(raw.get())?;
         for row in &rows {
-            validate_raw_single_node(schema, row)?;
+            validate_raw_single_node(schema, row, &recursive, 0)?;
         }
         return Ok(());
     }
-    validate_raw_node(schema, &raw)
+    validate_raw_node(schema, &raw, &recursive, 0)
 }
 
 pub(crate) fn validate_raw_json_lines_unique_items(
@@ -168,6 +189,7 @@ pub(crate) fn validate_raw_json_lines_unique_items(
     if !tree_has_unique_items(schema) {
         return Ok(());
     }
+    let recursive = RecursiveSchemas::new(schema)?;
     let raw = lines
         .iter()
         .map(|line| serde_json::from_str::<Box<RawValue>>(line))
@@ -176,7 +198,7 @@ pub(crate) fn validate_raw_json_lines_unique_items(
         validate_raw_items(schema, &raw)?;
     }
     for item in &raw {
-        validate_raw_single_node(schema, item)?;
+        validate_raw_single_node(schema, item, &recursive, 0)?;
     }
     Ok(())
 }
@@ -194,12 +216,25 @@ pub(crate) fn tree_has_unique_items(schema: &SchemaNode) -> bool {
         }
 }
 
-fn validate_raw_node(schema: &SchemaNode, raw: &RawValue) -> Result<(), JsonFormatError> {
+fn validate_raw_node(
+    schema: &SchemaNode,
+    raw: &RawValue,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
+) -> Result<(), JsonFormatError> {
+    let resolved;
+    let (schema, recursion_depth) = if schema.recursive_ref.is_some() {
+        let (value, next_depth) = recursive.resolve(schema, recursion_depth)?;
+        resolved = value;
+        (&resolved, next_depth)
+    } else {
+        (schema, recursion_depth)
+    };
     if schema.container_nullable && raw.get().trim() == "null" {
         return Ok(());
     }
     if !schema.repeating {
-        return validate_raw_single_node(schema, raw);
+        return validate_raw_single_node(schema, raw, recursive, recursion_depth);
     }
     if !raw.get().trim_start().starts_with('[') {
         return Ok(());
@@ -209,12 +244,17 @@ fn validate_raw_node(schema: &SchemaNode, raw: &RawValue) -> Result<(), JsonForm
         validate_raw_items(schema, &items)?;
     }
     for item in &items {
-        validate_raw_single_node(schema, item)?;
+        validate_raw_single_node(schema, item, recursive, recursion_depth)?;
     }
     Ok(())
 }
 
-fn validate_raw_single_node(schema: &SchemaNode, raw: &RawValue) -> Result<(), JsonFormatError> {
+fn validate_raw_single_node(
+    schema: &SchemaNode,
+    raw: &RawValue,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
+) -> Result<(), JsonFormatError> {
     if schema.json_any
         || schema.container_nullable && raw.get().trim() == "null"
         || !matches!(schema.kind, SchemaKind::Group { .. })
@@ -232,13 +272,13 @@ fn validate_raw_single_node(schema: &SchemaNode, raw: &RawValue) -> Result<(), J
     };
     for child in children {
         if let Some(value) = fields.get(&child.name) {
-            validate_raw_node(child, value)?;
+            validate_raw_node(child, value, recursive, recursion_depth)?;
         }
     }
     if let Some(dynamic) = dynamic {
         for (name, value) in &fields {
             if !children.iter().any(|child| child.name == *name) {
-                validate_raw_node(dynamic, value)?;
+                validate_raw_node(dynamic, value, recursive, recursion_depth)?;
             }
         }
     }

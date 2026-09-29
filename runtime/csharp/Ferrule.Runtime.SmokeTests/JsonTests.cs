@@ -49,6 +49,161 @@ internal static partial class Program
     private const string ObjectOpennessJsonSchema =
         "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Known\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Nested\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Name\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Rows\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Code\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"Maybe\",\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Id\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}]}},{\"name\":\"Open\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Fixed\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"dynamic\":{\"name\":\"*\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}}}]}}";
 
+    private static void JsonRecursiveReferences()
+    {
+        const string schema =
+            """
+            {"name":"Tree","kind":{"kind":"group","children":[
+              {"name":"Name","kind":{"kind":"scalar","ty":"string"}},
+              {"name":"File","repeating":true,"kind":{"kind":"scalar","ty":"string"}},
+              {"name":"Child","repeating":true,"container_nullable":true,
+               "json_unique_items":true,"recursive_ref":"Tree",
+               "kind":{"kind":"group","children":[]}}
+            ]}}
+            """;
+        const string document =
+            """
+            {"Name":"root","File":["top"],"Child":[
+              {"Name":"branch","File":["nested"],"Child":[
+                {"Name":"leaf","File":["deep"]}
+              ]}
+            ]}
+            """;
+        var instance = FerruleJson.Parse(schema, document);
+        var rendered = FerruleJson.Serialize(schema, instance);
+        using (var parsed = System.Text.Json.JsonDocument.Parse(rendered))
+        {
+            Equal(
+                "deep",
+                parsed.RootElement
+                    .GetProperty("Child")[0]
+                    .GetProperty("Child")[0]
+                    .GetProperty("File")[0]
+                    .GetString());
+        }
+        var reparsed = FerruleJson.Parse(schema, rendered);
+        Equal(rendered, FerruleJson.Serialize(schema, reparsed));
+
+        var nullable = FerruleJson.Parse(schema, """{"Name":"root","Child":null}""");
+        using (var parsed = System.Text.Json.JsonDocument.Parse(
+                   FerruleJson.Serialize(schema, nullable)))
+        {
+            Equal(
+                System.Text.Json.JsonValueKind.Null,
+                parsed.RootElement.GetProperty("Child").ValueKind);
+        }
+
+        var constrained = schema.Replace(
+            "\"json_unique_items\":true",
+            "\"json_unique_items\":true,\"item_count_range\":{\"minimum\":1,\"maximum\":2}",
+            StringComparison.Ordinal);
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(constrained, """{"Name":"root","Child":[]}"""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                constrained,
+                Group(
+                    Field("Name", Scalar(Text("root"))),
+                    Field("Child", new FerruleRepeated([
+                        Group(Field("Name", Scalar(Text("one")))),
+                        Group(Field("Name", Scalar(Text("two")))),
+                        Group(Field("Name", Scalar(Text("three")))),
+                    ])))));
+        var contains = schema.Replace(
+            "\"json_unique_items\":true",
+            """
+            "json_unique_items":true,
+            "json_contains":[{"predicate":{"kind":"schema","schema":{
+              "name":"leaf-match","kind":{"kind":"group","children":[
+                {"name":"Name","fixed":"leaf","kind":{"kind":"scalar","ty":"string"}}
+              ]}
+            }},"range":{"minimum":1}}]
+            """,
+            StringComparison.Ordinal);
+        _ = FerruleJson.Parse(contains, """{"Name":"root","Child":[{"Name":"leaf"}]}""");
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                contains,
+                """{"Name":"root","Child":[{"Name":"branch"}]}"""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                contains,
+                Group(
+                    Field("Name", Scalar(Text("root"))),
+                    Field("Child", new FerruleRepeated([
+                        Group(Field("Name", Scalar(Text("branch")))),
+                    ])))));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                schema,
+                """{"Name":"root","Child":[{"Name":"same"},{"Name":"same"}]}"""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                schema,
+                """{"Name":"root","Child":[{"Name":"branch","Child":[{"Name":"same"},{"Name":"same"}]}]}"""));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                schema,
+                Group(
+                    Field("Name", Scalar(Text("root"))),
+                    Field("Child", new FerruleRepeated([
+                        Group(
+                            Field("Name", Scalar(Text("branch"))),
+                            Field("Child", new FerruleRepeated([
+                                Group(Field("Name", Scalar(Text("same")))),
+                                Group(Field("Name", Scalar(Text("same")))),
+                            ]))),
+                    ])))));
+
+        var missingAnchor = schema.Replace(
+            "\"recursive_ref\":\"Tree\"",
+            "\"recursive_ref\":\"Missing\"",
+            StringComparison.Ordinal);
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Parse(missingAnchor, "{}"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(missingAnchor, Group()));
+        const string ambiguousAnchor =
+            """
+            {"name":"Root","kind":{"kind":"group","children":[
+              {"name":"Tree","kind":{"kind":"group","children":[]}},
+              {"name":"Branch","kind":{"kind":"group","children":[
+                {"name":"Tree","kind":{"kind":"group","children":[]}}
+              ]}},
+              {"name":"Child","recursive_ref":"Tree","kind":{"kind":"group","children":[]}}
+            ]}}
+            """;
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Parse(ambiguousAnchor, "{}"));
+        const string malformedMarker =
+            """
+            {"name":"Tree","kind":{"kind":"group","children":[
+              {"name":"Child","recursive_ref":"Tree","kind":{"kind":"group","children":[
+                {"name":"Data","kind":{"kind":"scalar","ty":"string"}}
+              ]}}
+            ]}}
+            """;
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Parse(malformedMarker, "{}"));
+
+        var deeplyNested = """{"Name":"leaf"}""";
+        FerruleInstance deepInstance = Group(Field("Name", Scalar(Text("leaf"))));
+        for (var index = 0; index < 65; index++)
+        {
+            deeplyNested = "{\"Name\":\"node\",\"Child\":[" + deeplyNested + "]}";
+            deepInstance = Group(
+                Field("Name", Scalar(Text("node"))),
+                Field("Child", new FerruleRepeated([deepInstance])));
+        }
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Parse(schema, deeplyNested));
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Serialize(schema, deepInstance));
+    }
+
     private static void JsonDocumentBoundaries()
     {
         var parsed = (FerruleGroup)FerruleJson.Parse(

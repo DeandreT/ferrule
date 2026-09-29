@@ -409,6 +409,10 @@ property-name constraints, exact closed homogeneous pattern-property
 selectors, exact structural `uniqueItems`,
 Unicode-scalar string-length intervals, and portable JSON Schema `pattern`
 assertions on both input and normalized output.
+Embedded recursive group references retain nested fields when their named
+anchor is unique and concrete. Malformed or ambiguous references fail at the
+JSON boundary, and each parse or serialization is limited to 64 recursive
+references. Nested array assertions, including `uniqueItems`, still apply.
 Pattern constraints retain conjunctions and exact disjunctions, nullable
 bypass, array items, typed dynamic properties, and scalar-union runtime tags. Both generated
 runtimes use Ferrule's bounded Thompson-NFA matcher rather than a host regex
@@ -438,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports fourteen warning-free designs: JSON to
+An opt-in local-corpus smoke test imports fifteen warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -450,7 +454,10 @@ scope concatenation. The twelfth joins a primary XML source with a named XML
 source on a composite person key. The thirteenth reads embedded-schema
 Protobuf input and maps it to CSV through a value map and numeric function.
 The fourteenth reads transposed XLSX columns and maps them to CSV with
-position-indexed item-at aggregates.
+position-indexed item-at aggregates. The fifteenth reads a recursive XML
+hierarchy and collects 90 distinct nested file paths into XML; its
+schema-shaped JSON input retains recursive group fields in both generated
+backends.
 It executes them in the interpreter, then compiles
 and runs their generated Rust and C# hosts against
 schema-shaped JSON input. Both backends must match the interpreter's JSON
