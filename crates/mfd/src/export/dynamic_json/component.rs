@@ -3,7 +3,9 @@ use std::path::Path;
 
 use ir::SchemaNode;
 
-use super::super::schema::{GeneratedSibling, RenderedSchemaComponent, xml_escape};
+use super::super::schema::{
+    GeneratedSibling, RenderedSchemaComponent, unresolved_json_schema_attribute, xml_escape,
+};
 use crate::MfdError;
 
 pub(super) enum JsonSide {
@@ -17,6 +19,7 @@ pub(super) struct JsonComponentArgs<'a> {
     pub(super) side: JsonSide,
     pub(super) instance_path: Option<&'a str>,
     pub(super) json_lines: bool,
+    pub(super) unresolved_schema_reference: Option<&'a str>,
     pub(super) mfd_path: &'a Path,
     pub(super) component_name: &'a str,
     pub(super) component_uid: u32,
@@ -62,6 +65,7 @@ pub(super) fn render_json_component(
     } else {
         ""
     };
+    let unresolved_json_schema = unresolved_json_schema_attribute(args.unresolved_schema_reference);
     let mut xml = String::new();
     let _ = write!(
         xml,
@@ -78,7 +82,7 @@ pub(super) fn render_json_component(
          \t\t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t</root>\n\
-         \t\t\t\t\t\t<json schema=\"{}\"{instance}{json_lines}/>\n\
+         \t\t\t\t\t\t<json schema=\"{}\"{instance}{json_lines}{unresolved_json_schema}/>\n\
          \t\t\t\t\t</data>\n\
          \t\t\t\t</component>\n",
         xml_escape(args.component_name),

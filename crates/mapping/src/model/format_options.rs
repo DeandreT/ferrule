@@ -310,6 +310,11 @@ pub struct FormatOptions {
     /// to carry a `.json`, `.jsonl`, or `.ndjson` extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub json_document: bool,
+    /// Original JSON Schema reference when MFD import had to use the entry
+    /// tree because that schema was unavailable. This is provenance only:
+    /// runtime JSON I/O uses the embedded schema and never opens this path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_schema_unresolved_reference: Option<String>,
     /// JSON5 instance syntax. JSON schemas remain ordinary JSON. This can be
     /// selected independently of the instance filename extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
