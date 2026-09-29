@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twelve local, gitignored mappings.
+//! Opt-in generated-backend execution against thirteen local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -11,6 +11,7 @@ enum SourceKind {
     Xml,
     FlexText,
     Csv,
+    Protobuf,
 }
 
 #[derive(Clone, Copy)]
@@ -27,7 +28,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 12] = [
+const CASES: [CorpusCase; 13] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -100,6 +101,12 @@ const CASES: [CorpusCase; 12] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
+    CorpusCase {
+        sample: "Tutorial/ReadProtocolBuffers.mfd",
+        input: "Tutorial/assets.bin",
+        source_kind: SourceKind::Protobuf,
+        target_kind: TargetKind::Csv,
+    },
 ];
 
 #[test]
@@ -171,6 +178,7 @@ fn run_case(
             SourceKind::Csv => {
                 project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
             }
+            SourceKind::Protobuf => project.source_options.protobuf.is_some(),
         },
         "{sample}: unexpected input format"
     );
@@ -200,12 +208,18 @@ fn run_case(
             project.source_options.delimiter,
             project.source_options.has_header_row.unwrap_or(true),
         )?),
+        SourceKind::Protobuf => {
+            let options = project.source_options.protobuf.as_ref().unwrap();
+            assert!(options.imports.is_empty(), "{sample}: protobuf imports");
+            let layout = format_protobuf::Layout::parse(&options.schema)?;
+            format_protobuf::read(&input_path, &layout, &options.root_message)?
+        }
     };
     // Generated hosts expose a schema-shaped JSON API. Preserve native XML,
     // FlexText, and CSV readers' typed instances while crossing that host API.
     let source_json = match case.source_kind {
         SourceKind::Json => std::fs::read_to_string(&input_path)?,
-        SourceKind::Xml | SourceKind::FlexText | SourceKind::Csv => {
+        SourceKind::Xml | SourceKind::FlexText | SourceKind::Csv | SourceKind::Protobuf => {
             format_json::to_string(&project.source, &source)?
         }
     };
@@ -454,6 +468,38 @@ fn run_case(
             );
             assert!(row["Email"].as_str().is_some_and(|email| !email.is_empty()));
         }
+    }
+    if sample == "Tutorial/ReadProtocolBuffers.mfd" {
+        let rows = expected_json.as_array().expect("CSV painting rows");
+        assert_eq!(rows.len(), 7, "{sample}: one row per protobuf painting");
+        assert!(rows.iter().all(|row| {
+            ["Name", "Period", "Dimensions", "Format", "Location"]
+                .into_iter()
+                .all(|field| row[field].as_str().is_some_and(|value| !value.is_empty()))
+        }));
+        assert_eq!(rows[0]["Dimensions"], "61.4 in x 67.8 in");
+        assert_eq!(rows[6]["Dimensions"], "11 in x 51.2 in");
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row["Location"] == "Museum")
+                .count(),
+            4,
+            "{sample}: first value-map branch"
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row["Location"] == "Temple")
+                .count(),
+            1,
+            "{sample}: second value-map branch"
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row["Location"] == "Private collection")
+                .count(),
+            2,
+            "{sample}: third value-map branch"
+        );
     }
 
     let generated_input = case_dir.join("source.json");
