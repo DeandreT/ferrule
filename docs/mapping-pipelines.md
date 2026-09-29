@@ -26,6 +26,10 @@ An intermediate XML pass-through component can retain its declared output
 instance and the next stage's source preview instance, even when those paths
 differ. Import and export preserve both paths on that one component; the local
 chained-report sample and a distinct-path synthetic case pass round trips.
+Import does not infer an output file from a source preview path or an absent
+instance. Three local chains export and reimport in the strict native profile;
+a fourth uses date/time coercion extensions and rejects strict export before
+publishing artifacts.
 A serial chain can also connect an original static XML host source to named
 inputs in later stages, including intermediate stages and repeated use of the
 same source. Export reuses that original component when its name, schema, path,
