@@ -36,7 +36,10 @@ impl TraceSink for Collector {
 
 fn two_field_project() -> Project {
     Project {
-        source: SchemaNode::group("Source", Vec::new()),
+        source: SchemaNode::group(
+            "Source",
+            vec![SchemaNode::scalar("input", ScalarType::String)],
+        ),
         target: SchemaNode::group(
             "Target",
             vec![
@@ -106,7 +109,10 @@ fn start_paused_run() -> PausedRun {
             .with_debug_hook(&hook);
         let result = run_with_context(
             &two_field_project(),
-            &Instance::Group(Vec::new()),
+            &Instance::Group(vec![(
+                "input".into(),
+                Instance::Scalar(Value::String("source value".into())),
+            )]),
             &execution,
         );
         let _ = result_tx.send((result, collector.0.into_inner()));
@@ -129,6 +135,17 @@ fn debug_hook_pauses_before_insertion_and_resumes_without_changing_trace() {
     assert_eq!(first.field, "first");
     assert!(first.draft.fields.is_empty());
     assert_eq!(first.pending.value.as_ref().unwrap().preview, "A");
+    let input = first
+        .source
+        .frames
+        .iter()
+        .flat_map(|frame| &frame.fields)
+        .find(|field| field.name == "input")
+        .expect("active source frame includes the input field");
+    assert_eq!(
+        input.preview.value.as_ref().unwrap().preview,
+        "source value"
+    );
     assert_eq!(
         first.binding,
         TraceTargetFieldBinding::StaticBinding { value: 0 }

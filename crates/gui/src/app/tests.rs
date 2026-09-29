@@ -1373,6 +1373,10 @@ fn wait_for_debug_pause(app: &mut FerruleApp) -> engine::PendingTargetWrite {
 
 fn two_field_debug_preview_app() -> FerruleApp {
     let mut app = FerruleApp::default();
+    app.project.source = SchemaNode::group(
+        "root",
+        vec![SchemaNode::scalar("input", ScalarType::String)],
+    );
     app.project.target = SchemaNode::group(
         "root",
         vec![
@@ -1406,7 +1410,7 @@ fn two_field_debug_preview_app() -> FerruleApp {
         target: crate::preview::PreviewTarget::Primary,
         input_identity: "input.xml".into(),
         output_identity: "output.xml".into(),
-        input_text: "<root/>".into(),
+        input_text: "<root><input>source value</input></root>".into(),
         debug_breakpoint: None,
     });
     app
@@ -1417,7 +1421,8 @@ fn two_field_file_run_app(test_name: &str) -> (FerruleApp, PathBuf, PathBuf) {
     let directory = project_path.parent().expect("project has parent");
     let input = directory.join("input.xml");
     let output = directory.join("output.xml");
-    std::fs::write(&input, "<root/>").expect("input instance is written");
+    std::fs::write(&input, "<root><input>source value</input></root>")
+        .expect("input instance is written");
     std::fs::write(&output, "old output").expect("old output is written");
     let mut app = two_field_debug_preview_app();
     app.preview_draft = None;
@@ -1539,6 +1544,17 @@ fn debug_preview_steps_before_target_writes_and_continues() {
     assert_eq!(first.field, "first");
     assert!(first.draft.fields.is_empty());
     assert_eq!(first.pending.value.as_ref().unwrap().preview, "A");
+    let input = first
+        .source
+        .frames
+        .iter()
+        .flat_map(|frame| &frame.fields)
+        .find(|field| field.name == "input")
+        .expect("active source frame includes the input field");
+    assert_eq!(
+        input.preview.value.as_ref().unwrap().preview,
+        "source value"
+    );
     assert!(app.run_report.is_none());
 
     let context = egui::Context::default();

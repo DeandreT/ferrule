@@ -417,6 +417,10 @@ mod tests {
                     structural_path: Vec::new(),
                 },
                 positions: Vec::new(),
+                source: engine::DebugSourceContext {
+                    frames: Vec::new(),
+                    omitted_outer_frames: 0,
+                },
                 field: "value".into(),
                 field_truncated: false,
                 binding: engine::TraceTargetFieldBinding::StaticChild,

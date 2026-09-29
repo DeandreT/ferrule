@@ -30,22 +30,22 @@ pub struct PipelineOutputFile {
     pub path: PathBuf,
 }
 
+/// A host callback for pending writes in a named pipeline stage.
+pub type PipelineStageDebugCallback<'a> =
+    dyn Fn(&str, &engine::PendingTargetWrite) -> engine::DebugDecision + 'a;
+
 /// Optional host values shared by every stage in one execution.
 #[derive(Default)]
 pub struct PipelineRunOptions<'a> {
     pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
     /// A live write hook receives the ID of the stage being evaluated.
-    pub stage_debug_hook:
-        Option<&'a dyn Fn(&str, &engine::PendingTargetWrite) -> engine::DebugDecision>,
+    pub stage_debug_hook: Option<&'a PipelineStageDebugCallback<'a>>,
     /// Called after every stage succeeds, before any selected output is staged.
     pub before_publish: Option<&'a dyn Fn() -> bool>,
 }
 
 impl<'a> PipelineRunOptions<'a> {
-    pub fn with_stage_debug_hook(
-        mut self,
-        hook: &'a dyn Fn(&str, &engine::PendingTargetWrite) -> engine::DebugDecision,
-    ) -> Self {
+    pub fn with_stage_debug_hook(mut self, hook: &'a PipelineStageDebugCallback<'a>) -> Self {
         self.stage_debug_hook = Some(hook);
         self
     }
@@ -58,7 +58,7 @@ impl<'a> PipelineRunOptions<'a> {
 
 struct StageDebugHook<'a> {
     stage: RefCell<String>,
-    hook: &'a dyn Fn(&str, &engine::PendingTargetWrite) -> engine::DebugDecision,
+    hook: &'a PipelineStageDebugCallback<'a>,
 }
 
 impl engine::DebugHook for StageDebugHook<'_> {
