@@ -168,6 +168,128 @@ fn imports_and_runs_a_connected_two_stage_design() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
+fn imports_and_runs_a_connected_xlsx_workbook_design() -> Result<(), Box<dyn Error>> {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
+    let source_path = fixtures.join("xlsx-hierarchical-source.xml");
+    let imported = mfd::import(&fixtures.join("xlsx-hierarchical.mfd"))?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut workbook_project = imported.project;
+    let source_schema = workbook_project.source.clone();
+    let source_options = workbook_project.source_options.clone();
+    workbook_project.source_path = None;
+    workbook_project.target_path = Some("converted.xlsx".into());
+    let copy_project = mapping::Project {
+        source: source_schema.clone(),
+        target: source_schema,
+        source_path: Some("source.xml".into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: source_options.clone(),
+        target_options: source_options,
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Default::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..Default::default()
+        },
+    };
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "workbook".into(),
+                mapping_path: None,
+                project: workbook_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+
+    let directory = TempDir::new()?;
+    let maps = directory.0.join("maps");
+    std::fs::create_dir_all(&maps)?;
+    let input = maps.join("source.xml");
+    std::fs::copy(&source_path, &input)?;
+    let design = maps.join("workbook.mfd");
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
+    assert!(report.is_native_compatible(), "{report:?}");
+
+    let saved_pipeline = directory.0.join("flow.json");
+    let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&design)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&saved_pipeline)
+        .output()?;
+    assert!(import.status.success(), "{}", output_message(&import));
+    let imported_pipeline: mapping::Pipeline =
+        serde_json::from_slice(&std::fs::read(&saved_pipeline)?)?;
+    let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
+        panic!("first stage must read a host source");
+    };
+    let result = directory.0.join("result.xlsx");
+    let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&saved_pipeline)
+        .args(["--input"])
+        .arg(name)
+        .arg(&input)
+        .args(["--output", "mfd-stage-2"])
+        .arg(&result)
+        .output()?;
+    assert!(run.status.success(), "{}", output_message(&run));
+    let target = &imported_pipeline.stages[1].project;
+    let layout = target.target_options.xlsx_hierarchical.as_ref().unwrap();
+    let published = format_xlsx::read_hierarchical(&result, &target.target, layout)?;
+    let source = format_xml::read(&source_path, &pipeline.stages[0].project.source)?;
+    let expected = engine::run_pipeline(
+        &pipeline,
+        &std::collections::BTreeMap::from([("input".into(), source)]),
+    )?;
+    let (expected_bytes, _) = format_xlsx::to_bytes_hierarchical(
+        &pipeline.stages[1].project.target,
+        &expected.stage("workbook").unwrap().primary,
+        pipeline.stages[1]
+            .project
+            .target_options
+            .xlsx_hierarchical
+            .as_ref()
+            .unwrap(),
+    )?;
+    let expected_cells = format_xlsx::from_bytes_hierarchical(
+        &expected_bytes,
+        &pipeline.stages[1].project.target,
+        pipeline.stages[1]
+            .project
+            .target_options
+            .xlsx_hierarchical
+            .as_ref()
+            .unwrap(),
+    )?;
+    assert_eq!(published, expected_cells);
+    Ok(())
+}
+
+#[test]
 fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new()?;
     let mapping = write_three_stage_chain(&directory.0)?;

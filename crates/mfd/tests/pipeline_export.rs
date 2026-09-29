@@ -1077,6 +1077,763 @@ fn json_final_chain_imports_exports_and_preserves_exact_serialization() {
     assert_eq!(json_after, json_before);
 }
 
+fn identity_xml_to_xlsx_pipeline(
+    design: &Path,
+    input: &Path,
+) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
+    let imported = mfd::import(design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut final_project = imported.project;
+    assert!(final_project.target_options.xlsx_hierarchical.is_some());
+    let source = format_xml::read(input, &final_project.source).unwrap();
+    let source_schema = final_project.source.clone();
+    let source_options = final_project.source_options.clone();
+    final_project.source_path = None;
+    final_project.target_path = Some("converted.xlsx".into());
+    let copy_project = mapping::Project {
+        source: source_schema.clone(),
+        target: source_schema,
+        source_path: Some(input.file_name().unwrap().to_str().unwrap().into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: source_options.clone(),
+        target_options: source_options,
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: BTreeMap::new(),
+        graph: mapping::Graph::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..mapping::Scope::default()
+        },
+    };
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "workbook".into(),
+                mapping_path: None,
+                project: final_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+    (pipeline, BTreeMap::from([("input".into(), source)]))
+}
+
+fn xlsx_instance_by_named_fields(instance: &Instance) -> Instance {
+    match instance {
+        Instance::Group(fields) => {
+            let mut fields = fields
+                .iter()
+                .map(|(name, value)| (name.clone(), xlsx_instance_by_named_fields(value)))
+                .collect::<Vec<_>>();
+            fields.sort_by(|left, right| left.0.cmp(&right.0));
+            Instance::Group(fields)
+        }
+        Instance::Repeated(items) => {
+            Instance::Repeated(items.iter().map(xlsx_instance_by_named_fields).collect())
+        }
+        _ => instance.clone(),
+    }
+}
+
+fn assert_identity_xml_to_xlsx_roundtrip(design: &Path, input: &Path) {
+    let (pipeline, hosts) = identity_xml_to_xlsx_pipeline(design, input);
+    let before = engine::run_pipeline(&pipeline, &hosts).unwrap();
+    assert_eq!(before.stage("copy").unwrap().primary, hosts["input"]);
+    let final_project = &pipeline.stages[1].project;
+    let layout = final_project
+        .target_options
+        .xlsx_hierarchical
+        .as_ref()
+        .unwrap();
+    let (workbook_before, worksheet_count) = format_xlsx::to_bytes_hierarchical(
+        &final_project.target,
+        &before.stage("workbook").unwrap().primary,
+        layout,
+    )
+    .unwrap();
+    assert!(worksheet_count > 0);
+    let cells_before =
+        format_xlsx::from_bytes_hierarchical(&workbook_before, &final_project.target, layout)
+            .unwrap();
+
+    let directory = TempDir::new();
+    std::fs::copy(input, directory.0.join(input.file_name().unwrap())).unwrap();
+    let exported = directory.0.join("xlsx-chain.mfd");
+    let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported.exists());
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let xml = std::fs::read_to_string(&exported).unwrap();
+    assert_eq!(xml.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(xml.matches("library=\"xlsx\"").count(), 1);
+    assert!(xml.contains("<excel outputinstance=\"converted.xlsx\"/>"));
+    let reimported = mfd::import_pipeline(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let PipelineInput::Host { name } = &reimported.pipeline.stages[0].source else {
+        panic!("reimported first stage must read a host source");
+    };
+    let after = engine::run_pipeline(
+        &reimported.pipeline,
+        &BTreeMap::from([(name.clone(), hosts["input"].clone())]),
+    )
+    .unwrap();
+    for index in 0..2 {
+        let original = &before.stage(&pipeline.stages[index].id).unwrap().primary;
+        let roundtripped = &after
+            .stage(&reimported.pipeline.stages[index].id)
+            .unwrap()
+            .primary;
+        if index == 0 {
+            assert_eq!(original, roundtripped, "stage {}", index + 1);
+        } else {
+            // Workbook coordinates come from the retained layout; group field
+            // insertion order can differ while worksheet and row order must not.
+            assert_eq!(
+                xlsx_instance_by_named_fields(original),
+                xlsx_instance_by_named_fields(roundtripped),
+                "stage {}",
+                index + 1
+            );
+        }
+    }
+    let final_project = &reimported.pipeline.stages[1].project;
+    let layout = final_project
+        .target_options
+        .xlsx_hierarchical
+        .as_ref()
+        .unwrap();
+    let (workbook_after, worksheet_count_after) = format_xlsx::to_bytes_hierarchical(
+        &final_project.target,
+        &after
+            .stage(&reimported.pipeline.stages[1].id)
+            .unwrap()
+            .primary,
+        layout,
+    )
+    .unwrap();
+    assert_eq!(worksheet_count_after, worksheet_count);
+    let cells_after =
+        format_xlsx::from_bytes_hierarchical(&workbook_after, &final_project.target, layout)
+            .unwrap();
+    assert_eq!(cells_after, cells_before);
+}
+
+#[test]
+fn synthetic_hierarchical_xlsx_final_chain_roundtrips_workbook_cells() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    assert_identity_xml_to_xlsx_roundtrip(
+        &fixtures.join("xlsx-hierarchical.mfd"),
+        &fixtures.join("xlsx-hierarchical-source.xml"),
+    );
+}
+
+#[test]
+fn local_xml_to_xlsx_mapping_runs_after_an_identity_xml_stage() {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let design = samples.join("Altova_Hierarchical_Excel.mfd");
+    let input = samples.join("Altova_Hierarchical.xml");
+    if !design.is_file() || !input.is_file() {
+        return;
+    }
+    assert_identity_xml_to_xlsx_roundtrip(&design, &input);
+}
+
+fn identity_xml_to_fixed_width_pipeline(
+    mut final_project: mapping::Project,
+    input: &Path,
+) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
+    assert!(final_project.target_options.fixed_width.is_some());
+    let source = format_xml::read(input, &final_project.source).unwrap();
+    let source_schema = final_project.source.clone();
+    let source_options = final_project.source_options.clone();
+    final_project.source_path = None;
+    final_project.target_path = Some("converted.dat".into());
+    let copy_project = mapping::Project {
+        source: source_schema.clone(),
+        target: source_schema,
+        source_path: Some(input.file_name().unwrap().to_str().unwrap().into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: source_options.clone(),
+        target_options: source_options,
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: BTreeMap::new(),
+        graph: mapping::Graph::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..mapping::Scope::default()
+        },
+    };
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "fixed".into(),
+                mapping_path: None,
+                project: final_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+    (pipeline, BTreeMap::from([("input".into(), source)]))
+}
+
+fn assert_identity_xml_to_fixed_width_roundtrip(
+    pipeline: &mapping::Pipeline,
+    hosts: &BTreeMap<String, Instance>,
+    input: &Path,
+) {
+    let before = engine::run_pipeline(pipeline, hosts).unwrap();
+    assert_eq!(before.stage("copy").unwrap().primary, hosts["input"]);
+    let final_project = &pipeline.stages[1].project;
+    let layout = final_project.target_options.fixed_width.as_ref().unwrap();
+    let rows_before = before
+        .stage("fixed")
+        .unwrap()
+        .primary
+        .as_repeated()
+        .unwrap();
+    let text_before =
+        format_csv::to_string_fixed_width(&final_project.target, rows_before, layout).unwrap();
+    assert!(!text_before.is_empty());
+    let parsed_before =
+        format_csv::from_str_fixed_width(&text_before, &final_project.target, layout).unwrap();
+
+    let directory = TempDir::new();
+    std::fs::copy(input, directory.0.join(input.file_name().unwrap())).unwrap();
+    let exported = directory.0.join("fixed-width-chain.mfd");
+    let preflight = mfd::preflight_pipeline_export(pipeline, &exported).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported.exists());
+    let report =
+        mfd::export_pipeline_with_profile(pipeline, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let xml = std::fs::read_to_string(&exported).unwrap();
+    assert_eq!(xml.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(xml.matches("<text type=\"flf\"").count(), 1);
+    let reimported = mfd::import_pipeline(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let PipelineInput::Host { name } = &reimported.pipeline.stages[0].source else {
+        panic!("reimported first stage must read a host source");
+    };
+    let after = engine::run_pipeline(
+        &reimported.pipeline,
+        &BTreeMap::from([(name.clone(), hosts["input"].clone())]),
+    )
+    .unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            before.stage(&pipeline.stages[index].id).unwrap().primary,
+            after
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            "stage {}",
+            index + 1
+        );
+    }
+    let final_project = &reimported.pipeline.stages[1].project;
+    let layout = final_project.target_options.fixed_width.as_ref().unwrap();
+    let rows_after = after
+        .stage(&reimported.pipeline.stages[1].id)
+        .unwrap()
+        .primary
+        .as_repeated()
+        .unwrap();
+    let text_after =
+        format_csv::to_string_fixed_width(&final_project.target, rows_after, layout).unwrap();
+    assert_eq!(text_after, text_before);
+    let parsed_after =
+        format_csv::from_str_fixed_width(&text_after, &final_project.target, layout).unwrap();
+    assert_eq!(parsed_after, parsed_before);
+}
+
+fn synthetic_fixed_width_pipeline() -> (mapping::Pipeline, BTreeMap<String, Instance>, PathBuf) {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("people-to-csv.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut final_project = imported.project;
+    final_project.target_options = mapping::FormatOptions {
+        fixed_width: Some(
+            mapping::FixedWidthLayout::new(
+                vec![
+                    mapping::FixedFieldWidth::new(30).unwrap(),
+                    mapping::FixedFieldWidth::new(4).unwrap(),
+                ],
+                ' ',
+                true,
+                true,
+            )
+            .unwrap(),
+        ),
+        ..mapping::FormatOptions::default()
+    };
+    let input = fixtures.join("people.xml");
+    let (pipeline, hosts) = identity_xml_to_fixed_width_pipeline(final_project, &input);
+    (pipeline, hosts, input)
+}
+
+#[test]
+fn synthetic_fixed_width_final_chain_roundtrips_exact_text() {
+    let (pipeline, hosts, input) = synthetic_fixed_width_pipeline();
+    assert_identity_xml_to_fixed_width_roundtrip(&pipeline, &hosts, &input);
+}
+
+#[test]
+fn local_xml_to_fixed_width_mapping_runs_after_an_identity_xml_stage() {
+    let samples =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples/Tutorial");
+    let design = samples.join("MissingFields.mfd");
+    let input = samples.join("MissingFields.xml");
+    if !design.is_file() || !input.is_file() {
+        return;
+    }
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let (pipeline, hosts) = identity_xml_to_fixed_width_pipeline(imported.project, &input);
+    assert_identity_xml_to_fixed_width_roundtrip(&pipeline, &hosts, &input);
+}
+
+#[test]
+fn fixed_width_final_chain_rejects_unsupported_boundaries_without_artifacts() {
+    let (pipeline, _, _) = synthetic_fixed_width_pipeline();
+    let directory = TempDir::new();
+
+    let mut intermediate_fixed = mfd::import_pipeline(&make_chain(&directory.0))
+        .unwrap()
+        .pipeline;
+    intermediate_fixed.stages[0].project.target_path = Some("buffer.dat".into());
+    intermediate_fixed.stages[0]
+        .project
+        .target_options
+        .fixed_width = Some(
+        mapping::FixedWidthLayout::new(
+            vec![mapping::FixedFieldWidth::new(30).unwrap()],
+            ' ',
+            true,
+            true,
+        )
+        .unwrap(),
+    );
+    let destination = directory.0.join("not-created/intermediate.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &intermediate_fixed,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("unsupported file boundary"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut named_fixed = pipeline.clone();
+    let final_project = &mut named_fixed.stages[1].project;
+    final_project.extra_targets.push(mapping::NamedTarget {
+        name: "secondary".into(),
+        path: Some("secondary.dat".into()),
+        schema: final_project.target.clone(),
+        options: final_project.target_options.clone(),
+        root: final_project.root.clone(),
+    });
+    let destination = directory.0.join("not-created/named.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &named_fixed,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("non-file-XML named target"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut width_mismatch = pipeline.clone();
+    width_mismatch.stages[1].project.target_options.fixed_width = Some(
+        mapping::FixedWidthLayout::new(
+            vec![mapping::FixedFieldWidth::new(30).unwrap()],
+            ' ',
+            true,
+            true,
+        )
+        .unwrap(),
+    );
+    let destination = directory.0.join("not-created/width-mismatch.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &width_mismatch,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("fixed-width"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut disconnected = pipeline;
+    disconnected.stages[1].project.root = mapping::Scope::default();
+    disconnected.stages[1].project.prune_unreachable_nodes();
+    let destination = directory.0.join("not-created/disconnected.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &disconnected,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("pipeline export graph"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+}
+
+fn add_connected_fixed_width_target(xml: &str, default_output: bool) -> String {
+    const EXTRA_KEY: &str = "4294967289";
+    let document = roxmltree::Document::parse(xml).unwrap();
+    let pass_through = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.children().any(|child| {
+                    child.has_tag_name("properties") && child.attribute("PassThrough") == Some("1")
+                })
+        })
+        .unwrap();
+    let vertex = document
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex"))
+        .find(|node| {
+            pass_through.descendants().any(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("outkey") == node.attribute("vertexkey")
+            })
+        })
+        .unwrap();
+    let edges = vertex
+        .children()
+        .find(|node| node.has_tag_name("edges"))
+        .unwrap();
+    let mut with_edge = xml.to_owned();
+    with_edge.insert_str(
+        edges.range().end - "</edges>".len(),
+        &format!("<edge vertexkey=\"{EXTRA_KEY}\"/>"),
+    );
+    let output_property = if default_output {
+        " XSLTDefaultOutput=\"1\""
+    } else {
+        ""
+    };
+    let component = format!(
+        "<component name=\"other\" library=\"text\" kind=\"16\"><properties{output_property}/><data><root><entry name=\"FileInstance\"><entry name=\"document\"><entry name=\"Rows\" inpkey=\"{EXTRA_KEY}\"/></entry></entry></root><text type=\"flf\" outputinstance=\"other.dat\"/></data></component>"
+    );
+    let children_end = with_edge.rfind("</children>").unwrap();
+    with_edge.insert_str(children_end, &component);
+    with_edge
+}
+
+#[test]
+fn fixed_width_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
+    let (pipeline, _, _) = synthetic_fixed_width_pipeline();
+    let directory = TempDir::new();
+    let design = directory.0.join("source-fixed-chain.mfd");
+    mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
+    let original = std::fs::read_to_string(&design).unwrap();
+    assert!(mfd::import_pipeline(&design).is_ok());
+
+    let ambiguous = add_connected_fixed_width_target(&original, true);
+    std::fs::write(&design, ambiguous).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("ambiguous fixed-width final must reject")
+        .to_string();
+    assert!(
+        error.contains("one connected XML, CSV, fixed-width, JSON, or XLSX final target"),
+        "{error}"
+    );
+
+    let named = add_connected_fixed_width_target(&original, false);
+    std::fs::write(&design, named).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("named fixed-width terminal must reject")
+        .to_string();
+    assert!(
+        error.contains("CSV and fixed-width text components only as the final primary target"),
+        "{error}"
+    );
+
+    let document = roxmltree::Document::parse(&original).unwrap();
+    let fixed_width = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.attribute("library") == Some("text")
+                && node.descendants().any(|entry| {
+                    entry.has_tag_name("text") && entry.attribute("type") == Some("flf")
+                })
+        })
+        .unwrap();
+    let mut disconnected = original.clone();
+    for key in fixed_width
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|entry| entry.attribute("inpkey"))
+    {
+        disconnected = disconnected.replace(&format!("<edge vertexkey=\"{key}\"/>"), "");
+    }
+    assert_ne!(disconnected, original);
+    std::fs::write(&design, disconnected).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("disconnected fixed-width final must reject")
+        .to_string();
+    assert!(error.contains("connected"), "{error}");
+
+    let malformed = original.replacen("length=\"30\"", "length=\"0\"", 1);
+    assert_ne!(malformed, original);
+    std::fs::write(&design, malformed).unwrap();
+    assert!(
+        mfd::import_pipeline(&design).is_err(),
+        "zero-width final layout must reject"
+    );
+    assert!(!directory.0.join("not-created").exists());
+}
+
+#[test]
+fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let (pipeline, _) = identity_xml_to_xlsx_pipeline(
+        &fixtures.join("xlsx-hierarchical.mfd"),
+        &fixtures.join("xlsx-hierarchical-source.xml"),
+    );
+    let directory = TempDir::new();
+
+    let mut intermediate_xlsx = pipeline.clone();
+    intermediate_xlsx.stages[0].project.target_path = Some("buffer.xlsx".into());
+    let destination = directory.0.join("not-created/intermediate.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &intermediate_xlsx,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("unsupported file boundary"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut named_xlsx = pipeline.clone();
+    let final_project = &mut named_xlsx.stages[1].project;
+    final_project.extra_targets.push(mapping::NamedTarget {
+        name: "secondary".into(),
+        path: Some("secondary.xlsx".into()),
+        schema: final_project.target.clone(),
+        options: final_project.target_options.clone(),
+        root: final_project.root.clone(),
+    });
+    let destination = directory.0.join("not-created/named.mfd");
+    let error =
+        mfd::export_pipeline_with_profile(&named_xlsx, &destination, mfd::ExportProfile::NativeMfd)
+            .unwrap_err()
+            .to_string();
+    assert!(error.contains("non-file-XML named target"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut update_existing = pipeline.clone();
+    update_existing.stages[1]
+        .project
+        .target_options
+        .xlsx_update_existing = true;
+    let destination = directory.0.join("not-created/update-existing.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &update_existing,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("xlsx_update_existing"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut flat_update_existing = mfd::import_pipeline(&make_csv_final_chain(&directory.0))
+        .unwrap()
+        .pipeline;
+    flat_update_existing.stages[1].project.target_path = Some("converted.xlsx".into());
+    flat_update_existing.stages[1].project.target_options = mapping::FormatOptions {
+        tabular_kind: Some(mapping::TabularBoundaryKind::Xlsx),
+        xlsx_update_existing: true,
+        ..mapping::FormatOptions::default()
+    };
+    let destination = directory.0.join("not-created/flat-update-existing.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &flat_update_existing,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("new-workbook XLSX"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut disconnected = pipeline;
+    disconnected.stages[1].project.root = mapping::Scope::default();
+    disconnected.stages[1].project.prune_unreachable_nodes();
+    let destination = directory.0.join("not-created/disconnected.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &disconnected,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("pipeline export graph"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+}
+
+fn add_connected_xlsx_target(xml: &str, default_output: bool) -> String {
+    const EXTRA_KEY: &str = "4294967290";
+    let document = roxmltree::Document::parse(xml).unwrap();
+    let pass_through = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.children().any(|child| {
+                    child.has_tag_name("properties") && child.attribute("PassThrough") == Some("1")
+                })
+        })
+        .unwrap();
+    let vertex = document
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex"))
+        .find(|node| {
+            pass_through.descendants().any(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("outkey") == node.attribute("vertexkey")
+            })
+        })
+        .unwrap();
+    let edges = vertex
+        .children()
+        .find(|node| node.has_tag_name("edges"))
+        .unwrap();
+    let mut with_edge = xml.to_owned();
+    with_edge.insert_str(
+        edges.range().end - "</edges>".len(),
+        &format!("<edge vertexkey=\"{EXTRA_KEY}\"/>"),
+    );
+    let output_property = if default_output {
+        " XSLTDefaultOutput=\"1\""
+    } else {
+        ""
+    };
+    let component = format!(
+        "<component name=\"other\" library=\"xlsx\" kind=\"26\"><properties{output_property}/><data><root><entry name=\"FileInstance\"><entry name=\"document\"><entry name=\"Workbook\"><entry name=\"Worksheet\" inpkey=\"{EXTRA_KEY}\"/></entry></entry></entry></root><excel outputinstance=\"other.xlsx\"/></data></component>"
+    );
+    let children_end = with_edge.rfind("</children>").unwrap();
+    with_edge.insert_str(children_end, &component);
+    with_edge
+}
+
+#[test]
+fn xlsx_final_chain_import_rejects_ambiguous_disconnected_and_update_existing() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let (pipeline, _) = identity_xml_to_xlsx_pipeline(
+        &fixtures.join("xlsx-hierarchical.mfd"),
+        &fixtures.join("xlsx-hierarchical-source.xml"),
+    );
+    let directory = TempDir::new();
+    let design = directory.0.join("source-xlsx-chain.mfd");
+    mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
+    let original = std::fs::read_to_string(&design).unwrap();
+    assert!(mfd::import_pipeline(&design).is_ok());
+
+    let ambiguous = add_connected_xlsx_target(&original, true);
+    std::fs::write(&design, ambiguous).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("ambiguous XLSX final must reject")
+        .to_string();
+    assert!(
+        error.contains("one connected XML, CSV, fixed-width, JSON, or XLSX final target"),
+        "{error}"
+    );
+
+    let named = add_connected_xlsx_target(&original, false);
+    std::fs::write(&design, named).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("named XLSX terminal must reject")
+        .to_string();
+    assert!(
+        error.contains("XLSX components only as the final primary target"),
+        "{error}"
+    );
+
+    let document = roxmltree::Document::parse(&original).unwrap();
+    let xlsx = document
+        .descendants()
+        .find(|node| node.has_tag_name("component") && node.attribute("library") == Some("xlsx"))
+        .unwrap();
+    let mut disconnected = original.clone();
+    for key in xlsx
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|entry| entry.attribute("inpkey"))
+    {
+        disconnected = disconnected.replace(&format!("<edge vertexkey=\"{key}\"/>"), "");
+    }
+    assert_ne!(disconnected, original);
+    std::fs::write(&design, disconnected).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("disconnected XLSX final must reject")
+        .to_string();
+    assert!(error.contains("connected"), "{error}");
+
+    let update_existing = original.replace(
+        "<excel outputinstance=\"converted.xlsx\"/>",
+        "<excel outputinstance=\"converted.xlsx\" updateexistingfile=\"1\"/>",
+    );
+    assert_ne!(update_existing, original);
+    std::fs::write(&design, update_existing).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("update-existing XLSX final must reject")
+        .to_string();
+    assert!(error.contains("new-workbook XLSX final target"), "{error}");
+    assert!(!directory.0.join("not-created").exists());
+}
+
 #[test]
 fn local_xml_to_json_mapping_runs_after_an_identity_xml_stage() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
@@ -1276,14 +2033,14 @@ fn ambiguous_or_disconnected_json_final_import_rejects() {
         .expect("ambiguous JSON final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, or JSON final target"),
+        error.contains("one connected XML, CSV, fixed-width, JSON, or XLSX final target"),
         "{error}"
     );
     assert!(!directory.0.join("not-created").exists());
 }
 
 #[test]
-fn csv_pipeline_rejects_non_xml_intermediate_and_non_csv_final_without_artifacts() {
+fn csv_pipeline_rejects_non_xml_intermediate_and_db_final_without_artifacts() {
     let directory = TempDir::new();
     let imported = mfd::import_pipeline(&make_csv_final_chain(&directory.0)).unwrap();
 
@@ -1296,10 +2053,10 @@ fn csv_pipeline_rejects_non_xml_intermediate_and_non_csv_final_without_artifacts
     assert!(error.contains("unsupported file boundary"), "{error}");
     assert!(!destination.parent().unwrap().exists());
 
-    let mut final_xlsx = imported.pipeline;
-    final_xlsx.stages[1].project.target_path = Some("target.xlsx".into());
+    let mut final_db = imported.pipeline;
+    final_db.stages[1].project.target_path = Some("target.db".into());
     let destination = directory.0.join("not-created/final.mfd");
-    let error = mfd::export_pipeline(&final_xlsx, &destination)
+    let error = mfd::export_pipeline(&final_db, &destination)
         .unwrap_err()
         .to_string();
     assert!(error.contains("unsupported file boundary"), "{error}");
@@ -1336,7 +2093,10 @@ fn csv_pipeline_import_rejects_non_csv_text_terminal() {
         .err()
         .expect("non-CSV text terminal must reject")
         .to_string();
-    assert!(error.contains("XML, CSV, or JSON final target"), "{error}");
+    assert!(
+        error.contains("XML, CSV, fixed-width, JSON, or XLSX final target"),
+        "{error}"
+    );
     assert!(!directory.0.join("not-created").exists());
 }
 
