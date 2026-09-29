@@ -151,22 +151,26 @@ this trace only after successful completion.
 Library hosts can opt into a synchronous pre-insertion control point with
 `ExecutionContext::with_debug_hook`. For ordinary static and dynamic target
 bindings and child fields, the hook receives the pending field's bounded value
-preview, source positions, and at most eight already inserted fields from the
-current scope draft. It can wait for a host decision and resume, or cancel with
-the typed `EngineError::DebugCancelled` before that field is inserted. Existing
-post-insertion trace events are unchanged. Scalar, copy, recursive, and other
-special constructors do not use this ordinary-field hook. The callback's
-partial draft is not a complete target document.
+preview, source positions, the innermost four active source frames with up to
+eight immediate fields each, and at most eight already inserted fields from
+the current scope draft. Long names and scalar values are truncated; private
+XML metadata fields are hidden. It can wait for a host decision and resume, or
+cancel with the typed `EngineError::DebugCancelled` before that field is
+inserted. Existing post-insertion trace events are unchanged. Scalar, copy,
+recursive, and other special constructors do not use this ordinary-field hook.
+The callback's partial draft is not a complete target document.
 
 The GUI's **Debug preview** runs an in-memory mapping on a worker and pauses
 before each ordinary target-field insertion. The paused view shows the
 pending value, target scope, source positions, and up to eight fields already
-inserted in that scope. **Step** inserts the pending field and pauses at the
-next ordinary write; **Continue** runs until completion, and **Pause at next
-write** can stop a continued run at a later write. **Cancel** discards the
-preview result. A plain Preview also runs on a worker and remains responsive
-while it executes. The completed output and trace appear in Preview results;
-the Replay tab remains a separate navigation view over that recorded trace.
+inserted in that scope. It also shows the bounded active source frames, from
+outer to inner, with omitted-frame and omitted-field counts. **Step** inserts
+the pending field and pauses at the next ordinary write; **Continue** runs
+until completion, and **Pause at next write** can stop a continued run at a
+later write. **Cancel** discards the preview result. A plain Preview also runs
+on a worker and remains responsive while it executes. The completed output
+and trace appear in Preview results; the Replay tab remains a separate
+navigation view over that recorded trace.
 The optional Debug breakpoint selector pauses at one declared static target
 field in one target-scope path. After **Continue**, it pauses again when that
 field is written in a later source row; **Step** still stops at the next

@@ -68,7 +68,7 @@ pub(super) enum PreviewCommand {
 }
 
 enum PreviewWorkerEvent {
-    Paused(engine::PendingTargetWrite),
+    Paused(Box<engine::PendingTargetWrite>),
     Finished(
         Result<cli::PayloadRunOutcome, PreviewRunError>,
         crate::run_report::TraceReport,
@@ -161,7 +161,7 @@ impl engine::DebugHook for PreviewDebugHook {
         }
         if self
             .events
-            .send(PreviewWorkerEvent::Paused(write.clone()))
+            .send(PreviewWorkerEvent::Paused(Box::new(write.clone())))
             .is_err()
         {
             return engine::DebugDecision::Cancel;
@@ -579,7 +579,7 @@ impl FerruleApp {
                     pending.command(PreviewCommand::Cancel);
                 } else {
                     self.status = format!("paused before target field `{}`", write.field);
-                    pending.phase = PreviewPhase::Paused(Box::new(write));
+                    pending.phase = PreviewPhase::Paused(write);
                 }
                 ctx.request_repaint();
             }
@@ -783,6 +783,37 @@ pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, deb
                             }
                             ui.label(label);
                         }
+                    }
+                    ui.separator();
+                    ui.strong("Active source frames (outer to inner)");
+                    if write.source.omitted_outer_frames > 0 {
+                        ui.weak(format!(
+                            "{} outer frame(s) omitted from this bounded view",
+                            write.source.omitted_outer_frames
+                        ));
+                    }
+                    if write.source.frames.is_empty() {
+                        ui.weak("No active source frame.");
+                    }
+                    for (index, frame) in write.source.frames.iter().enumerate() {
+                        ui.label(format!(
+                            "Frame {}: {}",
+                            write.source.omitted_outer_frames + index + 1,
+                            debug_value(&frame.preview)
+                        ));
+                        ui.indent(("debug_source_frame", index), |ui| {
+                            for field in &frame.fields {
+                                let suffix = if field.name_truncated { "…" } else { "" };
+                                ui.monospace(format!(
+                                    "{}{suffix}: {}",
+                                    field.name,
+                                    debug_value(&field.preview)
+                                ));
+                            }
+                            if frame.omitted_fields > 0 {
+                                ui.weak(format!("{} more field(s) omitted", frame.omitted_fields));
+                            }
+                        });
                     }
                     ui.separator();
                     ui.strong("Already inserted in this scope");

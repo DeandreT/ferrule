@@ -74,7 +74,7 @@ pub(super) enum PipelineRunCommand {
 }
 
 enum PipelineRunEvent {
-    Paused(String, engine::PendingTargetWrite),
+    Paused(String, Box<engine::PendingTargetWrite>),
     ReadyToPublish,
     Finished(Result<cli::PipelineRunOutcome, PipelineRunError>),
 }
@@ -178,7 +178,10 @@ impl PipelineRunHook {
         }
         if self
             .events
-            .send(PipelineRunEvent::Paused(stage.into(), write.clone()))
+            .send(PipelineRunEvent::Paused(
+                stage.into(),
+                Box::new(write.clone()),
+            ))
             .is_err()
         {
             return engine::DebugDecision::Cancel;
@@ -463,10 +466,12 @@ impl FerruleApp {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn start_pipeline_run(&mut self) {
         self.start_pipeline_run_mode(false);
     }
 
+    #[cfg(test)]
     pub(super) fn start_pipeline_debug_run(&mut self) {
         self.start_pipeline_run_mode(true);
     }
@@ -604,7 +609,7 @@ impl FerruleApp {
                         "paused in stage `{stage}` before target field `{}`",
                         write.field
                     );
-                    pending.phase = PipelineRunPhase::Paused(stage, Box::new(write));
+                    pending.phase = PipelineRunPhase::Paused(stage, write);
                 }
                 ctx.request_repaint();
             }

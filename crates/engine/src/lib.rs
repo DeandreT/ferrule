@@ -39,7 +39,7 @@ use eval_scope::eval_scope;
 
 pub use debug::{
     DebugDecision, DebugDraftField, DebugHook, DebugInstancePreview, DebugScopeDraft,
-    PendingTargetWrite,
+    DebugSourceContext, DebugSourceFrame, PendingTargetWrite,
 };
 pub use pipeline::{
     PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue, run_pipeline,
