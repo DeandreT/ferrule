@@ -1,5 +1,6 @@
 //! Canonical export for a bounded serial chain of XML mapping stages with
-//! an XML, CSV, fixed-width, JSON, or XLSX final primary target and optional independent final XML targets.
+//! an XML, CSV, fixed-width, FlexText, JSON, or XLSX final primary target and
+//! optional independent final XML targets.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -33,7 +34,7 @@ pub fn preflight_pipeline_export(
 /// already used by another stage. Other connected later named inputs,
 /// independent intermediate targets, and non-XML intermediate boundaries
 /// reject explicitly. The final primary target may be CSV, fixed-width text,
-/// JSON, or new-workbook XLSX;
+/// FlexText, JSON, or new-workbook XLSX;
 /// independent final targets remain XML.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
@@ -90,7 +91,11 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
         !stage.project.extra_targets.is_empty()
             || matches!(
                 side_format(&stage.project.target_path, &stage.project.target_options),
-                SideFormat::Csv | SideFormat::FixedWidth | SideFormat::Json | SideFormat::Xlsx
+                SideFormat::Csv
+                    | SideFormat::FixedWidth
+                    | SideFormat::FlexText
+                    | SideFormat::Json
+                    | SideFormat::Xlsx
             )
     }) {
         crate::import::validate_pipeline_export_graph(&xml)?;
@@ -195,6 +200,7 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
                         target_format,
                         SideFormat::Csv
                             | SideFormat::FixedWidth
+                            | SideFormat::FlexText
                             | SideFormat::Json
                             | SideFormat::Xlsx
                     ))
