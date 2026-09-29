@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twenty local, gitignored mappings.
+//! Opt-in generated-backend execution against twenty-one local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -30,7 +30,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 20] = [
+const CASES: [CorpusCase; 21] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -149,6 +149,12 @@ const CASES: [CorpusCase; 20] = [
         sample: "MergeMultipleFiles.mfd",
         input: "Nanonull-*.xml",
         source_kind: SourceKind::XmlFileSet,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "Tutorial/Tut-ExpReport-multi.mfd",
+        input: "Tutorial/mf-ExpReport.xml",
+        source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
 ];
@@ -290,6 +296,9 @@ fn run_case(
             &source,
             sample,
         );
+    }
+    if sample == "Tutorial/Tut-ExpReport-multi.mfd" {
+        return run_multi_target_case(case_dir, rust_target, &project, &source, sample);
     }
     // Generated hosts expose a schema-shaped JSON API. Preserve each native
     // reader's typed instance while crossing that host API.
@@ -1049,6 +1058,391 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
     println!("{sample}: generated Rust and C# match the interpreter");
     Ok(())
 }
+
+#[derive(Debug, PartialEq)]
+struct CorpusTargetOutput {
+    name: String,
+    xml: String,
+    value: serde_json::Value,
+}
+
+fn run_multi_target_case(
+    case_dir: &Path,
+    rust_target: &Path,
+    project: &Project,
+    source: &Instance,
+    sample: &str,
+) -> TestResult<()> {
+    assert_eq!(
+        project.target_path.as_deref(),
+        Some("SecondXML.xml"),
+        "{sample}: default output is the third XML component"
+    );
+    let [named] = project.extra_targets.as_slice() else {
+        panic!("{sample}: expected one additional XML target");
+    };
+    assert_eq!(named.name, "Company", "{sample}: named target identity");
+    assert_eq!(
+        named.path.as_deref(),
+        Some("ExpReport-Target.xml"),
+        "{sample}: named target path"
+    );
+    assert!(named.options.xml_document, "{sample}: named target format");
+    assert_eq!(project.target.name, "Company", "{sample}: primary XML root");
+    assert_eq!(named.schema.name, "Company", "{sample}: named XML root");
+    let namespace = project
+        .target
+        .xml_namespace
+        .as_ref()
+        .and_then(ir::XmlNamespace::uri)
+        .expect("sample has a qualified XML root");
+    assert_eq!(
+        named
+            .schema
+            .xml_namespace
+            .as_ref()
+            .and_then(ir::XmlNamespace::uri),
+        Some(namespace),
+        "{sample}: both XML targets use the same root namespace"
+    );
+
+    // The source and target XSDs retain recursive mixed-description branches.
+    // They are not connected by this mapping, and their repeated local anchors
+    // are not representable by the generic JSON codec. Project only those
+    // unreferenced branches away for typed-host JSON transport/comparison.
+    let mut source_json_schema = project.source.clone();
+    let mut primary_json_schema = project.target.clone();
+    let mut named_json_schema = named.schema.clone();
+    assert!(omit_corpus_description(&mut source_json_schema) > 0);
+    assert!(omit_corpus_description(&mut primary_json_schema) > 0);
+    assert!(omit_corpus_description(&mut named_json_schema) > 0);
+    let source_json = format_json::to_string(&source_json_schema, source)?;
+    let expected = engine::run_outputs(project, source)?;
+    let round_tripped = format_json::from_str(&source_json, &source_json_schema)?;
+    let transported = engine::run_outputs(project, &round_tripped)?;
+    assert_eq!(
+        transported.primary, expected.primary,
+        "{sample}: source JSON transport changed the primary output"
+    );
+    assert_eq!(
+        transported.extras, expected.extras,
+        "{sample}: source JSON transport changed the named output"
+    );
+    let [extra_output] = expected.extras.as_slice() else {
+        panic!("{sample}: interpreter must produce one named output");
+    };
+    assert_eq!(
+        extra_output.name, named.name,
+        "{sample}: named output order"
+    );
+
+    let xml_options = format_xml::XmlWriteOptions {
+        declaration: false,
+        indent: false,
+        default_namespace: None,
+    };
+    let expected_outputs = [
+        ("", &project.target, &primary_json_schema, &expected.primary),
+        (
+            named.name.as_str(),
+            &named.schema,
+            &named_json_schema,
+            &extra_output.instance,
+        ),
+    ]
+    .into_iter()
+    .map(
+        |(name, xml_schema, json_schema, value)| -> TestResult<CorpusTargetOutput> {
+            Ok(CorpusTargetOutput {
+                name: name.to_owned(),
+                xml: format_xml::to_string_with_options(xml_schema, value, &xml_options)?,
+                value: serde_json::from_str(&format_json::to_string(json_schema, value)?)?,
+            })
+        },
+    )
+    .collect::<TestResult<Vec<_>>>()?;
+    assert!(
+        expected_outputs[0].xml.contains("<DomesticAcc"),
+        "{sample}: primary maps accommodation expenses"
+    );
+    assert!(
+        !expected_outputs[0].xml.contains("<Travel"),
+        "{sample}: primary excludes travel expenses"
+    );
+    assert!(
+        expected_outputs[1].xml.contains("<Travel"),
+        "{sample}: named output maps travel expenses"
+    );
+    assert!(
+        !expected_outputs[1].xml.contains("<DomesticAcc"),
+        "{sample}: named output excludes accommodation expenses"
+    );
+    let primary_items = expected_outputs[0].value["Employee"][0]["expense-item"]
+        .as_array()
+        .expect("primary employee expense items");
+    assert_eq!(
+        primary_items.len(),
+        2,
+        "{sample}: primary lodging and meal items"
+    );
+    assert_eq!(
+        primary_items[0]["Accommodation"][0]["DomesticAcc"][0]["DomesticAcc-Cost"], 121.2,
+        "{sample}: lodging cost reaches the primary target"
+    );
+    let named_items = expected_outputs[1].value["Employee"][0]["expense-item"]
+        .as_array()
+        .expect("named employee expense items");
+    assert_eq!(named_items.len(), 3, "{sample}: named travel items");
+    assert_eq!(
+        named_items
+            .iter()
+            .map(|item| item["Travel"][0]["Travel-Cost"].as_f64())
+            .collect::<Vec<_>>(),
+        [Some(337.88), Some(1014.22), Some(2000.0)],
+        "{sample}: travel costs reach the named target in source order"
+    );
+
+    let source_schema = case_dir.join("source-schema.json");
+    let primary_xml_schema = case_dir.join("primary-xml-schema.json");
+    let primary_json_schema_path = case_dir.join("primary-json-schema.json");
+    let named_xml_schema = case_dir.join("named-xml-schema.json");
+    let named_json_schema_path = case_dir.join("named-json-schema.json");
+    let source_path = case_dir.join("source.json");
+    let project_path = case_dir.join("project.json");
+    std::fs::write(&source_schema, serde_json::to_vec(&source_json_schema)?)?;
+    std::fs::write(&primary_xml_schema, serde_json::to_vec(&project.target)?)?;
+    std::fs::write(
+        &primary_json_schema_path,
+        serde_json::to_vec(&primary_json_schema)?,
+    )?;
+    std::fs::write(&named_xml_schema, serde_json::to_vec(&named.schema)?)?;
+    std::fs::write(
+        &named_json_schema_path,
+        serde_json::to_vec(&named_json_schema)?,
+    )?;
+    std::fs::write(&source_path, source_json)?;
+    std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
+
+    let rust_output = case_dir.join("rust");
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
+    generate_project(
+        &project_path,
+        &rust_output,
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+    )?;
+    std::fs::write(rust_output.join("src/main.rs"), MULTI_TARGET_RUST_HARNESS)?;
+    let rust_build = Command::new("cargo")
+        .args(["build", "--quiet"])
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_build.status.success(),
+        "{sample}: generated Rust compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_build.stdout),
+        String::from_utf8_lossy(&rust_build.stderr)
+    );
+    let rust_run = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .arg(&source_schema)
+        .arg(&primary_xml_schema)
+        .arg(&primary_json_schema_path)
+        .arg(&named_xml_schema)
+        .arg(&named_json_schema_path)
+        .arg(&source_path)
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_run.status.success(),
+        "{sample}: generated Rust execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_run.stdout),
+        String::from_utf8_lossy(&rust_run.stderr)
+    );
+    assert_eq!(
+        parse_multi_target_outputs(&rust_run.stdout)?,
+        expected_outputs,
+        "{sample}: generated Rust target order or contents differ from engine"
+    );
+
+    let csharp_output = case_dir.join("csharp");
+    generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
+    let harness = csharp_output.join("Harness");
+    std::fs::create_dir(&harness)?;
+    std::fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj" />
+  </ItemGroup>
+</Project>
+"#,
+    )?;
+    std::fs::write(harness.join("Program.cs"), MULTI_TARGET_CSHARP_HARNESS)?;
+    let csharp_build = dotnet_command(&csharp_output)
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "Harness/Harness.csproj",
+        ])
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_build.status.success(),
+        "{sample}: generated C# compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_build.stdout),
+        String::from_utf8_lossy(&csharp_build.stderr)
+    );
+    let csharp_run = dotnet_command(&csharp_output)
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+            "--no-build",
+            "--no-restore",
+            "--",
+        ])
+        .arg(&source_schema)
+        .arg(&primary_xml_schema)
+        .arg(&primary_json_schema_path)
+        .arg(&named_xml_schema)
+        .arg(&named_json_schema_path)
+        .arg(&source_path)
+        .arg(namespace)
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_run.status.success(),
+        "{sample}: generated C# execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_run.stdout),
+        String::from_utf8_lossy(&csharp_run.stderr)
+    );
+    assert_eq!(
+        parse_multi_target_outputs(&csharp_run.stdout)?,
+        expected_outputs,
+        "{sample}: generated C# target order or contents differ from engine"
+    );
+    println!("{sample}: generated Rust and C# output sets match the interpreter");
+    Ok(())
+}
+
+fn parse_multi_target_outputs(bytes: &[u8]) -> TestResult<Vec<CorpusTargetOutput>> {
+    let text = std::str::from_utf8(bytes)?;
+    let mut fields = text.split('\0').collect::<Vec<_>>();
+    assert_eq!(fields.pop(), Some(""), "missing named output terminator");
+    assert_eq!(fields.len() % 3, 0, "incomplete named output");
+    fields
+        .chunks_exact(3)
+        .map(|fields| {
+            Ok(CorpusTargetOutput {
+                name: fields[0].to_owned(),
+                xml: fields[1].to_owned(),
+                value: serde_json::from_str(fields[2])?,
+            })
+        })
+        .collect()
+}
+
+fn omit_corpus_description(schema: &mut SchemaNode) -> usize {
+    // XML compositor metadata can reference description; the JSON projection
+    // carries only ordinary named fields, not XML occurrence ordering.
+    schema.xml_repeating_sequences.clear();
+    schema.xml_repeating_choices.clear();
+    let ir::SchemaKind::Group {
+        children, dynamic, ..
+    } = &mut schema.kind
+    else {
+        return 0;
+    };
+    let previous = children.len();
+    children.retain(|child| child.name != "description");
+    let mut removed = previous - children.len();
+    for child in children {
+        removed += omit_corpus_description(child);
+    }
+    if let Some(dynamic) = dynamic {
+        removed += omit_corpus_description(dynamic);
+    }
+    removed
+}
+
+const MULTI_TARGET_RUST_HARNESS: &str = r#"use codegen_runtime::{Instance, Value, parse_json, serialize_json, serialize_xml};
+use ferrule_generated_mapping::execute_outputs;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema"))?;
+    let primary_xml_schema = std::fs::read_to_string(args.next().expect("primary XML schema"))?;
+    let primary_json_schema = std::fs::read_to_string(args.next().expect("primary JSON schema"))?;
+    let named_xml_schema = std::fs::read_to_string(args.next().expect("named XML schema"))?;
+    let named_json_schema = std::fs::read_to_string(args.next().expect("named JSON schema"))?;
+    let source_json = std::fs::read_to_string(args.next().expect("source JSON"))?;
+    let source = parse_json(&source_schema, &source_json)?;
+    let outputs = execute_outputs(&source)?;
+    assert_eq!(outputs.extras.len(), 1, "expected one named output");
+    print_output("", &outputs.primary, &primary_xml_schema, &primary_json_schema)?;
+    for output in &outputs.extras {
+        print_output(output.name, &output.instance, &named_xml_schema, &named_json_schema)?;
+    }
+    Ok(())
+}
+
+fn print_output(name: &str, value: &Instance, xml_schema: &str, json_schema: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let Value::String(xml) = serialize_xml(0, xml_schema, value, false, false, None)? else {
+        unreachable!("XML serialization returns a string");
+    };
+    let json = serialize_json(json_schema, value)?;
+    print!("{name}\0{xml}\0{json}\0");
+    Ok(())
+}
+"#;
+
+const MULTI_TARGET_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var sourceSchema = File.ReadAllText(args[0]);
+var primaryXmlSchema = File.ReadAllText(args[1]);
+var primaryJsonSchema = File.ReadAllText(args[2]);
+var namedXmlSchema = File.ReadAllText(args[3]);
+var namedJsonSchema = File.ReadAllText(args[4]);
+var source = FerruleJson.Parse(sourceSchema, File.ReadAllText(args[5]));
+var rootNamespace = args[6];
+var outputs = GeneratedMapping.ExecuteOutputs(source);
+if (outputs.Extras.Count != 1)
+{
+    throw new InvalidOperationException("Expected one named output.");
+}
+WriteOutput("", outputs.Primary, primaryXmlSchema, primaryJsonSchema, rootNamespace);
+foreach (var output in outputs.Extras)
+{
+    WriteOutput(output.Name, output.Instance, namedXmlSchema, namedJsonSchema, rootNamespace);
+}
+
+static void WriteOutput(string name, FerruleInstance value, string xmlSchema, string jsonSchema, string rootNamespace)
+{
+    var xml = FerruleXml.Serialize(0, xmlSchema, value, false, false, rootNamespace).StringValue;
+    var json = FerruleJson.Serialize(jsonSchema, value);
+    Console.Out.Write(name);
+    Console.Out.Write('\0');
+    Console.Out.Write(xml);
+    Console.Out.Write('\0');
+    Console.Out.Write(json);
+    Console.Out.Write('\0');
+}
+"#;
 
 #[derive(Debug, PartialEq)]
 struct CorpusDocumentOutput {
