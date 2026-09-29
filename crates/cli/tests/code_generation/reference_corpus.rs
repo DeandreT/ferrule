@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against nine local, gitignored mappings.
+//! Opt-in generated-backend execution against ten local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -26,7 +26,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 9] = [
+const CASES: [CorpusCase; 10] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -78,6 +78,12 @@ const CASES: [CorpusCase; 9] = [
     CorpusCase {
         sample: "StringJoin.mfd",
         input: "BranchOffices.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "ClassifyTemperatures.mfd",
+        input: "Temperatures.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
@@ -293,6 +299,45 @@ fn run_case(
         );
         assert_eq!(title.split(", ").count(), 21, "{sample}: joined contacts");
         assert_eq!(info[0]["Description"]["#text"], "You are all promoted.");
+    }
+    if sample == "ClassifyTemperatures.mfd" {
+        let data = expected_json["data"]
+            .as_array()
+            .expect("classified readings");
+        assert_eq!(data.len(), 60, "{sample}: all readings retain source order");
+        assert_eq!(data[0]["month"], "2006-01");
+        assert_eq!(data[0]["desc"], "low");
+        assert_eq!(data[30]["month"], "2008-07");
+        assert_eq!(data[30]["desc"], "high");
+        assert_eq!(data[32]["month"], "2008-09");
+        assert_eq!(data[32]["temp"], 20.0);
+        assert!(
+            data[32].get("desc").is_none(),
+            "{sample}: threshold 20 has no class"
+        );
+        assert_eq!(data[59]["month"], "2010-12");
+        assert_eq!(data[59]["desc"], "low");
+        assert_eq!(
+            data.iter()
+                .filter(|reading| reading["desc"] == "low")
+                .count(),
+            16,
+            "{sample}: low classifications"
+        );
+        assert_eq!(
+            data.iter()
+                .filter(|reading| reading["desc"] == "high")
+                .count(),
+            11,
+            "{sample}: high classifications"
+        );
+        assert_eq!(
+            data.iter()
+                .filter(|reading| reading.get("desc").is_none())
+                .count(),
+            33,
+            "{sample}: unclassified middle readings"
+        );
     }
 
     let generated_input = case_dir.join("source.json");
