@@ -56,7 +56,8 @@ mod resource;
 
 pub use export::{
     ExportCompatibility, ExportCompatibilityFeature, ExportCompatibilityIssue, ExportProfile,
-    ExportReport, export, export_with_profile, preflight_export,
+    ExportReport, export, export_pipeline, export_pipeline_with_profile, export_with_profile,
+    preflight_export, preflight_pipeline_export,
 };
 pub use import::{
     ImportIssue, ImportIssueKind, ImportOptions, ImportOutcome, ImportProfile, ImportReport,

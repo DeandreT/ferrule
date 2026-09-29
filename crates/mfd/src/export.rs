@@ -30,6 +30,7 @@ mod json_serializer;
 mod mapped_sequence;
 mod node;
 mod pdf;
+mod pipeline;
 mod position;
 mod preflight;
 mod protobuf;
@@ -51,6 +52,7 @@ pub use compatibility::{
     ExportReport,
 };
 use mapped_sequence::{ScopePlans, preflight_mapped_sequences, render_edge_metadata};
+pub use pipeline::{export_pipeline, export_pipeline_with_profile, preflight_pipeline_export};
 use position::connect_position_roots;
 use schema::{
     KeyAlloc, PortTree, RenderedSchemaComponent, Side, SideFormat, db_datasource_name,

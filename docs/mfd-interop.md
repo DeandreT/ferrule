@@ -234,10 +234,18 @@ project applies the same rebasing rule, including wildcard input paths.
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
+cargo +nightly run -p cli -- export-mfd --project flow.json --pipeline --out chained.mfd --profile native-mfd
 ```
 
 Export writes the representable project subset plus generated schema or layout
 siblings. Component kinds are selected from endpoint format metadata and paths.
+Pipeline export writes one connected design for a validated serial XML chain
+of 2–65 stages. Each intermediate primary target becomes the next stage's
+pass-through source. Preflight and native-profile checks run before any design
+or schema sibling is published. Independent targets, connected later-stage
+named sources, and non-XML boundaries reject explicitly. Synthetic two- and
+four-stage export/re-import runs preserve stage results; acceptance by the
+proprietary application remains unverified.
 JSON5 endpoint syntax currently rejects before export because the native
 component setting has not been verified; emitting an ordinary JSON component
 would change the document syntax.
