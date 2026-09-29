@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against eleven local, gitignored mappings.
+//! Opt-in generated-backend execution against twelve local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -27,7 +27,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 11] = [
+const CASES: [CorpusCase; 12] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -94,6 +94,12 @@ const CASES: [CorpusCase; 11] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Csv,
     },
+    CorpusCase {
+        sample: "Tutorial/JoinPeopleInfo.mfd",
+        input: "Tutorial/People.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
 ];
 
 #[test]
@@ -140,9 +146,12 @@ fn run_case(
         "{sample}: host dependencies prevent deterministic execution: {:?}",
         project.runtime_dependencies()
     );
-    assert!(
-        project.extra_sources.is_empty(),
-        "{sample}: expected one input"
+    let named_input = (sample == "Tutorial/JoinPeopleInfo.mfd")
+        .then_some(("Addresses", "Tutorial/Addresses.xml"));
+    assert_eq!(
+        project.extra_sources.len(),
+        usize::from(named_input.is_some()),
+        "{sample}: unexpected named inputs"
     );
     assert!(
         match case.target_kind {
@@ -171,7 +180,7 @@ fn run_case(
             .as_deref()
             .and_then(|path| Path::new(path).file_name())
             .and_then(OsStr::to_str),
-        Some(case.input),
+        Path::new(case.input).file_name().and_then(OsStr::to_str),
         "{sample}: unexpected source instance"
     );
     let validation = engine::validate(&project);
@@ -200,7 +209,38 @@ fn run_case(
             format_json::to_string(&project.source, &source)?
         }
     };
-    let expected = engine::run(&project, &source)?;
+    let mut named_sources = Vec::new();
+    let mut named_input_paths = Vec::new();
+    if let Some((name, input)) = named_input {
+        let named_source = &project.extra_sources[0];
+        assert_eq!(named_source.name, name, "{sample}: named input identity");
+        assert_eq!(
+            Path::new(&named_source.path)
+                .file_name()
+                .and_then(OsStr::to_str),
+            Path::new(input).file_name().and_then(OsStr::to_str),
+            "{sample}: named input instance"
+        );
+        assert!(
+            named_source.options.xml_document,
+            "{sample}: named input format"
+        );
+        assert!(
+            named_source.dynamic_path.is_none(),
+            "{sample}: static named input"
+        );
+        let instance = format_xml::read(&samples.join(input), &named_source.schema)?;
+        let named_json = format_json::to_string(&named_source.schema, &instance)?;
+        let named_path = case_dir.join("named-source.json");
+        std::fs::write(&named_path, named_json)?;
+        named_sources.push((name.to_owned(), instance));
+        named_input_paths.push((name, named_path));
+    }
+    let expected = if named_sources.is_empty() {
+        engine::run(&project, &source)?
+    } else {
+        engine::run_with_sources(&project, &source, named_sources)?
+    };
     let expected_json: serde_json::Value =
         serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?;
     if sample == "BuildHierarchyFromTextfile.mfd" {
@@ -370,7 +410,11 @@ fn run_case(
             ],
             "{sample}: ordered source tools"
         );
-        assert!(rows[2]["Tool"].as_str().is_some_and(|tool| !tool.is_empty()));
+        assert!(
+            rows[2]["Tool"]
+                .as_str()
+                .is_some_and(|tool| !tool.is_empty())
+        );
         assert_eq!(
             rows.iter()
                 .map(|row| row["ExistsInMissionKit"].as_str())
@@ -390,6 +434,27 @@ fn run_case(
             "{sample}: lookup-fed token existence"
         );
     }
+    if sample == "Tutorial/JoinPeopleInfo.mfd" {
+        let rows = expected_json["Row"].as_array().expect("joined people");
+        assert_eq!(rows.len(), 3, "{sample}: only matched people remain");
+        let mut keys = std::collections::BTreeSet::new();
+        for row in rows {
+            let first = row["FirstName"].as_str().expect("joined first name");
+            let last = row["LastName"].as_str().expect("joined last name");
+            assert!(!first.is_empty() && !last.is_empty());
+            assert!(
+                keys.insert((first, last)),
+                "{sample}: joined names are distinct"
+            );
+            assert!(row["City"].as_str().is_some_and(|city| !city.is_empty()));
+            assert!(
+                row["Street"]
+                    .as_str()
+                    .is_some_and(|street| !street.is_empty())
+            );
+            assert!(row["Email"].as_str().is_some_and(|email| !email.is_empty()));
+        }
+    }
 
     let generated_input = case_dir.join("source.json");
     std::fs::write(&generated_input, source_json)?;
@@ -407,10 +472,28 @@ fn run_case(
     )?;
     std::fs::write(
         rust_output.join("src/main.rs"),
-        r#"fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let input_path = std::env::args_os().nth(1).expect("input path");
+        r#"use ferrule_generated_mapping::{NamedJsonInput, execute_json_with_sources};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let input_path = args.next().expect("input path");
     let input = std::fs::read_to_string(input_path)?;
-    print!("{}", ferrule_generated_mapping::execute_json(&input)?);
+    let named_args: Vec<_> = args.collect();
+    assert_eq!(named_args.len() % 2, 0, "named input arguments are pairs");
+    let named_documents = named_args
+        .chunks_exact(2)
+        .map(|pair| {
+            Ok((
+                pair[0].to_string_lossy().into_owned(),
+                std::fs::read_to_string(&pair[1])?,
+            ))
+        })
+        .collect::<Result<Vec<_>, std::io::Error>>()?;
+    let named_inputs = named_documents
+        .iter()
+        .map(|(name, document)| NamedJsonInput { name, document })
+        .collect::<Vec<_>>();
+    print!("{}", execute_json_with_sources(&input, &named_inputs)?);
     Ok(())
 }
 "#,
@@ -426,12 +509,16 @@ fn run_case(
         String::from_utf8_lossy(&rust_build.stdout),
         String::from_utf8_lossy(&rust_build.stderr)
     );
-    let rust_run = Command::new("cargo")
+    let mut rust_run_command = Command::new("cargo");
+    rust_run_command
         .args(["run", "--quiet", "--"])
         .arg(&generated_input)
         .current_dir(&rust_output)
-        .env("CARGO_TARGET_DIR", rust_target)
-        .isolated_output()?;
+        .env("CARGO_TARGET_DIR", rust_target);
+    for (name, path) in &named_input_paths {
+        rust_run_command.arg(name).arg(path);
+    }
+    let rust_run = rust_run_command.isolated_output()?;
     assert!(
         rust_run.status.success(),
         "{sample}: generated Rust execution failed:\nstdout:\n{}\nstderr:\n{}",
@@ -470,7 +557,16 @@ fn run_case(
         r#"using Ferrule.Generated;
 
 var input = File.ReadAllText(args[0]);
-Console.Out.Write(GeneratedMapping.ExecuteJson(input));
+if ((args.Length - 1) % 2 != 0)
+{
+    throw new ArgumentException("Named input arguments are pairs.");
+}
+var namedInputs = new List<NamedJsonInput>();
+for (var index = 1; index < args.Length; index += 2)
+{
+    namedInputs.Add(new NamedJsonInput(args[index], File.ReadAllText(args[index + 1])));
+}
+Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
 "#,
     )?;
     let csharp_build = dotnet_command(&csharp_output)
@@ -488,7 +584,8 @@ Console.Out.Write(GeneratedMapping.ExecuteJson(input));
         String::from_utf8_lossy(&csharp_build.stdout),
         String::from_utf8_lossy(&csharp_build.stderr)
     );
-    let csharp_run = dotnet_command(&csharp_output)
+    let mut csharp_run_command = dotnet_command(&csharp_output);
+    csharp_run_command
         .args([
             "run",
             "--project",
@@ -500,8 +597,11 @@ Console.Out.Write(GeneratedMapping.ExecuteJson(input));
             "--",
         ])
         .arg(&generated_input)
-        .current_dir(&csharp_output)
-        .isolated_output()?;
+        .current_dir(&csharp_output);
+    for (name, path) in &named_input_paths {
+        csharp_run_command.arg(name).arg(path);
+    }
+    let csharp_run = csharp_run_command.isolated_output()?;
     assert!(
         csharp_run.status.success(),
         "{sample}: generated C# execution failed:\nstdout:\n{}\nstderr:\n{}",

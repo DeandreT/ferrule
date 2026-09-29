@@ -438,7 +438,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports eleven warning-free designs: JSON to
+An opt-in local-corpus smoke test imports twelve warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -446,7 +446,8 @@ XML to XML with positions compacted after filtering, plus XML to XML with an
 ordered string-join aggregate across nested contacts and XML to XML with lazy
 temperature classification and optional target attributes. The eleventh
 design maps XML to CSV through lookup-fed token existence and ordered root
-scope concatenation.
+scope concatenation. The twelfth joins a primary XML source with a named XML
+source on a composite person key.
 It executes them in the interpreter, then compiles
 and runs their generated Rust and C# hosts against
 schema-shaped JSON input. Both backends must match the interpreter's JSON
