@@ -5,7 +5,7 @@ use mapping::{NodeId, SequenceExpr};
 use regex::RegexBuilder;
 
 use super::EngineError;
-use super::eval_expr::{EvalProgram, eval_expr};
+use super::eval_expr::{EvalProgram, eval_expr, eval_node_input};
 use super::source_iteration::PositionFrame;
 
 pub(super) const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
@@ -302,6 +302,7 @@ fn scalar_text(value: &Value) -> Result<String, EngineError> {
 
 pub(super) fn eval_sequence_exists(
     program: EvalProgram<'_>,
+    consumer: NodeId,
     sequence: &SequenceExpr,
     predicate: NodeId,
     context: &[&Instance],
@@ -309,6 +310,8 @@ pub(super) fn eval_sequence_exists(
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
     let values = eval_sequence_in_progress(program, sequence, context, positions, in_progress)?;
+    // The owned sequence item is a dependency, not a visible input pin.
+    let predicate_input_index = sequence.inputs().len();
     for (index, value) in values.into_iter().enumerate() {
         let item = Instance::Scalar(value);
         let mut item_context = context.to_vec();
@@ -322,9 +325,11 @@ pub(super) fn eval_sequence_exists(
             join_position: None,
             document_path: None,
         });
-        match eval_expr(
+        match eval_node_input(
             program,
+            consumer,
             predicate,
+            predicate_input_index,
             &item_context,
             &item_positions,
             in_progress,
