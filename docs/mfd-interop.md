@@ -243,12 +243,15 @@ siblings. Component kinds are selected from endpoint format metadata and paths.
 Pipeline export writes one connected design for a validated serial XML chain
 of 2–65 stages. Each intermediate primary target becomes the next stage's
 pass-through source. The final stage may also write connected named XML
-targets. Preflight and native-profile checks run before any design or schema
-sibling is published. Independent intermediate targets, disconnected final
-targets, connected later-stage named sources, and non-XML boundaries reject
-explicitly. Synthetic two- and four-stage export/re-import runs preserve stage
-results; a synthetic terminal fan-out round trip also preserves both final
-outputs. Acceptance by the proprietary application remains unverified.
+targets. In a two-stage chain, one original static XML host source may connect
+to a final-stage named input when that host component was unused earlier and
+its boundary and output ports still match. Preflight and native-profile checks
+run before any design or schema sibling is published. Independent intermediate
+targets, disconnected final targets, other connected later-stage named sources,
+and non-XML boundaries reject explicitly. Synthetic two- and four-stage
+export/re-import runs preserve stage results; synthetic terminal fan-out and
+late named-host round trips preserve their connected outputs. Acceptance by the
+proprietary application remains unverified.
 When an imported JSON boundary or JSON string parser fell back to its entry
 tree because its schema was unavailable, best-effort export records that
 unresolved reference beside the generated schema and re-import reports it
