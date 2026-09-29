@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against five local, gitignored mappings.
+//! Opt-in generated-backend execution against six local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -26,7 +26,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 5] = [
+const CASES: [CorpusCase; 6] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -54,6 +54,12 @@ const CASES: [CorpusCase; 5] = [
     CorpusCase {
         sample: "GroupTemperaturesByYear.mfd",
         input: "Temperatures.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "SortByMultipleKeys.mfd",
+        input: "OrgChart.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
@@ -201,6 +207,26 @@ fn run_case(
         assert_eq!(years[0]["MinimumTemp"], -3.6);
         assert_eq!(years[0]["MaximumTemp"], 23.2);
         assert_eq!(years[0]["AverageTemp"], 11.375);
+    }
+    if sample == "SortByMultipleKeys.mfd" {
+        assert_eq!(expected_json["Name"], "Share Ranking");
+        let offices = expected_json["Office"].as_array().expect("office array");
+        assert_eq!(offices.len(), 1, "{sample}: source has one office");
+        let people = offices[0]["Person"].as_array().expect("person array");
+        assert_eq!(people.len(), 16, "{sample}: all department members");
+        assert_eq!(people[0]["Shares"], 2000);
+        assert_eq!(people[0]["Last"], "Landis");
+        assert_eq!(people[1]["Shares"], 2000);
+        assert_eq!(people[1]["Last"], "Martin");
+        assert_eq!(people[2]["Last"], "Martin");
+        assert_eq!(people[3]["Last"], "Martin");
+        assert_eq!(people[1]["First"]["#text"], "Alex");
+        assert_eq!(people[2]["First"]["#text"], "Joe");
+        assert_eq!(people[3]["First"]["#text"], "Susan");
+        assert_eq!(people[4]["Shares"], 1500);
+        assert_eq!(people[4]["Last"], "Butler");
+        assert_eq!(people[5]["Shares"], 1500);
+        assert_eq!(people[5]["Last"], "Callaby");
     }
 
     let generated_input = case_dir.join("source.json");
