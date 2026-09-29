@@ -160,4 +160,40 @@ internal static partial class Program
                 false,
                 null));
     }
+
+    private static void XmlVirtualTextName()
+    {
+        const string schema = """{"name":"Root","kind":{"kind":"group","children":[{"name":"#text","text":true,"kind":{"kind":"scalar","ty":"string"}}]}}""";
+        Equal(
+            Text("<Root>A&amp;B</Root>"),
+            FerruleXml.Serialize(
+                16,
+                schema,
+                Group(Field("#text", Scalar(Text("A&B")))),
+                false,
+                false,
+                null));
+
+        foreach (var invalid in new[]
+        {
+            schema.Replace("\"text\":true", "\"text\":false", StringComparison.Ordinal),
+            schema.Replace("\"#text\"", "\"#bad\"", StringComparison.Ordinal),
+            schema.Replace("\"text\":true", "\"text\":true,\"attribute\":true", StringComparison.Ordinal),
+            schema.Replace("\"kind\":\"scalar\",\"ty\":\"string\"", "\"kind\":\"group\",\"children\":[]", StringComparison.Ordinal),
+        })
+        {
+            Error(
+                FerruleRuntimeError.XmlSerialization,
+                () => FerruleXml.Serialize(17, invalid, Group(), false, false, null));
+        }
+        Error(
+            FerruleRuntimeError.XmlSerialization,
+            () => FerruleXml.Serialize(
+                18,
+                """{"name":"#text","text":true,"kind":{"kind":"scalar","ty":"string"}}""",
+                Scalar(Text("root")),
+                false,
+                false,
+                null));
+    }
 }

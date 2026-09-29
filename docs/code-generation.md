@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports twenty warning-free designs: JSON to
+An opt-in local-corpus smoke test imports twenty-one warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -472,8 +472,20 @@ APIs, and compares ordered portable output paths, normalized XML, and typed
 JSON for each output member without writing into the sample corpus. The twentieth
 design uses the same confined two-member source transport to merge both input
 documents into one XML target; it compares that target's normalized XML and
-typed JSON across the interpreter and generated hosts. The test executes every
-design in the interpreter, then compiles and runs its generated
+typed JSON across the interpreter and generated hosts. The twenty-first reads
+one expense-report XML source and evaluates two independent XML targets. The
+third XML component is the primary `SecondXML.xml` accommodation report;
+the earlier `ExpReport-Target.xml` travel report is the ordered `Company` named
+target. Generated Rust and C# `execute_outputs` hosts receive the same
+JSON projection of the source, then compare each target's normalized XML and
+typed JSON projection against the interpreter. The mapping does not read the
+recursive mixed-description branches, which are omitted only from JSON
+transport; full original XSD-derived schemas remain in the XML comparisons.
+The C# XML serializer receives the imported root namespace through its explicit
+`defaultNamespace` option; general per-node XML namespace metadata parity
+remains separate. The full recursive mixed-description JSON boundary remains
+unsupported. The test executes every design in the interpreter, then compiles
+and runs its generated
 Rust and C# hosts. Cases one through fifteen, seventeen, and eighteen compare
 JSON results; the sixteenth compares XML bytes from the generated and
 interpreter serializers. Run it with

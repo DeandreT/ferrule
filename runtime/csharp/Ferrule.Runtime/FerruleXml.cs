@@ -251,9 +251,19 @@ public static class FerruleXml
             {
                 throw new InvalidOperationException("embedded XML schema name cannot be empty");
             }
-            _ = XmlConvert.VerifyName(name);
             var kind = Required(element, "kind");
             var kindName = RequiredString(kind, "kind");
+            var virtualText =
+                depth > 0 &&
+                name == "#text" &&
+                kindName == "scalar" &&
+                OptionalBoolean(element, "text") &&
+                !OptionalBoolean(element, "attribute") &&
+                !OptionalBoolean(element, "repeating");
+            if (!virtualText)
+            {
+                _ = XmlConvert.VerifyName(name);
+            }
             XmlScalarType? scalarType = null;
             var children = Array.Empty<XmlSchemaNode>();
             var alternatives = Array.Empty<XmlAlternative>();
