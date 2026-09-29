@@ -243,8 +243,10 @@ would change the document syntax.
 Supported named sources, independent targets, dynamic XML paths, HTTP response
 boundaries, selected joins, exception sinks, and configured format components
 retain their ownership in the exported design. Structured XML string serializers
-round-trip as native components with generated XSD siblings and structural
-source connections. Declared local SQLite relations round-trip with their owning
+with default indentation round-trip as native components with generated XSD
+siblings and structural source connections. Explicit compact serialization
+still uses a Ferrule extension and is rejected by the native export profile.
+Declared local SQLite relations round-trip with their owning
 database connection.
 
 The default `ferrule-extensions` profile preserves the existing Ferrule

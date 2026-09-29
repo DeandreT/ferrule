@@ -57,6 +57,17 @@ pub use project_paths::rebase as rebase_project_paths;
 pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;
 
+/// A bounded, quote-aware CSV sample for GUI schema authoring.
+pub use format_csv::CsvSample;
+
+pub fn sample_csv(
+    path: &Path,
+    delimiter: Option<char>,
+    has_headers: bool,
+) -> Result<CsvSample, format_csv::CsvFormatError> {
+    format_csv::sample(path, delimiter, has_headers)
+}
+
 /// Result of running a project after resolving its input and output paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunOutcome {

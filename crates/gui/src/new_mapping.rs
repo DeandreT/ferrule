@@ -1,17 +1,195 @@
 use std::path::PathBuf;
 
-use ir::SchemaNode;
-use mapping::{Graph, Project, Scope};
+use anyhow::{Context as _, bail};
+use ir::{ScalarType, SchemaNode};
+use mapping::{FormatOptions, Graph, Project, Scope, TabularBoundaryKind};
 
 #[derive(Default)]
 pub(super) struct NewMappingSetup {
-    pub(super) source: Option<ImportedSchema>,
-    pub(super) target: Option<ImportedSchema>,
+    pub(super) source: Option<MappingBoundary>,
+    pub(super) target: Option<MappingBoundary>,
 }
 
 pub(super) struct ImportedSchema {
     pub(super) path: PathBuf,
     pub(super) schema: SchemaNode,
+}
+
+pub(super) enum MappingBoundary {
+    Schema(Box<ImportedSchema>),
+    Csv(CsvBoundaryDraft),
+}
+
+pub(super) struct CsvBoundaryDraft {
+    pub(super) path: String,
+    pub(super) delimiter: char,
+    pub(super) has_header_row: bool,
+    pub(super) columns: Vec<CsvColumnDraft>,
+    pub(super) preview_rows: Vec<Vec<String>>,
+    pub(super) sample_error: Option<String>,
+}
+
+pub(super) struct CsvColumnDraft {
+    pub(super) name: String,
+    pub(super) ty: ScalarType,
+}
+
+impl CsvBoundaryDraft {
+    pub(super) fn source(path: PathBuf) -> anyhow::Result<Self> {
+        let delimiter = if path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("tsv"))
+        {
+            '\t'
+        } else {
+            ','
+        };
+        let path = path
+            .to_str()
+            .context("CSV source path must be valid UTF-8")?
+            .to_owned();
+        let mut draft = Self {
+            path,
+            delimiter,
+            has_header_row: true,
+            columns: Vec::new(),
+            preview_rows: Vec::new(),
+            sample_error: None,
+        };
+        draft.refresh_sample()?;
+        Ok(draft)
+    }
+
+    pub(super) fn target() -> Self {
+        Self {
+            path: String::new(),
+            delimiter: ',',
+            has_header_row: true,
+            columns: vec![CsvColumnDraft {
+                name: String::new(),
+                ty: ScalarType::String,
+            }],
+            preview_rows: Vec::new(),
+            sample_error: None,
+        }
+    }
+
+    pub(super) fn refresh_sample(&mut self) -> anyhow::Result<()> {
+        let sample = match cli::sample_csv(
+            std::path::Path::new(&self.path),
+            Some(self.delimiter),
+            self.has_header_row,
+        ) {
+            Ok(sample) => sample,
+            Err(error) => {
+                self.sample_error = Some(error.to_string());
+                return Err(error.into());
+            }
+        };
+        let previous_types = self
+            .columns
+            .iter()
+            .map(|column| column.ty)
+            .collect::<Vec<_>>();
+        self.columns = sample
+            .columns
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| CsvColumnDraft {
+                name,
+                ty: previous_types
+                    .get(index)
+                    .copied()
+                    .unwrap_or(ScalarType::String),
+            })
+            .collect();
+        self.preview_rows = sample.rows;
+        self.sample_error = None;
+        Ok(())
+    }
+
+    pub(super) fn validate(&self) -> anyhow::Result<()> {
+        if let Some(error) = &self.sample_error {
+            bail!("CSV sample could not be read: {error}");
+        }
+        if self.path.trim().is_empty() {
+            bail!("CSV path is required");
+        }
+        if let Some(extension) = std::path::Path::new(self.path.trim())
+            .extension()
+            .and_then(|extension| extension.to_str())
+            && !matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "csv" | "txt" | "tsv"
+            )
+        {
+            bail!("CSV path must have a .csv, .txt, or .tsv extension");
+        }
+        if !self.delimiter.is_ascii() || matches!(self.delimiter, '\0' | '\r' | '\n' | '"') {
+            bail!(
+                "CSV delimiter must be a single ASCII character other than a quote or line break"
+            );
+        }
+        if self.columns.is_empty() {
+            bail!("CSV must have at least one column");
+        }
+        let mut names = std::collections::BTreeSet::new();
+        for column in &self.columns {
+            if column.name.trim().is_empty() {
+                bail!("CSV column names cannot be empty");
+            }
+            if !names.insert(column.name.as_str()) {
+                bail!("duplicate CSV column name `{}`", column.name);
+            }
+        }
+        Ok(())
+    }
+
+    fn schema(&self) -> anyhow::Result<SchemaNode> {
+        self.validate()?;
+        Ok(SchemaNode::group(
+            "row",
+            self.columns
+                .iter()
+                .map(|column| SchemaNode::scalar(&column.name, column.ty))
+                .collect(),
+        ))
+    }
+
+    fn options(&self) -> FormatOptions {
+        FormatOptions {
+            tabular_kind: Some(TabularBoundaryKind::Csv),
+            delimiter: Some(self.delimiter),
+            has_header_row: Some(self.has_header_row),
+            ..FormatOptions::default()
+        }
+    }
+}
+
+impl NewMappingSetup {
+    pub(super) fn build_project(&self) -> anyhow::Result<Project> {
+        let source = self.source.as_ref().context("choose a source boundary")?;
+        let target = self.target.as_ref().context("choose a target boundary")?;
+        let mut project = blank_project();
+        match source {
+            MappingBoundary::Schema(imported) => project.source = imported.schema.clone(),
+            MappingBoundary::Csv(draft) => {
+                project.source = draft.schema()?;
+                project.source_options = draft.options();
+                project.source_path = Some(draft.path.clone());
+            }
+        }
+        match target {
+            MappingBoundary::Schema(imported) => project.target = imported.schema.clone(),
+            MappingBoundary::Csv(draft) => {
+                project.target = draft.schema()?;
+                project.target_options = draft.options();
+                project.target_path = Some(draft.path.clone());
+            }
+        }
+        Ok(project)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -56,5 +234,76 @@ pub(super) fn blank_project() -> Project {
         user_functions: Default::default(),
         graph: Graph::default(),
         root: Scope::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn source_file(tag: &str, extension: &str, content: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule-gui-new-mapping-{tag}-{}.{}",
+            std::process::id(),
+            extension
+        ));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn csv_draft_requires_unique_names_and_retains_explicit_types() {
+        let path = source_file("duplicate", "csv", "name,name\nJane,Doe\n");
+        let mut source = CsvBoundaryDraft::source(path.clone()).unwrap();
+        assert_eq!(source.columns.len(), 2);
+        assert_eq!(source.preview_rows[0], ["Jane", "Doe"]);
+        assert!(
+            source
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate")
+        );
+        source.columns[1].name = "surname".into();
+        source.columns[1].ty = ScalarType::Bool;
+        let schema = source.schema().unwrap();
+        assert_eq!(
+            schema,
+            SchemaNode::group(
+                "row",
+                vec![
+                    SchemaNode::scalar("name", ScalarType::String),
+                    SchemaNode::scalar("surname", ScalarType::Bool),
+                ]
+            )
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn tsv_source_defaults_to_tab_and_can_switch_header_mode() {
+        let path = source_file("tab", "tsv", "name\tage\nJane\t29\n");
+        let mut source = CsvBoundaryDraft::source(path.clone()).unwrap();
+        assert_eq!(source.delimiter, '\t');
+        assert_eq!(
+            source
+                .columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>(),
+            ["name", "age"]
+        );
+        source.has_header_row = false;
+        source.refresh_sample().unwrap();
+        assert_eq!(
+            source
+                .columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Column 1", "Column 2"]
+        );
+        assert_eq!(source.preview_rows.len(), 2);
+        std::fs::remove_file(path).unwrap();
     }
 }
