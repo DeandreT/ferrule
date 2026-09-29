@@ -1467,7 +1467,6 @@ fn import_resolved(
             component.is_variable = false;
             component.is_source = true;
             component.is_pass_through = false;
-            component.input_instance = None;
         }
     }
     if let StageSelection::Between { target_key, .. } = selection {
@@ -1829,18 +1828,20 @@ fn import_resolved(
         });
     }
 
-    let source_path = if matches!(
-        selection,
-        StageSelection::OutOf { .. } | StageSelection::Between { .. }
-    ) {
-        None
-    } else {
-        primary
-            .input_instance
-            .clone()
-            .or_else(|| builder.static_component_input_path(primary))
-            .map(|stored| instance_path::resolve_static_input(path, &stored))
-    };
+    let source_path = primary
+        .input_instance
+        .clone()
+        .or_else(|| {
+            if matches!(
+                selection,
+                StageSelection::OutOf { .. } | StageSelection::Between { .. }
+            ) {
+                None
+            } else {
+                builder.static_component_input_path(primary)
+            }
+        })
+        .map(|stored| instance_path::resolve_static_input(path, &stored));
     let target_path = if root.output_path().is_some() {
         None
     } else {

@@ -10,7 +10,7 @@ use roxmltree::{Document, Node};
 
 use super::artifact::write_artifacts;
 use super::compatibility::{ExportProfile, ExportReport};
-use super::schema::{SideFormat, side_format};
+use super::schema::{SideFormat, side_format, xml_escape};
 use super::{PreparedExport, compatibility, prepare_export};
 use crate::MfdError;
 
@@ -65,17 +65,9 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
     let mut warnings = Vec::new();
     for (index, stage) in pipeline.stages.iter().enumerate() {
         let stage_path = stage_artifact_path(path, index + 1)?;
-        let mut project = stage.project.clone();
-        if index > 0 {
-            // The physical input is supplied by the previous pass-through
-            // component, never by an independent file boundary.
-            project.source_path = None;
-        }
-        if index + 1 < pipeline.stages.len() {
-            // Intermediate targets become pass-through components, not
-            // independent output files in the native design.
-            project.target_path = None;
-        }
+        let project = stage.project.clone();
+        // Intermediate output instances and later-stage source preview
+        // instances belong to the same pass-through component after merging.
         let prepared = prepare_export(&project, &stage_path)?;
         warnings.extend(prepared.report.warnings);
         let (stage_xml, siblings) = separate_stage_artifacts(prepared.artifacts, &stage_path)?;
@@ -736,6 +728,29 @@ fn connect_pass_through(
     source: Node<'_, '_>,
     edits: &mut Vec<Edit>,
 ) -> Result<(), MfdError> {
+    let target_document = child(child(target, "data")?, "document")?;
+    let source_document = child(child(source, "data")?, "document")?;
+    if let Some(input) = source_document.attribute("inputinstance") {
+        if target_document.attribute("inputinstance").is_some() {
+            return Err(MfdError::Unsupported(
+                "intermediate target already has a source preview instance".into(),
+            ));
+        }
+        let start = target_document.range().start;
+        let open_end = previous[start..target_document.range().end]
+            .find('>')
+            .ok_or_else(|| MfdError::Unsupported("rendered XML document is not closed".into()))?
+            + start;
+        let insertion = if previous.as_bytes().get(open_end.wrapping_sub(1)) == Some(&b'/') {
+            open_end - 1
+        } else {
+            open_end
+        };
+        edits.push(Edit {
+            range: insertion..insertion,
+            replacement: format!(" inputinstance=\"{}\"", xml_escape(input)),
+        });
+    }
     let properties = child(target, "properties")?;
     let output = properties
         .attributes()

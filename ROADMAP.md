@@ -381,7 +381,9 @@ execution, then runs stages in stable dependency order. The file host publishes
 selected outputs atomically only after the complete graph succeeds. Bounded
 serial XML pass-through chains import and export as connected `.mfd` designs,
 with XML or CSV final primary targets, native export preflight, and no-artifact
-rejection for unsupported stage shapes. Synthetic two- and four-stage chains
+rejection for unsupported stage shapes. Intermediate XML boundaries retain
+their output instance and source preview instance on the merged pass-through
+component. Synthetic two- and four-stage chains
 preserve original XML host sources feeding named inputs in several stages
 across export and reimport, including shared-port fan-out from one graph
 vertex.
