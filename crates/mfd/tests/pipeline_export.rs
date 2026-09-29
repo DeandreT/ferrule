@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
-use mapping::{Node, PipelineInput};
+use mapping::PipelineInput;
 
 struct TempDir(PathBuf);
 
@@ -181,6 +181,73 @@ fn make_four_stage_late_named_source_chain(directory: &Path, late_stage: usize) 
     path
 }
 
+fn make_four_stage_repeated_host_chain(directory: &Path, same_port: bool) -> PathBuf {
+    let path = make_four_stage_chain(directory);
+    std::fs::write(
+        directory.join("catalog.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Item" type="xs:string"/><xs:element name="Other" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+    for (schema_path, root, field) in [
+        ("buffer2.xsd", "Buffer2", "Step2"),
+        ("target.xsd", "Target", "Result"),
+    ] {
+        std::fs::write(
+            directory.join(schema_path),
+            format!(
+                "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{field}\" type=\"xs:string\"/><xs:element name=\"Lookup\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
+            ),
+        )
+        .unwrap();
+    }
+    let original = std::fs::read_to_string(&path).unwrap();
+    let with_catalog = original.replace(
+        "<component name=\"buffer-3\"",
+        r#"<component name="catalog" library="xml" kind="14"><data><root><entry name="Catalog"><entry name="Item" outkey="90"/><entry name="Other" outkey="91"/></entry></root><document schema="catalog.xsd" inputinstance="catalog.xml" instanceroot="{}Catalog"/></data></component><component name="buffer-3""#,
+    );
+    let with_early = with_catalog.replace(
+        "<entry name=\"Step2\" inpkey=\"40\" outkey=\"50\"/>",
+        "<entry name=\"Step2\" inpkey=\"40\" outkey=\"50\"/><entry name=\"Lookup\" inpkey=\"100\" outkey=\"110\"/>",
+    );
+    let with_late = with_early.replace(
+        "<entry name=\"Result\" inpkey=\"80\"/>",
+        "<entry name=\"Result\" inpkey=\"80\"/><entry name=\"Lookup\" inpkey=\"120\"/>",
+    );
+    let catalog_vertices = if same_port {
+        "<vertex vertexkey=\"90\"><edges><edge vertexkey=\"100\"/><edge vertexkey=\"120\"/></edges></vertex>"
+    } else {
+        "<vertex vertexkey=\"90\"><edges><edge vertexkey=\"100\"/></edges></vertex><vertex vertexkey=\"91\"><edges><edge vertexkey=\"120\"/></edges></vertex>"
+    };
+    let with_edges = with_late.replace(
+        "</vertices></graph>",
+        &format!("{catalog_vertices}</vertices></graph>"),
+    );
+    assert_ne!(with_edges, original);
+    std::fs::write(&path, with_edges).unwrap();
+    path
+}
+
+fn make_first_and_late_named_source_chain(directory: &Path) -> PathBuf {
+    let path = make_late_named_source_chain(directory);
+    std::fs::write(
+        directory.join("buffer.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Buffer"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/><xs:element name="Lookup" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+    let original = std::fs::read_to_string(&path).unwrap();
+    let with_buffer = original.replace(
+        "<entry name=\"Value\" inpkey=\"20\" outkey=\"30\"/>",
+        "<entry name=\"Value\" inpkey=\"20\" outkey=\"30\"/><entry name=\"Lookup\" inpkey=\"70\" outkey=\"80\"/>",
+    );
+    let with_fanout = with_buffer.replace(
+        "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/></edges></vertex>",
+        "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/><edge vertexkey=\"70\"/></edges></vertex>",
+    );
+    assert_ne!(with_fanout, original);
+    std::fs::write(&path, with_fanout).unwrap();
+    path
+}
+
 fn execute(pipeline: &mapping::Pipeline) -> engine::PipelineOutputs {
     let PipelineInput::Host { name } = &pipeline.stages[0].source else {
         panic!("first stage must read a host source");
@@ -221,6 +288,53 @@ fn late_named_inputs(pipeline: &mapping::Pipeline) -> BTreeMap<String, Instance>
             )]),
         ),
     ])
+}
+
+fn repeated_host_inputs(pipeline: &mapping::Pipeline) -> BTreeMap<String, Instance> {
+    let mut inputs = late_named_inputs(pipeline);
+    let PipelineInput::Host { name: catalog } = &pipeline.stages[0].extra_sources[0].from else {
+        panic!("named source must read an original host");
+    };
+    inputs.insert(
+        catalog.clone(),
+        Instance::Group(vec![
+            (
+                "Item".into(),
+                Instance::Scalar(Value::String("host item".into())),
+            ),
+            (
+                "Other".into(),
+                Instance::Scalar(Value::String("host other".into())),
+            ),
+        ]),
+    );
+    inputs
+}
+
+fn assert_catalog_item_fanout(exported: &str, expected_edges: usize) {
+    let document = roxmltree::Document::parse(exported).unwrap();
+    let catalog_components = document
+        .descendants()
+        .filter(|node| node.has_tag_name("component") && node.attribute("name") == Some("catalog"))
+        .collect::<Vec<_>>();
+    assert_eq!(catalog_components.len(), 1);
+    let item_key = catalog_components[0]
+        .descendants()
+        .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Item"))
+        .and_then(|node| node.attribute("outkey"))
+        .unwrap();
+    let item_vertices = document
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex") && node.attribute("vertexkey") == Some(item_key))
+        .collect::<Vec<_>>();
+    assert_eq!(item_vertices.len(), 1);
+    assert_eq!(
+        item_vertices[0]
+            .descendants()
+            .filter(|node| node.has_tag_name("edge"))
+            .count(),
+        expected_edges
+    );
 }
 
 #[test]
@@ -355,6 +469,66 @@ fn late_named_xml_source_reuses_one_original_host_component() {
 }
 
 #[test]
+fn original_host_can_feed_first_and_later_stage_from_one_vertex() {
+    let directory = TempDir::new();
+    let imported =
+        mfd::import_pipeline(&make_first_and_late_named_source_chain(&directory.0)).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.pipeline.stages.len(), 2);
+    for stage in &imported.pipeline.stages {
+        assert!(stage.extra_sources.iter().any(|binding| {
+            binding.name == "catalog"
+                && matches!(&binding.from, PipelineInput::Host { name } if name == "catalog")
+        }));
+    }
+    let original_outputs =
+        engine::run_pipeline(&imported.pipeline, &late_named_inputs(&imported.pipeline)).unwrap();
+    for stage in &imported.pipeline.stages {
+        assert_eq!(
+            original_outputs
+                .stage(&stage.id)
+                .unwrap()
+                .primary
+                .field("Lookup")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("host value".into()))
+        );
+    }
+
+    let exported_path = directory.0.join("first-and-late-host.mfd");
+    let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let published = mfd::export_pipeline_with_profile(
+        &imported.pipeline,
+        &exported_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    assert!(published.is_native_compatible(), "{published:?}");
+    assert_catalog_item_fanout(&std::fs::read_to_string(&exported_path).unwrap(), 2);
+    let reimported = mfd::import_pipeline(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate_pipeline(&reimported.pipeline).is_empty());
+    let reimported_outputs = engine::run_pipeline(
+        &reimported.pipeline,
+        &late_named_inputs(&reimported.pipeline),
+    )
+    .unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            original_outputs
+                .stage(&imported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            reimported_outputs
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+        );
+    }
+}
+
+#[test]
 fn four_stage_chain_reuses_unused_original_host_in_intermediate_or_final_stage() {
     for late_stage in [3, 4] {
         let directory = TempDir::new();
@@ -422,7 +596,90 @@ fn four_stage_chain_reuses_unused_original_host_in_intermediate_or_final_stage()
 }
 
 #[test]
-fn four_stage_late_host_rejects_changed_boundary_or_earlier_use_without_publishing() {
+fn four_stage_chain_reuses_original_host_across_later_stages() {
+    for same_port in [false, true] {
+        let directory = TempDir::new();
+        let imported = mfd::import_pipeline(&make_four_stage_repeated_host_chain(
+            &directory.0,
+            same_port,
+        ))
+        .unwrap();
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+        assert_eq!(imported.pipeline.stages.len(), 4);
+        for stage in [1, 3] {
+            assert!(imported.pipeline.stages[stage]
+                .extra_sources
+                .iter()
+                .any(|binding| {
+                    binding.name == "catalog"
+                        && matches!(&binding.from, PipelineInput::Host { name } if name == "catalog")
+                }));
+        }
+        let original_outputs = engine::run_pipeline(
+            &imported.pipeline,
+            &repeated_host_inputs(&imported.pipeline),
+        )
+        .unwrap();
+        assert_eq!(
+            original_outputs
+                .stage("mfd-stage-2")
+                .unwrap()
+                .primary
+                .field("Lookup")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("host item".into()))
+        );
+        assert_eq!(
+            original_outputs
+                .stage("mfd-stage-4")
+                .unwrap()
+                .primary
+                .field("Lookup")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String(
+                if same_port { "host item" } else { "host other" }.into()
+            ))
+        );
+
+        let exported_path = directory.0.join("reused-host-export.mfd");
+        let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
+        assert!(report.is_native_compatible(), "{report:?}");
+        let published = mfd::export_pipeline_with_profile(
+            &imported.pipeline,
+            &exported_path,
+            mfd::ExportProfile::NativeMfd,
+        )
+        .unwrap();
+        assert!(published.is_native_compatible(), "{published:?}");
+        let exported = std::fs::read_to_string(&exported_path).unwrap();
+        assert_catalog_item_fanout(&exported, if same_port { 2 } else { 1 });
+        let reimported = mfd::import_pipeline(&exported_path).unwrap();
+        assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+        assert!(engine::validate_pipeline(&reimported.pipeline).is_empty());
+        let reimported_outputs = engine::run_pipeline(
+            &reimported.pipeline,
+            &repeated_host_inputs(&reimported.pipeline),
+        )
+        .unwrap();
+        for index in 0..4 {
+            assert_eq!(
+                original_outputs
+                    .stage(&imported.pipeline.stages[index].id)
+                    .unwrap()
+                    .primary,
+                reimported_outputs
+                    .stage(&reimported.pipeline.stages[index].id)
+                    .unwrap()
+                    .primary,
+                "same port: {same_port}, stage {}",
+                index + 1,
+            );
+        }
+    }
+}
+
+#[test]
+fn four_stage_late_host_rejects_changed_boundary_or_unknown_host_without_publishing() {
     let directory = TempDir::new();
     let imported =
         mfd::import_pipeline(&make_four_stage_late_named_source_chain(&directory.0, 4)).unwrap();
@@ -439,30 +696,20 @@ fn four_stage_late_host_rejects_changed_boundary_or_earlier_use_without_publishi
     );
     assert!(!destination.parent().unwrap().exists());
 
-    let mut used = imported.pipeline;
-    let second = &mut used.stages[1].project;
-    let node = second.graph.nodes.keys().next_back().copied().unwrap_or(0) + 1;
-    second.graph.nodes.insert(
-        node,
-        Node::SourceField {
-            path: vec!["catalog".into(), "Item".into()],
-            frame: None,
-        },
-    );
-    second.root.bindings[0].node = node;
-    let destination = directory.0.join("not-created/used.mfd");
-    let error = mfd::export_pipeline(&used, &destination)
+    let mut unknown = imported.pipeline;
+    unknown.stages[3].extra_sources[0].from = PipelineInput::Host {
+        name: "introduced-late".into(),
+    };
+    let destination = directory.0.join("not-created/unknown.mfd");
+    let error = mfd::export_pipeline(&unknown, &destination)
         .unwrap_err()
         .to_string();
-    assert!(
-        error.contains("already connected before this stage"),
-        "{error}"
-    );
+    assert!(error.contains("introduces host input"), "{error}");
     assert!(!destination.parent().unwrap().exists());
 }
 
 #[test]
-fn late_named_xml_source_rejects_changed_or_previously_used_host() {
+fn late_named_xml_source_rejects_changed_boundary_or_name_without_publishing() {
     let directory = TempDir::new();
     let imported = mfd::import_pipeline(&make_late_named_source_chain(&directory.0)).unwrap();
 
@@ -484,25 +731,13 @@ fn late_named_xml_source_rejects_changed_or_previously_used_host() {
     );
     assert!(!destination.parent().unwrap().exists());
 
-    let mut used = imported.pipeline;
-    let first = &mut used.stages[0].project;
-    let node = first.graph.nodes.keys().next_back().copied().unwrap_or(0) + 1;
-    first.graph.nodes.insert(
-        node,
-        Node::SourceField {
-            path: vec!["catalog".into(), "Item".into()],
-            frame: None,
-        },
-    );
-    first.root.bindings[0].node = node;
-    let destination = directory.0.join("not-created/used.mfd");
-    let error = mfd::export_pipeline(&used, &destination)
+    let mut renamed = imported.pipeline;
+    renamed.stages[1].extra_sources[0].name = "other".into();
+    let destination = directory.0.join("not-created/renamed.mfd");
+    let error = mfd::export_pipeline(&renamed, &destination)
         .unwrap_err()
         .to_string();
-    assert!(
-        error.contains("already connected before this stage"),
-        "{error}"
-    );
+    assert!(error.contains("no pipeline binding"), "{error}");
     assert!(!destination.parent().unwrap().exists());
 }
 
