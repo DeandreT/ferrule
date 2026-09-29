@@ -352,6 +352,159 @@ fn source_row_history_indexes_candidates_and_shows_bounded_fields() {
 }
 
 #[test]
+fn replay_moves_only_within_the_retained_event_prefix() {
+    let collector = TraceCollector::with_limit(4);
+    for node in [8, 9, 8, 8, 9] {
+        cli::TraceSink::record(&collector, trace_event(node, ir::Value::Int(node as i64)));
+    }
+    let view = RunReportView::new(RunReport {
+        kind: RunReportKind::Preview,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("input.json"),
+        outputs: Vec::new(),
+        trace: collector.finish(),
+    });
+    assert_eq!(view.report.trace.events.len(), 4);
+    assert_eq!(view.report.trace.dropped, 1);
+    assert_eq!(view.replay_event, Some(0));
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::First),
+        None
+    );
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::Previous),
+        None
+    );
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::Next),
+        Some(1)
+    );
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
+        Some(2)
+    );
+
+    let mut view = view;
+    view.replay_event = Some(2);
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::First),
+        Some(0)
+    );
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::Previous),
+        Some(1)
+    );
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::Next),
+        Some(3)
+    );
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
+        Some(3)
+    );
+    view.replay_event = Some(3);
+    assert_eq!(replay::replay_target(&view, replay::ReplayStep::Next), None);
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
+        None
+    );
+    view.history_node = Some(9);
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
+        None
+    );
+}
+
+#[test]
+fn replay_details_keep_positions_and_source_fields_on_the_same_event() {
+    let position = cli::TracePosition {
+        collection: vec!["Order".into(), "Line".into()],
+        index: 4,
+        grouped: false,
+        join: None,
+        join_position: None,
+        document_path: Some("part.xml".into()),
+    };
+    let candidate = cli::TraceEvent::IterationCandidate {
+        scope: trace_scope(),
+        ordinal: 4,
+        positions: vec![position.clone()],
+        source_row: Some(cli::TraceSourceRow {
+            kind: cli::TraceOutputKind::Group,
+            value: None,
+            fields: vec![cli::TraceSourceField {
+                name: "Sku".into(),
+                name_truncated: false,
+                kind: cli::TraceOutputKind::Scalar,
+                value: Some(cli::TraceValue {
+                    value_type: "string",
+                    preview: "ABC".into(),
+                    truncated: false,
+                }),
+            }],
+            omitted_fields: 1,
+        }),
+    };
+    let node = cli::TraceEvent::NodeValue {
+        node: 8,
+        positions: vec![position],
+        value: cli::TraceValue {
+            value_type: "string",
+            preview: "derived".into(),
+            truncated: false,
+        },
+    };
+
+    let candidate_details = replay::replay_event_details(0, &candidate).join("\n");
+    assert!(candidate_details.contains("candidate 4"));
+    assert!(candidate_details.contains("Positions: Order/Line[4] @part.xml"));
+    assert!(candidate_details.contains("Source row fields for this candidate event:"));
+    assert!(candidate_details.contains("Sku=string(ABC)"));
+    assert!(candidate_details.contains("+1 more fields omitted"));
+    let node_details = replay::replay_event_details(1, &node).join("\n");
+    assert!(node_details.contains("node 8"));
+    assert!(node_details.contains("Positions: Order/Line[4] @part.xml"));
+    assert!(node_details.contains("string(derived)"));
+    assert!(!node_details.contains("Sku="));
+}
+
+#[test]
+fn replay_renders_empty_and_recorded_runs() {
+    let mut view = RunReportView::new(RunReport {
+        kind: RunReportKind::Pipeline,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("pipeline.json"),
+        outputs: Vec::new(),
+        trace: TraceReport::default(),
+    });
+    assert_eq!(view.replay_event, None);
+    assert_eq!(replay::replay_target(&view, replay::ReplayStep::Next), None);
+    view.page = ReportPage::Replay;
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    let mut open = true;
+    let output = context.run_ui(Default::default(), |ui| {
+        show(ui.ctx(), &mut open, &mut view);
+    });
+    assert!(open);
+    assert!(!output.shapes.is_empty());
+
+    view.report
+        .trace
+        .events
+        .push(trace_event(8, ir::Value::Int(42)));
+    view = RunReportView::new(view.report);
+    view.page = ReportPage::Replay;
+    let output = context.run_ui(Default::default(), |ui| {
+        show(ui.ctx(), &mut open, &mut view);
+    });
+    assert_eq!(view.replay_event, Some(0));
+    assert!(!output.shapes.is_empty());
+}
+
+#[test]
 fn history_rows_show_nested_join_context_and_bounded_values() {
     let join = mapping::JoinId::new(4);
     let positions = [
