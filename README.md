@@ -161,9 +161,10 @@ the export for compatibility inspection without writing files or directories;
 [`.mfd` interoperability](docs/mfd-interop.md#export) for the report's
 limits.
 
-For a supported connected two-stage design, `import-mfd --pipeline` writes a
-typed pipeline that can be run with `run-pipeline` by supplying its host inputs
-and selected stage outputs.
+For a supported connected XML design with one or two serial pass-through
+targets, `import-mfd --pipeline` writes a two- or three-stage typed pipeline.
+Run it with `run-pipeline` by supplying its host inputs and selected stage
+outputs.
 
 Emit machine-readable validation diagnostics:
 

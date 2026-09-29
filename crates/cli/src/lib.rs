@@ -752,7 +752,7 @@ pub fn import_mfd(
     Ok(imported.warnings)
 }
 
-/// Imports a connected two-stage `.mfd` design as a runnable typed pipeline.
+/// Imports a connected two- or three-stage XML `.mfd` design as a runnable typed pipeline.
 /// The complete pipeline is validated before its JSON file is written.
 pub fn import_mfd_pipeline(
     mfd_path: &Path,
