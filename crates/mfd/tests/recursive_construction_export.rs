@@ -42,6 +42,20 @@ fn recursive_collect_round_trips_and_executes_identically() -> Result<(), Box<dy
     let expected = engine::run(&project, &source)?;
     let design = dir.0.join("recursive-collect.mfd");
 
+    let report = mfd::preflight_export(&project, &design)?;
+    assert!(report.warnings.is_empty());
+    assert_eq!(
+        report.compatibility,
+        mfd::ExportCompatibility::FerruleExtensions
+    );
+    assert!(report.issues.iter().any(|issue| {
+        issue.feature == mfd::ExportCompatibilityFeature::RecursiveComponent
+            && issue.component == "recursive-collect"
+    }));
+    let error =
+        mfd::export_with_profile(&project, &design, mfd::ExportProfile::NativeMfd).unwrap_err();
+    assert!(matches!(error, mfd::MfdError::IncompatibleExport(_)));
+    assert_eq!(std::fs::read_dir(&dir.0)?.count(), 0);
     assert!(mfd::export(&project, &design)?.is_empty());
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

@@ -877,7 +877,7 @@ fn collect_scope_edges(
         if chain.is_empty() && !target_root_iterable {
             warnings.push(
                 "the root scope generates rows but the target document is not row/array \
-                 shaped in MapForce terms; the iteration wire is skipped"
+                 shaped in native .mfd terms; the iteration wire is skipped"
                     .to_string(),
             );
         } else {
@@ -942,7 +942,7 @@ fn collect_scope_edges(
         if scope.output_path().is_none() {
             warnings.push(
                 "the root scope iterates rows but the target document is not row/array \
-                 shaped in MapForce terms; the iteration wire is skipped"
+                 shaped in native .mfd terms; the iteration wire is skipped"
                     .to_string(),
             );
         } else if let Some(source) = scope.source() {

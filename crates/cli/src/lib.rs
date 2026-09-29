@@ -31,6 +31,7 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 mod code_generation;
 mod output_documents;
 mod payload;
+mod pipeline;
 mod project_paths;
 mod stdio;
 mod trace_json;
@@ -47,6 +48,10 @@ pub use payload::{
     MAX_PAYLOAD_PATH_BYTES, MAX_PAYLOAD_RUN_BYTES, NamedPayloadInput, PayloadArtifact,
     PayloadDocument, PayloadRunOptions, PayloadRunOutcome, run_project_payloads,
     run_project_value_payloads,
+};
+pub use pipeline::{
+    PipelineArtifact, PipelineHostFile, PipelineOutputFile, PipelineRunOptions, PipelineRunOutcome,
+    run_pipeline_file, run_pipeline_file_with_options,
 };
 pub use project_paths::rebase as rebase_project_paths;
 pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
@@ -712,7 +717,7 @@ pub fn import_json_schema(schema_path: &Path) -> anyhow::Result<String> {
     Ok(serde_json::to_string_pretty(&schema)?)
 }
 
-/// Converts a MapForce `.mfd` design into a ferrule project file. Returns
+/// Converts an `.mfd` design into a Ferrule project file. Returns
 /// the warnings for constructs that could not be converted.
 pub fn import_mfd(
     mfd_path: &Path,
@@ -741,13 +746,37 @@ pub fn import_mfd(
     Ok(imported.warnings)
 }
 
-/// Converts a ferrule project file into a MapForce `.mfd` design (plus
+/// Converts a Ferrule project file into an `.mfd` design (plus
 /// generated XSDs next to it). Returns warnings for skipped constructs.
+/// Existing callers retain the Ferrule extension profile.
 pub fn export_mfd(project_path: &Path, out_path: &Path) -> anyhow::Result<Vec<String>> {
+    export_mfd_with_profile(project_path, out_path, mfd::ExportProfile::default())
+        .map(|report| report.warnings)
+}
+
+/// Renders an export and reports known MFD compatibility dependencies
+/// without writing the design, generated schemas, or parent directories.
+pub fn preflight_mfd_export(
+    project_path: &Path,
+    out_path: &Path,
+) -> anyhow::Result<mfd::ExportReport> {
     let project = load_project(project_path)?;
-    let warnings = mfd::export(&project, out_path)
+    mfd::preflight_export(&project, out_path)
+        .with_context(|| format!("checking export to {}", out_path.display()))
+}
+
+/// Exports under the selected compatibility policy. Native MFD mode
+/// rejects known extension dependencies and lossy export warnings before any
+/// artifacts are published; the error retains the complete export report.
+pub fn export_mfd_with_profile(
+    project_path: &Path,
+    out_path: &Path,
+    profile: mfd::ExportProfile,
+) -> anyhow::Result<mfd::ExportReport> {
+    let project = load_project(project_path)?;
+    let report = mfd::export_with_profile(&project, out_path, profile)
         .with_context(|| format!("writing {}", out_path.display()))?;
-    Ok(warnings)
+    Ok(report)
 }
 
 /// Introspects a SQLite table as a `SchemaNode`, printed as pretty JSON --

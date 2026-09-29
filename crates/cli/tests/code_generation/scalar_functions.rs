@@ -4,7 +4,6 @@ use super::*;
 enum ErrorMode {
     None,
     Type,
-    Arity,
 }
 
 struct GraphBuilder {
@@ -502,25 +501,18 @@ fn scalar_function_project() -> Project {
     );
 
     let fail_type = graph.source("FailType");
-    let fail_arity = graph.source("FailArity");
     let bad_type = graph.call_values("normalize_space", vec![Value::Int(9)]);
-    let bad_arity = graph.call_values("resolve_filepath", vec![Value::String("base".into())]);
     let safe_type = graph.literal(Value::String("safe-type".into()));
-    let safe_arity = graph.literal(Value::String("safe-arity".into()));
     let type_probe = graph.if_(fail_type, bad_type, safe_type);
-    let arity_probe = graph.if_(fail_arity, bad_arity, safe_arity);
     add_group(
         &mut target,
         &mut scopes,
         "Errors",
-        vec![
-            ("Type", ScalarType::String, type_probe),
-            ("Arity", ScalarType::String, arity_probe),
-        ],
+        vec![("Type", ScalarType::String, type_probe)],
     );
 
     Project {
-        source: SchemaNode::group("Source", vec![bool_("FailType"), bool_("FailArity")]),
+        source: SchemaNode::group("Source", vec![bool_("FailType")]),
         target: SchemaNode::group("Target", target),
         source_path: None,
         target_path: None,
@@ -539,16 +531,10 @@ fn scalar_function_project() -> Project {
 }
 
 fn source(mode: ErrorMode) -> Instance {
-    Instance::Group(vec![
-        (
-            "FailType".into(),
-            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Type))),
-        ),
-        (
-            "FailArity".into(),
-            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Arity))),
-        ),
-    ])
+    Instance::Group(vec![(
+        "FailType".into(),
+        Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Type))),
+    )])
 }
 
 fn values(fields: Vec<(&str, Value)>) -> Instance {
@@ -723,34 +709,49 @@ fn expected() -> Instance {
         ),
         (
             "Errors".into(),
-            values(vec![
-                ("Type", Value::String("safe-type".into())),
-                ("Arity", Value::String("safe-arity".into())),
-            ]),
+            values(vec![("Type", Value::String("safe-type".into()))]),
         ),
     ])
 }
 
 #[test]
+fn scalar_function_wrong_arity_is_rejected_before_codegen() {
+    let mut project = scalar_function_project();
+    let (node_id, args) = project
+        .graph
+        .nodes
+        .iter_mut()
+        .find_map(|(&id, node)| match node {
+            Node::Call { function, args } if function == "resolve_filepath" && args.len() == 2 => {
+                Some((id, args))
+            }
+            _ => None,
+        })
+        .expect("scalar function fixture has a valid resolve_filepath call");
+    args.pop();
+
+    let issues = engine::validate(&project);
+    assert_eq!(issues.len(), 1, "{issues:#?}");
+    assert_eq!(issues[0].location, format!("graph node {node_id}"));
+    assert_eq!(
+        issues[0].message,
+        "function `resolve_filepath` expects exactly 2 argument(s), got 1"
+    );
+}
+
+#[test]
 fn scalar_function_batch_matches_engine_and_generated_backends() -> TestResult<()> {
     let project = scalar_function_project();
-    assert!(engine::validate(&project).is_empty());
+    let issues = engine::validate(&project);
+    assert!(issues.is_empty(), "validation issues: {issues:#?}");
     assert_eq!(engine::run(&project, &source(ErrorMode::None))?, expected());
-    for (mode, expected) in [
-        (
-            ErrorMode::Type,
-            "`normalize_space` cannot accept a int argument",
-        ),
-        (
-            ErrorMode::Arity,
-            "`resolve_filepath` expected 2 argument(s), got 1",
-        ),
-    ] {
-        let error = engine::run(&project, &source(mode))
-            .expect_err("selected invalid function call must fail");
-        assert!(matches!(error, engine::EngineError::Function(_)));
-        assert_eq!(error.to_string(), expected);
-    }
+    let error = engine::run(&project, &source(ErrorMode::Type))
+        .expect_err("selected invalid function call must fail");
+    assert!(matches!(error, engine::EngineError::Function(_)));
+    assert_eq!(
+        error.to_string(),
+        "`normalize_space` cannot accept a int argument"
+    );
 
     let directory = TempDir::new("scalar_functions")?;
     let project_path = directory.0.join("scalar-functions.json");

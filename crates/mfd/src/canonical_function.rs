@@ -1,4 +1,4 @@
-/// Internal scalar functions that have no lossless native MapForce component.
+/// Internal scalar functions that have no lossless native .mfd component.
 ///
 /// Exported designs put these calls in the explicit `ferrule` library. Keeping
 /// this list narrow prevents an unrelated vendor component with the same name

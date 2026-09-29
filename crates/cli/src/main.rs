@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use anyhow::{Context, bail};
 use clap::error::ErrorKind;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
 #[derive(Parser)]
@@ -29,6 +29,21 @@ enum DiagnosticFormat {
 enum CodegenLanguage {
     Rust,
     Csharp,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum MfdExportProfile {
+    FerruleExtensions,
+    NativeMfd,
+}
+
+impl From<MfdExportProfile> for mfd::ExportProfile {
+    fn from(profile: MfdExportProfile) -> Self {
+        match profile {
+            MfdExportProfile::FerruleExtensions => Self::FerruleExtensions,
+            MfdExportProfile::NativeMfd => Self::NativeMfd,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -76,6 +91,23 @@ enum Command {
         #[arg(long = "param", value_name = "NAME=VALUE")]
         parameters: Vec<String>,
     },
+    /// Run a typed graph of complete mapping stages and publish selected outputs.
+    RunPipeline {
+        #[arg(long, value_name = "PIPELINE")]
+        pipeline: PathBuf,
+        /// Host input name and file path. Repeat for each declared host input.
+        #[arg(long = "input", action = ArgAction::Append, num_args = 2, value_names = ["NAME", "PATH"])]
+        inputs: Vec<String>,
+        /// Stage ID and destination for its primary target. Repeat as needed.
+        #[arg(long = "output", action = ArgAction::Append, num_args = 2, value_names = ["STAGE", "PATH"])]
+        outputs: Vec<String>,
+        /// Stage ID, named target, and destination. Repeat as needed.
+        #[arg(long = "named-output", action = ArgAction::Append, num_args = 3, value_names = ["STAGE", "TARGET", "PATH"])]
+        named_outputs: Vec<String>,
+        /// Named host scalar in NAME=VALUE form, shared by all stages.
+        #[arg(long = "param", value_name = "NAME=VALUE")]
+        parameters: Vec<String>,
+    },
     /// Check project graph, scope, and schema references without reading data.
     Validate {
         #[arg(long)]
@@ -112,7 +144,7 @@ enum Command {
         #[arg(long)]
         table: String,
     },
-    /// Convert a MapForce .mfd design into a ferrule project file.
+    /// Convert an .mfd design into a Ferrule project file.
     ImportMfd {
         #[arg(long)]
         mfd: PathBuf,
@@ -135,13 +167,22 @@ enum Command {
         #[arg(long = "json-schema-root", value_name = "DIR")]
         json_schema_catalog_roots: Vec<PathBuf>,
     },
-    /// Convert a ferrule project file into a MapForce .mfd design
+    /// Convert a Ferrule project file into an .mfd design
     /// (generated XSDs are written next to it).
     ExportMfd {
         #[arg(long)]
         project: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Preserve Ferrule extensions or require a native MFD export.
+        #[arg(long, value_enum, default_value_t = MfdExportProfile::FerruleExtensions)]
+        profile: MfdExportProfile,
+        /// Inspect the exact export without creating files or directories.
+        #[arg(long)]
+        check: bool,
+        /// Print one versioned JSON report on stdout.
+        #[arg(long)]
+        report_json: bool,
     },
 }
 
@@ -149,6 +190,7 @@ impl Command {
     fn name(&self) -> &'static str {
         match self {
             Self::Run { .. } => "run",
+            Self::RunPipeline { .. } => "run-pipeline",
             Self::Validate { .. } => "validate",
             Self::Generate { .. } => "generate",
             Self::ImportXsd { .. } => "import-xsd",
@@ -167,6 +209,36 @@ impl DiagnosticFormat {
 
     fn validation_error(self, command: &str, issue: &engine::ValidationIssue) {
         self.emit(command, "error", Some(&issue.location), &issue.message);
+    }
+
+    fn export_issue(self, issue: &mfd::ExportCompatibilityIssue, blocking: bool) {
+        let severity = if blocking { "error" } else { "warning" };
+        match self {
+            Self::Human => {
+                let component = match issue.component_uid {
+                    Some(uid) => format!("{} (uid {uid})", issue.component),
+                    None => issue.component.clone(),
+                };
+                eprintln!(
+                    "{severity}: MFD compatibility in {component}: {}",
+                    issue.message
+                );
+            }
+            Self::Json => {
+                eprintln!(
+                    "{}",
+                    json!({
+                        "schema_version": 1,
+                        "command": "export-mfd",
+                        "severity": severity,
+                        "feature": issue.feature,
+                        "component": issue.component,
+                        "component_uid": issue.component_uid,
+                        "message": issue.message,
+                    })
+                );
+            }
+        }
     }
 
     fn error(self, command: &str, error: &anyhow::Error) {
@@ -242,8 +314,9 @@ fn json_diagnostics_requested(args: &[OsString]) -> bool {
 }
 
 fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
-    const COMMANDS: [&str; 8] = [
+    const COMMANDS: [&str; 9] = [
         "run",
+        "run-pipeline",
         "validate",
         "generate",
         "import-xsd",
@@ -377,6 +450,64 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
+        Command::RunPipeline {
+            pipeline,
+            inputs,
+            outputs,
+            named_outputs,
+            parameters,
+        } => {
+            let inputs = inputs
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| cli::PipelineHostFile {
+                    name: pair[0].clone(),
+                    path: PathBuf::from(&pair[1]),
+                })
+                .collect::<Vec<_>>();
+            let mut publications = outputs
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| cli::PipelineOutputFile {
+                    stage: pair[0].clone(),
+                    target: None,
+                    path: PathBuf::from(&pair[1]),
+                })
+                .collect::<Vec<_>>();
+            publications.extend(named_outputs.as_chunks::<3>().0.iter().map(|triple| {
+                cli::PipelineOutputFile {
+                    stage: triple[0].clone(),
+                    target: Some(triple[1].clone()),
+                    path: PathBuf::from(&triple[2]),
+                }
+            }));
+            let parameters = parse_runtime_parameters(&parameters)?;
+            let outcome = cli::run_pipeline_file_with_options(
+                &pipeline,
+                &inputs,
+                &publications,
+                &cli::PipelineRunOptions {
+                    runtime_parameters: Some(&parameters),
+                },
+            )?;
+            for artifact in &outcome.artifacts {
+                let target = artifact.target.as_deref().unwrap_or("primary");
+                println!(
+                    "wrote {} record(s) from stage `{}` target `{target}` to {}",
+                    artifact.records_written,
+                    artifact.stage,
+                    artifact.path.display()
+                );
+            }
+            println!(
+                "completed {} stage(s); published {} artifact(s)",
+                outcome.stages_executed.len(),
+                outcome.artifacts.len()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Validate { project } => {
             let issues = cli::validate_project(&project)?;
             if issues.is_empty() {
@@ -452,14 +583,93 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             println!("wrote {} ({} warning(s))", out.display(), warnings.len());
             Ok(ExitCode::SUCCESS)
         }
-        Command::ExportMfd { project, out } => {
-            let warnings = cli::export_mfd(&project, &out)?;
-            for warning in &warnings {
-                diagnostics.warning("export-mfd", warning);
-            }
-            println!("wrote {} ({} warning(s))", out.display(), warnings.len());
-            Ok(ExitCode::SUCCESS)
+        Command::ExportMfd {
+            project,
+            out,
+            profile,
+            check,
+            report_json,
+        } => export_mfd_command(
+            diagnostics,
+            &project,
+            &out,
+            profile.into(),
+            check,
+            report_json,
+        ),
+    }
+}
+
+fn export_mfd_command(
+    diagnostics: DiagnosticFormat,
+    project: &std::path::Path,
+    out: &std::path::Path,
+    profile: mfd::ExportProfile,
+    check: bool,
+    report_json: bool,
+) -> anyhow::Result<ExitCode> {
+    let result = if check {
+        cli::preflight_mfd_export(project, out)
+    } else {
+        cli::export_mfd_with_profile(project, out, profile)
+    };
+    let report = match result {
+        Ok(report) => report,
+        Err(error) => match error.downcast_ref::<mfd::MfdError>() {
+            Some(mfd::MfdError::IncompatibleExport(report)) => (**report).clone(),
+            _ => return Err(error),
+        },
+    };
+    let accepted = profile != mfd::ExportProfile::NativeMfd || report.is_native_compatible();
+    let blocking = !accepted;
+    for issue in &report.issues {
+        diagnostics.export_issue(issue, blocking);
+    }
+    for warning in &report.warnings {
+        if blocking {
+            diagnostics.emit("export-mfd", "error", None, warning);
+        } else {
+            diagnostics.warning("export-mfd", warning);
         }
+    }
+    if report_json {
+        let output = json!({
+            "schema_version": 1,
+            "command": "export-mfd",
+            "profile": profile,
+            "mode": if check { "check" } else { "export" },
+            "accepted": accepted,
+            "report": report,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else if check {
+        println!(
+            "{}: {} ({} compatibility issue(s), {} export warning(s))",
+            out.display(),
+            export_compatibility_label(report.compatibility),
+            report.issues.len(),
+            report.warnings.len()
+        );
+    } else if accepted {
+        println!(
+            "wrote {} ({} warning(s)); MFD compatibility: {}",
+            out.display(),
+            report.warnings.len(),
+            export_compatibility_label(report.compatibility)
+        );
+    }
+    Ok(if accepted {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+fn export_compatibility_label(compatibility: mfd::ExportCompatibility) -> &'static str {
+    match compatibility {
+        mfd::ExportCompatibility::NativeMfd => "native MFD",
+        mfd::ExportCompatibility::FerruleExtensions => "Ferrule extensions required",
+        mfd::ExportCompatibility::Incomplete => "incomplete",
     }
 }
 

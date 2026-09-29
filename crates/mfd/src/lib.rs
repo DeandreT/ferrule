@@ -1,4 +1,4 @@
-//! Best-effort interop with MapForce `.mfd` mapping designs.
+//! Best-effort interop with `.mfd` mapping designs.
 //!
 //! `.mfd` files are XML documents describing schema components (entry trees
 //! with integer port keys), function components, and a flat port-to-port
@@ -34,23 +34,34 @@
 //! project's instance-path extension. Static HTTP XML sources, complete
 //! document-copy edges, and structured XML string serializers also round-trip
 //! through their canonical components.
-//! Captured-response boundaries reject export rather than publishing a
-//! design that would imply live POST or opaque UDF execution.
+//! [`preflight_export`] reports known Ferrule extension dependencies and
+//! captured-response behavior differences. [`ExportProfile::NativeMfd`]
+//! rejects those designs before publication; ordinary [`export`] preserves
+//! Ferrule's existing round-trip representation.
+//! [`import_with_profile`] can require an executable project. It rejects any
+//! import warning, unresolved runtime resource, or engine validation issue
+//! while ordinary [`import`] keeps a partial design available for repair.
 //! A source-less design driven by one opaque user call can retain that call's
 //! JSON-shaped public result as a typed external input that requires a local
 //! captured result instance at run time.
 //!
 //! The format knowledge comes from reading real `.mfd` files; nothing here
-//! embeds or copies proprietary reference content. MapForce is a trademark of
-//! its owner; ferrule is unaffiliated.
+//! embeds or copies proprietary reference content. Ferrule is independent of
+//! the application that produces those files.
 
 mod canonical_function;
 mod export;
 mod import;
 mod resource;
 
-pub use export::export;
-pub use import::{ImportOptions, Imported, import, import_with_options};
+pub use export::{
+    ExportCompatibility, ExportCompatibilityFeature, ExportCompatibilityIssue, ExportProfile,
+    ExportReport, export, export_with_profile, preflight_export,
+};
+pub use import::{
+    ImportIssue, ImportIssueKind, ImportOptions, ImportOutcome, ImportProfile, ImportReport,
+    Imported, assess_import, import, import_with_options, import_with_profile,
+};
 pub use resource::PackageManifest;
 
 use thiserror::Error;
@@ -65,7 +76,7 @@ pub enum MfdError {
     SchemaExport(#[from] format_xml::XmlFormatError),
     #[error("JSON schema export error: {0}")]
     JsonSchemaExport(#[from] format_json::JsonFormatError),
-    #[error("not a MapForce design: {0}")]
+    #[error("not an .mfd design: {0}")]
     NotMfd(&'static str),
     #[error("cannot import: {0}")]
     UnsupportedImport(String),
@@ -73,4 +84,8 @@ pub enum MfdError {
     Resource(String),
     #[error("cannot export: {0}")]
     Unsupported(String),
+    #[error("native .mfd export rejected: {0}")]
+    IncompatibleExport(Box<ExportReport>),
+    #[error("executable import rejected: {0}")]
+    IncompatibleImport(Box<ImportReport>),
 }

@@ -6,7 +6,7 @@ use mapping::{FixedFieldWidth, FixedWidthLayout, FormatOptions};
 use super::csv::select_block;
 use super::{ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32};
 
-/// Reads an inline MapForce fixed-length text component. Field widths are
+/// Reads an inline .mfd fixed-length text component. Field widths are
 /// positional, like ferrule's flat-file runtime; the visible entry tree owns
 /// graph ports while `<names>` owns field names and scalar types.
 pub(super) fn read(

@@ -25,7 +25,7 @@ const MAX_SCHEMA_DEPTH: usize = 256;
 const XBRLI: &str = "http://www.xbrl.org/2003/instance";
 const XBRLDI: &str = "http://xbrl.org/2006/xbrldi";
 const LINK: &str = "http://www.xbrl.org/2003/linkbase";
-const MAPFORCE_VIEW: &str = "http://www.altova.com/mapforce";
+const MFD_VIEW: &str = "http://www.altova.com/mapforce";
 
 /// Writes a table-shaped target instance as an XBRL instance document.
 pub fn write(

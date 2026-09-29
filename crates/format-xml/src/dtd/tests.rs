@@ -434,12 +434,18 @@ fn enforces_input_and_nesting_limits() {
         })
     ));
 
-    let mut chain = String::new();
-    for index in 0..=MAX_NESTING_DEPTH {
-        let next = index + 1;
-        chain.push_str(&format!("<!ELEMENT N{index} (N{next})>"));
-    }
-    chain.push_str(&format!("<!ELEMENT N{} EMPTY>", MAX_NESTING_DEPTH + 1));
+    let element_chain = |length: usize| {
+        let mut chain = String::new();
+        for index in 0..length - 1 {
+            let next = index + 1;
+            chain.push_str(&format!("<!ELEMENT N{index} (N{next})>"));
+        }
+        chain.push_str(&format!("<!ELEMENT N{} EMPTY>", length - 1));
+        chain
+    };
+    import_root_str(&element_chain(MAX_NESTING_DEPTH), Some("N0"))
+        .expect("a chain at the schema expansion depth limit should import");
+    let chain = element_chain(MAX_NESTING_DEPTH + 1);
     assert!(matches!(
         import_root_str(&chain, Some("N0")),
         Err(DtdError::LimitExceeded {

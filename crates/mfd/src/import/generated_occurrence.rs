@@ -13,7 +13,7 @@ use super::group_projection::TargetIteration;
 use super::schema::{SchemaComponent, schema_node_at};
 
 /// Infers generated XML occurrence scopes whose sequence is visible only
-/// through computed descendant feeds. MapForce permits these mappings to emit
+/// through computed descendant feeds. The reference application permits these mappings to emit
 /// multiple physical elements even when the target XSD declares one element.
 pub(super) fn infer(
     target: &SchemaComponent,

@@ -1203,7 +1203,7 @@ pub(super) fn read_csv_component(
     })
 }
 
-/// Reads an EDI text component from the visible entry tree. MapForce's
+/// Reads an EDI text component from the visible entry tree. The reference application's
 /// external configuration files are not portable with the design, so the
 /// fallback preserves connected paths while being explicit about the lost
 /// types, qualifiers, and exact cardinalities.
@@ -1485,7 +1485,7 @@ pub(super) fn normalize_xml_entry_name(name: &str) -> (&str, bool) {
 /// historical flat-row shape: its own port maps to `[]` and its columns map
 /// below that. Relational components retain each repeating table level;
 /// several top-level tables live below a non-repeating `database` root and
-/// nested relationship names keep MapForce's `PhysicalTable|JoinColumn`
+/// nested relationship names keep the reference application's `PhysicalTable|JoinColumn`
 /// convention understood by `format_db::read_instance`.
 pub(super) fn read_db_component_in_package(
     component: &roxmltree::Node,

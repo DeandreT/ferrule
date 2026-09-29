@@ -7,7 +7,7 @@ use mapping::{
 };
 use std::num::NonZeroU32;
 
-fn valid_project() -> Project {
+pub(super) fn valid_project() -> Project {
     let mut graph = Graph::default();
     graph.nodes.insert(
         0,

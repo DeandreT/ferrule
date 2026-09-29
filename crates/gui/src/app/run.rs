@@ -10,7 +10,7 @@ impl FerruleApp {
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("run blocked by {} validation issue(s)", issues.len());
-            self.diagnostics.validation(issues);
+            self.diagnostics.validation(&self.project, issues);
             return;
         }
         self.show_run_report = false;

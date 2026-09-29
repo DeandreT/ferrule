@@ -14,6 +14,7 @@ mod iteration;
 mod model;
 mod path_hierarchy;
 mod pdf;
+mod pipeline;
 mod protobuf;
 mod reachable;
 mod recursive;
@@ -68,6 +69,7 @@ pub use pdf::{
     PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextProperties,
     PdfTextRows, PdfVerticalBoundaryFind, PdfWhitespaceMode, PdfWordSeparation,
 };
+pub use pipeline::{Pipeline, PipelineInput, PipelineNamedInput, PipelineStage};
 pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;
 pub use runtime_dependency::{RuntimeBoundary, RuntimeDependency};

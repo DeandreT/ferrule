@@ -100,7 +100,7 @@ fn lower_one(recipe: Recipe, builder: &mut GraphBuilder<'_>) -> Option<FailureRu
     })
 }
 
-/// MapForce requires the throw wire to come directly from a filter branch.
+/// The reference application requires the throw wire to come directly from a filter branch.
 /// Ferrule also accepts a direct sequence feed so hand-authored legacy files
 /// can retain their unconditionally-failing behavior.
 fn direct_selection(
@@ -132,7 +132,7 @@ fn direct_selection(
         warn(
             builder,
             name,
-            "does not have two distinct connected filter branches; MapForce does not throw this exception",
+            "does not have two distinct connected filter branches; the reference application does not throw this exception",
         );
         return None;
     }

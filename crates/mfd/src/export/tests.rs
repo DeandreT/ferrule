@@ -63,7 +63,7 @@ fn tabular_identity_is_a_fallback_for_neutral_or_missing_paths() {
 }
 
 #[test]
-fn canonical_scalar_names_export_as_mapforce_core_functions() {
+fn canonical_scalar_names_export_as_mfd_core_functions() {
     assert_eq!(unmap_function_name("string"), "string");
     assert_eq!(unmap_function_name("format_number"), "format-number");
     assert_eq!(function_library("string"), "core");

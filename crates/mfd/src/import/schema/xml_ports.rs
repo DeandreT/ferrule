@@ -373,7 +373,7 @@ fn exact_fallback_alternative_subset(source: &SchemaNode, target: &SchemaNode) -
         })
 }
 
-/// An untyped XSD element imports as a scalar, but MapForce can expose an
+/// An untyped XSD element imports as a scalar, but the reference application can expose an
 /// explicit `#text` child below that element. Preserve the visible structural
 /// parent port by promoting the scalar to ferrule's simple-content shape.
 pub(super) fn reconcile_explicit_text_entries(
@@ -429,7 +429,7 @@ fn schema_node_at_mut<'a>(
     Some(schema)
 }
 
-/// MapForce puts a non-repeating simple-content value on its parent element's
+/// The reference application puts a non-repeating simple-content value on its parent element's
 /// port. Ferrule stores that value under `#text`; repeating and mixed-content
 /// parent ports stay structural because their port carries the node sequence.
 pub(super) fn normalize_xml_text_ports(

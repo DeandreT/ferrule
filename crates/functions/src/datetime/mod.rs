@@ -280,7 +280,7 @@ fn named_edifact_zone(zone: &str) -> Result<&'static str, FunctionError> {
         "MST" => Ok("-07:00"),
         "MDT" => Ok("-06:00"),
         "PST" => Ok("-08:00"),
-        // MapForce's UN/EDIFACT 2379 conversion assigns PDT this legacy
+        // The reference application's UN/EDIFACT 2379 conversion assigns PDT this legacy
         // offset, including for format code 303. Keep it distinct from the
         // conventional civil-time offset used outside that function.
         "PDT" => Ok("-09:00"),
@@ -707,7 +707,7 @@ fn string_pair<'a>(
     }
 }
 
-/// MapForce's parse-time input boundary accepts ordinary atomic values and
+/// The reference application's parse-time input boundary accepts ordinary atomic values and
 /// applies their canonical lexical form before interpreting the picture. The
 /// picture itself remains a required string.
 fn lexical_pair<'a>(

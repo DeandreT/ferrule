@@ -925,6 +925,64 @@ fn invalid_run_does_not_save_or_clear_dirty_state() {
 }
 
 #[test]
+fn diagnostic_ownership_survives_save_and_reload() {
+    let project_path = temporary_project_path("diagnostic-ownership");
+    let mut app = FerruleApp::default();
+    app.project.graph.nodes.insert(
+        42,
+        Node::Call {
+            function: "missing-function".into(),
+            args: vec![],
+        },
+    );
+    let expected =
+        crate::diagnostics::DiagnosticLocation::Validation(engine::ValidationOwner::GraphNode {
+            function: None,
+            node: 42,
+        });
+    let outcome = app
+        .save_document_to(&project_path)
+        .expect("invalid projects remain saveable");
+    app.apply_save_outcome(&project_path, outcome);
+    assert!(
+        app.diagnostics
+            .items()
+            .iter()
+            .any(|item| item.location.as_ref() == Some(&expected))
+    );
+    let diagnostic = app
+        .diagnostics
+        .items()
+        .iter()
+        .find(|item| item.location.as_ref() == Some(&expected))
+        .expect("owned diagnostic")
+        .clone();
+    assert!(app.navigate_to_diagnostic(&diagnostic));
+    assert!(app.main_canvas.pending_focus.is_some());
+
+    let mut reopened = FerruleApp::default();
+    reopened.load_project_from(&project_path);
+    assert!(
+        reopened
+            .diagnostics
+            .items()
+            .iter()
+            .any(|item| item.location.as_ref() == Some(&expected))
+    );
+    let diagnostic = reopened
+        .diagnostics
+        .items()
+        .iter()
+        .find(|item| item.location.as_ref() == Some(&expected))
+        .expect("reloaded owned diagnostic")
+        .clone();
+    assert!(reopened.navigate_to_diagnostic(&diagnostic));
+    assert!(reopened.main_canvas.pending_focus.is_some());
+    std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+        .expect("temporary test directory is removed");
+}
+
+#[test]
 fn blank_run_paths_fall_back_to_stored_project_paths() {
     let project_path = temporary_project_path("stored-run-paths");
     let directory = project_path.parent().expect("project has parent");

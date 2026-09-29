@@ -2172,6 +2172,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui-snarl",
+ "engine",
  "format-edi",
  "functions",
  "ir",
@@ -2901,6 +2902,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "zip 7.2.0",
+]
+
+[[package]]
+name = "mfd-conformance"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -2,45 +2,37 @@ use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group
 use ferrule_generated_mapping::execute;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    assert_eq!(execute(&source(false, false, false, false, false, false))?, expected());
+    assert_eq!(execute(&source(false, false, false, false, false))?, expected());
     assert_eq!(
-        execute(&source(true, false, false, false, false, false)),
+        execute(&source(true, false, false, false, false)),
         Err(RuntimeError::Function(FunctionError::TypeMismatch {
             function: "substring",
             got: "int",
         })),
     );
     assert_eq!(
-        execute(&source(false, true, false, false, false, false)),
+        execute(&source(false, true, false, false, false)),
         Err(RuntimeError::Function(FunctionError::InvalidArgument {
             function: "isbn10_to_isbn13",
             message: "ISBN-10 check digit is invalid".into(),
         })),
     );
     assert_eq!(
-        execute(&source(false, false, true, false, false, false)),
-        Err(RuntimeError::Function(FunctionError::ArityMismatch {
-            function: "date_from_datetime",
-            expected: 1,
-            got: 0,
-        })),
-    );
-    assert_eq!(
-        execute(&source(false, false, false, true, false, false)),
+        execute(&source(false, false, true, false, false)),
         Err(RuntimeError::Function(FunctionError::InvalidArgument {
             function: "to_number",
             message: "requires a finite numeric value".into(),
         })),
     );
     assert_eq!(
-        execute(&source(false, false, false, false, true, false)),
+        execute(&source(false, false, false, true, false)),
         Err(RuntimeError::Function(FunctionError::TypeMismatch {
             function: "delay_passthrough",
             got: "bool",
         })),
     );
     assert_eq!(
-        execute(&source(false, false, false, false, false, true)),
+        execute(&source(false, false, false, false, true)),
         Err(RuntimeError::Function(FunctionError::InvalidArgument {
             function: "delay_passthrough",
             message: "requires a finite nonnegative duration".into(),
@@ -52,7 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn source(
     fail_type: bool,
     fail_invalid: bool,
-    fail_arity: bool,
     fail_number_invalid: bool,
     fail_delay_type: bool,
     fail_delay_invalid: bool,
@@ -60,7 +51,6 @@ fn source(
     group([
         field("FailType", scalar(Value::Bool(fail_type))),
         field("FailInvalid", scalar(Value::Bool(fail_invalid))),
-        field("FailArity", scalar(Value::Bool(fail_arity))),
         field(
             "FailNumberInvalid",
             scalar(Value::Bool(fail_number_invalid)),
@@ -144,7 +134,6 @@ fn expected() -> Instance {
         field("Errors", values([
             ("Type", Value::String("safe-type".into())),
             ("Invalid", Value::String("safe-invalid".into())),
-            ("Arity", Value::String("safe-arity".into())),
             ("NumberInvalid", Value::String("safe-number".into())),
             ("DelayType", Value::String("safe-delay-type".into())),
             ("DelayInvalid", Value::String("safe-delay-invalid".into())),

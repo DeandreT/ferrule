@@ -1082,7 +1082,7 @@ mod tests {
     }
 
     #[test]
-    fn mapforce_acknowledgement_prefix_is_not_part_of_the_segment_id() {
+    fn mfd_acknowledgement_prefix_is_not_part_of_the_segment_id() {
         let schema = SchemaNode::group(
             "X12",
             vec![SchemaNode::group(

@@ -1,8 +1,8 @@
 //! `.mfd` -> `mapping::Project` conversion.
 //!
-//! The importer never fails on unsupported constructs: it converts what it
-//! can and records a warning per skipped piece, because a partial import
-//! the user finishes by hand still beats redrawing the mapping.
+//! Ordinary import preserves recoverable partial designs and records warnings
+//! for unsupported constructs. Callers requiring an immediately executable
+//! project can select [`ImportProfile::Executable`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -19,6 +19,7 @@ use crate::{
 
 mod aggregate;
 mod alternatives;
+mod compatibility;
 mod db_query;
 mod db_where;
 mod dynamic_json;
@@ -77,6 +78,11 @@ use schema::{
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
 use udf::{Call as UdfCall, Registry as UdfRegistry};
+
+pub use compatibility::{
+    ImportIssue, ImportIssueKind, ImportOutcome, ImportProfile, ImportReport, assess_import,
+    import_with_profile,
+};
 
 pub struct Imported {
     pub project: Project,

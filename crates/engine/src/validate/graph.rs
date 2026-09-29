@@ -8,25 +8,34 @@ use mapping::{
 use super::schema::{
     display_path, follow_schema, source_path_matches, source_path_matches_resolved,
 };
-use super::{ValidationIssue, validate_builtin_call, validate_runtime_parameter_name};
+use super::{
+    ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationScopeLocation,
+    ValidationScopeStep, own_issues, validate_builtin_call, validate_runtime_parameter_name,
+};
 
 pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
     let mut sequence_item_scopes = BTreeMap::new();
     collect_sequence_items(
         &project.root,
+        &ValidationScopeLocation::root(ValidationEndpoint::Target),
         &mut Vec::new(),
         &mut sequence_item_scopes,
         issues,
     );
-    for target in &project.extra_targets {
+    for (index, target) in project.extra_targets.iter().enumerate() {
         collect_sequence_items(
             &target.root,
+            &ValidationScopeLocation::root(ValidationEndpoint::NamedTarget {
+                index,
+                name: target.name.clone(),
+            }),
             &mut Vec::new(),
             &mut sequence_item_scopes,
             issues,
         );
     }
     for (&id, node) in &project.graph.nodes {
+        let ownership_start = issues.len();
         if let Node::SequenceExists { sequence, .. }
         | Node::SequenceItemAt { sequence, .. }
         | Node::SequenceAggregate { sequence, .. } = node
@@ -38,8 +47,16 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                 issues,
             );
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::GraphNode {
+                function: None,
+                node: id,
+            },
+        );
     }
     for (index, rule) in project.failure_rules.iter().enumerate() {
+        let ownership_start = issues.len();
         if let FailureIteration::Sequence { sequence } = &rule.iteration {
             claim_sequence_item(
                 sequence.item(),
@@ -48,6 +65,10 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                 issues,
             );
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::FailureRule { index },
+        );
     }
     let sequence_items: BTreeSet<_> = sequence_item_scopes.keys().copied().collect();
     validate_sequence_exists_contexts(project, &sequence_items, issues);
@@ -55,6 +76,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
     validate_sequence_aggregate_contexts(project, &sequence_items, issues);
     validate_failure_rules(project, &sequence_items, issues);
     for (&id, node) in &project.graph.nodes {
+        let ownership_start = issues.len();
         let location = format!("graph node {id}");
         for (input, referenced) in node_inputs(node) {
             if !project.graph.nodes.contains_key(&referenced) {
@@ -271,6 +293,13 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             }
             _ => {}
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::GraphNode {
+                function: None,
+                node: id,
+            },
+        );
     }
 }
 
@@ -280,6 +309,7 @@ fn validate_failure_rules(
     issues: &mut Vec<ValidationIssue>,
 ) {
     for (index, rule) in project.failure_rules.iter().enumerate() {
+        let ownership_start = issues.len();
         let location = format!("failure rule {}", index + 1);
         if let Some(message) = rule.message
             && !project.graph.nodes.contains_key(&message)
@@ -346,6 +376,10 @@ fn validate_failure_rules(
                 validate_failure_sequence_context(project, index, rule, sequence_items, issues);
             }
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::FailureRule { index },
+        );
     }
 }
 
@@ -643,33 +677,54 @@ fn dynamic_source_for_path<'a>(project: &'a Project, path: &[String]) -> Option<
 
 fn collect_sequence_items(
     scope: &Scope,
+    owner: &ValidationScopeLocation,
     path: &mut Vec<String>,
     items: &mut BTreeMap<NodeId, String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
     if let Some(sequence) = scope.sequence() {
+        let start = issues.len();
         let location = if path.is_empty() {
             "root scope".to_string()
         } else {
             format!("scope `{}`", path.join("/"))
         };
         claim_sequence_item(sequence.item(), location, items, issues);
+        own_issues(&mut issues[start..], ValidationOwner::Scope(owner.clone()));
     }
     if let Some(segments) = scope.concatenated() {
         for (index, segment) in segments.iter().enumerate() {
             path.push(format!("<segment {}>", index + 1));
-            collect_sequence_items(segment, path, items, issues);
+            collect_sequence_items(
+                segment,
+                &owner.descendant(ValidationScopeStep::Segment(index)),
+                path,
+                items,
+                issues,
+            );
             path.pop();
         }
     }
-    for child in &scope.children {
+    for (index, child) in scope.children.iter().enumerate() {
         path.push(child.target_field.clone());
-        collect_sequence_items(child, path, items, issues);
+        collect_sequence_items(
+            child,
+            &owner.descendant(ValidationScopeStep::Child(index)),
+            path,
+            items,
+            issues,
+        );
         path.pop();
     }
-    for child in &scope.dynamic_children {
+    for (index, child) in scope.dynamic_children.iter().enumerate() {
         path.push("*".to_string());
-        collect_sequence_items(&child.scope, path, items, issues);
+        collect_sequence_items(
+            &child.scope,
+            &owner.descendant(ValidationScopeStep::DynamicChild(index)),
+            path,
+            items,
+            issues,
+        );
         path.pop();
     }
 }
@@ -703,6 +758,7 @@ fn validate_sequence_exists_contexts(
         collect_scope_graph_roots(&target.root, &mut scope_roots);
     }
     for (&owner, node) in &project.graph.nodes {
+        let ownership_start = issues.len();
         let Node::SequenceExists {
             sequence,
             predicate,
@@ -741,6 +797,13 @@ fn validate_sequence_exists_contexts(
             .filter(|&id| context_dependencies(&project.graph, [id]).contains(&item))
             .collect();
         if dependent.is_empty() {
+            own_issues(
+                &mut issues[ownership_start..],
+                ValidationOwner::GraphNode {
+                    function: None,
+                    node: owner,
+                },
+            );
             continue;
         }
         for (&consumer, consumer_node) in &project.graph.nodes {
@@ -777,6 +840,13 @@ fn validate_sequence_exists_contexts(
                 ),
             ));
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::GraphNode {
+                function: None,
+                node: owner,
+            },
+        );
     }
 }
 
@@ -786,6 +856,7 @@ fn validate_sequence_item_at_contexts(
     issues: &mut Vec<ValidationIssue>,
 ) {
     for (&owner, node) in &project.graph.nodes {
+        let ownership_start = issues.len();
         let Node::SequenceItemAt { sequence, index } = node else {
             continue;
         };
@@ -818,6 +889,13 @@ fn validate_sequence_item_at_contexts(
                 }
             }
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::GraphNode {
+                function: None,
+                node: owner,
+            },
+        );
     }
 }
 
@@ -827,6 +905,7 @@ fn validate_sequence_aggregate_contexts(
     issues: &mut Vec<ValidationIssue>,
 ) {
     for (&owner, node) in &project.graph.nodes {
+        let ownership_start = issues.len();
         let Node::SequenceAggregate {
             sequence,
             predicate,
@@ -905,6 +984,13 @@ fn validate_sequence_aggregate_contexts(
                 }
             }
         }
+        own_issues(
+            &mut issues[ownership_start..],
+            ValidationOwner::GraphNode {
+                function: None,
+                node: owner,
+            },
+        );
     }
 }
 
@@ -1163,10 +1249,16 @@ pub(super) fn validate_cycles(graph: &Graph, issues: &mut Vec<ValidationIssue>) 
             for (_, referenced) in node_inputs(node) {
                 match visits.get(&referenced) {
                     Some(Visit::Active) if reported.insert(referenced) => {
-                        issues.push(ValidationIssue::new(
-                            format!("graph node {id}"),
-                            format!("cycle reaches node {referenced}"),
-                        ));
+                        issues.push(
+                            ValidationIssue::new(
+                                format!("graph node {id}"),
+                                format!("cycle reaches node {referenced}"),
+                            )
+                            .with_owner(ValidationOwner::GraphNode {
+                                function: None,
+                                node: id,
+                            }),
+                        );
                     }
                     Some(_) => {}
                     None if graph.nodes.contains_key(&referenced) => {

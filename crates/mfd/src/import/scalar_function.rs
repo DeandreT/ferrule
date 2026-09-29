@@ -164,7 +164,7 @@ impl GraphBuilder<'_> {
                         name.to_string()
                     }
                 };
-                // MapForce declares the function's full optional pin set even
+                // The reference application declares the function's full optional pin set even
                 // when callers leave its trailing optional arguments unwired.
                 // Keep interior pin positions, but do not turn unused trailing
                 // pins into ferrule arguments.

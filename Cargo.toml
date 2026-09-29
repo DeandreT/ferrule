@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/editor-ui",
     "crates/json-pattern",
+    "crates/mfd-conformance",
     "crates/ir",
     "crates/mapping",
     "crates/functions",

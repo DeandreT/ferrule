@@ -1,27 +1,20 @@
 using Ferrule.Generated;
 using Ferrule.Runtime;
 
-var output = (FerruleGroup)GeneratedMapping.Execute(Source(false, false));
+var output = (FerruleGroup)GeneratedMapping.Execute(Source(false));
 foreach (var (group, name, expected) in ExpectedValues())
 {
     AssertValue(output, group, name, expected);
 }
 AssertError(
-    () => GeneratedMapping.Execute(Source(true, false)),
+    () => GeneratedMapping.Execute(Source(true)),
     FerruleRuntimeError.FunctionType,
     "normalize_space",
     found: FerruleValueKind.Int64);
-AssertError(
-    () => GeneratedMapping.Execute(Source(false, true)),
-    FerruleRuntimeError.FunctionArity,
-    "resolve_filepath",
-    expectedArity: 2,
-    actualArity: 1);
 
-static FerruleGroup Source(bool failType, bool failArity) => new(new FerruleField[]
+static FerruleGroup Source(bool failType) => new(new FerruleField[]
 {
     new("FailType", new FerruleScalar(FerruleValue.FromBoolean(failType))),
-    new("FailArity", new FerruleScalar(FerruleValue.FromBoolean(failArity))),
 });
 
 static void AssertValue(FerruleGroup output, string group, string name, FerruleValue expected)
@@ -38,8 +31,6 @@ static void AssertError(
     Action action,
     FerruleRuntimeError expected,
     string function,
-    int? expectedArity = null,
-    int? actualArity = null,
     FerruleValueKind? found = null)
 {
     try
@@ -49,8 +40,6 @@ static void AssertError(
     catch (FerruleRuntimeException error) when (
         error.Error == expected &&
         error.Function == function &&
-        error.ExpectedArity == expectedArity &&
-        error.ActualArity == actualArity &&
         error.FoundKind == found)
     {
         return;
@@ -107,7 +96,6 @@ static IEnumerable<(string Group, string Name, FerruleValue Value)> ExpectedValu
     yield return ("Temporal", "Time", Text("09:30:02.5+05:00"));
     yield return ("Temporal", "Null", FerruleValue.Null);
     yield return ("Errors", "Type", Text("safe-type"));
-    yield return ("Errors", "Arity", Text("safe-arity"));
 }
 
 static FerruleValue Text(string value) => FerruleValue.FromString(value);

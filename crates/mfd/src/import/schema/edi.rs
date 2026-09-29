@@ -749,7 +749,7 @@ fn typed_entry_tree_schema(entry: &roxmltree::Node<'_, '_>, is_root: bool) -> Op
     Some(node)
 }
 
-/// MapForce exposes parser-generated acknowledgement details as virtual X12
+/// The reference application exposes parser-generated acknowledgement details as virtual X12
 /// entry branches. They are not part of the message configuration, but their
 /// connected scalar ports still need schema identities for graph validation.
 fn merge_parser_error_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) {

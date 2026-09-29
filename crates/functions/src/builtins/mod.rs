@@ -812,7 +812,7 @@ fn exists(args: &[Value]) -> Result<Value, FunctionError> {
 }
 
 /// `round(x)` rounds to the nearest integer; `round(x, digits)` to that
-/// many decimal places (MapForce's `round-precision`).
+/// many decimal places (the reference application's `round-precision`).
 fn round(args: &[Value]) -> Result<Value, FunctionError> {
     match args {
         [Value::Int(i)] => Ok(Value::Int(*i)),
@@ -830,7 +830,7 @@ fn round(args: &[Value]) -> Result<Value, FunctionError> {
     }
 }
 
-/// Retains MapForce's value dependency across a `sleep(value, seconds)`
+/// Retains the reference application's value dependency across a `sleep(value, seconds)`
 /// component. External calls remain captured-response boundaries, so the
 /// pure engine validates the delay but does not pause wall-clock execution.
 fn delay_passthrough(args: &[Value]) -> Result<Value, FunctionError> {

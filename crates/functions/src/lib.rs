@@ -2,7 +2,7 @@
 //! by mapping graphs, plus hooks for user-defined functions.
 //!
 //! Covers the string/math/comparison/boolean core plus the scalar helpers
-//! MapForce designs lean on (substring family, exists, round, ISO
+//! .mfd designs lean on (substring family, exists, round, ISO
 //! date/time component extraction); more built-ins land alongside the formats/semantics
 //! that need them. Aggregates (count/sum/...) are not here: they reduce
 //! collections in scope context, so they live in the engine as

@@ -113,7 +113,7 @@ pub(super) fn preflight_mapped_sequences(
         &mut plans,
     ) {
         return Err(MfdError::Unsupported(
-            "mapped or first-item XML group sequences contain bindings or nested scopes that do not have a lossless MapForce structural-wire export".to_string(),
+            "mapped or first-item XML group sequences contain bindings or nested scopes that do not have a lossless .mfd structural-wire export".to_string(),
         ));
     }
     Ok(plans)
@@ -437,7 +437,7 @@ fn validate_first_outputs(
         };
         if !matches!(target_format, SideFormat::Xml | SideFormat::Xbrl) {
             return Err(format!(
-                "first-item scope `{display_path}` requires an XML or XBRL target for lossless MapForce export"
+                "first-item scope `{display_path}` requires an XML or XBRL target for lossless .mfd export"
             ));
         }
         let Some(target_group) = schema_node_at(target, path) else {
@@ -461,7 +461,7 @@ fn validate_first_outputs(
             || !scope.windows.is_empty())
         {
             return Err(format!(
-                "first-item mixed-content scope `{display_path}` cannot retain sequence controls in MapForce"
+                "first-item mixed-content scope `{display_path}` cannot retain sequence controls in the reference application"
             ));
         }
         if !path.is_empty()
@@ -469,7 +469,7 @@ fn validate_first_outputs(
             && (scope.group_by.is_some() || scope.group_into_blocks.is_some())
         {
             return Err(format!(
-                "first-item scope `{display_path}` uses grouping that MapForce cannot reconnect to a non-repeating structural target"
+                "first-item scope `{display_path}` uses grouping that the reference application cannot reconnect to a non-repeating structural target"
             ));
         }
         match &scope.iteration {
@@ -477,13 +477,13 @@ fn validate_first_outputs(
             mapping::ScopeIteration::InnerJoin { .. } if !path.is_empty() => {}
             mapping::ScopeIteration::InnerJoin { .. } => {
                 return Err(
-                    "first-item root scope cannot export a join into a non-repeating MapForce document root"
+                    "first-item root scope cannot export a join into a non-repeating .mfd document root"
                         .to_string(),
                 );
             }
             mapping::ScopeIteration::Sequence(_) => {
                 return Err(format!(
-                    "first-item scope `{display_path}` is driven by a generated scalar sequence, which has no structural MapForce group wire"
+                    "first-item scope `{display_path}` is driven by a generated scalar sequence, which has no structural .mfd group wire"
                 ));
             }
             mapping::ScopeIteration::DynamicDocuments { .. } => {
@@ -509,7 +509,7 @@ fn validate_first_outputs(
                 | mapping::ScopeConstruction::XmlMixedContent { .. }
         ) {
             return Err(format!(
-                "first-item scope `{display_path}` uses a specialized construction with no lossless MapForce first-items representation"
+                "first-item scope `{display_path}` uses a specialized construction with no lossless native first-items representation"
             ));
         }
     }

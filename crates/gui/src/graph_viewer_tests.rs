@@ -388,6 +388,7 @@ fn lookup_node_width_stabilizes_across_repaints() {
                         show_minimap: false,
                         view_generation: 0,
                         style,
+                        focus: None,
                     },
                     ui,
                 );

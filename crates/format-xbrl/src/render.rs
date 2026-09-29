@@ -58,10 +58,7 @@ pub(super) fn expanded_qname(value: &str) -> Option<(&str, &str)> {
 }
 
 pub(super) fn is_structural_namespace(namespace: &str) -> bool {
-    matches!(
-        namespace,
-        XBRLI | XBRLDI | LINK | super::MAPFORCE_VIEW | "view"
-    )
+    matches!(namespace, XBRLI | XBRLDI | LINK | super::MFD_VIEW | "view")
 }
 
 pub(super) fn render_target(

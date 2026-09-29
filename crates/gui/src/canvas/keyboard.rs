@@ -21,6 +21,8 @@ pub struct CanvasOptions {
     pub show_minimap: bool,
     pub view_generation: u64,
     pub style: SnarlStyle,
+    /// One navigation request in graph coordinates, consumed when shown.
+    pub focus: Option<egui::Pos2>,
 }
 
 #[derive(Clone, Default)]
@@ -76,10 +78,15 @@ pub fn show(
     let hover_marker = canvas_id.with("hovered_node");
     let focus_marker = canvas_id.with("minimap_focus");
     let transform_marker = canvas_id.with("transform");
-    viewer.camera_focus = ui
+    let minimap_focus = ui
         .ctx()
-        .data_mut(|data| data.remove_temp::<CanvasFocus>(focus_marker))
-        .map(|focus| (focus.graph_position, viewport.center(), focus.zoom));
+        .data_mut(|data| data.remove_temp::<CanvasFocus>(focus_marker));
+    viewer.camera_focus = options
+        .focus
+        .map(|position| (position, viewport.center(), None))
+        .or_else(|| {
+            minimap_focus.map(|focus| (focus.graph_position, viewport.center(), focus.zoom))
+        });
     viewer.canvas_transform = None;
     let initialize_fit = ui
         .ctx()

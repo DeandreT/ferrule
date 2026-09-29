@@ -66,7 +66,7 @@ impl Drop for XvfbGuard {
 }
 
 #[test]
-#[ignore = "requires the local MapForce reference app, Wine, xdotool, and Xvfb"]
+#[ignore = "requires the local .mfd reference app, Wine, xdotool, and Xvfb"]
 fn generate_reference_outputs() -> Result<(), Box<dyn Error>> {
     let workspace = workspace_root();
     let samples_root = workspace.join("samples");
@@ -858,7 +858,7 @@ fn run_mapping(
         if Instant::now() >= deadline {
             terminate_process_group(process_group);
             let _ = child.wait();
-            return Err(format!("MapForce generation exceeded {SAMPLE_TIMEOUT:?}").into());
+            return Err(format!("Reference generation exceeded {SAMPLE_TIMEOUT:?}").into());
         }
         thread::sleep(Duration::from_millis(250));
     }
