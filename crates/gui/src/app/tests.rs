@@ -1459,6 +1459,28 @@ fn debug_file_run_steps_then_publishes_on_continue() {
 }
 
 #[test]
+fn file_run_position_condition_rejects_zero_and_never_matches_root_writes() {
+    let (mut app, project_path, output) = two_field_file_run_app("debug-file-position");
+    app.file_run_position_condition.enabled = true;
+    app.file_run_position_condition.text = "0".into();
+    app.debug_run(&egui::Context::default());
+    assert!(app.pending_file_run.is_none());
+    assert_eq!(app.status, "debug run blocked");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+
+    app.file_run_position_condition.text = "1".into();
+    app.debug_run(&egui::Context::default());
+    wait_for_file_run_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
+    assert!(
+        std::fs::read_to_string(&output)
+            .unwrap()
+            .contains("<second>B</second>")
+    );
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
+}
+
+#[test]
 fn cancelling_paused_file_run_preserves_existing_output() {
     let (mut app, project_path, output) = two_field_file_run_app("debug-file-cancel");
     app.debug_run(&egui::Context::default());
@@ -1695,8 +1717,7 @@ fn debug_breakpoint_continue_skips_other_fields() {
     ));
 }
 
-#[test]
-fn debug_breakpoint_continue_stops_at_next_matching_row() {
+fn repeated_row_debug_preview_app(rows: usize) -> FerruleApp {
     let mut app = FerruleApp::default();
     let mut source_row = SchemaNode::group("row", Vec::new());
     source_row.repeating = true;
@@ -1724,9 +1745,15 @@ fn debug_breakpoint_continue_stops_at_next_matching_row() {
         target: crate::preview::PreviewTarget::Primary,
         input_identity: "input.xml".into(),
         output_identity: "output.xml".into(),
-        input_text: "<root><row/><row/></root>".into(),
+        input_text: format!("<root>{}</root>", "<row/>".repeat(rows)),
         debug_breakpoint: None,
     });
+    app
+}
+
+#[test]
+fn debug_breakpoint_continue_stops_at_next_matching_row() {
+    let mut app = repeated_row_debug_preview_app(2);
     select_debug_breakpoint(&mut app, &["row"], "value");
     app.execute_debug_preview();
 
@@ -1747,6 +1774,54 @@ fn debug_breakpoint_continue_stops_at_next_matching_row() {
     app.preview_command(preview_ui::PreviewCommand::Continue);
     wait_for_preview_completion(&mut app);
     assert!(app.run_report.is_some());
+}
+
+#[test]
+fn position_breakpoint_combines_with_field_and_value_then_step_overrides_it() {
+    let mut app = repeated_row_debug_preview_app(3);
+    select_debug_breakpoint(&mut app, &["row"], "value");
+    app.preview_value_condition.enabled = true;
+    app.preview_value_condition.text = "X".into();
+    app.preview_position_condition.enabled = true;
+    app.preview_position_condition.text = "2".into();
+    app.execute_debug_preview();
+
+    let second = wait_for_debug_pause(&mut app);
+    assert_eq!(second.field, "value");
+    assert_eq!(
+        second.positions.last().map(|position| position.index),
+        Some(2)
+    );
+    app.preview_command(preview_ui::PreviewCommand::Step);
+    let third = wait_for_debug_pause(&mut app);
+    assert_eq!(
+        third.positions.last().map(|position| position.index),
+        Some(3)
+    );
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.run_report.is_some());
+}
+
+#[test]
+fn position_condition_ui_rejects_zero_and_preserves_overlong_input() {
+    let mut condition = crate::preview::BreakpointPositionConditionDraft {
+        enabled: true,
+        text: "0".into(),
+    };
+    let context = egui::Context::default();
+    let mut valid = true;
+    let _ = context.run_ui(Default::default(), |ui| {
+        valid = preview_ui::show_breakpoint_position_condition(ui, &mut condition);
+    });
+    assert!(!valid);
+    condition.text = "9".repeat(100);
+    let original = condition.text.clone();
+    let _ = context.run_ui(Default::default(), |ui| {
+        valid = preview_ui::show_breakpoint_position_condition(ui, &mut condition);
+    });
+    assert!(!valid);
+    assert_eq!(condition.text, original, "invalid input is never truncated");
 }
 
 #[test]
@@ -1891,6 +1966,31 @@ fn debug_pipeline_steps_across_stages_then_publishes() -> anyhow::Result<()> {
     let finish: serde_json::Value =
         serde_json::from_slice(&std::fs::read(directory.join("finish.json"))?)?;
     assert_eq!(prepare["Value"], "A");
+    assert_eq!(finish["Value"], "B");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_position_condition_rejects_zero_and_never_matches_root_writes() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-debug-position")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.pipeline_run_position_condition.enabled = true;
+    app.pipeline_run_position_condition.text = "0".into();
+    app.start_pipeline_debug_run();
+    assert!(app.pending_pipeline_run.is_none());
+    assert_eq!(app.status, "debug pipeline blocked");
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+
+    app.pipeline_run_position_condition.text = "1".into();
+    app.start_pipeline_debug_run();
+    wait_for_pipeline_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
+    let finish: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join("finish.json"))?)?;
     assert_eq!(finish["Value"], "B");
     std::fs::remove_dir_all(directory)?;
     Ok(())

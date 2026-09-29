@@ -8,9 +8,36 @@ use anyhow::{Context as _, bail};
 
 use super::*;
 use crate::preview::{
-    BreakpointValueConditionDraft, DebugScalarCondition, LoadedPreviewSource, PreviewBreakpoint,
-    PreviewDraft, PreviewTarget, ScalarValueType,
+    BreakpointPositionConditionDraft, BreakpointValueConditionDraft, DebugPositionCondition,
+    DebugScalarCondition, LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget,
+    ScalarValueType,
 };
+
+pub(super) fn show_breakpoint_position_condition(
+    ui: &mut egui::Ui,
+    condition: &mut BreakpointPositionConditionDraft,
+) -> bool {
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(&mut condition.enabled, "Only at innermost active item #");
+        if condition.enabled {
+            ui.add(
+                egui::TextEdit::singleline(&mut condition.text)
+                    .desired_width(96.0)
+                    .hint_text("1-based active item number"),
+            );
+        }
+    });
+    if condition.enabled {
+        ui.weak("Uses the shown active position after scope controls; root writes have none.");
+    }
+    match condition.compile() {
+        Ok(_) => true,
+        Err(error) => {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+            false
+        }
+    }
+}
 
 pub(super) fn show_breakpoint_value_condition(
     ui: &mut egui::Ui,
@@ -128,6 +155,7 @@ struct PreviewDebugHook {
     pause_each_write: std::cell::Cell<bool>,
     breakpoint: Option<PreviewBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
+    position_condition: Option<DebugPositionCondition>,
 }
 
 impl engine::DebugHook for PreviewDebugHook {
@@ -155,8 +183,16 @@ impl engine::DebugHook for PreviewDebugHook {
             .value_condition
             .as_ref()
             .is_none_or(|condition| condition.matches(write));
-        let has_breakpoint = self.breakpoint.is_some() || self.value_condition.is_some();
-        if !self.pause_each_write.get() && !(has_breakpoint && matches_selection && matches_value) {
+        let matches_position = self
+            .position_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
+        let has_breakpoint = self.breakpoint.is_some()
+            || self.value_condition.is_some()
+            || self.position_condition.is_some();
+        if !self.pause_each_write.get()
+            && !(has_breakpoint && matches_selection && matches_value && matches_position)
+        {
             return engine::DebugDecision::Resume;
         }
         if self
@@ -320,6 +356,10 @@ impl FerruleApp {
                         &mut self.preview_value_condition,
                         "preview_debug_value_type",
                     );
+                    condition_valid &= show_breakpoint_position_condition(
+                        ui,
+                        &mut self.preview_position_condition,
+                    );
                 });
                 if draft.input_identity.trim().is_empty() {
                     ui.colored_label(
@@ -475,6 +515,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let position_condition = if debug {
+            match self.preview_position_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "preview blocked".into();
+                    self.diagnostics.error("Preview blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("preview blocked by {} validation issue(s)", issues.len());
@@ -518,6 +570,7 @@ impl FerruleApp {
                 saved_path,
                 debug,
                 value_condition,
+                position_condition,
                 event_tx,
                 command_rx,
                 worker_cancelled,
@@ -644,6 +697,7 @@ fn run_preview_worker(
     saved_path: Option<PathBuf>,
     debug: bool,
     value_condition: Option<DebugScalarCondition>,
+    position_condition: Option<DebugPositionCondition>,
     events: Sender<PreviewWorkerEvent>,
     commands: Receiver<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
@@ -659,10 +713,14 @@ fn run_preview_worker(
         commands,
         cancelled: Arc::clone(&cancelled),
         pause_each_write: std::cell::Cell::new(
-            debug && breakpoint.is_none() && value_condition.is_none(),
+            debug
+                && breakpoint.is_none()
+                && value_condition.is_none()
+                && position_condition.is_none(),
         ),
         breakpoint,
         value_condition,
+        position_condition,
     };
     let result = run_preview_payload(
         &project,

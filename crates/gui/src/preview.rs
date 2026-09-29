@@ -98,6 +98,48 @@ pub(super) struct DebugScalarCondition {
     canonical_preview: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct BreakpointPositionConditionDraft {
+    pub(super) enabled: bool,
+    pub(super) text: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DebugPositionCondition {
+    index: usize,
+}
+
+impl BreakpointPositionConditionDraft {
+    pub(super) fn compile(&self) -> Result<Option<DebugPositionCondition>, &'static str> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let text = self.text.trim();
+        if text.len() > 20 {
+            return Err("Active item number exceeds the supported range.");
+        }
+        if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("Enter a positive 1-based active item number.");
+        }
+        let index = text
+            .parse::<usize>()
+            .map_err(|_| "Active item number exceeds the supported range.")?;
+        if index == 0 {
+            return Err("Active item number must be at least 1.");
+        }
+        Ok(Some(DebugPositionCondition { index }))
+    }
+}
+
+impl DebugPositionCondition {
+    pub(super) fn matches(&self, write: &engine::PendingTargetWrite) -> bool {
+        write
+            .positions
+            .last()
+            .is_some_and(|position| position.index == self.index)
+    }
+}
+
 impl BreakpointValueConditionDraft {
     pub(super) fn compile(&self) -> Result<Option<DebugScalarCondition>, &'static str> {
         if !self.enabled {
@@ -385,6 +427,82 @@ mod tests {
     use ir::{ScalarType, SchemaNode};
     use mapping::{DynamicSourcePath, FormatOptions, NamedSource, Node, Scope};
 
+    fn pending(
+        value_type: &'static str,
+        preview: &str,
+        truncated: bool,
+    ) -> engine::PendingTargetWrite {
+        engine::PendingTargetWrite {
+            scope: engine::TraceScope {
+                target: engine::TraceTarget::Primary,
+                target_path: Vec::new(),
+                structural_path: Vec::new(),
+            },
+            positions: Vec::new(),
+            source: engine::DebugSourceContext {
+                frames: Vec::new(),
+                omitted_outer_frames: 0,
+            },
+            field: "value".into(),
+            field_truncated: false,
+            binding: engine::TraceTargetFieldBinding::StaticChild,
+            pending: engine::DebugInstancePreview {
+                kind: engine::TraceOutputKind::Scalar,
+                value: Some(engine::TraceValue {
+                    value_type,
+                    preview: preview.into(),
+                    truncated,
+                }),
+                length: None,
+            },
+            draft: engine::DebugScopeDraft {
+                fields: Vec::new(),
+                omitted_fields: 0,
+            },
+        }
+    }
+
+    fn position(index: usize) -> engine::TracePosition {
+        engine::TracePosition {
+            collection: vec!["row".into()],
+            index,
+            grouped: false,
+            join: None,
+            join_position: None,
+            document_path: None,
+        }
+    }
+
+    #[test]
+    fn source_position_condition_requires_a_positive_number_and_an_active_position() {
+        let mut draft = BreakpointPositionConditionDraft {
+            text: "invalid".into(),
+            ..Default::default()
+        };
+        assert_eq!(draft.compile().unwrap(), None);
+        draft.enabled = true;
+        for invalid in ["", "0", "-1", "1.5", "nope", "999999999999999999999"] {
+            draft.text = invalid.into();
+            assert!(draft.compile().is_err(), "{invalid} must be rejected");
+        }
+        draft.text = "0002".into();
+        let condition = draft.compile().unwrap().unwrap();
+        let mut write = pending("string", "value", false);
+        assert!(
+            !condition.matches(&write),
+            "root writes have no item position"
+        );
+        write.positions = vec![position(1)];
+        assert!(!condition.matches(&write));
+        write.positions.push(position(2));
+        assert!(condition.matches(&write));
+        write.positions.reverse();
+        assert!(
+            !condition.matches(&write),
+            "only the innermost position matches"
+        );
+    }
+
     #[test]
     fn scalar_condition_rejects_overlong_strings_and_invalid_numbers() {
         let mut draft = BreakpointValueConditionDraft {
@@ -409,35 +527,6 @@ mod tests {
 
     #[test]
     fn scalar_condition_distinguishes_null_kinds_and_rejects_truncated_values() {
-        let pending =
-            |value_type: &'static str, preview: &str, truncated: bool| engine::PendingTargetWrite {
-                scope: engine::TraceScope {
-                    target: engine::TraceTarget::Primary,
-                    target_path: Vec::new(),
-                    structural_path: Vec::new(),
-                },
-                positions: Vec::new(),
-                source: engine::DebugSourceContext {
-                    frames: Vec::new(),
-                    omitted_outer_frames: 0,
-                },
-                field: "value".into(),
-                field_truncated: false,
-                binding: engine::TraceTargetFieldBinding::StaticChild,
-                pending: engine::DebugInstancePreview {
-                    kind: engine::TraceOutputKind::Scalar,
-                    value: Some(engine::TraceValue {
-                        value_type,
-                        preview: preview.into(),
-                        truncated,
-                    }),
-                    length: None,
-                },
-                draft: engine::DebugScopeDraft {
-                    fields: Vec::new(),
-                    omitted_fields: 0,
-                },
-            };
         let mut draft = BreakpointValueConditionDraft {
             enabled: true,
             value_type: ScalarValueType::Null,
