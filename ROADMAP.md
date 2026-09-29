@@ -431,9 +431,9 @@ Exit criteria:
 Progress: XSD/JSON/CSV/SQLite blank-project setup, introspected SQLite named
 lookup sources, extra-source and named-target CRUD, independent primary/named-
 target canvases, scope editing, the catalog-backed function palette, and
-conservative compatible-field auto-connect are implemented. Broader database
-boundary wizards, target-driven scope skeletons, and explicit subtree
-expansion remain.
+conservative compatible-field auto-connect and bounded target-driven static
+scope-subtree expansion are implemented. Broader database boundary wizards
+remain.
 
 Exit criteria:
 

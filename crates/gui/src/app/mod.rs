@@ -33,7 +33,8 @@ use crate::path_picker::SourcePathCatalog;
 use crate::schema_tree::{SchemaExplorerState, schema_field_count, show_schema_tree};
 use crate::scope_editor::{
     ScopePath, available_static_child_scopes, binding_target_fields, create_static_child_scope,
-    remove_child_scope, scope_at_mut, scope_target_chain, show_scope_editor, show_scope_tree,
+    expand_static_target_subtree, remove_child_scope, scope_at_mut, scope_target_chain,
+    show_scope_editor, show_scope_tree,
 };
 use crate::theme::{Palette, ThemeState};
 use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVisibility};

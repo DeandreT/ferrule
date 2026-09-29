@@ -191,6 +191,94 @@ fn duplicate_extra_target_name_does_not_mutate_project() {
 }
 
 #[test]
+fn named_target_subtree_expansion_is_one_undoable_saved_edit() {
+    let project_path = temporary_project_path("target-scope-expansion");
+    let mut app = FerruleApp {
+        document: DocumentLocation::untitled(project_path.clone()),
+        ..FerruleApp::default()
+    };
+    let mut audit = named_target("audit");
+    audit.schema = SchemaNode::group(
+        "audit",
+        vec![SchemaNode::group(
+            "Section",
+            vec![
+                SchemaNode::group(
+                    "Items",
+                    vec![SchemaNode::scalar("Code", ScalarType::String)],
+                )
+                .repeating(),
+            ],
+        )],
+    );
+    app.project.extra_targets.push(audit);
+    app.project.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: ir::Value::String("shared".to_owned()),
+        },
+    );
+    app.main_canvas.snarl = build_snarl(&app.project);
+    app.open_target_tab(0);
+    assert!(app.ensure_target_canvas(0));
+    let custom = egui::pos2(208.0, 319.0);
+    move_canvas_node(
+        &mut app
+            .mapping_workspace
+            .target_canvases
+            .get_mut(&0)
+            .expect("named target canvas exists")
+            .snarl,
+        CanvasNode::Graph(7),
+        custom,
+    );
+    app.mark_clean();
+    app.rebase_history();
+
+    app.expand_selected_target_subtree();
+    app.observe_editor_history(std::time::Instant::now(), false);
+    let expanded = &app.project.extra_targets[0].root;
+    assert_eq!(expanded.children[0].target_field, "Section");
+    assert_eq!(expanded.children[0].children[0].target_field, "Items");
+    assert!(!expanded.children[0].children[0].iterates());
+    assert_eq!(app.history.undo_len(), 1);
+    assert!(app.is_dirty());
+    assert!(app.status.contains("1 repeating scopes need source paths"));
+    assert_eq!(
+        canvas_position(
+            &app.mapping_workspace.target_canvases[&0].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+
+    app.undo_project();
+    assert!(app.project.extra_targets[0].root.children.is_empty());
+    assert!(!app.is_dirty());
+    app.redo_project();
+    assert_eq!(app.project.extra_targets[0].root.children.len(), 1);
+    app.save_document_to(&project_path)
+        .expect("expanded target and layout save");
+    let mut loaded = FerruleApp::default();
+    loaded.load_project_from(&project_path);
+    assert_eq!(
+        loaded.project.extra_targets[0].root.children[0].children[0].target_field,
+        "Items"
+    );
+    assert_eq!(
+        canvas_position(
+            &loaded.mapping_workspace.target_canvases[&0].snarl,
+            CanvasNode::Graph(7)
+        ),
+        custom
+    );
+    assert!(!loaded.is_dirty());
+
+    std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+        .expect("temporary test directory is removed");
+}
+
+#[test]
 fn primary_auto_connect_is_one_undoable_position_preserving_mutation() {
     let mut app = FerruleApp::default();
     app.project.source = SchemaNode::group(
