@@ -73,7 +73,7 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Generated Rust and C# hosts have compiled and executed twenty-one warning-free
+- Generated Rust and C# hosts have compiled and executed twenty-five warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -104,7 +104,13 @@ are preserved.
   whole-group copies in Rust; the JSON host boundary cannot carry XML nil.
   Case twenty-four maps an embedded-schema EDIFACT order to a headerless CSV
   buyer row with coded date-time conversion, comparing typed output and exact
-  CSV bytes in both generated backends.
+  CSV bytes in both generated backends. Case twenty-five recursively filters a
+  local XML directory tree to 33 matching files, comparing generated Rust and
+  C# typed and JSON entry points against the interpreter under the same
+  schema-shaped JSON input. The native reader's retained XML child-order stream
+  is checked separately: recursive filtering now removes rejected occurrences
+  and updates nested child values before XML serialization in the interpreter
+  and generated runtimes.
   This small execution sample does not establish that all emitted survey
   designs execute equivalently.
 - Known architectural constraints: each mapping stage has one primary driver,
@@ -123,11 +129,11 @@ are preserved.
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Complete applicable validation/autocompletion behavior, configuration commands, dialects, and versioned release packs |
 | Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
-| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML pass-through chain import and guarded export for up to 64 pass-through targets with XML, CSV, or JSON final primary output, connected final-stage XML target fan-out, and original XML hosts feeding named inputs across stages through distinct ports or shared-port fan-out, and GUI editing/inspection/running of saved pipelines | Fully general named N-to-M endpoints, general `.mfd` stage-graph import/export including other connected later-stage named sources, service hosts, and embedded per-stage graph editing |
+| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML pass-through chain import and guarded export for up to 64 pass-through targets with XML, CSV, fixed-width, JSON, or new-workbook XLSX final primary output, connected final-stage XML target fan-out, and original XML hosts feeding named inputs across stages through distinct ports or shared-port fan-out, and GUI editing/inspection/running of saved pipelines | Fully general named N-to-M endpoints, general `.mfd` stage-graph import/export including other connected later-stage named sources, service hosts, and embedded per-stage graph editing |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV/SQLite blank-project setup, SQLite table introspection for named lookup sources, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
-| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, dynamic keys, and aggregate expressions/arguments, bounded source-row previews with nested row/join context, event-by-event replay of completed traces with direct links from retained trace/history/source-row entries, stage-attributed pipeline traces with stage-specific Node History/Source Rows/Replay, opt-in target-write, post-evaluation graph-node, and delivered graph-input debug hooks, and worker-backed live GUI Preview/file-Run/pipeline stepping with static target-field breakpoints, bounded typed scalar-value, innermost active-position, exact active-frame source-field, target-write value-node, exact expression-node/value, and recorded consumer-pin conditions, plus shallow active source-frame snapshots | Remaining connector classes, full source-row inspection, richer expression/context breakpoint predicates |
+| Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, dynamic keys, collection searches, XML mixed-content replacements, generated-sequence existence predicates, and aggregate expressions/arguments, bounded source-row previews with nested row/join context, event-by-event replay of completed traces with direct links from retained trace/history/source-row entries, stage-attributed pipeline traces with stage-specific Node History/Source Rows/Replay, opt-in target-write, post-evaluation graph-node, and delivered graph-input debug hooks, and worker-backed live GUI Preview/file-Run/pipeline stepping with static target-field breakpoints, bounded typed scalar-value, innermost active-position, exact active-frame source-field, target-write value-node, exact expression-node/value, and recorded consumer-pin conditions, plus shallow active source-frame snapshots | Remaining connector classes, full source-row inspection, richer expression/context breakpoint predicates |
 | `.mfd` | 187/187 imports (171 warning-free; 175 engine-valid, including four warned chains), 187 Ferrule exports/re-imports (186 warning-free; one retains unresolved target and embedded string-parser JSON Schema provenance), 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Reference-application open/validate/execute/re-save verification, complete deterministic behavioral-reference coverage, and broader explicit extension-dependent export reporting |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
 
@@ -394,13 +400,19 @@ static named inputs. It validates IDs, references, schemas, and cycles before
 execution, then runs stages in stable dependency order. The file host publishes
 selected outputs atomically only after the complete graph succeeds. Bounded
 serial XML pass-through chains import and export as connected `.mfd` designs,
-with XML, CSV, or JSON final primary targets, native export preflight, and no-artifact
-rejection for unsupported stage shapes. Intermediate XML boundaries retain
-their output instance and source preview instance on the merged pass-through
-component without inventing an output path from a preview path. All four local
-chains export and reimport in the strict native profile. The date/time chain
+with XML, CSV, fixed-width text, JSON, or new-workbook XLSX final primary
+targets, native export preflight, and no-artifact rejection for unsupported
+stage shapes. Intermediate XML boundaries retain their output instance and
+source preview instance on the merged pass-through component without inventing
+an output path from a preview path. All four local chains export and reimport
+in the strict native profile. The date/time chain
 uses bounded native XML target casting with exact `xs:dateTime` XSD restoration;
 shared conversions and unsupported target subtree shapes still reject before
+publication. A local XML-to-hierarchical-XLSX mapping also runs after an
+identity XML stage; strict export and reimport preserve decoded workbook cells.
+An XML-to-fixed-width mapping retains byte-exact text and parsed rows through
+the same chain round trip.
+Intermediate or named XLSX targets and update-existing workbooks reject before
 publication.
 Synthetic two- and four-stage chains
 preserve original XML host sources feeding named inputs in several stages
@@ -535,8 +547,10 @@ trace. Node History, Source Rows, and Replay select a stage to distinguish
 reused graph-node IDs without changing the trace-event schema.
 Preview selects the active primary or named target and preflights every required
 secondary source. Direct graph input consumption is now recorded for calls,
-conditionals, value maps, lookups, dynamic keys, and aggregate expressions and
-arguments. The GUI groups those events with node outputs and shows bounded
+conditionals, value maps, lookups, dynamic keys, collection-search predicates
+and selected values, XML mixed-content replacements, generated-sequence
+existence predicates, and aggregate expressions and arguments. The GUI groups
+those events with node outputs and shows bounded
 source-row previews before filters and sorting. Retained trace rows,
 node-history occurrences, and selected source-row details
 can jump directly to the same event in Replay, even after report filtering.
