@@ -92,12 +92,12 @@ pub struct Imported {
     pub mapping_path: PathBuf,
 }
 
-/// A connected two-stage design imported without flattening its intermediate
-/// output into an independent target.
+/// A connected staged design imported without flattening its intermediate
+/// outputs into independent targets.
 pub struct ImportedPipeline {
     pub pipeline: Pipeline,
     pub warnings: Vec<String>,
-    /// Canonical path used as the active mapping identity for both stages.
+    /// Canonical path used as the active mapping identity for every stage.
     pub mapping_path: PathBuf,
 }
 
@@ -107,6 +107,11 @@ enum StageSelection<'a> {
     Into {
         intermediate_key: u32,
         label: &'a str,
+    },
+    Between {
+        source_key: u32,
+        source_label: &'a str,
+        target_key: u32,
     },
     OutOf {
         intermediate_key: u32,
@@ -298,11 +303,10 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
     Ok(import_resolved(&resources, StageSelection::Ordinary)?.imported)
 }
 
-/// Import a connected, file-based two-stage design as a typed pipeline.
+/// Import a connected, file-based design as a typed pipeline.
 ///
-/// This first profile accepts one XML pass-through intermediate and one final
-/// target. Other stage graph shapes reject explicitly instead of silently
-/// flattening the computed intermediate output.
+/// This profile accepts one or two serial XML pass-through intermediates and
+/// one final target. Other stage graph shapes reject explicitly.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
 }
@@ -312,34 +316,50 @@ pub fn import_pipeline_with_options(
     options: &ImportOptions,
 ) -> Result<ImportedPipeline, MfdError> {
     let resources = resolved_resources(path, options)?;
-    let chain = discover_two_stage_chain(resources.mapping_path())?;
-    let first = import_resolved(
+    let chain = discover_pipeline_chain(resources.mapping_path())?;
+    let first_intermediate = &chain.intermediates[0];
+    let mut lowered = vec![import_resolved(
         &resources,
         StageSelection::Into {
-            intermediate_key: chain.intermediate_key,
-            label: &chain.intermediate,
+            intermediate_key: first_intermediate.key,
+            label: &first_intermediate.label,
         },
-    )?;
-    let second = import_resolved(
+    )?];
+    if chain.intermediates.len() == 2 {
+        let second_intermediate = &chain.intermediates[1];
+        lowered.push(import_resolved(
+            &resources,
+            StageSelection::Between {
+                source_key: first_intermediate.key,
+                source_label: &first_intermediate.label,
+                target_key: second_intermediate.key,
+            },
+        )?);
+    }
+    let last_intermediate = chain
+        .intermediates
+        .last()
+        .expect("chain has an intermediate");
+    lowered.push(import_resolved(
         &resources,
         StageSelection::OutOf {
-            intermediate_key: chain.intermediate_key,
+            intermediate_key: last_intermediate.key,
             final_key: chain.final_key,
-            label: &chain.intermediate,
+            label: &last_intermediate.label,
         },
-    )?;
+    )?);
 
-    let mut warnings = first.imported.warnings;
-    warnings.extend(second.imported.warnings);
+    let warnings = lowered
+        .iter()
+        .flat_map(|stage| stage.imported.warnings.iter().cloned())
+        .collect::<Vec<_>>();
     if !warnings.is_empty() {
         return Err(MfdError::UnsupportedImport(format!(
             "chained design has unsupported stage behavior: {}",
             warnings.join("; ")
         )));
     }
-    let first_project = first.imported.project;
-    let second_project = second.imported.project;
-    let names = first
+    let names = lowered[0]
         .source_components
         .iter()
         .fold(BTreeMap::new(), |mut counts, source| {
@@ -348,7 +368,7 @@ pub fn import_pipeline_with_options(
         });
     let mut used_host_names = BTreeSet::new();
     let mut host_names = BTreeMap::new();
-    for source in &first.source_components {
+    for source in &lowered[0].source_components {
         let preferred = if !source.name.is_empty()
             && source.name.len() <= 256
             && names.get(source.name.as_str()) == Some(&1)
@@ -374,73 +394,67 @@ pub fn import_pipeline_with_options(
             ));
         }
     }
-    if first_project.extra_sources.len() + 1 != first.source_components.len()
-        || second_project.extra_sources.len() + 1 != second.source_components.len()
-    {
+    if lowered.iter().any(|stage| {
+        stage.imported.project.extra_sources.len() + 1 != stage.source_components.len()
+    }) {
         return Err(MfdError::UnsupportedImport(
             "pipeline source boundaries do not match imported stages".into(),
         ));
     }
-    let mut first_sources = first.source_components.into_iter();
-    let first_primary = first_sources
-        .next()
-        .ok_or_else(|| MfdError::UnsupportedImport("first pipeline stage has no source".into()))?;
-    let mut first_extra = Vec::new();
-    for (source, identity) in first_project.extra_sources.iter().zip(first_sources) {
-        if source.dynamic_path.is_none() {
-            first_extra.push(PipelineNamedInput {
-                name: source.name.clone(),
-                from: PipelineInput::Host {
-                    name: host_names[&identity.key].clone(),
-                },
-            });
-        }
-    }
-    let mut second_extra = Vec::new();
-    for (source, identity) in second_project
-        .extra_sources
-        .iter()
-        .zip(second.source_components.into_iter().skip(1))
-    {
-        if source.dynamic_path.is_none() {
+    let mapping_path = resources.mapping_path().to_path_buf();
+    let mapping_identity = mapping_path.to_string_lossy().into_owned();
+    let mut stages = Vec::with_capacity(lowered.len());
+    for (index, stage) in lowered.into_iter().enumerate() {
+        let id = format!("mfd-stage-{}", index + 1);
+        let primary = if index == 0 {
+            let first = stage.source_components.first().ok_or_else(|| {
+                MfdError::UnsupportedImport("first pipeline stage has no source".into())
+            })?;
+            PipelineInput::Host {
+                name: host_names[&first.key].clone(),
+            }
+        } else {
+            PipelineInput::StageTarget {
+                stage: format!("mfd-stage-{index}"),
+                target: None,
+            }
+        };
+        let mut extra_sources = Vec::new();
+        for (source, identity) in stage
+            .imported
+            .project
+            .extra_sources
+            .iter()
+            .zip(stage.source_components.iter().skip(1))
+        {
+            if source.dynamic_path.is_some() {
+                continue;
+            }
             let Some(host_name) = host_names.get(&identity.key) else {
                 return Err(MfdError::UnsupportedImport(format!(
-                    "second pipeline stage reads an unbound source `{}`",
+                    "pipeline stage {} reads an unbound source `{}`",
+                    index + 1,
                     identity.name
                 )));
             };
-            second_extra.push(PipelineNamedInput {
+            extra_sources.push(PipelineNamedInput {
                 name: source.name.clone(),
                 from: PipelineInput::Host {
                     name: host_name.clone(),
                 },
             });
         }
+        stages.push(PipelineStage {
+            id,
+            mapping_path: Some(mapping_identity.clone()),
+            project: stage.imported.project,
+            source: primary,
+            extra_sources,
+        });
     }
-    let mapping_path = resources.mapping_path().to_path_buf();
     let pipeline = Pipeline {
-        main_mapping_path: Some(mapping_path.to_string_lossy().into_owned()),
-        stages: vec![
-            PipelineStage {
-                id: "mfd-stage-1".into(),
-                mapping_path: Some(mapping_path.to_string_lossy().into_owned()),
-                project: first_project,
-                source: PipelineInput::Host {
-                    name: host_names[&first_primary.key].clone(),
-                },
-                extra_sources: first_extra,
-            },
-            PipelineStage {
-                id: "mfd-stage-2".into(),
-                mapping_path: Some(mapping_path.to_string_lossy().into_owned()),
-                project: second_project,
-                source: PipelineInput::StageTarget {
-                    stage: "mfd-stage-1".into(),
-                    target: None,
-                },
-                extra_sources: second_extra,
-            },
-        ],
+        main_mapping_path: Some(mapping_identity),
+        stages,
     };
     let issues = engine::validate_pipeline(&pipeline);
     if !issues.is_empty() {
@@ -523,13 +537,17 @@ fn discover_package_manifest(path: &Path) -> Result<Option<PathBuf>, MfdError> {
     }
 }
 
-struct TwoStageChain {
-    intermediate: String,
-    intermediate_key: u32,
+struct PipelineIntermediate {
+    label: String,
+    key: u32,
+}
+
+struct DiscoveredPipelineChain {
+    intermediates: Vec<PipelineIntermediate>,
     final_key: u32,
 }
 
-fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
+fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdError> {
     let text = std::fs::read_to_string(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let mapping = doc.root_element();
@@ -589,15 +607,15 @@ fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
             && connected_inputs(component)
             && connected_component_outputs(component)
     };
-    let mut intermediates = components.iter().filter(pass_through);
-    let intermediate = intermediates.next().ok_or_else(|| {
-        MfdError::UnsupportedImport(
-            "pipeline import currently needs one connected XML pass-through target".into(),
-        )
-    })?;
-    if intermediates.next().is_some() {
+    let intermediates = components.iter().filter(pass_through).collect::<Vec<_>>();
+    if intermediates.is_empty() {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import currently supports one intermediate target".into(),
+            "pipeline import currently needs one connected XML pass-through target".into(),
+        ));
+    }
+    if intermediates.len() > 2 {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import currently supports at most two intermediate targets".into(),
         ));
     }
     let final_outputs = components
@@ -624,9 +642,14 @@ fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
                 .filter(|key| edge_from.contains_key(key))
         })
     };
-    let intermediate_key = connected_input_key(intermediate).ok_or_else(|| {
-        MfdError::UnsupportedImport("intermediate target has no connected input".into())
-    })?;
+    let intermediate_keys = intermediates
+        .iter()
+        .map(|intermediate| {
+            connected_input_key(intermediate).ok_or_else(|| {
+                MfdError::UnsupportedImport("intermediate target has no connected input".into())
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let final_key = connected_input_key(final_target)
         .ok_or_else(|| MfdError::UnsupportedImport("final target has no connected input".into()))?;
     let final_inputs = final_target
@@ -634,11 +657,6 @@ fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
         .filter(|node| node.has_tag_name("entry"))
         .filter_map(|node| schema::parse_u32(node.attribute("inpkey")))
         .collect::<BTreeSet<_>>();
-    let intermediate_outputs = intermediate
-        .descendants()
-        .filter(|node| node.has_tag_name("entry"))
-        .filter_map(|node| schema::parse_u32(node.attribute("outkey")))
-        .collect::<Vec<_>>();
     let mut consumers = BTreeMap::<u32, Vec<u32>>::new();
     for (&input, &output) in &edge_from {
         consumers.entry(output).or_default().push(input);
@@ -671,30 +689,34 @@ fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
             function_outputs.insert(input, outputs.clone());
         }
     }
-    let mut frontier = intermediate_outputs;
-    let mut visited = BTreeSet::new();
-    let mut reaches_final = false;
-    while let Some(output) = frontier.pop() {
-        if !visited.insert(output) {
-            continue;
-        }
-        for input in consumers.get(&output).into_iter().flatten() {
-            if final_inputs.contains(input) {
-                reaches_final = true;
+    if intermediates.len() == 1 {
+        let mut frontier = entry_keys(intermediates[0], "outkey")
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut visited = BTreeSet::new();
+        let mut reaches_final = false;
+        while let Some(output) = frontier.pop() {
+            if !visited.insert(output) {
+                continue;
+            }
+            for input in consumers.get(&output).into_iter().flatten() {
+                if final_inputs.contains(input) {
+                    reaches_final = true;
+                    break;
+                }
+                if let Some(outputs) = function_outputs.get(input) {
+                    frontier.extend(outputs);
+                }
+            }
+            if reaches_final {
                 break;
             }
-            if let Some(outputs) = function_outputs.get(input) {
-                frontier.extend(outputs);
-            }
         }
-        if reaches_final {
-            break;
+        if !reaches_final {
+            return Err(MfdError::UnsupportedImport(
+                "pass-through target does not feed the selected final target".into(),
+            ));
         }
-    }
-    if !reaches_final {
-        return Err(MfdError::UnsupportedImport(
-            "pass-through target does not feed the selected final target".into(),
-        ));
     }
     for component in &components {
         if component.attribute("library") == Some("core")
@@ -707,7 +729,7 @@ fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
         if component.attribute("library") != Some("xml") {
             continue;
         }
-        if *component == *intermediate || *component == **final_target {
+        if intermediates.contains(&component) || *component == **final_target {
             continue;
         }
         if component.children().any(|node| {
@@ -725,7 +747,7 @@ fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
         .iter()
         .filter(|component| {
             component.attribute("library") == Some("xml")
-                && **component != *intermediate
+                && !intermediates.contains(component)
                 && **component != **final_target
                 && connected_component_outputs(component)
         })
@@ -735,14 +757,206 @@ fn discover_two_stage_chain(path: &Path) -> Result<TwoStageChain, MfdError> {
             "pipeline import needs an XML source component".into(),
         ));
     }
-    Ok(TwoStageChain {
-        intermediate: intermediate
-            .attribute("name")
-            .unwrap_or_default()
-            .to_string(),
-        intermediate_key,
+    let order = if intermediates.len() == 2 {
+        strict_three_stage_order(
+            &components,
+            &intermediates,
+            final_target,
+            &connected_outputs,
+            &consumers,
+            &function_outputs,
+        )?
+    } else {
+        vec![0]
+    };
+    Ok(DiscoveredPipelineChain {
+        intermediates: order
+            .into_iter()
+            .map(|index| PipelineIntermediate {
+                label: intermediates[index]
+                    .attribute("name")
+                    .unwrap_or_default()
+                    .to_string(),
+                key: intermediate_keys[index],
+            })
+            .collect(),
         final_key,
     })
+}
+
+fn entry_keys(component: &roxmltree::Node<'_, '_>, attribute: &str) -> BTreeSet<u32> {
+    component
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|node| schema::parse_u32(node.attribute(attribute)))
+        .collect()
+}
+
+/// Keep three-stage import to one linear chain of XML boundaries. Multiple
+/// field connections to the same next boundary are valid; an intermediate
+/// connection that reaches any other XML boundary would read a bypassed stage
+/// value. Original XML host sources may supplement any stage.
+fn strict_three_stage_order(
+    components: &[roxmltree::Node<'_, '_>],
+    intermediates: &[&roxmltree::Node<'_, '_>],
+    final_target: &roxmltree::Node<'_, '_>,
+    connected_outputs: &BTreeSet<u32>,
+    consumers: &BTreeMap<u32, Vec<u32>>,
+    function_outputs: &BTreeMap<u32, Vec<u32>>,
+) -> Result<Vec<usize>, MfdError> {
+    let intermediate_indices = intermediates
+        .iter()
+        .map(|intermediate| {
+            components
+                .iter()
+                .position(|component| component.id() == intermediate.id())
+                .expect("selected intermediate belongs to the mapping")
+        })
+        .collect::<Vec<_>>();
+    let final_index = components
+        .iter()
+        .position(|component| component.id() == final_target.id())
+        .expect("selected final target belongs to the mapping");
+    let mut xml_input_owners = BTreeMap::new();
+    for (index, component) in components.iter().enumerate() {
+        if component.attribute("library") != Some("xml") {
+            continue;
+        }
+        for key in entry_keys(component, "inpkey") {
+            if xml_input_owners.insert(key, index).is_some() {
+                return Err(MfdError::UnsupportedImport(
+                    "three-stage pipeline has duplicate XML input port identities".into(),
+                ));
+            }
+        }
+    }
+    let mut sinks_by_component = BTreeMap::new();
+    for (index, component) in components.iter().enumerate() {
+        if component.attribute("library") != Some("xml") {
+            continue;
+        }
+        let outputs = entry_keys(component, "outkey")
+            .into_iter()
+            .filter(|key| connected_outputs.contains(key))
+            .collect::<Vec<_>>();
+        if outputs.is_empty() {
+            continue;
+        }
+        let sinks = trace_xml_sinks(
+            outputs,
+            connected_outputs,
+            consumers,
+            function_outputs,
+            &xml_input_owners,
+        )?;
+        if sinks.is_empty() {
+            return Err(MfdError::UnsupportedImport(
+                "three-stage pipeline has a connected XML output with no downstream XML target"
+                    .into(),
+            ));
+        }
+        sinks_by_component.insert(index, sinks);
+    }
+    if sinks_by_component.contains_key(&final_index) {
+        return Err(MfdError::UnsupportedImport(
+            "three-stage pipeline final XML target feeds another component".into(),
+        ));
+    }
+    let [left, right] = intermediate_indices.as_slice() else {
+        unreachable!("three-stage discovery selects two intermediates")
+    };
+    let candidates = [(*left, *right), (*right, *left)];
+    let order = candidates.into_iter().find(|&(first, second)| {
+        sinks_by_component.get(&first) == Some(&BTreeSet::from([second]))
+            && sinks_by_component.get(&second) == Some(&BTreeSet::from([final_index]))
+            && components.iter().enumerate().all(|(index, component)| {
+                component.attribute("library") != Some("xml")
+                    || index == first
+                    || index == second
+                    || index == final_index
+                    || sinks_by_component.get(&index).is_some_and(|sinks| {
+                        sinks
+                            .iter()
+                            .all(|sink| [first, second, final_index].contains(sink))
+                    })
+            })
+    });
+    let Some((first, second)) = order else {
+        return Err(MfdError::UnsupportedImport(
+            "three-stage pipeline needs a serial XML chain without branches, cycles, or bypasses"
+                .into(),
+        ));
+    };
+    Ok(vec![
+        intermediate_indices
+            .iter()
+            .position(|&index| index == first)
+            .expect("first intermediate index"),
+        intermediate_indices
+            .iter()
+            .position(|&index| index == second)
+            .expect("second intermediate index"),
+    ])
+}
+
+fn trace_xml_sinks(
+    outputs: Vec<u32>,
+    connected_outputs: &BTreeSet<u32>,
+    consumers: &BTreeMap<u32, Vec<u32>>,
+    function_outputs: &BTreeMap<u32, Vec<u32>>,
+    xml_input_owners: &BTreeMap<u32, usize>,
+) -> Result<BTreeSet<usize>, MfdError> {
+    let mut sinks = BTreeSet::new();
+    let mut active = BTreeSet::new();
+    let mut done = BTreeSet::new();
+    let mut stack = outputs
+        .into_iter()
+        .map(|output| (output, false))
+        .collect::<Vec<_>>();
+    while let Some((output, leaving)) = stack.pop() {
+        if leaving {
+            active.remove(&output);
+            done.insert(output);
+            continue;
+        }
+        if done.contains(&output) {
+            continue;
+        }
+        if !active.insert(output) {
+            return Err(MfdError::UnsupportedImport(
+                "three-stage pipeline contains a function-feed cycle".into(),
+            ));
+        }
+        if active.len() + done.len() > 65_536 {
+            return Err(MfdError::UnsupportedImport(
+                "three-stage pipeline exceeds 65536 connected output ports".into(),
+            ));
+        }
+        stack.push((output, true));
+        for input in consumers.get(&output).into_iter().flatten() {
+            if let Some(&owner) = xml_input_owners.get(input) {
+                sinks.insert(owner);
+            } else if let Some(next_outputs) = function_outputs.get(input) {
+                let next_outputs = next_outputs
+                    .iter()
+                    .copied()
+                    .filter(|key| connected_outputs.contains(key))
+                    .collect::<Vec<_>>();
+                if next_outputs.is_empty() {
+                    return Err(MfdError::UnsupportedImport(
+                        "three-stage pipeline has a function branch without a downstream target"
+                            .into(),
+                    ));
+                }
+                stack.extend(next_outputs.into_iter().map(|next| (next, false)));
+            } else {
+                return Err(MfdError::UnsupportedImport(
+                    "three-stage pipeline has a feed to an unclassified component".into(),
+                ));
+            }
+        }
+    }
+    Ok(sinks)
 }
 
 fn import_resolved(
@@ -1173,7 +1387,12 @@ fn import_resolved(
             component.is_variable = false;
             component.is_source = false;
         }
-        StageSelection::OutOf {
+        StageSelection::Between {
+            source_key: intermediate_key,
+            source_label: label,
+            ..
+        }
+        | StageSelection::OutOf {
             intermediate_key,
             label,
             ..
@@ -1193,6 +1412,18 @@ fn import_resolved(
             component.is_pass_through = false;
             component.input_instance = None;
         }
+    }
+    if let StageSelection::Between { target_key, .. } = selection {
+        let component = schema_components
+            .iter_mut()
+            .find(|component| {
+                component.input_keys.contains(&target_key) && component.is_pass_through
+            })
+            .ok_or_else(|| {
+                MfdError::UnsupportedImport("next intermediate target could not be imported".into())
+            })?;
+        component.is_variable = false;
+        component.is_source = false;
     }
 
     // Edges are indexed as to-key -> from-key; each input has at most one feed.
@@ -1302,6 +1533,10 @@ fn import_resolved(
             .iter()
             .copied()
             .find(|component| component.input_keys.contains(&intermediate_key)),
+        StageSelection::Between { target_key, .. } => targets
+            .iter()
+            .copied()
+            .find(|component| component.input_keys.contains(&target_key)),
         StageSelection::OutOf { final_key, .. } => targets
             .iter()
             .copied()
@@ -1326,7 +1561,12 @@ fn import_resolved(
         return Err(unsupported("source"));
     }
     let primary_source = match selection {
-        StageSelection::OutOf {
+        StageSelection::Between {
+            source_key: intermediate_key,
+            source_label: label,
+            ..
+        }
+        | StageSelection::OutOf {
             intermediate_key,
             label,
             ..
@@ -1527,7 +1767,10 @@ fn import_resolved(
         });
     }
 
-    let source_path = if matches!(selection, StageSelection::OutOf { .. }) {
+    let source_path = if matches!(
+        selection,
+        StageSelection::OutOf { .. } | StageSelection::Between { .. }
+    ) {
         None
     } else {
         primary
