@@ -124,6 +124,80 @@ pub(super) struct DebugExpressionCondition {
     value: Option<DebugScalarCondition>,
 }
 
+/// One currently recorded consumer input pin, independent of target writes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct BreakpointInputConditionDraft {
+    pub(super) enabled: bool,
+    pub(super) consumer_text: String,
+    pub(super) input_number_text: String,
+    pub(super) value: BreakpointValueConditionDraft,
+}
+
+impl Default for BreakpointInputConditionDraft {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            consumer_text: String::new(),
+            input_number_text: "1".into(),
+            value: BreakpointValueConditionDraft::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DebugInputCondition {
+    consumer: mapping::NodeId,
+    input_index: usize,
+    value: Option<DebugScalarCondition>,
+}
+
+impl BreakpointInputConditionDraft {
+    pub(super) fn compile(&self) -> Result<Option<DebugInputCondition>, &'static str> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let consumer = self.consumer_text.trim();
+        if consumer.len() > 10 {
+            return Err("Consumer node ID exceeds the supported range.");
+        }
+        if consumer.is_empty() || !consumer.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("Enter a nonnegative numeric consumer node ID.");
+        }
+        let consumer = consumer
+            .parse::<mapping::NodeId>()
+            .map_err(|_| "Consumer node ID exceeds the supported range.")?;
+        let input_number = self.input_number_text.trim();
+        if input_number.is_empty()
+            || input_number.len() > 4
+            || !input_number.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err("Enter an input number from 1 to 1024.");
+        }
+        let input_number = input_number
+            .parse::<usize>()
+            .map_err(|_| "Enter an input number from 1 to 1024.")?;
+        if !(1..=1024).contains(&input_number) {
+            return Err("Enter an input number from 1 to 1024.");
+        }
+        Ok(Some(DebugInputCondition {
+            consumer,
+            input_index: input_number - 1,
+            value: self.value.compile()?,
+        }))
+    }
+}
+
+impl DebugInputCondition {
+    pub(super) fn matches(&self, input: &engine::PendingNodeInput) -> bool {
+        self.consumer == input.consumer
+            && self.input_index == input.input_index
+            && self
+                .value
+                .as_ref()
+                .is_none_or(|condition| condition.matches_trace_value(&input.value))
+    }
+}
+
 impl BreakpointExpressionConditionDraft {
     pub(super) fn compile(&self) -> Result<Option<DebugExpressionCondition>, &'static str> {
         if !self.enabled {
@@ -703,6 +777,60 @@ mod tests {
         }
         draft.text = u32::MAX.to_string();
         assert!(draft.compile().is_ok());
+    }
+
+    #[test]
+    fn input_pin_condition_is_one_based_and_requires_complete_typed_delivery() {
+        let mut draft = BreakpointInputConditionDraft {
+            enabled: true,
+            consumer_text: "2".into(),
+            input_number_text: "2".into(),
+            value: BreakpointValueConditionDraft {
+                enabled: true,
+                text: "same".into(),
+                ..Default::default()
+            },
+        };
+        let condition = draft.compile().unwrap().unwrap();
+        let mut input = engine::PendingNodeInput {
+            consumer: 2,
+            input: 1,
+            input_index: 1,
+            value: engine::TraceValue {
+                value_type: "string",
+                preview: "same".into(),
+                truncated: false,
+            },
+            positions: Vec::new(),
+            omitted_outer_positions: 0,
+            position_paths_truncated: false,
+            source: engine::DebugSourceContext {
+                frames: Vec::new(),
+                omitted_outer_frames: 0,
+            },
+        };
+        assert!(condition.matches(&input));
+        input.consumer = 3;
+        assert!(!condition.matches(&input));
+        input.consumer = 2;
+        input.input_index = 0;
+        assert!(!condition.matches(&input));
+        input.input_index = 1;
+        input.value.truncated = true;
+        assert!(!condition.matches(&input));
+        input.value.truncated = false;
+        input.value.value_type = "int";
+        assert!(!condition.matches(&input));
+
+        for invalid in ["", "0", "1025", "-1", "1.5"] {
+            draft.input_number_text = invalid.into();
+            assert!(draft.compile().is_err(), "{invalid:?} must be rejected");
+        }
+        draft.input_number_text = "1".into();
+        for invalid in ["", "-1", "1.5", "4294967296"] {
+            draft.consumer_text = invalid.into();
+            assert!(draft.compile().is_err(), "{invalid:?} must be rejected");
+        }
     }
 
     #[test]

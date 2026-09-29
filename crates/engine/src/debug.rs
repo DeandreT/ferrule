@@ -187,6 +187,20 @@ pub struct PendingNodeValue {
     pub source: DebugSourceContext,
 }
 
+/// A bounded value delivered to one recorded input of a consumer graph node.
+/// Input indexes are zero-based, as in `TraceEvent::NodeInputValue`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingNodeInput {
+    pub consumer: NodeId,
+    pub input: NodeId,
+    pub input_index: usize,
+    pub value: TraceValue,
+    pub positions: Vec<TracePosition>,
+    pub omitted_outer_positions: usize,
+    pub position_paths_truncated: bool,
+    pub source: DebugSourceContext,
+}
+
 /// The host decides when to resume a pending write or node evaluation. It may
 /// block inside a callback to implement stepping or breakpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,9 +226,20 @@ pub trait DebugHook {
         true
     }
 
+    /// Return false when this hook will not inspect delivered graph inputs.
+    fn wants_node_inputs(&self) -> bool {
+        true
+    }
+
     /// Called after a successful graph evaluation, including filters and
     /// pre-target rules. The host may block here or cancel the run.
     fn after_node_value(&self, _node: &PendingNodeValue) -> DebugDecision {
+        DebugDecision::Resume
+    }
+
+    /// Called after a successful value reaches a recorded consumer input and
+    /// before the consumer finishes. Untaken inputs do not call this hook.
+    fn after_node_input(&self, _input: &PendingNodeInput) -> DebugDecision {
         DebugDecision::Resume
     }
 }
@@ -229,6 +254,48 @@ pub(crate) fn after_node_value(
     let Some(hook) = hook.filter(|hook| hook.wants_node_values()) else {
         return Ok(());
     };
+    let snapshot = node_value_snapshot(node, value, positions, context);
+    match hook.after_node_value(&snapshot) {
+        DebugDecision::Resume => Ok(()),
+        DebugDecision::Cancel => Err(EngineError::DebugCancelled),
+    }
+}
+
+pub(crate) fn after_node_input(
+    hook: Option<&dyn DebugHook>,
+    consumer: NodeId,
+    input: NodeId,
+    input_index: usize,
+    value: &Value,
+    positions: &[PositionFrame],
+    context: &[&Instance],
+) -> Result<(), EngineError> {
+    let Some(hook) = hook.filter(|hook| hook.wants_node_inputs()) else {
+        return Ok(());
+    };
+    let delivered = node_value_snapshot(input, value, positions, context);
+    let snapshot = PendingNodeInput {
+        consumer,
+        input: delivered.node,
+        input_index,
+        value: delivered.value,
+        positions: delivered.positions,
+        omitted_outer_positions: delivered.omitted_outer_positions,
+        position_paths_truncated: delivered.position_paths_truncated,
+        source: delivered.source,
+    };
+    match hook.after_node_input(&snapshot) {
+        DebugDecision::Resume => Ok(()),
+        DebugDecision::Cancel => Err(EngineError::DebugCancelled),
+    }
+}
+
+fn node_value_snapshot(
+    node: NodeId,
+    value: &Value,
+    positions: &[PositionFrame],
+    context: &[&Instance],
+) -> PendingNodeValue {
     let omitted_outer_positions = positions.len().saturating_sub(MAX_DEBUG_POSITIONS);
     let mut position_paths_truncated = false;
     let positions = positions[omitted_outer_positions..]
@@ -264,17 +331,13 @@ pub(crate) fn after_node_value(
             }
         })
         .collect();
-    let snapshot = PendingNodeValue {
+    PendingNodeValue {
         node,
         value: TraceValue::new(value),
         positions,
         omitted_outer_positions,
         position_paths_truncated,
         source: DebugSourceContext::new(context),
-    };
-    match hook.after_node_value(&snapshot) {
-        DebugDecision::Resume => Ok(()),
-        DebugDecision::Cancel => Err(EngineError::DebugCancelled),
     }
 }
 

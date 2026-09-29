@@ -8,12 +8,75 @@ use anyhow::{Context as _, bail};
 
 use super::*;
 use crate::preview::{
-    BreakpointExpressionConditionDraft, BreakpointNodeConditionDraft,
-    BreakpointPositionConditionDraft, BreakpointSourceConditionDraft,
-    BreakpointValueConditionDraft, DebugExpressionCondition, DebugNodeCondition,
-    DebugPositionCondition, DebugScalarCondition, DebugSourceCondition, LoadedPreviewSource,
-    PreviewBreakpoint, PreviewDraft, PreviewTarget, ScalarValueType,
+    BreakpointExpressionConditionDraft, BreakpointInputConditionDraft,
+    BreakpointNodeConditionDraft, BreakpointPositionConditionDraft, BreakpointSourceConditionDraft,
+    BreakpointValueConditionDraft, DebugExpressionCondition, DebugInputCondition,
+    DebugNodeCondition, DebugPositionCondition, DebugScalarCondition, DebugSourceCondition,
+    LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget, ScalarValueType,
 };
+
+pub(super) fn show_breakpoint_input_condition(
+    ui: &mut egui::Ui,
+    condition: &mut BreakpointInputConditionDraft,
+    id: &str,
+) -> bool {
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(
+            &mut condition.enabled,
+            "Pause when a value reaches input pin",
+        );
+        if condition.enabled {
+            ui.label("Consumer node #");
+            ui.add(
+                egui::TextEdit::singleline(&mut condition.consumer_text)
+                    .char_limit(10)
+                    .desired_width(80.0),
+            );
+            ui.label("Input #");
+            ui.add(
+                egui::TextEdit::singleline(&mut condition.input_number_text)
+                    .char_limit(4)
+                    .desired_width(48.0),
+            );
+        }
+    });
+    if condition.enabled {
+        ui.horizontal_wrapped(|ui| {
+            ui.checkbox(
+                &mut condition.value.enabled,
+                "Only when delivered value equals",
+            );
+            if condition.value.enabled {
+                egui::ComboBox::from_id_salt(id)
+                    .selected_text(condition.value.value_type.label())
+                    .show_ui(ui, |ui| {
+                        for value_type in ScalarValueType::ALL {
+                            ui.selectable_value(
+                                &mut condition.value.value_type,
+                                value_type,
+                                value_type.label(),
+                            );
+                        }
+                    });
+                if condition.value.value_type.needs_text() {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut condition.value.text)
+                            .char_limit(160)
+                            .hint_text("Exact delivered scalar"),
+                    );
+                }
+            }
+        });
+        ui.weak("Input numbers are 1-based. This pauses only on graph inputs currently recorded in Node History; untaken branches, target bindings, and scope-control edges do not match. Step advances to the next recorded input delivery.");
+    }
+    match condition.compile() {
+        Ok(_) => true,
+        Err(error) => {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+            false
+        }
+    }
+}
 
 pub(super) fn show_breakpoint_expression_condition(
     ui: &mut egui::Ui,
@@ -233,6 +296,7 @@ pub(super) enum PreviewCommand {
 enum PreviewWorkerEvent {
     Paused(Box<engine::PendingTargetWrite>),
     PausedNode(Box<engine::PendingNodeValue>),
+    PausedInput(Box<engine::PendingNodeInput>),
     Finished(
         Result<cli::PayloadRunOutcome, PreviewRunError>,
         crate::run_report::TraceReport,
@@ -249,6 +313,7 @@ pub(super) enum PreviewPhase {
     Running,
     Paused(Box<engine::PendingTargetWrite>),
     PausedNode(Box<engine::PendingNodeValue>),
+    PausedInput(Box<engine::PendingNodeInput>),
     Stopping,
 }
 
@@ -292,18 +357,26 @@ struct PreviewDebugHook {
     cancelled: Arc<AtomicBool>,
     pause_each_write: std::cell::Cell<bool>,
     pause_next_node: std::cell::Cell<bool>,
+    pause_next_input: std::cell::Cell<bool>,
     breakpoint: Option<PreviewBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
     source_condition: Option<DebugSourceCondition>,
     node_condition: Option<DebugNodeCondition>,
     expression_condition: Option<DebugExpressionCondition>,
+    input_condition: Option<DebugInputCondition>,
 }
 
 impl engine::DebugHook for PreviewDebugHook {
     fn wants_node_values(&self) -> bool {
         self.expression_condition.is_some()
             || self.pause_next_node.get()
+            || self.cancelled.load(Ordering::Acquire)
+    }
+
+    fn wants_node_inputs(&self) -> bool {
+        self.input_condition.is_some()
+            || self.pause_next_input.get()
             || self.cancelled.load(Ordering::Acquire)
     }
 
@@ -325,6 +398,7 @@ impl engine::DebugHook for PreviewDebugHook {
                 Ok(PreviewCommand::Continue) => {
                     self.pause_each_write.set(false);
                     self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
                 }
                 Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
                     return engine::DebugDecision::Cancel;
@@ -386,6 +460,7 @@ impl engine::DebugHook for PreviewDebugHook {
                 Ok(PreviewCommand::Continue) => {
                     self.pause_each_write.set(false);
                     self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
                     return engine::DebugDecision::Resume;
                 }
                 Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -408,6 +483,7 @@ impl engine::DebugHook for PreviewDebugHook {
                 Ok(PreviewCommand::Continue) => {
                     self.pause_each_write.set(false);
                     self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
                 }
                 Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
                     return engine::DebugDecision::Cancel;
@@ -439,6 +515,64 @@ impl engine::DebugHook for PreviewDebugHook {
                     return engine::DebugDecision::Resume;
                 }
                 Ok(PreviewCommand::Continue) => {
+                    self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
+                    self.pause_each_write.set(false);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+            }
+        }
+    }
+
+    fn after_node_input(&self, input: &engine::PendingNodeInput) -> engine::DebugDecision {
+        if self.cancelled.load(Ordering::Acquire) {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            match self.commands.try_recv() {
+                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
+                    self.pause_each_write.set(true);
+                }
+                Ok(PreviewCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
+                }
+                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Err(TryRecvError::Empty) => break,
+            }
+        }
+        let matches_pin = self
+            .input_condition
+            .as_ref()
+            .is_some_and(|condition| condition.matches(input));
+        if !self.pause_next_input.replace(false) && !matches_pin {
+            return engine::DebugDecision::Resume;
+        }
+        if self
+            .events
+            .send(PreviewWorkerEvent::PausedInput(Box::new(input.clone())))
+            .is_err()
+        {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            if self.cancelled.load(Ordering::Acquire) {
+                return engine::DebugDecision::Cancel;
+            }
+            match self.commands.recv_timeout(Duration::from_millis(100)) {
+                Ok(PreviewCommand::Step) => {
+                    self.pause_next_input.set(true);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(PreviewCommand::Continue) => {
+                    self.pause_next_input.set(false);
                     self.pause_next_node.set(false);
                     self.pause_each_write.set(false);
                     return engine::DebugDecision::Resume;
@@ -602,6 +736,11 @@ impl FerruleApp {
                         &mut self.preview_expression_condition,
                         "preview_debug_expression_value_type",
                     );
+                    condition_valid &= show_breakpoint_input_condition(
+                        ui,
+                        &mut self.preview_input_condition,
+                        "preview_debug_input_value_type",
+                    );
                 });
                 if draft.input_identity.trim().is_empty() {
                     ui.colored_label(
@@ -669,7 +808,11 @@ impl FerruleApp {
                 }
                 ui.separator();
                 ui.horizontal(|ui| match &phase {
-                    Some(PreviewPhase::Paused(_) | PreviewPhase::PausedNode(_)) => {
+                    Some(
+                        PreviewPhase::Paused(_)
+                        | PreviewPhase::PausedNode(_)
+                        | PreviewPhase::PausedInput(_),
+                    ) => {
                         if ui.button("Step").clicked() {
                             action = Some(PreviewAction::Step);
                         }
@@ -805,6 +948,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let input_condition = if debug {
+            match self.preview_input_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "preview blocked".into();
+                    self.diagnostics.error("Preview blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("preview blocked by {} validation issue(s)", issues.len());
@@ -852,6 +1007,7 @@ impl FerruleApp {
                 source_condition,
                 node_condition,
                 expression_condition,
+                input_condition,
                 event_tx,
                 command_rx,
                 worker_cancelled,
@@ -897,7 +1053,9 @@ impl FerruleApp {
             Err(TryRecvError::Empty) => {
                 if !matches!(
                     pending.phase,
-                    PreviewPhase::Paused(_) | PreviewPhase::PausedNode(_)
+                    PreviewPhase::Paused(_)
+                        | PreviewPhase::PausedNode(_)
+                        | PreviewPhase::PausedInput(_)
                 ) {
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }
@@ -926,6 +1084,19 @@ impl FerruleApp {
                 } else {
                     self.status = format!("paused after graph node #{}", value.node);
                     pending.phase = PreviewPhase::PausedNode(value);
+                }
+                ctx.request_repaint();
+            }
+            PreviewWorkerEvent::PausedInput(input) => {
+                if matches!(pending.phase, PreviewPhase::Stopping) {
+                    pending.command(PreviewCommand::Cancel);
+                } else {
+                    self.status = format!(
+                        "paused at node #{} input #{}",
+                        input.consumer,
+                        input.input_index + 1
+                    );
+                    pending.phase = PreviewPhase::PausedInput(input);
                 }
                 ctx.request_repaint();
             }
@@ -994,6 +1165,7 @@ fn run_preview_worker(
     source_condition: Option<DebugSourceCondition>,
     node_condition: Option<DebugNodeCondition>,
     expression_condition: Option<DebugExpressionCondition>,
+    input_condition: Option<DebugInputCondition>,
     events: Sender<PreviewWorkerEvent>,
     commands: Receiver<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
@@ -1015,15 +1187,18 @@ fn run_preview_worker(
                 && position_condition.is_none()
                 && source_condition.is_none()
                 && node_condition.is_none()
-                && expression_condition.is_none(),
+                && expression_condition.is_none()
+                && input_condition.is_none(),
         ),
         pause_next_node: std::cell::Cell::new(false),
+        pause_next_input: std::cell::Cell::new(false),
         breakpoint,
         value_condition,
         position_condition,
         source_condition,
         node_condition,
         expression_condition,
+        input_condition,
     };
     let result = run_preview_payload(
         &project,
@@ -1204,6 +1379,7 @@ pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, deb
             ui.weak("The pending value has been computed but is not yet in the target. Step inserts it and pauses before the next write.");
         }
         PreviewPhase::PausedNode(value) => show_live_node_debug_state(ui, value),
+        PreviewPhase::PausedInput(input) => show_live_input_debug_state(ui, input),
     }
 }
 
@@ -1214,16 +1390,55 @@ pub(super) fn show_live_node_debug_state(ui: &mut egui::Ui, value: &engine::Pend
         "Result: {}: {}{suffix}",
         value.value.value_type, value.value.preview
     ));
-    if value.omitted_outer_positions > 0 {
+    show_live_expression_context(
+        ui,
+        &value.positions,
+        value.omitted_outer_positions,
+        value.position_paths_truncated,
+        &value.source,
+    );
+    ui.weak("Step continues to the next graph evaluation. Cancel stops before output publication.");
+}
+
+pub(super) fn show_live_input_debug_state(ui: &mut egui::Ui, input: &engine::PendingNodeInput) {
+    ui.strong(format!(
+        "Paused after node #{} reached node #{} input #{}",
+        input.input,
+        input.consumer,
+        input.input_index + 1
+    ));
+    let suffix = if input.value.truncated { "…" } else { "" };
+    ui.monospace(format!(
+        "Delivered: {}: {}{suffix}",
+        input.value.value_type, input.value.preview
+    ));
+    show_live_expression_context(
+        ui,
+        &input.positions,
+        input.omitted_outer_positions,
+        input.position_paths_truncated,
+        &input.source,
+    );
+    ui.weak("Step continues to the next recorded input delivery. Cancel stops before output publication.");
+}
+
+fn show_live_expression_context(
+    ui: &mut egui::Ui,
+    positions: &[engine::TracePosition],
+    omitted_outer_positions: usize,
+    position_paths_truncated: bool,
+    source: &engine::DebugSourceContext,
+) {
+    if omitted_outer_positions > 0 {
         ui.weak(format!(
             "{} outer position(s) omitted",
-            value.omitted_outer_positions
+            omitted_outer_positions
         ));
     }
-    if value.position_paths_truncated {
+    if position_paths_truncated {
         ui.weak("Some position paths were shortened in this bounded view.");
     }
-    for position in &value.positions {
+    for position in positions {
         let collection = if position.collection.is_empty() {
             "<current>".to_owned()
         } else {
@@ -1232,16 +1447,16 @@ pub(super) fn show_live_node_debug_state(ui: &mut egui::Ui, value: &engine::Pend
         ui.label(format!("Source position: {collection} #{}", position.index));
     }
     ui.strong("Active source frames (outer to inner)");
-    if value.source.omitted_outer_frames > 0 {
+    if source.omitted_outer_frames > 0 {
         ui.weak(format!(
             "{} outer frame(s) omitted",
-            value.source.omitted_outer_frames
+            source.omitted_outer_frames
         ));
     }
-    for (index, frame) in value.source.frames.iter().enumerate() {
+    for (index, frame) in source.frames.iter().enumerate() {
         ui.label(format!(
             "Frame {}: {}",
-            value.source.omitted_outer_frames + index + 1,
+            source.omitted_outer_frames + index + 1,
             debug_value(&frame.preview)
         ));
         ui.indent(("debug_node_source_frame", index), |ui| {
@@ -1253,7 +1468,6 @@ pub(super) fn show_live_node_debug_state(ui: &mut egui::Ui, value: &engine::Pend
             }
         });
     }
-    ui.weak("Step continues to the next graph evaluation. Cancel stops before output publication.");
 }
 
 fn debug_value(value: &engine::DebugInstancePreview) -> String {
