@@ -247,14 +247,18 @@ delimited CSV; connected named final targets remain XML. An original static
 XML host source may connect to named inputs in multiple stages, including the
 first and later intermediate stages, when its boundary and output ports still
 match. Connections from a reused output port share one vertex with multiple
-edges. Preflight and native-profile checks run before any design or schema
-sibling is published.
+edges. Intermediate XML pass-through components retain their declared output
+instance and source preview instance, even when the two paths differ.
+Preflight and native-profile checks run before any design or schema sibling is
+published.
 Independent intermediate targets, disconnected final targets, other connected
 later-stage named sources, and other non-XML boundaries reject explicitly.
 Synthetic two- and four-stage export/re-import runs preserve stage results;
 terminal fan-out, repeated named-host connections, and a CSV final target
 preserve their connected outputs. The CSV result also passes local write/read
-checks. Acceptance by the proprietary application remains unverified.
+checks. A local chained-report sample and a synthetic distinct-path case
+preserve both intermediate instance identities across export/reimport.
+Acceptance by the proprietary application remains unverified.
 When an imported JSON boundary or JSON string parser fell back to its entry
 tree because its schema was unavailable, best-effort export records that
 unresolved reference beside the generated schema and re-import reports it
