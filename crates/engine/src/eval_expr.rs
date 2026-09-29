@@ -318,6 +318,7 @@ pub(crate) fn eval_expr(
             arg,
         } => eval_sequence_aggregate(
             program,
+            node_id,
             *function,
             sequence,
             *predicate,
