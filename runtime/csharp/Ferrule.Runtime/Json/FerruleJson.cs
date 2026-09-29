@@ -75,6 +75,20 @@ public static partial class FerruleJson
                     AllowTrailingCommas = false,
                 });
             var budget = new NodeBudget();
+            if (!schema.Repeating && !schema.IsScalar && !schema.JsonAny &&
+                parsed.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                budget.Visit(0);
+                var rows = new List<FerruleInstance>();
+                foreach (var row in parsed.RootElement.EnumerateArray())
+                {
+                    budget.Visit(1);
+                    rows.Add(ReadSingleNode(schema, row, budget, 1));
+                }
+
+                return new FerruleRepeated(rows);
+            }
+
             return ReadNode(schema, parsed.RootElement, budget, 0);
         }
         catch (FerruleRuntimeException)
@@ -1163,11 +1177,13 @@ public static partial class FerruleJson
 
         if (schema.Repeating)
         {
-            if (instance is not FerruleRepeated repeated)
+            var items = instance switch
             {
-                throw Shape(schema.Name, "array", InstanceKind(instance));
-            }
-            ValidateItemCount(schema, repeated.Items.Count);
+                FerruleRepeated repeated => repeated.Items,
+                FerruleMappedSequence mappedArray => mappedArray.Items,
+                _ => throw Shape(schema.Name, "array", InstanceKind(instance)),
+            };
+            ValidateItemCount(schema, items.Count);
 
             writer.WriteStartArray();
             if (schema.JsonUniqueItems || schema.JsonContains.Count != 0)
@@ -1175,13 +1191,13 @@ public static partial class FerruleJson
                 WriteConstrainedOutputItems(
                     writer,
                     schema,
-                    repeated.Items,
+                    items,
                     budget,
                     depth + 1);
             }
             else
             {
-                foreach (var item in repeated.Items)
+                foreach (var item in items)
                 {
                     WriteSingleNode(writer, schema, item, budget, depth + 1);
                 }
@@ -1210,6 +1226,16 @@ public static partial class FerruleJson
         NodeBudget budget,
         int depth)
     {
+        if (instance is FerruleMappedSequence mapped)
+        {
+            if (mapped.Items.Count != 1)
+            {
+                throw Shape(schema.Name, "one mapped item", "mapped sequence");
+            }
+
+            instance = mapped.Items[0];
+        }
+
         if (schema.JsonAny)
         {
             WriteAny(writer, schema, instance);
@@ -1743,6 +1769,10 @@ public static partial class FerruleJson
 
     private static bool BoundaryAbsence(JsonSchemaNode schema, FerruleInstance instance)
     {
+        if (instance is FerruleMappedSequence { Items.Count: 0 })
+        {
+            return !schema.Repeating || schema.ItemCountRange is { Minimum: > 0 };
+        }
         if (instance is FerruleRepeated { Items.Count: 0 } &&
             schema.ItemCountRange is { Minimum: > 0 })
         {
@@ -1877,6 +1907,10 @@ public static partial class FerruleJson
         JsonSchemaNode schema,
         FerruleInstance instance)
     {
+        if (!schema.Repeating && instance is FerruleMappedSequence { Items.Count: 1 } mapped)
+        {
+            instance = mapped.Items[0];
+        }
         if (instance is not FerruleScalar scalar)
         {
             return false;
@@ -2069,7 +2103,11 @@ public static partial class FerruleJson
     }
 
     private static bool IsExplicitJsonNull(FerruleInstance instance) =>
-        instance is FerruleScalar { Value.Kind: FerruleValueKind.JsonNull };
+        instance is FerruleScalar { Value.Kind: FerruleValueKind.JsonNull } or
+            FerruleMappedSequence
+            {
+                Items: [FerruleScalar { Value.Kind: FerruleValueKind.JsonNull }],
+            };
 
     private static bool ConstraintMatches(JsonConstraint constraint, JsonElement value) =>
         constraint.Type switch

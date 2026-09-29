@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against three local, gitignored mappings.
+//! Opt-in generated-backend execution against four local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -10,6 +10,7 @@ enum SourceKind {
     Json,
     Xml,
     FlexText,
+    Csv,
 }
 
 #[derive(Clone, Copy)]
@@ -25,7 +26,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 3] = [
+const CASES: [CorpusCase; 4] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -42,6 +43,12 @@ const CASES: [CorpusCase; 3] = [
         sample: "Altova_Hierarchical_FLF.mfd",
         input: "Altova_Hierarchical_FLF.txt",
         source_kind: SourceKind::FlexText,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "BuildHierarchyFromTextfile.mfd",
+        input: "People.txt",
+        source_kind: SourceKind::Csv,
         target_kind: TargetKind::Xml,
     },
 ];
@@ -106,6 +113,9 @@ fn run_case(
             SourceKind::Json => project.source_options.json_document,
             SourceKind::Xml => project.source_options.xml_document,
             SourceKind::FlexText => project.source_options.flextext.is_some(),
+            SourceKind::Csv => {
+                project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
+            }
         },
         "{sample}: unexpected input format"
     );
@@ -129,16 +139,46 @@ fn run_case(
             &project.source,
             project.source_options.flextext.as_ref().unwrap(),
         )?,
+        SourceKind::Csv => Instance::Repeated(format_csv::read(
+            &input_path,
+            &project.source,
+            project.source_options.delimiter,
+            project.source_options.has_header_row.unwrap_or(true),
+        )?),
     };
-    // Generated hosts expose a schema-shaped JSON API. Preserve native XML
-    // and FlexText readers' typed instances while crossing that host API.
+    // Generated hosts expose a schema-shaped JSON API. Preserve native XML,
+    // FlexText, and CSV readers' typed instances while crossing that host API.
     let source_json = match case.source_kind {
         SourceKind::Json => std::fs::read_to_string(&input_path)?,
-        SourceKind::Xml | SourceKind::FlexText => format_json::to_string(&project.source, &source)?,
+        SourceKind::Xml | SourceKind::FlexText | SourceKind::Csv => {
+            format_json::to_string(&project.source, &source)?
+        }
     };
     let expected = engine::run(&project, &source)?;
     let expected_json: serde_json::Value =
         serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?;
+    if sample == "BuildHierarchyFromTextfile.mfd" {
+        let Instance::Repeated(rows) = &source else {
+            panic!("{sample}: CSV source should contain repeated rows");
+        };
+        assert_eq!(rows.len(), 30, "{sample}: source row count");
+        assert_eq!(expected_json["Name"], "Organization Chart");
+        let offices = expected_json["Office"].as_array().expect("office array");
+        assert_eq!(offices.len(), 2, "{sample}: company groups");
+        let departments = offices
+            .iter()
+            .flat_map(|office| office["Department"].as_array().expect("department array"))
+            .collect::<Vec<_>>();
+        assert_eq!(departments.len(), 7, "{sample}: department groups");
+        assert_eq!(
+            departments
+                .iter()
+                .map(|department| department["Person"].as_array().expect("person array").len())
+                .sum::<usize>(),
+            30,
+            "{sample}: mapped people"
+        );
+    }
 
     let generated_input = case_dir.join("source.json");
     std::fs::write(&generated_input, source_json)?;
