@@ -9,5 +9,6 @@ description = "JSON Schema import and JSON instance read/write"
 [dependencies]
 ir = { workspace = true }
 json-pattern = { workspace = true }
+json5 = { workspace = true }
 serde_json = { workspace = true, features = ["raw_value"] }
 thiserror = { workspace = true }

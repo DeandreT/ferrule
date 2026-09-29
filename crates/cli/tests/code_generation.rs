@@ -38,6 +38,8 @@ mod lookups;
 mod path_hierarchy;
 #[path = "code_generation/recursive_sequences.rs"]
 mod recursive_sequences;
+#[path = "code_generation/reference_corpus.rs"]
+mod reference_corpus;
 #[path = "code_generation/runtime_values.rs"]
 mod runtime_values;
 #[path = "code_generation/scalar_algorithms.rs"]

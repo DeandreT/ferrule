@@ -42,7 +42,8 @@ jobs:
           -p codegen-runtime
           -p codegen-rust
           -p codegen-csharp
+          -- --test-threads=2
       - name: generated Rust and C# parity tests
         run: >-
           cargo test -p cli --test code_generation
-          --features codegen-tests
+          --features codegen-tests -- --test-threads=2

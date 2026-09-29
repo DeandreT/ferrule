@@ -121,6 +121,8 @@ pub fn parse_source(
         DataFormat::Json => {
             let parsed = if project.source_options.json_lines {
                 format_json::from_lines(text, &project.source)
+            } else if project.source_options.json5 {
+                format_json::from_json5_str(text, &project.source)
             } else {
                 format_json::from_str(text, &project.source)
             };
@@ -181,6 +183,8 @@ pub fn serialize_target(
         DataFormat::Json => {
             let serialized = if project.target_options.json_lines {
                 format_json::to_lines(&project.target, target)
+            } else if project.target_options.json5 {
+                format_json::to_json5_string(&project.target, target)
             } else {
                 format_json::to_string(&project.target, target)
             };
@@ -579,6 +583,27 @@ mod tests {
             output,
             "{\"name\":\"Ada\",\"age\":37}\n{\"name\":\"Grace\",\"age\":42}\n"
         );
+    }
+
+    #[test]
+    fn json5_options_apply_to_browser_input_and_output() {
+        let mut project = scalar_project(false);
+        project.source_options.json5 = true;
+        project.target_options.json5 = true;
+
+        let output = run(
+            &project,
+            "{name: 'Ada', age: 37,}",
+            DataFormat::Json,
+            DataFormat::Json,
+        )
+        .unwrap();
+
+        assert!(output.contains("name"));
+        let parsed = format_json::from_json5_str(&output, &project.target).unwrap();
+        let expected =
+            format_json::from_str(r#"{"name":"Ada","age":37}"#, &project.target).unwrap();
+        assert_eq!(parsed, expected);
     }
 
     #[test]

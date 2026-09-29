@@ -207,6 +207,21 @@ Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable
 source or target can be recovered.
 
+A connected target that also supplies a later target cannot be represented as
+two independent targets in one `Project`. Ordinary `import-mfd` reports that
+loss, and the executable import profile rejects it. For the supported
+two-stage XML profile, import the design as a typed pipeline instead:
+
+```sh
+cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
+```
+
+The pipeline keeps the computed intermediate target as the second stage's
+source, with original source components bound as host inputs. It validates the
+whole stage graph before writing `flow.json`; other chain shapes reject
+explicitly. See [mapping pipelines](mapping-pipelines.md) for input binding and
+execution.
+
 Static source, target, named-source, and named-target paths are rebased when
 the generated project is written somewhere other than the design directory.
 HTTP URLs and graph-computed paths are unchanged. Moving or using Save As on a
@@ -222,6 +237,9 @@ cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd 
 
 Export writes the representable project subset plus generated schema or layout
 siblings. Component kinds are selected from endpoint format metadata and paths.
+JSON5 endpoint syntax currently rejects before export because the native
+component setting has not been verified; emitting an ordinary JSON component
+would change the document syntax.
 Supported named sources, independent targets, dynamic XML paths, HTTP response
 boundaries, selected joins, exception sinks, and configured format components
 retain their ownership in the exported design. Structured XML string serializers

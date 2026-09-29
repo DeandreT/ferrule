@@ -14,6 +14,22 @@ use super::{
 };
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    reject_json5_boundary(&project.source_path, &project.source_options, "source")?;
+    reject_json5_boundary(&project.target_path, &project.target_options, "target")?;
+    for source in &project.extra_sources {
+        reject_json5_boundary(
+            &Some(source.path.clone()),
+            &source.options,
+            &format!("additional source `{}`", source.name),
+        )?;
+    }
+    for target in &project.extra_targets {
+        reject_json5_boundary(
+            &target.path,
+            &target.options,
+            &format!("additional target `{}`", target.name),
+        )?;
+    }
     exception::validate(project)?;
     wsdl::validate(project)?;
     join::validate(project)?;
@@ -205,6 +221,24 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
                 )));
             }
         }
+    }
+    Ok(())
+}
+
+fn reject_json5_boundary(
+    path: &Option<String>,
+    options: &FormatOptions,
+    label: &str,
+) -> Result<(), MfdError> {
+    let extension_selects_json5 = path
+        .as_deref()
+        .and_then(|path| Path::new(path).extension())
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json5"));
+    if options.json5 || extension_selects_json5 {
+        return Err(MfdError::Unsupported(format!(
+            "{label} uses JSON5 document syntax, which .mfd export cannot encode"
+        )));
     }
     Ok(())
 }

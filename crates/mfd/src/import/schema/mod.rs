@@ -637,6 +637,18 @@ fn read_json_component_resolved(
     }
 
     let json_lines = json_el.is_some_and(|json| json.attribute("jsonlines") == Some("1"));
+    for attribute in ["inputinstance", "outputinstance"] {
+        let json5_path = json_el
+            .and_then(|json| json.attribute(attribute))
+            .and_then(|path| Path::new(path).extension())
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("json5"));
+        if json5_path {
+            warnings.push(format!(
+                "JSON component `{name}` has a .json5 {attribute} path, but the native .mfd JSON5 setting is unverified; ordinary JSON import would be unsafe. Supply a reference-saved JSON5 design before executable import"
+            ));
+        }
+    }
     let external_source = json_el.and_then(|json| {
         let metadata = json
             .children()

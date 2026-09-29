@@ -1,6 +1,7 @@
 //! Last-run summary and bounded output previews for the native GUI.
 
 use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -74,9 +75,54 @@ pub struct RunReport {
 pub enum RunReportKind {
     Run,
     Preview,
+    Pipeline,
 }
 
 impl RunReport {
+    pub fn from_pipeline_outcome(
+        outcome: cli::PipelineRunOutcome,
+        pipeline_path: PathBuf,
+        duration: Duration,
+    ) -> Self {
+        let records_written = outcome.artifacts.iter().fold(0usize, |sum, artifact| {
+            sum.saturating_add(artifact.records_written)
+        });
+        let mut target_counts = std::collections::BTreeMap::new();
+        for artifact in &outcome.artifacts {
+            *target_counts
+                .entry((artifact.stage.clone(), artifact.target.clone()))
+                .or_insert(0usize) += 1;
+        }
+        let outputs = outcome
+            .artifacts
+            .into_iter()
+            .map(|artifact| {
+                let target = artifact.target.as_deref().unwrap_or("Primary");
+                let name = if target_counts
+                    .get(&(artifact.stage.clone(), artifact.target.clone()))
+                    .is_some_and(|count| *count > 1)
+                {
+                    format!(
+                        "{} / {target} - {}",
+                        artifact.stage,
+                        artifact.path.display()
+                    )
+                } else {
+                    format!("{} / {target}", artifact.stage)
+                };
+                RunOutput::new(name, artifact.records_written, artifact.path)
+            })
+            .collect();
+        Self {
+            kind: RunReportKind::Pipeline,
+            duration,
+            records_written,
+            input_path: pipeline_path,
+            outputs,
+            trace: TraceReport::default(),
+        }
+    }
+
     pub fn from_outcome_with_trace(
         outcome: cli::RunOutcome,
         duration: Duration,
@@ -137,6 +183,7 @@ impl RunReport {
 enum ReportPage {
     Output,
     Trace,
+    History,
 }
 
 #[derive(Debug)]
@@ -145,15 +192,24 @@ pub struct RunReportView {
     selected_output: usize,
     page: ReportPage,
     trace_filter: String,
+    history_by_node: BTreeMap<mapping::NodeId, Vec<usize>>,
+    history_node: Option<mapping::NodeId>,
 }
 
 impl RunReportView {
     pub fn new(report: RunReport) -> Self {
+        let history_by_node = index_node_history(&report.trace.events);
+        let history_node = report.trace.events.iter().find_map(|event| match event {
+            cli::TraceEvent::NodeValue { node, .. } => Some(*node),
+            _ => None,
+        });
         Self {
             report,
             selected_output: 0,
             page: ReportPage::Output,
             trace_filter: String::new(),
+            history_by_node,
+            history_node,
         }
     }
 
@@ -161,6 +217,16 @@ impl RunReportView {
     pub fn selected_output(&self) -> usize {
         self.selected_output
     }
+}
+
+fn index_node_history(events: &[cli::TraceEvent]) -> BTreeMap<mapping::NodeId, Vec<usize>> {
+    let mut history = BTreeMap::<mapping::NodeId, Vec<usize>>::new();
+    for (index, event) in events.iter().enumerate() {
+        if let cli::TraceEvent::NodeValue { node, .. } = event {
+            history.entry(*node).or_default().push(index);
+        }
+    }
+    history
 }
 
 #[derive(Debug)]
@@ -311,6 +377,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool, view: &mut RunReportView) {
     let title = match view.report.kind {
         RunReportKind::Run => "Run results",
         RunReportKind::Preview => "Preview results",
+        RunReportKind::Pipeline => "Pipeline results",
     };
     egui::Window::new(title)
         .open(&mut window_open)
@@ -327,6 +394,7 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.strong(match view.report.kind {
             RunReportKind::Run => "Completed",
             RunReportKind::Preview => "Preview completed",
+            RunReportKind::Pipeline => "Pipeline completed",
         });
         ui.separator();
         ui.label(match view.report.kind {
@@ -334,6 +402,9 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
                 format!("Primary: {}", format_records(view.report.records_written))
             }
             RunReportKind::Preview => {
+                format!("Records: {}", format_records(view.report.records_written))
+            }
+            RunReportKind::Pipeline => {
                 format!("Records: {}", format_records(view.report.records_written))
             }
         });
@@ -354,6 +425,7 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.weak(match view.report.kind {
             RunReportKind::Run => "Input",
             RunReportKind::Preview => "Logical input",
+            RunReportKind::Pipeline => "Pipeline",
         });
         let input = view.report.input_path.display().to_string();
         ui.add(
@@ -368,12 +440,14 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
     ui.horizontal(|ui| {
         ui.selectable_value(&mut view.page, ReportPage::Output, "Output");
         ui.selectable_value(&mut view.page, ReportPage::Trace, "Trace");
+        ui.selectable_value(&mut view.page, ReportPage::History, "History");
     });
     ui.separator();
 
     match view.page {
         ReportPage::Output => show_outputs(ui, view),
         ReportPage::Trace => show_trace(ui, view),
+        ReportPage::History => show_history(ui, view),
     }
 }
 
@@ -396,6 +470,7 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.weak(match view.report.kind {
             RunReportKind::Run => "No output files were produced.",
             RunReportKind::Preview => "No output artifacts were produced.",
+            RunReportKind::Pipeline => "No output files were produced.",
         });
         return;
     };
@@ -566,6 +641,87 @@ fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
                 .on_hover_text(row);
             }
         });
+}
+
+fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Graph node output history");
+        if let Some(node) = view.history_node {
+            egui::ComboBox::from_id_salt("run_history_node")
+                .selected_text(format!("Node {node}"))
+                .show_ui(ui, |ui| {
+                    for (&candidate, events) in &view.history_by_node {
+                        ui.selectable_value(
+                            &mut view.history_node,
+                            Some(candidate),
+                            format!("Node {candidate} ({} values)", events.len()),
+                        );
+                    }
+                });
+        }
+        if view.report.trace.dropped > 0 {
+            ui.weak(format!(
+                "History may be incomplete: {} later trace events omitted",
+                view.report.trace.dropped
+            ));
+        }
+    });
+    ui.weak("Successful values in evaluation order; each row shows its source context.");
+    ui.separator();
+
+    let Some(indices) = view
+        .history_node
+        .and_then(|node| view.history_by_node.get(&node))
+    else {
+        ui.weak("No graph node values were recorded for this run.");
+        return;
+    };
+    let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 6.0;
+    egui::ScrollArea::vertical()
+        .id_salt("run_history")
+        .auto_shrink([false, false])
+        .show_rows(ui, row_height, indices.len(), |ui, range| {
+            for (offset, &index) in indices[range.clone()].iter().enumerate() {
+                let occurrence = range.start + offset + 1;
+                let cli::TraceEvent::NodeValue {
+                    positions, value, ..
+                } = &view.report.trace.events[index]
+                else {
+                    continue;
+                };
+                let row = history_row(occurrence, index, positions, value);
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&row).monospace())
+                        .selectable(true)
+                        .wrap_mode(egui::TextWrapMode::Truncate),
+                )
+                .on_hover_text(row);
+            }
+        });
+}
+
+fn history_row(
+    occurrence: usize,
+    event_index: usize,
+    positions: &[cli::TracePosition],
+    value: &cli::TraceValue,
+) -> String {
+    let context = if positions.is_empty() {
+        "<root>".to_string()
+    } else {
+        positions
+            .iter()
+            .map(format_trace_position)
+            .collect::<Vec<_>>()
+            .join(" > ")
+    };
+    let truncated = if value.truncated { " [truncated]" } else { "" };
+    format!(
+        "{:>6}  event {:>6}  {context}  {}{truncated}",
+        occurrence,
+        event_index + 1,
+        format_trace_value(value)
+    )
 }
 
 fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
@@ -873,6 +1029,12 @@ fn format_trace_position(position: &cli::TracePosition) -> String {
     let mut text = format!("{collection}[{}]", position.index);
     if position.grouped {
         text.push_str(" group");
+    }
+    if let Some(join) = position.join {
+        text.push_str(&format!(" join={}", join.get()));
+    }
+    if let Some((join, index)) = position.join_position {
+        text.push_str(&format!(" tuple={}[{index}]", join.get()));
     }
     if let Some(path) = &position.document_path {
         text.push_str(" @");

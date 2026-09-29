@@ -13,8 +13,8 @@ mod user_function;
 
 use graph::{validate_cycles, validate_graph};
 use options::{
-    validate_external_source_options, validate_structured_edi_options, validate_target_options,
-    validate_wsdl_options, validate_xbrl_options, validate_xlsx_options,
+    validate_external_source_options, validate_json5_options, validate_structured_edi_options,
+    validate_target_options, validate_wsdl_options, validate_xbrl_options, validate_xlsx_options,
 };
 use schema::{display_path, source_path_matches, validate_schema};
 use scope::{ScopeSchemas, validate_scope};
@@ -141,6 +141,11 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         );
     }
     let source_options_start = issues.len();
+    validate_json5_options(
+        "source format options",
+        &project.source_options,
+        &mut issues,
+    );
     validate_xbrl_options(
         "source format options",
         &project.source_options,
@@ -299,6 +304,11 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
             &format!("{location} format options"),
             &source.options,
             XbrlBoundaryMode::ExternalSource,
+            &mut issues,
+        );
+        validate_json5_options(
+            &format!("{location} format options"),
+            &source.options,
             &mut issues,
         );
         validate_external_source_options(

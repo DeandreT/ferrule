@@ -226,6 +226,111 @@ fn trace_collection_is_bounded_and_reports_omissions() {
 }
 
 #[test]
+fn node_history_keeps_each_evaluation_in_trace_order() {
+    let events = vec![
+        trace_event(8, ir::Value::String("first".into())),
+        cli::TraceEvent::ScopeStarted {
+            scope: trace_scope(),
+            iteration: cli::TraceIteration::Once,
+            positions: Vec::new(),
+        },
+        trace_event(8, ir::Value::String("second".into())),
+        trace_event(9, ir::Value::Bool(true)),
+        trace_event(8, ir::Value::String("second".into())),
+    ];
+
+    let history = index_node_history(&events);
+    assert_eq!(history[&8], [0, 2, 4]);
+    assert_eq!(history[&9], [3]);
+
+    let view = RunReportView::new(RunReport {
+        kind: RunReportKind::Preview,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("input.json"),
+        outputs: Vec::new(),
+        trace: TraceReport { events, dropped: 2 },
+    });
+    assert_eq!(view.history_node, Some(8));
+    assert_eq!(view.history_by_node[&8], [0, 2, 4]);
+    assert_eq!(view.report.trace.dropped, 2);
+}
+
+#[test]
+fn history_rows_show_nested_join_context_and_bounded_values() {
+    let join = mapping::JoinId::new(4);
+    let positions = [
+        cli::TracePosition {
+            collection: vec!["Order".into()],
+            index: 2,
+            grouped: false,
+            join: None,
+            join_position: None,
+            document_path: None,
+        },
+        cli::TracePosition {
+            collection: vec!["Order".into(), "Line".into()],
+            index: 3,
+            grouped: true,
+            join: Some(join),
+            join_position: Some((join, 5)),
+            document_path: Some("nested/part.xml".into()),
+        },
+    ];
+    let row = history_row(
+        2,
+        6,
+        &positions,
+        &cli::TraceValue {
+            value_type: "string",
+            preview: "é".into(),
+            truncated: true,
+        },
+    );
+
+    assert!(row.contains("     2  event      7"));
+    assert!(row.contains("Order[2] > Order/Line[3] group join=4 tuple=4[5] @nested/part.xml"));
+    assert!(row.contains("string(é...) [truncated]"));
+    assert!(
+        history_row(
+            1,
+            0,
+            &[],
+            &cli::TraceValue {
+                value_type: "null",
+                preview: "null".into(),
+                truncated: false,
+            }
+        )
+        .contains("<root>  null(null)")
+    );
+}
+
+#[test]
+fn history_renders_an_empty_pipeline_trace() {
+    let report = RunReport {
+        kind: RunReportKind::Pipeline,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("pipeline.json"),
+        outputs: Vec::new(),
+        trace: TraceReport::default(),
+    };
+    let mut view = RunReportView::new(report);
+    assert!(view.history_by_node.is_empty());
+    assert_eq!(view.history_node, None);
+    view.page = ReportPage::History;
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    let mut open = true;
+    let output = context.run_ui(Default::default(), |ui| {
+        show(ui.ctx(), &mut open, &mut view);
+    });
+    assert!(open);
+    assert!(!output.shapes.is_empty());
+}
+
+#[test]
 fn scope_trace_rows_expose_searchable_control_context() {
     let started = cli::TraceEvent::ScopeStarted {
         scope: trace_scope(),
@@ -319,6 +424,13 @@ fn results_window_renders_and_loads_only_the_selected_preview() {
     assert!(view.report.outputs[1].preview.is_none());
 
     view.page = ReportPage::Trace;
+    let output = context.run_ui(Default::default(), |ui| {
+        show(ui.ctx(), &mut open, &mut view);
+    });
+    assert!(!output.shapes.is_empty());
+
+    view.page = ReportPage::History;
+    assert_eq!(view.history_node, Some(7));
     let output = context.run_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });

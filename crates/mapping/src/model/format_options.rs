@@ -310,6 +310,10 @@ pub struct FormatOptions {
     /// to carry a `.json`, `.jsonl`, or `.ndjson` extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub json_document: bool,
+    /// JSON5 instance syntax. JSON schemas remain ordinary JSON. This can be
+    /// selected independently of the instance filename extension.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub json5: bool,
     /// Flat tabular component family retained when an instance filename has
     /// no recognized format extension. Explicit extensions and embedded
     /// format adapters take precedence over this fallback identity.

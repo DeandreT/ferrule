@@ -22,6 +22,8 @@ mod icons;
 mod layout_store;
 mod new_mapping;
 mod path_picker;
+mod pipeline_edit;
+mod pipeline_run;
 mod preferences;
 mod preview;
 mod run_report;
