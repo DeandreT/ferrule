@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against thirteen local, gitignored mappings.
+//! Opt-in generated-backend execution against fourteen local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -12,6 +12,7 @@ enum SourceKind {
     FlexText,
     Csv,
     Protobuf,
+    XlsxTransposed,
 }
 
 #[derive(Clone, Copy)]
@@ -28,7 +29,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 13] = [
+const CASES: [CorpusCase; 14] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -107,6 +108,12 @@ const CASES: [CorpusCase; 13] = [
         source_kind: SourceKind::Protobuf,
         target_kind: TargetKind::Csv,
     },
+    CorpusCase {
+        sample: "ExcelColumnsToRecords.mfd",
+        input: "ValuesByRegion.xlsx",
+        source_kind: SourceKind::XlsxTransposed,
+        target_kind: TargetKind::Csv,
+    },
 ];
 
 #[test]
@@ -179,6 +186,10 @@ fn run_case(
                 project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
             }
             SourceKind::Protobuf => project.source_options.protobuf.is_some(),
+            SourceKind::XlsxTransposed => {
+                project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Xlsx)
+                    && !project.source_options.xlsx_rows.is_empty()
+            }
         },
         "{sample}: unexpected input format"
     );
@@ -214,14 +225,22 @@ fn run_case(
             let layout = format_protobuf::Layout::parse(&options.schema)?;
             format_protobuf::read(&input_path, &layout, &options.root_message)?
         }
+        SourceKind::XlsxTransposed => Instance::Repeated(format_xlsx::read_transposed(
+            &input_path,
+            &project.source,
+            project.source_options.xlsx_sheet.as_deref(),
+            &project.source_options.xlsx_rows,
+        )?),
     };
-    // Generated hosts expose a schema-shaped JSON API. Preserve native XML,
-    // FlexText, and CSV readers' typed instances while crossing that host API.
+    // Generated hosts expose a schema-shaped JSON API. Preserve each native
+    // reader's typed instance while crossing that host API.
     let source_json = match case.source_kind {
         SourceKind::Json => std::fs::read_to_string(&input_path)?,
-        SourceKind::Xml | SourceKind::FlexText | SourceKind::Csv | SourceKind::Protobuf => {
-            format_json::to_string(&project.source, &source)?
-        }
+        SourceKind::Xml
+        | SourceKind::FlexText
+        | SourceKind::Csv
+        | SourceKind::Protobuf
+        | SourceKind::XlsxTransposed => format_json::to_string(&project.source, &source)?,
     };
     let mut named_sources = Vec::new();
     let mut named_input_paths = Vec::new();
@@ -500,6 +519,29 @@ fn run_case(
             2,
             "{sample}: third value-map branch"
         );
+    }
+    if sample == "ExcelColumnsToRecords.mfd" {
+        let rows = expected_json.as_array().expect("transposed XLSX rows");
+        assert_eq!(rows.len(), 4, "{sample}: four non-header region columns");
+        assert_eq!(
+            rows.iter()
+                .map(|row| row["Region"].as_str())
+                .collect::<Vec<_>>(),
+            vec![Some("US"), Some("EU"), Some("JP"), Some("AU")],
+            "{sample}: source column order"
+        );
+        for row in rows {
+            let component = |field: &str| row[field].as_f64().expect("numeric revenue field");
+            assert_eq!(
+                component("Passenger tickets")
+                    + component("Onboard and other")
+                    + component("Tour and other"),
+                component("Revenues"),
+                "{sample}: item-at fields align within a region column"
+            );
+        }
+        assert_eq!(rows[0]["Revenues"], 2_406_000_000.0);
+        assert_eq!(rows[3]["Revenues"], 4_954_000_000.0);
     }
 
     let generated_input = case_dir.join("source.json");
