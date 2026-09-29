@@ -126,6 +126,7 @@ fn has_conflicting_options(options: &FormatOptions) -> bool {
         || options.idoc.is_some()
         || options.swift_mt.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()

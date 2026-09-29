@@ -69,6 +69,16 @@ pub fn sample_csv(
     format_csv::sample(path, delimiter, has_headers)
 }
 
+/// Bounded CSV preview with an explicit quote character.
+pub fn sample_csv_with_quote(
+    path: &Path,
+    delimiter: Option<char>,
+    quote: Option<char>,
+    has_headers: bool,
+) -> Result<CsvSample, format_csv::CsvFormatError> {
+    format_csv::sample_with_quote(path, delimiter, quote, has_headers)
+}
+
 /// Result of running a project after resolving its input and output paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunOutcome {
@@ -949,11 +959,12 @@ fn write_output(
             let rows = instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for a CSV output")?;
-            format_csv::write(
+            format_csv::write_with_quote(
                 path,
                 schema,
                 rows,
                 options.delimiter,
+                options.csv_quote,
                 options.has_header_row.unwrap_or(true),
             )
             .with_context(|| format!("writing output {}", path.display()))?;
@@ -1233,10 +1244,11 @@ fn read_instance(
 
     let instance = match extension_for_dispatch(path, options)?.as_str() {
         "csv" | "txt" => {
-            let rows = format_csv::read(
+            let rows = format_csv::read_with_quote(
                 path,
                 schema,
                 options.delimiter,
+                options.csv_quote,
                 options.has_header_row.unwrap_or(true),
             )
             .with_context(|| format!("reading input {}", path.display()))?;
@@ -1488,12 +1500,13 @@ fn sanitize_uri(uri: &ureq::http::Uri) -> String {
 
 fn reject_fixed_width_csv_options(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
     if options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.xml_document
         || options.local_xml_file_set
     {
         bail!(
-            "`fixed_width` cannot be combined with `delimiter`, `has_header_row`, \
+            "`fixed_width` cannot be combined with `delimiter`, `csv_quote`, `has_header_row`, \
              `xml_document`, or `local_xml_file_set` for {side}"
         );
     }
@@ -1505,6 +1518,7 @@ fn reject_idoc_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
         .edi_kind
         .is_some_and(|kind| kind != EdiBoundaryKind::Idoc)
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1531,6 +1545,7 @@ fn reject_swift_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result
         .edi_kind
         .is_some_and(|kind| kind != EdiBoundaryKind::SwiftMt)
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1556,6 +1571,7 @@ fn reject_xbrl_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
     if options.lenient_segments
         || options.edi_kind.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1581,6 +1597,7 @@ fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
     if options.lenient_segments
         || options.edi_kind.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1606,6 +1623,7 @@ fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
     if options.lenient_segments
         || options.edi_kind.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.idoc.is_some()
@@ -1631,6 +1649,7 @@ fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
     if options.lenient_segments
         || options.edi_kind.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1683,6 +1702,7 @@ fn reject_edi_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
     if options.idoc.is_some()
         || options.swift_mt.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1709,6 +1729,7 @@ fn reject_json_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
         || options.idoc.is_some()
         || options.swift_mt.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1750,6 +1771,7 @@ fn reject_xml_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
         || options.idoc.is_some()
         || options.swift_mt.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1789,6 +1811,7 @@ fn reject_external_source_conflicts(options: &FormatOptions, side: &str) -> anyh
         || options.idoc.is_some()
         || options.swift_mt.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -1983,8 +2006,10 @@ fn validate_tabular_fallback(
         Some(TabularBoundaryKind::Csv) if has_xlsx_specific_layout(options) => {
             bail!("CSV fallback identity cannot be combined with XLSX layout options for {side}")
         }
-        Some(TabularBoundaryKind::Xlsx) if options.delimiter.is_some() => {
-            bail!("XLSX fallback identity cannot be combined with `delimiter` for {side}")
+        Some(TabularBoundaryKind::Xlsx)
+            if options.delimiter.is_some() || options.csv_quote.is_some() =>
+        {
+            bail!("XLSX fallback identity cannot be combined with CSV dialect options for {side}")
         }
         Some(_) | None => Ok(()),
     }

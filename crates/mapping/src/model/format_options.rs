@@ -322,6 +322,9 @@ pub struct FormatOptions {
     /// CSV: the field delimiter (default `,`).
     #[serde(default)]
     pub delimiter: Option<char>,
+    /// CSV: the quoting character (default `"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub csv_quote: Option<char>,
     /// CSV: whether the file's first row is a header (default true).
     #[serde(default)]
     pub has_header_row: Option<bool>,
