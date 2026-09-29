@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use ir::{Instance, ScalarType, SchemaNode, Value};
+use ir::{
+    Instance, ScalarType, SchemaNode, Value, XML_MIXED_CONTENT_FIELD,
+    XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
+};
 use mapping::{Graph, Node, Project, RecursiveFilterPlan, Scope, ScopeConstruction};
 
 use crate::{EngineError, run, validate};
@@ -40,6 +43,38 @@ fn recursive_filter_has_a_typed_depth_limit() {
         run(&project, &source),
         Err(EngineError::RecursiveFilterDepth { limit: 256 })
     );
+}
+
+#[test]
+fn recursive_filter_prunes_ordered_xml_values_and_updates_nested_children() {
+    let nested = with_ordered_content(
+        directory("nested", &["nested.xml", "drop.md"], Vec::new()),
+        &["file", "file"],
+    );
+    let source = with_ordered_content(
+        directory("root", &["drop.txt", "root.xml"], vec![nested]),
+        &["file", "directory", "file"],
+    );
+    let expected_nested =
+        with_ordered_content(directory("nested", &["nested.xml"], Vec::new()), &["file"]);
+    let expected = with_ordered_content(
+        directory("root", &["root.xml"], vec![expected_nested]),
+        &["directory", "file"],
+    );
+
+    assert_eq!(run(&project(), &source), Ok(expected.clone()));
+    let mut stale = source;
+    let Instance::Group(fields) = &mut stale else {
+        unreachable!("ordered source is a group");
+    };
+    let Some((_, Instance::Repeated(ordered))) = fields
+        .iter_mut()
+        .find(|(name, _)| name == XML_MIXED_CONTENT_FIELD)
+    else {
+        unreachable!("ordered source has XML metadata");
+    };
+    ordered.push(ordered[0].clone());
+    assert_eq!(run(&project(), &stale), Ok(expected));
 }
 
 fn project() -> Project {
@@ -123,4 +158,46 @@ fn directory(name: &str, files: &[&str], children: Vec<Instance>) -> Instance {
         ),
         ("directory".into(), Instance::Repeated(children)),
     ])
+}
+
+fn with_ordered_content(mut directory: Instance, order: &[&str]) -> Instance {
+    let Instance::Group(fields) = &mut directory else {
+        unreachable!("directory helper produces a group");
+    };
+    let mut file_index = 0;
+    let mut child_index = 0;
+    let ordered = order
+        .iter()
+        .map(|name| {
+            let index = if *name == "file" {
+                let index = file_index;
+                file_index += 1;
+                index
+            } else {
+                let index = child_index;
+                child_index += 1;
+                index
+            };
+            let value = fields
+                .iter()
+                .find(|(field, _)| field == name)
+                .and_then(|(_, value)| value.as_repeated())
+                .and_then(|values| values.get(index))
+                .expect("ordered XML item has a visible child")
+                .clone();
+            Instance::Group(vec![
+                (
+                    XML_NODE_NAME_FIELD.into(),
+                    Instance::Scalar(Value::String((*name).into())),
+                ),
+                (
+                    XML_TEXT_FIELD.into(),
+                    Instance::Scalar(Value::String(String::new())),
+                ),
+                (XML_MIXED_CONTENT_VALUE_FIELD.into(), value),
+            ])
+        })
+        .collect();
+    fields.push((XML_MIXED_CONTENT_FIELD.into(), Instance::Repeated(ordered)));
+    directory
 }
