@@ -42,8 +42,8 @@ pub use pipeline::{
 };
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
-    TraceScope, TraceSink, TraceSortKey, TraceTarget, TraceTargetFieldBinding, TraceValue,
-    TraceWindow,
+    TraceScope, TraceSink, TraceSortKey, TraceSourceField, TraceSourceRow, TraceTarget,
+    TraceTargetFieldBinding, TraceValue, TraceWindow,
 };
 pub use validate::{
     ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationSchemaLocation,
@@ -747,6 +747,9 @@ mod sequence_windows_tests;
 #[cfg(test)]
 #[path = "tests/target_selection.rs"]
 mod target_selection_tests;
+#[cfg(test)]
+#[path = "tests/trace_source_rows.rs"]
+mod trace_source_row_tests;
 #[cfg(test)]
 #[path = "tests/trace.rs"]
 mod trace_tests;

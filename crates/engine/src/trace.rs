@@ -1,9 +1,12 @@
-use ir::Value;
+use ir::{Instance, Value};
 use mapping::{JoinId, NodeId, ScopeIteration, SequenceExpr};
 
 use crate::source_iteration::PositionFrame;
 
 const MAX_TRACE_PREVIEW_CHARS: usize = 160;
+const MAX_TRACE_ROW_FIELDS: usize = 8;
+const MAX_TRACE_ROW_TEXT_BYTES: usize = 512;
+const MAX_TRACE_ROW_NAME_CHARS: usize = 80;
 
 /// One active collection position captured when a graph node was evaluated.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +178,70 @@ impl TraceValue {
     }
 }
 
+/// One immediate field of a bounded source-row snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceSourceField {
+    pub name: String,
+    pub name_truncated: bool,
+    pub kind: TraceOutputKind,
+    pub value: Option<TraceValue>,
+}
+
+/// Source data as it entered one scope candidate, before its controls ran.
+/// Structural children are identified by kind but are not copied recursively.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceSourceRow {
+    pub kind: TraceOutputKind,
+    pub value: Option<TraceValue>,
+    pub fields: Vec<TraceSourceField>,
+    pub omitted_fields: usize,
+}
+
+impl TraceSourceRow {
+    pub(crate) fn new(instance: &Instance) -> Self {
+        let mut row = Self {
+            kind: TraceOutputKind::of(instance),
+            value: None,
+            fields: Vec::new(),
+            omitted_fields: 0,
+        };
+        match instance {
+            Instance::Scalar(value) => {
+                row.value = Some(bounded_row_value(value, MAX_TRACE_ROW_TEXT_BYTES));
+            }
+            Instance::Group(fields) => {
+                let visible = fields.len().min(MAX_TRACE_ROW_FIELDS);
+                let mut remaining = MAX_TRACE_ROW_TEXT_BYTES;
+                for (index, (name, instance)) in fields.iter().take(visible).enumerate() {
+                    // Divide the remaining budget among the remaining fields;
+                    // a long early value cannot hide every later field.
+                    let share = remaining / (visible - index);
+                    let (name, char_truncated) = truncate_chars(name, MAX_TRACE_ROW_NAME_CHARS);
+                    let (name, byte_truncated) = truncate_bytes(&name, share / 2);
+                    remaining -= name.len();
+                    let value = match instance {
+                        Instance::Scalar(value) => {
+                            let preview = bounded_row_value(value, share - name.len());
+                            remaining -= preview.preview.len();
+                            Some(preview)
+                        }
+                        _ => None,
+                    };
+                    row.fields.push(TraceSourceField {
+                        name,
+                        name_truncated: char_truncated || byte_truncated,
+                        kind: TraceOutputKind::of(instance),
+                        value,
+                    });
+                }
+                row.omitted_fields = fields.len() - visible;
+            }
+            Instance::Repeated(_) | Instance::MappedSequence(_) | Instance::DocumentSet(_) => {}
+        }
+        row
+    }
+}
+
 /// One evaluated sort key without retaining its potentially large full value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceSortKey {
@@ -261,6 +328,7 @@ pub enum TraceEvent {
         scope: TraceScope,
         ordinal: usize,
         positions: Vec<TracePosition>,
+        source_row: Option<TraceSourceRow>,
     },
     FilterDecision {
         scope: TraceScope,
@@ -380,4 +448,20 @@ fn truncate_chars(value: &str, limit: usize) -> (String, bool) {
     let preview = chars.by_ref().take(limit).collect::<String>();
     let truncated = chars.next().is_some();
     (preview, truncated)
+}
+
+fn bounded_row_value(value: &Value, byte_limit: usize) -> TraceValue {
+    let mut preview = TraceValue::new(value);
+    let (text, truncated) = truncate_bytes(&preview.preview, byte_limit);
+    preview.preview = text;
+    preview.truncated |= truncated;
+    preview
+}
+
+fn truncate_bytes(value: &str, limit: usize) -> (String, bool) {
+    let mut end = value.len().min(limit);
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    (value[..end].to_string(), end < value.len())
 }

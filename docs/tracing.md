@@ -83,7 +83,7 @@ The `event.kind` tag selects the event payload:
 | `node_value` | Successful graph-node result with active positions |
 | `node_input_value` | Successful value delivered from a graph node to one input pin of a consuming node |
 | `scope_started` | Scope identity, iteration source, and parent positions |
-| `iteration_candidate` | Candidate ordinal and its source positions |
+| `iteration_candidate` | Candidate ordinal, raw source positions, and optional bounded source-row preview |
 | `filter_decision` | Predicate node, control phase, and boolean result |
 | `sort_candidate` | Evaluated ordered sort keys and bounded value previews |
 | `sort_position` | Stable post-sort output index |
@@ -110,6 +110,18 @@ state, optional join identity and tuple position, and optional document path.
 All scalar previews are Unicode-safe and bounded, including `node_value`
 and `node_input_value` records.
 
+For source and dynamic-document iterations, `iteration_candidate.source_row`
+captures the current source item before filters and sorting. This optional
+version-3 field is absent for once, generated, and join iterations. A scalar
+row has `kind: "scalar"` and a `value` preview. A group row has up to eight
+ordered immediate `fields`, each with a bounded `name`, `name_truncated`,
+`kind`, and an optional scalar `value`; nested groups and collections show
+their kind without copying descendants. `omitted_fields` counts additional
+fields. Names and value previews together use at most 512 UTF-8 bytes per row,
+so a row preview can truncate a scalar earlier than the general 160-character
+limit. The new field is additive: existing version-3 readers can ignore it.
+Source-row previews can contain fields the mapping did not use.
+
 `node_input_value` identifies the `consumer` node, its zero-based `input_index`,
 and the producing `input` node. It is emitted immediately after the producer
 returns a value, before the consumer continues. Ordinary built-in and user
@@ -124,5 +136,9 @@ not graph inputs and do not emit input events. An untaken conditional branch
 and a producer that errors do not emit an input event. Generated-sequence,
 mixed-content, and collection-search inputs are not yet recorded as input-pin
 events, though their successful graph-node outputs remain visible. The native
-GUI's History tab groups the retained input and output events by graph node;
-it does not provide live stepping or full source-row inspection.
+GUI's History tab has graph-node and source-row views. The source-row view
+shows retained candidate rows by scope, ordinal, and raw source position, with
+their bounded field previews; it does not link them to node evaluations whose
+positions may change during sorting or grouping. History retains at most
+50,000 trace events and reports when later events were omitted. It does not
+provide live stepping.

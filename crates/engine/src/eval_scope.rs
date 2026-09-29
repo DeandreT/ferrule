@@ -21,8 +21,8 @@ use crate::sequence::eval_sequence;
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceOutputKind, TraceScope, TraceSortKey,
-    TraceTargetFieldBinding, TraceValue, TraceWindow, bounded_text, record, scope_iteration,
-    trace_positions,
+    TraceSourceRow, TraceTargetFieldBinding, TraceValue, TraceWindow, bounded_text, record,
+    scope_iteration, trace_positions,
 };
 use crate::{DynamicSourceLoader, EngineError};
 
@@ -264,6 +264,10 @@ pub(crate) fn eval_scope(
             scope: trace_scope.clone(),
             ordinal: ordinal + 1,
             positions: trace_positions(&candidate_positions),
+            source_row: scope
+                .source()
+                .and_then(|_| extension.instances.last())
+                .map(|instance| TraceSourceRow::new(instance)),
         });
     }
 

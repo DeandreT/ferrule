@@ -269,6 +269,89 @@ fn node_history_keeps_each_evaluation_in_trace_order() {
 }
 
 #[test]
+fn source_row_history_indexes_candidates_and_shows_bounded_fields() {
+    let candidate = cli::TraceEvent::IterationCandidate {
+        scope: trace_scope(),
+        ordinal: 3,
+        positions: vec![cli::TracePosition {
+            collection: vec!["Order".into(), "Line".into()],
+            index: 4,
+            grouped: false,
+            join: None,
+            join_position: None,
+            document_path: Some("part.xml".into()),
+        }],
+        source_row: Some(cli::TraceSourceRow {
+            kind: cli::TraceOutputKind::Group,
+            value: None,
+            fields: vec![
+                cli::TraceSourceField {
+                    name: "Descript".into(),
+                    name_truncated: true,
+                    kind: cli::TraceOutputKind::Scalar,
+                    value: Some(cli::TraceValue {
+                        value_type: "string",
+                        preview: "é".into(),
+                        truncated: true,
+                    }),
+                },
+                cli::TraceSourceField {
+                    name: "Children".into(),
+                    name_truncated: false,
+                    kind: cli::TraceOutputKind::Repeated,
+                    value: None,
+                },
+            ],
+            omitted_fields: 2,
+        }),
+    };
+    let events = vec![
+        trace_event(8, ir::Value::Int(1)),
+        cli::TraceEvent::IterationCandidate {
+            scope: trace_scope(),
+            ordinal: 1,
+            positions: Vec::new(),
+            source_row: None,
+        },
+        candidate,
+    ];
+    assert_eq!(index_source_rows(&events), [2]);
+    let summary = source_row_summary(2, &events[2]).expect("source row summary");
+    assert!(summary.contains("event      3"));
+    assert!(summary.contains("candidate 3"));
+    assert!(summary.contains("Order/Line[4] @part.xml"));
+    assert!(summary.contains("Descript...=string(é...)"));
+    assert!(summary.contains("Children=repeated"));
+    assert!(summary.contains("+2 more"));
+    let details = source_row_details(2, &events[2]).expect("source row details");
+    assert_eq!(details.len(), 4);
+    assert_eq!(details[3], "  +2 more fields omitted");
+    assert!(trace_row(2, &events[2]).contains("source row group"));
+
+    let report = RunReport {
+        kind: RunReportKind::Preview,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("input.xml"),
+        outputs: Vec::new(),
+        trace: TraceReport { events, dropped: 1 },
+    };
+    let mut view = RunReportView::new(report);
+    assert_eq!(view.source_rows, [2]);
+    assert_eq!(view.selected_source_row, Some(2));
+    view.page = ReportPage::History;
+    view.history_mode = HistoryMode::SourceRows;
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    let mut open = true;
+    let output = context.run_ui(Default::default(), |ui| {
+        show(ui.ctx(), &mut open, &mut view);
+    });
+    assert!(open);
+    assert!(!output.shapes.is_empty());
+}
+
+#[test]
 fn history_rows_show_nested_join_context_and_bounded_values() {
     let join = mapping::JoinId::new(4);
     let positions = [
