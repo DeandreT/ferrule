@@ -18,6 +18,125 @@ pub(super) struct ImportedSchema {
 pub(super) enum MappingBoundary {
     Schema(Box<ImportedSchema>),
     Csv(CsvBoundaryDraft),
+    Sqlite(Box<SqliteBoundaryDraft>),
+}
+
+pub(super) struct SqliteBoundaryDraft {
+    pub(super) schema_path: String,
+    pub(super) output_path: String,
+    pub(super) table: String,
+    pub(super) schema: Option<SchemaNode>,
+    pub(super) introspection_error: Option<String>,
+}
+
+impl SqliteBoundaryDraft {
+    pub(super) fn source(path: PathBuf) -> anyhow::Result<Self> {
+        Self::from_existing(path, false)
+    }
+
+    pub(super) fn target(path: PathBuf) -> anyhow::Result<Self> {
+        Self::from_existing(path, true)
+    }
+
+    fn from_existing(path: PathBuf, target: bool) -> anyhow::Result<Self> {
+        validate_sqlite_path(&path)?;
+        let path = path
+            .to_str()
+            .context("SQLite path must be valid UTF-8")?
+            .to_owned();
+        Ok(Self {
+            output_path: if target { path.clone() } else { String::new() },
+            schema_path: path,
+            table: String::new(),
+            schema: None,
+            introspection_error: None,
+        })
+    }
+
+    pub(super) fn set_table(&mut self, table: String) {
+        if self.table != table {
+            self.table = table;
+            self.schema = None;
+            self.introspection_error = None;
+        }
+    }
+
+    pub(super) fn load_schema(&mut self) -> anyhow::Result<()> {
+        self.schema = None;
+        let result = (|| {
+            let path = std::path::Path::new(&self.schema_path);
+            validate_sqlite_path(path)?;
+            let table = self.table.trim();
+            if table.is_empty() {
+                bail!("SQLite table name is required");
+            }
+            if table.chars().count() > 256 {
+                bail!("SQLite table name cannot exceed 256 characters");
+            }
+            let json = cli::import_db(path, table)?;
+            let schema: SchemaNode = serde_json::from_str(&json)?;
+            let ir::SchemaKind::Group { children, .. } = &schema.kind else {
+                bail!("SQLite table must contain scalar columns");
+            };
+            if !schema.repeating {
+                bail!("SQLite table schema must repeat for each row");
+            }
+            if children.len() > 256 {
+                bail!("SQLite table has more than 256 columns");
+            }
+            Ok(schema)
+        })();
+        match result {
+            Ok(schema) => {
+                self.schema = Some(schema);
+                self.introspection_error = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.introspection_error = Some(error.to_string());
+                Err(error)
+            }
+        }
+    }
+
+    pub(super) fn schema(&self, target: bool) -> anyhow::Result<SchemaNode> {
+        validate_sqlite_path(std::path::Path::new(&self.schema_path))?;
+        if self.table.trim().is_empty() {
+            bail!("SQLite table name is required");
+        }
+        if target {
+            let output = self.output_path.trim();
+            if output.is_empty() {
+                bail!("SQLite output path is required");
+            }
+            validate_sqlite_extension(std::path::Path::new(output))?;
+        }
+        if let Some(error) = &self.introspection_error {
+            bail!("SQLite table could not be loaded: {error}");
+        }
+        self.schema.clone().context("load the SQLite table schema")
+    }
+}
+
+fn validate_sqlite_extension(path: &std::path::Path) -> anyhow::Result<()> {
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase);
+    if !matches!(extension.as_deref(), Some("db" | "sqlite" | "sqlite3")) {
+        bail!("SQLite path must have a .db, .sqlite, or .sqlite3 extension");
+    }
+    Ok(())
+}
+
+fn validate_sqlite_path(path: &std::path::Path) -> anyhow::Result<()> {
+    validate_sqlite_extension(path)?;
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("SQLite database {} must already exist", path.display()))?;
+    if !metadata.is_file() {
+        bail!("SQLite database {} is not a file", path.display());
+    }
+    Ok(())
 }
 
 pub(super) struct CsvBoundaryDraft {
@@ -179,6 +298,10 @@ impl NewMappingSetup {
                 project.source_options = draft.options();
                 project.source_path = Some(draft.path.clone());
             }
+            MappingBoundary::Sqlite(draft) => {
+                project.source = draft.schema(false)?;
+                project.source_path = Some(draft.schema_path.clone());
+            }
         }
         match target {
             MappingBoundary::Schema(imported) => project.target = imported.schema.clone(),
@@ -186,6 +309,10 @@ impl NewMappingSetup {
                 project.target = draft.schema()?;
                 project.target_options = draft.options();
                 project.target_path = Some(draft.path.clone());
+            }
+            MappingBoundary::Sqlite(draft) => {
+                project.target = draft.schema(true)?;
+                project.target_path = Some(draft.output_path.trim().to_owned());
             }
         }
         Ok(project)
@@ -305,5 +432,16 @@ mod tests {
         );
         assert_eq!(source.preview_rows.len(), 2);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn sqlite_source_does_not_create_a_missing_database() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule-gui-missing-sqlite-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        assert!(SqliteBoundaryDraft::source(path.clone()).is_err());
+        assert!(!path.exists());
     }
 }
