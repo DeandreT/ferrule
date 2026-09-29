@@ -161,10 +161,11 @@ pub(super) fn read_instance(
     }
 
     match extension_for_dispatch(path, options)?.as_str() {
-        "csv" | "txt" => format_csv::read(
+        "csv" | "txt" => format_csv::read_with_quote(
             path,
             schema,
             options.delimiter,
+            options.csv_quote,
             options.has_header_row.unwrap_or(true),
         )
         .map(Instance::Repeated)
@@ -317,11 +318,12 @@ pub(super) fn write_instance(
             let rows = instance
                 .as_repeated()
                 .ok_or_else(|| "CSV output is not a repeating row set".to_string())?;
-            format_csv::write(
+            format_csv::write_with_quote(
                 path,
                 schema,
                 rows,
                 options.delimiter,
+                options.csv_quote,
                 options.has_header_row.unwrap_or(true),
             )
             .map_err(|error| error.to_string())
@@ -537,7 +539,10 @@ pub(super) fn inferred_extension(options: &FormatOptions) -> Option<&'static str
         || options.xlsx_hierarchical.is_some()
     {
         Some("xlsx")
-    } else if options.delimiter.is_some() || options.has_header_row.is_some() {
+    } else if options.delimiter.is_some()
+        || options.csv_quote.is_some()
+        || options.has_header_row.is_some()
+    {
         Some("csv")
     } else if options.json_lines {
         Some("jsonl")

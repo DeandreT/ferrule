@@ -14,6 +14,20 @@ use super::{
 };
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    validate_csv_dialect(&project.source_options, "source")?;
+    validate_csv_dialect(&project.target_options, "target")?;
+    for source in &project.extra_sources {
+        validate_csv_dialect(
+            &source.options,
+            &format!("additional source `{}`", source.name),
+        )?;
+    }
+    for target in &project.extra_targets {
+        validate_csv_dialect(
+            &target.options,
+            &format!("additional target `{}`", target.name),
+        )?;
+    }
     reject_json5_boundary(&project.source_path, &project.source_options, "source")?;
     reject_json5_boundary(&project.target_path, &project.target_options, "target")?;
     for source in &project.extra_sources {
@@ -225,6 +239,27 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     Ok(())
 }
 
+fn validate_csv_dialect(options: &FormatOptions, side: &str) -> Result<(), MfdError> {
+    let delimiter = options.delimiter.unwrap_or(',');
+    let quote = options.csv_quote.unwrap_or('"');
+    if !delimiter.is_ascii() || matches!(delimiter, '\0' | '\r' | '\n') {
+        return Err(MfdError::Unsupported(format!(
+            "the {side} CSV delimiter must be one non-NUL, non-newline byte"
+        )));
+    }
+    if !quote.is_ascii_graphic() {
+        return Err(MfdError::Unsupported(format!(
+            "the {side} CSV quote must be one printable ASCII character"
+        )));
+    }
+    if delimiter == quote {
+        return Err(MfdError::Unsupported(format!(
+            "the {side} CSV delimiter and quote must be different characters"
+        )));
+    }
+    Ok(())
+}
+
 fn reject_json5_boundary(
     path: &Option<String>,
     options: &FormatOptions,
@@ -350,9 +385,11 @@ fn validate_tabular_identity(
                 "the {side_name} CSV fallback identity conflicts with XLSX layout options"
             )))
         }
-        (SideFormat::Xlsx, Some(TabularBoundaryKind::Xlsx)) if options.delimiter.is_some() => {
+        (SideFormat::Xlsx, Some(TabularBoundaryKind::Xlsx))
+            if options.delimiter.is_some() || options.csv_quote.is_some() =>
+        {
             Err(MfdError::Unsupported(format!(
-                "the {side_name} XLSX fallback identity conflicts with a CSV delimiter"
+                "the {side_name} XLSX fallback identity conflicts with CSV dialect options"
             )))
         }
         _ => Ok(()),
@@ -382,6 +419,7 @@ fn validate_xml_identity(
         || options.idoc.is_some()
         || options.swift_mt.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -473,6 +511,7 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
             options.http_get.is_some()
                 && (options.lenient_segments
                     || options.delimiter.is_some()
+                    || options.csv_quote.is_some()
                     || options.has_header_row.is_some()
                     || options.fixed_width.is_some()
                     || options.external_source.is_some()

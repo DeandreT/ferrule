@@ -60,6 +60,10 @@ pub enum CsvFormatError {
     },
     #[error("`{0}` is not a valid CSV delimiter (must be a single-byte character)")]
     BadDelimiter(char),
+    #[error("`{0}` is not a valid CSV quote (must be a printable ASCII character)")]
+    BadQuote(char),
+    #[error("CSV delimiter and quote must be different characters")]
+    DelimiterQuoteConflict,
     #[error("CSV file has no rows to infer columns from")]
     EmptySample,
     #[error("CSV sample exceeds the 1 MiB preview limit")]
@@ -111,16 +115,24 @@ pub fn sample(
     delimiter: Option<char>,
     has_headers: bool,
 ) -> Result<CsvSample, CsvFormatError> {
-    let delimiter = delimiter_byte(delimiter)?;
-    if matches!(delimiter, b'\r' | b'\n' | b'"' | 0) {
-        return Err(CsvFormatError::BadDelimiter(delimiter as char));
-    }
+    sample_with_quote(path, delimiter, None, has_headers)
+}
+
+/// Sample a CSV source using an explicit single-byte quote character.
+pub fn sample_with_quote(
+    path: &Path,
+    delimiter: Option<char>,
+    quote: Option<char>,
+    has_headers: bool,
+) -> Result<CsvSample, CsvFormatError> {
+    let (delimiter, quote) = dialect_bytes(delimiter, quote)?;
     let file = std::fs::File::open(path)?;
     let file_exceeds_limit = file.metadata()?.len() > MAX_SAMPLE_BYTES as u64;
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
         .delimiter(delimiter)
+        .quote(quote)
         .from_reader(file.take((MAX_SAMPLE_BYTES + 1) as u64));
     let mut records = Vec::new();
     let record_limit = MAX_SAMPLE_ROWS + usize::from(has_headers);
@@ -173,6 +185,21 @@ fn delimiter_byte(delimiter: Option<char>) -> Result<u8, CsvFormatError> {
     }
 }
 
+fn dialect_bytes(delimiter: Option<char>, quote: Option<char>) -> Result<(u8, u8), CsvFormatError> {
+    let delimiter = delimiter_byte(delimiter)?;
+    if matches!(delimiter, b'\r' | b'\n' | 0) {
+        return Err(CsvFormatError::BadDelimiter(delimiter as char));
+    }
+    let quote = quote.unwrap_or('"');
+    if !quote.is_ascii_graphic() {
+        return Err(CsvFormatError::BadQuote(quote));
+    }
+    if delimiter == quote as u8 {
+        return Err(CsvFormatError::DelimiterQuoteConflict);
+    }
+    Ok((delimiter, quote as u8))
+}
+
 fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatError> {
     if schema.repeating {
         return Err(CsvFormatError::UnsupportedSchema);
@@ -204,11 +231,24 @@ pub fn read(
     delimiter: Option<char>,
     has_headers: bool,
 ) -> Result<Vec<Instance>, CsvFormatError> {
+    read_with_quote(path, schema, delimiter, None, has_headers)
+}
+
+/// Read CSV rows with an explicit single-byte quote character.
+pub fn read_with_quote(
+    path: &Path,
+    schema: &SchemaNode,
+    delimiter: Option<char>,
+    quote: Option<char>,
+    has_headers: bool,
+) -> Result<Vec<Instance>, CsvFormatError> {
     let fields = row_fields(schema)?;
+    let (delimiter, quote) = dialect_bytes(delimiter, quote)?;
     let reader = csv::ReaderBuilder::new()
         .has_headers(has_headers)
         .flexible(true)
-        .delimiter(delimiter_byte(delimiter)?)
+        .delimiter(delimiter)
+        .quote(quote)
         .from_path(path)?;
     read_records(reader, &fields)
 }
@@ -223,11 +263,24 @@ pub fn from_str(
     delimiter: Option<char>,
     has_headers: bool,
 ) -> Result<Vec<Instance>, CsvFormatError> {
+    from_str_with_quote(text, schema, delimiter, None, has_headers)
+}
+
+/// Parse CSV text with an explicit single-byte quote character.
+pub fn from_str_with_quote(
+    text: &str,
+    schema: &SchemaNode,
+    delimiter: Option<char>,
+    quote: Option<char>,
+    has_headers: bool,
+) -> Result<Vec<Instance>, CsvFormatError> {
     let fields = row_fields(schema)?;
+    let (delimiter, quote) = dialect_bytes(delimiter, quote)?;
     let reader = csv::ReaderBuilder::new()
         .has_headers(has_headers)
         .flexible(true)
-        .delimiter(delimiter_byte(delimiter)?)
+        .delimiter(delimiter)
+        .quote(quote)
         .from_reader(text.as_bytes());
     read_records(reader, &fields)
 }
@@ -306,7 +359,22 @@ pub fn write(
     delimiter: Option<char>,
     has_headers: bool,
 ) -> Result<(), CsvFormatError> {
-    std::fs::write(path, to_string(schema, rows, delimiter, has_headers)?)?;
+    write_with_quote(path, schema, rows, delimiter, None, has_headers)
+}
+
+/// Write CSV rows with an explicit single-byte quote character.
+pub fn write_with_quote(
+    path: &Path,
+    schema: &SchemaNode,
+    rows: &[Instance],
+    delimiter: Option<char>,
+    quote: Option<char>,
+    has_headers: bool,
+) -> Result<(), CsvFormatError> {
+    std::fs::write(
+        path,
+        to_string_with_quote(schema, rows, delimiter, quote, has_headers)?,
+    )?;
     Ok(())
 }
 
@@ -320,8 +388,19 @@ pub fn to_string(
     delimiter: Option<char>,
     has_headers: bool,
 ) -> Result<String, CsvFormatError> {
+    to_string_with_quote(schema, rows, delimiter, None, has_headers)
+}
+
+/// Render CSV rows with an explicit single-byte quote character.
+pub fn to_string_with_quote(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    delimiter: Option<char>,
+    quote: Option<char>,
+    has_headers: bool,
+) -> Result<String, CsvFormatError> {
     let fields = row_fields(schema)?;
-    let delimiter = delimiter_byte(delimiter)?;
+    let (delimiter, quote) = dialect_bytes(delimiter, quote)?;
     // Validate and materialize every record before producing output. A
     // shape/type error must not truncate a previously valid output file.
     let records = rows
@@ -331,6 +410,7 @@ pub fn to_string(
         .collect::<Result<Vec<_>, _>>()?;
     let mut writer = csv::WriterBuilder::new()
         .delimiter(delimiter)
+        .quote(quote)
         .from_writer(Vec::new());
     if has_headers {
         writer.write_record(fields.iter().map(|(n, _)| *n))?;
@@ -561,6 +641,46 @@ mod tests {
 
         assert_eq!(text, "name,age\nJane,29\n");
         assert_eq!(read_back, vec![row]);
+    }
+
+    #[test]
+    fn custom_quote_roundtrips_delimiters_and_escaped_quotes() {
+        let row = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("O'Neil, Jr.".into())),
+            ),
+            ("age".into(), Instance::Scalar(Value::Int(29))),
+        ]);
+        let text = to_string_with_quote(
+            &schema(),
+            std::slice::from_ref(&row),
+            None,
+            Some('\''),
+            true,
+        )
+        .unwrap();
+        assert_eq!(text, "name,age\n'O''Neil, Jr.',29\n");
+        assert_eq!(
+            from_str_with_quote(&text, &schema(), None, Some('\''), true).unwrap(),
+            vec![row]
+        );
+    }
+
+    #[test]
+    fn invalid_custom_quotes_reject_before_parsing_or_writing() {
+        assert!(matches!(
+            from_str_with_quote("", &schema(), None, Some('é'), true),
+            Err(CsvFormatError::BadQuote('é'))
+        ));
+        assert!(matches!(
+            from_str_with_quote("", &schema(), None, Some('\t'), true),
+            Err(CsvFormatError::BadQuote('\t'))
+        ));
+        assert!(matches!(
+            to_string_with_quote(&schema(), &[], Some('|'), Some('|'), false),
+            Err(CsvFormatError::DelimiterQuoteConflict)
+        ));
     }
 
     #[test]
