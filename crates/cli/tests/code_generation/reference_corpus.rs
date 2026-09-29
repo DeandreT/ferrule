@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against nineteen local, gitignored mappings.
+//! Opt-in generated-backend execution against twenty local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -30,7 +30,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 19] = [
+const CASES: [CorpusCase; 20] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -141,6 +141,12 @@ const CASES: [CorpusCase; 19] = [
     },
     CorpusCase {
         sample: "MultipleInputToMultipleOutputFiles.mfd",
+        input: "Nanonull-*.xml",
+        source_kind: SourceKind::XmlFileSet,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "MergeMultipleFiles.mfd",
         input: "Nanonull-*.xml",
         source_kind: SourceKind::XmlFileSet,
         target_kind: TargetKind::Xml,
@@ -1059,29 +1065,30 @@ fn run_file_set_case(
     source: &Instance,
     sample: &str,
 ) -> TestResult<()> {
-    assert!(
-        project.target_path.is_none(),
-        "{sample}: dynamic output paths"
-    );
-    assert!(
-        project.extra_targets.is_empty(),
-        "{sample}: one dynamic target"
-    );
-    assert!(
+    let dynamic_output = sample == "MultipleInputToMultipleOutputFiles.mfd";
+    assert!(project.extra_targets.is_empty(), "{sample}: one XML target");
+    assert_eq!(
         matches!(
             project.root.iteration,
             ScopeIteration::DynamicDocuments { .. }
         ),
-        "{sample}: one output per source document"
+        dynamic_output,
+        "{sample}: expected target construction mode"
     );
-    assert!(
-        project
-            .graph
-            .nodes
-            .values()
-            .any(|node| matches!(node, Node::SourceDocumentPath)),
-        "{sample}: output paths must depend on the current source document"
-    );
+    if dynamic_output {
+        assert!(
+            project.target_path.is_none(),
+            "{sample}: dynamic output paths"
+        );
+        assert!(
+            project
+                .graph
+                .nodes
+                .values()
+                .any(|node| matches!(node, Node::SourceDocumentPath)),
+            "{sample}: output paths must depend on the current source document"
+        );
+    }
     let Instance::DocumentSet(members) = source else {
         panic!("{sample}: local XML file set must retain its document boundaries");
     };
@@ -1134,40 +1141,61 @@ fn run_file_set_case(
         engine::run_with_context(project, &Instance::DocumentSet(round_tripped), &execution)?,
         "{sample}: schema-shaped JSON transport changed file-set mapping output"
     );
-    let Instance::DocumentSet(expected_members) = expected else {
-        panic!("{sample}: dynamic target must return a document set");
-    };
-    assert_eq!(expected_members.len(), 2, "{sample}: two intended outputs");
-    assert_eq!(
-        expected_members
-            .iter()
-            .map(|member| member.path())
-            .collect::<Vec<_>>(),
-        ["Persons-Nanonull-Branch.xml", "Persons-Nanonull-HQ.xml"],
-        "{sample}: portable dynamic paths retain source order"
-    );
     let xml_options = format_xml::XmlWriteOptions {
         declaration: false,
         indent: false,
         default_namespace: None,
     };
-    let expected_outputs = expected_members
-        .iter()
-        .map(|member| -> TestResult<CorpusDocumentOutput> {
-            Ok(CorpusDocumentOutput {
-                path: member.path().to_owned(),
-                xml: format_xml::to_string_with_options(
-                    &project.target,
-                    member.value(),
-                    &xml_options,
-                )?,
-                value: serde_json::from_str(&format_json::to_string(
-                    &project.target,
-                    member.value(),
-                )?)?,
+    let expected_outputs = if dynamic_output {
+        let Instance::DocumentSet(expected_members) = &expected else {
+            panic!("{sample}: dynamic target must return a document set");
+        };
+        assert_eq!(expected_members.len(), 2, "{sample}: two intended outputs");
+        assert_eq!(
+            expected_members
+                .iter()
+                .map(|member| member.path())
+                .collect::<Vec<_>>(),
+            ["Persons-Nanonull-Branch.xml", "Persons-Nanonull-HQ.xml"],
+            "{sample}: portable dynamic paths retain source order"
+        );
+        expected_members
+            .iter()
+            .map(|member| -> TestResult<CorpusDocumentOutput> {
+                Ok(CorpusDocumentOutput {
+                    path: member.path().to_owned(),
+                    xml: format_xml::to_string_with_options(
+                        &project.target,
+                        member.value(),
+                        &xml_options,
+                    )?,
+                    value: serde_json::from_str(&format_json::to_string(
+                        &project.target,
+                        member.value(),
+                    )?)?,
+                })
             })
-        })
-        .collect::<TestResult<Vec<_>>>()?;
+            .collect::<TestResult<Vec<_>>>()?
+    } else {
+        assert!(
+            !matches!(expected, Instance::DocumentSet(_)),
+            "{sample}: merged target must be one document"
+        );
+        let merged = CorpusDocumentOutput {
+            path: String::new(),
+            xml: format_xml::to_string_with_options(&project.target, &expected, &xml_options)?,
+            value: serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?,
+        };
+        assert_eq!(
+            merged.value["Office"]
+                .as_array()
+                .expect("merged offices")
+                .len(),
+            2,
+            "{sample}: both source documents contribute one office"
+        );
+        vec![merged]
+    };
 
     let project_path = case_dir.join("project.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
@@ -1198,6 +1226,11 @@ fn run_file_set_case(
         .arg(&source_schema)
         .arg(&target_schema)
         .arg(mapping_path)
+        .arg(if dynamic_output {
+            "documents"
+        } else {
+            "single"
+        })
         .current_dir(&rust_output)
         .env("CARGO_TARGET_DIR", rust_target);
     for (portable, resolved, json) in &input_args {
@@ -1268,6 +1301,11 @@ fn run_file_set_case(
         .arg(&source_schema)
         .arg(&target_schema)
         .arg(mapping_path)
+        .arg(if dynamic_output {
+            "documents"
+        } else {
+            "single"
+        })
         .current_dir(&csharp_output);
     for (portable, resolved, json) in &input_args {
         csharp_run_command.arg(portable).arg(resolved).arg(json);
@@ -1314,6 +1352,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source_schema = std::fs::read_to_string(args.next().expect("source schema"))?;
     let target_schema = std::fs::read_to_string(args.next().expect("target schema"))?;
     let mapping_path = PathBuf::from(args.next().expect("mapping path"));
+    let output_kind = args.next().expect("output kind");
     let inputs = args.collect::<Vec<_>>();
     assert_eq!(inputs.len() % 3, 0, "source member arguments are triples");
     let mut members = Vec::new();
@@ -1327,16 +1366,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = Instance::DocumentSet(members);
     let execution = ExecutionContext::new(&mapping_path);
     let output = execute_with_context(&source, &execution)?;
-    let Instance::DocumentSet(documents) = output else {
-        panic!("expected dynamic document set output");
-    };
-    for document in documents {
-        let Value::String(xml) = serialize_xml(0, &target_schema, document.value(), false, false, None)? else {
-            unreachable!("XML serialization returns a string");
-        };
-        let json = serialize_json(&target_schema, document.value())?;
-        print!("{}\0{}\0{}\0", document.path(), xml, json);
+    match output_kind.to_str().expect("UTF-8 output kind") {
+        "documents" => {
+            let Instance::DocumentSet(documents) = output else {
+                panic!("expected dynamic document set output");
+            };
+            for document in documents {
+                print_output(document.path(), document.value(), &target_schema)?;
+            }
+        }
+        "single" => {
+            assert!(!matches!(output, Instance::DocumentSet(_)), "expected one merged document");
+            print_output("", &output, &target_schema)?;
+        }
+        _ => panic!("unsupported output kind"),
     }
+    Ok(())
+}
+
+fn print_output(path: &str, value: &Instance, schema: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let Value::String(xml) = serialize_xml(0, schema, value, false, false, None)? else {
+        unreachable!("XML serialization returns a string");
+    };
+    let json = serialize_json(schema, value)?;
+    print!("{path}\0{xml}\0{json}\0");
     Ok(())
 }
 "#;
@@ -1347,12 +1400,13 @@ using Ferrule.Runtime;
 var sourceSchema = File.ReadAllText(args[0]);
 var targetSchema = File.ReadAllText(args[1]);
 var mappingPath = args[2];
-if ((args.Length - 3) % 3 != 0)
+var outputKind = args[3];
+if ((args.Length - 4) % 3 != 0)
 {
     throw new ArgumentException("Source member arguments are triples.");
 }
 var members = new List<FerruleDocument>();
-for (var index = 3; index < args.Length; index += 3)
+for (var index = 4; index < args.Length; index += 3)
 {
     members.Add(new FerruleDocument(
         args[index],
@@ -1362,15 +1416,35 @@ for (var index = 3; index < args.Length; index += 3)
 var output = GeneratedMapping.Execute(
     new FerruleDocumentSet(members),
     new FerruleExecutionContext(mappingPath));
-if (output is not FerruleDocumentSet documents)
+if (outputKind == "documents")
 {
-    throw new InvalidOperationException("Expected dynamic document set output.");
+    if (output is not FerruleDocumentSet documents)
+    {
+        throw new InvalidOperationException("Expected dynamic document set output.");
+    }
+    foreach (var document in documents.Documents)
+    {
+        WriteOutput(document.Path, document.Value);
+    }
 }
-foreach (var document in documents.Documents)
+else if (outputKind == "single")
 {
-    var xml = FerruleXml.Serialize(0, targetSchema, document.Value, false, false, null).StringValue;
-    var json = FerruleJson.Serialize(targetSchema, document.Value);
-    Console.Out.Write(document.Path);
+    if (output is FerruleDocumentSet)
+    {
+        throw new InvalidOperationException("Expected one merged document.");
+    }
+    WriteOutput("", output);
+}
+else
+{
+    throw new ArgumentException("Unsupported output kind.");
+}
+
+void WriteOutput(string path, FerruleInstance value)
+{
+    var xml = FerruleXml.Serialize(0, targetSchema, value, false, false, null).StringValue;
+    var json = FerruleJson.Serialize(targetSchema, value);
+    Console.Out.Write(path);
     Console.Out.Write('\0');
     Console.Out.Write(xml);
     Console.Out.Write('\0');

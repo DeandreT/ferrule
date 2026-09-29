@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports nineteen warning-free designs: JSON to
+An opt-in local-corpus smoke test imports twenty warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -469,8 +469,11 @@ XML documents. It retains each source member's portable path and resolved file
 location while crossing the source schema-shaped JSON boundary, supplies the
 same mapping-file context to the interpreter and both generated typed Instance
 APIs, and compares ordered portable output paths, normalized XML, and typed
-JSON for each output member without writing into the sample corpus. The test
-executes every design in the interpreter, then compiles and runs its generated
+JSON for each output member without writing into the sample corpus. The twentieth
+design uses the same confined two-member source transport to merge both input
+documents into one XML target; it compares that target's normalized XML and
+typed JSON across the interpreter and generated hosts. The test executes every
+design in the interpreter, then compiles and runs its generated
 Rust and C# hosts. Cases one through fifteen, seventeen, and eighteen compare
 JSON results; the sixteenth compares XML bytes from the generated and
 interpreter serializers. Run it with
