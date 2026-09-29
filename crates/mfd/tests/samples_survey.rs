@@ -621,13 +621,13 @@ fn survey_samples() -> Result<(), Box<dyn Error>> {
         &[
             ("total", summary.total, 187),
             ("imported", summary.imported, 187),
-            ("import_clean", summary.import_clean, 175),
+            ("import_clean", summary.import_clean, 171),
             ("valid", summary.valid, 175),
             ("dependency_blocked", summary.dependency_blocked, 12),
             ("exported", summary.exported, 187),
-            ("export_clean", summary.export_clean, 187),
+            ("export_clean", summary.export_clean, 186),
             ("reimported", summary.reimported, 187),
-            ("reimport_clean", summary.reimport_clean, 187),
+            ("reimport_clean", summary.reimport_clean, 186),
             ("roundtrip_valid", summary.roundtrip_valid, 175),
             (
                 "roundtrip_dependency_blocked",

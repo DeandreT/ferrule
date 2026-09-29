@@ -44,6 +44,22 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             &format!("additional target `{}`", target.name),
         )?;
     }
+    validate_unresolved_json_schema(&project.source_path, &project.source_options, "source")?;
+    validate_unresolved_json_schema(&project.target_path, &project.target_options, "target")?;
+    for source in &project.extra_sources {
+        validate_unresolved_json_schema(
+            &Some(source.path.clone()),
+            &source.options,
+            &format!("additional source `{}`", source.name),
+        )?;
+    }
+    for target in &project.extra_targets {
+        validate_unresolved_json_schema(
+            &target.path,
+            &target.options,
+            &format!("additional target `{}`", target.name),
+        )?;
+    }
     exception::validate(project)?;
     wsdl::validate(project)?;
     join::validate(project)?;
@@ -281,6 +297,27 @@ fn reject_json5_boundary(
     if options.json5 || extension_selects_json5 {
         return Err(MfdError::Unsupported(format!(
             "{label} uses JSON5 document syntax, which .mfd export cannot encode"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_unresolved_json_schema(
+    path: &Option<String>,
+    options: &FormatOptions,
+    label: &str,
+) -> Result<(), MfdError> {
+    let Some(reference) = &options.json_schema_unresolved_reference else {
+        return Ok(());
+    };
+    if side_format(path, options) != SideFormat::Json || options.external_source.is_some() {
+        return Err(MfdError::Unsupported(format!(
+            "{label} unresolved JSON Schema provenance requires an ordinary JSON boundary"
+        )));
+    }
+    if reference.is_empty() || reference.len() > 4096 || reference.chars().any(char::is_control) {
+        return Err(MfdError::Unsupported(format!(
+            "{label} unresolved JSON Schema reference must be 1 to 4096 bytes without control characters"
         )));
     }
     Ok(())

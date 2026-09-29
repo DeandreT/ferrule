@@ -722,6 +722,26 @@ fn read_json_component_resolved(
     }
     let is_source = out_count >= in_count;
 
+    // A canonical best-effort export points `schema` at a generated fallback
+    // file. Keep the original missing reference separately; runtime I/O never
+    // reopens it, and a later import must not mistake the fallback for a full
+    // recovery of the original schema.
+    let mut json_schema_unresolved_reference = json_el
+        .and_then(|json| json.attribute("ferrule-unresolved-json-schema"))
+        .map(str::to_string);
+    if let Some(reference) = &json_schema_unresolved_reference {
+        if reference.is_empty() || reference.len() > 4096 || reference.chars().any(char::is_control)
+        {
+            warnings.push(format!(
+                "component `{name}` has invalid ferrule-unresolved-json-schema metadata; export will reject it until repaired"
+            ));
+        } else {
+            warnings.push(format!(
+                "component `{name}` retains unresolved original JSON Schema `{reference}`; the generated schema is an entry-tree fallback"
+            ));
+        }
+    }
+
     // Schema: prefer the referenced JSON Schema (types + repeating info).
     let mut schema = json_el
         .and_then(|j| j.attribute("schema"))
@@ -730,6 +750,9 @@ fn read_json_component_resolved(
                 Some(resources) => match resources.resolve_json_schema(rel) {
                     Ok(resolved) => resolved,
                     Err(error) => {
+                        if json_schema_unresolved_reference.is_none() {
+                            json_schema_unresolved_reference = Some(rel.to_string());
+                        }
                         warnings.push(format!(
                             "component `{name}`: could not read schema `{rel}` ({error}); \
                              falling back to the entry tree"
@@ -746,6 +769,9 @@ fn read_json_component_resolved(
                         (path, root)
                     }
                     Err(error) => {
+                        if json_schema_unresolved_reference.is_none() {
+                            json_schema_unresolved_reference = Some(rel.to_string());
+                        }
                         warnings.push(format!(
                             "component `{name}`: could not read schema `{rel}` ({error}); \
                              falling back to the entry tree"
@@ -761,6 +787,9 @@ fn read_json_component_resolved(
             match imported {
                 Ok(schema) => Some(schema),
                 Err(e) => {
+                    if json_schema_unresolved_reference.is_none() {
+                        json_schema_unresolved_reference = Some(rel.to_string());
+                    }
                     warnings.push(format!(
                         "component `{name}`: could not read schema `{rel}` ({e}); \
                          falling back to the entry tree"
@@ -805,6 +834,7 @@ fn read_json_component_resolved(
         options: FormatOptions {
             external_source,
             json_document: true,
+            json_schema_unresolved_reference,
             json_lines,
             ..FormatOptions::default()
         },

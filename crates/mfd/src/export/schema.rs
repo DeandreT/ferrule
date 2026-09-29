@@ -335,6 +335,9 @@ pub(super) fn render_schema_component(
         }
         SideFormat::Json => {
             let schema_file = format!("{stem}-{sibling_suffix}.schema.json");
+            let unresolved_json_schema = unresolved_json_schema_attribute(
+                options.json_schema_unresolved_reference.as_deref(),
+            );
             let json_lines = options.json_lines
                 || instance_path
                     .and_then(|path| Path::new(path).extension())
@@ -362,7 +365,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
-                 \t\t\t\t\t\t<json schema=\"{}\"{instance}{json_lines}/>\n\
+                 \t\t\t\t\t\t<json schema=\"{}\"{instance}{json_lines}{unresolved_json_schema}/>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(component_name),
@@ -1862,6 +1865,15 @@ fn append_xml_type_condition(output: &mut String, indent: usize, type_name: &str
         "{pad}<condition><expression><function name=\"equal\" library=\"core\"><expression><attribute ns=\"http://www.w3.org/2001/XMLSchema-instance\" name=\"type\"/></expression><expression><constant value=\"{}\" datatype=\"QName\"/></expression></function></expression></condition>",
         xml_escape(type_name)
     );
+}
+
+pub(super) fn unresolved_json_schema_attribute(reference: Option<&str>) -> String {
+    reference.map_or_else(String::new, |reference| {
+        format!(
+            " ferrule-unresolved-json-schema=\"{}\"",
+            xml_escape(reference)
+        )
+    })
 }
 
 pub(super) fn xml_escape(text: &str) -> String {
