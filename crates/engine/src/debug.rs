@@ -1,6 +1,7 @@
 //! Opt-in control point for a host-driven live debugger.
 
-use ir::Instance;
+use ir::{Instance, Value};
+use mapping::NodeId;
 
 use crate::EngineError;
 use crate::source_iteration::PositionFrame;
@@ -13,6 +14,8 @@ const MAX_DEBUG_DRAFT_FIELDS: usize = 8;
 const MAX_DEBUG_SOURCE_FRAMES: usize = 4;
 const MAX_DEBUG_SOURCE_FIELDS: usize = 8;
 const MAX_DEBUG_FIELD_NAME_CHARS: usize = 160;
+const MAX_DEBUG_POSITIONS: usize = 16;
+const MAX_DEBUG_POSITION_SEGMENTS: usize = 16;
 
 /// A bounded preview of an instance. Collections and groups expose only their
 /// immediate length, never a copy of their contents.
@@ -172,16 +175,28 @@ pub struct PendingTargetWrite {
     pub draft: DebugScopeDraft,
 }
 
-/// The host decides when to resume the current write. It may block inside the
-/// callback to implement stepping or breakpoints.
+/// A bounded snapshot after one graph node succeeds. Expressions can be
+/// evaluated outside target construction, so this has no implied target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingNodeValue {
+    pub node: NodeId,
+    pub value: TraceValue,
+    pub positions: Vec<TracePosition>,
+    pub omitted_outer_positions: usize,
+    pub position_paths_truncated: bool,
+    pub source: DebugSourceContext,
+}
+
+/// The host decides when to resume a pending write or node evaluation. It may
+/// block inside a callback to implement stepping or breakpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DebugDecision {
     Resume,
     Cancel,
 }
 
-/// Optional, synchronous control point before an ordinary target-field write.
-/// No callback is made for constructors that do not insert ordinary fields.
+/// Optional synchronous control points for writes and graph evaluation.
+/// Write callbacks exclude constructors that do not insert ordinary fields.
 pub trait DebugHook {
     /// Optionally request one immediate field in one of the four innermost
     /// active source frames. Frame zero is the innermost frame.
@@ -190,6 +205,77 @@ pub trait DebugHook {
     }
 
     fn before_target_write(&self, write: &PendingTargetWrite) -> DebugDecision;
+
+    /// Return false when this hook will not inspect successful node values.
+    /// The default keeps new hook implementations receiving every value.
+    fn wants_node_values(&self) -> bool {
+        true
+    }
+
+    /// Called after a successful graph evaluation, including filters and
+    /// pre-target rules. The host may block here or cancel the run.
+    fn after_node_value(&self, _node: &PendingNodeValue) -> DebugDecision {
+        DebugDecision::Resume
+    }
+}
+
+pub(crate) fn after_node_value(
+    hook: Option<&dyn DebugHook>,
+    node: NodeId,
+    value: &Value,
+    positions: &[PositionFrame],
+    context: &[&Instance],
+) -> Result<(), EngineError> {
+    let Some(hook) = hook.filter(|hook| hook.wants_node_values()) else {
+        return Ok(());
+    };
+    let omitted_outer_positions = positions.len().saturating_sub(MAX_DEBUG_POSITIONS);
+    let mut position_paths_truncated = false;
+    let positions = positions[omitted_outer_positions..]
+        .iter()
+        .map(|position| {
+            let omitted_segments = position
+                .collection
+                .len()
+                .saturating_sub(MAX_DEBUG_POSITION_SEGMENTS);
+            if omitted_segments > 0 {
+                position_paths_truncated = true;
+            }
+            let collection = position.collection[omitted_segments..]
+                .iter()
+                .map(|segment| {
+                    let (name, truncated) = bounded_name(segment);
+                    position_paths_truncated |= truncated;
+                    name
+                })
+                .collect();
+            let document_path = position.document_path.as_ref().map(|path| {
+                let (bounded, truncated) = bounded_name(path);
+                position_paths_truncated |= truncated;
+                bounded
+            });
+            TracePosition {
+                collection,
+                index: position.index,
+                grouped: position.grouped,
+                join: position.join,
+                join_position: position.join_position,
+                document_path,
+            }
+        })
+        .collect();
+    let snapshot = PendingNodeValue {
+        node,
+        value: TraceValue::new(value),
+        positions,
+        omitted_outer_positions,
+        position_paths_truncated,
+        source: DebugSourceContext::new(context),
+    };
+    match hook.after_node_value(&snapshot) {
+        DebugDecision::Resume => Ok(()),
+        DebugDecision::Cancel => Err(EngineError::DebugCancelled),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -262,6 +348,68 @@ mod tests {
             self.0.borrow_mut().push(write.clone());
             DebugDecision::Resume
         }
+    }
+
+    #[derive(Default)]
+    struct NodeCollector(RefCell<Vec<PendingNodeValue>>);
+
+    impl DebugHook for NodeCollector {
+        fn before_target_write(&self, _write: &PendingTargetWrite) -> DebugDecision {
+            DebugDecision::Resume
+        }
+
+        fn after_node_value(&self, node: &PendingNodeValue) -> DebugDecision {
+            self.0.borrow_mut().push(node.clone());
+            DebugDecision::Resume
+        }
+    }
+
+    #[test]
+    fn node_snapshot_bounds_value_positions_paths_and_source_frames() {
+        let frames = (0..6)
+            .map(|index| Instance::Scalar(Value::Int(index)))
+            .collect::<Vec<_>>();
+        let context = frames.iter().collect::<Vec<_>>();
+        let positions = (0..20)
+            .map(|index| PositionFrame {
+                collection: vec!["é".repeat(300); 20],
+                index: index + 1,
+                grouped: false,
+                join: None,
+                join_position: None,
+                document_path: Some("é".repeat(300)),
+            })
+            .collect::<Vec<_>>();
+        let collector = NodeCollector::default();
+        after_node_value(
+            Some(&collector),
+            7,
+            &Value::String("é".repeat(300)),
+            &positions,
+            &context,
+        )
+        .unwrap();
+        let nodes = collector.0.borrow();
+        let node = &nodes[0];
+        assert_eq!(node.node, 7);
+        assert_eq!(node.value.preview.chars().count(), 160);
+        assert!(node.value.truncated);
+        assert_eq!(node.positions.len(), 16);
+        assert_eq!(node.omitted_outer_positions, 4);
+        assert!(node.position_paths_truncated);
+        assert_eq!(node.positions[0].collection.len(), 16);
+        assert_eq!(node.positions[0].collection[0].chars().count(), 160);
+        assert_eq!(
+            node.positions[0]
+                .document_path
+                .as_ref()
+                .unwrap()
+                .chars()
+                .count(),
+            160
+        );
+        assert_eq!(node.source.frames.len(), 4);
+        assert_eq!(node.source.omitted_outer_frames, 2);
     }
 
     struct ProbingCollector {

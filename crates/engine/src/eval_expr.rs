@@ -402,6 +402,7 @@ pub(crate) fn eval_expr(
     in_progress.remove(&node_id);
     if let Ok(value) = &result {
         record_node_value(program.trace_sink, node_id, positions, value);
+        crate::debug::after_node_value(program.debug_hook, node_id, value, positions, context)?;
     }
     result
 }

@@ -203,7 +203,15 @@ dynamic binding reads the entered graph node ID. It can distinguish two nodes
 that produce the same scalar value and combines with the other conditions.
 The dynamic property-name node and child-scope writes do not match. It does
 not pause during intermediate graph evaluation.
-Runs with no ordinary target-field insertion finish without a live pause.
+Target-write breakpoints do not pause runs with no ordinary target-field
+insertion.
+An independent expression breakpoint selects an exact graph node ID and may
+also require a complete typed scalar value. It pauses after that node evaluates
+successfully, including in a filter or pre-target rule that produces no target
+write. Step from this pause advances to the next evaluated node. The pause
+shows a bounded value, source-frame snapshot, and active positions; pipeline
+expressions can be limited to one selected stage. Cancel at this point aborts
+before output publication.
 
 **Debug Run** offers the same controls for a saved, file-backed mapping and
 can select a static field in the primary or a named target. Ordinary Run also
