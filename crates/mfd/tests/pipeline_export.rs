@@ -533,42 +533,202 @@ fn serial_pipeline_preserves_intermediate_output_instance_and_execution() {
 }
 
 #[test]
-fn local_chain_retains_intermediate_preview_and_output_instances_when_available() {
-    let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../samples/ReferenceSamples/Tutorial/ChainedReports.mfd");
-    if !sample.is_file() {
-        return;
+fn local_chains_keep_only_declared_intermediate_instance_paths_when_available() {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    for (relative, output_instance, input_instance) in [
+        ("ChainedPersonList.mfd", None, None),
+        (
+            "Tutorial/ChainedReports.mfd",
+            Some("ReportB.xml"),
+            Some("ReportB.xml"),
+        ),
+        (
+            "Tutorial/Tut-ExpReport-chain.mfd",
+            None,
+            Some("mf-ExpReport-co.xml"),
+        ),
+        (
+            "Tutorial/BasicTutorials/Tut3-ChainedMapping.mfd",
+            Some("MergedLibrary.xml"),
+            None,
+        ),
+    ] {
+        let sample = samples.join(relative);
+        if !sample.is_file() {
+            continue;
+        }
+        let imported =
+            mfd::import_pipeline(&sample).unwrap_or_else(|error| panic!("{relative}: {error}"));
+        assert!(
+            imported.warnings.is_empty(),
+            "{relative}: {:?}",
+            imported.warnings
+        );
+        assert_eq!(imported.pipeline.stages.len(), 2, "{relative}");
+        assert_eq!(
+            imported.pipeline.stages[0].project.target_path.as_deref(),
+            output_instance,
+            "{relative}: intermediate output path"
+        );
+        assert_eq!(
+            imported.pipeline.stages[1].project.source_path.as_deref(),
+            input_instance,
+            "{relative}: intermediate input preview"
+        );
+
+        let has_datetime_extension = relative.ends_with("Tut3-ChainedMapping.mfd");
+        let before = if has_datetime_extension {
+            Some(execute_local_tut3(&imported.pipeline, &sample))
+        } else {
+            None
+        };
+        let directory = TempDir::new();
+        let destination = directory.0.join("exported-chain.mfd");
+        let report = mfd::preflight_pipeline_export(&imported.pipeline, &destination)
+            .unwrap_or_else(|error| panic!("{relative}: {error}"));
+        if has_datetime_extension {
+            assert!(!report.is_native_compatible(), "{relative}: {report:?}");
+            assert_eq!(report.issues.len(), 2, "{relative}: {report:?}");
+            assert!(
+                report
+                    .issues
+                    .iter()
+                    .all(|issue| issue.component == "coerce_datetime")
+            );
+            let rejected = mfd::export_pipeline_with_profile(
+                &imported.pipeline,
+                &destination,
+                mfd::ExportProfile::NativeMfd,
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(
+                rejected.contains("coerce_datetime"),
+                "{relative}: {rejected}"
+            );
+            assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 0);
+            mfd::export_pipeline(&imported.pipeline, &destination)
+                .unwrap_or_else(|error| panic!("{relative}: {error}"));
+        } else {
+            assert!(report.is_native_compatible(), "{relative}: {report:?}");
+            mfd::export_pipeline_with_profile(
+                &imported.pipeline,
+                &destination,
+                mfd::ExportProfile::NativeMfd,
+            )
+            .unwrap_or_else(|error| panic!("{relative}: {error}"));
+        }
+        let exported = std::fs::read_to_string(&destination).unwrap();
+        let document = roxmltree::Document::parse(&exported).unwrap();
+        let intermediate = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("component")
+                    && node.children().any(|child| {
+                        child.has_tag_name("properties")
+                            && child.attribute("PassThrough") == Some("1")
+                    })
+            })
+            .unwrap_or_else(|| panic!("{relative}: missing pass-through component"));
+        let document = intermediate
+            .descendants()
+            .find(|node| node.has_tag_name("document"))
+            .unwrap();
+        assert_eq!(
+            document.attribute("outputinstance"),
+            output_instance,
+            "{relative}: exported output instance"
+        );
+        assert_eq!(
+            document.attribute("inputinstance"),
+            input_instance,
+            "{relative}: exported input preview"
+        );
+        assert!(
+            !intermediate.descendants().any(|node| {
+                node.has_tag_name("file") && node.attribute("role") == Some("outputinstance")
+            }),
+            "{relative}: unexpected nested output instance"
+        );
+
+        let reimported = mfd::import_pipeline(&destination);
+        if has_datetime_extension && let Err(error) = &reimported {
+            assert!(
+                error
+                    .to_string()
+                    .contains("pipeline import does not yet support `ferrule` components"),
+                "{relative}: {error}"
+            );
+            continue;
+        }
+        let reimported = reimported.unwrap_or_else(|error| panic!("{relative}: {error}"));
+        assert!(
+            reimported.warnings.is_empty(),
+            "{relative}: {:?}",
+            reimported.warnings
+        );
+        assert_eq!(
+            reimported.pipeline.stages[0].project.target_path.as_deref(),
+            output_instance,
+            "{relative}: reimported output path"
+        );
+        assert_eq!(
+            reimported.pipeline.stages[1].project.source_path.as_deref(),
+            input_instance,
+            "{relative}: reimported input preview"
+        );
+        if let Some(before) = before {
+            let after = execute_local_tut3(&reimported.pipeline, &sample);
+            for index in 0..2 {
+                assert_eq!(
+                    before
+                        .stage(&imported.pipeline.stages[index].id)
+                        .unwrap()
+                        .primary,
+                    after
+                        .stage(&reimported.pipeline.stages[index].id)
+                        .unwrap()
+                        .primary,
+                    "{relative}: stage {} changed execution",
+                    index + 1
+                );
+            }
+        }
     }
-    let imported = mfd::import_pipeline(&sample).unwrap();
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    assert_eq!(
-        imported.pipeline.stages[0].project.target_path.as_deref(),
-        Some("ReportB.xml")
-    );
-    assert_eq!(
-        imported.pipeline.stages[1].project.source_path.as_deref(),
-        Some("ReportB.xml")
-    );
-    let directory = TempDir::new();
-    let destination = directory.0.join("reports-chain.mfd");
-    let report = mfd::preflight_pipeline_export(&imported.pipeline, &destination).unwrap();
-    assert!(report.is_native_compatible(), "{report:?}");
-    mfd::export_pipeline_with_profile(
-        &imported.pipeline,
-        &destination,
-        mfd::ExportProfile::NativeMfd,
-    )
-    .unwrap();
-    let reimported = mfd::import_pipeline(&destination).unwrap();
-    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
-    assert_eq!(
-        reimported.pipeline.stages[0].project.target_path.as_deref(),
-        Some("ReportB.xml")
-    );
-    assert_eq!(
-        reimported.pipeline.stages[1].project.source_path.as_deref(),
-        Some("ReportB.xml")
-    );
+}
+
+fn execute_local_tut3(pipeline: &mapping::Pipeline, sample: &Path) -> engine::PipelineOutputs {
+    let first = &pipeline.stages[0];
+    let PipelineInput::Host { name } = &first.source else {
+        panic!("local chain needs a host primary source");
+    };
+    let directory = sample.parent().unwrap();
+    let mut hosts = BTreeMap::from([(
+        name.clone(),
+        format_xml::read(
+            &directory.join(format!("{name}.xml")),
+            &first.project.source,
+        )
+        .unwrap(),
+    )]);
+    for binding in &first.extra_sources {
+        let PipelineInput::Host { name } = &binding.from else {
+            panic!("local chain needs host named sources");
+        };
+        let source = first
+            .project
+            .extra_sources
+            .iter()
+            .find(|source| source.name == binding.name)
+            .unwrap();
+        hosts.insert(
+            name.clone(),
+            format_xml::read(&directory.join(format!("{name}.xml")), &source.schema).unwrap(),
+        );
+    }
+    let execution =
+        engine::ExecutionContext::new(sample).with_current_datetime("2026-09-29T12:00:00-07:00");
+    engine::run_pipeline_with_context(pipeline, &hosts, &execution).unwrap()
 }
 
 #[test]

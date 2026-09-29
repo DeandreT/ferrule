@@ -1844,6 +1844,16 @@ fn import_resolved(
         .map(|stored| instance_path::resolve_static_input(path, &stored));
     let target_path = if root.output_path().is_some() {
         None
+    } else if matches!(
+        selection,
+        StageSelection::Into { .. } | StageSelection::Between { .. }
+    ) {
+        // A chained component's input instance is only a source preview for
+        // the next stage; an absent output instance does not name a file.
+        target
+            .output_instance
+            .clone()
+            .or_else(|| builder.static_target_document_path(target))
     } else {
         target
             .output_instance
