@@ -57,6 +57,97 @@ fn pipeline_fixture(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn two_stage_pipeline_fixture(path: &Path) -> anyhow::Result<()> {
+    pipeline_fixture(path)?;
+    let mut pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(path)?)?;
+    let prepare = &mut pipeline.stages[0].project;
+    prepare.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::String("A".into()),
+        },
+    );
+    prepare.root = Scope {
+        bindings: vec![Binding {
+            target_field: "Value".into(),
+            node: 0,
+        }],
+        ..Scope::default()
+    };
+    let mut finish = prepare.clone();
+    finish.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::String("B".into()),
+        },
+    );
+    pipeline.stages.push(mapping::PipelineStage {
+        id: "finish".into(),
+        mapping_path: None,
+        project: finish,
+        source: mapping::PipelineInput::StageTarget {
+            stage: "prepare".into(),
+            target: None,
+        },
+        extra_sources: Vec::new(),
+    });
+    std::fs::write(path, serde_json::to_vec_pretty(&pipeline)?)?;
+    Ok(())
+}
+
+fn two_stage_pipeline_app(test_name: &str) -> anyhow::Result<(FerruleApp, PathBuf)> {
+    let pipeline_path = temporary_project_path(test_name);
+    two_stage_pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    std::fs::write(directory.join("orders.json"), r#"{"Value":"source"}"#)?;
+    std::fs::write(directory.join("prepare.json"), "old prepare")?;
+    std::fs::write(directory.join("finish.json"), "old finish")?;
+    let mut app = FerruleApp::default();
+    app.load_pipeline_for_run(&pipeline_path);
+    let draft = app.pipeline_run_draft.as_mut().expect("pipeline opens");
+    assert!(draft.issues.is_empty(), "{:?}", draft.issues);
+    draft.inputs[0].path = "orders.json".into();
+    draft.outputs[0].path = "prepare.json".into();
+    draft.outputs[1].path = "finish.json".into();
+    Ok((app, pipeline_path))
+}
+
+fn wait_for_pipeline_completion(app: &mut FerruleApp) {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while app.pending_pipeline_run.is_some() && std::time::Instant::now() < deadline {
+        app.poll_pipeline_run(&context);
+        if app.pending_pipeline_run.is_some() {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+    assert!(
+        app.pending_pipeline_run.is_none(),
+        "pipeline worker completes"
+    );
+}
+
+fn wait_for_pipeline_pause(app: &mut FerruleApp) -> (String, engine::PendingTargetWrite) {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_pipeline_run(&context);
+        match app
+            .pending_pipeline_run
+            .as_ref()
+            .map(|pending| &pending.phase)
+        {
+            Some(pipeline_ui::PipelineRunPhase::Paused(stage, write)) => {
+                return (stage.clone(), (**write).clone());
+            }
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug pipeline did not pause before deadline: {other:?}"),
+        }
+    }
+}
+
 fn named_target(name: &str) -> NamedTarget {
     NamedTarget {
         name: name.to_owned(),
@@ -1679,6 +1770,95 @@ fn pipeline_runner_keeps_dirty_project_open_and_reports_written_output() -> anyh
     assert_eq!(serde_json::to_vec(&app.project)?, before);
     assert!(app.document.saved_path().is_none());
     assert!(app.is_dirty());
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn debug_pipeline_steps_across_stages_then_publishes() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-debug-step")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.start_pipeline_debug_run();
+    let (stage, write) = wait_for_pipeline_pause(&mut app);
+    assert_eq!(stage, "prepare");
+    assert_eq!(write.field, "Value");
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Step);
+    let (stage, write) = wait_for_pipeline_pause(&mut app);
+    assert_eq!(stage, "finish");
+    assert_eq!(write.field, "Value");
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
+
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Continue);
+    wait_for_pipeline_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
+    let prepare: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join("prepare.json"))?)?;
+    let finish: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join("finish.json"))?)?;
+    assert_eq!(prepare["Value"], "A");
+    assert_eq!(finish["Value"], "B");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn stage_breakpoint_skips_earlier_stage_and_cancel_preserves_outputs() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-debug-breakpoint")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.pipeline_run_breakpoint =
+        pipeline_ui::breakpoint_candidates(&app.pipeline_run_draft.as_ref().unwrap().pipeline)
+            .into_iter()
+            .find(|candidate| {
+                candidate.stage == "finish"
+                    && candidate.target == engine::TraceTarget::Primary
+                    && candidate.field.field == "Value"
+            });
+    assert!(app.pipeline_run_breakpoint.is_some());
+    app.start_pipeline_debug_run();
+    let (stage, write) = wait_for_pipeline_pause(&mut app);
+    assert_eq!(stage, "finish");
+    assert_eq!(write.field, "Value");
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
+    wait_for_pipeline_completion(&mut app);
+    assert_eq!(app.status, "pipeline cancelled");
+    assert!(!app.show_run_report);
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn cancelling_ordinary_pipeline_suppresses_late_publication() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_pipeline_app("pipeline-cancel")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.start_pipeline_run();
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
+    wait_for_pipeline_completion(&mut app);
+    assert_eq!(app.status, "pipeline cancelled");
+    assert!(app.run_report.is_none());
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }

@@ -498,6 +498,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 &publications,
                 &cli::PipelineRunOptions {
                     runtime_parameters: Some(&parameters),
+                    ..cli::PipelineRunOptions::default()
                 },
             )?;
             for artifact in &outcome.artifacts {

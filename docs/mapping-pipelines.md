@@ -122,7 +122,11 @@ library API preserves its output request order.
 `cli::run_pipeline_file` exposes this file host to Rust callers, with
 `PipelineHostFile` and `PipelineOutputFile` selectors. The
 `run_pipeline_file_with_options` variant accepts bounded typed runtime
-parameters. Each stage can use its own active mapping path while the optional
+parameters, an optional stage-qualified pre-insertion debug hook, and an
+optional gate immediately before the batch is staged. A hook can cancel
+evaluation at an ordinary target-field write in any stage. A gate can cancel
+after every stage succeeds while leaving existing outputs untouched. Each
+stage can use its own active mapping path while the optional
 top-level main mapping path supplies the shared main identity; without it, the
 pipeline file remains the main mapping path. Referenced local mapping files are
 protected from output overwrite. All stages share one captured date-time
@@ -144,3 +148,13 @@ validation issues and saves only a valid pipeline. It detects external file
 changes before an atomic save and asks before discarding unsaved pipeline edits.
 Input and publication file paths for a run remain choices in the separate
 **Run Pipeline** dialog.
+
+The Run Pipeline dialog can run or debug a saved pipeline on a worker. Debug
+pauses before ordinary target-field writes, labels each pause with its stage
+and target, and supports **Step**, **Continue**, **Pause at next write**, and
+**Cancel pipeline**. Its breakpoint selector can choose one declared static
+field and scope in one stage and target. Ordinary runs can also be cancelled
+before publication. Both modes wait for all stages to finish before publishing
+selected outputs together; the dialog and app close wait while publication is
+in progress. Runs with no ordinary target-field write finish without a live
+pause.

@@ -493,6 +493,18 @@ impl FerruleApp {
             }
             return;
         }
+        if self.pending_pipeline_run.is_some() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.close_after_pipeline_run = true;
+            if self
+                .pending_pipeline_run
+                .as_ref()
+                .is_some_and(|run| !matches!(run.phase, pipeline_ui::PipelineRunPhase::Publishing))
+            {
+                self.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
+            }
+            return;
+        }
         if self
             .pipeline_editor
             .as_ref()

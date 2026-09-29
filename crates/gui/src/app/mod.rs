@@ -404,6 +404,8 @@ pub struct FerruleApp {
     pending_preview: Option<preview_ui::PendingPreview>,
     pipeline_run_draft: Option<crate::pipeline_run::PipelineRunDraft>,
     pending_pipeline_run: Option<pipeline_ui::PendingPipelineRun>,
+    pipeline_run_breakpoint: Option<pipeline_ui::PipelineBreakpoint>,
+    close_after_pipeline_run: bool,
     pipeline_editor: Option<pipeline_editor_ui::PipelineEditorUi>,
     pending_pipeline_editor_action: Option<pipeline_editor_ui::PipelineEditorAction>,
     show_run_report: bool,
@@ -522,6 +524,8 @@ impl Default for FerruleApp {
             pending_preview: None,
             pipeline_run_draft: None,
             pending_pipeline_run: None,
+            pipeline_run_breakpoint: None,
+            close_after_pipeline_run: false,
             pipeline_editor: None,
             pending_pipeline_editor_action: None,
             show_run_report: false,
@@ -1312,7 +1316,8 @@ impl eframe::App for FerruleApp {
             && self.pending_auto_connect.is_none()
             && self.preview_draft.is_none()
             && self.pending_preview.is_none()
-            && self.pending_file_run.is_none();
+            && self.pending_file_run.is_none()
+            && self.pending_pipeline_run.is_none();
         let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
