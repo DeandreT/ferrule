@@ -6,11 +6,13 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+mod replay;
 mod source_rows;
 
-use source_rows::{format_source_row, index_source_rows, show_source_rows};
+use replay::show_replay;
 #[cfg(test)]
-use source_rows::{source_row_details, source_row_summary};
+use source_rows::source_row_summary;
+use source_rows::{format_source_row, index_source_rows, show_source_rows, source_row_details};
 
 pub const MAX_PREVIEW_BYTES: usize = 1024 * 1024;
 const MAX_BINARY_PREVIEW_BYTES: usize = 4 * 1024;
@@ -190,6 +192,7 @@ enum ReportPage {
     Output,
     Trace,
     History,
+    Replay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,10 +212,12 @@ pub struct RunReportView {
     history_node: Option<mapping::NodeId>,
     source_rows: Vec<usize>,
     selected_source_row: Option<usize>,
+    replay_event: Option<usize>,
 }
 
 impl RunReportView {
     pub fn new(report: RunReport) -> Self {
+        let replay_event = (!report.trace.events.is_empty()).then_some(0);
         let history_by_node = index_node_history(&report.trace.events);
         let source_rows = index_source_rows(&report.trace.events);
         let selected_source_row = source_rows.first().copied();
@@ -231,6 +236,7 @@ impl RunReportView {
             history_node,
             source_rows,
             selected_source_row,
+            replay_event,
         }
     }
 
@@ -468,6 +474,7 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.selectable_value(&mut view.page, ReportPage::Output, "Output");
         ui.selectable_value(&mut view.page, ReportPage::Trace, "Trace");
         ui.selectable_value(&mut view.page, ReportPage::History, "History");
+        ui.selectable_value(&mut view.page, ReportPage::Replay, "Replay");
     });
     ui.separator();
 
@@ -475,6 +482,7 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
         ReportPage::Output => show_outputs(ui, view),
         ReportPage::Trace => show_trace(ui, view),
         ReportPage::History => show_history(ui, view),
+        ReportPage::Replay => show_replay(ui, view),
     }
 }
 
