@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
-use mapping::PipelineInput;
+use mapping::{Node, PipelineInput};
 
 struct TempDir(PathBuf);
 
@@ -110,6 +110,32 @@ fn make_four_stage_chain(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_late_named_source_chain(directory: &Path) -> PathBuf {
+    let path = make_chain(directory);
+    write_schema(&directory.join("catalog.xsd"), "Catalog", "Item");
+    std::fs::write(
+        directory.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string"/><xs:element name="Lookup" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+    let original = std::fs::read_to_string(&path).unwrap();
+    let with_catalog = original.replace(
+        "<component name=\"buffer\"",
+        r#"<component name="catalog" library="xml" kind="14"><data><root><entry name="Catalog"><entry name="Item" outkey="50"/></entry></root><document schema="catalog.xsd" inputinstance="catalog.xml" instanceroot="{}Catalog"/></data></component><component name="buffer""#,
+    );
+    let with_target = with_catalog.replace(
+        "<entry name=\"Result\" inpkey=\"40\"/>",
+        "<entry name=\"Result\" inpkey=\"40\"/><entry name=\"Lookup\" inpkey=\"60\"/>",
+    );
+    let with_edge = with_target.replace(
+        "</vertices></graph>",
+        "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/></edges></vertex></vertices></graph>",
+    );
+    assert_ne!(with_edge, original);
+    std::fs::write(&path, with_edge).unwrap();
+    path
+}
+
 fn execute(pipeline: &mapping::Pipeline) -> engine::PipelineOutputs {
     let PipelineInput::Host { name } = &pipeline.stages[0].source else {
         panic!("first stage must read a host source");
@@ -125,6 +151,31 @@ fn execute(pipeline: &mapping::Pipeline) -> engine::PipelineOutputs {
         )]),
     )
     .unwrap()
+}
+
+fn late_named_inputs(pipeline: &mapping::Pipeline) -> BTreeMap<String, Instance> {
+    let PipelineInput::Host { name: primary } = &pipeline.stages[0].source else {
+        panic!("first stage must read a host source");
+    };
+    let PipelineInput::Host { name: catalog } = &pipeline.stages[0].extra_sources[0].from else {
+        panic!("named source must read an original host");
+    };
+    BTreeMap::from([
+        (
+            primary.clone(),
+            Instance::Group(vec![(
+                "Start".into(),
+                Instance::Scalar(Value::String("serial value".into())),
+            )]),
+        ),
+        (
+            catalog.clone(),
+            Instance::Group(vec![(
+                "Item".into(),
+                Instance::Scalar(Value::String("host value".into())),
+            )]),
+        ),
+    ])
 }
 
 #[test]
@@ -172,11 +223,9 @@ fn four_stage_pipeline_remaps_every_stage_and_preserves_execution() {
     assert_eq!(original.pipeline.stages.len(), 4);
     let original_outputs = execute(&original.pipeline);
     let exported_path = directory.0.join("exported-four-stage.mfd");
-    assert!(
-        mfd::export_pipeline(&original.pipeline, &exported_path)
-            .unwrap()
-            .is_empty()
-    );
+    assert!(mfd::export_pipeline(&original.pipeline, &exported_path)
+        .unwrap()
+        .is_empty());
     let exported = std::fs::read_to_string(&exported_path).unwrap();
     assert_eq!(exported.matches("PassThrough=\"1\"").count(), 3);
     let reimported = mfd::import_pipeline(&exported_path).unwrap();
@@ -196,6 +245,109 @@ fn four_stage_pipeline_remaps_every_stage_and_preserves_execution() {
             index + 1,
         );
     }
+}
+
+#[test]
+fn late_named_xml_source_reuses_one_original_host_component() {
+    let directory = TempDir::new();
+    let original = mfd::import_pipeline(&make_late_named_source_chain(&directory.0)).unwrap();
+    assert!(original.warnings.is_empty(), "{:?}", original.warnings);
+    assert_eq!(original.pipeline.stages.len(), 2);
+    assert_eq!(
+        original.pipeline.stages[0].project.extra_sources[0].name,
+        "catalog"
+    );
+    assert!(original.pipeline.stages[1]
+        .extra_sources
+        .iter()
+        .any(|binding| {
+            binding.name == "catalog"
+                && matches!(&binding.from, PipelineInput::Host { name } if name == "catalog")
+        }));
+    let original_outputs =
+        engine::run_pipeline(&original.pipeline, &late_named_inputs(&original.pipeline)).unwrap();
+    let original_final = &original_outputs.stage("mfd-stage-2").unwrap().primary;
+    assert_eq!(
+        original_final.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::String("serial value".into()))
+    );
+    assert_eq!(
+        original_final.field("Lookup").and_then(Instance::as_scalar),
+        Some(&Value::String("host value".into()))
+    );
+
+    let exported_path = directory.0.join("late-host-export.mfd");
+    let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let published = mfd::export_pipeline_with_profile(
+        &original.pipeline,
+        &exported_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    assert!(published.is_native_compatible(), "{published:?}");
+    let exported = std::fs::read_to_string(&exported_path).unwrap();
+    assert_eq!(
+        exported.matches("name=\"catalog\" library=\"xml\"").count(),
+        1
+    );
+    let reimported = mfd::import_pipeline(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate_pipeline(&reimported.pipeline).is_empty());
+    let reimported_outputs = engine::run_pipeline(
+        &reimported.pipeline,
+        &late_named_inputs(&reimported.pipeline),
+    )
+    .unwrap();
+    assert_eq!(
+        reimported_outputs.stage("mfd-stage-2").unwrap().primary,
+        *original_final
+    );
+}
+
+#[test]
+fn late_named_xml_source_rejects_changed_or_previously_used_host() {
+    let directory = TempDir::new();
+    let imported = mfd::import_pipeline(&make_late_named_source_chain(&directory.0)).unwrap();
+
+    let mut changed = imported.pipeline.clone();
+    changed.stages[1]
+        .project
+        .extra_sources
+        .iter_mut()
+        .find(|source| source.name == "catalog")
+        .unwrap()
+        .path = "different.xml".into();
+    let destination = directory.0.join("not-created/changed.mfd");
+    let error = mfd::export_pipeline(&changed, &destination)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("does not match its original XML boundary"),
+        "{error}"
+    );
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut used = imported.pipeline;
+    let first = &mut used.stages[0].project;
+    let node = first.graph.nodes.keys().next_back().copied().unwrap_or(0) + 1;
+    first.graph.nodes.insert(
+        node,
+        Node::SourceField {
+            path: vec!["catalog".into(), "Item".into()],
+            frame: None,
+        },
+    );
+    first.root.bindings[0].node = node;
+    let destination = directory.0.join("not-created/used.mfd");
+    let error = mfd::export_pipeline(&used, &destination)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("already connected before this stage"),
+        "{error}"
+    );
+    assert!(!destination.parent().unwrap().exists());
 }
 
 #[test]
@@ -225,11 +377,9 @@ fn synthetic_terminal_xml_fanout_imports_exports_and_runs() {
     let exported_path = directory.0.join("fanout-export.mfd");
     let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert!(
-        mfd::export_pipeline(&original.pipeline, &exported_path)
-            .unwrap()
-            .is_empty()
-    );
+    assert!(mfd::export_pipeline(&original.pipeline, &exported_path)
+        .unwrap()
+        .is_empty());
     let exported = std::fs::read_to_string(&exported_path).unwrap();
     assert_eq!(exported.matches("PassThrough=\"1\"").count(), 1);
     assert_eq!(exported.matches("XSLTDefaultOutput=\"1\"").count(), 1);
