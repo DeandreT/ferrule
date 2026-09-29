@@ -438,10 +438,11 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports five warning-free designs (JSON to
-JSON, XML to JSON, FlexText to XML, grouped CSV to XML, and grouped XML to XML
-with yearly minimum, maximum, and average temperatures), executes them in the
-interpreter, then compiles and runs their generated Rust and C# hosts against
+An opt-in local-corpus smoke test imports six warning-free designs: JSON to
+JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
+with yearly minimum, maximum, and average temperatures, and XML to XML with
+three-key person sorting. It executes them in the interpreter, then compiles
+and runs their generated Rust and C# hosts against
 schema-shaped JSON input. Both backends must match the interpreter's JSON
 result. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
