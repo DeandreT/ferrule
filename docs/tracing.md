@@ -139,6 +139,11 @@ events, though their successful graph-node outputs remain visible. The native
 GUI's History tab has graph-node and source-row views. The source-row view
 shows retained candidate rows by scope, ordinal, and raw source position, with
 their bounded field previews; it does not link them to node evaluations whose
-positions may change during sorting or grouping. History retains at most
-50,000 trace events and reports when later events were omitted. It does not
-provide live stepping.
+positions may change during sorting or grouping. The Replay tab navigates the
+completed trace one recorded event at a time (first, previous, next, or next
+recorded input or output of a selected graph node). Its detail shows the selected event's
+positions and, for a source candidate, that same event's bounded row fields.
+This is navigation of recorded history, not a live pause or re-execution. The
+GUI retains at most 50,000 trace events and reports when later events were
+omitted; replay ends at the retained prefix. Run and Preview currently show
+this trace only after successful completion.
