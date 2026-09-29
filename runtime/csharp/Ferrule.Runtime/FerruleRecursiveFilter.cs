@@ -6,6 +6,9 @@ namespace Ferrule.Runtime;
 public static class FerruleRecursiveFilter
 {
     public const int MaximumDepth = 256;
+    private const string OrderedXmlField = "\u001fferrule-xml-mixed-content";
+    private const string OrderedXmlValueField = "\u001fferrule-xml-mixed-value";
+    private const string XmlNodeNameField = "NodeName";
 
     public static FerruleInstance Apply(
         ScopeContext context,
@@ -46,15 +49,19 @@ public static class FerruleRecursiveFilter
         }
 
         var output = new List<FerruleField>(current.Fields.Count);
+        List<bool>? keptItems = null;
+        var filteredChildren = false;
         foreach (var field in current.Fields)
         {
             FerruleInstance value;
             if (string.Equals(field.Name, items, StringComparison.Ordinal))
             {
-                value = FilterItems(context, field.Value, items, predicateNode, predicate);
+                value = FilterItems(
+                    context, field.Value, items, predicateNode, predicate, out keptItems);
             }
             else if (string.Equals(field.Name, children, StringComparison.Ordinal))
             {
+                filteredChildren = true;
                 value = FilterChildren(
                     context,
                     field.Value,
@@ -70,7 +77,88 @@ public static class FerruleRecursiveFilter
             }
             output.Add(new FerruleField(field.Name, value));
         }
+        if (keptItems is not null || filteredChildren)
+        {
+            RebuildOrderedXml(current, output, items, children, keptItems ?? []);
+        }
         return new FerruleGroup(output);
+    }
+
+    // The XML choice reader keeps a private ordered stream of typed children.
+    // The XML writer consumes that stream, so it must follow the filtered fields.
+    private static void RebuildOrderedXml(
+        FerruleGroup source,
+        List<FerruleField> output,
+        string items,
+        string children,
+        IReadOnlyList<bool> keptItems)
+    {
+        if (!source.TryGetField(OrderedXmlField, out var ordered) ||
+            ordered is not FerruleRepeated entries)
+        {
+            return;
+        }
+        var filteredItems = output.FirstOrDefault(field => field.Name == items)?.Value
+            as FerruleRepeated;
+        var filteredChildren = output.FirstOrDefault(field => field.Name == children)?.Value
+            as FerruleRepeated;
+        var rebuilt = new List<FerruleInstance>(entries.Items.Count);
+        var itemIndex = 0;
+        var keptIndex = 0;
+        var childIndex = 0;
+        foreach (var entry in entries.Items)
+        {
+            if (entry is not FerruleGroup group ||
+                !group.TryGetField(XmlNodeNameField, out var nodeName) ||
+                nodeName is not FerruleScalar
+                {
+                    Value.Kind: FerruleValueKind.String,
+                } name)
+            {
+                rebuilt.Add(CloneInstance(entry));
+                continue;
+            }
+            FerruleInstance? replacement = null;
+            if (string.Equals(name.Value.StringValue, items, StringComparison.Ordinal))
+            {
+                var keep = itemIndex < keptItems.Count && keptItems[itemIndex];
+                itemIndex++;
+                if (!keep)
+                {
+                    continue;
+                }
+                if (filteredItems is not null && keptIndex < filteredItems.Items.Count)
+                {
+                    replacement = filteredItems.Items[keptIndex];
+                }
+                keptIndex++;
+            }
+            else if (string.Equals(name.Value.StringValue, children, StringComparison.Ordinal))
+            {
+                if (filteredChildren is not null && childIndex < filteredChildren.Items.Count)
+                {
+                    replacement = filteredChildren.Items[childIndex];
+                }
+                childIndex++;
+            }
+            if ((name.Value.StringValue == items || name.Value.StringValue == children) &&
+                replacement is null)
+            {
+                continue;
+            }
+            rebuilt.Add(new FerruleGroup(group.Fields.Select(field =>
+                new FerruleField(
+                    field.Name,
+                    field.Name == OrderedXmlValueField && replacement is not null
+                        ? CloneInstance(replacement)
+                        : CloneInstance(field.Value)))));
+        }
+        var orderedIndex = output.FindIndex(field => field.Name == OrderedXmlField);
+        if (orderedIndex >= 0)
+        {
+            output[orderedIndex] = new FerruleField(
+                OrderedXmlField, new FerruleRepeated(rebuilt));
+        }
     }
 
     private static FerruleRepeated FilterItems(
@@ -78,18 +166,22 @@ public static class FerruleRecursiveFilter
         FerruleInstance collection,
         string items,
         uint predicateNode,
-        Func<ScopeContext, FerruleValue> predicate)
+        Func<ScopeContext, FerruleValue> predicate,
+        out List<bool> kept)
     {
         if (collection is not FerruleRepeated values)
         {
             throw RequiresCollection(items, collection);
         }
         var output = new List<FerruleInstance>(values.Items.Count);
+        kept = new List<bool>(values.Items.Count);
         for (var index = 0; index < values.Items.Count; index++)
         {
             var item = values.Items[index];
             var itemContext = context.WithRecursiveFilterItem(item, items, index + 1);
-            if (FerruleFunctions.RequireBoolean(predicate(itemContext), predicateNode))
+            var keep = FerruleFunctions.RequireBoolean(predicate(itemContext), predicateNode);
+            kept.Add(keep);
+            if (keep)
             {
                 output.Add(CloneInstance(item));
             }

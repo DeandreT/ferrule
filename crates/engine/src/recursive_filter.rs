@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use ir::{Instance, Value};
+use ir::{
+    Instance, Value, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD,
+};
 use mapping::RecursiveFilterPlan;
 
 use crate::EngineError;
@@ -40,17 +42,109 @@ fn filter_group<'a>(
     };
 
     let mut output = Vec::with_capacity(fields.len());
+    let mut kept_items = None;
+    let mut filtered_children = false;
     for (name, value) in fields {
         let value = if name == plan.items() {
-            filter_items(program, plan, value, context, positions)?
+            let (filtered, kept) = filter_items(program, plan, value, context, positions)?;
+            kept_items = Some(kept);
+            filtered
         } else if name == plan.children() {
+            filtered_children = true;
             filter_children(program, plan, value, context, positions, depth)?
         } else {
             value.clone()
         };
         output.push((name.clone(), value));
     }
+    if kept_items.is_some() || filtered_children {
+        rebuild_ordered_xml(
+            fields,
+            &mut output,
+            plan.items(),
+            plan.children(),
+            kept_items.as_deref().unwrap_or(&[]),
+        );
+    }
     Ok(Instance::Group(output))
+}
+
+/// The XML choice reader retains an ordered stream of typed child values beside
+/// the schema fields. Update that stream with the same per-occurrence decisions
+/// so serialization cannot resurrect a filtered child or an unfiltered subtree.
+fn rebuild_ordered_xml(
+    source: &[(String, Instance)],
+    output: &mut [(String, Instance)],
+    items: &str,
+    children: &str,
+    kept_items: &[bool],
+) {
+    let Some(Instance::Repeated(ordered)) = source
+        .iter()
+        .find(|(name, _)| name == XML_MIXED_CONTENT_FIELD)
+        .map(|(_, value)| value)
+    else {
+        return;
+    };
+    let filtered_items = output
+        .iter()
+        .find(|(name, _)| name == items)
+        .and_then(|(_, value)| value.as_repeated());
+    let filtered_children = output
+        .iter()
+        .find(|(name, _)| name == children)
+        .and_then(|(_, value)| value.as_repeated());
+    let mut item_index = 0;
+    let mut kept_index = 0;
+    let mut child_index = 0;
+    let mut rebuilt = Vec::with_capacity(ordered.len());
+    for entry in ordered {
+        let Some(name) = entry
+            .field(XML_NODE_NAME_FIELD)
+            .and_then(Instance::as_scalar)
+            .and_then(|value| match value {
+                Value::String(name) => Some(name.as_str()),
+                _ => None,
+            })
+        else {
+            rebuilt.push(entry.clone());
+            continue;
+        };
+        let replacement = if name == items {
+            let keep = kept_items.get(item_index).copied().unwrap_or(false);
+            item_index += 1;
+            if !keep {
+                continue;
+            }
+            let value = filtered_items.and_then(|items| items.get(kept_index));
+            kept_index += 1;
+            value
+        } else if name == children {
+            let value = filtered_children.and_then(|children| children.get(child_index));
+            child_index += 1;
+            value
+        } else {
+            None
+        };
+        if (name == items || name == children) && replacement.is_none() {
+            continue;
+        }
+        let mut entry = entry.clone();
+        if let (Some(replacement), Instance::Group(fields)) = (replacement, &mut entry)
+            && let Some((_, value)) = fields
+                .iter_mut()
+                .find(|(name, _)| name == XML_MIXED_CONTENT_VALUE_FIELD)
+        {
+            *value = replacement.clone();
+        }
+        rebuilt.push(entry);
+    }
+    if let Some((_, value)) = output
+        .iter_mut()
+        .find(|(name, _)| name == XML_MIXED_CONTENT_FIELD)
+    {
+        *value = Instance::Repeated(rebuilt);
+    }
 }
 
 fn filter_items<'a>(
@@ -59,7 +153,7 @@ fn filter_items<'a>(
     collection: &'a Instance,
     context: &mut Vec<&'a Instance>,
     positions: &mut Vec<PositionFrame>,
-) -> Result<Instance, EngineError> {
+) -> Result<(Instance, Vec<bool>), EngineError> {
     let Instance::Repeated(items) = collection else {
         return Err(EngineError::RecursiveFilterRequiresCollection {
             field: plan.items().to_owned(),
@@ -67,6 +161,7 @@ fn filter_items<'a>(
         });
     };
     let mut output = Vec::with_capacity(items.len());
+    let mut kept = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
         context.push(item);
         positions.push(position(plan.items(), index));
@@ -81,8 +176,11 @@ fn filter_items<'a>(
         positions.pop();
         context.pop();
         match keep? {
-            Value::Bool(true) => output.push(item.clone()),
-            Value::Bool(false) => {}
+            Value::Bool(true) => {
+                output.push(item.clone());
+                kept.push(true);
+            }
+            Value::Bool(false) => kept.push(false),
             value => {
                 return Err(EngineError::NotABool {
                     node: plan.predicate(),
@@ -91,7 +189,7 @@ fn filter_items<'a>(
             }
         }
     }
-    Ok(Instance::Repeated(output))
+    Ok((Instance::Repeated(output), kept))
 }
 
 fn filter_children<'a>(
