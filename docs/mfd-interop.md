@@ -248,7 +248,10 @@ XML host source may connect to named inputs in multiple stages, including the
 first and later intermediate stages, when its boundary and output ports still
 match. Connections from a reused output port share one vertex with multiple
 edges. Intermediate XML pass-through components retain their declared output
-instance and source preview instance, even when the two paths differ.
+instance and source preview instance, even when the two paths differ. An
+undeclared output instance is not inferred from an input preview or schema
+default. Repeated target branches connect the unique uncloned publication
+port; zero or multiple base ports reject before output artifacts are written.
 Preflight and native-profile checks run before any design or schema sibling is
 published.
 Independent intermediate targets, disconnected final targets, other connected
@@ -258,6 +261,10 @@ terminal fan-out, repeated named-host connections, and a CSV final target
 preserve their connected outputs. The CSV result also passes local write/read
 checks. A local chained-report sample and a synthetic distinct-path case
 preserve both intermediate instance identities across export/reimport.
+Three local chains reimport after strict native export. A fourth retains its
+intermediate metadata in best-effort export but requires date/time coercion
+extensions; strict native preflight rejects it, and its extension-bearing
+best-effort design is outside the current pipeline importer.
 Acceptance by the proprietary application remains unverified.
 When an imported JSON boundary or JSON string parser fell back to its entry
 tree because its schema was unavailable, best-effort export records that

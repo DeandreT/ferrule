@@ -771,7 +771,19 @@ fn connect_pass_through(
                 path.join("/")
             ))
         })?;
-        let [entry] = entries.as_slice() else {
+        // Repeated target branches share a schema path, but only the base
+        // branch represents the pass-through output port. A cloned ancestor
+        // also makes all of its descendants part of that duplicate branch.
+        let base_entries = entries
+            .iter()
+            .copied()
+            .filter(|entry| {
+                !entry.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("entry") && ancestor.attribute("clone") == Some("1")
+                })
+            })
+            .collect::<Vec<_>>();
+        let [entry] = base_entries.as_slice() else {
             return Err(MfdError::Unsupported(format!(
                 "pass-through port `{}` is ambiguous",
                 path.join("/")
@@ -945,5 +957,70 @@ mod tests {
                 .to_string()
                 .contains("unsupported edge metadata")
         );
+    }
+
+    #[test]
+    fn pass_through_output_keys_use_the_unique_uncloned_branch() {
+        let previous = r#"<component><properties XSLTDefaultOutput="1"/><data><root><entry name="Root"><entry name="Row" inpkey="1"><entry name="Value" inpkey="2"/></entry><entry name="Row" inpkey="3" clone="1"><entry name="Value" inpkey="4"/></entry></entry></root><document/></data></component>"#;
+        let next = r#"<component><data><root><entry name="Root"><entry name="Row" outkey="20"><entry name="Value" outkey="21"/></entry></entry></root><document/></data></component>"#;
+        let previous_doc = Document::parse(previous).unwrap();
+        let next_doc = Document::parse(next).unwrap();
+        let mut edits = Vec::new();
+        connect_pass_through(
+            previous,
+            previous_doc.root_element(),
+            next_doc.root_element(),
+            &mut edits,
+        )
+        .unwrap();
+        let merged = apply_edits(previous.to_string(), edits).unwrap();
+        let document = Document::parse(&merged).unwrap();
+        let rows = document
+            .descendants()
+            .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Row"))
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].attribute("outkey"), Some("20"));
+        assert_eq!(rows[1].attribute("outkey"), None);
+        assert_eq!(
+            rows[0]
+                .children()
+                .find(|node| node.has_tag_name("entry"))
+                .and_then(|node| node.attribute("outkey")),
+            Some("21")
+        );
+        assert_eq!(
+            rows[1]
+                .children()
+                .find(|node| node.has_tag_name("entry"))
+                .and_then(|node| node.attribute("outkey")),
+            None
+        );
+    }
+
+    #[test]
+    fn pass_through_output_keys_reject_zero_or_multiple_base_branches() {
+        let next = r#"<component><data><root><entry name="Root"><entry name="Row" outkey="20"/></entry></root><document/></data></component>"#;
+        let next_doc = Document::parse(next).unwrap();
+        for attributes in [("", ""), (" clone=\"1\"", " clone=\"1\"")] {
+            let previous = format!(
+                "<component><properties XSLTDefaultOutput=\"1\"/><data><root><entry name=\"Root\"><entry name=\"Row\" inpkey=\"1\"{}/><entry name=\"Row\" inpkey=\"2\"{}/></entry></root><document/></data></component>",
+                attributes.0, attributes.1
+            );
+            let previous_doc = Document::parse(&previous).unwrap();
+            let mut edits = Vec::new();
+            let error = connect_pass_through(
+                &previous,
+                previous_doc.root_element(),
+                next_doc.root_element(),
+                &mut edits,
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(
+                error.contains("pass-through port `Row` is ambiguous"),
+                "{error}"
+            );
+        }
     }
 }
