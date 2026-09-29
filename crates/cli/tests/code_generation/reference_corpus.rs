@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against sixteen local, gitignored mappings.
+//! Opt-in generated-backend execution against seventeen local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -29,7 +29,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 16] = [
+const CASES: [CorpusCase; 17] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -123,6 +123,12 @@ const CASES: [CorpusCase; 16] = [
     CorpusCase {
         sample: "Tutorial/Expense-valmap.mfd",
         input: "Tutorial/ExpReport-item.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "KeyValueList.mfd",
+        input: "KeyValueList.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
@@ -677,6 +683,46 @@ fn run_case(
             notes.iter().filter(|note| **note == notes[0]).count(),
             1,
             "{sample}: one expense selects the non-default note"
+        );
+    }
+    if sample == "KeyValueList.mfd" {
+        let expression = project
+            .graph
+            .nodes
+            .values()
+            .find_map(|node| match node {
+                Node::Aggregate {
+                    function: mapping::AggregateOp::Join,
+                    collection,
+                    expression: Some(expression),
+                    ..
+                } if collection.len() == 1 && collection[0] == "Item" => Some(expression),
+                _ => None,
+            })
+            .expect("per-item join expression");
+        let Some(Node::Call { args, .. }) = project.graph.nodes.get(expression) else {
+            panic!("{sample}: join expression should combine lookup results");
+        };
+        assert_eq!(
+            args.iter()
+                .filter(|node| matches!(project.graph.nodes.get(node), Some(Node::Lookup { .. })))
+                .count(),
+            2,
+            "{sample}: two lookups execute for each aggregate item"
+        );
+        let info = expected_json["Info"]
+            .as_array()
+            .expect("one summarized info item");
+        assert_eq!(info.len(), 1, "{sample}: one summary item");
+        assert!(
+            info[0]["Title"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty())
+        );
+        assert!(
+            info[0]["Description"]["#text"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty())
         );
     }
 
