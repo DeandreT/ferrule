@@ -368,6 +368,7 @@ pub(super) fn eval_sequence_item_at(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn eval_sequence_aggregate(
     program: EvalProgram<'_>,
+    consumer: NodeId,
     function: mapping::AggregateOp,
     sequence: &SequenceExpr,
     predicate: Option<NodeId>,
@@ -378,6 +379,10 @@ pub(super) fn eval_sequence_aggregate(
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
     let generated = eval_sequence_in_progress(program, sequence, context, positions, in_progress)?;
+    // The owned sequence item is a dependency, not a visible input pin.
+    let predicate_input_index = sequence.inputs().len();
+    let expression_input_index = predicate_input_index + usize::from(predicate.is_some());
+    let arg_input_index = expression_input_index + usize::from(expression.is_some());
     let mut values = Vec::with_capacity(generated.len());
     for (index, value) in generated.into_iter().enumerate() {
         let item = Instance::Scalar(value.clone());
@@ -393,9 +398,11 @@ pub(super) fn eval_sequence_aggregate(
             document_path: None,
         });
         let keep = match predicate {
-            Some(predicate) => match eval_expr(
+            Some(predicate) => match eval_node_input(
                 program,
+                consumer,
                 predicate,
+                predicate_input_index,
                 &item_context,
                 &item_positions,
                 in_progress,
@@ -412,9 +419,11 @@ pub(super) fn eval_sequence_aggregate(
         };
         if keep {
             values.push(match expression {
-                Some(expression) => eval_expr(
+                Some(expression) => eval_node_input(
                     program,
+                    consumer,
                     expression,
+                    expression_input_index,
                     &item_context,
                     &item_positions,
                     in_progress,
@@ -424,7 +433,17 @@ pub(super) fn eval_sequence_aggregate(
         }
     }
     let arg = arg
-        .map(|arg| eval_expr(program, arg, context, positions, in_progress))
+        .map(|arg| {
+            eval_node_input(
+                program,
+                consumer,
+                arg,
+                arg_input_index,
+                context,
+                positions,
+                in_progress,
+            )
+        })
         .transpose()?;
     super::aggregate::aggregate(function, values.len(), &values, arg)
 }
