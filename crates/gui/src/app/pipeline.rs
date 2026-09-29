@@ -7,7 +7,8 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use crate::preview::{
-    DebugPositionCondition, DebugScalarCondition, PreviewBreakpoint, PreviewTarget,
+    DebugPositionCondition, DebugScalarCondition, DebugSourceCondition, PreviewBreakpoint,
+    PreviewTarget,
 };
 use mapping::PipelineInput;
 
@@ -144,9 +145,16 @@ struct PipelineRunHook {
     breakpoint: Option<PipelineBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
+    source_condition: Option<DebugSourceCondition>,
 }
 
 impl PipelineRunHook {
+    fn source_field_probe(&self) -> Option<(usize, String)> {
+        self.source_condition
+            .as_ref()
+            .map(DebugSourceCondition::probe)
+    }
+
     fn before_target_write(
         &self,
         stage: &str,
@@ -179,11 +187,20 @@ impl PipelineRunHook {
             .position_condition
             .as_ref()
             .is_none_or(|condition| condition.matches(write));
+        let matches_source = self
+            .source_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
         let has_breakpoint = self.breakpoint.is_some()
             || self.value_condition.is_some()
-            || self.position_condition.is_some();
+            || self.position_condition.is_some()
+            || self.source_condition.is_some();
         if !self.pause_each_write.get()
-            && !(has_breakpoint && matches_selection && matches_value && matches_position)
+            && !(has_breakpoint
+                && matches_selection
+                && matches_value
+                && matches_position
+                && matches_source)
         {
             return engine::DebugDecision::Resume;
         }
@@ -398,6 +415,11 @@ impl FerruleApp {
                         ui,
                         &mut self.pipeline_run_position_condition,
                     );
+                    condition_valid &= preview_ui::show_breakpoint_source_condition(
+                        ui,
+                        &mut self.pipeline_run_source_condition,
+                        "pipeline_debug_source_type",
+                    );
                 }
                 match &phase {
                     Some(PipelineRunPhase::Running) => {
@@ -519,6 +541,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let source_condition = if debug {
+            match self.pipeline_run_source_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug pipeline blocked".into();
+                    self.diagnostics.error("Debug pipeline blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let Some(draft) = self.pipeline_run_draft.as_ref() else {
             return;
         };
@@ -554,18 +588,22 @@ impl FerruleApp {
                     debug
                         && breakpoint.is_none()
                         && value_condition.is_none()
-                        && position_condition.is_none(),
+                        && position_condition.is_none()
+                        && source_condition.is_none(),
                 ),
                 breakpoint,
                 value_condition,
                 position_condition,
+                source_condition,
             };
             let stage_hook = |stage: &str, write: &engine::PendingTargetWrite| {
                 hook.before_target_write(stage, write)
             };
+            let source_probe = |_stage: &str| hook.source_field_probe();
             let gate = || hook.before_publish();
             let options = cli::PipelineRunOptions::default()
                 .with_stage_debug_hook(&stage_hook)
+                .with_stage_source_field_probe(&source_probe)
                 .with_before_publish(&gate);
             let result =
                 cli::run_pipeline_file_with_options(&worker_path, &inputs, &outputs, &options)

@@ -34,12 +34,16 @@ pub struct PipelineOutputFile {
 pub type PipelineStageDebugCallback<'a> =
     dyn Fn(&str, &engine::PendingTargetWrite) -> engine::DebugDecision + 'a;
 
+/// An optional exact source-field probe for the active pipeline stage.
+pub type PipelineSourceFieldProbeCallback<'a> = dyn Fn(&str) -> Option<(usize, String)> + 'a;
+
 /// Optional host values shared by every stage in one execution.
 #[derive(Default)]
 pub struct PipelineRunOptions<'a> {
     pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
     /// A live write hook receives the ID of the stage being evaluated.
     pub stage_debug_hook: Option<&'a PipelineStageDebugCallback<'a>>,
+    pub stage_source_field_probe: Option<&'a PipelineSourceFieldProbeCallback<'a>>,
     /// Called after every stage succeeds, before any selected output is staged.
     pub before_publish: Option<&'a dyn Fn() -> bool>,
 }
@@ -47,6 +51,14 @@ pub struct PipelineRunOptions<'a> {
 impl<'a> PipelineRunOptions<'a> {
     pub fn with_stage_debug_hook(mut self, hook: &'a PipelineStageDebugCallback<'a>) -> Self {
         self.stage_debug_hook = Some(hook);
+        self
+    }
+
+    pub fn with_stage_source_field_probe(
+        mut self,
+        probe: &'a PipelineSourceFieldProbeCallback<'a>,
+    ) -> Self {
+        self.stage_source_field_probe = Some(probe);
         self
     }
 
@@ -59,9 +71,14 @@ impl<'a> PipelineRunOptions<'a> {
 struct StageDebugHook<'a> {
     stage: RefCell<String>,
     hook: &'a PipelineStageDebugCallback<'a>,
+    probe: Option<&'a PipelineSourceFieldProbeCallback<'a>>,
 }
 
 impl engine::DebugHook for StageDebugHook<'_> {
+    fn source_field_probe(&self) -> Option<(usize, String)> {
+        self.probe.and_then(|probe| probe(&self.stage.borrow()))
+    }
+
     fn before_target_write(&self, write: &engine::PendingTargetWrite) -> engine::DebugDecision {
         (self.hook)(&self.stage.borrow(), write)
     }
@@ -196,6 +213,7 @@ fn run_pipeline_value_with_options(
     let stage_debug_hook = options.stage_debug_hook.map(|hook| StageDebugHook {
         stage: RefCell::new(String::new()),
         hook,
+        probe: options.stage_source_field_probe,
     });
     let results = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
         let mut execution = engine::ExecutionContext::with_main_mapping_file_path(

@@ -112,6 +112,15 @@ pub struct DebugSourceContext {
     pub omitted_outer_frames: usize,
 }
 
+/// An exact immediate source-field lookup requested by a debug host. Unlike
+/// the shallow frame snapshot, it can reach a field beyond the first eight.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DebugSourceFieldProbe {
+    pub frame_from_inner: usize,
+    pub field: String,
+    pub preview: Option<DebugInstancePreview>,
+}
+
 impl DebugSourceContext {
     fn new(context: &[&Instance]) -> Self {
         let omitted_outer_frames = context.len().saturating_sub(MAX_DEBUG_SOURCE_FRAMES);
@@ -155,6 +164,7 @@ pub struct PendingTargetWrite {
     pub scope: TraceScope,
     pub positions: Vec<TracePosition>,
     pub source: DebugSourceContext,
+    pub source_field_probe: Option<DebugSourceFieldProbe>,
     pub field: String,
     pub field_truncated: bool,
     pub binding: TraceTargetFieldBinding,
@@ -173,6 +183,12 @@ pub enum DebugDecision {
 /// Optional, synchronous control point before an ordinary target-field write.
 /// No callback is made for constructors that do not insert ordinary fields.
 pub trait DebugHook {
+    /// Optionally request one immediate field in one of the four innermost
+    /// active source frames. Frame zero is the innermost frame.
+    fn source_field_probe(&self) -> Option<(usize, String)> {
+        None
+    }
+
     fn before_target_write(&self, write: &PendingTargetWrite) -> DebugDecision;
 }
 
@@ -191,10 +207,33 @@ pub(crate) fn before_target_write(
         return Ok(());
     };
     let (field, field_truncated) = bounded_name(field);
+    let source_field_probe = hook
+        .source_field_probe()
+        .and_then(|(frame_from_inner, name)| {
+            if frame_from_inner >= MAX_DEBUG_SOURCE_FRAMES
+                || name.is_empty()
+                || name.starts_with('\u{1f}')
+                || name.chars().count() > MAX_DEBUG_FIELD_NAME_CHARS
+            {
+                return None;
+            }
+            let preview = context
+                .iter()
+                .rev()
+                .nth(frame_from_inner)
+                .and_then(|frame| frame.field(&name))
+                .map(DebugInstancePreview::new);
+            Some(DebugSourceFieldProbe {
+                frame_from_inner,
+                field: name,
+                preview,
+            })
+        });
     let write = PendingTargetWrite {
         scope: scope.clone(),
         positions: trace_positions(positions),
         source: DebugSourceContext::new(context),
+        source_field_probe,
         field,
         field_truncated,
         binding,
@@ -221,6 +260,23 @@ mod tests {
     impl DebugHook for Collector {
         fn before_target_write(&self, write: &PendingTargetWrite) -> DebugDecision {
             self.0.borrow_mut().push(write.clone());
+            DebugDecision::Resume
+        }
+    }
+
+    struct ProbingCollector {
+        requested_frame: usize,
+        requested_field: &'static str,
+        writes: RefCell<Vec<PendingTargetWrite>>,
+    }
+
+    impl DebugHook for ProbingCollector {
+        fn source_field_probe(&self) -> Option<(usize, String)> {
+            Some((self.requested_frame, self.requested_field.to_owned()))
+        }
+
+        fn before_target_write(&self, write: &PendingTargetWrite) -> DebugDecision {
+            self.writes.borrow_mut().push(write.clone());
             DebugDecision::Resume
         }
     }
@@ -344,5 +400,87 @@ mod tests {
         assert_eq!(scalar.preview.chars().count(), 160);
         assert!(scalar.truncated);
         assert_eq!(inner.fields[1].preview.length, Some(1));
+    }
+
+    #[test]
+    fn source_probe_reaches_an_exact_field_outside_the_shallow_snapshot() {
+        let outer = Instance::Group(vec![(
+            "ninth".into(),
+            Instance::Scalar(Value::String("outer".into())),
+        )]);
+        let inner = Instance::Group(
+            (0..8)
+                .map(|index| (format!("field{index}"), Instance::Scalar(Value::Int(index))))
+                .chain([(
+                    "ninth".into(),
+                    Instance::Scalar(Value::String("inner".into())),
+                )])
+                .collect(),
+        );
+        let collector = ProbingCollector {
+            requested_frame: 0,
+            requested_field: "ninth",
+            writes: RefCell::new(Vec::new()),
+        };
+        before_target_write(
+            Some(&collector),
+            &TraceScope::primary(),
+            TraceTargetFieldBinding::StaticChild,
+            &[],
+            &[&outer, &inner],
+            "output",
+            &Instance::Scalar(Value::Null),
+            &[],
+        )
+        .unwrap();
+        let writes = collector.writes.borrow();
+        let write = &writes[0];
+        assert_eq!(write.source.frames[1].omitted_fields, 1);
+        let probe = write.source_field_probe.as_ref().unwrap();
+        assert_eq!(probe.frame_from_inner, 0);
+        assert_eq!(probe.field, "ninth");
+        assert_eq!(
+            probe
+                .preview
+                .as_ref()
+                .unwrap()
+                .value
+                .as_ref()
+                .unwrap()
+                .preview,
+            "inner"
+        );
+        drop(writes);
+
+        let outer_collector = ProbingCollector {
+            requested_frame: 1,
+            requested_field: "ninth",
+            writes: RefCell::new(Vec::new()),
+        };
+        before_target_write(
+            Some(&outer_collector),
+            &TraceScope::primary(),
+            TraceTargetFieldBinding::StaticChild,
+            &[],
+            &[&outer, &inner],
+            "output",
+            &Instance::Scalar(Value::Null),
+            &[],
+        )
+        .unwrap();
+        let outer_writes = outer_collector.writes.borrow();
+        let outer_probe = outer_writes[0].source_field_probe.as_ref().unwrap();
+        assert_eq!(outer_probe.frame_from_inner, 1);
+        assert_eq!(
+            outer_probe
+                .preview
+                .as_ref()
+                .unwrap()
+                .value
+                .as_ref()
+                .unwrap()
+                .preview,
+            "outer"
+        );
     }
 }

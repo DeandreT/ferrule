@@ -156,7 +156,10 @@ bindings and child fields, the hook receives the pending field's bounded value
 preview, source positions, the innermost four active source frames with up to
 eight immediate fields each, and at most eight already inserted fields from
 the current scope draft. Long names and scalar values are truncated; private
-XML metadata fields are hidden. It can wait for a host decision and resume, or
+XML metadata fields are hidden. A host may also request one exact immediate
+source field from frame 0–3 (0 is innermost); that probe can reach a field
+outside the eight-field snapshot without expanding the snapshot. It can wait
+for a host decision and resume, or
 cancel with the typed `EngineError::DebugCancelled` before that field is
 inserted. Existing post-insertion trace events are unchanged. Scalar, copy,
 recursive, and other special constructors do not use this ordinary-field hook.
@@ -188,6 +191,13 @@ after scope controls. It combines with the field and scalar conditions; writes
 with no active collection position never match it. Invalid or zero item numbers
 block the debug run before evaluation. **Step** and **Pause at next write**
 still override the condition.
+An optional source-field condition selects an immediate field in one of the
+four innermost active frames and compares its complete typed scalar value.
+It combines with the target, pending-value, and active-item conditions. Missing
+fields, non-scalars, private XML metadata, and truncated scalar previews never
+match. The paused view shows the exact field probe, including fields beyond
+the shallow frame snapshot. **Step** and **Pause at next write** still stop at
+the next ordinary write regardless of this condition.
 Runs with no ordinary target-field insertion finish without a live pause.
 
 **Debug Run** offers the same controls for a saved, file-backed mapping and
