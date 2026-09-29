@@ -8,11 +8,14 @@ static TEMP_ARTIFACT_ID: AtomicU64 = AtomicU64::new(0);
 struct StagedArtifact {
     temporary: PathBuf,
     destination: PathBuf,
+    preserve_temporary: bool,
 }
 
 impl Drop for StagedArtifact {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.temporary);
+        if !self.preserve_temporary {
+            let _ = std::fs::remove_file(&self.temporary);
+        }
     }
 }
 
@@ -48,6 +51,16 @@ impl Drop for CreatedDirectories {
 pub(super) fn write_artifacts(
     output_directory: &Path,
     artifacts: Vec<(PathBuf, String)>,
+) -> io::Result<()> {
+    write_artifacts_with_publish(output_directory, artifacts, |source, destination| {
+        std::fs::rename(source, destination)
+    })
+}
+
+fn write_artifacts_with_publish(
+    output_directory: &Path,
+    artifacts: Vec<(PathBuf, String)>,
+    mut publish: impl FnMut(&Path, &Path) -> io::Result<()>,
 ) -> io::Result<()> {
     let lexical_output = lexical_absolute(output_directory)?;
     std::fs::create_dir_all(&lexical_output)?;
@@ -145,11 +158,141 @@ pub(super) fn write_artifacts(
     for (destination, contents) in artifacts {
         staged.push(stage_artifact(destination, contents.as_bytes())?);
     }
-    for artifact in &staged {
-        std::fs::rename(&artifact.temporary, &artifact.destination)?;
+    // Reserve every backup before changing any destination. A backup is a
+    // same-directory temporary path, so restoring it also restores a symlink
+    // destination without following the link. Remove its placeholder before
+    // renaming the old destination, including on platforms where rename cannot
+    // replace an existing path.
+    let mut backups = staged
+        .iter()
+        .map(
+            |artifact| match std::fs::symlink_metadata(&artifact.destination) {
+                Ok(metadata) if metadata.file_type().is_dir() => Err(io::Error::new(
+                    io::ErrorKind::IsADirectory,
+                    format!(
+                        "artifact destination became a directory: {}",
+                        artifact.destination.display()
+                    ),
+                )),
+                Ok(_) => stage_artifact(artifact.destination.clone(), b"").map(Some),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(error),
+            },
+        )
+        .collect::<io::Result<Vec<_>>>()?;
+    let mut published = Vec::with_capacity(staged.len());
+    for (index, artifact) in staged.iter().enumerate() {
+        if let Some(backup) = backups[index].as_ref() {
+            if let Err(error) = std::fs::remove_file(&backup.temporary) {
+                return Err(rollback_publication(
+                    error,
+                    &staged,
+                    &mut backups,
+                    &published,
+                    None,
+                ));
+            }
+            if let Err(error) = std::fs::rename(&artifact.destination, &backup.temporary) {
+                return Err(rollback_publication(
+                    error,
+                    &staged,
+                    &mut backups,
+                    &published,
+                    None,
+                ));
+            }
+        }
+        if let Err(error) = publish(&artifact.temporary, &artifact.destination) {
+            let current_backup = backups[index].is_some().then_some(index);
+            return Err(rollback_publication(
+                error,
+                &staged,
+                &mut backups,
+                &published,
+                current_backup,
+            ));
+        }
+        published.push(index);
     }
     created.keep();
     Ok(())
+}
+
+fn rollback_publication(
+    error: io::Error,
+    staged: &[StagedArtifact],
+    backups: &mut [Option<StagedArtifact>],
+    published: &[usize],
+    current_backup: Option<usize>,
+) -> io::Error {
+    let mut failures = Vec::new();
+    if let Some(index) = current_backup
+        && let Err(restore) = restore_artifact(&staged[index], backups[index].as_mut())
+    {
+        failures.push(restore.to_string());
+    }
+    for &index in published.iter().rev() {
+        if let Err(restore) = restore_artifact(&staged[index], backups[index].as_mut()) {
+            failures.push(restore.to_string());
+        }
+    }
+    if failures.is_empty() {
+        error
+    } else {
+        io::Error::new(
+            error.kind(),
+            format!(
+                "artifact publication failed: {error}; rollback also failed: {}",
+                failures.join("; ")
+            ),
+        )
+    }
+}
+
+fn restore_artifact(
+    artifact: &StagedArtifact,
+    backup: Option<&mut StagedArtifact>,
+) -> io::Result<()> {
+    if let Some(backup) = backup {
+        match std::fs::remove_file(&artifact.destination) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                backup.preserve_temporary = true;
+                return Err(io::Error::new(
+                    error.kind(),
+                    format!(
+                        "could not remove newly published `{}`; prior artifact retained at `{}`: {error}",
+                        artifact.destination.display(),
+                        backup.temporary.display()
+                    ),
+                ));
+            }
+        }
+        std::fs::rename(&backup.temporary, &artifact.destination).map_err(|error| {
+            backup.preserve_temporary = true;
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "could not restore `{}` from retained backup `{}`: {error}",
+                    artifact.destination.display(),
+                    backup.temporary.display()
+                ),
+            )
+        })
+    } else {
+        match std::fs::remove_file(&artifact.destination) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(io::Error::new(
+                error.kind(),
+                format!(
+                    "could not remove newly published `{}`: {error}",
+                    artifact.destination.display()
+                ),
+            )),
+        }
+    }
 }
 
 fn lexical_absolute(path: &Path) -> io::Result<PathBuf> {
@@ -255,6 +398,7 @@ fn stage_artifact(destination: PathBuf, contents: &[u8]) -> io::Result<StagedArt
         let artifact = StagedArtifact {
             temporary,
             destination,
+            preserve_temporary: false,
         };
         std::io::Write::write_all(&mut file, contents)?;
         file.sync_all()?;
@@ -337,5 +481,123 @@ mod tests {
         assert!(error.to_string().contains("directory prefix"));
         assert!(!prefix.exists());
         assert!(!mapping.exists());
+    }
+
+    #[test]
+    fn late_publish_failure_removes_new_sidecar_and_created_directory() {
+        let output = TempDir::new("rollback-new");
+        let bundle = output.0.join("new");
+        let sidecar = bundle.join("mapping-stage-2-target.mft");
+        let design = bundle.join("mapping.mfd");
+        let mut publishes = 0;
+        let error = write_artifacts_with_publish(
+            &output.0,
+            vec![
+                (sidecar.clone(), "<FlexText/>".into()),
+                (design.clone(), "<mapping/>".into()),
+            ],
+            |source, destination| {
+                publishes += 1;
+                if publishes == 2 {
+                    return Err(io::Error::other("injected design rename failure"));
+                }
+                std::fs::rename(source, destination)
+            },
+        )
+        .expect_err("the second publication must fail");
+        assert!(error.to_string().contains("injected design rename failure"));
+        assert_eq!(publishes, 2);
+        assert!(!sidecar.exists());
+        assert!(!design.exists());
+        assert!(!bundle.exists());
+    }
+
+    #[test]
+    fn late_publish_failure_restores_existing_design_and_symlink_sidecar() {
+        let output = TempDir::new("rollback-existing");
+        let outside = TempDir::new("rollback-referent");
+        let referent = outside.0.join("original.mft");
+        std::fs::write(&referent, "old config").unwrap();
+        let sidecar = output.0.join("mapping-stage-2-target.mft");
+        symlink(&referent, &sidecar).unwrap();
+        let design = output.0.join("mapping.mfd");
+        std::fs::write(&design, "old design").unwrap();
+
+        let mut publishes = 0;
+        let error = write_artifacts_with_publish(
+            &output.0,
+            vec![
+                (sidecar.clone(), "new config".into()),
+                (design.clone(), "new design".into()),
+            ],
+            |source, destination| {
+                publishes += 1;
+                if publishes == 2 {
+                    return Err(io::Error::other("injected design rename failure"));
+                }
+                std::fs::rename(source, destination)
+            },
+        )
+        .expect_err("the second publication must fail");
+        assert!(error.to_string().contains("injected design rename failure"));
+        assert_eq!(publishes, 2);
+        assert!(
+            std::fs::symlink_metadata(&sidecar)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read_link(&sidecar).unwrap(), referent);
+        assert_eq!(std::fs::read_to_string(&referent).unwrap(), "old config");
+        assert_eq!(std::fs::read_to_string(&design).unwrap(), "old design");
+        assert!(std::fs::read_dir(&output.0).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains(".ferrule-")
+        }));
+    }
+
+    #[test]
+    fn failed_restore_retains_prior_artifact_for_recovery() {
+        let output = TempDir::new("rollback-retained");
+        let sidecar = output.0.join("mapping-stage-2-target.mft");
+        let design = output.0.join("mapping.mfd");
+        std::fs::write(&sidecar, "old config").unwrap();
+        std::fs::write(&design, "old design").unwrap();
+
+        let mut publishes = 0;
+        let error = write_artifacts_with_publish(
+            &output.0,
+            vec![
+                (sidecar.clone(), "new config".into()),
+                (design.clone(), "new design".into()),
+            ],
+            |source, destination| {
+                publishes += 1;
+                if publishes == 2 {
+                    std::fs::remove_file(&sidecar).unwrap();
+                    std::fs::create_dir(&sidecar).unwrap();
+                    return Err(io::Error::other("injected concurrent path change"));
+                }
+                std::fs::rename(source, destination)
+            },
+        )
+        .expect_err("the second publication must fail");
+        assert!(error.to_string().contains("retained"), "{error}");
+        assert_eq!(std::fs::read_to_string(&design).unwrap(), "old design");
+        let backups = std::fs::read_dir(&output.0)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .contains("mapping-stage-2-target.mft.ferrule-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(std::fs::read_to_string(&backups[0]).unwrap(), "old config");
     }
 }
