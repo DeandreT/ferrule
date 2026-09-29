@@ -10,6 +10,9 @@ internal static partial class Program
     private const string AlternativeJsonSchema =
         "{\"name\":\"Choice\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Type\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Text\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Count\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}],\"alternatives\":[{\"members\":[\"Type\",\"Text\"],\"required\":[\"Type\",\"Text\"],\"constraints\":[{\"member\":\"Type\",\"value\":{\"type\":\"string\",\"value\":\"text\"}}]},{\"members\":[\"Type\",\"Count\"],\"required\":[\"Type\",\"Count\"],\"constraints\":[{\"member\":\"Type\",\"value\":{\"type\":\"string\",\"value\":\"count\"}}]}]}}";
 
+    private const string XmlTypeAlternativeJsonSchema =
+        "{\"name\":\"Contact\",\"xml_type_alternatives\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"ID\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"First\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Last\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Address\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"alternatives\":[{\"name\":\"ContactType\",\"members\":[\"ID\",\"First\",\"Last\"]},{\"name\":\"ContactTypeWithAddress\",\"members\":[\"ID\",\"First\",\"Last\",\"Address\"]}]}}";
+
     private const string StringOrIntJsonSchema =
         "{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\"]}}";
 
@@ -95,6 +98,26 @@ internal static partial class Program
                 Field("Type", Scalar(Text("text"))),
                 Field("Text", Scalar(Text("value")))));
         Equal("{\n  \"Type\": \"text\",\n  \"Text\": \"value\"\n}\n", choice);
+
+        const string baseContact = "{\"ID\":\"1\",\"First\":\"Loby\",\"Last\":\"Matise\"}";
+        var selected = FerruleJson.Parse(XmlTypeAlternativeJsonSchema, baseContact);
+        Equal(
+            "{\n  \"ID\": \"1\",\n  \"First\": \"Loby\",\n  \"Last\": \"Matise\"\n}\n",
+            FerruleJson.Serialize(XmlTypeAlternativeJsonSchema, selected));
+        var unmarked = XmlTypeAlternativeJsonSchema.Replace(
+            ",\"xml_type_alternatives\":true", "", StringComparison.Ordinal);
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Parse(unmarked, baseContact));
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Serialize(unmarked, selected));
+        const string incomparableXmlTypes =
+            "{\"name\":\"Contact\",\"xml_type_alternatives\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"ID\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"First\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Last\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"alternatives\":[{\"name\":\"FirstContact\",\"members\":[\"ID\",\"First\"]},{\"name\":\"LastContact\",\"members\":[\"ID\",\"Last\"]}]}}";
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(incomparableXmlTypes, "{\"ID\":\"3\"}"));
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(
+                incomparableXmlTypes,
+                Group(Field("ID", Scalar(Text("3"))))));
 
         Error(
             FerruleRuntimeError.JsonBoundary,

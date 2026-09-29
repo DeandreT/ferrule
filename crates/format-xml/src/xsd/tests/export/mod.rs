@@ -108,7 +108,7 @@ fn export_rejects_lossy_generic_attribute_groups() {
 
 #[test]
 fn export_roundtrips_named_base_and_derived_group_alternatives() {
-    let address = SchemaNode::group(
+    let mut address = SchemaNode::group(
         "Address",
         vec![
             SchemaNode::scalar("name", ScalarType::String),
@@ -131,6 +131,7 @@ fn export_roundtrips_named_base_and_derived_group_alternatives() {
         },
     ])
     .unwrap();
+    address.xml_type_alternatives = true;
     let schema = SchemaNode::group("Root", vec![address]);
 
     let xsd = export(&schema).unwrap();
@@ -351,7 +352,7 @@ fn export_orders_multiple_substitution_heads_by_expanded_name() {
 
 #[test]
 fn export_uses_an_abstract_common_base_for_sibling_alternatives() {
-    let choice = SchemaNode::group(
+    let mut choice = SchemaNode::group(
         "Address",
         vec![
             SchemaNode::scalar("name", ScalarType::String),
@@ -374,6 +375,7 @@ fn export_uses_an_abstract_common_base_for_sibling_alternatives() {
         },
     ])
     .unwrap();
+    choice.xml_type_alternatives = true;
     let schema = SchemaNode::group("Root", vec![choice]);
 
     let xsd = export(&schema).unwrap();
@@ -419,7 +421,7 @@ fn export_rejects_alternatives_from_incompatible_namespaces() {
 fn export_roundtrips_different_derived_views_of_one_base_type() {
     fn address(name: &str, derived: &str, extra: &str) -> SchemaNode {
         let identity = |local: &str| format!("{{urn:ferrule:asymmetric-address}}{local}");
-        SchemaNode::group(
+        let mut address = SchemaNode::group(
             name,
             vec![
                 SchemaNode::scalar("name", ScalarType::String),
@@ -440,7 +442,9 @@ fn export_roundtrips_different_derived_views_of_one_base_type() {
                 constraints: Vec::new(),
             },
         ])
-        .unwrap()
+        .unwrap();
+        address.xml_type_alternatives = true;
+        address
     }
     let schema = SchemaNode::group(
         "Root",
@@ -472,7 +476,7 @@ fn export_roundtrips_different_derived_views_of_one_base_type() {
 #[test]
 fn export_reuses_an_implicit_base_from_an_overlapping_derived_view() {
     let identity = |local: &str| format!("{{urn:ferrule:implicit-base}}{local}");
-    let shipping = SchemaNode::group(
+    let mut shipping = SchemaNode::group(
         "Shipping",
         vec![
             SchemaNode::scalar("name", ScalarType::String),
@@ -494,7 +498,8 @@ fn export_reuses_an_implicit_base_from_an_overlapping_derived_view() {
         },
     ])
     .unwrap();
-    let billing = SchemaNode::group(
+    shipping.xml_type_alternatives = true;
+    let mut billing = SchemaNode::group(
         "Billing",
         vec![
             SchemaNode::scalar("name", ScalarType::String),
@@ -517,6 +522,7 @@ fn export_reuses_an_implicit_base_from_an_overlapping_derived_view() {
         },
     ])
     .unwrap();
+    billing.xml_type_alternatives = true;
     let schema = SchemaNode::group("Root", vec![shipping, billing]);
 
     let xsd = export(&schema).unwrap();
