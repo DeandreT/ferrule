@@ -114,8 +114,14 @@ and `node_input_value` records.
 and the producing `input` node. It is emitted immediately after the producer
 returns a value, before the consumer continues. Ordinary built-in and user
 function calls, conditional expressions, value maps, lookups, and dynamic
-source-field keys emit these events. An untaken conditional branch and a
-producer that errors do not emit an input event. Aggregate, generated-sequence,
+source-field keys emit these events. Aggregate and join-aggregate graph
+expressions emit one input event for each successfully evaluated collection
+item or joined tuple, with that item's position; their optional scalar argument
+emits one event afterward in the parent context, even for an empty collection.
+Input indices match visible pins: the expression is 0, and the argument is 1
+when an expression is present or 0 otherwise. Direct aggregate value paths are
+not graph inputs and do not emit input events. An untaken conditional branch
+and a producer that errors do not emit an input event. Generated-sequence,
 mixed-content, and collection-search inputs are not yet recorded as input-pin
 events, though their successful graph-node outputs remain visible. The native
 GUI's History tab groups the retained input and output events by graph node;

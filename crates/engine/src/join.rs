@@ -5,7 +5,7 @@ use mapping::{AggregateOp, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId}
 
 use super::EngineError;
 use super::aggregate::aggregate;
-use super::eval_expr::{EvalProgram, eval_expr};
+use super::eval_expr::{EvalProgram, eval_node_input};
 use super::resolve::{context_for_position, field_scalar};
 use super::source_iteration::{PositionFrame, WalkExtension, walk};
 
@@ -15,6 +15,7 @@ pub(super) struct JoinedRow<'a> {
 }
 
 pub(super) struct AggregateInput<'a> {
+    pub(super) consumer: NodeId,
     pub(super) function: AggregateOp,
     pub(super) join: JoinId,
     pub(super) plan: &'a JoinPlan,
@@ -86,9 +87,11 @@ pub(super) fn eval_aggregate(
                 item_context.extend(extension.instances.iter().copied());
                 let mut item_positions = positions.to_vec();
                 item_positions.extend(extension.positions.iter().cloned());
-                eval_expr(
+                eval_node_input(
                     program,
+                    input.consumer,
                     expression,
+                    0,
                     &item_context,
                     &item_positions,
                     in_progress,
@@ -100,7 +103,17 @@ pub(super) fn eval_aggregate(
     }
     let arg = input
         .arg
-        .map(|arg| eval_expr(program, arg, context, positions, in_progress))
+        .map(|arg| {
+            eval_node_input(
+                program,
+                input.consumer,
+                arg,
+                usize::from(input.expression.is_some()),
+                context,
+                positions,
+                in_progress,
+            )
+        })
         .transpose()?;
     aggregate(input.function, extensions.len(), &values, arg)
 }

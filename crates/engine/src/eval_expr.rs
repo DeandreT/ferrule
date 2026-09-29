@@ -334,9 +334,11 @@ pub(crate) fn eval_expr(
                     item_context.extend(item.instances.iter().copied());
                     let mut item_positions = positions.to_vec();
                     item_positions.extend(item.positions.iter().cloned());
-                    eval_expr(
+                    eval_node_input(
                         program,
+                        node_id,
                         *expression,
+                        0,
                         &item_context,
                         &item_positions,
                         in_progress,
@@ -355,7 +357,15 @@ pub(crate) fn eval_expr(
                 values.push(item_value);
             }
             let arg_value = match arg {
-                Some(id) => Some(eval_expr(program, *id, context, positions, in_progress)?),
+                Some(id) => Some(eval_node_input(
+                    program,
+                    node_id,
+                    *id,
+                    usize::from(expression.is_some()),
+                    context,
+                    positions,
+                    in_progress,
+                )?),
                 None => None,
             };
             aggregate(*function, items.len(), &values, arg_value)
@@ -369,6 +379,7 @@ pub(crate) fn eval_expr(
         } => eval_join_aggregate(
             program,
             JoinAggregateInput {
+                consumer: node_id,
                 function: *function,
                 join: *join,
                 plan,
@@ -388,7 +399,7 @@ pub(crate) fn eval_expr(
     result
 }
 
-fn eval_node_input(
+pub(super) fn eval_node_input(
     program: EvalProgram<'_>,
     consumer: NodeId,
     input: NodeId,
