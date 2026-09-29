@@ -210,7 +210,7 @@ source or target can be recovered.
 A connected target that also supplies a later target cannot be represented as
 two independent targets in one `Project`. Ordinary `import-mfd` reports that
 loss, and the executable import profile rejects it. For a connected XML design
-with one or two serial pass-through targets, import the design as a typed
+with up to 64 serial pass-through targets, import the design as a typed
 pipeline instead:
 
 ```sh
@@ -219,9 +219,9 @@ cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.
 
 Each computed intermediate target supplies the next stage's source, with
 original source components bound as host inputs. The import validates the
-whole two- or three-stage graph before writing `flow.json`; unsupported chain
-shapes reject explicitly. See [mapping pipelines](mapping-pipelines.md) for
-input binding and execution.
+whole stage graph before writing `flow.json`; branches, cycles, bypasses, and
+disconnected XML boundaries reject explicitly. See
+[mapping pipelines](mapping-pipelines.md) for input binding and execution.
 
 Static source, target, named-source, and named-target paths are rebased when
 the generated project is written somewhere other than the design directory.
