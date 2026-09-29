@@ -198,6 +198,11 @@ fields, non-scalars, private XML metadata, and truncated scalar previews never
 match. The paused view shows the exact field probe, including fields beyond
 the shallow frame snapshot. **Step** and **Pause at next write** still stop at
 the next ordinary write regardless of this condition.
+An optional value-node condition pauses before a target write whose static or
+dynamic binding reads the entered graph node ID. It can distinguish two nodes
+that produce the same scalar value and combines with the other conditions.
+The dynamic property-name node and child-scope writes do not match. It does
+not pause during intermediate graph evaluation.
 Runs with no ordinary target-field insertion finish without a live pause.
 
 **Debug Run** offers the same controls for a saved, file-backed mapping and

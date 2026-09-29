@@ -177,7 +177,9 @@ debugger's 160-character preview cannot match. An optional source-field
 condition probes one immediate field in active frame 0–3 (0 is innermost) and
 compares its complete typed scalar value; it can reach beyond the shallow
 eight-field frame preview. An optional active-item position condition can be
-combined with these filters. **Step** and **Pause at next write** still stop at
+combined with these filters. A value-node ID condition narrows the pause to a
+target write driven by that node in the selected stage; it does not pause at
+intermediate graph evaluation. **Step** and **Pause at next write** still stop at
 the next ordinary write. Ordinary runs can also be cancelled before publication.
 Both modes
 wait for all stages to finish before publishing selected outputs together; the
