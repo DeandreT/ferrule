@@ -6,7 +6,9 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::preview::{DebugScalarCondition, PreviewBreakpoint, PreviewTarget};
+use crate::preview::{
+    DebugPositionCondition, DebugScalarCondition, PreviewBreakpoint, PreviewTarget,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct FileBreakpoint {
@@ -134,6 +136,7 @@ struct FileRunDebugHook {
     pause_each_write: Cell<bool>,
     breakpoint: Option<FileBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
+    position_condition: Option<DebugPositionCondition>,
 }
 
 impl FileRunDebugHook {
@@ -186,8 +189,16 @@ impl engine::DebugHook for FileRunDebugHook {
             .value_condition
             .as_ref()
             .is_none_or(|condition| condition.matches(write));
-        let has_breakpoint = self.breakpoint.is_some() || self.value_condition.is_some();
-        if !self.pause_each_write.get() && !(has_breakpoint && matches_selection && matches_value) {
+        let matches_position = self
+            .position_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
+        let has_breakpoint = self.breakpoint.is_some()
+            || self.value_condition.is_some()
+            || self.position_condition.is_some();
+        if !self.pause_each_write.get()
+            && !(has_breakpoint && matches_selection && matches_value && matches_position)
+        {
             return engine::DebugDecision::Resume;
         }
         if self
@@ -243,6 +254,11 @@ impl FerruleApp {
             self.diagnostics.error("Debug Run blocked", error);
             return;
         }
+        if debug && let Err(error) = self.file_run_position_condition.compile() {
+            self.status = "debug run blocked".into();
+            self.diagnostics.error("Debug Run blocked", error);
+            return;
+        }
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             self.status = format!("run blocked by {} validation issue(s)", issues.len());
@@ -262,6 +278,18 @@ impl FerruleApp {
     pub(super) fn run_saved(&mut self, debug: bool) {
         let value_condition = if debug {
             match self.file_run_value_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug run blocked".into();
+                    self.diagnostics.error("Debug Run blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+        let position_condition = if debug {
+            match self.file_run_position_condition.compile() {
                 Ok(condition) => condition,
                 Err(error) => {
                     self.status = "debug run blocked".into();
@@ -298,10 +326,14 @@ impl FerruleApp {
                 commands: command_receiver,
                 cancelled: worker_cancelled,
                 pause_each_write: Cell::new(
-                    debug && breakpoint.is_none() && value_condition.is_none(),
+                    debug
+                        && breakpoint.is_none()
+                        && value_condition.is_none()
+                        && position_condition.is_none(),
                 ),
                 breakpoint,
                 value_condition,
+                position_condition,
             };
             let gate = || hook.before_publish();
             let mut options = cli::RunOptions::new()
@@ -543,10 +575,14 @@ impl FerruleApp {
                     }
                 });
         });
-        let condition_valid = preview_ui::show_breakpoint_value_condition(
+        let mut condition_valid = preview_ui::show_breakpoint_value_condition(
             ui,
             &mut self.file_run_value_condition,
             "file_run_debug_value_type",
+        );
+        condition_valid &= preview_ui::show_breakpoint_position_condition(
+            ui,
+            &mut self.file_run_position_condition,
         );
         if ui
             .add_enabled(condition_valid, egui::Button::new("Debug Run"))

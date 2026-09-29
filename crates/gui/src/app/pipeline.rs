@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
-use crate::preview::{DebugScalarCondition, PreviewBreakpoint, PreviewTarget};
+use crate::preview::{
+    DebugPositionCondition, DebugScalarCondition, PreviewBreakpoint, PreviewTarget,
+};
 use mapping::PipelineInput;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -141,6 +143,7 @@ struct PipelineRunHook {
     pause_each_write: Cell<bool>,
     breakpoint: Option<PipelineBreakpoint>,
     value_condition: Option<DebugScalarCondition>,
+    position_condition: Option<DebugPositionCondition>,
 }
 
 impl PipelineRunHook {
@@ -172,8 +175,16 @@ impl PipelineRunHook {
             .value_condition
             .as_ref()
             .is_none_or(|condition| condition.matches(write));
-        let has_breakpoint = self.breakpoint.is_some() || self.value_condition.is_some();
-        if !self.pause_each_write.get() && !(has_breakpoint && matches_selection && matches_value) {
+        let matches_position = self
+            .position_condition
+            .as_ref()
+            .is_none_or(|condition| condition.matches(write));
+        let has_breakpoint = self.breakpoint.is_some()
+            || self.value_condition.is_some()
+            || self.position_condition.is_some();
+        if !self.pause_each_write.get()
+            && !(has_breakpoint && matches_selection && matches_value && matches_position)
+        {
             return engine::DebugDecision::Resume;
         }
         if self
@@ -383,6 +394,10 @@ impl FerruleApp {
                         &mut self.pipeline_run_value_condition,
                         "pipeline_debug_value_type",
                     );
+                    condition_valid &= preview_ui::show_breakpoint_position_condition(
+                        ui,
+                        &mut self.pipeline_run_position_condition,
+                    );
                 }
                 match &phase {
                     Some(PipelineRunPhase::Running) => {
@@ -492,6 +507,18 @@ impl FerruleApp {
         } else {
             None
         };
+        let position_condition = if debug {
+            match self.pipeline_run_position_condition.compile() {
+                Ok(condition) => condition,
+                Err(error) => {
+                    self.status = "debug pipeline blocked".into();
+                    self.diagnostics.error("Debug pipeline blocked", error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let Some(draft) = self.pipeline_run_draft.as_ref() else {
             return;
         };
@@ -524,10 +551,14 @@ impl FerruleApp {
                 commands: command_receiver,
                 cancelled: worker_cancelled,
                 pause_each_write: Cell::new(
-                    debug && breakpoint.is_none() && value_condition.is_none(),
+                    debug
+                        && breakpoint.is_none()
+                        && value_condition.is_none()
+                        && position_condition.is_none(),
                 ),
                 breakpoint,
                 value_condition,
+                position_condition,
             };
             let stage_hook = |stage: &str, write: &engine::PendingTargetWrite| {
                 hook.before_target_write(stage, write)
