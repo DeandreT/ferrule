@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twenty-one local, gitignored mappings.
+//! Opt-in generated-backend execution against twenty-two local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -12,6 +12,7 @@ enum SourceKind {
     XmlFileSet,
     FlexText,
     Csv,
+    Pdf,
     Protobuf,
     XlsxTransposed,
 }
@@ -30,7 +31,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 21] = [
+const CASES: [CorpusCase; 22] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -157,6 +158,12 @@ const CASES: [CorpusCase; 21] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
+    CorpusCase {
+        sample: "ArticlesInStock.mfd",
+        input: "ClothingStockData2024.pdf",
+        source_kind: SourceKind::Pdf,
+        target_kind: TargetKind::Json,
+    },
 ];
 
 #[test]
@@ -231,6 +238,7 @@ fn run_case(
             SourceKind::Csv => {
                 project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
             }
+            SourceKind::Pdf => project.source_options.pdf.is_some(),
             SourceKind::Protobuf => project.source_options.protobuf.is_some(),
             SourceKind::XlsxTransposed => {
                 project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Xlsx)
@@ -274,6 +282,10 @@ fn run_case(
             project.source_options.delimiter,
             project.source_options.has_header_row.unwrap_or(true),
         )?),
+        SourceKind::Pdf => format_pdf::read(
+            &input_path,
+            project.source_options.pdf.as_ref().expect("PDF layout"),
+        )?,
         SourceKind::Protobuf => {
             let options = project.source_options.protobuf.as_ref().unwrap();
             assert!(options.imports.is_empty(), "{sample}: protobuf imports");
@@ -307,6 +319,7 @@ fn run_case(
         SourceKind::Xml
         | SourceKind::FlexText
         | SourceKind::Csv
+        | SourceKind::Pdf
         | SourceKind::Protobuf
         | SourceKind::XlsxTransposed => format_json::to_string(&project.source, &source)?,
         SourceKind::XmlFileSet => unreachable!("file sets use the typed generated host APIs"),
@@ -345,7 +358,7 @@ fn run_case(
     };
     if matches!(
         sample,
-        "FlattenHierarchy.mfd" | "EmployeesToKeyValueList.mfd"
+        "FlattenHierarchy.mfd" | "EmployeesToKeyValueList.mfd" | "ArticlesInStock.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
         assert_eq!(
@@ -836,6 +849,38 @@ fn run_case(
             4,
             "{sample}: four distinct runtime field names"
         );
+    }
+    if sample == "ArticlesInStock.mfd" {
+        let articles = expected_json.as_array().expect("PDF stock articles");
+        assert_eq!(
+            articles.len(),
+            11,
+            "{sample}: all PDF articles are extracted"
+        );
+        assert_eq!(articles[0]["Number"], 123456.0);
+        assert_eq!(articles[0]["Name"], "Flowing Silk Maxi Dress");
+        let numbers = articles
+            .iter()
+            .map(|article| {
+                article["Number"]
+                    .as_f64()
+                    .expect("article number")
+                    .to_bits()
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(numbers.len(), articles.len(), "{sample}: distinct articles");
+        for article in articles {
+            let stores = article["StoreDetails"].as_array().expect("article stores");
+            assert_eq!(stores.len(), 2, "{sample}: both stores are retained");
+            assert!(stores.iter().all(|store| {
+                store["Store"].as_str().is_some_and(|name| !name.is_empty())
+                    && store["Available"]
+                        .as_object()
+                        .is_some_and(|sizes| !sizes.is_empty())
+            }));
+        }
+        assert_eq!(articles[0]["StoreDetails"][0]["Available"]["XS"], 1.0);
+        assert_eq!(articles[0]["StoreDetails"][1]["Available"]["XL"], 6.0);
     }
 
     let generated_input = case_dir.join("source.json");
