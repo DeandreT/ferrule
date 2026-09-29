@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, bail};
 
 use super::*;
-use crate::preview::{LoadedPreviewSource, PreviewDraft, PreviewTarget};
+use crate::preview::{LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget};
 
 enum PreviewAction {
     Cancel,
@@ -85,6 +85,7 @@ struct PreviewDebugHook {
     commands: Receiver<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
     pause_each_write: std::cell::Cell<bool>,
+    breakpoint: Option<PreviewBreakpoint>,
 }
 
 impl engine::DebugHook for PreviewDebugHook {
@@ -104,7 +105,12 @@ impl engine::DebugHook for PreviewDebugHook {
                 Err(TryRecvError::Empty) => break,
             }
         }
-        if !self.pause_each_write.get() {
+        if !self.pause_each_write.get()
+            && !self
+                .breakpoint
+                .as_ref()
+                .is_some_and(|breakpoint| breakpoint.matches(write))
+        {
             return engine::DebugDecision::Resume;
         }
         if self
@@ -183,6 +189,11 @@ impl FerruleApp {
 
     pub(super) fn show_preview_setup(&mut self, ctx: &egui::Context) {
         let mut action = None;
+        let breakpoint_candidates = self
+            .preview_draft
+            .as_ref()
+            .map(|draft| crate::preview::breakpoint_candidates(&self.project, &draft.target))
+            .unwrap_or_default();
         let phase = self
             .pending_preview
             .as_ref()
@@ -229,6 +240,33 @@ impl FerruleApp {
                             ui.end_row();
                         });
                 });
+                ui.horizontal(|ui| {
+                    ui.label("Debug breakpoint");
+                    ui.add_enabled_ui(!running, |ui| {
+                        egui::ComboBox::from_id_salt("preview_debug_breakpoint")
+                            .selected_text(
+                                draft
+                                    .debug_breakpoint
+                                    .as_ref()
+                                    .map_or_else(|| "Every target-field write".to_owned(), PreviewBreakpoint::label),
+                            )
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut draft.debug_breakpoint,
+                                    None,
+                                    "Every target-field write",
+                                );
+                                for breakpoint in &breakpoint_candidates {
+                                    ui.selectable_value(
+                                        &mut draft.debug_breakpoint,
+                                        Some(breakpoint.clone()),
+                                        breakpoint.label(),
+                                    );
+                                }
+                            });
+                    });
+                });
+                ui.weak("The selector covers declared static scope writes; runtime-named fields are not listed.");
                 if draft.input_identity.trim().is_empty() {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
@@ -543,11 +581,17 @@ fn run_preview_worker(
     cancelled: Arc<AtomicBool>,
 ) {
     let trace = crate::run_report::TraceCollector::new();
+    let breakpoint = if debug {
+        draft.debug_breakpoint.clone()
+    } else {
+        None
+    };
     let hook = PreviewDebugHook {
         events: events.clone(),
         commands,
         cancelled: Arc::clone(&cancelled),
-        pause_each_write: std::cell::Cell::new(debug),
+        pause_each_write: std::cell::Cell::new(debug && breakpoint.is_none()),
+        breakpoint,
     };
     let result = run_preview_payload(
         &project,

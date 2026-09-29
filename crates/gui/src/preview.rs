@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
@@ -7,6 +8,29 @@ use anyhow::{Context as _, bail};
 pub(super) enum PreviewTarget {
     Primary,
     Named(String),
+}
+
+/// One declared field within the active output's target-scope path.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct PreviewBreakpoint {
+    pub(super) target_path: Vec<String>,
+    pub(super) field: String,
+}
+
+impl PreviewBreakpoint {
+    pub(super) fn label(&self) -> String {
+        if self.target_path.is_empty() {
+            format!("<root> / {}", self.field)
+        } else {
+            format!("{} / {}", self.target_path.join(" / "), self.field)
+        }
+    }
+
+    pub(super) fn matches(&self, write: &engine::PendingTargetWrite) -> bool {
+        !write.field_truncated
+            && self.target_path == write.scope.target_path
+            && self.field == write.field
+    }
 }
 
 impl PreviewTarget {
@@ -31,6 +55,7 @@ pub(super) struct PreviewDraft {
     pub(super) input_identity: String,
     pub(super) output_identity: String,
     pub(super) input_text: String,
+    pub(super) debug_breakpoint: Option<PreviewBreakpoint>,
 }
 
 impl PreviewDraft {
@@ -44,6 +69,7 @@ impl PreviewDraft {
             input_identity,
             output_identity,
             input_text: String::new(),
+            debug_breakpoint: None,
         }
     }
 
@@ -54,6 +80,62 @@ impl PreviewDraft {
             && self.output_identity.trim().len() <= cli::MAX_PAYLOAD_PATH_BYTES
             && self.input_text.len() <= cli::MAX_PAYLOAD_DOCUMENT_BYTES
     }
+}
+
+pub(super) fn breakpoint_candidates(
+    project: &mapping::Project,
+    target: &PreviewTarget,
+) -> Vec<PreviewBreakpoint> {
+    const MAX_CANDIDATES: usize = 512;
+    const MAX_SCOPES: usize = 4096;
+    const MAX_DEBUG_FIELD_CHARS: usize = 160;
+    let root = match target {
+        PreviewTarget::Primary => &project.root,
+        PreviewTarget::Named(name) => {
+            let Some(target) = project
+                .extra_targets
+                .iter()
+                .find(|target| target.name == *name)
+            else {
+                return Vec::new();
+            };
+            &target.root
+        }
+    };
+    let mut candidates = BTreeSet::new();
+    let mut scopes = vec![(root, Vec::<String>::new())];
+    let mut visited_scopes = 0usize;
+    while let Some((scope, target_path)) = scopes.pop() {
+        visited_scopes += 1;
+        for binding in &scope.bindings {
+            if binding.target_field.chars().count() <= MAX_DEBUG_FIELD_CHARS {
+                candidates.insert(PreviewBreakpoint {
+                    target_path: target_path.clone(),
+                    field: binding.target_field.clone(),
+                });
+            }
+        }
+        for child in &scope.children {
+            if child.target_field.chars().count() <= MAX_DEBUG_FIELD_CHARS {
+                candidates.insert(PreviewBreakpoint {
+                    target_path: target_path.clone(),
+                    field: child.target_field.clone(),
+                });
+            }
+            let mut child_path = target_path.clone();
+            child_path.push(child.target_field.clone());
+            scopes.push((child, child_path));
+        }
+        if let Some(sequence) = scope.concatenated() {
+            for segment in sequence.iter() {
+                scopes.push((segment, target_path.clone()));
+            }
+        }
+        if candidates.len() >= MAX_CANDIDATES || visited_scopes >= MAX_SCOPES {
+            break;
+        }
+    }
+    candidates.into_iter().take(MAX_CANDIDATES).collect()
 }
 
 pub(super) struct LoadedPreviewSource {
