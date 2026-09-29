@@ -270,7 +270,7 @@ fn oversized_unresolved_schema_metadata_cannot_be_exported() -> Result<(), Box<d
 }
 
 #[test]
-fn local_mf940_survey_marks_missing_target_schema() -> Result<(), Box<dyn Error>> {
+fn local_mf940_survey_retains_both_missing_schema_references() -> Result<(), Box<dyn Error>> {
     let sample =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples/MF940.mfd");
     if !sample.is_file() {
@@ -278,8 +278,8 @@ fn local_mf940_survey_marks_missing_target_schema() -> Result<(), Box<dyn Error>
     }
     let imported = mfd::import(&sample)?;
     let sales_order = "salesOrderSchemaV0_1_21V2.json";
-    // The variables component is a string parser folded into a graph call,
-    // not an input boundary with per-side FormatOptions.
+    // The variables component is a string parser folded into a graph call;
+    // its recipe metadata is separate from the target's FormatOptions.
     assert!(imported.warnings.iter().any(|warning| {
         warning.contains("ITS_EDI_940_VARIABLES.schema.json")
             && warning.contains("falling back to the entry tree")
@@ -292,6 +292,11 @@ fn local_mf940_survey_marks_missing_target_schema() -> Result<(), Box<dyn Error>
             .as_deref(),
         Some(sales_order)
     );
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(node, mapping::Node::Const { value: ir::Value::String(text) }
+            if text.contains("ferrule:json-parser-recipe")
+                && text.contains("ITS_EDI_940_VARIABLES.schema.json"))
+    }));
     let directory = TempDir::new("mf940-provenance")?;
     let export_path = directory.path().join("roundtrip.mfd");
     let report = mfd::preflight_export(&imported.project, &export_path)?;
@@ -301,7 +306,7 @@ fn local_mf940_survey_marks_missing_target_schema() -> Result<(), Box<dyn Error>
             .iter()
             .filter(|issue| issue.feature == ExportCompatibilityFeature::UnresolvedJsonSchema)
             .count(),
-        1
+        3
     );
     assert_eq!(
         report
@@ -309,19 +314,34 @@ fn local_mf940_survey_marks_missing_target_schema() -> Result<(), Box<dyn Error>
             .iter()
             .filter(|warning| warning.contains("original schema"))
             .count(),
-        1
+        3
     );
-    assert_eq!(mfd::export(&imported.project, &export_path)?.len(), 1);
+    assert_eq!(mfd::export(&imported.project, &export_path)?.len(), 3);
     let encoded = std::fs::read_to_string(&export_path)?;
     let document = roxmltree::Document::parse(&encoded)?;
     let generated = document
         .descendants()
         .filter(|node| node.has_tag_name("json"))
         .filter(|node| node.attribute("ferrule-unresolved-json-schema").is_some())
-        .map(|node| node.attribute("schema").unwrap())
+        .map(|node| {
+            (
+                node.attribute("schema").unwrap(),
+                node.attribute("ferrule-unresolved-json-schema").unwrap(),
+            )
+        })
         .collect::<Vec<_>>();
-    assert_eq!(generated.len(), 1);
-    for schema in generated {
+    assert_eq!(generated.len(), 3);
+    assert!(
+        generated
+            .iter()
+            .any(|(_, reference)| { reference.ends_with("ITS_EDI_940_VARIABLES.schema.json") })
+    );
+    assert!(
+        generated
+            .iter()
+            .any(|(_, reference)| *reference == sales_order)
+    );
+    for (schema, _) in generated {
         assert_eq!(Path::new(schema).components().count(), 1);
         assert!(directory.path().join(schema).is_file());
     }
@@ -332,6 +352,10 @@ fn local_mf940_survey_marks_missing_target_schema() -> Result<(), Box<dyn Error>
             .iter()
             .any(|warning| warning.contains(sales_order))
     );
+    assert!(reimported.warnings.iter().any(|warning| {
+        warning.contains("ITS_EDI_940_VARIABLES.schema.json")
+            && warning.contains("entry-tree fallback")
+    }));
     assert_eq!(
         reimported
             .project

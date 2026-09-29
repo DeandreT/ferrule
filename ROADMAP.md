@@ -60,9 +60,9 @@ are preserved.
   mode and can instead be imported as typed two-stage pipelines. Twelve retain
   typed unresolved external EDI-catalog dependencies and remain deliberately
   non-executable. All 187 export and re-import; 186 do so warning-free.
-  The remaining design retains missing target JSON Schema provenance across
-  best-effort export/re-import. All 175 dependency-complete round trips remain
-  engine-valid. The
+  The remaining design retains missing target and embedded string-parser JSON
+  Schema provenance across best-effort export/re-import. All 175
+  dependency-complete round trips remain engine-valid. The
   read-only execution profile attempts 168 safe-input designs and all 168 pass,
   publishing 165 captured outputs; seven network or captured-service inputs are
   unavailable. All 168 safe export/re-import executions match semantically with
@@ -105,7 +105,7 @@ are preserved.
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV/SQLite blank-project setup, SQLite table introspection for named lookup sources, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
 | Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, dynamic keys, and aggregate expressions/arguments, bounded source-row previews with nested row/join context, event-by-event replay of completed traces, an opt-in pre-insertion engine debug hook, and worker-backed live GUI Preview/file-Run/pipeline stepping and static target-field breakpoints before ordinary target writes | Remaining connector classes, full source-row inspection, conditional breakpoints |
-| `.mfd` | 187/187 imports (171 warning-free; 175 engine-valid, including four warned chains), 187 Ferrule exports/re-imports (186 warning-free; one retains unresolved JSON Schema provenance), 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Reference-application open/validate/execute/re-save verification, complete deterministic behavioral-reference coverage, and broader explicit extension-dependent export reporting |
+| `.mfd` | 187/187 imports (171 warning-free; 175 engine-valid, including four warned chains), 187 Ferrule exports/re-imports (186 warning-free; one retains unresolved target and embedded string-parser JSON Schema provenance), 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Reference-application open/validate/execute/re-save verification, complete deterministic behavioral-reference coverage, and broader explicit extension-dependent export reporting |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
 
 ## Workstreams
@@ -625,9 +625,9 @@ Update these numbers with each parity increment:
 - `.mfd` validation: all 175 dependency-complete projects are engine-valid;
   twelve are explicitly dependency-blocked.
 - `.mfd` export/re-import: all 187 designs export and re-import; 186 do so
-  without warnings, and the remaining design retains a typed unresolved JSON
-  Schema compatibility issue. All 175 dependency-complete round trips remain
-  engine-valid.
+  without warnings, and the remaining design retains typed unresolved target
+  and embedded string-parser JSON Schema compatibility issues. All 175
+  dependency-complete round trips remain engine-valid.
 - `.mfd` execution: all 168 attempted read-only executions pass and publish
   165 captured outputs; one SQLite target-constraint rejection is classified as
   an expected output failure, twelve are dependency-blocked, and seven network

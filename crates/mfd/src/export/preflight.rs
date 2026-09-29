@@ -9,11 +9,12 @@ use crate::MfdError;
 
 use super::schema::{SideFormat, side_format};
 use super::{
-    concatenation, edi, exception, external_source, flextext, join, pdf, protobuf, recursive, wsdl,
-    xbrl,
+    concatenation, edi, exception, external_source, flextext, join, json_parser, pdf, protobuf,
+    recursive, wsdl, xbrl,
 };
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    json_parser::validate_provenance(&project.graph)?;
     validate_csv_dialect(&project.source_options, "source")?;
     validate_csv_dialect(&project.target_options, "target")?;
     for source in &project.extra_sources {

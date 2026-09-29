@@ -249,11 +249,13 @@ targets, connected later-stage named sources, and non-XML boundaries reject
 explicitly. Synthetic two- and four-stage export/re-import runs preserve stage
 results; a synthetic terminal fan-out round trip also preserves both final
 outputs. Acceptance by the proprietary application remains unverified.
-When an imported JSON boundary fell back to its entry tree because its source
-schema was unavailable, best-effort export records that unresolved reference
-beside the generated schema and re-import reports it again. Native-profile
-preflight marks the export incomplete and rejects publication; the generated
-schema is not evidence that the original external schema was recovered.
+When an imported JSON boundary or JSON string parser fell back to its entry
+tree because its schema was unavailable, best-effort export records that
+unresolved reference beside the generated schema and re-import reports it
+again. Parser references survive project serialization in versioned recipe
+metadata that leaves parsing behavior unchanged. Native-profile preflight
+marks the export incomplete and rejects publication; the generated schema is
+not evidence that the original external schema was recovered.
 JSON5 endpoint syntax currently rejects before export because the native
 component setting has not been verified; emitting an ordinary JSON component
 would change the document syntax.
