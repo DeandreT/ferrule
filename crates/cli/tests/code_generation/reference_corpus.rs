@@ -528,9 +528,11 @@ fn run_case(
             ],
             "{sample}: ordered source tools"
         );
-        assert!(rows[2]["Tool"]
-            .as_str()
-            .is_some_and(|tool| !tool.is_empty()));
+        assert!(
+            rows[2]["Tool"]
+                .as_str()
+                .is_some_and(|tool| !tool.is_empty())
+        );
         assert_eq!(
             rows.iter()
                 .map(|row| row["ExistsInMissionKit"].as_str())
@@ -563,9 +565,11 @@ fn run_case(
                 "{sample}: joined names are distinct"
             );
             assert!(row["City"].as_str().is_some_and(|city| !city.is_empty()));
-            assert!(row["Street"]
-                .as_str()
-                .is_some_and(|street| !street.is_empty()));
+            assert!(
+                row["Street"]
+                    .as_str()
+                    .is_some_and(|street| !street.is_empty())
+            );
             assert!(row["Email"].as_str().is_some_and(|email| !email.is_empty()));
         }
     }
@@ -749,12 +753,16 @@ fn run_case(
             .as_array()
             .expect("one summarized info item");
         assert_eq!(info.len(), 1, "{sample}: one summary item");
-        assert!(info[0]["Title"]
-            .as_str()
-            .is_some_and(|text| !text.is_empty()));
-        assert!(info[0]["Description"]["#text"]
-            .as_str()
-            .is_some_and(|text| !text.is_empty()));
+        assert!(
+            info[0]["Title"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty())
+        );
+        assert!(
+            info[0]["Description"]["#text"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty())
+        );
     }
     if sample == "EmployeesToKeyValueList.mfd" {
         let source_fields = project
