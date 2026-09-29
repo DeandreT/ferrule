@@ -60,7 +60,8 @@ pub use export::{
 };
 pub use import::{
     ImportIssue, ImportIssueKind, ImportOptions, ImportOutcome, ImportProfile, ImportReport,
-    Imported, assess_import, import, import_with_options, import_with_profile,
+    Imported, ImportedPipeline, assess_import, import, import_pipeline,
+    import_pipeline_with_options, import_with_options, import_with_profile,
 };
 pub use resource::PackageManifest;
 

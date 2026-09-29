@@ -147,6 +147,7 @@ cargo +nightly run -p cli -- import-mfd --mfd package/maps/design.mfd --package-
 cargo +nightly run -p cli -- import-mfd --mfd package/maps/design.mfd --package-manifest package/ferrule-package.json --out package/projects/project.json
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --edi-catalog-root edi-configs --out project.json
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --json-schema-root schemas --out project.json
+cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
@@ -159,6 +160,10 @@ the export for compatibility inspection without writing files or directories;
 `--report-json` prints a versioned, deterministic report on stdout. See
 [`.mfd` interoperability](docs/mfd-interop.md#export) for the report's
 limits.
+
+For a supported connected two-stage design, `import-mfd --pipeline` writes a
+typed pipeline that can be run with `run-pipeline` by supplying its host inputs
+and selected stage outputs.
 
 Emit machine-readable validation diagnostics:
 

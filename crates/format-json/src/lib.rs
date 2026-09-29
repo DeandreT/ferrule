@@ -9,9 +9,11 @@
 //! Unconstrained dynamic properties retain arbitrary values as canonical JSON
 //! text in the graph's string domain and restore them at the output boundary.
 
+mod json5_unique;
 pub mod json_schema;
 mod pattern_runtime;
 
+use std::io::Read;
 use std::path::Path;
 
 use ir::{
@@ -22,12 +24,24 @@ use thiserror::Error;
 
 use pattern_runtime::PatternRuntime;
 
+pub(crate) const MAX_JSON5_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
+
 #[derive(Debug, Error)]
 pub enum JsonFormatError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("JSON5 error: {0}")]
+    Json5(#[from] json5::Error),
+    #[error("JSON5 nesting exceeds {limit} levels")]
+    Json5NestingLimit { limit: usize },
+    #[error("JSON5 document exceeds the {limit}-byte input limit")]
+    Json5DocumentLimit { limit: usize },
+    #[error("JSON5 exact validation exceeds the {limit}-byte document limit")]
+    Json5ExactLimit { limit: usize },
+    #[error("JSON5 exact validation cannot normalize this document: {reason}")]
+    Json5ExactUnsupported { reason: &'static str },
     #[error("`{name}`: expected {expected}, got {got}")]
     Shape {
         name: String,
@@ -207,6 +221,23 @@ pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatErro
     from_str(&text, schema)
 }
 
+/// Reads a JSON5 document using the same typed schema boundary as JSON.
+pub fn read_json5(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take((MAX_JSON5_DOCUMENT_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_JSON5_DOCUMENT_BYTES {
+        return Err(JsonFormatError::Json5DocumentLimit {
+            limit: MAX_JSON5_DOCUMENT_BYTES,
+        });
+    }
+    let text = String::from_utf8(bytes).map_err(|error| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, error.utf8_error())
+    })?;
+    from_json5_str(&text, schema)
+}
+
 /// Reads a JSON Lines file into a repeated instance, one item per non-empty
 /// line.
 pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
@@ -222,12 +253,87 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatE
     let text = strip_utf8_bom(text);
     json_schema::unique_items::validate_raw_json_unique_items(schema, text)?;
     let value: serde_json::Value = serde_json::from_str(text)?;
+    from_value(&value, schema)
+}
+
+/// Reads JSON5 text into an [`Instance`] tree. JSON5 comments are syntax only;
+/// they are not represented in the mapping graph or reproduced on output.
+pub fn from_json5_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    let text = strip_utf8_bom(text);
+    if text.len() > MAX_JSON5_DOCUMENT_BYTES {
+        return Err(JsonFormatError::Json5DocumentLimit {
+            limit: MAX_JSON5_DOCUMENT_BYTES,
+        });
+    }
+    check_json5_nesting(text)?;
+    let value: serde_json::Value = json5::from_str(text)?;
+    json5_unique::validate(schema, text)?;
+    from_value(&value, schema)
+}
+
+fn from_value(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     let mut patterns = PatternRuntime::new(schema)?;
     if schema.repeating {
-        read_repeated(&value, schema, &mut patterns)
+        read_repeated(value, schema, &mut patterns)
     } else {
-        read_node_with_patterns(&value, schema, &mut patterns)
+        read_node_with_patterns(value, schema, &mut patterns)
     }
+}
+
+fn check_json5_nesting(text: &str) -> Result<(), JsonFormatError> {
+    const MAX_DEPTH: usize = 128;
+    let bytes = text.as_bytes();
+    let mut index = 0;
+    let mut depth = 0usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\'' | b'"' => {
+                let quote = bytes[index];
+                index += 1;
+                while index < bytes.len() {
+                    match bytes[index] {
+                        b'\\' => index = (index + 2).min(bytes.len()),
+                        byte if byte == quote => {
+                            index += 1;
+                            break;
+                        }
+                        _ => index += 1,
+                    }
+                }
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'/') => {
+                index += 2;
+                while index < bytes.len()
+                    && !matches!(bytes[index], b'\n' | b'\r')
+                    && !bytes[index..].starts_with("\u{2028}".as_bytes())
+                    && !bytes[index..].starts_with("\u{2029}".as_bytes())
+                {
+                    index += 1;
+                }
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'*') => {
+                index += 2;
+                while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/')
+                {
+                    index += 1;
+                }
+                index = (index + 2).min(bytes.len());
+            }
+            b'{' | b'[' => {
+                depth += 1;
+                if depth > MAX_DEPTH {
+                    return Err(JsonFormatError::Json5NestingLimit { limit: MAX_DEPTH });
+                }
+                index += 1;
+            }
+            b'}' | b']' => {
+                depth = depth.saturating_sub(1);
+                index += 1;
+            }
+            _ => index += 1,
+        }
+    }
+    Ok(())
 }
 
 /// Reads JSON Lines text into a repeated instance.
@@ -529,6 +635,16 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
     Ok(())
 }
 
+/// Writes a JSON5 document, using ordinary JSON schema validation first.
+pub fn write_json5(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<(), JsonFormatError> {
+    std::fs::write(path, to_json5_string(schema, instance)?)?;
+    Ok(())
+}
+
 /// Writes a repeated instance as JSON Lines using one compact value per line.
 pub fn write_lines(
     path: &Path,
@@ -564,6 +680,19 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Jso
         _ => write_node_with_patterns(schema, instance, &mut patterns)?,
     };
     let mut text = serde_json::to_string_pretty(&value)?;
+    text.push('\n');
+    Ok(text)
+}
+
+/// Serializes a typed instance as JSON5. Safe property names are unquoted;
+/// comments are intentionally not generated.
+pub fn to_json5_string(
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<String, JsonFormatError> {
+    let strict = to_string(schema, instance)?;
+    let value: serde_json::Value = serde_json::from_str(&strict)?;
+    let mut text = json5::to_string(&value)?;
     text.push('\n');
     Ok(text)
 }
@@ -1088,6 +1217,97 @@ fn write_shape_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json5_reads_and_writes_schema_shaped_documents() {
+        let schema = schema();
+        let source = "// source comment\n{Name:'Ada',Tag:[{Value:'x',Weight:0x10},],}";
+        let instance = from_json5_str(source, &schema).unwrap();
+        let rendered = to_json5_string(&schema, &instance).unwrap();
+        assert!(rendered.contains("Name:"));
+        assert!(rendered.contains("Weight:"));
+        assert!(!rendered.contains("source comment"));
+        assert_eq!(from_json5_str(&rendered, &schema).unwrap(), instance);
+    }
+
+    #[test]
+    fn json5_rejects_nonfinite_values_and_deep_nesting() {
+        let schema = SchemaNode::group("Root", vec![SchemaNode::scalar("n", ScalarType::Float)]);
+        for source in ["{n: Infinity}", "{n: -Infinity}", "{n: NaN}"] {
+            assert!(from_json5_str(source, &schema).is_err(), "{source}");
+        }
+        let deep = format!("{}0{}", "[".repeat(129), "]".repeat(129));
+        assert!(matches!(
+            from_json5_str(&deep, &schema),
+            Err(JsonFormatError::Json5NestingLimit { limit: 128 })
+        ));
+        for separator in ['\u{2028}', '\u{2029}'] {
+            let shallow = format!("// comment{separator}{{n: 1}}");
+            assert!(from_json5_str(&shallow, &schema).is_ok());
+            let deep = format!(
+                "// comment{separator}{}0{}",
+                "[".repeat(129),
+                "]".repeat(129)
+            );
+            assert!(matches!(
+                from_json5_str(&deep, &schema),
+                Err(JsonFormatError::Json5NestingLimit { limit: 128 })
+            ));
+        }
+    }
+
+    #[test]
+    fn json5_checks_unique_items_on_decoded_arrays() {
+        let mut schema = SchemaNode::scalar("items", ScalarType::Int).repeating();
+        schema.json_unique_items = true;
+        assert!(matches!(
+            from_json5_str("[1, /* duplicate */ 1,]", &schema),
+            Err(JsonFormatError::UniqueItemsMismatch { .. })
+        ));
+        let mut float_schema = SchemaNode::scalar("floats", ScalarType::Float).repeating();
+        float_schema.json_unique_items = true;
+        assert!(matches!(
+            from_json5_str("[1.0, 1.00]", &float_schema),
+            Err(JsonFormatError::UniqueItemsMismatch { .. })
+        ));
+        for source in [
+            "[0x10, 16]",
+            "[+1, 1.0]",
+            "[.1e1, 1.]",
+            "[-0x0, 0]",
+            "[1e+2, 100]",
+        ] {
+            assert!(
+                matches!(
+                    from_json5_str(source, &float_schema),
+                    Err(JsonFormatError::UniqueItemsMismatch { .. })
+                ),
+                "{source}"
+            );
+        }
+        // The decoded f64 values are the same, but the source decimals are
+        // mathematically distinct. Exact lexical validation must allow them.
+        assert!(from_json5_str("[1.00000000000000000001, 1.0]", &float_schema).is_ok());
+        assert!(from_json5_str("[9007199254740992.0, 9007199254740993.0]", &float_schema).is_ok());
+    }
+
+    #[test]
+    fn json5_unique_items_compare_objects_without_key_order() {
+        let mut schema = SchemaNode::group(
+            "entry",
+            vec![
+                SchemaNode::scalar("ab", ScalarType::Int),
+                SchemaNode::scalar("other", ScalarType::String),
+            ],
+        )
+        .repeating();
+        schema.json_unique_items = true;
+        let source = "[{'ab':1,other:'x',},{other:'x',a\\u0062:0x1,}]";
+        assert!(matches!(
+            from_json5_str(source, &schema),
+            Err(JsonFormatError::UniqueItemsMismatch { .. })
+        ));
+    }
 
     fn pattern_property_schema(
         sources: impl IntoIterator<Item = &'static str>,

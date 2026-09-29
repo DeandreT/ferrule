@@ -30,6 +30,32 @@ fn temporary_project_path(test_name: &str) -> PathBuf {
     dir.join("project.json")
 }
 
+fn pipeline_fixture(path: &Path) -> anyhow::Result<()> {
+    let mut project = blank_project();
+    let schema = SchemaNode::group(
+        "Record",
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    );
+    project.source = schema.clone();
+    project.target = schema;
+    project.source_options.json_document = true;
+    project.target_options.json_document = true;
+    project.root.construction = mapping::ScopeConstruction::CopyCurrentSource;
+    let pipeline = mapping::Pipeline {
+        stages: vec![mapping::PipelineStage {
+            id: "prepare".into(),
+            mapping_path: None,
+            project,
+            source: mapping::PipelineInput::Host {
+                name: "orders".into(),
+            },
+            extra_sources: Vec::new(),
+        }],
+    };
+    std::fs::write(path, serde_json::to_vec_pretty(&pipeline)?)?;
+    Ok(())
+}
+
 fn named_target(name: &str) -> NamedTarget {
     NamedTarget {
         name: name.to_owned(),
@@ -1104,6 +1130,370 @@ fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> a
         crate::run_report::OutputPreview::Text { content, .. }
             if content.contains("<root")
     ));
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_runner_keeps_dirty_project_open_and_reports_written_output() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("pipeline-run");
+    pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has a directory");
+    std::fs::write(directory.join("orders.json"), r#"{"Value":"from host"}"#)?;
+
+    let mut app = FerruleApp::default();
+    app.project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Null,
+        },
+    );
+    let before = serde_json::to_vec(&app.project)?;
+    assert!(app.is_dirty());
+    app.load_pipeline_for_run(&pipeline_path);
+    let draft = app.pipeline_run_draft.as_mut().expect("pipeline opens");
+    assert!(draft.issues.is_empty());
+    assert_eq!(draft.inputs.len(), 1);
+    assert_eq!(draft.outputs.len(), 1);
+    draft.inputs[0].path = "orders.json".into();
+    draft.outputs[0].path = "result.json".into();
+    let context = egui::Context::default();
+    let _ = context.run_ui(Default::default(), |ui| {
+        app.show_pipeline_run_setup(ui.ctx());
+    });
+    app.start_pipeline_run();
+    for _ in 0..100 {
+        app.poll_pipeline_run(&egui::Context::default());
+        if app.pending_pipeline_run.is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(app.pending_pipeline_run.is_none(), "pipeline run completes");
+    let result: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join("result.json"))?)?;
+    assert_eq!(result["Value"].as_str(), Some("from host"));
+    let report = app.run_report.as_ref().expect("pipeline report exists");
+    assert_eq!(
+        report.report.kind,
+        crate::run_report::RunReportKind::Pipeline
+    );
+    assert_eq!(report.report.outputs[0].name, "prepare / Primary");
+    assert_eq!(serde_json::to_vec(&app.project)?, before);
+    assert!(app.document.saved_path().is_none());
+    assert!(app.is_dirty());
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_runner_requires_reinspection_after_file_changes() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("pipeline-changed");
+    pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has a directory");
+    let mut app = FerruleApp::default();
+    app.load_pipeline_for_run(&pipeline_path);
+    let draft = app.pipeline_run_draft.as_mut().expect("pipeline opens");
+    draft.inputs[0].path = "orders.json".into();
+    draft.outputs[0].path = "result.json".into();
+    std::fs::write(&pipeline_path, "{}")?;
+    app.start_pipeline_run();
+    assert!(app.pending_pipeline_run.is_none());
+    assert!(!directory.join("result.json").exists());
+    assert!(app.status.contains("blocked"));
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_editor_embeds_project_rewires_rename_and_saves_independently() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("pipeline-editor");
+    pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    let embedded_directory = directory.join("embedded");
+    std::fs::create_dir_all(&embedded_directory)?;
+    let project_path = embedded_directory.join("second.json");
+    let pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    let mut project = pipeline.stages[0].project.clone();
+    project.source_path = Some("input.json".into());
+    project.extra_sources.push(mapping::NamedSource {
+        name: "lookup".into(),
+        path: "lookup.json".into(),
+        schema: project.source.clone(),
+        options: project.source_options.clone(),
+        dynamic_path: None,
+    });
+    std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
+
+    let mut app = FerruleApp::default();
+    app.project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Null,
+        },
+    );
+    let original_project = serde_json::to_vec(&app.project)?;
+    app.request_pipeline_editor_action(pipeline_editor_ui::PipelineEditorAction::Open(
+        pipeline_path.clone(),
+    ));
+    app.add_pipeline_stage_from_path(&project_path);
+    let editor = app.pipeline_editor.as_mut().expect("editor opens");
+    assert_eq!(editor.document.pipeline.stages.len(), 2);
+    assert_eq!(
+        editor.document.pipeline.stages[1].mapping_path.as_deref(),
+        Some("embedded/second.json")
+    );
+    assert_eq!(
+        editor.document.pipeline.stages[1]
+            .project
+            .source_path
+            .as_deref(),
+        Some("embedded/input.json")
+    );
+    editor.document.set_input(
+        1,
+        0,
+        mapping::PipelineInput::StageTarget {
+            stage: "prepare".into(),
+            target: None,
+        },
+    )?;
+    editor.document.set_input(
+        1,
+        1,
+        mapping::PipelineInput::StageTarget {
+            stage: "prepare".into(),
+            target: None,
+        },
+    )?;
+    editor.document.rename_stage(0, "source")?;
+    assert_eq!(
+        editor.document.pipeline.stages[1].source,
+        mapping::PipelineInput::StageTarget {
+            stage: "source".into(),
+            target: None,
+        }
+    );
+    assert_eq!(
+        editor.document.pipeline.stages[1].extra_sources[0].from,
+        mapping::PipelineInput::StageTarget {
+            stage: "source".into(),
+            target: None,
+        }
+    );
+    assert!(editor.document.remove_stage(0).is_err());
+    assert!(editor.document.issues().is_empty());
+    editor.document.save()?;
+    assert!(!editor.document.is_dirty());
+    let saved: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    assert_eq!(saved.stages[0].id, "source");
+    assert_eq!(
+        saved.stages[1].source,
+        mapping::PipelineInput::StageTarget {
+            stage: "source".into(),
+            target: None
+        }
+    );
+    assert_eq!(serde_json::to_vec(&app.project)?, original_project);
+    assert!(app.is_dirty());
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_editor_detects_external_change_and_guards_dirty_close() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("pipeline-editor-conflict");
+    pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    let mut app = FerruleApp::default();
+    app.request_pipeline_editor_action(pipeline_editor_ui::PipelineEditorAction::Open(
+        pipeline_path.clone(),
+    ));
+    app.pipeline_editor
+        .as_mut()
+        .expect("editor opens")
+        .document
+        .rename_stage(0, "renamed")?;
+    app.request_pipeline_editor_action(pipeline_editor_ui::PipelineEditorAction::Close);
+    assert!(app.pipeline_editor.is_some());
+    assert!(app.pending_pipeline_editor_action.is_some());
+    app.pending_pipeline_editor_action = None;
+    std::fs::write(&pipeline_path, b"{\"stages\":[]}")?;
+    let editor = app
+        .pipeline_editor
+        .as_mut()
+        .expect("dirty editor remains open");
+    assert!(editor.document.save().is_err());
+    assert!(editor.document.is_dirty());
+    assert_eq!(std::fs::read(&pipeline_path)?, b"{\"stages\":[]}");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn app_close_checks_dirty_pipeline_before_dirty_project() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("pipeline-editor-app-close");
+    pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    let context = egui::Context::default();
+
+    let mut app = FerruleApp::default();
+    app.project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Null,
+        },
+    );
+    assert!(app.is_dirty());
+    app.request_pipeline_editor_action(pipeline_editor_ui::PipelineEditorAction::Open(
+        pipeline_path.clone(),
+    ));
+    app.pipeline_editor
+        .as_mut()
+        .expect("editor opens")
+        .document
+        .rename_stage(0, "renamed")?;
+    app.guard_app_close_requested(&context, true);
+    assert!(matches!(
+        &app.pending_pipeline_editor_action,
+        Some(pipeline_editor_ui::PipelineEditorAction::CloseApp)
+    ));
+    assert!(app.pending_destructive_action.is_none());
+    assert!(!app.allow_close);
+    app.discard_pending_pipeline_editor_action(&context);
+    assert!(app.pipeline_editor.is_none());
+    assert_eq!(
+        app.pending_destructive_action,
+        Some(DestructiveAction::Close)
+    );
+    assert!(!app.allow_close);
+
+    let mut clean_project_app = FerruleApp::default();
+    clean_project_app.request_pipeline_editor_action(
+        pipeline_editor_ui::PipelineEditorAction::Open(pipeline_path.clone()),
+    );
+    clean_project_app
+        .pipeline_editor
+        .as_mut()
+        .expect("editor opens")
+        .document
+        .rename_stage(0, "another")?;
+    clean_project_app.guard_app_close_requested(&context, true);
+    clean_project_app.discard_pending_pipeline_editor_action(&context);
+    assert!(clean_project_app.pipeline_editor.is_none());
+    assert!(clean_project_app.allow_close);
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_editor_validates_before_creating_new_file() -> anyhow::Result<()> {
+    let existing = temporary_project_path("pipeline-editor-new");
+    let directory = existing.parent().expect("pipeline has directory");
+    let path = directory.join("flow.json");
+    let mut document = crate::pipeline_edit::PipelineEditorDocument::create(&path)?;
+    assert!(document.is_dirty());
+    assert!(document.save().is_err());
+    assert!(!path.exists());
+    pipeline_fixture(&existing)?;
+    let project: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&existing)?)?;
+    let project_path = directory.join("mapping.json");
+    std::fs::write(
+        &project_path,
+        serde_json::to_vec_pretty(&project.stages[0].project)?,
+    )?;
+    document.add_project(&project_path)?;
+    assert!(document.issues().is_empty());
+    document.save()?;
+    assert!(path.exists());
+    assert!(!document.is_dirty());
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_editor_stores_sibling_project_identity_as_relative_path() -> anyhow::Result<()> {
+    let fixture_path = temporary_project_path("pipeline-editor-sibling");
+    pipeline_fixture(&fixture_path)?;
+    let directory = fixture_path.parent().expect("fixture has directory");
+    let project_dir = directory.join("projects");
+    let pipeline_dir = directory.join("pipelines");
+    std::fs::create_dir_all(&project_dir)?;
+    std::fs::create_dir_all(&pipeline_dir)?;
+    let source: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&fixture_path)?)?;
+    let project_path = project_dir.join("stage.json");
+    let mut project = source.stages[0].project.clone();
+    project.source_path = Some("orders.json".into());
+    std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
+    let mut document =
+        crate::pipeline_edit::PipelineEditorDocument::create(&pipeline_dir.join("flow.json"))?;
+    document.add_project(&project_path)?;
+    assert_eq!(
+        document.pipeline.stages[0].mapping_path.as_deref(),
+        Some("../projects/stage.json")
+    );
+    assert_eq!(
+        document.pipeline.stages[0].project.source_path.as_deref(),
+        Some("../projects/orders.json")
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn pipeline_editor_rejects_symlinked_file_and_link_replacement() -> anyhow::Result<()> {
+    use std::os::unix::fs::symlink;
+
+    let pipeline_path = temporary_project_path("pipeline-editor-symlink");
+    pipeline_fixture(&pipeline_path)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    let link = directory.join("linked.json");
+    symlink(&pipeline_path, &link)?;
+    assert!(crate::pipeline_edit::PipelineEditorDocument::load(&link).is_err());
+    let mut document = crate::pipeline_edit::PipelineEditorDocument::load(&pipeline_path)?;
+    document.rename_stage(0, "renamed")?;
+    let original = std::fs::read(&pipeline_path)?;
+    let target = directory.join("replacement.json");
+    std::fs::write(&target, &original)?;
+    std::fs::remove_file(&pipeline_path)?;
+    symlink(&target, &pipeline_path)?;
+    assert!(document.save().is_err());
+    assert_eq!(std::fs::read(&target)?, original);
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn pipeline_editor_keeps_selected_project_symlink_identity() -> anyhow::Result<()> {
+    use std::os::unix::fs::symlink;
+
+    let fixture_path = temporary_project_path("pipeline-editor-project-link");
+    pipeline_fixture(&fixture_path)?;
+    let directory = fixture_path.parent().expect("fixture has directory");
+    let project_dir = directory.join("projects");
+    let pipeline_dir = directory.join("pipelines");
+    std::fs::create_dir_all(&project_dir)?;
+    std::fs::create_dir_all(&pipeline_dir)?;
+    let source: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&fixture_path)?)?;
+    let project_path = project_dir.join("stage.json");
+    let mut project = source.stages[0].project.clone();
+    project.source_path = Some("orders.json".into());
+    std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
+    let selected_path = pipeline_dir.join("selected-stage.json");
+    symlink(&project_path, &selected_path)?;
+    let mut document =
+        crate::pipeline_edit::PipelineEditorDocument::create(&pipeline_dir.join("flow.json"))?;
+    document.add_project(&selected_path)?;
+    assert_eq!(
+        document.pipeline.stages[0].mapping_path.as_deref(),
+        Some("selected-stage.json")
+    );
+    assert_eq!(
+        document.pipeline.stages[0].project.source_path.as_deref(),
+        Some("orders.json")
+    );
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }

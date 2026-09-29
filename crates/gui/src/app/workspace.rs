@@ -67,6 +67,27 @@ impl FerruleApp {
                             }
                             ui.close();
                         }
+                        if ui.button("Run Pipeline...").clicked() {
+                            self.pending_dialog = Some((
+                                DialogKind::OpenPipeline,
+                                pick_file("ferrule pipeline", &["json"]),
+                            ));
+                            ui.close();
+                        }
+                        if ui.button("Edit Pipeline...").clicked() {
+                            self.pending_dialog = Some((
+                                DialogKind::OpenPipelineEditor,
+                                pick_file("ferrule pipeline", &["json"]),
+                            ));
+                            ui.close();
+                        }
+                        if ui.button("New Pipeline...").clicked() {
+                            self.pending_dialog = Some((
+                                DialogKind::CreatePipeline,
+                                save_file("ferrule pipeline", &["json"], "pipeline.json"),
+                            ));
+                            ui.close();
+                        }
                         if ui
                             .add(
                                 egui::Button::new("Save")
@@ -190,6 +211,7 @@ impl FerruleApp {
                             match result.report.kind {
                                 crate::run_report::RunReportKind::Run => "Run results",
                                 crate::run_report::RunReportKind::Preview => "Preview results",
+                                crate::run_report::RunReportKind::Pipeline => "Pipeline results",
                             }
                         });
                         if ui

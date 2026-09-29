@@ -51,6 +51,13 @@ fn project_boundaries_select_xbrl_without_leaking_previous_xbrl_state() {
     );
 
     project.target_options.json_lines = false;
+    project.target_options.json5 = true;
+    assert_eq!(
+        boundary_format(&project, DataSide::Target, DataFormat::Xml),
+        DataFormat::Json
+    );
+
+    project.target_options.json5 = false;
     project.target_options.xml_document = true;
     assert_eq!(
         boundary_format(&project, DataSide::Target, DataFormat::Json),
