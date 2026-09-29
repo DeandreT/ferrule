@@ -417,6 +417,137 @@ fn replay_moves_only_within_the_retained_event_prefix() {
 }
 
 #[test]
+fn report_links_replay_exact_retained_indices_after_filtering() {
+    let candidate = |ordinal| cli::TraceEvent::IterationCandidate {
+        scope: trace_scope(),
+        ordinal,
+        positions: Vec::new(),
+        source_row: Some(cli::TraceSourceRow {
+            kind: cli::TraceOutputKind::Group,
+            value: None,
+            fields: Vec::new(),
+            omitted_fields: 0,
+        }),
+    };
+    let collector = TraceCollector::with_limit(4);
+    for event in [
+        trace_event(7, ir::Value::Int(1)),
+        candidate(1),
+        trace_event(7, ir::Value::Int(2)),
+        candidate(2),
+        trace_event(8, ir::Value::Int(3)),
+    ] {
+        cli::TraceSink::record(&collector, event);
+    }
+    let mut view = RunReportView::new(RunReport {
+        kind: RunReportKind::Preview,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("input.xml"),
+        outputs: Vec::new(),
+        trace: collector.finish(),
+    });
+    assert_eq!(view.report.trace.dropped, 1);
+    assert_eq!(view.history_by_node[&7], [0, 2]);
+    assert_eq!(view.source_rows, [1, 3]);
+
+    view.trace_filter = "candidate 2".into();
+    assert_eq!(view.filtered_trace_indices(), [3]);
+    assert_eq!(source_rows::filtered_source_row_indices(&view), [3]);
+    assert!(view.replay_from(3));
+    assert_eq!(view.page, ReportPage::Replay);
+    assert_eq!(view.replay_event, Some(3));
+
+    view.page = ReportPage::History;
+    assert!(!view.replay_from(4)); // The fifth event was omitted.
+    assert!(!view.replay_from(usize::MAX));
+    assert_eq!(view.page, ReportPage::History);
+    assert_eq!(view.replay_event, Some(3));
+
+    view.trace_filter = "node 7".into();
+    assert_eq!(view.filtered_trace_indices(), [0, 2]);
+    assert!(view.replay_from(view.history_by_node[&7][1]));
+    assert_eq!(view.replay_event, Some(2));
+    assert_eq!(view.page, ReportPage::Replay);
+
+    view.report.trace.events.truncate(2);
+    view.trace_filter.clear();
+    assert_eq!(source_rows::filtered_source_row_indices(&view), [1]);
+    assert!(!view.replay_from(3));
+    assert_eq!(replay::replay_target(&view, replay::ReplayStep::Next), None);
+
+    let mut empty = RunReportView::new(RunReport {
+        kind: RunReportKind::Pipeline,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("pipeline.json"),
+        outputs: Vec::new(),
+        trace: TraceReport::default(),
+    });
+    assert!(!empty.replay_from(0));
+    assert_eq!(empty.page, ReportPage::Output);
+    assert_eq!(empty.replay_event, None);
+}
+
+#[test]
+fn replay_action_click_opens_the_chosen_retained_event() {
+    let context = egui::Context::default();
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+    let input = |events| egui::RawInput {
+        screen_rect: Some(screen_rect),
+        events,
+        ..Default::default()
+    };
+    let mut view = RunReportView::new(RunReport {
+        kind: RunReportKind::Preview,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("input.json"),
+        outputs: Vec::new(),
+        trace: TraceReport {
+            events: vec![
+                trace_event(1, ir::Value::Int(1)),
+                trace_event(2, ir::Value::Int(2)),
+                trace_event(3, ir::Value::Int(3)),
+            ],
+            dropped: 0,
+        },
+    });
+    let mut button_rect = egui::Rect::NOTHING;
+    let output = context.run_ui(input(Vec::new()), |ui| {
+        button_rect = replay_action(ui, 2, "Replay").rect;
+        ui.add(egui::Label::new("selectable trace text").selectable(true));
+    });
+    assert!(button_rect.is_positive());
+    assert!(!output.shapes.is_empty());
+    let pos = button_rect.center();
+    let pointer = |pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::default(),
+    };
+    let _ = context.run_ui(
+        input(vec![egui::Event::PointerMoved(pos), pointer(true)]),
+        |ui| {
+            if replay_action(ui, 2, "Replay").clicked() {
+                view.replay_from(2);
+            }
+            ui.add(egui::Label::new("selectable trace text").selectable(true));
+        },
+    );
+    assert_eq!(view.page, ReportPage::Output);
+    let _ = context.run_ui(input(vec![pointer(false)]), |ui| {
+        if replay_action(ui, 2, "Replay").clicked() {
+            view.replay_from(2);
+        }
+        ui.add(egui::Label::new("selectable trace text").selectable(true));
+    });
+    assert_eq!(view.page, ReportPage::Replay);
+    assert_eq!(view.replay_event, Some(2));
+}
+
+#[test]
 fn replay_details_keep_positions_and_source_fields_on_the_same_event() {
     let position = cli::TracePosition {
         collection: vec!["Order".into(), "Line".into()],

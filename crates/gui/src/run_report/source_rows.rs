@@ -17,6 +17,21 @@ pub(super) fn index_source_rows(events: &[cli::TraceEvent]) -> Vec<usize> {
         .collect()
 }
 
+pub(super) fn filtered_source_row_indices(view: &RunReportView) -> Vec<usize> {
+    let filter = view.trace_filter.trim().to_lowercase();
+    view.source_rows
+        .iter()
+        .copied()
+        .filter(|&index| {
+            view.report.trace.events.get(index).is_some_and(|event| {
+                filter.is_empty()
+                    || source_row_summary(index, event)
+                        .is_some_and(|row| row.to_lowercase().contains(&filter))
+            })
+        })
+        .collect()
+}
+
 pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
     ui.horizontal_wrapped(|ui| {
         ui.label(format!("{} source rows", view.source_rows.len()));
@@ -40,17 +55,7 @@ pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
     ui.weak("Source candidates before filtering and sorting. Generated, join, and once iterations have no row preview.");
     ui.separator();
 
-    let filter = view.trace_filter.trim().to_lowercase();
-    let rows = view
-        .source_rows
-        .iter()
-        .copied()
-        .filter(|&index| {
-            filter.is_empty()
-                || source_row_summary(index, &view.report.trace.events[index])
-                    .is_some_and(|row| row.to_lowercase().contains(&filter))
-        })
-        .collect::<Vec<_>>();
+    let rows = filtered_source_row_indices(view);
     if rows.is_empty() {
         ui.weak("No matching source rows were recorded for this run.");
         return;
@@ -69,8 +74,10 @@ pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
         .auto_shrink([false, false])
         .show_rows(ui, row_height, rows.len(), |ui, range| {
             for &index in &rows[range] {
-                let Some(summary) = source_row_summary(index, &view.report.trace.events[index])
-                else {
+                let Some(event) = view.report.trace.events.get(index) else {
+                    continue;
+                };
+                let Some(summary) = source_row_summary(index, event) else {
                     continue;
                 };
                 if ui
@@ -85,9 +92,15 @@ pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
     let Some(index) = view.selected_source_row else {
         return;
     };
-    let Some(lines) = source_row_details(index, &view.report.trace.events[index]) else {
+    let Some(event) = view.report.trace.events.get(index) else {
         return;
     };
+    let Some(lines) = source_row_details(index, event) else {
+        return;
+    };
+    if replay_action(ui, index, "Replay from this row").clicked() && view.replay_from(index) {
+        return;
+    }
     egui::ScrollArea::vertical()
         .id_salt("run_source_row_detail")
         .auto_shrink([false, false])

@@ -9,7 +9,9 @@ pub(super) enum ReplayStep {
 }
 
 pub(super) fn replay_target(view: &RunReportView, step: ReplayStep) -> Option<usize> {
-    let current = view.replay_event?;
+    let current = view
+        .replay_event
+        .filter(|&index| index < view.report.trace.events.len())?;
     match step {
         ReplayStep::First => (current > 0).then_some(0),
         ReplayStep::Previous => current.checked_sub(1),
@@ -18,7 +20,8 @@ pub(super) fn replay_target(view: &RunReportView, step: ReplayStep) -> Option<us
             .history_node
             .and_then(|node| view.history_by_node.get(&node))
             .and_then(|indices| indices.get(indices.partition_point(|&index| index <= current)))
-            .copied(),
+            .copied()
+            .filter(|&index| index < view.report.trace.events.len()),
     }
 }
 
@@ -38,7 +41,7 @@ pub(super) fn show_replay(ui: &mut egui::Ui, view: &mut RunReportView) {
     });
     ui.separator();
 
-    if view.replay_event.is_none() {
+    if !view.replay_event.is_some_and(|index| index < retained) {
         ui.weak("No recorded trace events are available for this run.");
         return;
     }
