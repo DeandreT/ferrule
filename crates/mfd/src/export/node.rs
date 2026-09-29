@@ -554,7 +554,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     None,
                 );
                 let declaration = u8::from(*declaration);
-                let indent = u8::from(*indent);
+                let indent_attribute = if *indent { "" } else { " ferrule-indent=\"0\"" };
                 let namespace_header = namespace.as_deref().map_or_else(
                     || "<namespace/>".to_string(),
                     |namespace| format!("<namespace uid=\"{}\"/>", xml_escape(namespace)),
@@ -567,7 +567,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 let _ = write!(
                     components,
                     "\t\t\t\t<component name=\"{}\" library=\"xml\" uid=\"{uid}\" kind=\"14\">\n\
-                     \t\t\t\t\t<properties XSLTTargetEncoding=\"UTF-8\" WriteXMLDeclaration=\"{declaration}\" ferrule-indent=\"{indent}\"/>\n\
+                     \t\t\t\t\t<properties XSLTTargetEncoding=\"UTF-8\" WriteXMLDeclaration=\"{declaration}\"{indent_attribute}/>\n\
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"240\" rby=\"180\"/>\n\
                      \t\t\t\t\t<data>\n\
                      \t\t\t\t\t\t<root><header><namespaces>{namespace_header}</namespaces></header>\n\
