@@ -306,8 +306,8 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
 /// Import a connected, file-based design as a typed pipeline.
 ///
 /// This profile accepts a bounded serial XML pass-through chain whose final
-/// stage may write multiple connected XML targets. Other stage graph shapes
-/// reject explicitly.
+/// primary target may be XML or CSV, with any connected named targets remaining
+/// XML. Other stage graph shapes reject explicitly.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
 }
@@ -594,7 +594,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
     if let Some(component) = components.iter().find(|component| {
         !matches!(
             component.attribute("library"),
-            Some("xml" | "core" | "lang" | "xpath2")
+            Some("xml" | "core" | "lang" | "xpath2" | "text")
         )
     }) {
         return Err(MfdError::UnsupportedImport(format!(
@@ -640,7 +640,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
     let final_outputs = components
         .iter()
         .filter(|component| {
-            component.attribute("library") == Some("xml")
+            (component.attribute("library") == Some("xml") || is_csv_terminal_component(component))
                 && component.children().any(|node| {
                     node.has_tag_name("properties")
                         && node.attribute("XSLTDefaultOutput") == Some("1")
@@ -650,13 +650,22 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         .collect::<Vec<_>>();
     let [final_target] = final_outputs.as_slice() else {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import currently needs one connected XML final target".into(),
+            "pipeline import currently needs one connected XML or CSV final target".into(),
         ));
     };
+    if components.iter().any(|component| {
+        component.attribute("library") == Some("text")
+            && (component.id() != final_target.id() || connected_component_outputs(component))
+    }) {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import supports CSV text components only as the final primary target".into(),
+        ));
+    }
     let terminal_targets = components
         .iter()
         .filter(|component| {
-            component.attribute("library") == Some("xml")
+            (component.attribute("library") == Some("xml")
+                || component.id() == final_target.id() && is_csv_terminal_component(component))
                 && connected_inputs(component)
                 && !component.children().any(|node| {
                     node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1")
@@ -665,7 +674,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         .collect::<Vec<_>>();
     if terminal_targets.len() > 256 {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import supports at most 256 final XML targets".into(),
+            "pipeline import supports at most 256 final targets".into(),
         ));
     }
     let connected_input_key = |component: &roxmltree::Node<'_, '_>| {
@@ -692,7 +701,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
     }
     let mut function_outputs = BTreeMap::<u32, Vec<u32>>::new();
     for component in &components {
-        if component.attribute("library") == Some("xml") {
+        if matches!(component.attribute("library"), Some("xml" | "text")) {
             continue;
         }
         let outputs = component
@@ -788,6 +797,18 @@ fn entry_keys(component: &roxmltree::Node<'_, '_>, attribute: &str) -> BTreeSet<
         .collect()
 }
 
+fn is_csv_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("library") == Some("text")
+        && component.attribute("kind") == Some("16")
+        && component
+            .children()
+            .find(|node| node.has_tag_name("data"))
+            .is_some_and(|data| {
+                data.children()
+                    .any(|node| node.has_tag_name("text") && node.attribute("type") == Some("csv"))
+            })
+}
+
 /// Keep imported stages to one linear chain of XML boundaries, allowing the
 /// last intermediate to feed multiple final targets. Multiple field connections
 /// to the same next boundary are valid; an earlier connection to a final target
@@ -819,15 +840,17 @@ fn strict_serial_stage_order(
                 .expect("selected final target belongs to the mapping")
         })
         .collect::<BTreeSet<_>>();
-    let mut xml_input_owners = BTreeMap::new();
+    let mut target_input_owners = BTreeMap::new();
     for (index, component) in components.iter().enumerate() {
-        if component.attribute("library") != Some("xml") {
+        if component.attribute("library") != Some("xml")
+            && !(terminal_indices.contains(&index) && is_csv_terminal_component(component))
+        {
             continue;
         }
         for key in entry_keys(component, "inpkey") {
-            if xml_input_owners.insert(key, index).is_some() {
+            if target_input_owners.insert(key, index).is_some() {
                 return Err(MfdError::UnsupportedImport(
-                    "serial pipeline has duplicate XML input port identities".into(),
+                    "serial pipeline has duplicate target input port identities".into(),
                 ));
             }
         }
@@ -849,7 +872,7 @@ fn strict_serial_stage_order(
             connected_outputs,
             consumers,
             function_outputs,
-            &xml_input_owners,
+            &target_input_owners,
         )?;
         if sinks.is_empty() {
             return Err(MfdError::UnsupportedImport(
@@ -939,7 +962,7 @@ fn trace_xml_sinks(
     connected_outputs: &BTreeSet<u32>,
     consumers: &BTreeMap<u32, Vec<u32>>,
     function_outputs: &BTreeMap<u32, Vec<u32>>,
-    xml_input_owners: &BTreeMap<u32, usize>,
+    target_input_owners: &BTreeMap<u32, usize>,
 ) -> Result<BTreeSet<usize>, MfdError> {
     let mut sinks = BTreeSet::new();
     let mut active = BTreeSet::new();
@@ -969,7 +992,7 @@ fn trace_xml_sinks(
         }
         stack.push((output, true));
         for input in consumers.get(&output).into_iter().flatten() {
-            if let Some(&owner) = xml_input_owners.get(input) {
+            if let Some(&owner) = target_input_owners.get(input) {
                 sinks.insert(owner);
             } else if let Some(next_outputs) = function_outputs.get(input) {
                 let next_outputs = next_outputs
@@ -1571,10 +1594,11 @@ fn import_resolved(
             .iter()
             .copied()
             .find(|component| component.input_keys.contains(&target_key)),
-        StageSelection::OutOf { final_key, .. } => targets
-            .iter()
-            .copied()
-            .find(|component| component.input_keys.contains(&final_key)),
+        StageSelection::OutOf { final_key, .. } => targets.iter().copied().find(|component| {
+            component.input_keys.contains(&final_key)
+                || component.format == ComponentFormat::Csv
+                    && component.ports.contains_key(&final_key)
+        }),
     }
     .ok_or_else(|| unsupported("target"))?;
     let connected_targets = if matches!(
