@@ -438,10 +438,11 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports six warning-free designs: JSON to
+An opt-in local-corpus smoke test imports seven warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
-with yearly minimum, maximum, and average temperatures, and XML to XML with
-three-key person sorting. It executes them in the interpreter, then compiles
+with yearly minimum, maximum, and average temperatures, XML to XML with
+three-key person sorting, and XML to XML with top-ten temperature selection.
+It executes them in the interpreter, then compiles
 and runs their generated Rust and C# hosts against
 schema-shaped JSON input. Both backends must match the interpreter's JSON
 result. Run it with
@@ -450,6 +451,10 @@ when the ignored `samples/ReferenceSamples` corpus and .NET 10 SDK are present.
 The corpus files are never added to the repository. This checks generated
 backends against the local interpreter; the yearly-temperature mapping has
 no pinned native reference output in the corpus.
+`PositionInFilteredSequence.mfd` remains outside this JSON-host test because
+its imported target has overlapping `Contact` alternatives: the resulting
+instances do not retain an explicit alternative tag, so JSON serialization
+returns `AmbiguousAlternative` before either generated host can execute it.
 For flat CSV-style sources, the JSON host input is a root array of row objects
 even when the embedded row schema itself is non-repeating. Each row is checked
 against that schema; arrays inside a row still require repeating fields.
