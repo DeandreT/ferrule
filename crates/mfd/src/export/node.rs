@@ -29,6 +29,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) structural_edges: &'a mut BTreeSet<(u32, u32)>,
     pub(super) warnings: &'a mut Vec<String>,
     pub(super) blocked_nodes: &'a BTreeSet<NodeId>,
+    pub(super) native_datetime_casts: &'a BTreeMap<NodeId, NodeId>,
     pub(super) mfd_path: &'a Path,
     pub(super) user_functions: &'a UserFunctionExports,
 }
@@ -53,6 +54,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         structural_edges,
         warnings,
         blocked_nodes,
+        native_datetime_casts,
         mfd_path,
         user_functions,
     } = args;
@@ -241,7 +243,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     );
     components.push_str(&flextext_parsers.components);
     for (&id, node) in &project.graph.nodes {
-        if joins.node_blocked(id) || blocked_nodes.contains(&id) {
+        if joins.node_blocked(id)
+            || blocked_nodes.contains(&id)
+            || native_datetime_casts.contains_key(&id)
+        {
             continue;
         }
         if auto_numbers.owns_internal(id) {
@@ -1076,6 +1081,17 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                      \t\t\t\t</component>\n"
                 );
             }
+        }
+    }
+
+    for (&call, &argument) in native_datetime_casts {
+        match node_out_key.get(&argument).copied() {
+            Some(output) => {
+                node_out_key.insert(call, output);
+            }
+            None => warnings.push(format!(
+                "native date-time cast {call} references unexported node {argument}; connection skipped"
+            )),
         }
     }
 
