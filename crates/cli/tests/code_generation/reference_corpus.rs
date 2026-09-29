@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against eighteen local, gitignored mappings.
+//! Opt-in generated-backend execution against nineteen local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -9,6 +9,7 @@ use super::*;
 enum SourceKind {
     Json,
     Xml,
+    XmlFileSet,
     FlexText,
     Csv,
     Protobuf,
@@ -29,7 +30,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 18] = [
+const CASES: [CorpusCase; 19] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -138,6 +139,12 @@ const CASES: [CorpusCase; 18] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
+    CorpusCase {
+        sample: "MultipleInputToMultipleOutputFiles.mfd",
+        input: "Nanonull-*.xml",
+        source_kind: SourceKind::XmlFileSet,
+        target_kind: TargetKind::Xml,
+    },
 ];
 
 #[test]
@@ -205,6 +212,9 @@ fn run_case(
         match case.source_kind {
             SourceKind::Json => project.source_options.json_document,
             SourceKind::Xml => project.source_options.xml_document,
+            SourceKind::XmlFileSet => {
+                project.source_options.xml_document && project.source_options.local_xml_file_set
+            }
             SourceKind::FlexText => project.source_options.flextext.is_some(),
             SourceKind::Csv => {
                 project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
@@ -232,6 +242,15 @@ fn run_case(
     let source = match case.source_kind {
         SourceKind::Json => format_json::read(&input_path, &project.source)?,
         SourceKind::Xml => format_xml::read(&input_path, &project.source)?,
+        SourceKind::XmlFileSet => {
+            format_xml::read_local_file_set(
+                samples,
+                Path::new(case.input),
+                &project.source,
+                format_xml::LocalFileSetLimits::default(),
+            )?
+            .instance
+        }
         SourceKind::FlexText => format_flextext::read(
             &input_path,
             &project.source,
@@ -256,6 +275,16 @@ fn run_case(
             &project.source_options.xlsx_rows,
         )?),
     };
+    if matches!(case.source_kind, SourceKind::XmlFileSet) {
+        return run_file_set_case(
+            case_dir,
+            rust_target,
+            &mapping_path,
+            &project,
+            &source,
+            sample,
+        );
+    }
     // Generated hosts expose a schema-shaped JSON API. Preserve each native
     // reader's typed instance while crossing that host API.
     let source_json = match case.source_kind {
@@ -265,6 +294,7 @@ fn run_case(
         | SourceKind::Csv
         | SourceKind::Protobuf
         | SourceKind::XlsxTransposed => format_json::to_string(&project.source, &source)?,
+        SourceKind::XmlFileSet => unreachable!("file sets use the typed generated host APIs"),
     };
     let mut named_sources = Vec::new();
     let mut named_input_paths = Vec::new();
@@ -1005,6 +1035,341 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
     println!("{sample}: generated Rust and C# match the interpreter");
     Ok(())
 }
+
+#[derive(Debug, PartialEq)]
+struct CorpusDocumentOutput {
+    path: String,
+    xml: String,
+    value: serde_json::Value,
+}
+
+fn run_file_set_case(
+    case_dir: &Path,
+    rust_target: &Path,
+    mapping_path: &Path,
+    project: &Project,
+    source: &Instance,
+    sample: &str,
+) -> TestResult<()> {
+    assert!(
+        project.target_path.is_none(),
+        "{sample}: dynamic output paths"
+    );
+    assert!(
+        project.extra_targets.is_empty(),
+        "{sample}: one dynamic target"
+    );
+    assert!(
+        matches!(
+            project.root.iteration,
+            ScopeIteration::DynamicDocuments { .. }
+        ),
+        "{sample}: one output per source document"
+    );
+    assert!(
+        project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::SourceDocumentPath)),
+        "{sample}: output paths must depend on the current source document"
+    );
+    let Instance::DocumentSet(members) = source else {
+        panic!("{sample}: local XML file set must retain its document boundaries");
+    };
+    assert_eq!(members.len(), 2, "{sample}: two confined source documents");
+
+    let source_schema = case_dir.join("source-schema.json");
+    let target_schema = case_dir.join("target-schema.json");
+    std::fs::write(&source_schema, serde_json::to_vec(&project.source)?)?;
+    std::fs::write(&target_schema, serde_json::to_vec(&project.target)?)?;
+    let sample_root = mapping_path.parent().expect("sample has a directory");
+    let mut input_args = Vec::new();
+    let mut round_tripped = Vec::new();
+    for (index, member) in members.iter().enumerate() {
+        let portable = Path::new(member.path());
+        assert!(
+            portable
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_))),
+            "{sample}: source member paths are portable"
+        );
+        let resolved = Path::new(member.source_path());
+        assert!(
+            resolved.is_absolute() && resolved.starts_with(sample_root),
+            "{sample}: source member locations stay within the sample root"
+        );
+        assert_ne!(
+            member.path(),
+            member.source_path(),
+            "{sample}: portable and resolved source paths stay distinct"
+        );
+        let json = format_json::to_string(&project.source, member.value())?;
+        let parsed = format_json::from_str(&json, &project.source)?;
+        round_tripped.push(
+            ir::DocumentMember::new_source(member.path(), member.source_path(), parsed)
+                .expect("confined member has valid paths"),
+        );
+        let input_path = case_dir.join(format!("source-member-{index}.json"));
+        std::fs::write(&input_path, json)?;
+        input_args.push((
+            member.path().to_owned(),
+            member.source_path().to_owned(),
+            input_path,
+        ));
+    }
+
+    let execution = engine::ExecutionContext::new(mapping_path);
+    let expected = engine::run_with_context(project, source, &execution)?;
+    assert_eq!(
+        expected,
+        engine::run_with_context(project, &Instance::DocumentSet(round_tripped), &execution)?,
+        "{sample}: schema-shaped JSON transport changed file-set mapping output"
+    );
+    let Instance::DocumentSet(expected_members) = expected else {
+        panic!("{sample}: dynamic target must return a document set");
+    };
+    assert_eq!(expected_members.len(), 2, "{sample}: two intended outputs");
+    assert_eq!(
+        expected_members
+            .iter()
+            .map(|member| member.path())
+            .collect::<Vec<_>>(),
+        ["Persons-Nanonull-Branch.xml", "Persons-Nanonull-HQ.xml"],
+        "{sample}: portable dynamic paths retain source order"
+    );
+    let xml_options = format_xml::XmlWriteOptions {
+        declaration: false,
+        indent: false,
+        default_namespace: None,
+    };
+    let expected_outputs = expected_members
+        .iter()
+        .map(|member| -> TestResult<CorpusDocumentOutput> {
+            Ok(CorpusDocumentOutput {
+                path: member.path().to_owned(),
+                xml: format_xml::to_string_with_options(
+                    &project.target,
+                    member.value(),
+                    &xml_options,
+                )?,
+                value: serde_json::from_str(&format_json::to_string(
+                    &project.target,
+                    member.value(),
+                )?)?,
+            })
+        })
+        .collect::<TestResult<Vec<_>>>()?;
+
+    let project_path = case_dir.join("project.json");
+    std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
+    let rust_output = case_dir.join("rust");
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
+    generate_project(
+        &project_path,
+        &rust_output,
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+    )?;
+    std::fs::write(rust_output.join("src/main.rs"), FILE_SET_RUST_HARNESS)?;
+    let rust_build = Command::new("cargo")
+        .args(["build", "--quiet"])
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_build.status.success(),
+        "{sample}: generated Rust compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_build.stdout),
+        String::from_utf8_lossy(&rust_build.stderr)
+    );
+    let mut rust_run_command = Command::new("cargo");
+    rust_run_command
+        .args(["run", "--quiet", "--"])
+        .arg(&source_schema)
+        .arg(&target_schema)
+        .arg(mapping_path)
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target);
+    for (portable, resolved, json) in &input_args {
+        rust_run_command.arg(portable).arg(resolved).arg(json);
+    }
+    let rust_run = rust_run_command.isolated_output()?;
+    assert!(
+        rust_run.status.success(),
+        "{sample}: generated Rust execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_run.stdout),
+        String::from_utf8_lossy(&rust_run.stderr)
+    );
+    assert_eq!(
+        parse_file_set_outputs(&rust_run.stdout)?,
+        expected_outputs,
+        "{sample}: generated Rust document paths or contents differ from engine"
+    );
+
+    let csharp_output = case_dir.join("csharp");
+    generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
+    let harness = csharp_output.join("Harness");
+    std::fs::create_dir(&harness)?;
+    std::fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj" />
+  </ItemGroup>
+</Project>
+"#,
+    )?;
+    std::fs::write(harness.join("Program.cs"), FILE_SET_CSHARP_HARNESS)?;
+    let csharp_build = dotnet_command(&csharp_output)
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "Harness/Harness.csproj",
+        ])
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_build.status.success(),
+        "{sample}: generated C# compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_build.stdout),
+        String::from_utf8_lossy(&csharp_build.stderr)
+    );
+    let mut csharp_run_command = dotnet_command(&csharp_output);
+    csharp_run_command
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+            "--no-build",
+            "--no-restore",
+            "--",
+        ])
+        .arg(&source_schema)
+        .arg(&target_schema)
+        .arg(mapping_path)
+        .current_dir(&csharp_output);
+    for (portable, resolved, json) in &input_args {
+        csharp_run_command.arg(portable).arg(resolved).arg(json);
+    }
+    let csharp_run = csharp_run_command.isolated_output()?;
+    assert!(
+        csharp_run.status.success(),
+        "{sample}: generated C# execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_run.stdout),
+        String::from_utf8_lossy(&csharp_run.stderr)
+    );
+    assert_eq!(
+        parse_file_set_outputs(&csharp_run.stdout)?,
+        expected_outputs,
+        "{sample}: generated C# document paths or contents differ from engine"
+    );
+    println!("{sample}: generated Rust and C# match the interpreter");
+    Ok(())
+}
+
+fn parse_file_set_outputs(bytes: &[u8]) -> TestResult<Vec<CorpusDocumentOutput>> {
+    let text = std::str::from_utf8(bytes)?;
+    let mut fields = text.split('\0').collect::<Vec<_>>();
+    assert_eq!(fields.pop(), Some(""), "missing document terminator");
+    assert_eq!(fields.len() % 3, 0, "incomplete document output");
+    fields
+        .chunks_exact(3)
+        .map(|fields| {
+            Ok(CorpusDocumentOutput {
+                path: fields[0].to_owned(),
+                xml: fields[1].to_owned(),
+                value: serde_json::from_str(fields[2])?,
+            })
+        })
+        .collect()
+}
+
+const FILE_SET_RUST_HARNESS: &str = r#"use std::path::PathBuf;
+use codegen_runtime::{DocumentMember, ExecutionContext, Instance, Value, parse_json, serialize_json, serialize_xml};
+use ferrule_generated_mapping::execute_with_context;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema"))?;
+    let target_schema = std::fs::read_to_string(args.next().expect("target schema"))?;
+    let mapping_path = PathBuf::from(args.next().expect("mapping path"));
+    let inputs = args.collect::<Vec<_>>();
+    assert_eq!(inputs.len() % 3, 0, "source member arguments are triples");
+    let mut members = Vec::new();
+    for input in inputs.chunks_exact(3) {
+        let portable = input[0].to_str().expect("portable UTF-8 member path");
+        let resolved = input[1].to_str().expect("resolved UTF-8 source path");
+        let json = std::fs::read_to_string(&input[2])?;
+        let value = parse_json(&source_schema, &json)?;
+        members.push(DocumentMember::new_source(portable, resolved, value).expect("valid member paths"));
+    }
+    let source = Instance::DocumentSet(members);
+    let execution = ExecutionContext::new(&mapping_path);
+    let output = execute_with_context(&source, &execution)?;
+    let Instance::DocumentSet(documents) = output else {
+        panic!("expected dynamic document set output");
+    };
+    for document in documents {
+        let Value::String(xml) = serialize_xml(0, &target_schema, document.value(), false, false, None)? else {
+            unreachable!("XML serialization returns a string");
+        };
+        let json = serialize_json(&target_schema, document.value())?;
+        print!("{}\0{}\0{}\0", document.path(), xml, json);
+    }
+    Ok(())
+}
+"#;
+
+const FILE_SET_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var sourceSchema = File.ReadAllText(args[0]);
+var targetSchema = File.ReadAllText(args[1]);
+var mappingPath = args[2];
+if ((args.Length - 3) % 3 != 0)
+{
+    throw new ArgumentException("Source member arguments are triples.");
+}
+var members = new List<FerruleDocument>();
+for (var index = 3; index < args.Length; index += 3)
+{
+    members.Add(new FerruleDocument(
+        args[index],
+        FerruleJson.Parse(sourceSchema, File.ReadAllText(args[index + 2])),
+        args[index + 1]));
+}
+var output = GeneratedMapping.Execute(
+    new FerruleDocumentSet(members),
+    new FerruleExecutionContext(mappingPath));
+if (output is not FerruleDocumentSet documents)
+{
+    throw new InvalidOperationException("Expected dynamic document set output.");
+}
+foreach (var document in documents.Documents)
+{
+    var xml = FerruleXml.Serialize(0, targetSchema, document.Value, false, false, null).StringValue;
+    var json = FerruleJson.Serialize(targetSchema, document.Value);
+    Console.Out.Write(document.Path);
+    Console.Out.Write('\0');
+    Console.Out.Write(xml);
+    Console.Out.Write('\0');
+    Console.Out.Write(json);
+    Console.Out.Write('\0');
+}
+"#;
 
 fn corpus_string_field<'a>(instance: &'a Instance, name: &str) -> &'a str {
     let Instance::Group(fields) = instance else {
