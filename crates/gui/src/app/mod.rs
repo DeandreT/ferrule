@@ -457,6 +457,8 @@ enum DialogKind {
     ExportMfd,
     BrowseSourceSchema,
     BrowseTargetSchema,
+    BrowseSourceCsv,
+    BrowseTargetCsvOutput,
     BrowseExtraSourceSchema,
     BrowseExtraSourceInstance,
     BrowseExtraTargetSchema,
@@ -1147,6 +1149,12 @@ impl FerruleApp {
             }
             DialogKind::BrowseTargetSchema => {
                 self.stage_mapping_schema(SchemaSide::Target, PathBuf::from(path));
+            }
+            DialogKind::BrowseSourceCsv => {
+                self.stage_mapping_csv_source(PathBuf::from(path));
+            }
+            DialogKind::BrowseTargetCsvOutput => {
+                self.stage_mapping_csv_target_output(path);
             }
             DialogKind::BrowseExtraSourceSchema => {
                 self.stage_extra_source_schema(PathBuf::from(path));
