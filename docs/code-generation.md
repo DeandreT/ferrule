@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports twenty-four warning-free designs: JSON to
+An opt-in local-corpus smoke test imports twenty-five warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -502,6 +502,14 @@ The native EDIFACT reader's typed source must survive schema-shaped JSON
 transport unchanged. The test compares both generated backends with the
 interpreter as typed JSON and as exact CSV bytes after applying the same target
 CSV writer; generated hosts do not parse EDIFACT or write CSV themselves.
+The twenty-fifth recursively filters an XML directory tree for filenames
+containing `.xml`, preserving all directory levels and 33 matching files.
+The native XML reader retains private child-order metadata that schema-shaped
+JSON cannot carry. The test verifies that native interpreter XML output
+round-trips with only the filtered files, then compares the interpreter and
+generated Rust/C# typed and JSON entry points under the same JSON-transported
+source as both typed JSON and exact XML bytes. Focused runtime tests also check
+that typed native inputs prune the retained ordered stream at every depth.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`

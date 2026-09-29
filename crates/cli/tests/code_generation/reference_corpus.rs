@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twenty-four local, gitignored mappings.
+//! Opt-in generated-backend execution against twenty-five local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -32,7 +32,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 24] = [
+const CASES: [CorpusCase; 25] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -176,6 +176,12 @@ const CASES: [CorpusCase; 24] = [
         input: "Tutorial/Orders-Custom.EDI",
         source_kind: SourceKind::Edifact,
         target_kind: TargetKind::Csv,
+    },
+    CorpusCase {
+        sample: "RecursiveDirectoryFilter.mfd",
+        input: "Directory.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
     },
 ];
 
@@ -388,7 +394,7 @@ fn run_case(
         named_sources.push((name.to_owned(), instance));
         named_input_paths.push((name, named_path));
     }
-    let expected = if named_sources.is_empty() {
+    let mut expected = if named_sources.is_empty() {
         engine::run(&project, &source)?
     } else {
         engine::run_with_sources(&project, &source, named_sources)?
@@ -411,11 +417,45 @@ fn run_case(
             "{sample}: schema-shaped JSON changes the native EDIFACT instance"
         );
     }
+    if sample == "RecursiveDirectoryFilter.mfd" {
+        let round_tripped = format_json::from_str(&source_json, &project.source)?;
+        // Schema-shaped JSON cannot carry XML's private choice-order stream.
+        // Compare generated hosts with the interpreter under this same input
+        // boundary, while checking native-source XML output separately.
+        assert_eq!(
+            format_json::to_string(&project.source, &round_tripped)?,
+            source_json,
+            "{sample}: schema-shaped source JSON roundtrip"
+        );
+        let transported_output = engine::run(&project, &round_tripped)?;
+        assert_eq!(
+            format_json::to_string(&project.target, &transported_output)?,
+            format_json::to_string(&project.target, &expected)?,
+            "{sample}: source transport changes visible recursive filtering"
+        );
+        let native_xml = format_xml::to_string_with_options(
+            &project.target,
+            &expected,
+            &format_xml::XmlWriteOptions {
+                declaration: false,
+                indent: false,
+                default_namespace: None,
+            },
+        )?;
+        let native_xml_roundtrip = format_xml::from_str(&native_xml, &project.target)?;
+        assert_eq!(
+            format_json::to_string(&project.target, &native_xml_roundtrip)?,
+            format_json::to_string(&project.target, &expected)?,
+            "{sample}: native XML output must not resurrect dropped files"
+        );
+        expected = transported_output;
+    }
     // A mapped XML sequence can contain multiple occurrences under a nominally
     // nonrepeating XSD field. Keep the JSON boundary strict and compare that
     // case through the generated Instance API and XML serializers instead.
     let mapped_xml_output = sample == "Tutorial/Expense-valmap.mfd";
-    let expected_xml = if mapped_xml_output {
+    let recursive_xml_output = sample == "RecursiveDirectoryFilter.mfd";
+    let expected_xml = if mapped_xml_output || recursive_xml_output {
         Some(format_xml::to_string_with_options(
             &project.target,
             &expected,
@@ -926,6 +966,26 @@ fn run_case(
         assert_eq!(articles[0]["StoreDetails"][0]["Available"]["XS"], 1.0);
         assert_eq!(articles[0]["StoreDetails"][1]["Available"]["XL"], 6.0);
     }
+    if recursive_xml_output {
+        assert_eq!(
+            expected_json["name"], "Examples",
+            "{sample}: root directory"
+        );
+        let mut names = Vec::new();
+        let directories = collect_recursive_directory_files(&expected_json, &mut names);
+        assert_eq!(directories, 16, "{sample}: recursive directory shape");
+        assert_eq!(names.len(), 33, "{sample}: retained XML files");
+        assert!(
+            names.iter().all(|name| name.contains(".xml")),
+            "{sample}: nonmatching files must be filtered at every depth"
+        );
+        for name in ["blocks.xml", "Newsml-example.xml", "datatypes.xml"] {
+            assert!(names.contains(&name), "{sample}: missing nested {name}");
+        }
+        for name in ["blocks.sps", "altova.mdb"] {
+            assert!(!names.contains(&name), "{sample}: retained {name}");
+        }
+    }
     let expected_csv = if sample == "Tutorial/ExtractCustomEDIFACT.mfd" {
         assert_eq!(
             project.target_options.delimiter,
@@ -956,7 +1016,7 @@ fn run_case(
     std::fs::write(&generated_input, source_json)?;
     let project_path = case_dir.join("project.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
-    let xml_host_schemas = if mapped_xml_output {
+    let xml_host_schemas = if mapped_xml_output || recursive_xml_output {
         let source_schema = case_dir.join("source-schema.json");
         let target_schema = case_dir.join("target-schema.json");
         std::fs::write(&source_schema, serde_json::to_vec(&project.source)?)?;
@@ -993,6 +1053,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 "#
+    } else if recursive_xml_output {
+        RECURSIVE_FILTER_RUST_HARNESS
     } else {
         r#"use ferrule_generated_mapping::{NamedJsonInput, execute_json_with_sources};
 
@@ -1052,7 +1114,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         String::from_utf8_lossy(&rust_run.stdout),
         String::from_utf8_lossy(&rust_run.stderr)
     );
-    if let Some(expected_xml) = &expected_xml {
+    if recursive_xml_output {
+        assert_eq!(
+            parse_multi_target_outputs(&rust_run.stdout)?,
+            vec![CorpusTargetOutput {
+                name: String::new(),
+                xml: expected_xml.clone().expect("recursive XML output"),
+                value: expected_json.clone(),
+            }],
+            "{sample}: generated Rust recursive XML/JSON differs from engine"
+        );
+    } else if let Some(expected_xml) = &expected_xml {
         assert!(
             rust_run.stdout == expected_xml.as_bytes(),
             "{sample}: generated Rust XML differs from engine"
@@ -1107,6 +1179,8 @@ var source = FerruleJson.Parse(sourceSchema, input);
 var output = GeneratedMapping.Execute(source);
 Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue);
 "#
+    } else if recursive_xml_output {
+        RECURSIVE_FILTER_CSHARP_HARNESS
     } else {
         r#"using Ferrule.Generated;
 
@@ -1167,7 +1241,17 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
         String::from_utf8_lossy(&csharp_run.stdout),
         String::from_utf8_lossy(&csharp_run.stderr)
     );
-    if let Some(expected_xml) = &expected_xml {
+    if recursive_xml_output {
+        assert_eq!(
+            parse_multi_target_outputs(&csharp_run.stdout)?,
+            vec![CorpusTargetOutput {
+                name: String::new(),
+                xml: expected_xml.clone().expect("recursive XML output"),
+                value: expected_json.clone(),
+            }],
+            "{sample}: generated C# recursive XML/JSON differs from engine"
+        );
+    } else if let Some(expected_xml) = &expected_xml {
         assert!(
             csharp_run.stdout == expected_xml.as_bytes(),
             "{sample}: generated C# XML differs from engine"
@@ -1192,6 +1276,76 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
     println!("{sample}: generated Rust and C# match the interpreter");
     Ok(())
 }
+
+fn collect_recursive_directory_files<'a>(
+    directory: &'a serde_json::Value,
+    names: &mut Vec<&'a str>,
+) -> usize {
+    let fields = directory.as_object().expect("recursive directory object");
+    assert!(
+        fields
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .is_some(),
+        "directory retains its name attribute"
+    );
+    if let Some(files) = fields.get("file").and_then(serde_json::Value::as_array) {
+        for file in files {
+            names.push(file["name"].as_str().expect("recursive file name"));
+        }
+    }
+    let mut directories = 1;
+    if let Some(children) = fields
+        .get("directory")
+        .and_then(serde_json::Value::as_array)
+    {
+        for child in children {
+            directories += collect_recursive_directory_files(child, names);
+        }
+    }
+    directories
+}
+
+const RECURSIVE_FILTER_RUST_HARNESS: &str = r#"use codegen_runtime::{Value, parse_json, serialize_json, serialize_xml};
+use ferrule_generated_mapping::{execute, execute_json};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let input = std::fs::read_to_string(args.next().expect("input path"))?;
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema path"))?;
+    let target_schema = std::fs::read_to_string(args.next().expect("target schema path"))?;
+    let source = parse_json(&source_schema, &input)?;
+    let output = execute(&source)?;
+    let Value::String(xml) = serialize_xml(0, &target_schema, &output, false, false, None)? else {
+        unreachable!("XML serialization returns a string");
+    };
+    let json = serialize_json(&target_schema, &output)?;
+    assert_eq!(json, execute_json(&input)?, "typed and JSON generated APIs agree");
+    print!("\0{xml}\0{json}\0");
+    Ok(())
+}
+"#;
+
+const RECURSIVE_FILTER_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var input = File.ReadAllText(args[0]);
+var sourceSchema = File.ReadAllText(args[1]);
+var targetSchema = File.ReadAllText(args[2]);
+var source = FerruleJson.Parse(sourceSchema, input);
+var output = GeneratedMapping.Execute(source);
+var xml = FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue;
+var json = FerruleJson.Serialize(targetSchema, output);
+if (json != GeneratedMapping.ExecuteJson(input))
+{
+    throw new InvalidOperationException("Typed and JSON generated APIs disagree.");
+}
+Console.Out.Write('\0');
+Console.Out.Write(xml);
+Console.Out.Write('\0');
+Console.Out.Write(json);
+Console.Out.Write('\0');
+"#;
 
 fn corpus_csv_bytes(project: &Project, instance: &Instance) -> TestResult<Vec<u8>> {
     let Instance::Repeated(rows) = instance else {

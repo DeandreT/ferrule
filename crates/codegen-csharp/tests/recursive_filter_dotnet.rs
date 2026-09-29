@@ -280,7 +280,7 @@ impl Drop for TempDirectory {
     }
 }
 
-const HARNESS: &str = r#"using Ferrule.Generated;
+const HARNESS: &str = r##"using Ferrule.Generated;
 using Ferrule.Runtime;
 
 FerruleGroup File(string name, long expected) => new([
@@ -296,6 +296,27 @@ FerruleGroup Directory(
         new("file", new FerruleRepeated(files)),
         new("directory", new FerruleRepeated(children)),
     ]);
+
+FerruleGroup WithOrderedXml(FerruleGroup directory, params string[] order)
+{
+    var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
+    var entries = new List<FerruleInstance>();
+    foreach (var name in order)
+    {
+        var index = indexes.GetValueOrDefault(name);
+        indexes[name] = index + 1;
+        var value = ((FerruleRepeated)directory.Fields.Single(
+            field => field.Name == name).Value).Items[index];
+        entries.Add(new FerruleGroup([
+            new("NodeName", new FerruleScalar(FerruleValue.FromString(name))),
+            new("#text", new FerruleScalar(FerruleValue.FromString(""))),
+            new("\u001fferrule-xml-mixed-value", value),
+        ]));
+    }
+    return new FerruleGroup(directory.Fields.Concat([
+        new FerruleField("\u001fferrule-xml-mixed-content", new FerruleRepeated(entries)),
+    ]));
+}
 
 var source = new FerruleGroup([
     new("suffix", new FerruleScalar(FerruleValue.FromString(".keep"))),
@@ -317,6 +338,43 @@ Equal("root.keep", StringField((FerruleGroup)Repeated(output, "file").Items[0], 
 var nested = (FerruleGroup)Repeated(output, "directory").Items[0];
 Equal(1, Repeated(nested, "file").Items.Count);
 Equal("nested.keep", StringField((FerruleGroup)Repeated(nested, "file").Items[0], "name"));
+
+var orderedNested = WithOrderedXml(Directory(
+    "nested",
+    [File("nested.keep", 1), File("drop.md", 2)],
+    Array.Empty<FerruleInstance>()), "file", "file");
+var orderedSource = WithOrderedXml(new FerruleGroup([
+    new("suffix", new FerruleScalar(FerruleValue.FromString(".keep"))),
+    new("name", new FerruleScalar(FerruleValue.FromString("root"))),
+    new("file", new FerruleRepeated([
+        File("drop.txt", 1), File("root.keep", 2),
+    ])),
+    new("directory", new FerruleRepeated([orderedNested])),
+]), "file", "directory", "file");
+var orderedOutput = (FerruleGroup)GeneratedMapping.Execute(orderedSource);
+var ordered = Repeated(orderedOutput, "\u001fferrule-xml-mixed-content");
+Equal(2, ordered.Items.Count);
+Equal("directory", StringField((FerruleGroup)ordered.Items[0], "NodeName"));
+Equal("file", StringField((FerruleGroup)ordered.Items[1], "NodeName"));
+var privateChild = (FerruleGroup)((FerruleGroup)ordered.Items[0]).Fields.Single(
+    field => field.Name == "\u001fferrule-xml-mixed-value").Value;
+Equal(1, Repeated(privateChild, "file").Items.Count);
+Equal(1, Repeated(privateChild, "\u001fferrule-xml-mixed-content").Items.Count);
+var privateFile = (FerruleGroup)((FerruleGroup)ordered.Items[1]).Fields.Single(
+    field => field.Name == "\u001fferrule-xml-mixed-value").Value;
+Equal("root.keep", StringField(privateFile, "name"));
+
+// An unmatched private occurrence must not resurrect a file that has no
+// corresponding visible item.
+var stale = new FerruleGroup(orderedSource.Fields.Select(field =>
+    field.Name == "\u001fferrule-xml-mixed-content"
+        ? new FerruleField(field.Name, new FerruleRepeated(
+            ((FerruleRepeated)field.Value).Items.Concat([
+                ((FerruleRepeated)field.Value).Items[0],
+            ])))
+        : field));
+var staleOutput = (FerruleGroup)GeneratedMapping.Execute(stale);
+Equal(2, Repeated(staleOutput, "\u001fferrule-xml-mixed-content").Items.Count);
 
 var shape = Throws(() => GeneratedMapping.Execute(
     new FerruleScalar(FerruleValue.FromString("not a group"))));
@@ -379,4 +437,4 @@ static void Equal<T>(T expected, T actual)
         throw new InvalidOperationException($"Expected '{expected}', found '{actual}'.");
     }
 }
-"#;
+"##;
