@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{ScalarType, SchemaKind};
+use mfd::{ExportCompatibility, ExportCompatibilityFeature, ExportProfile};
 
 #[test]
 fn package_schema_precedes_catalog_schema() -> Result<(), Box<dyn Error>> {
@@ -147,6 +148,198 @@ fn catalog_schema_rejects_symlink_escape() -> Result<(), Box<dyn Error>> {
             && warning.contains("falling back to the entry tree")
     }));
     assert_scalar_type(&imported.project.source, ScalarType::String)?;
+    Ok(())
+}
+
+#[test]
+fn missing_schema_provenance_survives_best_effort_export() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new("missing-provenance")?;
+    let mapping = directory.path().join("mapping.mfd");
+    let missing = r"missing\source&schema.json";
+    write_mapping(&mapping, r"missing\source&amp;schema.json")?;
+
+    let imported = mfd::import(&mapping)?;
+    assert_eq!(
+        imported
+            .project
+            .source_options
+            .json_schema_unresolved_reference
+            .as_deref(),
+        Some(missing)
+    );
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains(missing) && warning.contains("falling back to the entry tree")
+    }));
+    let project_json = serde_json::to_string(&imported.project)?;
+    let stored: mapping::Project = serde_json::from_str(&project_json)?;
+    assert_eq!(
+        stored
+            .source_options
+            .json_schema_unresolved_reference
+            .as_deref(),
+        Some(missing)
+    );
+    let destination = directory.path().join("not-created/export.mfd");
+    let report = mfd::preflight_export(&imported.project, &destination)?;
+    assert_eq!(report.compatibility, ExportCompatibility::Incomplete);
+    assert!(report.issues.iter().any(|issue| {
+        issue.feature == ExportCompatibilityFeature::UnresolvedJsonSchema
+            && issue.component == "source"
+    }));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains(missing))
+    );
+    let rejected =
+        mfd::export_with_profile(&imported.project, &destination, ExportProfile::NativeMfd);
+    assert!(matches!(
+        rejected,
+        Err(mfd::MfdError::IncompatibleExport(_))
+    ));
+    assert!(!destination.parent().unwrap().exists());
+
+    let published = mfd::export_with_profile(
+        &imported.project,
+        &destination,
+        ExportProfile::FerruleExtensions,
+    )?;
+    assert_eq!(published, report);
+    let encoded = std::fs::read_to_string(&destination)?;
+    assert!(encoded.contains("ferrule-unresolved-json-schema=\"missing\\source&amp;schema.json\""));
+    assert!(encoded.contains("<json schema=\"export-source.schema.json\""));
+    assert!(
+        destination
+            .parent()
+            .unwrap()
+            .join("export-source.schema.json")
+            .is_file()
+    );
+    let reimported = mfd::import(&destination)?;
+    assert_eq!(
+        reimported
+            .project
+            .source_options
+            .json_schema_unresolved_reference,
+        imported
+            .project
+            .source_options
+            .json_schema_unresolved_reference
+    );
+    assert!(
+        reimported.warnings.iter().any(|warning| {
+            warning.contains(missing) && warning.contains("entry-tree fallback")
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn oversized_unresolved_schema_metadata_cannot_be_exported() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new("oversized-provenance")?;
+    let mapping = directory.path().join("mapping.mfd");
+    write_scalar_schema(&directory.path().join("source.schema.json"), "string")?;
+    write_mapping(&mapping, "source.schema.json")?;
+    let encoded = std::fs::read_to_string(&mapping)?.replace(
+        "<json schema=\"source.schema.json\"/>",
+        &format!(
+            "<json schema=\"source.schema.json\" ferrule-unresolved-json-schema=\"{}\"/>",
+            "x".repeat(4097)
+        ),
+    );
+    std::fs::write(&mapping, encoded)?;
+    let imported = mfd::import(&mapping)?;
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("invalid ferrule-unresolved-json-schema metadata") })
+    );
+    let destination = directory.path().join("no-export.mfd");
+    let error = mfd::preflight_export(&imported.project, &destination)
+        .err()
+        .ok_or("oversized metadata unexpectedly passed preflight")?;
+    assert!(
+        error
+            .to_string()
+            .contains("1 to 4096 bytes without control characters")
+    );
+    assert!(!destination.exists());
+    Ok(())
+}
+
+#[test]
+fn local_mf940_survey_marks_missing_target_schema() -> Result<(), Box<dyn Error>> {
+    let sample =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples/MF940.mfd");
+    if !sample.is_file() {
+        return Ok(());
+    }
+    let imported = mfd::import(&sample)?;
+    let sales_order = "salesOrderSchemaV0_1_21V2.json";
+    // The variables component is a string parser folded into a graph call,
+    // not an input boundary with per-side FormatOptions.
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("ITS_EDI_940_VARIABLES.schema.json")
+            && warning.contains("falling back to the entry tree")
+    }));
+    assert_eq!(
+        imported
+            .project
+            .target_options
+            .json_schema_unresolved_reference
+            .as_deref(),
+        Some(sales_order)
+    );
+    let directory = TempDir::new("mf940-provenance")?;
+    let export_path = directory.path().join("roundtrip.mfd");
+    let report = mfd::preflight_export(&imported.project, &export_path)?;
+    assert_eq!(
+        report
+            .issues
+            .iter()
+            .filter(|issue| issue.feature == ExportCompatibilityFeature::UnresolvedJsonSchema)
+            .count(),
+        1
+    );
+    assert_eq!(
+        report
+            .warnings
+            .iter()
+            .filter(|warning| warning.contains("original schema"))
+            .count(),
+        1
+    );
+    assert_eq!(mfd::export(&imported.project, &export_path)?.len(), 1);
+    let encoded = std::fs::read_to_string(&export_path)?;
+    let document = roxmltree::Document::parse(&encoded)?;
+    let generated = document
+        .descendants()
+        .filter(|node| node.has_tag_name("json"))
+        .filter(|node| node.attribute("ferrule-unresolved-json-schema").is_some())
+        .map(|node| node.attribute("schema").unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(generated.len(), 1);
+    for schema in generated {
+        assert_eq!(Path::new(schema).components().count(), 1);
+        assert!(directory.path().join(schema).is_file());
+    }
+    let reimported = mfd::import(&export_path)?;
+    assert!(
+        reimported
+            .warnings
+            .iter()
+            .any(|warning| warning.contains(sales_order))
+    );
+    assert_eq!(
+        reimported
+            .project
+            .target_options
+            .json_schema_unresolved_reference
+            .as_deref(),
+        Some(sales_order)
+    );
     Ok(())
 }
 

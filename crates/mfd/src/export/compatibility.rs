@@ -41,6 +41,7 @@ pub enum ExportCompatibilityFeature {
     EdiValueConstraints,
     EdiAutocomplete,
     UnresolvedEdiConfiguration,
+    UnresolvedJsonSchema,
     CapturedUserFunction,
     CapturedHttpPost,
     XmlSerializationIndent,
@@ -145,6 +146,12 @@ pub(super) fn profile(xml: &str, warnings: Vec<String>) -> Result<ExportReport, 
                     node,
                     ExportCompatibilityFeature::UnresolvedEdiConfiguration,
                     "the native EDI configuration is missing or unresolved",
+                ),
+                "ferrule-unresolved-json-schema" => push_issue(
+                    &mut issues,
+                    node,
+                    ExportCompatibilityFeature::UnresolvedJsonSchema,
+                    "the original JSON Schema was unavailable; the generated schema only reflects the imported entry tree",
                 ),
                 // Native XML string serializers use indentation by default.
                 // Export emits this extension only for an explicit false override.

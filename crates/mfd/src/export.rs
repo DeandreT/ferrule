@@ -321,6 +321,21 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
             &mut keys,
         )?);
     }
+    for (name, options) in sources
+        .iter()
+        .map(|source| (source.name, source.options))
+        .chain(
+            targets
+                .iter()
+                .map(|target| (target.component_name, target.options)),
+        )
+    {
+        if let Some(reference) = &options.json_schema_unresolved_reference {
+            warnings.push(format!(
+                "JSON component `{name}` uses a generated entry-tree schema because original schema `{reference}` was unavailable at import"
+            ));
+        }
+    }
     let primary_target = &targets[0];
     let mixed_database_pairs = pair_mixed_databases(&sources, &targets);
 
@@ -613,6 +628,10 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 ports: &source.ports,
                 instance_path: source.path,
                 json_lines: source.options.json_lines,
+                unresolved_schema_reference: source
+                    .options
+                    .json_schema_unresolved_reference
+                    .as_deref(),
                 mfd_path: path,
                 component_name: source.name,
                 component_uid: source.component_uid,
@@ -728,6 +747,10 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 ports: &target.ports,
                 instance_path: target.path,
                 json_lines: target.options.json_lines,
+                unresolved_schema_reference: target
+                    .options
+                    .json_schema_unresolved_reference
+                    .as_deref(),
                 mfd_path: path,
                 component_name: target.component_name,
                 component_uid: target.component_uid,
