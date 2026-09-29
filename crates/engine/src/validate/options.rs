@@ -3,6 +3,33 @@ use mapping::{FormatOptions, WsdlMessageRole, XbrlBoundaryMode};
 
 use super::ValidationIssue;
 
+pub(super) fn validate_csv_dialect_options(
+    location: &str,
+    options: &FormatOptions,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let delimiter = options.delimiter.unwrap_or(',');
+    let quote = options.csv_quote.unwrap_or('"');
+    if !delimiter.is_ascii() || matches!(delimiter, '\0' | '\r' | '\n') {
+        issues.push(ValidationIssue::new(
+            location,
+            "CSV delimiter must be one non-NUL, non-newline byte",
+        ));
+    }
+    if !quote.is_ascii_graphic() {
+        issues.push(ValidationIssue::new(
+            location,
+            "CSV quote must be one printable ASCII character",
+        ));
+    }
+    if delimiter == quote {
+        issues.push(ValidationIssue::new(
+            location,
+            "CSV delimiter and quote must be different characters",
+        ));
+    }
+}
+
 pub(super) fn validate_target_options(
     location: &str,
     options: &FormatOptions,
@@ -55,6 +82,7 @@ pub(super) fn validate_json5_options(
         || options.local_xml_file_set
         || options.tabular_kind.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -107,6 +135,7 @@ pub(super) fn validate_structured_edi_options(
 
 fn has_non_idoc_format_options(options: &FormatOptions) -> bool {
     options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -123,6 +152,7 @@ fn has_non_idoc_format_options(options: &FormatOptions) -> bool {
 
 fn has_non_swift_format_options(options: &FormatOptions) -> bool {
     options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -176,6 +206,7 @@ pub(super) fn validate_external_source_options(
 fn has_non_external_source_format_options(options: &FormatOptions) -> bool {
     options.lenient_segments
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -233,6 +264,7 @@ pub(super) fn validate_xbrl_options(
 fn has_non_xbrl_format_options(options: &FormatOptions) -> bool {
     options.lenient_segments
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
@@ -388,6 +420,7 @@ pub(super) fn validate_wsdl_options(
         || options.json5
         || options.tabular_kind.is_some()
         || options.delimiter.is_some()
+        || options.csv_quote.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()

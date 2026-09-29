@@ -236,6 +236,23 @@ fn rejects_http_transport_metadata_on_a_target() {
 }
 
 #[test]
+fn csv_quote_must_be_a_distinct_single_byte_character() {
+    let mut project = valid_project();
+    project.source_options.csv_quote = Some('é');
+    project.target_options.csv_quote = Some(',');
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "source format options" && issue.message.contains("CSV quote must be one")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target format options"
+            && issue
+                .message
+                .contains("CSV delimiter and quote must be different")
+    }));
+}
+
+#[test]
 fn validates_idoc_output_and_structured_edi_format_exclusivity() {
     let field = mapping::IdocFieldLayout::new(
         "value",

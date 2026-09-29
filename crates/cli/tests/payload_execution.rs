@@ -6,7 +6,7 @@ use engine::RuntimeParameters;
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
     Binding, DynamicSourcePath, FormatOptions, Graph, NamedSource, NamedTarget, Node, Project,
-    Scope, ScopeIteration,
+    Scope, ScopeConstruction, ScopeIteration,
 };
 
 fn json_options() -> FormatOptions {
@@ -698,5 +698,60 @@ fn payload_and_filesystem_runners_produce_identical_csv() -> anyhow::Result<()> 
     assert_eq!(outcome.artifacts[0].bytes, std::fs::read(file_output)?);
     assert_eq!(outcome.artifacts[0].records_written, 2);
     assert!(!payload_output.exists());
+    Ok(())
+}
+
+#[test]
+fn custom_csv_quote_applies_to_file_and_payload_inputs_and_outputs() -> anyhow::Result<()> {
+    let schema = SchemaNode::group(
+        "People",
+        vec![
+            SchemaNode::scalar("Name", ScalarType::String),
+            SchemaNode::scalar("Age", ScalarType::Int),
+        ],
+    );
+    let project = Project {
+        source: schema.clone(),
+        target: schema,
+        source_path: Some("input.csv".into()),
+        target_path: Some("output.csv".into()),
+        source_options: FormatOptions {
+            csv_quote: Some('\''),
+            ..FormatOptions::default()
+        },
+        target_options: FormatOptions {
+            csv_quote: Some('\''),
+            ..FormatOptions::default()
+        },
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph::default(),
+        root: Scope {
+            iteration: ScopeIteration::Source(Vec::new()),
+            construction: ScopeConstruction::CopyCurrentSource,
+            ..Scope::default()
+        },
+    };
+    assert!(engine::validate(&project).is_empty());
+    let csv = b"Name,Age\n'O''Neil, Jr.',29\n";
+    let directory = TempDir::new()?;
+    let project_path = directory.0.join("project.json");
+    let input_path = directory.0.join("input.csv");
+    let file_output = directory.0.join("file.csv");
+    std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
+    std::fs::write(&input_path, csv)?;
+    cli::run_project(&project_path, &input_path, &file_output)?;
+
+    let payload = cli::PayloadDocument::new(Path::new("input.csv"), csv)?;
+    let outcome = cli::run_project_value_payloads(
+        &project,
+        &project_path,
+        &cli::PayloadRunOptions::new(payload).with_output_path(Path::new("output.csv")),
+    )?;
+    assert_eq!(std::fs::read(&file_output)?, csv);
+    assert_eq!(outcome.artifacts.len(), 1);
+    assert_eq!(outcome.artifacts[0].bytes, csv);
     Ok(())
 }

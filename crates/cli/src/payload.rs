@@ -792,10 +792,11 @@ fn read_payload(
 
     validate_tabular_fallback(document.path, options, "input")?;
     match extension_for_dispatch(document.path, options)?.as_str() {
-        "csv" | "txt" => format_csv::from_str(
+        "csv" | "txt" => format_csv::from_str_with_quote(
             utf8(document, "CSV")?,
             schema,
             options.delimiter,
+            options.csv_quote,
             options.has_header_row.unwrap_or(true),
         )
         .map(Instance::Repeated)
@@ -1005,10 +1006,11 @@ fn render_payload(
             let rows = instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for a CSV output")?;
-            let text = format_csv::to_string(
+            let text = format_csv::to_string_with_quote(
                 schema,
                 rows,
                 options.delimiter,
+                options.csv_quote,
                 options.has_header_row.unwrap_or(true),
             )
             .context("rendering CSV output payload")?;
