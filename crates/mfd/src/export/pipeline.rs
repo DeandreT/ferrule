@@ -28,11 +28,11 @@ pub fn preflight_pipeline_export(
 ///
 /// Unsupported stage graphs reject before any design or schema sibling is
 /// published. The supported shape has one host primary source, then each
-/// stage reads the preceding stage's primary XML target. A later stage may
-/// also connect a previously unused original static XML host source. Other
-/// connected later named inputs, independent intermediate targets, and non-XML
-/// boundaries reject explicitly. The final stage may write connected
-/// independent XML targets.
+/// stage reads the preceding stage's primary XML target. Later stages may
+/// also connect original static XML host sources, including an output port
+/// already used by another stage. Other connected later named inputs,
+/// independent intermediate targets, and non-XML boundaries reject
+/// explicitly. The final stage may write connected independent XML targets.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
         .map(|report| report.warnings)
@@ -335,7 +335,6 @@ fn append_stage(
         first_stage,
         stage,
         previous_children,
-        previous_vertices,
         &source_components,
         &connected,
     )?;
@@ -352,8 +351,14 @@ fn append_stage(
 
     let previous_graph = child(previous_structure, "graph")?;
     let next_graph = child(next_structure, "graph")?;
-    let vertices = remapped_vertices(next, next_vertices, &source_keys)?;
-    insert_before_close(previous, previous_vertices, vertices, &mut edits)?;
+    append_remapped_vertices(
+        previous,
+        previous_vertices,
+        next,
+        next_vertices,
+        &source_keys,
+        &mut edits,
+    )?;
     let previous_edges = child(previous_graph, "edges")?;
     let next_edges = child(next_graph, "edges")?;
     let edges = next_edges
@@ -410,14 +415,12 @@ fn append_stage(
 }
 
 /// Replace a late stage's duplicate host-source output ports with the ports
-/// of the one original source component retained from stage one. The source
-/// must be otherwise unused before this stage, so each remapped vertex still
-/// has exactly one owner in the combined graph.
+/// of the one original source component retained from stage one. A later
+/// connection to an already used port is merged into its existing vertex.
 fn late_named_source_key_remap(
     first_stage: &PipelineStage,
     stage: &PipelineStage,
     previous_children: Node<'_, '_>,
-    previous_vertices: Node<'_, '_>,
     source_components: &[Node<'_, '_>],
     connected: &BTreeSet<&str>,
 ) -> Result<BTreeMap<u32, u32>, MfdError> {
@@ -431,16 +434,6 @@ fn late_named_source_key_remap(
             "original pipeline source components are missing".into(),
         ));
     }
-    let previous_keys = previous_vertices
-        .children()
-        .filter(|node| node.has_tag_name("vertex"))
-        .map(|vertex| {
-            vertex
-                .attribute("vertexkey")
-                .and_then(|key| key.parse::<u32>().ok())
-                .ok_or_else(|| MfdError::Unsupported("pipeline vertex key is invalid".into()))
-        })
-        .collect::<Result<BTreeSet<_>, _>>()?;
     let mut remap = BTreeMap::new();
     let mut used_hosts = BTreeSet::new();
     for (index, component) in source_components.iter().enumerate().skip(1) {
@@ -511,15 +504,6 @@ fn late_named_source_key_remap(
                 late_source.name
             )));
         }
-        if original_keys
-            .values()
-            .any(|key| previous_keys.contains(key))
-        {
-            return Err(MfdError::Unsupported(format!(
-                "stage named source `{}` was already connected before this stage",
-                late_source.name
-            )));
-        }
         for (path, late_key) in late_keys {
             let original_key = original_keys[&path];
             if remap.insert(late_key, original_key).is_some() {
@@ -532,33 +516,147 @@ fn late_named_source_key_remap(
     Ok(remap)
 }
 
-fn remapped_vertices(
-    xml: &str,
-    vertices: Node<'_, '_>,
+fn append_remapped_vertices(
+    previous: &str,
+    previous_vertices: Node<'_, '_>,
+    next: &str,
+    next_vertices: Node<'_, '_>,
     source_keys: &BTreeMap<u32, u32>,
-) -> Result<String, MfdError> {
+    edits: &mut Vec<Edit>,
+) -> Result<(), MfdError> {
+    let mut prior_vertices = BTreeMap::new();
+    let mut input_owners = BTreeMap::new();
+    for vertex in previous_vertices.children().filter(Node::is_element) {
+        let key = vertex_key(vertex)?;
+        let edges = canonical_vertex_edges(vertex)?;
+        if prior_vertices.insert(key, edges).is_some() {
+            return Err(MfdError::Unsupported(
+                "pipeline graph repeats an output vertex".into(),
+            ));
+        }
+        for edge in edges.children().filter(Node::is_element) {
+            let target = edge_target_key(edge)?;
+            if input_owners.insert(target, key).is_some() {
+                return Err(MfdError::Unsupported(
+                    "pipeline graph input has multiple owners".into(),
+                ));
+            }
+        }
+    }
+
     let mut rendered = String::new();
-    for vertex in vertices.children().filter(Node::is_element) {
-        let mut fragment = xml[vertex.range()].to_string();
-        if let Some(key) = vertex.attribute("vertexkey") {
-            let key = key
-                .parse::<u32>()
-                .map_err(|_| MfdError::Unsupported("pipeline vertex key is invalid".into()))?;
-            if let Some(&original) = source_keys.get(&key) {
+    let mut new_keys = BTreeSet::new();
+    let mut merged = BTreeMap::<u32, String>::new();
+    for vertex in next_vertices.children().filter(Node::is_element) {
+        let late_key = vertex_key(vertex)?;
+        let original_key = source_keys.get(&late_key).copied().unwrap_or(late_key);
+        let edges = canonical_vertex_edges(vertex)?;
+        if !new_keys.insert(original_key) {
+            return Err(MfdError::Unsupported(
+                "pipeline stage repeats an output vertex".into(),
+            ));
+        }
+        for edge in edges.children().filter(Node::is_element) {
+            let target = edge_target_key(edge)?;
+            if input_owners.insert(target, original_key).is_some() {
+                return Err(MfdError::Unsupported(
+                    "pipeline graph input has multiple owners".into(),
+                ));
+            }
+        }
+        if prior_vertices.contains_key(&original_key) {
+            if !source_keys.contains_key(&late_key) {
+                return Err(MfdError::Unsupported(
+                    "pipeline stage output collides with an earlier vertex".into(),
+                ));
+            }
+            let appended = merged.entry(original_key).or_default();
+            for edge in edges.children().filter(Node::is_element) {
+                appended.push_str(&next[edge.range()]);
+            }
+        } else {
+            let mut fragment = next[vertex.range()].to_string();
+            if original_key != late_key {
                 let attribute = vertex
                     .attributes()
                     .find(|attribute| attribute.name() == "vertexkey")
-                    .expect("vertexkey attribute exists");
+                    .expect("validated vertexkey attribute exists");
                 let range = attribute.range();
                 fragment.replace_range(
                     range.start - vertex.range().start..range.end - vertex.range().start,
-                    &format!("vertexkey=\"{original}\""),
+                    &format!("vertexkey=\"{original_key}\""),
                 );
             }
+            rendered.push_str(&fragment);
         }
-        rendered.push_str(&fragment);
     }
-    Ok(rendered)
+    for (key, edges) in merged {
+        insert_before_close(previous, prior_vertices[&key], edges, edits)?;
+    }
+    insert_before_close(previous, previous_vertices, rendered, edits)
+}
+
+fn vertex_key(vertex: Node<'_, '_>) -> Result<u32, MfdError> {
+    if !vertex.has_tag_name("vertex") {
+        return Err(MfdError::Unsupported(
+            "pipeline graph has unsupported vertex metadata".into(),
+        ));
+    }
+    vertex
+        .attribute("vertexkey")
+        .and_then(|key| key.parse().ok())
+        .ok_or_else(|| MfdError::Unsupported("pipeline vertex key is invalid".into()))
+}
+
+fn canonical_vertex_edges<'a>(vertex: Node<'a, 'a>) -> Result<Node<'a, 'a>, MfdError> {
+    let mut children = vertex.children().filter(Node::is_element);
+    let edges = children.next();
+    if vertex.attributes().count() != 1
+        || !edges.is_some_and(|edges| edges.has_tag_name("edges"))
+        || children.next().is_some()
+        || vertex.children().any(|node| {
+            !node.is_element()
+                && (!node.is_text() || !node.text().unwrap_or_default().trim().is_empty())
+        })
+    {
+        return Err(MfdError::Unsupported(
+            "pipeline graph has unsupported vertex metadata".into(),
+        ));
+    }
+    let edges = edges.expect("validated vertex edges exist");
+    if edges.attributes().count() != 0
+        || edges.children().any(|node| {
+            if node.is_text() {
+                return !node.text().unwrap_or_default().trim().is_empty();
+            }
+            !node.has_tag_name("edge")
+        })
+    {
+        return Err(MfdError::Unsupported(
+            "pipeline graph has unsupported vertex metadata".into(),
+        ));
+    }
+    Ok(edges)
+}
+
+fn edge_target_key(edge: Node<'_, '_>) -> Result<u32, MfdError> {
+    if edge
+        .attributes()
+        .any(|attribute| attribute.name() != "vertexkey" && attribute.name() != "edgekey")
+        || edge
+            .attribute("edgekey")
+            .is_some_and(|key| key.parse::<u32>().is_err())
+        || edge
+            .children()
+            .any(|node| !node.is_text() || !node.text().unwrap_or_default().trim().is_empty())
+    {
+        return Err(MfdError::Unsupported(
+            "pipeline graph has unsupported edge metadata".into(),
+        ));
+    }
+    edge.attribute("vertexkey")
+        .and_then(|key| key.parse().ok())
+        .ok_or_else(|| MfdError::Unsupported("pipeline edge target key is invalid".into()))
 }
 
 fn structure<'a>(document: &'a Document<'a>) -> Result<Node<'a, 'a>, MfdError> {
@@ -761,4 +859,74 @@ fn insert_before_close(
         replacement: value,
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn merge_one_source_port(previous: &str, next: &str) -> Result<String, MfdError> {
+        let previous_doc = Document::parse(previous)?;
+        let next_doc = Document::parse(next)?;
+        let mut edits = Vec::new();
+        append_remapped_vertices(
+            previous,
+            previous_doc.root_element(),
+            next,
+            next_doc.root_element(),
+            &BTreeMap::from([(30, 10)]),
+            &mut edits,
+        )?;
+        apply_edits(previous.to_string(), edits)
+    }
+
+    #[test]
+    fn reused_source_port_merges_edges_without_a_duplicate_vertex() {
+        let previous = r#"<vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices>"#;
+        let next = r#"<vertices><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex></vertices>"#;
+        let merged = merge_one_source_port(previous, next).unwrap();
+        let document = Document::parse(&merged).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("vertex"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("edge"))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn reused_source_port_rejects_conflicting_inputs_and_metadata() {
+        let previous = r#"<vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices>"#;
+        let conflict = r#"<vertices><vertex vertexkey="30"><edges><edge vertexkey="20"/></edges></vertex></vertices>"#;
+        assert!(
+            merge_one_source_port(previous, conflict)
+                .unwrap_err()
+                .to_string()
+                .contains("input has multiple owners")
+        );
+
+        let vertex_metadata = r#"<vertices><vertex vertexkey="30" label="unexpected"><edges><edge vertexkey="40"/></edges></vertex></vertices>"#;
+        assert!(
+            merge_one_source_port(previous, vertex_metadata)
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported vertex metadata")
+        );
+
+        let edge_metadata = r#"<vertices><vertex vertexkey="30"><edges><edge vertexkey="40" label="unexpected"/></edges></vertex></vertices>"#;
+        assert!(
+            merge_one_source_port(previous, edge_metadata)
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported edge metadata")
+        );
+    }
 }
