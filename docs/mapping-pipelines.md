@@ -18,11 +18,12 @@ final stage ID is `mfd-stage-4`.
 The last pass-through target may also feed connected named XML targets in that
 final stage. Use `--named-output STAGE TARGET PATH` to publish one. Intermediate
 fan-out and targets that bypass the last pass-through stage reject during import.
-A serial chain can also connect an original static XML host source to a named
-input in a later stage, including an intermediate stage. Export reuses that
-original source component only when no preceding stage used it and its name,
-schema, path, options, and output ports still match. Other connected later-stage
-named sources reject before publication.
+A serial chain can also connect an original static XML host source to named
+inputs in later stages, including intermediate stages and repeated use of the
+same source. Export reuses that original component when its name, schema, path,
+options, and output ports still match. Repeated connections from one output port
+share one graph vertex with multiple edges. Other connected later-stage named
+sources reject before publication.
 The same trusted package manifest and ordered EDI/JSON catalog options used
 by ordinary `import-mfd` apply. Unsupported stage shapes fail before the
 pipeline file is written. Each imported stage records the original `.mfd`
