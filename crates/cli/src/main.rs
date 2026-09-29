@@ -150,7 +150,7 @@ enum Command {
         mfd: PathBuf,
         #[arg(long)]
         out: PathBuf,
-        /// Import a connected two-stage design as a typed pipeline.
+        /// Import a connected XML design with one or two pass-through targets as a typed pipeline.
         #[arg(long)]
         pipeline: bool,
         /// Trusted root containing the mapping and all referenced resources.

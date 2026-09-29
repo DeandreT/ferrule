@@ -30,6 +30,190 @@ fn write(path: &Path, contents: &str) {
     std::fs::write(path, contents).unwrap();
 }
 
+fn write_three_stage_chain(directory: &Path) -> PathBuf {
+    let schema = |root: &str, required: &str, optional: &str| {
+        format!(
+            "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{required}\" type=\"xs:string\"/><xs:element name=\"{optional}\" type=\"xs:string\" minOccurs=\"0\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
+        )
+    };
+    write(
+        &directory.join("source.xsd"),
+        &schema("Source", "Start", "Unused"),
+    );
+    write(
+        &directory.join("first.xsd"),
+        &schema("FirstBuffer", "First", "Cycle"),
+    );
+    write(
+        &directory.join("second.xsd"),
+        &schema("SecondBuffer", "Second", "Skipped"),
+    );
+    write(
+        &directory.join("target.xsd"),
+        &schema("Target", "Result", "Bypass"),
+    );
+    let mapping = directory.join("three-stage.mfd");
+    // The intermediate components are deliberately declared in reverse stage
+    // order so the importer must derive their order from the graph.
+    write(
+        &mapping,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Start" outkey="10"/></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+          <component name="second-buffer" library="xml" kind="14"><properties PassThrough="1"/><data><root><entry name="SecondBuffer"><entry name="Second" inpkey="40" outkey="50"/><entry name="Skipped" inpkey="41" outkey="51"/></entry></root><document schema="second.xsd" instanceroot="{}SecondBuffer"/></data></component>
+          <component name="first-buffer" library="xml" kind="14"><properties PassThrough="1"/><data><root><entry name="FirstBuffer"><entry name="First" inpkey="20" outkey="30"/><entry name="Cycle" inpkey="21" outkey="31"/></entry></root><document schema="first.xsd" instanceroot="{}FirstBuffer"/></data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="Result" inpkey="60"/><entry name="Bypass" inpkey="61"/></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex><vertex vertexkey="50"><edges><edge vertexkey="60"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    );
+    mapping
+}
+
+#[test]
+fn three_serial_xml_stages_import_and_execute_in_graph_order() {
+    let dir = TempDir::new();
+    let mapping = write_three_stage_chain(&dir.0);
+    let imported = mfd::import_pipeline(&mapping).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.pipeline.stages.len(), 3);
+    assert!(engine::validate_pipeline(&imported.pipeline).is_empty());
+    for (index, stage) in imported.pipeline.stages.iter().enumerate() {
+        assert_eq!(stage.id, format!("mfd-stage-{}", index + 1));
+        if index == 0 {
+            assert_eq!(
+                stage.source,
+                mapping::PipelineInput::Host {
+                    name: "source".into()
+                }
+            );
+        } else {
+            assert_eq!(
+                stage.source,
+                mapping::PipelineInput::StageTarget {
+                    stage: format!("mfd-stage-{index}"),
+                    target: None,
+                }
+            );
+        }
+    }
+    let source = Instance::Group(vec![(
+        "Start".into(),
+        Instance::Scalar(Value::String("through all stages".into())),
+    )]);
+    let outputs = engine::run_pipeline(
+        &imported.pipeline,
+        &BTreeMap::from([("source".to_string(), source)]),
+    )
+    .unwrap();
+    for (id, field) in [
+        ("mfd-stage-1", "First"),
+        ("mfd-stage-2", "Second"),
+        ("mfd-stage-3", "Result"),
+    ] {
+        assert_eq!(
+            outputs
+                .stage(id)
+                .unwrap()
+                .primary
+                .field(field)
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("through all stages".into())),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn three_stage_xml_binds_original_host_sources_in_later_stages() {
+    let dir = TempDir::new();
+    let mapping = write_three_stage_chain(&dir.0);
+    write(
+        &dir.0.join("supplement.xsd"),
+        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"Supplement\"><xs:complexType><xs:sequence><xs:element name=\"Addition\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:schema>",
+    );
+    let modified = std::fs::read_to_string(&mapping)
+        .unwrap()
+        .replace(
+            "</children><graph>",
+            "<component name=\"supplement\" library=\"xml\" kind=\"14\"><data><root><entry name=\"Supplement\"><entry name=\"Addition\" outkey=\"70\"/></entry></root><document schema=\"supplement.xsd\" inputinstance=\"supplement.xml\" instanceroot=\"{}Supplement\"/></data></component></children><graph>",
+        )
+        .replace(
+            "</vertices></graph>",
+            "<vertex vertexkey=\"70\"><edges><edge vertexkey=\"41\"/><edge vertexkey=\"61\"/></edges></vertex></vertices></graph>",
+        );
+    write(&mapping, &modified);
+
+    let imported = mfd::import_pipeline(&mapping).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.pipeline.stages.len(), 3);
+    assert!(engine::validate_pipeline(&imported.pipeline).is_empty());
+    for stage in &imported.pipeline.stages[1..] {
+        assert!(stage.extra_sources.iter().any(|binding| {
+            binding.from
+                == mapping::PipelineInput::Host {
+                    name: "supplement".into(),
+                }
+        }));
+    }
+    let source = Instance::Group(vec![(
+        "Start".into(),
+        Instance::Scalar(Value::String("main".into())),
+    )]);
+    let supplement = Instance::Group(vec![(
+        "Addition".into(),
+        Instance::Scalar(Value::String("later host".into())),
+    )]);
+    let outputs = engine::run_pipeline(
+        &imported.pipeline,
+        &BTreeMap::from([("source".into(), source), ("supplement".into(), supplement)]),
+    )
+    .unwrap();
+    assert_eq!(
+        outputs
+            .stage("mfd-stage-2")
+            .unwrap()
+            .primary
+            .field("Skipped")
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("later host".into()))
+    );
+    assert_eq!(
+        outputs
+            .stage("mfd-stage-3")
+            .unwrap()
+            .primary
+            .field("Bypass")
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("later host".into()))
+    );
+}
+
+#[test]
+fn three_stage_xml_rejects_bypass_and_cycle() {
+    let dir = TempDir::new();
+    let mapping = write_three_stage_chain(&dir.0);
+    let original = std::fs::read_to_string(&mapping).unwrap();
+    let bypass = original.replace(
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"61\"/></edges></vertex>",
+    );
+    write(&mapping, &bypass);
+    let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
+    assert!(
+        error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
+
+    let cycle = original.replace(
+        "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/></edges></vertex>",
+        "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/><edge vertexkey=\"21\"/></edges></vertex>",
+    );
+    write(&mapping, &cycle);
+    let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
+    assert!(
+        error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
+}
+
 #[test]
 fn connected_xml_passthrough_reports_unrepresented_chain() {
     let dir = TempDir::new();
