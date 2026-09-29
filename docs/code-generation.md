@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports twenty-three warning-free designs: JSON to
+An opt-in local-corpus smoke test imports twenty-four warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -496,6 +496,12 @@ the generated Rust and C# typed `Instance` hosts, verifies that this transport
 preserves the interpreter result, then compares exact XML serialization bytes.
 The JSON host boundary cannot represent XML nil directly, so this case exercises
 the generated typed host APIs rather than claiming JSON input parity for nil.
+The twenty-fourth reads a locally configured EDIFACT order and maps its buyer
+contact to a headerless CSV row, including UN/EDIFACT 2379 date-time conversion.
+The native EDIFACT reader's typed source must survive schema-shaped JSON
+transport unchanged. The test compares both generated backends with the
+interpreter as typed JSON and as exact CSV bytes after applying the same target
+CSV writer; generated hosts do not parse EDIFACT or write CSV themselves.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`

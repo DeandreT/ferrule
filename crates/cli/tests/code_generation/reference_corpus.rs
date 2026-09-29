@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twenty-three local, gitignored mappings.
+//! Opt-in generated-backend execution against twenty-four local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -10,6 +10,7 @@ enum SourceKind {
     Json,
     Xml,
     XmlFileSet,
+    Edifact,
     FlexText,
     Csv,
     Pdf,
@@ -31,7 +32,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 23] = [
+const CASES: [CorpusCase; 24] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -170,6 +171,12 @@ const CASES: [CorpusCase; 23] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
+    CorpusCase {
+        sample: "Tutorial/ExtractCustomEDIFACT.mfd",
+        input: "Tutorial/Orders-Custom.EDI",
+        source_kind: SourceKind::Edifact,
+        target_kind: TargetKind::Csv,
+    },
 ];
 
 #[test]
@@ -240,6 +247,9 @@ fn run_case(
             SourceKind::XmlFileSet => {
                 project.source_options.xml_document && project.source_options.local_xml_file_set
             }
+            SourceKind::Edifact => {
+                project.source_options.edi_kind == Some(mapping::EdiBoundaryKind::Edifact)
+            }
             SourceKind::FlexText => project.source_options.flextext.is_some(),
             SourceKind::Csv => {
                 project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
@@ -276,6 +286,23 @@ fn run_case(
                 format_xml::LocalFileSetLimits::default(),
             )?
             .instance
+        }
+        SourceKind::Edifact => {
+            assert_eq!(
+                project.source_options.edi_kind,
+                Some(mapping::EdiBoundaryKind::Edifact),
+                "{sample}: EDIFACT source boundary"
+            );
+            let mut instance = format_edi::edifact::read(
+                &input_path,
+                &project.source,
+                project.source_options.lenient_segments,
+            )?;
+            format_edi::apply_implied_decimals(
+                &mut instance,
+                &project.source_options.edi_implied_decimals,
+            )?;
+            instance
         }
         SourceKind::FlexText => format_flextext::read(
             &input_path,
@@ -326,6 +353,7 @@ fn run_case(
     let source_json = match case.source_kind {
         SourceKind::Json => std::fs::read_to_string(&input_path)?,
         SourceKind::Xml
+        | SourceKind::Edifact
         | SourceKind::FlexText
         | SourceKind::Csv
         | SourceKind::Pdf
@@ -374,6 +402,13 @@ fn run_case(
             expected,
             engine::run(&project, &round_tripped)?,
             "{sample}: schema-shaped JSON boundary changed mapping output"
+        );
+    }
+    if sample == "Tutorial/ExtractCustomEDIFACT.mfd" {
+        let round_tripped = format_json::from_str(&source_json, &project.source)?;
+        assert_eq!(
+            round_tripped, source,
+            "{sample}: schema-shaped JSON changes the native EDIFACT instance"
         );
     }
     // A mapped XML sequence can contain multiple occurrences under a nominally
@@ -891,6 +926,31 @@ fn run_case(
         assert_eq!(articles[0]["StoreDetails"][0]["Available"]["XS"], 1.0);
         assert_eq!(articles[0]["StoreDetails"][1]["Available"]["XL"], 6.0);
     }
+    let expected_csv = if sample == "Tutorial/ExtractCustomEDIFACT.mfd" {
+        assert_eq!(
+            project.target_options.delimiter,
+            Some(','),
+            "{sample}: comma-separated target"
+        );
+        assert_eq!(
+            project.target_options.has_header_row,
+            Some(false),
+            "{sample}: headerless target"
+        );
+        let rows = expected_json.as_array().expect("EDIFACT buyer CSV rows");
+        assert_eq!(rows.len(), 1, "{sample}: one buyer row");
+        assert_eq!(rows[0]["Name"], "Michelle Butler");
+        assert_eq!(rows[0]["Salutation"], "Mrs");
+        assert!(
+            rows[0]["Date"]
+                .as_str()
+                .is_some_and(|date| date.starts_with("2020-04-30T17:42:00")),
+            "{sample}: EDIFACT 2379 date-time conversion"
+        );
+        Some(corpus_csv_bytes(&project, &expected)?)
+    } else {
+        None
+    };
 
     let generated_input = case_dir.join("source.json");
     std::fs::write(&generated_input, source_json)?;
@@ -1003,6 +1063,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             rust_json, expected_json,
             "{sample}: generated Rust differs from engine"
         );
+        if let Some(expected_csv) = &expected_csv {
+            assert_generated_csv_bytes(
+                &project,
+                &expected,
+                &rust_json,
+                expected_csv,
+                sample,
+                "Rust",
+            )?;
+        }
     }
 
     let csharp_output = case_dir.join("csharp");
@@ -1108,8 +1178,55 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
             csharp_json, expected_json,
             "{sample}: generated C# differs from engine"
         );
+        if let Some(expected_csv) = &expected_csv {
+            assert_generated_csv_bytes(
+                &project,
+                &expected,
+                &csharp_json,
+                expected_csv,
+                sample,
+                "C#",
+            )?;
+        }
     }
     println!("{sample}: generated Rust and C# match the interpreter");
+    Ok(())
+}
+
+fn corpus_csv_bytes(project: &Project, instance: &Instance) -> TestResult<Vec<u8>> {
+    let Instance::Repeated(rows) = instance else {
+        panic!("EDIFACT CSV target should contain repeated rows");
+    };
+    Ok(format_csv::to_string_with_dialect(
+        &project.target,
+        rows,
+        project.target_options.delimiter,
+        project.target_options.csv_quote,
+        project.target_options.csv_quote_disabled,
+        project.target_options.has_header_row.unwrap_or(true),
+    )?
+    .into_bytes())
+}
+
+fn assert_generated_csv_bytes(
+    project: &Project,
+    expected: &Instance,
+    generated_json: &serde_json::Value,
+    expected_csv: &[u8],
+    sample: &str,
+    backend: &str,
+) -> TestResult<()> {
+    let generated =
+        format_json::from_str(&serde_json::to_string(generated_json)?, &project.target)?;
+    assert_eq!(
+        &generated, expected,
+        "{sample}: generated {backend} typed CSV target differs from engine"
+    );
+    assert_eq!(
+        corpus_csv_bytes(project, &generated)?,
+        expected_csv,
+        "{sample}: generated {backend} CSV bytes differ from engine"
+    );
     Ok(())
 }
 
