@@ -23,6 +23,7 @@ pub(super) enum PipelineEditorAction {
 enum PipelineEditCommand {
     Rename(usize, String),
     SetInput(usize, usize, PipelineInput),
+    AddMissingBindings(usize),
     Remove(usize),
 }
 
@@ -116,6 +117,10 @@ impl PipelineEditorUi {
                 if let PipelineInput::Host { name } = input {
                     self.host_drafts.insert((stage, binding), name);
                 }
+            }
+            PipelineEditCommand::AddMissingBindings(index) => {
+                self.document.add_missing_static_bindings(index)?;
+                self.refresh_host_drafts();
             }
             PipelineEditCommand::Remove(index) => {
                 self.document.remove_stage(index)?;
@@ -276,6 +281,28 @@ impl FerruleApp {
                     }
                     ui.separator();
                     ui.strong("Input bindings");
+                    let missing = stage
+                        .project
+                        .extra_sources
+                        .iter()
+                        .filter(|source| {
+                            source.dynamic_path.is_none()
+                                && !stage
+                                    .extra_sources
+                                    .iter()
+                                    .any(|binding| binding.name == source.name)
+                        })
+                        .count();
+                    if missing > 0
+                        && ui
+                            .add_enabled(
+                                !unapplied,
+                                egui::Button::new(format!("Add {missing} missing host binding(s)")),
+                            )
+                            .clicked()
+                    {
+                        command = Some(PipelineEditCommand::AddMissingBindings(index));
+                    }
                     egui::ScrollArea::vertical()
                         .max_height(260.0)
                         .show(ui, |ui| {

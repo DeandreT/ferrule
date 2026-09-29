@@ -242,6 +242,16 @@ pub enum TraceEvent {
         positions: Vec<TracePosition>,
         value: TraceValue,
     },
+    /// One graph-node output delivered to a specific input pin of a consumer.
+    /// Untaken conditional inputs and inputs that fail before producing a value
+    /// have no corresponding event.
+    NodeInputValue {
+        consumer: NodeId,
+        input: NodeId,
+        input_index: usize,
+        positions: Vec<TracePosition>,
+        value: TraceValue,
+    },
     ScopeStarted {
         scope: TraceScope,
         iteration: TraceIteration,
@@ -340,6 +350,26 @@ pub(crate) fn record_node_value(
     };
     sink.record(TraceEvent::NodeValue {
         node,
+        positions: positions.iter().map(TracePosition::from).collect(),
+        value: TraceValue::new(value),
+    });
+}
+
+pub(crate) fn record_node_input_value(
+    sink: Option<&dyn TraceSink>,
+    consumer: NodeId,
+    input: NodeId,
+    input_index: usize,
+    positions: &[PositionFrame],
+    value: &Value,
+) {
+    let Some(sink) = sink else {
+        return;
+    };
+    sink.record(TraceEvent::NodeInputValue {
+        consumer,
+        input,
+        input_index,
         positions: positions.iter().map(TracePosition::from).collect(),
         value: TraceValue::new(value),
     });

@@ -136,6 +136,48 @@ fn trace_records_post_order_values_with_iteration_positions() -> Result<(), Box<
         })
         .collect::<Vec<_>>();
     assert_eq!(nodes, vec![0, 1, 2, 0, 1, 2]);
+    let connector_events = events
+        .iter()
+        .filter_map(|event| match event {
+            TraceEvent::NodeValue { node, .. } => Some(format!("output {node}")),
+            TraceEvent::NodeInputValue {
+                consumer,
+                input,
+                input_index,
+                ..
+            } => Some(format!("input {consumer}:{input_index}<-{input}")),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        connector_events,
+        [
+            "output 0",
+            "input 2:0<-0",
+            "output 1",
+            "input 2:1<-1",
+            "output 2",
+            "output 0",
+            "input 2:0<-0",
+            "output 1",
+            "input 2:1<-1",
+            "output 2",
+        ]
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 2,
+                    positions,
+                    ..
+                } => positions.last().map(|position| position.index),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [1, 1, 2, 2]
+    );
     let positions = events
         .iter()
         .filter_map(|event| match event {
@@ -465,6 +507,93 @@ fn field_trace_project(target: SchemaNode, graph: Graph, root: Scope) -> Project
         failure_rules: Vec::new(),
         user_functions: Default::default(),
     }
+}
+
+#[test]
+fn input_trace_records_only_the_taken_conditional_branch() -> Result<(), Box<dyn Error>> {
+    let project = field_trace_project(
+        SchemaNode::group(
+            "Output",
+            vec![SchemaNode::scalar("Result", ScalarType::String)],
+        ),
+        Graph {
+            nodes: [
+                (
+                    0,
+                    Node::Const {
+                        value: Value::Bool(true),
+                    },
+                ),
+                (
+                    1,
+                    Node::Const {
+                        value: Value::String("é".repeat(200)),
+                    },
+                ),
+                (
+                    2,
+                    Node::RuntimeParameter {
+                        name: "unused".into(),
+                        ty: ScalarType::String,
+                    },
+                ),
+                (
+                    3,
+                    Node::If {
+                        condition: 0,
+                        then: 1,
+                        else_: 2,
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        },
+        Scope {
+            bindings: vec![Binding {
+                target_field: "Result".into(),
+                node: 3,
+            }],
+            ..Scope::default()
+        },
+    );
+    let collector = Collector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
+
+    run_with_context(&project, &Instance::Group(Vec::new()), &execution)?;
+
+    let events = collector.0.into_inner();
+    assert_eq!(
+        events
+            .iter()
+            .filter_map(|event| match event {
+                TraceEvent::NodeInputValue {
+                    consumer: 3,
+                    input,
+                    input_index,
+                    value,
+                    ..
+                } => Some((
+                    *input,
+                    *input_index,
+                    value.preview.chars().count(),
+                    value.truncated,
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [(0, 0, 4, false), (1, 1, 160, true)]
+    );
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        TraceEvent::NodeValue { node: 2, .. }
+            | TraceEvent::NodeInputValue {
+                input: 2,
+                consumer: 3,
+                ..
+            }
+    )));
+    Ok(())
 }
 
 #[test]

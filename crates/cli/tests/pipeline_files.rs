@@ -105,6 +105,7 @@ fn pipeline() -> Pipeline {
     // A forward reference proves execution uses dependencies rather than
     // declaration order. The later stage consumes the producer's named target.
     Pipeline {
+        main_mapping_path: None,
         stages: vec![
             PipelineStage {
                 id: "consume".into(),
@@ -185,6 +186,7 @@ fn mixed_format_pipeline() -> Pipeline {
         ..FormatOptions::default()
     };
     Pipeline {
+        main_mapping_path: None,
         // Deliberately reverse dependency order to prove topological execution.
         stages: vec![
             PipelineStage {
@@ -580,6 +582,7 @@ fn dynamic_xml_file_set_pipeline() -> Pipeline {
         ..Scope::default()
     };
     Pipeline {
+        main_mapping_path: None,
         stages: vec![PipelineStage {
             id: "load".into(),
             mapping_path: None,
@@ -725,8 +728,12 @@ fn stage_mapping_paths_supply_runtime_identity_and_are_protected() -> Result<(),
     let dir = TempDir::new()?;
     let mut pipeline = pipeline();
     let active = dir.0.join("stages/prepare.ferrule.json");
+    let main = dir.0.join("maps/original.mfd");
     std::fs::create_dir_all(active.parent().unwrap())?;
+    std::fs::create_dir_all(main.parent().unwrap())?;
     std::fs::write(&active, "keep this stage file")?;
+    std::fs::write(&main, "keep this main mapping file")?;
+    pipeline.main_mapping_path = Some("maps/original.mfd".into());
     pipeline.stages[1].mapping_path = Some("stages/prepare.ferrule.json".into());
     pipeline.stages[0].mapping_path = Some("stages/consume.ferrule.json".into());
     for (index, value) in [
@@ -764,7 +771,7 @@ fn stage_mapping_paths_supply_runtime_identity_and_are_protected() -> Result<(),
     );
     assert_eq!(
         consumed_json["Value"].as_str(),
-        pipeline_path.canonicalize()?.to_str()
+        main.canonicalize()?.to_str()
     );
 
     let error = cli::run_pipeline_file(
@@ -775,9 +782,25 @@ fn stage_mapping_paths_supply_runtime_identity_and_are_protected() -> Result<(),
     .unwrap_err();
     assert!(format!("{error:#}").contains("reserved by the host"));
     assert_eq!(std::fs::read_to_string(&active)?, "keep this stage file");
+    let error = cli::run_pipeline_file(
+        &pipeline_path,
+        &[input(&input_path)],
+        &[output("consume", None, &main)],
+    )
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("reserved by the host"));
+    assert_eq!(
+        std::fs::read_to_string(&main)?,
+        "keep this main mapping file"
+    );
 
     pipeline.stages[1].mapping_path = None;
+    pipeline.main_mapping_path = None;
     dir.pipeline(&pipeline)?;
+    let legacy_json = std::fs::read_to_string(&pipeline_path)?;
+    assert!(!legacy_json.contains("main_mapping_path"));
+    let legacy: Pipeline = serde_json::from_str(&legacy_json)?;
+    assert_eq!(legacy.main_mapping_path, None);
     cli::run_pipeline_file(
         &pipeline_path,
         &[input(&input_path)],

@@ -12,6 +12,10 @@ use crate::Project;
 /// A graph of mappings whose outputs may become later inputs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pipeline {
+    /// Optional identity of the top-level mapping design. File hosts resolve
+    /// relative paths from the pipeline file; absent keeps legacy behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main_mapping_path: Option<String>,
     pub stages: Vec<PipelineStage>,
 }
 

@@ -81,6 +81,10 @@ fn imports_and_runs_a_connected_two_stage_design() -> Result<(), Box<dyn Error>>
     let pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&output)?)?;
     assert_eq!(pipeline.stages.len(), 2);
     assert!(engine::validate_pipeline(&pipeline).is_empty());
+    assert_eq!(
+        pipeline.main_mapping_path.as_deref(),
+        Some("maps/mapping.mfd")
+    );
     assert!(
         pipeline
             .stages
