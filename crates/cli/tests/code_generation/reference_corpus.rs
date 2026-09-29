@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against ten local, gitignored mappings.
+//! Opt-in generated-backend execution against eleven local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -17,6 +17,7 @@ enum SourceKind {
 enum TargetKind {
     Json,
     Xml,
+    Csv,
 }
 
 struct CorpusCase {
@@ -26,7 +27,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 10] = [
+const CASES: [CorpusCase; 11] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -87,6 +88,12 @@ const CASES: [CorpusCase; 10] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
     },
+    CorpusCase {
+        sample: "TokenizeString2.mfd",
+        input: "AltovaTools.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Csv,
+    },
 ];
 
 #[test]
@@ -141,6 +148,9 @@ fn run_case(
         match case.target_kind {
             TargetKind::Json => project.target_options.json_document,
             TargetKind::Xml => project.target_options.xml_document,
+            TargetKind::Csv => {
+                project.target_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
+            }
         },
         "{sample}: unexpected output format"
     );
@@ -337,6 +347,47 @@ fn run_case(
                 .count(),
             33,
             "{sample}: unclassified middle readings"
+        );
+    }
+    if sample == "TokenizeString2.mfd" {
+        let rows = expected_json.as_array().expect("concatenated CSV rows");
+        assert_eq!(rows.len(), 10, "{sample}: heading and nine tools");
+        assert_eq!(
+            rows.iter()
+                .enumerate()
+                .filter_map(|(index, row)| (index != 2).then_some(row["Tool"].as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                Some("Tool"),
+                Some("XMLSpy"),
+                Some("StyleVision"),
+                Some("UModel"),
+                Some("DatabaseSpy"),
+                Some("DiffDog"),
+                Some("SchemaAgent"),
+                Some("SemanticWorks"),
+                Some("Authentic"),
+            ],
+            "{sample}: ordered source tools"
+        );
+        assert!(rows[2]["Tool"].as_str().is_some_and(|tool| !tool.is_empty()));
+        assert_eq!(
+            rows.iter()
+                .map(|row| row["ExistsInMissionKit"].as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                Some("MissionKit for Enterprise XML Developers"),
+                Some("Y"),
+                Some("Y"),
+                Some("Y"),
+                Some("N"),
+                Some("N"),
+                Some("Y"),
+                Some("Y"),
+                Some("Y"),
+                Some("N"),
+            ],
+            "{sample}: lookup-fed token existence"
         );
     }
 
