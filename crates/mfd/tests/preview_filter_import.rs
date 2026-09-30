@@ -111,6 +111,50 @@ fn optional_preview_only_filter_skips_iteration_instead_of_unfiltering() {
 }
 
 #[test]
+fn optional_without_preview_or_default_skips_iteration_even_with_host_value() {
+    let dir = TempDir::new();
+    let design = write_design(&dir.0, true);
+    let text = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace(" previewvalue=\"true\" usepreviewvalue=\"1\"", "");
+    std::fs::write(&design, text).unwrap();
+    let imported = mfd::import(&design).unwrap();
+    assert!(
+        imported.warnings.iter().any(|warning| {
+            warning.contains("optional input parameter `KeepRows`")
+                && warning.contains("omitted-input semantics are unsupported")
+                && warning.contains("dependent value skipped")
+        }),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(
+        imported.warnings.iter().any(|warning| {
+            warning.contains("filter feeding") && warning.contains("iteration skipped")
+        }),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(!imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        mapping::Node::RuntimeParameter { name, .. }
+            | mapping::Node::RuntimeParameterDefault { name, .. }
+            if name == "KeepRows"
+    )));
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = input(&imported.project, &dir.0);
+    let mut hosts = engine::RuntimeParameters::new();
+    hosts.insert("KeepRows", Value::Bool(true)).unwrap();
+    for execution in [
+        engine::ExecutionContext::new(&design),
+        engine::ExecutionContext::new(&design).with_parameters(&hosts),
+    ] {
+        let output = engine::run_with_context(&imported.project, &source, &execution).unwrap();
+        assert_eq!(row_count(&output), 0, "{output:?}");
+    }
+}
+
+#[test]
 fn disconnected_filter_predicate_skips_iteration_instead_of_unfiltering() {
     let dir = TempDir::new();
     let design = write_design(&dir.0, false);
