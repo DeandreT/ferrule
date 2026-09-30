@@ -1,10 +1,12 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint,
-    ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout, PdfLayout,
-    ProtobufOptions, SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators,
-    XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
+    ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout, NodeId,
+    PdfLayout, ProtobufOptions, SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions,
+    X12Separators, XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -315,6 +317,12 @@ pub struct FormatOptions {
     /// runtime JSON I/O uses the embedded schema and never opens this path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub json_schema_unresolved_reference: Option<String>,
+    /// Original names of connected native decimal input components, keyed by
+    /// the lowered numeric-conversion node. Only `Project::source_options`
+    /// carries this .mfd provenance. It never creates host parameters or
+    /// changes how the graph executes.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mfd_decimal_input_names: BTreeMap<NodeId, String>,
     /// JSON5 instance syntax. JSON schemas remain ordinary JSON. This can be
     /// selected independently of the instance filename extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
