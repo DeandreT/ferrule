@@ -206,11 +206,19 @@ when nested into a deeper final target document.
 
 Both emitters check embedded schemas before returning generated artifacts.
 JSON boundary descriptors must fit 1 MiB; XML serialization expressions keep
-their separate 8 MiB descriptor limit. A schema whose metadata changes when
-its serialized descriptor is read back is rejected with a typed error naming
-the schema, including unstable floating bounds and alternative predicates.
-These constraints remain usable by the interpreter; generated support for
-their complete floating-point domain is still open.
+their separate 8 MiB descriptor limit. Stable schemas retain their ordinary
+JSON descriptors. Floating metadata that the default JSON parser would change
+uses the shared `codegen-schema` codec's versioned descriptor, preserving exact
+binary64 bits in numeric bounds, allowed values, and alternative constraints,
+including nested private predicates. Prefix and marker bytes count toward the
+same limits. The encoder verifies complete metadata before artifacts exist;
+size and unsupported descriptor failures remain typed and name the schema.
+
+Generated Rust JSON/XML adapters decode these descriptors directly. Generated
+C# uses the dedicated `ParseEmbedded`, `ParseEmbeddedBytes`,
+`SerializeEmbedded`, and `SerializeEmbeddedBytes` JSON methods and
+`FerruleXml.SerializeEmbedded`. Ordinary C# JSON/XML methods and saved-project
+parsing retain their existing plain JSON contract.
 
 The `json_parse_field` graph function parses its raw schema descriptor and
 input string using the interpreter's function contract. It does not inherit

@@ -372,13 +372,70 @@ fn generated_json_output_constraints_match_interpreter() -> TestResult<()> {
 }
 
 #[test]
-fn generation_rejects_changed_embedded_schema_before_publication() -> TestResult<()> {
+fn generated_unstable_schema_metadata_matches_native_outputs() -> TestResult<()> {
+    let original = include_str!("../../../codegen/src/tests/fixtures/unstable_float_project.json");
+    for (project_json, accepted) in [
+        (original.to_owned(), false),
+        (
+            original.replace(r#""value": 1.0000000000000001e-307"#, r#""value": 1e-307"#),
+            true,
+        ),
+    ] {
+        let project: Project = serde_json::from_str(&project_json)?;
+        let cases = interpreter_cases(&project, &["{}".into()])?;
+        assert_eq!(cases[0]["reject_output"] == true, !accepted);
+        assert_eq!(cases[0]["exact_output"] == true, accepted);
+        // Saving this project as JSON can itself alter its float metadata.
+        // Generate from the physical fixture exactly as the CLI receives it.
+        run_generated_boundary_cases_json(
+            project_json.as_bytes(),
+            &cases,
+            "unstable_schema_metadata",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_unstable_source_schema_matches_native_json_inputs() -> TestResult<()> {
+    let project_json = r#"{
+        "source": {"name":"Source","kind":{"kind":"group","children":[
+            {"name":"Value","numeric_range":{"kind":"number","bounds":{"minimum":{"value":1e-307}}},"kind":{"kind":"scalar","ty":"float"}}
+        ]}},
+        "target": {"name":"Target","kind":{"kind":"group","children":[
+            {"name":"Value","kind":{"kind":"scalar","ty":"float"}}
+        ]}},
+        "graph":{"nodes":{"0":{"kind":"source_field","path":["Value"]}}},
+        "root":{"bindings":[{"target_field":"Value","node":0}]}
+    }"#;
+    let project: Project = serde_json::from_str(project_json)?;
+    let inputs = [
+        r#"{"Value":1e-307}"#.into(),
+        r#"{"Value":1.0000000000000001e-307}"#.into(),
+    ];
+    let cases = interpreter_cases(&project, &inputs)?;
+    assert_eq!(cases[0]["exact_output"], true);
+    assert_eq!(cases[1]["reject"], true);
+    run_generated_boundary_cases_json(project_json.as_bytes(), &cases, "unstable_source_metadata")
+}
+
+#[test]
+fn generation_rejects_oversized_embedded_schema_before_publication() -> TestResult<()> {
     let directory = TempDir::new("embedded_schema_publication")?;
     let project_path = directory.0.join("project.json");
-    std::fs::write(
-        &project_path,
-        include_str!("../../../codegen/src/tests/fixtures/unstable_float_project.json"),
-    )?;
+    let mut project: Project = serde_json::from_str(include_str!(
+        "../../../codegen/src/tests/fixtures/unstable_float_project.json"
+    ))?;
+    let mut output = string("Out");
+    output.fixed = Some("x".repeat(codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES));
+    project.target = SchemaNode::group("Target", vec![output]);
+    project.graph.nodes = BTreeMap::from([(
+        0,
+        Node::Const {
+            value: Value::String(String::new()),
+        },
+    )]);
+    std::fs::write(&project_path, serde_json::to_vec(&project)?)?;
     for (name, target) in [
         (
             "rust",
@@ -390,16 +447,16 @@ fn generation_rejects_changed_embedded_schema_before_publication() -> TestResult
     ] {
         let destination = directory.0.join("unpublished").join(name);
         let error = generate_project(&project_path, &destination, target)
-            .expect_err("changed constraint metadata must reject generation");
+            .expect_err("oversized schema must reject generation");
         let typed = error
             .chain()
             .find_map(|cause| cause.downcast_ref::<codegen::EmbeddedSchemaError>());
-        assert_eq!(
-            typed,
-            Some(&codegen::EmbeddedSchemaError::MetadataChanged {
-                schema: "Target".into(),
-            }),
-            "{error:?}"
+        assert!(
+            matches!(typed, Some(codegen::EmbeddedSchemaError::TooLarge { schema, bytes, max })
+                if schema == "Target"
+                    && *bytes > codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES
+                    && *max == codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES),
+            "{error:?}",
         );
         assert!(!destination.exists());
         assert!(!directory.0.join("unpublished").exists());
@@ -484,9 +541,17 @@ fn run_generated_boundary_cases(
     cases: &[serde_json::Value],
     name: &str,
 ) -> TestResult<()> {
+    run_generated_boundary_cases_json(&serde_json::to_vec_pretty(project)?, cases, name)
+}
+
+fn run_generated_boundary_cases_json(
+    project_json: &[u8],
+    cases: &[serde_json::Value],
+    name: &str,
+) -> TestResult<()> {
     let directory = TempDir::new(name)?;
     let project_path = directory.0.join("project.json");
-    std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
+    std::fs::write(&project_path, project_json)?;
     let fixtures = serde_json::to_vec(cases)?;
     let rust_output = directory.0.join("rust");
     generate_project(

@@ -17,7 +17,8 @@ public static partial class FerruleJson
         bool isObject,
         NodeBudget schemaBudget,
         JsonPatternSchemaContext patternContext,
-        int depth)
+        int depth,
+        bool exactFloatMarkers)
     {
         JsonElement? declared = null;
         foreach (var property in element.EnumerateObject())
@@ -93,7 +94,8 @@ public static partial class FerruleJson
                 schemaBudget,
                 patternContext,
                 depth + 1,
-                "dependent-schema");
+                "dependent-schema",
+                exactFloatMarkers);
             if (predicate.Schema is { JsonAny: true, Repeating: false })
             {
                 throw Boundary(
