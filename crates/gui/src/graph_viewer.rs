@@ -515,6 +515,7 @@ impl GraphViewer<'_> {
                 Node::RuntimeParameter {
                     name: String::new(),
                     ty: ScalarType::String,
+                    preview: None,
                 },
             ),
             NodeTemplate::HostInputDefault => {
@@ -523,6 +524,7 @@ impl GraphViewer<'_> {
                         name: String::new(),
                         ty: ScalarType::String,
                         default: inputs[0],
+                        preview: None,
                     }
                 })
             }
@@ -1128,7 +1130,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         )
                     }
                     Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
-                    Some(Node::RuntimeParameter { name, ty }) => {
+                    Some(Node::RuntimeParameter { name, ty, .. }) => {
                         let name = if name.is_empty() {
                             "<name required>"
                         } else {
@@ -1783,8 +1785,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Node::RuntimeValue { value } => {
                     ui.label(format!("{value:?}"));
                 }
-                Node::RuntimeParameter { name, ty }
-                | Node::RuntimeParameterDefault { name, ty, .. } => {
+                Node::RuntimeParameter { name, ty, preview }
+                | Node::RuntimeParameterDefault {
+                    name, ty, preview, ..
+                } => {
                     ui.horizontal(|ui| {
                         ui.label("name");
                         ui.add(
@@ -1809,6 +1813,18 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                                 );
                             }
                         });
+                    let mut enabled = preview.is_some();
+                    if ui.checkbox(&mut enabled, "Use preview value").changed() {
+                        *preview = enabled.then(String::new);
+                    }
+                    if let Some(value) = preview {
+                        ui.add(
+                            egui::TextEdit::singleline(value)
+                                .hint_text("Preview value")
+                                .char_limit(engine::MAX_RUNTIME_PARAMETER_STRING_BYTES),
+                        );
+                        ui.weak("Used only in preview when no run value is supplied.");
+                    }
                 }
                 Node::Call { function, args } => {
                     let previous_function = function.clone();

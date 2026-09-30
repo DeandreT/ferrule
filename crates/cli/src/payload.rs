@@ -85,6 +85,7 @@ pub struct PayloadRunOptions<'a> {
     output_path: Option<&'a Path>,
     target: Option<engine::TargetSelection<'a>>,
     runtime_parameters: Option<&'a engine::RuntimeParameters>,
+    execution_purpose: engine::ExecutionPurpose,
     trace_sink: Option<&'a dyn TraceSink>,
     debug_hook: Option<&'a dyn engine::DebugHook>,
 }
@@ -97,6 +98,7 @@ impl<'a> PayloadRunOptions<'a> {
             output_path: None,
             target: None,
             runtime_parameters: None,
+            execution_purpose: engine::ExecutionPurpose::Run,
             trace_sink: None,
             debug_hook: None,
         }
@@ -119,6 +121,13 @@ impl<'a> PayloadRunOptions<'a> {
 
     pub fn with_runtime_parameters(mut self, parameters: &'a engine::RuntimeParameters) -> Self {
         self.runtime_parameters = Some(parameters);
+        self
+    }
+
+    /// Enables design-time preview inputs explicitly. Ordinary payload runs
+    /// ignore saved preview values and retain the normal host/default contract.
+    pub fn with_execution_purpose(mut self, purpose: engine::ExecutionPurpose) -> Self {
+        self.execution_purpose = purpose;
         self
     }
 
@@ -204,6 +213,7 @@ pub fn run_project_value_payloads(
         sources: loaded_sources.dynamic,
     };
     let mut execution = engine::ExecutionContext::new(&runtime_project_path)
+        .with_purpose(options.execution_purpose)
         .with_current_datetime(&current_datetime)
         .with_dynamic_source_loader(&dynamic_loader);
     if let Some(parameters) = options.runtime_parameters {

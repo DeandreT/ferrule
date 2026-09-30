@@ -4,6 +4,9 @@ use crate::layout_store::layout_path;
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, FunctionId, NamedTarget, Scope, UserFunction};
 
+#[path = "preview_inputs_tests.rs"]
+mod preview_inputs;
+
 fn canvas_position(snarl: &Snarl<CanvasNode>, wanted: CanvasNode) -> egui::Pos2 {
     snarl
         .nodes_pos()
@@ -1943,6 +1946,7 @@ fn run_value_project() -> Project {
             name: "choice".into(),
             ty: ScalarType::String,
             default: 0,
+            preview: None,
         },
     );
     project.root.bindings.push(Binding {
@@ -1955,14 +1959,20 @@ fn run_value_project() -> Project {
 #[test]
 fn optional_host_input_default_roundtrips_through_undo_and_project_save() -> anyhow::Result<()> {
     let project_path = temporary_project_path("host-input-authoring-roundtrip");
-    let mut app = FerruleApp::default();
-    app.project = run_value_project();
+    let mut app = FerruleApp {
+        project: run_value_project(),
+        ..FerruleApp::default()
+    };
+    if let Some(Node::RuntimeParameterDefault { preview, .. }) = app.project.graph.nodes.get_mut(&1)
+    {
+        *preview = Some(String::new());
+    }
     app.main_canvas = CanvasDocumentState::main(&app.project);
     app.observe_editor_history(std::time::Instant::now(), false);
     assert!(app.is_dirty());
     assert!(matches!(
         app.project.graph.nodes.get(&1),
-        Some(Node::RuntimeParameterDefault { name, default: 0, .. }) if name == "choice"
+        Some(Node::RuntimeParameterDefault { name, default: 0, preview: Some(value), .. }) if name == "choice" && value.is_empty()
     ));
 
     app.undo_project();
@@ -1970,7 +1980,7 @@ fn optional_host_input_default_roundtrips_through_undo_and_project_save() -> any
     app.redo_project();
     assert!(matches!(
         app.project.graph.nodes.get(&1),
-        Some(Node::RuntimeParameterDefault { default: 0, .. })
+        Some(Node::RuntimeParameterDefault { default: 0, preview: Some(value), .. }) if value.is_empty()
     ));
     assert!(app.main_canvas.snarl.wires().count() >= 2);
 
@@ -1979,7 +1989,7 @@ fn optional_host_input_default_roundtrips_through_undo_and_project_save() -> any
     reopened.load_project_from(&project_path);
     assert!(matches!(
         reopened.project.graph.nodes.get(&1),
-        Some(Node::RuntimeParameterDefault { name, default: 0, .. }) if name == "choice"
+        Some(Node::RuntimeParameterDefault { name, default: 0, preview: Some(value), .. }) if name == "choice" && value.is_empty()
     ));
     assert!(reopened.main_canvas.snarl.wires().count() >= 2);
     assert!(!reopened.is_dirty());

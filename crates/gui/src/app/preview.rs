@@ -1561,6 +1561,7 @@ fn run_preview_payload(
     let output_path = PathBuf::from(draft.output_identity.trim());
     let primary = cli::PayloadDocument::new(&input_path, draft.input_text.as_bytes())?;
     let options = cli::PayloadRunOptions::new(primary)
+        .with_execution_purpose(engine::ExecutionPurpose::Preview)
         .with_extra_sources(&named_inputs)
         .with_output_path(&output_path)
         .with_target(draft.target.selection())

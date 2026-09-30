@@ -1119,9 +1119,12 @@ fn host_input_palette_requires_a_name_and_keeps_optional_default_hidden() {
 
     assert!(matches!(
         &fx.graph.nodes[&required],
-        Node::RuntimeParameter { name, ty: ScalarType::String } if name.is_empty()
+        Node::RuntimeParameter { name, ty: ScalarType::String, .. } if name.is_empty()
     ));
-    let Node::RuntimeParameterDefault { name, ty, default } = &fx.graph.nodes[&optional] else {
+    let Node::RuntimeParameterDefault {
+        name, ty, default, ..
+    } = &fx.graph.nodes[&optional]
+    else {
         panic!("optional host input was not created");
     };
     assert!(name.is_empty());
