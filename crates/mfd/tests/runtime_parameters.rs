@@ -138,6 +138,27 @@ fn unconnected_input_parameters_become_typed_host_inputs_and_roundtrip()
     Ok(())
 }
 
+#[test]
+fn required_host_input_graph_stays_bounded_across_repeated_native_roundtrips()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new()?;
+    let imported = mfd::import(&write_design(&directory.0)?)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let count = imported.project.graph.nodes.len();
+    let expected = execute(&imported.project)?;
+    let mut project = imported.project;
+    for round in 0..5 {
+        let path = directory.0.join(format!("round-{round}.mfd"));
+        mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd)?;
+        let restored = mfd::import(&path)?;
+        assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+        assert_eq!(restored.project.graph.nodes.len(), count, "round {round}");
+        assert_eq!(execute(&restored.project)?, expected, "round {round}");
+        project = restored.project;
+    }
+    Ok(())
+}
+
 fn write_optional_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
         directory.join("optional-source.xsd"),
