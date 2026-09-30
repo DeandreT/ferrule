@@ -271,7 +271,24 @@ public static partial class FerruleFunctions
                 writer.WriteNumberValue(value.Int64Value);
                 break;
             case FerruleValueKind.Double:
-                writer.WriteNumberValue(value.DoubleValue);
+                // JSON keeps the source scalar tag: an integral double is
+                // still rendered as 25.0 rather than the integer 25.
+                var number = value.DoubleValue;
+                var lexical = number.ToString("R", CultureInfo.InvariantCulture);
+                if (number == 0 && BitConverter.DoubleToInt64Bits(number) < 0)
+                {
+                    writer.WriteRawValue("-0.0");
+                }
+                else if (!lexical.Contains('.') &&
+                         !lexical.Contains('E') &&
+                         !lexical.Contains('e'))
+                {
+                    writer.WriteRawValue(lexical + ".0");
+                }
+                else
+                {
+                    writer.WriteNumberValue(number);
+                }
                 break;
         }
     }

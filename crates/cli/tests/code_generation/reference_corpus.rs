@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against thirty-nine local, gitignored mappings.
+//! Opt-in generated-backend execution against forty local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -20,6 +20,7 @@ enum SourceKind {
     Pdf,
     Protobuf,
     XlsxTransposed,
+    XlsxFlat,
 }
 
 #[derive(Clone, Copy)]
@@ -32,6 +33,7 @@ enum TargetKind {
     XlsxHierarchical,
     Xbrl,
     FixedWidth,
+    Sqlite,
 }
 
 struct CorpusCase {
@@ -41,7 +43,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 39] = [
+const CASES: [CorpusCase; 40] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -276,6 +278,12 @@ const CASES: [CorpusCase; 39] = [
         source_kind: SourceKind::FlexText,
         target_kind: TargetKind::FixedWidth,
     },
+    CorpusCase {
+        sample: "SerializeJSONToDB.mfd",
+        input: "Nanonull Inc.xlsx",
+        source_kind: SourceKind::XlsxFlat,
+        target_kind: TargetKind::Sqlite,
+    },
 ];
 
 #[test]
@@ -365,6 +373,7 @@ fn run_case(
                     |options| options.mode() == mapping::XbrlBoundaryMode::ExternalTarget
                 ),
             TargetKind::FixedWidth => project.target_options.fixed_width.is_some(),
+            TargetKind::Sqlite => project.target.name == "People" && project.target.repeating,
         },
         "{sample}: unexpected output format"
     );
@@ -406,6 +415,11 @@ fn run_case(
             SourceKind::XlsxTransposed => {
                 project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Xlsx)
                     && !project.source_options.xlsx_rows.is_empty()
+            }
+            SourceKind::XlsxFlat => {
+                project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Xlsx)
+                    && project.source_options.xlsx_sheet.as_deref() == Some("Staff")
+                    && project.source_options.xlsx_rows.is_empty()
             }
         },
         "{sample}: unexpected input format"
@@ -522,6 +536,14 @@ fn run_case(
             project.source_options.xlsx_sheet.as_deref(),
             &project.source_options.xlsx_rows,
         )?),
+        SourceKind::XlsxFlat => Instance::Repeated(format_xlsx::read(
+            &input_path,
+            &project.source,
+            project.source_options.xlsx_sheet.as_deref(),
+            project.source_options.xlsx_start_row.unwrap_or(1),
+            &project.source_options.xlsx_columns,
+            project.source_options.has_header_row.unwrap_or(true),
+        )?),
     };
     if matches!(case.source_kind, SourceKind::XmlFileSet) {
         return run_file_set_case(
@@ -569,7 +591,8 @@ fn run_case(
         | SourceKind::Csv
         | SourceKind::Pdf
         | SourceKind::Protobuf
-        | SourceKind::XlsxTransposed => format_json::to_string(&project.source, &source)?,
+        | SourceKind::XlsxTransposed
+        | SourceKind::XlsxFlat => format_json::to_string(&project.source, &source)?,
         SourceKind::XmlFileSet => unreachable!("file sets use the typed generated host APIs"),
     };
     let mut named_sources = Vec::new();
@@ -619,6 +642,7 @@ fn run_case(
             | "DB_ApplicationList.mfd"
             | "XBRL_WriteStatementsOfIncomeTable.mfd"
             | "Altova_Hierarchical_Excel.mfd"
+            | "SerializeJSONToDB.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
         if matches!(
@@ -631,6 +655,7 @@ fn run_case(
                 | "DB_ApplicationList.mfd"
                 | "XBRL_WriteStatementsOfIncomeTable.mfd"
                 | "Altova_Hierarchical_Excel.mfd"
+                | "SerializeJSONToDB.mfd"
         ) {
             assert_eq!(
                 round_tripped, source,
@@ -703,6 +728,7 @@ fn run_case(
     let hierarchical_xlsx_output = sample == "Altova_Hierarchical_Excel.mfd";
     let sqlite_csv_output = sample == "DB_ApplicationList.mfd";
     let xbrl_output = sample == "XBRL_WriteStatementsOfIncomeTable.mfd";
+    let sqlite_output = sample == "SerializeJSONToDB.mfd";
     let typed_xml_output = recursive_xml_output
         || sample == "InputIsSequence.mfd"
         || purchase_orders_xml_output
@@ -1710,6 +1736,56 @@ fn run_case(
     } else {
         None
     };
+    let expected_sqlite_rows = if sqlite_output {
+        assert_eq!(
+            project
+                .target_path
+                .as_deref()
+                .and_then(|path| Path::new(path).file_name())
+                .and_then(OsStr::to_str),
+            Some("people.sqlite"),
+            "{sample}: stored SQLite target"
+        );
+        assert_eq!(
+            source.as_repeated().expect("XLSX Staff rows").len(),
+            15,
+            "{sample}: complete workbook table"
+        );
+        let rows = expected_json.as_array().expect("mapped database rows");
+        assert_eq!(rows.len(), 15, "{sample}: one person per Staff row");
+        assert_eq!(rows[0]["First"], "Jessica");
+        assert_eq!(rows[0]["Last"], "Bander");
+        assert_eq!(rows[0]["PhoneExt"], 241);
+        assert_eq!(rows[14]["First"], "Ann");
+        assert_eq!(rows[14]["Last"], "Way");
+        assert_eq!(
+            rows[0]["SharesAndLeaves"],
+            r#"{"Shares":0,"Leaves":{"Total":25.0,"Used":23.0,"Left":12.0}}"#,
+            "{sample}: float tags remain visible in serialized JSON"
+        );
+        assert_eq!(
+            rows[14]["SharesAndLeaves"],
+            r#"{"Shares":1000,"Leaves":{"Total":25.0,"Used":3.0,"Left":22.0}}"#,
+            "{sample}: final serialized JSON object"
+        );
+        let expected_db = case_dir.join("expected.sqlite");
+        format_db::write_instance(&expected_db, &project.target, &expected)?;
+        let written = format_db::read_instance(&expected_db, &project.target)?;
+        let ids = written
+            .as_repeated()
+            .expect("written People table")
+            .iter()
+            .map(|row| row.field("Id").and_then(Instance::as_scalar).cloned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            (1..=15).map(|id| Some(Value::Int(id))).collect::<Vec<_>>(),
+            "{sample}: generated database keys"
+        );
+        Some(written)
+    } else {
+        None
+    };
 
     let generated_input = case_dir.join("source.json");
     std::fs::write(&generated_input, source_json)?;
@@ -1722,6 +1798,7 @@ fn run_case(
         || hierarchical_xlsx_output
         || sqlite_csv_output
         || xbrl_output
+        || sqlite_output
     {
         let source_schema = case_dir.join("source-schema.json");
         let target_schema = case_dir.join("target-schema.json");
@@ -1766,6 +1843,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         || hierarchical_xlsx_output
         || sqlite_csv_output
         || xbrl_output
+        || sqlite_output
     {
         TYPED_JSON_RUST_HARNESS
     } else {
@@ -1882,6 +1960,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(expected_xbrl) = &expected_xbrl {
             assert_generated_xbrl(&project, &rust_json, expected_xbrl, sample, "Rust")?;
         }
+        if let Some(expected_rows) = &expected_sqlite_rows {
+            assert_generated_sqlite_rows(
+                &project,
+                &rust_json,
+                expected_rows,
+                case_dir,
+                sample,
+                "Rust",
+            )?;
+        }
     }
 
     let csharp_output = case_dir.join("csharp");
@@ -1923,6 +2011,7 @@ Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, nu
         || hierarchical_xlsx_output
         || sqlite_csv_output
         || xbrl_output
+        || sqlite_output
     {
         TYPED_JSON_CSHARP_HARNESS
     } else {
@@ -2042,6 +2131,16 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
         }
         if let Some(expected_xbrl) = &expected_xbrl {
             assert_generated_xbrl(&project, &csharp_json, expected_xbrl, sample, "C#")?;
+        }
+        if let Some(expected_rows) = &expected_sqlite_rows {
+            assert_generated_sqlite_rows(
+                &project,
+                &csharp_json,
+                expected_rows,
+                case_dir,
+                sample,
+                "C#",
+            )?;
         }
     }
     println!("{sample}: generated Rust and C# match the interpreter");
@@ -2384,6 +2483,30 @@ fn assert_generated_xbrl(
     assert_eq!(
         xbrl, expected_xbrl,
         "{sample}: generated {backend} XBRL instance differs from the interpreter"
+    );
+    Ok(())
+}
+
+fn assert_generated_sqlite_rows(
+    project: &Project,
+    generated_json: &serde_json::Value,
+    expected_rows: &Instance,
+    case_dir: &Path,
+    sample: &str,
+    backend: &str,
+) -> TestResult<()> {
+    let generated =
+        format_json::from_str(&serde_json::to_string(generated_json)?, &project.target)?;
+    let path = case_dir.join(if backend == "Rust" {
+        "generated-rust.sqlite"
+    } else {
+        "generated-csharp.sqlite"
+    });
+    format_db::write_instance(&path, &project.target, &generated)?;
+    assert_eq!(
+        format_db::read_instance(&path, &project.target)?,
+        *expected_rows,
+        "{sample}: generated {backend} SQLite rows differ from the interpreter"
     );
     Ok(())
 }
