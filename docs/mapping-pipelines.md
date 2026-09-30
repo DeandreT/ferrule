@@ -4,7 +4,8 @@
 
 The CLI can import a connected design with up to 64 serial XML pass-through
 targets as a runnable pipeline. Its final primary target may be XML, delimited
-CSV, fixed-width text, configured FlexText, JSON, or a new XLSX workbook:
+CSV, fixed-width text, configured FlexText, JSON, Protocol Buffers, or a new
+XLSX workbook:
 
 ```sh
 cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
@@ -19,15 +20,17 @@ final stage ID is `mfd-stage-4`.
 The last pass-through target may also feed connected named XML targets in that
 final stage. Use `--named-output STAGE TARGET PATH` to publish one. Intermediate
 fan-out and targets that bypass the last pass-through stage reject during import.
-CSV, fixed-width text, FlexText, JSON, and XLSX are supported only as the final
+CSV, fixed-width text, FlexText, JSON, Protocol Buffers, and XLSX are supported only as the final
 primary target; intermediate and named targets in this native-design profile
 remain XML.
 XLSX targets that update an existing workbook are outside this profile.
-Synthetic local round trips cover CSV, FlexText, and JSON final targets. Local
-fixed-width, FlexText, and hierarchical XLSX mappings run after an identity XML
+Synthetic local round trips cover CSV, FlexText, JSON, and Protocol Buffers final targets. Local
+fixed-width, FlexText, Protocol Buffers, and hierarchical XLSX mappings run after an identity XML
 stage. Fixed-width and FlexText output retain exact serialized bytes and parsed
-values; XLSX retains decoded worksheet cells through strict export and
-reimport. These checks do not establish reference-application acceptance.
+values; Protocol Buffers retains exact binary output and decoded messages;
+XLSX retains decoded worksheet cells through strict export and reimport.
+Protocol Buffers export includes a referenced `.proto` sibling. These checks do
+not establish reference-application acceptance.
 An intermediate XML pass-through component can retain its declared output
 instance and the next stage's source preview instance, even when those paths
 differ. Import and export preserve both paths on that one component; the local

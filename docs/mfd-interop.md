@@ -243,8 +243,8 @@ siblings. Component kinds are selected from endpoint format metadata and paths.
 Pipeline export writes one connected design for a validated serial XML
 pass-through chain of 2–65 stages. Each intermediate primary target becomes
 the next stage's pass-through source. The final primary target may be XML,
-delimited CSV, fixed-width text, configured FlexText, JSON, or a new XLSX
-workbook; connected named final targets remain XML. An original static XML
+delimited CSV, fixed-width text, configured FlexText, JSON, Protocol Buffers,
+or a new XLSX workbook; connected named final targets remain XML. An original static XML
 host source may connect to named inputs in multiple stages, including the
 first and later intermediate stages, when its boundary and output ports still
 match. Connections from a
@@ -262,16 +262,19 @@ explicitly. Non-XML targets remain final-primary only; updating an existing
 workbook is outside this profile.
 Synthetic two- and four-stage export/re-import runs preserve stage results;
 terminal fan-out, repeated named-host connections, and CSV, fixed-width,
-FlexText, JSON, or XLSX final targets preserve their connected outputs. CSV and
+FlexText, JSON, Protocol Buffers, or XLSX final targets preserve their connected outputs. CSV and
 fixed-width results pass local write/read checks; fixed-width text, FlexText,
-and JSON retain exact serialized bytes after re-import, and XLSX retains decoded
-worksheet cells. FlexText export writes a new `.mft` beside the combined design
+and JSON retain exact serialized bytes after re-import, Protocol Buffers retains
+exact encoded bytes and decoded messages, and XLSX retains decoded worksheet
+cells. FlexText export writes a new `.mft` beside the combined design
 and refers to that sibling by name; unsupported layouts reject before either
-artifact is published.
+artifact is published. Protocol Buffers export likewise writes a `.proto`
+sibling beside the design; intermediate or named binary boundaries and
+unresolved schemas reject before publication.
 XLSX stage-value checks match group fields by name while preserving worksheet
 and row order; workbook layout, rather than group field insertion order,
 determines cell coordinates. Local mappings to JSON, XLSX, fixed-width text,
-and FlexText also run unchanged after an identity XML stage. A local
+FlexText, and Protocol Buffers also run unchanged after an identity XML stage. A local
 chained-report sample and a synthetic distinct-path case preserve both
 intermediate instance identities across export/reimport.
 All four local chains reimport after strict native export. The date/time chain

@@ -107,16 +107,19 @@ enum StageSelection<'a> {
     Into {
         intermediate_key: u32,
         label: &'a str,
+        target_inputs: &'a TargetInputCoverage,
     },
     Between {
         source_key: u32,
         source_label: &'a str,
         target_key: u32,
+        target_inputs: &'a TargetInputCoverage,
     },
     OutOf {
         intermediate_key: u32,
         final_key: u32,
         label: &'a str,
+        final_inputs: &'a TargetInputCoverage,
     },
 }
 
@@ -306,9 +309,9 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
 /// Import a connected, file-based design as a typed pipeline.
 ///
 /// This profile accepts a bounded serial XML pass-through chain whose final
-/// primary target may be XML, CSV, fixed-width text, FlexText, JSON, or a new
-/// XLSX workbook, with any connected named targets remaining XML. Other stage
-/// graph shapes reject explicitly.
+/// primary target may be XML, CSV, fixed-width text, FlexText, JSON, Protocol
+/// Buffers, or a new XLSX workbook, with any connected named targets remaining
+/// XML. Other stage graph shapes reject explicitly.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
 }
@@ -325,6 +328,7 @@ pub fn import_pipeline_with_options(
         StageSelection::Into {
             intermediate_key: first_intermediate.key,
             label: &first_intermediate.label,
+            target_inputs: &first_intermediate.inputs,
         },
     )?];
     for pair in chain.intermediates.windows(2) {
@@ -337,6 +341,7 @@ pub fn import_pipeline_with_options(
                 source_key: first_intermediate.key,
                 source_label: &first_intermediate.label,
                 target_key: second_intermediate.key,
+                target_inputs: &second_intermediate.inputs,
             },
         )?);
     }
@@ -350,6 +355,7 @@ pub fn import_pipeline_with_options(
             intermediate_key: last_intermediate.key,
             final_key: chain.final_key,
             label: &last_intermediate.label,
+            final_inputs: &chain.final_inputs,
         },
     )?);
 
@@ -544,11 +550,35 @@ fn discover_package_manifest(path: &Path) -> Result<Option<PathBuf>, MfdError> {
 struct PipelineIntermediate {
     label: String,
     key: u32,
+    inputs: TargetInputCoverage,
 }
 
 struct DiscoveredPipelineChain {
     intermediates: Vec<PipelineIntermediate>,
     final_key: u32,
+    final_inputs: TargetInputCoverage,
+}
+
+/// Raw connected target pins must survive boundary parsing. JSON's redundant
+/// `null` alternative is the one intentional exception when a typed sibling
+/// is also connected and represented by the imported target.
+#[derive(Default)]
+struct TargetInputCoverage {
+    connected: BTreeSet<u32>,
+    json_null_siblings: BTreeMap<u32, BTreeSet<u32>>,
+}
+
+impl TargetInputCoverage {
+    fn unrepresented(&self, represented: &BTreeSet<u32>) -> Option<u32> {
+        self.connected.iter().copied().find(|key| {
+            !represented.contains(key)
+                && !self.json_null_siblings.get(key).is_some_and(|siblings| {
+                    siblings.iter().any(|sibling| {
+                        self.connected.contains(sibling) && represented.contains(sibling)
+                    })
+                })
+        })
+    }
 }
 
 // Every stage reimports the design to retain the original component semantics.
@@ -596,7 +626,8 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         !matches!(
             component.attribute("library"),
             Some("xml" | "core" | "lang" | "xpath2" | "text" | "json" | "xlsx")
-        )
+        ) && !(component.attribute("library") == Some("binary")
+            && is_protobuf_terminal_component(component))
     }) {
         return Err(MfdError::UnsupportedImport(format!(
             "pipeline import does not yet support `{}` components",
@@ -646,6 +677,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
                 || is_fixed_width_terminal_component(component)
                 || is_flextext_terminal_component(component)
                 || is_json_terminal_component(component)
+                || is_protobuf_terminal_component(component)
                 || is_xlsx_terminal_component(component))
                 && component.children().any(|node| {
                     node.has_tag_name("properties")
@@ -656,10 +688,18 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         .collect::<Vec<_>>();
     let [final_target] = final_outputs.as_slice() else {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import currently needs one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"
+            "pipeline import currently needs one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"
                 .into(),
         ));
     };
+    if is_protobuf_terminal_component(final_target)
+        && !protobuf_connected_inputs_match_message_boundary(final_target, &edge_from)
+    {
+        return Err(MfdError::UnsupportedImport(
+            "Protocol Buffer final target has a connected input outside its message boundary"
+                .into(),
+        ));
+    }
     if is_xlsx_terminal_component(final_target)
         && final_target.descendants().any(|node| {
             node.has_tag_name("excel") && node.attribute("updateexistingfile") == Some("1")
@@ -686,6 +726,15 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         ));
     }
     if components.iter().any(|component| {
+        component.attribute("library") == Some("binary")
+            && (component.id() != final_target.id() || connected_component_outputs(component))
+    }) {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import supports Protocol Buffer components only as the final primary target"
+                .into(),
+        ));
+    }
+    if components.iter().any(|component| {
         component.attribute("library") == Some("xlsx")
             && (component.id() != final_target.id() || connected_component_outputs(component))
     }) {
@@ -702,6 +751,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
                         || is_fixed_width_terminal_component(component)
                         || is_flextext_terminal_component(component)
                         || is_json_terminal_component(component)
+                        || is_protobuf_terminal_component(component)
                         || is_xlsx_terminal_component(component)))
                 && connected_inputs(component)
                 && !component.children().any(|node| {
@@ -732,6 +782,14 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         .collect::<Result<Vec<_>, _>>()?;
     let final_key = connected_input_key(final_target)
         .ok_or_else(|| MfdError::UnsupportedImport("final target has no connected input".into()))?;
+    let mut final_inputs = TargetInputCoverage::default();
+    for terminal in &terminal_targets {
+        let coverage = target_input_coverage(terminal, &edge_from);
+        final_inputs.connected.extend(coverage.connected);
+        final_inputs
+            .json_null_siblings
+            .extend(coverage.json_null_siblings);
+    }
     let mut consumers = BTreeMap::<u32, Vec<u32>>::new();
     for (&input, &output) in &edge_from {
         consumers.entry(output).or_default().push(input);
@@ -740,7 +798,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
     for component in &components {
         if matches!(
             component.attribute("library"),
-            Some("xml" | "text" | "json" | "xlsx")
+            Some("xml" | "text" | "json" | "binary" | "xlsx")
         ) {
             continue;
         }
@@ -823,10 +881,64 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
                     .unwrap_or_default()
                     .to_string(),
                 key: intermediate_keys[index],
+                inputs: target_input_coverage(intermediates[index], &edge_from),
             })
             .collect(),
         final_key,
+        final_inputs,
     })
+}
+
+fn target_input_coverage(
+    component: &roxmltree::Node<'_, '_>,
+    edge_from: &BTreeMap<u32, u32>,
+) -> TargetInputCoverage {
+    let connected = entry_keys(component, "inpkey")
+        .into_iter()
+        .filter(|key| edge_from.contains_key(key))
+        .collect();
+    let json_null_siblings = if is_json_terminal_component(component) {
+        selected_json_payload(component)
+            .into_iter()
+            .flat_map(|payload| payload.descendants())
+            .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("null"))
+            .filter_map(|null| {
+                let key = schema::parse_u32(null.attribute("inpkey"))?;
+                let siblings = null
+                    .parent()?
+                    .children()
+                    .filter(|sibling| {
+                        sibling.has_tag_name("entry")
+                            && sibling.id() != null.id()
+                            && sibling.attribute("name") != Some("null")
+                    })
+                    .filter_map(|sibling| schema::parse_u32(sibling.attribute("inpkey")))
+                    .collect::<BTreeSet<_>>();
+                (!siblings.is_empty()).then_some((key, siblings))
+            })
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+    TargetInputCoverage {
+        connected,
+        json_null_siblings,
+    }
+}
+
+fn selected_json_payload<'a, 'input>(
+    component: &roxmltree::Node<'a, 'input>,
+) -> Option<roxmltree::Node<'a, 'input>> {
+    let root = component
+        .children()
+        .find(|node| node.has_tag_name("data"))?
+        .children()
+        .find(|node| node.has_tag_name("root"))?;
+    let mut entry = root.children().find(|node| node.has_tag_name("entry"))?;
+    while matches!(entry.attribute("name"), Some("FileInstance" | "document")) {
+        entry = entry.children().find(|node| node.has_tag_name("entry"))?;
+    }
+    Some(entry)
 }
 
 fn entry_keys(component: &roxmltree::Node<'_, '_>, attribute: &str) -> BTreeSet<u32> {
@@ -887,6 +999,59 @@ fn is_json_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
             .is_some_and(|data| data.children().any(|node| node.has_tag_name("json")))
 }
 
+fn is_protobuf_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("library") == Some("binary")
+        && component.attribute("kind") == Some("33")
+        && component
+            .children()
+            .find(|node| node.has_tag_name("data"))
+            .is_some_and(|data| {
+                data.children().any(|node| node.has_tag_name("binary"))
+                    && data.descendants().any(|node| {
+                        node.has_tag_name("entry") && node.attribute("type") == Some("doc-protobuf")
+                    })
+            })
+}
+
+fn protobuf_connected_inputs_match_message_boundary(
+    component: &roxmltree::Node<'_, '_>,
+    edge_from: &BTreeMap<u32, u32>,
+) -> bool {
+    let Some(root) = component
+        .children()
+        .find(|node| node.has_tag_name("data"))
+        .and_then(|data| data.children().find(|node| node.has_tag_name("root")))
+    else {
+        return false;
+    };
+    let documents = root
+        .descendants()
+        .filter(|node| node.has_tag_name("entry") && node.attribute("type") == Some("doc-protobuf"))
+        .collect::<Vec<_>>();
+    let [document] = documents.as_slice() else {
+        return false;
+    };
+    let Some(payload) = document.children().find(|node| node.has_tag_name("entry")) else {
+        return false;
+    };
+    let canonical = std::iter::once(*document)
+        .chain(document.ancestors().take_while(|node| *node != root))
+        .filter(|node| node.has_tag_name("entry"))
+        .chain(
+            std::iter::once(payload)
+                .chain(payload.descendants())
+                .filter(|node| node.has_tag_name("entry")),
+        )
+        .map(|node| node.id())
+        .collect::<Vec<_>>();
+    !component.descendants().any(|node| {
+        node.has_tag_name("entry")
+            && schema::parse_u32(node.attribute("inpkey"))
+                .is_some_and(|key| edge_from.contains_key(&key))
+            && !canonical.contains(&node.id())
+    })
+}
+
 fn is_xlsx_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
     component.attribute("library") == Some("xlsx")
         && component.attribute("kind") == Some("26")
@@ -935,6 +1100,7 @@ fn strict_serial_stage_order(
                     || is_fixed_width_terminal_component(component)
                     || is_flextext_terminal_component(component)
                     || is_json_terminal_component(component)
+                    || is_protobuf_terminal_component(component)
                     || is_xlsx_terminal_component(component)))
         {
             continue;
@@ -1522,6 +1688,7 @@ fn import_resolved(
         StageSelection::Into {
             intermediate_key,
             label,
+            ..
         } => {
             let component = schema_components
                 .iter_mut()
@@ -1694,6 +1861,26 @@ fn import_resolved(
         }),
     }
     .ok_or_else(|| unsupported("target"))?;
+    let unrepresented_input = match selection {
+        StageSelection::Into { target_inputs, .. }
+        | StageSelection::Between { target_inputs, .. } => target_inputs
+            .unrepresented(&target.ports.keys().copied().collect())
+            .map(|key| ("intermediate target", key)),
+        StageSelection::OutOf { final_inputs, .. } => final_inputs
+            .unrepresented(
+                &targets
+                    .iter()
+                    .flat_map(|candidate| candidate.ports.keys().copied())
+                    .collect(),
+            )
+            .map(|key| ("final targets", key)),
+        StageSelection::Ordinary => None,
+    };
+    if let Some((boundary, key)) = unrepresented_input {
+        return Err(MfdError::UnsupportedImport(format!(
+            "{boundary}: unrepresented connected input port {key}; importing it would lose a mapping"
+        )));
+    }
     let connected_targets = if matches!(
         selection,
         StageSelection::Ordinary | StageSelection::OutOf { .. }
