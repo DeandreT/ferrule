@@ -10,6 +10,7 @@ mod fixed_width;
 mod flextext;
 mod http;
 mod idoc;
+mod idoc_native_config;
 mod iteration;
 mod model;
 mod path_hierarchy;
@@ -47,6 +48,12 @@ pub use http::{HttpGetOptions, HttpTimeoutSeconds};
 pub use idoc::{
     IdocFieldLayout, IdocLayout, IdocLayoutError, IdocSegmentLayout, MAX_IDOC_FIELDS,
     MAX_IDOC_RECORD_BYTES, MAX_IDOC_SEGMENTS,
+};
+pub use idoc_native_config::{
+    IdocNativeCode, IdocNativeConfig, IdocNativeConfigError, IdocNativeField, IdocNativeFieldType,
+    IdocNativeGroup, IdocNativeNode, IdocNativeSegment, IdocNativeStatus, MAX_IDOC_NATIVE_BYTES,
+    MAX_IDOC_NATIVE_CODES, MAX_IDOC_NATIVE_DEPTH, MAX_IDOC_NATIVE_NODES,
+    MAX_IDOC_NATIVE_TEXT_BYTES,
 };
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
