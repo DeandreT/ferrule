@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against thirty-seven local, gitignored mappings.
+//! Opt-in generated-backend execution against thirty-eight local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -29,6 +29,7 @@ enum TargetKind {
     Csv,
     Protobuf,
     Xlsx,
+    XlsxHierarchical,
     Xbrl,
 }
 
@@ -39,7 +40,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 37] = [
+const CASES: [CorpusCase; 38] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -262,6 +263,12 @@ const CASES: [CorpusCase; 37] = [
         source_kind: SourceKind::Sqlite,
         target_kind: TargetKind::Xbrl,
     },
+    CorpusCase {
+        sample: "Altova_Hierarchical_Excel.mfd",
+        input: "Altova_Hierarchical.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::XlsxHierarchical,
+    },
 ];
 
 #[test]
@@ -340,6 +347,11 @@ fn run_case(
             TargetKind::Xlsx => {
                 project.target_options.tabular_kind == Some(mapping::TabularBoundaryKind::Xlsx)
                     && !project.target_options.xlsx_update_existing
+                    && project.target_options.xlsx_hierarchical.is_none()
+            }
+            TargetKind::XlsxHierarchical => {
+                project.target_options.tabular_kind == Some(mapping::TabularBoundaryKind::Xlsx)
+                    && project.target_options.xlsx_hierarchical.is_some()
             }
             TargetKind::Xbrl =>
                 project.target_options.xbrl.as_ref().is_some_and(
@@ -595,6 +607,7 @@ fn run_case(
             | "XBRL_ReadOperatingExpensesFromTable.mfd"
             | "DB_ApplicationList.mfd"
             | "XBRL_WriteStatementsOfIncomeTable.mfd"
+            | "Altova_Hierarchical_Excel.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
         if matches!(
@@ -606,6 +619,7 @@ fn run_case(
                 | "XBRL_ReadOperatingExpensesFromTable.mfd"
                 | "DB_ApplicationList.mfd"
                 | "XBRL_WriteStatementsOfIncomeTable.mfd"
+                | "Altova_Hierarchical_Excel.mfd"
         ) {
             assert_eq!(
                 round_tripped, source,
@@ -675,6 +689,7 @@ fn run_case(
     let protobuf_output = sample == "PersonsToProtobuf.mfd";
     let idoc_xml_output = sample == "IDoc_Order.mfd";
     let xlsx_output = sample == "XBRL_ReadOperatingExpensesFromTable.mfd";
+    let hierarchical_xlsx_output = sample == "Altova_Hierarchical_Excel.mfd";
     let sqlite_csv_output = sample == "DB_ApplicationList.mfd";
     let xbrl_output = sample == "XBRL_WriteStatementsOfIncomeTable.mfd";
     let typed_xml_output = recursive_xml_output
@@ -1605,6 +1620,56 @@ fn run_case(
     } else {
         None
     };
+    let expected_hierarchical_xlsx = if hierarchical_xlsx_output {
+        assert!(
+            project.extra_targets.is_empty(),
+            "{sample}: one hierarchical workbook target"
+        );
+        let worksheets = expected_json["Worksheets"]
+            .as_array()
+            .expect("mapped worksheets");
+        assert_eq!(worksheets.len(), 2, "{sample}: one worksheet per office");
+        let expected_offices = [
+            ("Nanonull, Inc.", "1992-04-01", 15, 4, "Vernon", "Lui"),
+            (
+                "Nanonull Partners, Inc.",
+                "2001-03-01",
+                6,
+                3,
+                "Steve",
+                "Mark",
+            ),
+        ];
+        for (worksheet, (name, established, people, departments, first, last)) in
+            worksheets.iter().zip(expected_offices)
+        {
+            assert_eq!(worksheet["Name"], name, "{sample}: worksheet order");
+            assert_eq!(
+                worksheet["Range6"]["Office name"], name,
+                "{sample}: office band"
+            );
+            assert_eq!(
+                worksheet["Range6"]["Established"], established,
+                "{sample}: typed office date"
+            );
+            let addresses = worksheet["Range2"].as_array().expect("address rows");
+            assert_eq!(addresses.len(), 1, "{sample}: office address band");
+            let employees = worksheet["Range4"].as_array().expect("employee rows");
+            assert_eq!(employees.len(), people, "{sample}: employee count");
+            assert_eq!(employees[0]["First Name"], first);
+            assert_eq!(employees[people - 1]["First Name"], last);
+            let department_rows = worksheet["Range9"].as_array().expect("department rows");
+            assert_eq!(
+                department_rows.len(),
+                departments,
+                "{sample}: department count"
+            );
+            assert_eq!(department_rows[0]["Name"], "Administration");
+        }
+        Some(corpus_hierarchical_xlsx(&project, &expected, sample)?)
+    } else {
+        None
+    };
     let expected_xbrl = if xbrl_output {
         assert!(
             project.extra_targets.is_empty(),
@@ -1643,6 +1708,7 @@ fn run_case(
         || typed_xml_output
         || protobuf_output
         || xlsx_output
+        || hierarchical_xlsx_output
         || sqlite_csv_output
         || xbrl_output
     {
@@ -1684,7 +1750,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#
     } else if typed_xml_output {
         RECURSIVE_FILTER_RUST_HARNESS
-    } else if protobuf_output || xlsx_output || sqlite_csv_output || xbrl_output {
+    } else if protobuf_output
+        || xlsx_output
+        || hierarchical_xlsx_output
+        || sqlite_csv_output
+        || xbrl_output
+    {
         TYPED_JSON_RUST_HARNESS
     } else {
         r#"use ferrule_generated_mapping::{NamedJsonInput, execute_json_with_sources};
@@ -1788,6 +1859,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(expected_cells) = &expected_xlsx_cells {
             assert_generated_xlsx_cells(&project, &rust_json, expected_cells, sample, "Rust")?;
         }
+        if let Some(expected_workbook) = &expected_hierarchical_xlsx {
+            assert_generated_hierarchical_xlsx(
+                &project,
+                &rust_json,
+                expected_workbook,
+                sample,
+                "Rust",
+            )?;
+        }
         if let Some(expected_xbrl) = &expected_xbrl {
             assert_generated_xbrl(&project, &rust_json, expected_xbrl, sample, "Rust")?;
         }
@@ -1827,7 +1907,12 @@ Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, nu
 "#
     } else if typed_xml_output {
         RECURSIVE_FILTER_CSHARP_HARNESS
-    } else if protobuf_output || xlsx_output || sqlite_csv_output || xbrl_output {
+    } else if protobuf_output
+        || xlsx_output
+        || hierarchical_xlsx_output
+        || sqlite_csv_output
+        || xbrl_output
+    {
         TYPED_JSON_CSHARP_HARNESS
     } else {
         r#"using Ferrule.Generated;
@@ -1934,6 +2019,15 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
         }
         if let Some(expected_cells) = &expected_xlsx_cells {
             assert_generated_xlsx_cells(&project, &csharp_json, expected_cells, sample, "C#")?;
+        }
+        if let Some(expected_workbook) = &expected_hierarchical_xlsx {
+            assert_generated_hierarchical_xlsx(
+                &project,
+                &csharp_json,
+                expected_workbook,
+                sample,
+                "C#",
+            )?;
         }
         if let Some(expected_xbrl) = &expected_xbrl {
             assert_generated_xbrl(&project, &csharp_json, expected_xbrl, sample, "C#")?;
@@ -2139,6 +2233,124 @@ fn assert_generated_xlsx_cells(
     assert_eq!(
         corpus_xlsx_cells(project, &generated)?,
         expected_cells,
+        "{sample}: generated {backend} workbook cells differ from the interpreter"
+    );
+    Ok(())
+}
+
+fn corpus_hierarchical_xlsx(
+    project: &Project,
+    instance: &Instance,
+    sample: &str,
+) -> TestResult<Instance> {
+    let layout = project
+        .target_options
+        .xlsx_hierarchical
+        .as_ref()
+        .expect("hierarchical XLSX layout");
+    let (bytes, worksheet_count) =
+        format_xlsx::to_bytes_hierarchical(&project.target, instance, layout)?;
+    assert_eq!(worksheet_count, 2, "{sample}: two written worksheets");
+    let decoded = format_xlsx::from_bytes_hierarchical(&bytes, &project.target, layout)?;
+    let decoded_json: serde_json::Value =
+        serde_json::from_str(&format_json::to_string(&project.target, &decoded)?)?;
+    assert_eq!(
+        decoded_json["Worksheets"][0]["Range6"]["Established"], "1992-04-01",
+        "{sample}: first worksheet date cell"
+    );
+    assert_eq!(
+        decoded_json["Worksheets"][1]["Range6"]["Established"], "2001-03-01",
+        "{sample}: second worksheet date cell"
+    );
+
+    let header_schema = SchemaNode::group(
+        "Workbook header",
+        ["A", "B", "C", "D", "E"]
+            .into_iter()
+            .map(|name| SchemaNode::scalar(name, ScalarType::String))
+            .collect(),
+    );
+    for (name, marker_row, street) in [
+        ("Nanonull, Inc.", 26, "119 Oakstreet, Suite 4876"),
+        (
+            "Nanonull Partners, Inc.",
+            17,
+            "9865 Millenium Center, Suite 456",
+        ),
+    ] {
+        let header = |start_row| -> TestResult<Vec<String>> {
+            let rows = format_xlsx::from_bytes(
+                &bytes,
+                &header_schema,
+                Some(name),
+                start_row,
+                &[1, 2, 3, 4, 5],
+                false,
+            )?;
+            let first = rows.first().expect("workbook header row");
+            Ok(["A", "B", "C", "D", "E"]
+                .into_iter()
+                .map(|column| corpus_string_field(first, column).to_owned())
+                .collect())
+        };
+        assert_eq!(
+            header(1)?,
+            ["Office name", "Email", "Fax", "Phone", "Established"],
+            "{sample}: fixed office headers"
+        );
+        assert_eq!(
+            header(8)?,
+            [
+                "First Name",
+                "Last Name",
+                "Title",
+                "Department",
+                "Phone Ext."
+            ],
+            "{sample}: employee band headers"
+        );
+        let marker_schema = SchemaNode::group(
+            "Workbook marker",
+            vec![SchemaNode::scalar("A", ScalarType::String)],
+        );
+        let address = format_xlsx::from_bytes(&bytes, &marker_schema, Some(name), 4, &[1], false)?;
+        assert_eq!(
+            address.first().map(|row| corpus_string_field(row, "A")),
+            Some("Address:"),
+            "{sample}: address band placement"
+        );
+        let address_street =
+            format_xlsx::from_bytes(&bytes, &marker_schema, Some(name), 4, &[2], false)?;
+        assert_eq!(
+            address_street
+                .first()
+                .map(|row| corpus_string_field(row, "A")),
+            Some(street),
+            "{sample}: address band value"
+        );
+        let marker =
+            format_xlsx::from_bytes(&bytes, &marker_schema, Some(name), marker_row, &[1], false)?;
+        assert_eq!(
+            marker.first().map(|row| corpus_string_field(row, "A")),
+            Some("List of Departments:"),
+            "{sample}: relative department band"
+        );
+    }
+    Ok(decoded)
+}
+
+fn assert_generated_hierarchical_xlsx(
+    project: &Project,
+    generated_json: &serde_json::Value,
+    expected_workbook: &Instance,
+    sample: &str,
+    backend: &str,
+) -> TestResult<()> {
+    let generated =
+        format_json::from_str(&serde_json::to_string(generated_json)?, &project.target)?;
+    let decoded = corpus_hierarchical_xlsx(project, &generated, sample)?;
+    assert_eq!(
+        decoded, *expected_workbook,
         "{sample}: generated {backend} workbook cells differ from the interpreter"
     );
     Ok(())
