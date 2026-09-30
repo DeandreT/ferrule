@@ -21,7 +21,7 @@ use std::path::Path;
 
 use ir::{
     GroupAlternativeConstraintValue, GroupAlternativeMode, Instance, ScalarType, ScalarTypeSet,
-    SchemaKind, SchemaNode, Value,
+    SchemaKind, SchemaNode, Value, parse_exact_decimal_i64,
 };
 use thiserror::Error;
 
@@ -1266,9 +1266,21 @@ fn write_scalar_union(
         if matches!(value, Value::String(_)) && !types.contains(ScalarType::String) {
             let mut converted = None;
             for ty in [ScalarType::Int, ScalarType::Float, ScalarType::Bool] {
-                if types.contains(ty)
-                    && let Ok(candidate) = write_scalar(value, ty, false, name)
-                {
+                if !types.contains(ty) {
+                    continue;
+                }
+                // A scalar union keeps its existing candidate selection: an
+                // integral decimal string such as "1.000" still selects its
+                // floating member when both numeric tags are available.
+                let candidate = match (ty, value) {
+                    (ScalarType::Int, Value::String(text)) => text
+                        .trim()
+                        .parse::<i64>()
+                        .ok()
+                        .map(|integer| serde_json::Value::Number(integer.into())),
+                    _ => write_scalar(value, ty, false, name).ok(),
+                };
+                if let Some(candidate) = candidate {
                     if converted.is_some() {
                         return Err(JsonFormatError::Shape {
                             name: name.to_string(),
@@ -1422,11 +1434,9 @@ fn write_scalar(
         }
         (ScalarType::String, Value::String(value)) => Ok(serde_json::Value::String(value.clone())),
         (ScalarType::Int, Value::Int(value)) => Ok(serde_json::Value::Number((*value).into())),
-        (ScalarType::Int, Value::String(value)) => value
-            .trim()
-            .parse::<i64>()
+        (ScalarType::Int, Value::String(value)) => parse_exact_decimal_i64(value)
             .map(|value| serde_json::Value::Number(value.into()))
-            .map_err(|_| bad()),
+            .ok_or_else(bad),
         (ScalarType::Float, Value::Int(value)) if exact_f64_from_i64(*value).is_some() => {
             Ok(serde_json::Value::Number((*value).into()))
         }
@@ -2386,6 +2396,57 @@ mod tests {
         assert_eq!(
             write_scalar_value(ScalarType::Bool, Value::String("true".into())).unwrap(),
             serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn singleton_integer_output_normalizes_exact_decimal_text_before_constraints() {
+        use ir::{IntegerRange, JsonMultipleOf, JsonMultipleOfConstraints, NumericRange};
+
+        for (text, expected) in [
+            ("1.000", 1),
+            (" 2e2 ", 200),
+            ("9007199254740993.0", 9_007_199_254_740_993),
+            ("-9223372036854775808.000", i64::MIN),
+        ] {
+            assert_eq!(
+                write_scalar_value(ScalarType::Int, Value::String(text.into())).unwrap(),
+                serde_json::json!(expected)
+            );
+        }
+        for text in ["1.001", "1e-1", "9223372036854775808.0"] {
+            assert!(write_scalar_value(ScalarType::Int, Value::String(text.into())).is_err());
+        }
+
+        let divisor = JsonMultipleOf::from_decimal_lexical("3").unwrap();
+        let multiples = JsonMultipleOfConstraints::new([[divisor]]).unwrap();
+        let constrained = SchemaNode::scalar("Field", ScalarType::Int)
+            .with_numeric_range(NumericRange::Integer(
+                IntegerRange::new(Some(6), Some(8)).unwrap(),
+            ))
+            .unwrap()
+            .with_json_multiple_of(multiples)
+            .unwrap();
+        assert_eq!(
+            write_node(
+                &constrained,
+                &Instance::Scalar(Value::String("6.000".into()))
+            )
+            .unwrap(),
+            serde_json::json!(6)
+        );
+        for text in ["7.000", "9.000"] {
+            assert!(
+                write_node(&constrained, &Instance::Scalar(Value::String(text.into()))).is_err()
+            );
+        }
+        assert!(read_node(&serde_json::json!("6.000"), &constrained).is_err());
+
+        let types = ScalarTypeSet::new([ScalarType::Int, ScalarType::Float]).unwrap();
+        let union = SchemaNode::scalar_union("Field", types);
+        assert_eq!(
+            write_node(&union, &Instance::Scalar(Value::String("1.000".into()))).unwrap(),
+            serde_json::json!(1.0)
         );
     }
 

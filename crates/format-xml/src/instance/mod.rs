@@ -10,7 +10,7 @@ use ir::{
     Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
     XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NAMESPACE_URI_FIELD,
     XML_NODE_NAME_FIELD, XML_SUBSTITUTION_FIELD, XML_TEXT_FIELD, XML_TYPE_FIELD,
-    XmlAlternativeKind, XmlNamespace,
+    XmlAlternativeKind, XmlNamespace, parse_exact_decimal_i64,
 };
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
@@ -1891,7 +1891,7 @@ fn format_scalar(name: &str, ty: ScalarType, value: &Value) -> Result<String, Xm
         (ScalarType::Int, Value::Float(value)) => integral_i64(*value)
             .map(|value| value.to_string())
             .ok_or_else(|| incompatible("non-integral float")),
-        (ScalarType::Int, Value::String(value)) => lexical_i64(value)
+        (ScalarType::Int, Value::String(value)) => parse_exact_decimal_i64(value)
             .map(|value| value.to_string())
             .ok_or_else(|| incompatible("string")),
         (ScalarType::Float, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),
@@ -1938,73 +1938,6 @@ fn integral_i64(value: f64) -> Option<i64> {
         && value >= i64::MIN as f64
         && value < -(i64::MIN as f64))
         .then_some(value as i64)
-}
-
-/// Parses an integer-valued decimal lexical without routing through `f64`,
-/// which could silently round values above its exact-integer range.
-fn lexical_i64(value: &str) -> Option<i64> {
-    let value = value.trim();
-    if let Ok(value) = value.parse::<i64>() {
-        return Some(value);
-    }
-    let (negative, unsigned) = match value.as_bytes().first() {
-        Some(b'-') => (true, &value[1..]),
-        Some(b'+') => (false, &value[1..]),
-        Some(_) => (false, value),
-        None => return None,
-    };
-    let (mantissa, exponent) = match unsigned.find(['e', 'E']) {
-        Some(index) => {
-            let exponent = unsigned.get(index + 1..)?.parse::<i64>().ok()?;
-            if unsigned[index + 1..].contains(['e', 'E']) {
-                return None;
-            }
-            (&unsigned[..index], exponent)
-        }
-        None => (unsigned, 0),
-    };
-    let (whole, fraction) = match mantissa.split_once('.') {
-        Some((whole, fraction)) if !fraction.contains('.') => (whole, fraction),
-        Some(_) => return None,
-        None => (mantissa, ""),
-    };
-    if whole.is_empty() && fraction.is_empty()
-        || !whole
-            .bytes()
-            .chain(fraction.bytes())
-            .all(|byte| byte.is_ascii_digit())
-    {
-        return None;
-    }
-
-    let mut digits = format!("{whole}{fraction}");
-    let first_nonzero = digits.bytes().position(|byte| byte != b'0');
-    let Some(first_nonzero) = first_nonzero else {
-        return Some(0);
-    };
-    digits.drain(..first_nonzero);
-    let scale = i128::try_from(fraction.len()).ok()? - i128::from(exponent);
-    if scale > 0 {
-        let scale = usize::try_from(scale).ok()?;
-        let integer_length = digits.len().checked_sub(scale)?;
-        if !digits[integer_length..].bytes().all(|byte| byte == b'0') {
-            return None;
-        }
-        digits.truncate(integer_length);
-    } else if scale < 0 {
-        let zeros = usize::try_from(-scale).ok()?;
-        if digits.len().checked_add(zeros)? > 19 {
-            return None;
-        }
-        digits.extend(std::iter::repeat_n('0', zeros));
-    }
-    if digits.is_empty() {
-        return Some(0);
-    }
-    if negative {
-        digits.insert(0, '-');
-    }
-    digits.parse::<i64>().ok()
 }
 
 #[cfg(test)]
