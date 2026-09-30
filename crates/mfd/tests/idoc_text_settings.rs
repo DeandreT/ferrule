@@ -269,6 +269,11 @@ fn malformed_duplicate_missing_or_unknown_settings_drop_only_text_certificate() 
             ),
         ),
         (
+            "excess-text-children",
+            format!("{settings}{}", "<ferrule-layout kind=\"idoc\"/>".repeat(3)),
+        ),
+        ("unknown-text-child", format!("{settings}<unknown/>")),
+        (
             "missing-case",
             settings.replacen("<case kind=\"semantic\" action=\"report+reject\"/>", "", 1),
         ),
@@ -294,7 +299,26 @@ fn malformed_duplicate_missing_or_unknown_settings_drop_only_text_certificate() 
             "{name}"
         );
         assert!(imported.project.source_options.idoc.is_some(), "{name}");
-        assert!(!imported.warnings.is_empty(), "{name}");
+        assert!(
+            imported
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("settings certificate was ignored")),
+            "{name}: {:?}",
+            imported.warnings
+        );
+        if let Some(parent) = match name {
+            "duplicate-case" => Some("validation"),
+            "excess-text-children" => Some("text"),
+            _ => None,
+        } {
+            assert!(
+                imported.warnings.iter().any(|warning| warning
+                    .contains(&format!("too many child elements inside `{parent}`"))),
+                "{name}: {:?}",
+                imported.warnings
+            );
+        }
         assert!(engine::validate(&imported.project).is_empty(), "{name}");
     }
 }
