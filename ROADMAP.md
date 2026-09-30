@@ -63,10 +63,12 @@ are preserved.
   The remaining design retains missing target and embedded string-parser JSON
   Schema provenance across best-effort export/re-import. All 175
   dependency-complete round trips remain engine-valid. Strict Ferrule native
-  export preflight now accepts 154 of 187 local designs. Direct `doc-xml`
-  reconstruction, a guarded SQLite `LIKE` control, finite numeric input
-  identity, a bounded Protobuf numeric UDF, and canonical decimal-input
-  reconstruction recover seven native designs across this work.
+  export preflight now accepts 162 of 187 local designs. Direct `doc-xml`
+  reconstruction, guarded SQLite `LIKE` controls, finite numeric input
+  identity, a bounded Protobuf numeric UDF, canonical decimal-input
+  reconstruction, two XML source-leaf pricing rules, one guarded joined SQLite
+  `SELECT`, and two temperature designs recover fifteen native designs across
+  this work.
   This is a static compatibility check, not reference-application acceptance. The
   read-only execution profile attempts 168 safe-input designs and all 168 pass,
   publishing 165 captured outputs; seven network or captured-service inputs are
@@ -78,7 +80,7 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Generated Rust and C# hosts have compiled and executed thirty-nine warning-free
+- Generated Rust and C# hosts have compiled and executed forty warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -163,7 +165,10 @@ are preserved.
   bands. Case thirty-nine reads a local FlexText regex switch and publishes
   three fixed-width output sets. Generated Rust and C# typed and JSON results
   agree with the interpreter on 6, 5, and 6 ordered rows and exact padded
-  LF-delimited bytes for every output.
+  LF-delimited bytes for every output. Case forty reads 15 staff rows from an
+  XLSX sheet into a SQLite People table. Generated Rust and C# typed and JSON
+  results agree with the interpreter, including exact nested JSON text that
+  retains `25.0` as a floating value; decoded SQLite rows receive IDs 1–15.
   This small execution sample does not establish that all emitted survey
   designs execute equivalently.
 - Known architectural constraints: each mapping stage has one primary driver,
