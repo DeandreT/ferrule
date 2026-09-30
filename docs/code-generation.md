@@ -51,7 +51,11 @@ Rust generation currently requires `--rust-runtime-path`. The generated crate
 links that local runtime until the runtime is published as a versioned package.
 It exposes both `execute(source)` and `execute_with_context(source, execution)`.
 The execution context can borrow a validated `RuntimeParameters` set containing
-the mapping's named scalar host inputs.
+the mapping's named scalar host inputs. `RuntimeParameterDefault` evaluates its
+connected default only when the host omits that name. Supplied null and invalid
+values take precedence; invalid values retain typed parameter errors. The same
+lazy behavior is available inside isolated user functions and through the
+generated typed and JSON APIs in Rust and C#.
 The corresponding `execute_outputs` functions return the primary instance and
 ordered named targets; the legacy functions evaluate that complete result and
 then move out its primary instance.
