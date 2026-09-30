@@ -152,21 +152,22 @@ public static partial class FerruleJson
                 }
             }
 
-            var outputBytes = checked(buffer.WrittenCount + 1);
+            var canonical = CanonicalizeOutputStrings(buffer.WrittenSpan);
+            var outputBytes = checked(StrictUtf8.GetByteCount(canonical) + 1);
             if (outputBytes > MaximumDocumentBytes)
             {
                 throw Boundary(
                     $"JSON output is {outputBytes} bytes; maximum is {MaximumDocumentBytes}.");
             }
 
-            return Encoding.UTF8.GetString(buffer.WrittenSpan) + "\n";
+            return canonical + "\n";
         }
         catch (FerruleRuntimeException)
         {
             throw;
         }
         catch (Exception error) when (
-            error is JsonException or FormatException or InvalidOperationException or OverflowException)
+            error is JsonException or FormatException or InvalidOperationException or OverflowException or EncoderFallbackException)
         {
             throw Boundary("JSON output is invalid.", error);
         }
@@ -1029,15 +1030,82 @@ public static partial class FerruleJson
                 var expected = value.TryGetProperty("value", out var expectedValue)
                     ? expectedValue.Clone()
                     : default;
-                if (type == "float" && !TryReadFiniteMetadataDouble(expected, out _))
+                var validExpected = type switch
                 {
-                    throw Boundary("Embedded JSON alternative requires a finite float constraint.");
+                    "string" => HasValidJsonStringScalar(expected),
+                    "int" => TryGetSerdeInt64(expected, out _),
+                    "float" => TryReadFiniteMetadataDouble(expected, out _),
+                    "bool" => expected.ValueKind is JsonValueKind.True or JsonValueKind.False,
+                    "json_null" => expected.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null,
+                    _ => false,
+                };
+                if (!validExpected)
+                {
+                    throw Boundary(
+                        $"Embedded JSON alternative has an invalid '{type}' constraint value.");
                 }
                 constraints.Add(new JsonConstraint(member, type, expected));
             }
         }
 
         return new JsonAlternative(name, members, required, constraints);
+    }
+
+    private static bool HasValidJsonStringScalar(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.String ||
+            !FerruleUnicode.IsWellFormed(element.GetString() ?? string.Empty))
+        {
+            return false;
+        }
+
+        // JsonDocument can replace an escaped lone surrogate while decoding a
+        // string. Rust rejects that schema text, so inspect the original JSON
+        // escape sequence before accepting a discriminator.
+        var source = element.GetRawText();
+        for (var index = 1; index < source.Length - 1;)
+        {
+            if (source[index] != '\\')
+            {
+                index++;
+                continue;
+            }
+            if (source[index + 1] != 'u')
+            {
+                index += 2;
+                continue;
+            }
+            if (!ushort.TryParse(
+                    source.AsSpan(index + 2, 4),
+                    NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture,
+                    out var first))
+            {
+                return false;
+            }
+            index += 6;
+            if (char.IsLowSurrogate((char)first))
+            {
+                return false;
+            }
+            if (!char.IsHighSurrogate((char)first))
+            {
+                continue;
+            }
+            if (index + 6 > source.Length - 1 ||
+                source[index] != '\\' || source[index + 1] != 'u' ||
+                !ushort.TryParse(
+                    source.AsSpan(index + 2, 4),
+                    NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture,
+                    out var second) ||
+                !char.IsLowSurrogate((char)second))
+            {
+                return false;
+            }
+            index += 6;
+        }
+        return true;
     }
 
     private static FerruleInstance ReadNode(
@@ -1094,7 +1162,9 @@ public static partial class FerruleJson
         if (schema.JsonAny)
         {
             return new FerruleScalar(
-                FerruleValue.FromString(CanonicalizeAnyJson(element)));
+                FerruleValue.FromString(budget.OutputNormalizedNumbers
+                    ? CanonicalizeOutputAnyJson(element)
+                    : CanonicalizeAnyJson(element)));
         }
 
         if (schema.ContainerNullable && element.ValueKind == JsonValueKind.Null)
@@ -1115,7 +1185,7 @@ public static partial class FerruleJson
         ValidatePatternProperties(schema, properties, budget);
         ValidateRequired(schema, properties);
         ValidatePropertyDependencies(schema, properties);
-        ValidateAlternatives(schema, properties);
+        ValidateAlternatives(schema, properties, budget);
         var fields = new List<FerruleField>();
         if (schema.Dynamic is { } dynamic)
         {
@@ -1188,7 +1258,7 @@ public static partial class FerruleJson
             else if (element.ValueKind == JsonValueKind.Number &&
                      domain.HasFlag(JsonScalarDomain.Double))
             {
-                value = ReadDouble(schema.Name, element);
+                value = ReadDouble(schema.Name, element, budget.OutputNormalizedNumbers);
             }
             else if (element.ValueKind is JsonValueKind.True or JsonValueKind.False &&
                      domain.HasFlag(JsonScalarDomain.Bool))
@@ -1222,7 +1292,10 @@ public static partial class FerruleJson
         return value;
     }
 
-    private static FerruleValue ReadDouble(string name, JsonElement element)
+    private static FerruleValue ReadDouble(
+        string name,
+        JsonElement element,
+        bool outputNormalizedNumbers)
     {
         if (TryGetSerdeInt64(element, out var integer))
         {
@@ -1241,6 +1314,15 @@ public static partial class FerruleJson
             }
 
             throw Shape(name, "number", "integer outside the exact double range");
+        }
+
+        if (outputNormalizedNumbers)
+        {
+            if (element.TryGetDouble(out var normalized) && double.IsFinite(normalized))
+            {
+                return FerruleValue.FromDouble(normalized);
+            }
+            throw Shape(name, "finite number", "non-finite number");
         }
 
         if (!TryParseSerdeNumber(element.GetRawText(), out var parsed) ||
@@ -1876,15 +1958,7 @@ public static partial class FerruleJson
 
     private static void WriteFiniteDouble(Utf8JsonWriter writer, double value)
     {
-        var lexical = value.ToString("R", CultureInfo.InvariantCulture);
-        if (!lexical.Contains('.') &&
-            !lexical.Contains('E') &&
-            !lexical.Contains('e'))
-        {
-            lexical += ".0";
-        }
-
-        writer.WriteRawValue(lexical, skipInputValidation: false);
+        writer.WriteRawValue(FormatSerdeFloat(value), skipInputValidation: false);
     }
 
     private static bool BoundaryAbsence(JsonSchemaNode schema, FerruleInstance instance)
@@ -1936,7 +2010,8 @@ public static partial class FerruleJson
 
     private static void ValidateAlternatives(
         JsonSchemaNode schema,
-        IReadOnlyList<JsonProperty> properties)
+        IReadOnlyList<JsonProperty> properties,
+        NodeBudget budget)
     {
         if (schema.Alternatives.Count == 0)
         {
@@ -1959,7 +2034,10 @@ public static partial class FerruleJson
             {
                 var property = properties.FirstOrDefault(candidate =>
                     string.Equals(candidate.Name, constraint.Member, StringComparison.Ordinal));
-                return property is null || ConstraintMatches(constraint, property.Value);
+                return property is null || ConstraintMatches(
+                    constraint,
+                    property.Value,
+                    budget.OutputNormalizedNumbers);
             })).ToArray();
         if (matches.Length == 0)
         {
@@ -2346,7 +2424,10 @@ public static partial class FerruleJson
                double.IsFinite(output);
     }
 
-    private static bool TryReadExactDouble(JsonElement value, out double output)
+    private static bool TryReadExactDouble(
+        JsonElement value,
+        bool outputNormalizedNumbers,
+        out double output)
     {
         output = 0;
         if (value.ValueKind != JsonValueKind.Number)
@@ -2360,6 +2441,11 @@ public static partial class FerruleJson
         if (TryGetSerdeUInt64(value, out var unsignedInteger))
         {
             return TryExactDouble(unsignedInteger, out output);
+        }
+
+        if (outputNormalizedNumbers)
+        {
+            return value.TryGetDouble(out output) && double.IsFinite(output);
         }
 
         if (!TryParseSerdeNumber(value.GetRawText(), out var parsed) ||
@@ -2428,7 +2514,10 @@ public static partial class FerruleJson
                 Items: [FerruleScalar { Value.Kind: FerruleValueKind.JsonNull }],
             };
 
-    private static bool ConstraintMatches(JsonConstraint constraint, JsonElement value) =>
+    private static bool ConstraintMatches(
+        JsonConstraint constraint,
+        JsonElement value,
+        bool outputNormalizedNumbers) =>
         constraint.Type switch
         {
             "string" => value.ValueKind == JsonValueKind.String &&
@@ -2441,7 +2530,7 @@ public static partial class FerruleJson
                      TryGetSerdeInt64(constraint.Expected, out var expectedInteger) &&
                      actualInteger == expectedInteger,
             "float" => value.ValueKind == JsonValueKind.Number &&
-                       TryReadExactDouble(value, out var actualNumber) &&
+                       TryReadExactDouble(value, outputNormalizedNumbers, out var actualNumber) &&
                        TryReadFiniteMetadataDouble(constraint.Expected, out var expectedNumber) &&
                        actualNumber == expectedNumber,
             "bool" => value.ValueKind is JsonValueKind.True or JsonValueKind.False &&
@@ -3137,26 +3226,34 @@ public static partial class FerruleJson
     private sealed class NodeBudget
     {
         private readonly PatternWorkBudget _patternWork;
+        private readonly bool _outputNormalizedNumbers;
         private int _nodes;
         private int _recursiveReferences;
         private bool _fatalTraversalLimit;
         private NodeBudget? _matcher;
+        private NodeBudget? _outputMatcher;
 
         public NodeBudget()
-            : this(new PatternWorkBudget())
+            : this(new PatternWorkBudget(), false)
         {
         }
 
-        private NodeBudget(PatternWorkBudget patternWork)
+        private NodeBudget(PatternWorkBudget patternWork, bool outputNormalizedNumbers)
         {
             _patternWork = patternWork;
+            _outputNormalizedNumbers = outputNormalizedNumbers;
         }
+
+        public bool OutputNormalizedNumbers => _outputNormalizedNumbers;
 
         public bool HasFatalLimit =>
             _fatalTraversalLimit || _patternWork.HasFatalLimit;
 
         public NodeBudget Matcher() =>
-            _matcher ??= new NodeBudget(_patternWork);
+            _matcher ??= new NodeBudget(_patternWork, _outputNormalizedNumbers);
+
+        public NodeBudget OutputMatcher() =>
+            _outputMatcher ??= new NodeBudget(_patternWork, true);
 
         public void MarkFatalTraversalLimit()
         {

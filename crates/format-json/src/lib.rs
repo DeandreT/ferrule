@@ -846,6 +846,21 @@ pub fn write_lines(
 /// The returned document ends with a newline, matching [`write`]. This is
 /// the in-memory counterpart used by hosts without filesystem access.
 pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
+    let value = to_value(schema, instance)?;
+    let mut text = serde_json::to_string_pretty(&value)?;
+    text.push('\n');
+    Ok(text)
+}
+
+/// Normalizes an [`Instance`] into schema-shaped JSON without a text round trip.
+///
+/// This applies the same output coercions and validation as [`to_string`].
+/// Hosts can inspect or validate the normalized scalar values without parsing
+/// their serialized floating-point representation a second time.
+pub fn to_value(
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<serde_json::Value, JsonFormatError> {
     let recursive = RecursiveSchemas::new(schema)?;
     let mut patterns = PatternRuntime::new(schema)?;
     // A root scope can produce flat rows even though the row schema itself
@@ -868,9 +883,7 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Jso
         }
         _ => write_node_with_patterns(schema, instance, &recursive, 0, &mut patterns)?,
     };
-    let mut text = serde_json::to_string_pretty(&value)?;
-    text.push('\n');
-    Ok(text)
+    Ok(value)
 }
 
 /// Serializes a typed instance as JSON5. Safe property names are unquoted;

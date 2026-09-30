@@ -1638,7 +1638,7 @@ internal static partial class Program
             Text("\U0001F600"),
             ((FerruleScalar)FerruleJson.Parse(oneOrTwo, "\"\\uD83D\\uDE00\"")).Value);
         Equal(
-            "\"\\uD83D\\uDE00\"\n",
+            "\"😀\"\n",
             FerruleJson.Serialize(oneOrTwo, Scalar(Text("\U0001F600"))));
         Equal(
             Text("e\u0301"),

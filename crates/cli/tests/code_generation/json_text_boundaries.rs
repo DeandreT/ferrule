@@ -152,7 +152,7 @@ fn generated_arbitrary_json_canonicalization_matches_interpreter() -> TestResult
     inputs.push(r#"{"Text":1.7976931348623158e308,"Text":"ok","Any":0}"#.into());
     // The same token inside an ordinary string uses the output string fallback.
     inputs.push(serde_json::json!({"Text": "1.7976931348623158e308", "Any": 0}).to_string());
-    for depth in [126, 128, 129] {
+    for depth in [126, 127, 128, 129] {
         let nested = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
         inputs.push(format!(r#"{{"Text":"ok","Any":{nested}}}"#));
         inputs.push(serde_json::json!({"Text": nested, "Any": 0}).to_string());
@@ -266,6 +266,58 @@ fn generated_json_object_text_matches_interpreter() -> TestResult<()> {
     run_generated_boundary_cases(&project, &cases, "json_object_text")
 }
 
+#[test]
+fn generated_json_output_constraints_match_interpreter() -> TestResult<()> {
+    for (schema, inputs) in [
+        (
+            r#"{"name":"Values","repeating":true,"json_unique_items":true,"kind":{"kind":"scalar","ty":"float"}}"#,
+            vec![
+                ("0.9999999999998891", "0.9999999999998892"),
+                ("0.9999999999998892", "0.9999999999998892"),
+            ],
+        ),
+        (
+            r#"{"name":"Values","repeating":true,"json_multiple_of":{"any_of":[[{"coefficient":1,"decimal_exponent":-307}]]},"kind":{"kind":"scalar","ty":"float"}}"#,
+            vec![("1e-307", "1e-307"), ("1.0000000000000001e-307", "1e-307")],
+        ),
+    ] {
+        let mut project = text_boundary_project();
+        project.source = SchemaNode::group("Source", vec![string("X"), string("Y")]);
+        project.target = SchemaNode::group("Target", vec![serde_json::from_str(schema)?]);
+        project.graph.nodes.clear();
+        project.root.bindings.clear();
+        for (source, node) in [("X", 1), ("Y", 3)] {
+            project.graph.nodes.insert(
+                node,
+                Node::SourceField {
+                    path: vec![source.into()],
+                    frame: None,
+                },
+            );
+            project.graph.nodes.insert(
+                node + 1,
+                Node::Call {
+                    function: "to_number".into(),
+                    args: vec![node],
+                },
+            );
+            project.root.bindings.push(Binding {
+                target_field: "Values".into(),
+                node: node + 1,
+            });
+        }
+        let inputs = inputs
+            .into_iter()
+            .map(|(x, y)| serde_json::json!({"X": x, "Y": y}).to_string())
+            .collect::<Vec<_>>();
+        let cases = interpreter_cases(&project, &inputs)?;
+        assert!(cases.iter().any(|case| case["reject_output"] == true));
+        assert!(cases.iter().any(|case| case["exact_output"] == true));
+        run_generated_boundary_cases(&project, &cases, "json_output_constraints")?;
+    }
+    Ok(())
+}
+
 fn numeric_tokens() -> Vec<String> {
     let mut tokens: Vec<String> = [
         "0",
@@ -323,8 +375,14 @@ fn interpreter_cases(project: &Project, inputs: &[String]) -> TestResult<Vec<ser
             |input| match format_json::from_str(input, &project.source) {
                 Ok(source) => {
                     let result = engine::run(project, &source)?;
-                    let expected = format_json::to_string(&project.target, &result)?;
-                    Ok(serde_json::json!({"input": input, "expected_json": expected}))
+                    match format_json::to_string(&project.target, &result) {
+                        Ok(expected) => Ok(serde_json::json!({
+                            "input": input,
+                            "expected_json": expected,
+                            "exact_output": true,
+                        })),
+                        Err(_) => Ok(serde_json::json!({"input": input, "reject_output": true})),
+                    }
                 }
                 Err(_) => Ok(serde_json::json!({"input": input, "reject": true})),
             },
