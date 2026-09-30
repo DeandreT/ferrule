@@ -178,7 +178,11 @@ native-profile diagnostics.
 For a single SQLite table mapped directly to XML rows, a guarded `LIKE`
 predicate with a literal ASCII prefix and one trailing `%`, null guards, and
 sorting by that same string column exports as the native database `where`
-control. Its parameter expression stays connected. Other `LIKE` patterns,
+control. Its parameter expression stays connected, including an optional named
+string input with a literal prefix default. Computed `concat`/`string` row
+bindings and related source fields remain wired. The local phone-list design
+reimports to identical XML with four default rows and three rows when the host
+supplies `NamePrefix=F`. Other `LIKE` patterns,
 shared predicate nodes, or additional row controls retain the ordinary
 diagnostic; the local database-filter sample reimports without warnings and
 produces the same output after strict export.
@@ -186,10 +190,12 @@ An isolated canonical decimal string feeding the second input of a supported
 numeric comparison or addition can export through a native decimal input
 component. The local price and temperature samples reimport with identical
 XML. The imported component names `Markup`, `lower`, and `upper` survive
-project serialization and strict export. Ferrule still evaluates their
-connected defaults. Connected optional native inputs across the corpus do not
-yet retain host override semantics; the strict scan measures static export,
-not that workflow.
+project serialization and strict export. Named optional native inputs now retain
+their connected default expression and scalar type. The host value wins when
+the name is supplied; otherwise the default evaluates lazily. Explicit null
+does not select the default. String, integer, and decimal input tests cover
+strict warning-free export/reimport, overrides, and typed errors. Unconnected
+preview-only inputs retain their previous preview-value behavior.
 For the exact order-pricing graph, strict export restores the native decimal
 source rules on two XML price leaves. Anchored repeated-row reads apply those
 rules on reimport, preserving all three local CSV rows and the original typed
@@ -215,6 +221,14 @@ node-function rule; its five yearly rows and typed nonfinite conversion error
 match after strict export/reimport. The recovery requires the closed source,
 target, graph, and scope shapes of these two designs; changed numeric calls,
 shared branches, or added row controls keep the explicit incompatibility.
+Two bounded recursive construction families export as synthesized native user
+functions: one repeated string path list builds a directory/file hierarchy,
+and one flat key/parent catalog builds a recursive adjacency tree. Both require
+plain XML boundaries and exact supported schemas and scopes. Local strict
+round trips preserve the 16-directory/90-file tree and the 49-type hierarchy
+byte for byte. Original function names and canvas layouts are not retained by
+these normalized constructions; duplicate/cycle behavior in the native
+application remains unverified.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
 endpoints, validated against the physical columns, and exported canonically. This
 keeps nested relational reads executable when the database omits foreign-key metadata.
