@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against thirty-four local, gitignored mappings.
+//! Opt-in generated-backend execution against thirty-seven local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -13,6 +13,8 @@ enum SourceKind {
     Edifact,
     X12,
     Idoc,
+    Xbrl,
+    Sqlite,
     FlexText,
     Csv,
     Pdf,
@@ -26,6 +28,8 @@ enum TargetKind {
     Xml,
     Csv,
     Protobuf,
+    Xlsx,
+    Xbrl,
 }
 
 struct CorpusCase {
@@ -35,7 +39,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 34] = [
+const CASES: [CorpusCase; 37] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -240,6 +244,24 @@ const CASES: [CorpusCase; 34] = [
         source_kind: SourceKind::X12,
         target_kind: TargetKind::Csv,
     },
+    CorpusCase {
+        sample: "XBRL_ReadOperatingExpensesFromTable.mfd",
+        input: "nanonull.xbrl",
+        source_kind: SourceKind::Xbrl,
+        target_kind: TargetKind::Xlsx,
+    },
+    CorpusCase {
+        sample: "DB_ApplicationList.mfd",
+        input: "Accounts.sqlite",
+        source_kind: SourceKind::Sqlite,
+        target_kind: TargetKind::Csv,
+    },
+    CorpusCase {
+        sample: "XBRL_WriteStatementsOfIncomeTable.mfd",
+        input: "Nanonull.sqlite",
+        source_kind: SourceKind::Sqlite,
+        target_kind: TargetKind::Xbrl,
+    },
 ];
 
 #[test]
@@ -250,14 +272,24 @@ fn generated_rust_and_csharp_execute_local_samples_like_engine() -> TestResult<(
         .canonicalize()?;
     let directory = TempDir::new("reference_corpus")?;
     let rust_target = directory.0.join("rust-target");
+    let case_filter = std::env::var("FERRULE_REFERENCE_CORPUS_CASE").ok();
+    let mut executed = 0;
     for (index, case) in CASES.iter().enumerate() {
+        if case_filter
+            .as_deref()
+            .is_some_and(|filter| filter != case.sample)
+        {
+            continue;
+        }
         let case_dir = directory.0.join(format!("case-{index}"));
         std::fs::create_dir(&case_dir)?;
         run_case(&samples, &case_dir, &rust_target, case)?;
+        executed += 1;
     }
+    assert!(executed > 0, "no local corpus case matched the filter");
     println!(
         "{} local mappings compiled and executed in generated Rust and C#",
-        CASES.len()
+        executed
     );
     Ok(())
 }
@@ -305,6 +337,14 @@ fn run_case(
                 project.target_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
             }
             TargetKind::Protobuf => project.target_options.protobuf.is_some(),
+            TargetKind::Xlsx => {
+                project.target_options.tabular_kind == Some(mapping::TabularBoundaryKind::Xlsx)
+                    && !project.target_options.xlsx_update_existing
+            }
+            TargetKind::Xbrl =>
+                project.target_options.xbrl.as_ref().is_some_and(
+                    |options| options.mode() == mapping::XbrlBoundaryMode::ExternalTarget
+                ),
         },
         "{sample}: unexpected output format"
     );
@@ -326,6 +366,16 @@ fn run_case(
             SourceKind::Idoc => {
                 project.source_options.edi_kind == Some(mapping::EdiBoundaryKind::Idoc)
                     && project.source_options.idoc.is_some()
+            }
+            SourceKind::Xbrl => project.source_options.xbrl.is_some(),
+            SourceKind::Sqlite => {
+                project.source.name
+                    == if sample == "XBRL_WriteStatementsOfIncomeTable.mfd" {
+                        "Period"
+                    } else {
+                        "Users"
+                    }
+                    && project.source.repeating
             }
             SourceKind::FlexText => project.source_options.flextext.is_some(),
             SourceKind::Csv => {
@@ -419,6 +469,12 @@ fn run_case(
                 .expect("embedded IDoc layout"),
             project.source_options.lenient_segments,
         )?,
+        SourceKind::Xbrl => format_xbrl::read_with_options(
+            &input_path,
+            &project.source,
+            project.source_options.xbrl.as_ref().expect("XBRL boundary"),
+        )?,
+        SourceKind::Sqlite => format_db::read_instance(&input_path, &project.source)?,
         SourceKind::FlexText => format_flextext::read(
             &input_path,
             &project.source,
@@ -484,6 +540,8 @@ fn run_case(
         | SourceKind::Edifact
         | SourceKind::X12
         | SourceKind::Idoc
+        | SourceKind::Xbrl
+        | SourceKind::Sqlite
         | SourceKind::FlexText
         | SourceKind::Csv
         | SourceKind::Pdf
@@ -534,6 +592,9 @@ fn run_case(
             | "JSON_To_Xml_PurchaseOrders.mfd"
             | "PersonsToProtobuf.mfd"
             | "IDoc_Order.mfd"
+            | "XBRL_ReadOperatingExpensesFromTable.mfd"
+            | "DB_ApplicationList.mfd"
+            | "XBRL_WriteStatementsOfIncomeTable.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
         if matches!(
@@ -542,6 +603,9 @@ fn run_case(
                 | "SelectPropertyFromJSON.mfd"
                 | "JSON_To_Xml_PurchaseOrders.mfd"
                 | "IDoc_Order.mfd"
+                | "XBRL_ReadOperatingExpensesFromTable.mfd"
+                | "DB_ApplicationList.mfd"
+                | "XBRL_WriteStatementsOfIncomeTable.mfd"
         ) {
             assert_eq!(
                 round_tripped, source,
@@ -610,6 +674,9 @@ fn run_case(
     let purchase_orders_xml_output = sample == "JSON_To_Xml_PurchaseOrders.mfd";
     let protobuf_output = sample == "PersonsToProtobuf.mfd";
     let idoc_xml_output = sample == "IDoc_Order.mfd";
+    let xlsx_output = sample == "XBRL_ReadOperatingExpensesFromTable.mfd";
+    let sqlite_csv_output = sample == "DB_ApplicationList.mfd";
+    let xbrl_output = sample == "XBRL_WriteStatementsOfIncomeTable.mfd";
     let typed_xml_output = recursive_xml_output
         || sample == "InputIsSequence.mfd"
         || purchase_orders_xml_output
@@ -1364,6 +1431,36 @@ fn run_case(
         let bytes = corpus_csv_bytes(&project, &expected)?;
         assert_eq!(bytes, b"Michelle Butler,Mrs,20200430\n");
         Some(bytes)
+    } else if sqlite_csv_output {
+        assert_eq!(project.target_options.delimiter, Some(','));
+        assert_eq!(project.target_options.has_header_row, Some(false));
+        assert_eq!(source.as_repeated().expect("SQLite user rows").len(), 4);
+        let rows = expected_json
+            .as_array()
+            .expect("SQLite application CSV rows");
+        assert_eq!(rows.len(), 4, "{sample}: one row per user");
+        for (row, user) in rows.iter().zip([
+            "Vernon Callaby",
+            "Frank Further",
+            "Loby Matise",
+            "Susi Sanna",
+        ]) {
+            assert_eq!(row["User"], user);
+        }
+        assert_eq!(rows[0]["Application"], rows[1]["Application"]);
+        assert_eq!(rows[1]["Application"], rows[2]["Application"]);
+        assert_eq!(rows[0]["Category"], "IDE");
+        assert_eq!(rows[1]["Category"], "IDE");
+        assert_eq!(rows[2]["Category"], "IDE");
+        assert_eq!(rows[3]["Application"], "Notepad");
+        assert_eq!(rows[3]["Category"], "Misc.");
+        assert_eq!(rows[3]["Description"], "No Description");
+        let bytes = corpus_csv_bytes(&project, &expected)?;
+        assert_eq!(bytes.len(), 234, "{sample}: exact four-row CSV length");
+        assert!(bytes.starts_with(b"Vernon Callaby,"));
+        assert!(bytes.ends_with(b"Susi Sanna,Notepad,Misc.,No Description\n"));
+        assert_eq!(bytes.iter().filter(|&&byte| byte == b'\n').count(), 4);
+        Some(bytes)
     } else if sample == "ParseStringWithFlexText.mfd" {
         assert_eq!(
             project
@@ -1464,12 +1561,91 @@ fn run_case(
     } else {
         None
     };
+    let expected_xlsx_cells = if xlsx_output {
+        assert_eq!(
+            project.target_options.xlsx_sheet.as_deref(),
+            Some("Operating Expenses")
+        );
+        assert_eq!(project.target_options.xlsx_start_row, Some(1));
+        assert_eq!(
+            project.target_options.xlsx_columns,
+            (1..=10).collect::<Vec<_>>()
+        );
+        assert_eq!(project.target_options.has_header_row, Some(true));
+        assert!(project.target_options.xlsx_headers.is_empty());
+        let rows = expected_json
+            .as_array()
+            .expect("XBRL operating expense rows");
+        assert_eq!(rows.len(), 4, "{sample}: four statement periods");
+        let periods = [
+            ("2009-12-01", "2010-08-30", 3_454_000_000.0),
+            ("2008-12-01", "2009-08-30", 2_823_000_000.0),
+            ("2009-06-01", "2009-08-30", 1_096_000_000.0),
+            ("2010-06-01", "2010-08-30", 1_319_000_000.0),
+        ];
+        for (row, (start, end, total)) in rows.iter().zip(periods) {
+            assert_eq!(row["Start Date"], start);
+            assert_eq!(row["End Date"], end);
+            assert_eq!(row["Total"].as_f64(), Some(total));
+        }
+        assert_eq!(
+            rows[0]["Commissions, transportation and other"].as_f64(),
+            Some(872_000_000.0)
+        );
+        let cells = corpus_xlsx_cells(&project, &expected)?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&format_json::to_string(
+                &project.target,
+                &Instance::Repeated(cells.clone()),
+            )?)?,
+            expected_json,
+            "{sample}: workbook cells differ from the mapped values"
+        );
+        Some(cells)
+    } else {
+        None
+    };
+    let expected_xbrl = if xbrl_output {
+        assert!(
+            project.extra_targets.is_empty(),
+            "{sample}: one XBRL target"
+        );
+        let options = project.target_options.xbrl.as_ref().expect("XBRL target");
+        assert_eq!(options.mode(), mapping::XbrlBoundaryMode::ExternalTarget);
+        assert_eq!(options.taxonomy(), "Taxonomy\\nanonull.xsd");
+        assert_eq!(source.as_repeated().expect("SQLite periods").len(), 4);
+        let xbrl = format_xbrl::to_string(&project.target, &expected, options)?;
+        assert_eq!(xbrl.len(), 14_198, "{sample}: local instance length");
+        assert_eq!(xbrl.matches("<xbrli:context id=").count(), 4);
+        assert_eq!(xbrl.matches("<xbrli:unit id=").count(), 2);
+        assert_eq!(xbrl.matches(" contextRef=").count(), 100);
+        assert!(xbrl.contains("<xbrli:startDate>2009-12-01</xbrli:startDate>"));
+        assert!(xbrl.contains("<xbrli:endDate>2010-08-31</xbrli:endDate>"));
+        assert!(xbrl.contains(">4342000000</ns1:PassengerRevenue>"));
+        assert!(xbrl.contains(">980000000</ns1:NetIncomeLoss>"));
+        let transported =
+            format_json::from_str(&serde_json::to_string(&expected_json)?, &project.target)?;
+        assert_eq!(
+            format_xbrl::to_string(&project.target, &transported, options)?,
+            xbrl,
+            "{sample}: schema-shaped JSON changes the XBRL instance"
+        );
+        Some(xbrl)
+    } else {
+        None
+    };
 
     let generated_input = case_dir.join("source.json");
     std::fs::write(&generated_input, source_json)?;
     let project_path = case_dir.join("project.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
-    let typed_host_schemas = if mapped_xml_output || typed_xml_output || protobuf_output {
+    let typed_host_schemas = if mapped_xml_output
+        || typed_xml_output
+        || protobuf_output
+        || xlsx_output
+        || sqlite_csv_output
+        || xbrl_output
+    {
         let source_schema = case_dir.join("source-schema.json");
         let target_schema = case_dir.join("target-schema.json");
         std::fs::write(&source_schema, serde_json::to_vec(&project.source)?)?;
@@ -1508,8 +1684,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#
     } else if typed_xml_output {
         RECURSIVE_FILTER_RUST_HARNESS
-    } else if protobuf_output {
-        PROTOBUF_TARGET_RUST_HARNESS
+    } else if protobuf_output || xlsx_output || sqlite_csv_output || xbrl_output {
+        TYPED_JSON_RUST_HARNESS
     } else {
         r#"use ferrule_generated_mapping::{NamedJsonInput, execute_json_with_sources};
 
@@ -1609,6 +1785,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Rust",
             )?;
         }
+        if let Some(expected_cells) = &expected_xlsx_cells {
+            assert_generated_xlsx_cells(&project, &rust_json, expected_cells, sample, "Rust")?;
+        }
+        if let Some(expected_xbrl) = &expected_xbrl {
+            assert_generated_xbrl(&project, &rust_json, expected_xbrl, sample, "Rust")?;
+        }
     }
 
     let csharp_output = case_dir.join("csharp");
@@ -1645,8 +1827,8 @@ Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, nu
 "#
     } else if typed_xml_output {
         RECURSIVE_FILTER_CSHARP_HARNESS
-    } else if protobuf_output {
-        PROTOBUF_TARGET_CSHARP_HARNESS
+    } else if protobuf_output || xlsx_output || sqlite_csv_output || xbrl_output {
+        TYPED_JSON_CSHARP_HARNESS
     } else {
         r#"using Ferrule.Generated;
 
@@ -1750,6 +1932,12 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
                 "C#",
             )?;
         }
+        if let Some(expected_cells) = &expected_xlsx_cells {
+            assert_generated_xlsx_cells(&project, &csharp_json, expected_cells, sample, "C#")?;
+        }
+        if let Some(expected_xbrl) = &expected_xbrl {
+            assert_generated_xbrl(&project, &csharp_json, expected_xbrl, sample, "C#")?;
+        }
     }
     println!("{sample}: generated Rust and C# match the interpreter");
     Ok(())
@@ -1832,7 +2020,7 @@ Console.Out.Write(json);
 Console.Out.Write('\0');
 "#;
 
-const PROTOBUF_TARGET_RUST_HARNESS: &str = r#"use codegen_runtime::{parse_json, serialize_json};
+const TYPED_JSON_RUST_HARNESS: &str = r#"use codegen_runtime::{parse_json, serialize_json};
 use ferrule_generated_mapping::{execute, execute_json};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -1849,7 +2037,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 "#;
 
-const PROTOBUF_TARGET_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
+const TYPED_JSON_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
 using Ferrule.Runtime;
 
 var input = File.ReadAllText(args[0]);
@@ -1878,6 +2066,103 @@ fn corpus_csv_bytes(project: &Project, instance: &Instance) -> TestResult<Vec<u8
         project.target_options.has_header_row.unwrap_or(true),
     )?
     .into_bytes())
+}
+
+fn corpus_xlsx_cells(project: &Project, instance: &Instance) -> TestResult<Vec<Instance>> {
+    let rows = instance.as_repeated().expect("XLSX target rows");
+    let options = &project.target_options;
+    let sheet = options.xlsx_sheet.as_deref();
+    let start_row = options.xlsx_start_row.unwrap_or(1);
+    let columns = &options.xlsx_columns;
+    let has_header = options.has_header_row.unwrap_or(true);
+    let bytes = format_xlsx::to_bytes_with_options(
+        &project.target,
+        rows,
+        format_xlsx::FlatTableWriteOptions {
+            sheet,
+            start_row,
+            columns,
+            headers: &options.xlsx_headers,
+            has_header,
+        },
+    )?;
+    let ir::SchemaKind::Group { children, .. } = &project.target.kind else {
+        panic!("XLSX target must be a flat group");
+    };
+    let header_schema = SchemaNode::group(
+        "Workbook header",
+        children
+            .iter()
+            .map(|child| SchemaNode::scalar(&child.name, ScalarType::String))
+            .collect(),
+    );
+    let header_rows =
+        format_xlsx::from_bytes(&bytes, &header_schema, sheet, start_row, columns, false)?;
+    let expected_header = Instance::Group(
+        children
+            .iter()
+            .enumerate()
+            .map(|(index, child)| {
+                let label = options
+                    .xlsx_headers
+                    .get(index)
+                    .unwrap_or(&child.name)
+                    .clone();
+                (child.name.clone(), Instance::Scalar(Value::String(label)))
+            })
+            .collect(),
+    );
+    assert_eq!(
+        header_rows.first(),
+        Some(&expected_header),
+        "XLSX header cells"
+    );
+    Ok(format_xlsx::from_bytes(
+        &bytes,
+        &project.target,
+        sheet,
+        start_row,
+        columns,
+        has_header,
+    )?)
+}
+
+fn assert_generated_xlsx_cells(
+    project: &Project,
+    generated_json: &serde_json::Value,
+    expected_cells: &[Instance],
+    sample: &str,
+    backend: &str,
+) -> TestResult<()> {
+    let generated =
+        format_json::from_str(&serde_json::to_string(generated_json)?, &project.target)?;
+    assert_eq!(
+        corpus_xlsx_cells(project, &generated)?,
+        expected_cells,
+        "{sample}: generated {backend} workbook cells differ from the interpreter"
+    );
+    Ok(())
+}
+
+fn assert_generated_xbrl(
+    project: &Project,
+    generated_json: &serde_json::Value,
+    expected_xbrl: &str,
+    sample: &str,
+    backend: &str,
+) -> TestResult<()> {
+    let generated =
+        format_json::from_str(&serde_json::to_string(generated_json)?, &project.target)?;
+    let xbrl = format_xbrl::to_string(
+        &project.target,
+        &generated,
+        project.target_options.xbrl.as_ref().expect("XBRL target"),
+    )?;
+    assert_eq!(
+        xbrl, expected_xbrl,
+        "{sample}: generated {backend} XBRL instance differs from the interpreter"
+    );
+    Ok(())
 }
 
 fn assert_generated_csv_bytes(

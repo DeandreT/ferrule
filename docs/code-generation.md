@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports thirty-four warning-free designs: JSON to
+An opt-in local-corpus smoke test imports thirty-seven warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -578,10 +578,36 @@ salutation `Mrs`, and date `20200430`. The test pins the interpreter's exact
 headerless CSV bytes and compares generated Rust and C# results after the same
 CSV writer. Generated hosts receive the parsed JSON source; they do not parse
 X12 themselves. No native reference CSV output is pinned for this design.
+The thirty-fifth reads a local XBRL income table and maps four statement
+periods to a new XLSX worksheet named `Operating Expenses`. The test verifies
+that the XBRL reader's typed source survives schema-shaped JSON transport,
+then pins the ordered dates and totals, including `3,454,000,000` for the
+first period. Generated Rust and C# typed and JSON APIs must agree with the
+interpreter. The same flat-table writer produces each workbook, whose sheet,
+header, and typed cells are decoded and compared; ZIP bytes are not used as a
+semantic equality check. No native reference workbook is pinned for this
+design.
+The thirty-sixth reads a local SQLite account database, follows nested
+user-to-group-to-application relationships, and maps four ordered users to
+headerless CSV. The test checks the shared application on the first three
+rows and the last row's `Misc.` and `No Description` fallbacks. Its relational
+source survives schema-shaped JSON transport; generated Rust and C# typed
+and JSON APIs match the interpreter, including exact CSV bytes from the same
+writer. No native reference CSV output is pinned for this design.
+The thirty-seventh reads four periods and their duration facts from a local
+SQLite database and maps them to an XBRL income statement. The test checks
+the writer's four contexts, two units, and 100 ordered facts, including the
+first period's passenger revenue and net income. Its relational source and
+mapped target survive schema-shaped JSON transport; generated Rust and C#
+typed and JSON APIs match the interpreter, and the same XBRL writer produces
+identical instance bytes. No native reference XBRL output is pinned for this
+design.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
 when the ignored `samples/ReferenceSamples` corpus and .NET 10 SDK are present.
+Set `FERRULE_REFERENCE_CORPUS_CASE` to a sample path such as
+`DB_ApplicationList.mfd` to run one case while developing it.
 The corpus files are never added to the repository. This checks generated
 backends against the local interpreter; the yearly-temperature mapping has
 no pinned native reference output in the corpus.
