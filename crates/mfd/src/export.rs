@@ -17,6 +17,7 @@ mod auto_number;
 mod compatibility;
 mod concatenation;
 mod database;
+mod database_where;
 mod database_xml;
 mod dynamic_json;
 mod edi;
@@ -341,6 +342,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     }
     let primary_target = &targets[0];
     let mixed_database_pairs = pair_mixed_databases(&sources, &targets);
+    let native_database_where = database_where::NativeWhere::plan(project, &sources, &targets);
     let native_database_xml =
         database_xml::DirectColumns::plan(project, &sources, &targets, &mixed_database_pairs);
 
@@ -365,6 +367,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         warnings: &mut warnings,
     });
     let mut blocked_nodes = dynamic_sources.owned_nodes().clone();
+    if let Some(plan) = &native_database_where {
+        blocked_nodes.extend(plan.absorbed_nodes());
+    }
     for target in &targets {
         blocked_nodes.extend(target.mapped_scope_plans.absorbed_nodes());
     }
@@ -455,10 +460,18 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     let mut exception_branches = exception::Branches::new(project);
     for (target_index, target) in targets.iter().enumerate() {
         let prior_position_contexts = position_contexts.clone();
+        let native_scope = if target_index == 0 {
+            native_database_where
+                .as_ref()
+                .map(|plan| plan.scope_without_controls(target.root))
+        } else {
+            None
+        };
         let static_root = target
             .dynamic_json
             .as_ref()
             .map_or(Some(target.root), dynamic_json::TargetPlan::static_root);
+        let static_root = native_scope.as_ref().or(static_root);
         if let Some(static_root) = static_root {
             recursive::render_construction(recursive::RenderArgs {
                 scope: static_root,
@@ -518,6 +531,15 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                     .to_string(),
             ));
         }
+    }
+    if let Some(plan) = &native_database_where {
+        plan.connect(
+            &node_out_key,
+            &mut keys,
+            &mut uid,
+            &mut components,
+            &mut edges,
+        )?;
     }
     exception_branches.render(exception::RenderArgs {
         graph: &project.graph,
