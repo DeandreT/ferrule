@@ -26,7 +26,7 @@ public static partial class FerruleFunctions
 
         try
         {
-            FerruleJson.ValidateSchema(schema);
+            FerruleJson.ValidateFunctionSchema(schema);
         }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
         {
@@ -40,7 +40,7 @@ public static partial class FerruleFunctions
         FerruleInstance parsed;
         try
         {
-            parsed = FerruleJson.Parse(schema, input.StringValue);
+            parsed = FerruleJson.ParseFunctionInput(schema, input.StringValue);
         }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
         {

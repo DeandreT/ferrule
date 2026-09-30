@@ -165,6 +165,10 @@ embedded schema is limited to 1 MiB. Invalid JSON shape, non-exact numeric
 conversion, output serialization, and size failures remain typed boundary
 errors.
 
+Ordinary collections within that byte limit have no general instance-node
+count cap. Keyword-specific validation budgets, such as `uniqueItems` and
+pattern matching, retain their own limits.
+
 JSON text and property names must contain valid Unicode scalar values. Both
 backends reject malformed UTF-8, unpaired escaped surrogates, and numbers
 outside the finite JSON number domain throughout the input document, including
@@ -207,6 +211,14 @@ its serialized descriptor is read back is rejected with a typed error naming
 the schema, including unstable floating bounds and alternative predicates.
 These constraints remain usable by the interpreter; generated support for
 their complete floating-point domain is still open.
+
+The `json_parse_field` graph function parses its raw schema descriptor and
+input string using the interpreter's function contract. It does not inherit
+the generated host entry points' schema/document byte caps or a general
+instance-node cap. Both backends still enforce JSON syntax depth, recursive
+schema and keyword-specific validation limits, and valid Unicode/numbers.
+Null inputs return Null before either descriptor is parsed; non-null calls
+validate the schema, field path, and input in that order.
 
 Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated

@@ -241,13 +241,6 @@ public static partial class FerruleJson
         NodeBudget budget,
         int depth)
     {
-        if (items.Count > MaximumNodes)
-        {
-            budget.MarkFatalTraversalLimit();
-            throw Boundary(
-                $"Normalized JSON array '{schema.Name}' exceeds the {MaximumNodes}-item limit.");
-        }
-
         var documents = new List<JsonDocument>(items.Count);
         try
         {

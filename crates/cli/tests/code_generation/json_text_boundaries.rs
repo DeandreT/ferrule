@@ -162,6 +162,59 @@ fn generated_arbitrary_json_canonicalization_matches_interpreter() -> TestResult
 }
 
 #[test]
+fn generated_json_field_projection_preserves_large_raw_descriptors() -> TestResult<()> {
+    let mut project = text_boundary_project();
+    project.source = SchemaNode::group("Source", vec![string("Text")]);
+    project.target = SchemaNode::group("Target", vec![int("Value")]);
+    // This is a raw graph string, rather than one of the generated host's
+    // trusted boundary schemas. Native projection has no descriptor byte cap.
+    let descriptor = format!(
+        r#"{{"name":"Embedded","padding":"{}","kind":{{"kind":"scalar","ty":"int"}}}}"#,
+        "x".repeat(codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)
+    );
+    assert!(descriptor.len() > codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES);
+    project.graph.nodes = BTreeMap::from([
+        (
+            1,
+            Node::SourceField {
+                path: vec!["Text".into()],
+                frame: None,
+            },
+        ),
+        (
+            2,
+            Node::Const {
+                value: Value::String(descriptor),
+            },
+        ),
+        (
+            3,
+            Node::Const {
+                value: Value::String("[]".into()),
+            },
+        ),
+        (
+            4,
+            Node::Call {
+                function: "json_parse_field".into(),
+                args: vec![1, 2, 3],
+            },
+        ),
+    ]);
+    project.root = Scope {
+        bindings: vec![Binding {
+            target_field: "Value".into(),
+            node: 4,
+        }],
+        ..Scope::default()
+    };
+    let inputs = ["7", "-9", "9007199254740993", "0"]
+        .map(|text| serde_json::json!({"Text": text}).to_string());
+    let cases = interpreter_cases(&project, &inputs)?;
+    run_generated_boundary_cases(&project, &cases, "json_projection_descriptor")
+}
+
+#[test]
 fn generated_json_numeric_domains_match_interpreter() -> TestResult<()> {
     for ty in [ScalarType::Float, ScalarType::Int] {
         let mut project = text_boundary_project();
