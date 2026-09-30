@@ -126,7 +126,7 @@ pub(super) fn profile(xml: &str, warnings: Vec<String>) -> Result<ExportReport, 
                 &mut issues,
                 node,
                 ExportCompatibilityFeature::EdiSchema,
-                "EDI entry shape and cardinality are retained in Ferrule metadata rather than a generated native EDI configuration",
+                "EDI entry shape and cardinality rely on Ferrule metadata; native boundary compatibility has not been established",
             );
         }
         if node.has_tag_name("wsdl") && node.attribute("httpmethod") == Some("POST") {
@@ -216,7 +216,7 @@ fn element_dependency(name: &str) -> Option<(ExportCompatibilityFeature, &str)> 
         ),
         "ferrule-idoc-native-config" => (
             EdiConfigDescriptor,
-            "the certified IDoc configuration is retained in Ferrule metadata, not emitted as a native configuration file",
+            "the IDoc descriptor remains in Ferrule metadata alongside a generated native configuration; native settings and runtime behavior are not yet proven equivalent",
         ),
         "ferrule-lexical-formats" => (
             EdiLexicalFormats,
