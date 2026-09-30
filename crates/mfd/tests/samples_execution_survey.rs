@@ -1,4 +1,4 @@
-//! Read-only execution survey over the local gitignored ReferenceSamples corpus.
+//! Read-only design-preview execution survey over the local gitignored ReferenceSamples corpus.
 //!
 //! Run with:
 //! `cargo test -p mfd --test samples_execution_survey -- --ignored --nocapture`.
@@ -66,7 +66,7 @@ use survey_import_options::{SurveyResourceProvenance, SurveyResourceSelection};
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const JSON_REPORT_ENV: &str = "FERRULE_EXECUTION_SURVEY_JSON";
 const DETAILS_ENV: &str = "FERRULE_EXECUTION_SURVEY_DETAILS";
-const REPORT_SCHEMA_VERSION: u32 = 2;
+const REPORT_SCHEMA_VERSION: u32 = 3;
 const FIXED_CURRENT_DATETIME: &str = "2000-01-01T00:00:00-08:00";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -551,6 +551,16 @@ fn survey_file(
             return outcome;
         }
     };
+    let unsupported_preview_contract = imported
+        .warnings
+        .iter()
+        .find(|warning| {
+            warning.contains("with design-time preview")
+                || warning.contains("has only a design-time preview value")
+                || (warning.contains("design-time preview value")
+                    && warning.contains("dependent value skipped"))
+        })
+        .cloned();
     outcome.import = StageOutcome {
         status: Status::Passed,
         message: (!imported.warnings.is_empty()).then(|| {
@@ -638,6 +648,7 @@ fn survey_file(
     };
     let execution = engine::ExecutionContext::new(&runtime_mapping_path)
         .with_current_datetime(FIXED_CURRENT_DATETIME)
+        .with_purpose(engine::ExecutionPurpose::Preview)
         .with_dynamic_source_loader(&dynamic_loader);
     let outputs = match engine::run_outputs_with_sources_and_context(
         &imported.project,
@@ -687,6 +698,13 @@ fn survey_file(
     };
     outcome.output = Some(written.primary.display().to_string());
     outcome.output_write = StageOutcome::passed();
+
+    if let Some(reason) = unsupported_preview_contract {
+        outcome.reference_match = StageOutcome::skipped(format!(
+            "design-preview reference comparison is unavailable: {reason}"
+        ));
+        return outcome;
+    }
 
     if has_nondeterministic_current_time(&imported.project.graph)
         || has_nondeterministic_edi_autocomplete(
@@ -840,6 +858,7 @@ fn write_json_report(
     let report = serde_json::json!({
         "schema_version": REPORT_SCHEMA_VERSION,
         "kind": "ferrule.mfd_sample_execution",
+        "execution_purpose": "design_preview",
         "samples_dir": samples_root,
         "resource_configuration": resource_configuration.to_json(),
         "safety": {
@@ -1424,7 +1443,10 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
         .collect::<Vec<_>>();
     let summary = Summary::from_outcomes(&outcomes);
 
-    println!("== mfd sample execution survey: {} files ==", summary.total);
+    println!(
+        "== mfd design-preview execution survey: {} files ==",
+        summary.total
+    );
     println!(
         "imported and engine-valid: {}/{}",
         summary.valid, summary.imported
@@ -1464,7 +1486,7 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
         println!("json report: {}", report_path.display());
     }
     survey_gate::enforce_exact(
-        "MFD execution/reference survey",
+        "MFD design-preview execution/reference survey",
         &[
             ("total", summary.total, 187),
             ("imported", summary.imported, 187),
@@ -1472,7 +1494,7 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
             ("dependency_blocked", summary.dependency_blocked, 12),
             ("execution_attempted", summary.execution_attempted, 168),
             ("execution_passed", summary.execution_passed, 168),
-            ("outputs_written", summary.outputs_written, 165),
+            ("outputs_written", summary.outputs_written, 164),
             (
                 "output_expected_failures",
                 summary.output_expected_failures,

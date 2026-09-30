@@ -279,6 +279,7 @@ fn numeric_udf_fold_rejects_non_float32_callers_and_changed_or_shared_wrappers()
         Node::RuntimeParameter {
             name: "height".into(),
             ty: ScalarType::Float,
+            preview: None,
         },
     );
     strict_rejects(&runtime_caller, &directory.0);

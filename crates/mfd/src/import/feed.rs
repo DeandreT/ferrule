@@ -431,6 +431,7 @@ impl GraphBuilder<'_> {
             }
             let connected_feed = self.input_feed(idx, 0);
             let input_parameter = self.fn_components[idx].input_parameter_name.clone();
+            let preview = self.fn_components[idx].input_preview.clone();
             if let (Some(feed), Some(parameter)) = (connected_feed, &input_parameter)
                 && parameter.optional
             {
@@ -441,36 +442,34 @@ impl GraphBuilder<'_> {
                         .input_type
                         .unwrap_or(ir::ScalarType::String),
                     default,
+                    preview,
                 });
                 self.fn_nodes.insert(idx, node);
                 return Some(node);
             }
-            if let (None, Some(parameter), Some(preview)) = (
-                connected_feed,
-                &input_parameter,
-                self.fn_components[idx].input_preview.clone(),
-            ) && parameter.optional
+            if connected_feed.is_none()
+                && let Some(parameter) = &input_parameter
+                && parameter.optional
+                && preview.is_some()
             {
-                // An enabled preview on an optional named input supplies its
-                // default only when the host did not supply that name.
-                let default = self.alloc(mapping::Node::Const { value: preview });
-                let node = self.alloc(mapping::Node::RuntimeParameterDefault {
-                    name: parameter.name.clone(),
-                    ty: self.fn_components[idx]
-                        .input_type
-                        .unwrap_or(ir::ScalarType::String),
-                    default,
-                });
-                self.fn_nodes.insert(idx, node);
-                return Some(node);
+                self.warnings.push(format!(
+                    "optional input parameter `{}` has a design-time preview value but no connected runtime default; runtime omission semantics are unsupported; dependent value skipped",
+                    parameter.name
+                ));
+                return None;
+            }
+            if connected_feed.is_none() && input_parameter.is_none() && preview.is_some() {
+                self.warnings.push(format!(
+                    "input component `{}` has a design-time preview value but no named runtime parameter or connected default; dependent value skipped",
+                    self.fn_components[idx].name
+                ));
+                return None;
             }
             let input_parameter_name = input_parameter.map(|parameter| parameter.name);
             let input = match connected_feed {
                 Some(feed) => self.value_node(feed),
                 None => {
-                    if let Some(value) = self.fn_components[idx].input_preview.clone() {
-                        Some(self.alloc(mapping::Node::Const { value }))
-                    } else if let Some(name) = input_parameter_name.clone() {
+                    if let Some(name) = input_parameter_name.clone() {
                         // RuntimeParameter already performs the declared scalar
                         // coercion. Adding another input conversion would grow
                         // the graph after each native export/reimport cycle.
@@ -479,6 +478,7 @@ impl GraphBuilder<'_> {
                             ty: self.fn_components[idx]
                                 .input_type
                                 .unwrap_or(ir::ScalarType::String),
+                            preview,
                         });
                         self.fn_nodes.insert(idx, node);
                         return Some(node);
@@ -1102,6 +1102,7 @@ mod tests {
                 Node::RuntimeParameter {
                     name: "count".into(),
                     ty: ScalarType::Float,
+                    preview: None,
                 },
                 false,
             ),
