@@ -200,6 +200,14 @@ floating-point value, so generated Rust validates its normalized JSON tree
 directly; valid arbitrary-JSON leaves also retain their own input depth check
 when nested into a deeper final target document.
 
+Both emitters check embedded schemas before returning generated artifacts.
+JSON boundary descriptors must fit 1 MiB; XML serialization expressions keep
+their separate 8 MiB descriptor limit. A schema whose metadata changes when
+its serialized descriptor is read back is rejected with a typed error naming
+the schema, including unstable floating bounds and alternative predicates.
+These constraints remain usable by the interpreter; generated support for
+their complete floating-point domain is still open.
+
 Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated
 output in Rust and C#, including after supported output coercion. Embedded

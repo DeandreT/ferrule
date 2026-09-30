@@ -99,8 +99,10 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 indent,
                 namespace,
             } => {
-                let schema = serde_json::to_string(schema)
-                    .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
+                let schema = codegen::serialize_embedded_schema(
+                    schema,
+                    codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
+                )?;
                 output.push_str("\n    {\n        var instance = context.ResolveXmlInstance(");
                 match frame {
                     Some(frame) => render_path(frame, &mut output),
@@ -959,32 +961,45 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
         .iter()
         .filter(|source| source.dynamic.is_some())
         .collect::<Vec<_>>();
-    let source_schema = serde_json::to_string(&program.source)
-        .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
-    let target_schema = serde_json::to_string(&program.target)
-        .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
+    let source_schema = codegen::serialize_embedded_schema(
+        &program.source,
+        codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES,
+    )?;
+    let target_schema = codegen::serialize_embedded_schema(
+        &program.target,
+        codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES,
+    )?;
     let extra_source_schemas = program
         .extra_sources
         .iter()
         .filter(|source| source.dynamic.is_none())
         .map(|source| {
-            serde_json::to_string(&source.source)
-                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))
+            codegen::serialize_embedded_schema(
+                &source.source,
+                codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES,
+            )
+            .map_err(EmitError::from)
         })
         .collect::<Result<Vec<_>, _>>()?;
     let dynamic_source_schemas = dynamic_sources
         .iter()
         .map(|source| {
-            serde_json::to_string(&source.source)
-                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))
+            codegen::serialize_embedded_schema(
+                &source.source,
+                codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES,
+            )
+            .map_err(EmitError::from)
         })
         .collect::<Result<Vec<_>, _>>()?;
     let extra_target_schemas = program
         .extra_targets
         .iter()
         .map(|target| {
-            serde_json::to_string(&target.target)
-                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))
+            codegen::serialize_embedded_schema(
+                &target.target,
+                codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES,
+            )
+            .map_err(EmitError::from)
         })
         .collect::<Result<Vec<_>, _>>()?;
 

@@ -1,0 +1,15 @@
+{
+  "source": {"name": "Source", "kind": {"kind": "group", "children": []}},
+  "target": {
+    "name": "Target",
+    "kind": {"kind": "group", "children": [
+      {
+        "name": "Out",
+        "numeric_range": {"kind": "number", "bounds": {"minimum": {"value": 1e-307}}},
+        "kind": {"kind": "scalar", "ty": "float"}
+      }
+    ]}
+  },
+  "graph": {"nodes": {"0": {"kind": "const", "value": 1.0000000000000001e-307}}},
+  "root": {"bindings": [{"target_field": "Out", "node": 0}], "children": []}
+}
