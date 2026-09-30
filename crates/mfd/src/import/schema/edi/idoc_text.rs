@@ -104,7 +104,7 @@ fn parse(text: &Node<'_, '_>) -> Result<IdocNativeTextSettings, String> {
             return Err(format!("unsupported or missing `{name}` code"));
         }
     }
-    let text_children = child_elements(text)?;
+    let text_children = child_elements(text, 3)?;
     if text_children.iter().any(|child| {
         !matches!(
             child.tag_name().name(),
@@ -136,7 +136,7 @@ fn parse(text: &Node<'_, '_>) -> Result<IdocNativeTextSettings, String> {
     let unpacked_format = parse_bool(settings.attribute("unpackedformat"))?;
     let autocomplete_data = parse_bool(settings.attribute("autocompletedata"))?;
     let terminate_with_line_feed = parse_bool(settings.attribute("terminatewithlinefeed"))?;
-    let settings_children = child_elements(settings)?;
+    let settings_children = child_elements(settings, 2)?;
     if settings_children.len() != 2
         || !settings_children[0].has_tag_name("separators")
         || !settings_children[1].has_tag_name("validation")
@@ -179,15 +179,13 @@ fn parse_separators(node: &Node<'_, '_>) -> Result<(), String> {
             return Err(format!("unsupported `{name}` separator"));
         }
     }
-    if !child_elements(node)?.is_empty() {
-        return Err("IDoc separators cannot contain child elements".into());
-    }
+    child_elements(node, 0)?;
     Ok(())
 }
 
 fn parse_validation(node: &Node<'_, '_>) -> Result<Vec<IdocNativeValidationCase>, String> {
     exact_attributes(node, &[])?;
-    let children = child_elements(node)?;
+    let children = child_elements(node, mapping::IDOC_NATIVE_VALIDATION_CASES)?;
     if children.len() != mapping::IDOC_NATIVE_VALIDATION_CASES {
         return Err("IDoc validation requires exactly 16 cases".into());
     }
@@ -198,9 +196,7 @@ fn parse_validation(node: &Node<'_, '_>) -> Result<Vec<IdocNativeValidationCase>
                 return Err("unknown IDoc validation child".into());
             }
             exact_attributes(&child, &["kind", "action"])?;
-            if !child_elements(&child)?.is_empty() {
-                return Err("IDoc validation case cannot contain child elements".into());
-            }
+            child_elements(&child, 0)?;
             let kind = child
                 .attribute("kind")
                 .and_then(IdocNativeValidationKind::from_native_name)
@@ -228,16 +224,32 @@ fn exact_attributes(node: &Node<'_, '_>, names: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn child_elements<'a, 'input>(node: &Node<'a, 'input>) -> Result<Vec<Node<'a, 'input>>, String> {
-    if node.children().any(|child| {
-        (child.is_element() && child.tag_name().namespace().is_some())
-            || (!child.is_element()
-                && !(child.is_text() && child.text().is_some_and(|text| text.trim().is_empty())))
-    }) {
-        return Err(format!(
-            "unexpected content inside `{}`",
-            node.tag_name().name()
-        ));
+fn child_elements<'a, 'input>(
+    node: &Node<'a, 'input>,
+    max_elements: usize,
+) -> Result<Vec<Node<'a, 'input>>, String> {
+    let mut elements = Vec::with_capacity(max_elements);
+    for child in node.children() {
+        if child.is_element() {
+            if child.tag_name().namespace().is_some() {
+                return Err(format!(
+                    "unexpected content inside `{}`",
+                    node.tag_name().name()
+                ));
+            }
+            if elements.len() >= max_elements {
+                return Err(format!(
+                    "too many child elements inside `{}`",
+                    node.tag_name().name()
+                ));
+            }
+            elements.push(child);
+        } else if !(child.is_text() && child.text().is_some_and(|text| text.trim().is_empty())) {
+            return Err(format!(
+                "unexpected content inside `{}`",
+                node.tag_name().name()
+            ));
+        }
     }
-    Ok(node.children().filter(Node::is_element).collect())
+    Ok(elements)
 }
