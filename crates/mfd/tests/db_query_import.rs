@@ -165,6 +165,27 @@ fn prepare_joined_query(dir: &Path) -> PathBuf {
     design
 }
 
+fn prepare_joined_query_with_runtime_literal(dir: &Path) -> PathBuf {
+    let design = prepare_joined_query(dir);
+    let text = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace(
+            "<sources><datapoint/></sources><targets><datapoint pos=\"0\" key=\"10\"/></targets>",
+            "<sources><datapoint pos=\"0\" key=\"61\"/></sources><targets><datapoint pos=\"0\" key=\"10\"/></targets>",
+        )
+        .replace(
+            "<component name=\"MinimumUnits\" library=\"core\"",
+            "<component name=\"constant\" library=\"core\" uid=\"99\" kind=\"2\"><targets><datapoint pos=\"0\" key=\"60\"/></targets><data><constant datatype=\"string\" value=\"2\"/></data></component><component name=\"MinimumUnits\" library=\"core\"",
+        )
+        .replace(
+            "<graph><vertices>",
+            "<graph><vertices><vertex vertexkey=\"60\"><edges><edge vertexkey=\"61\"/></edges></vertex>",
+        );
+    assert!(text.contains("key=\"61\""));
+    std::fs::write(&design, text).unwrap();
+    design
+}
+
 fn prepare_required_host_joined_query(dir: &Path) -> PathBuf {
     let design = prepare_joined_query(dir);
     let mut text = std::fs::read_to_string(&design)
@@ -581,7 +602,7 @@ fn static_query_sqlite_comma_limit_lowers_to_sequence_windows() {
 #[test]
 fn many_to_one_joined_query_imports_computed_projection_and_filter() {
     let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let design = prepare_joined_query_with_runtime_literal(&dir.0);
 
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -631,7 +652,7 @@ fn many_to_one_joined_query_imports_computed_projection_and_filter() {
 #[test]
 fn joined_query_recovers_native_select_without_internal_multiply() {
     let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let design = prepare_joined_query_with_runtime_literal(&dir.0);
     let mut text = std::fs::read_to_string(&design).unwrap();
     let begin = text.find("<outputnodefunctions>").unwrap();
     let end = text.find("</outputnodefunctions>").unwrap() + "</outputnodefunctions>".len();
@@ -684,7 +705,7 @@ fn joined_query_recovers_native_select_without_internal_multiply() {
 #[test]
 fn optional_typed_query_threshold_keeps_host_override_through_native_export() {
     let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let design = prepare_joined_query_with_runtime_literal(&dir.0);
     let mut text = std::fs::read_to_string(&design)
         .unwrap()
         .replace(
@@ -694,6 +715,10 @@ fn optional_typed_query_threshold_keeps_host_override_through_native_export() {
         .replace(
             "datatype=\"string\" previewvalue=\"2\"",
             "datatype=\"integer\" previewvalue=\"2\"",
+        )
+        .replace(
+            "<constant datatype=\"string\" value=\"2\"/>",
+            "<constant datatype=\"integer\" value=\"2\"/>",
         )
         .replace(
             "usageKind=\"input\" name=\"MinimumUnits\"",
@@ -837,7 +862,8 @@ fn required_host_only_query_threshold_survives_two_native_cycles() {
                     node,
                     mapping::Node::RuntimeParameter {
                         name,
-                        ty: ir::ScalarType::Int
+                        ty: ir::ScalarType::Int,
+                        ..
                     } if name == "MinimumUnits"
                 ))
                 .count(),
@@ -891,7 +917,7 @@ fn required_host_only_query_threshold_survives_two_native_cycles() {
 }
 
 #[test]
-fn required_host_query_types_fail_closed_and_required_preview_stays_literal() {
+fn required_host_query_types_and_cross_type_preview_fail_closed() {
     let dir = TempDir::new();
     let design = prepare_required_host_joined_query(&dir.0);
     let host_only = std::fs::read_to_string(&design).unwrap();
@@ -933,8 +959,7 @@ fn required_host_query_types_fail_closed_and_required_preview_stays_literal() {
         optional_without_default
             .warnings
             .iter()
-            .any(|warning| warning
-                .contains("neither an upstream value nor an enabled preview value"))
+            .any(|warning| warning.contains("no connected runtime value"))
     );
     assert!(
         !optional_without_default
@@ -950,10 +975,47 @@ fn required_host_query_types_fail_closed_and_required_preview_stays_literal() {
             ))
     );
 
+    let text = host_only
+        .replace(
+            "<input datatype=\"integer\"/>",
+            "<input datatype=\"integer\" previewvalue=\"2\" usepreviewvalue=\"1\"/>",
+        )
+        .replace(
+            "usageKind=\"input\" name=\"MinimumUnits\"",
+            "usageKind=\"input\" name=\"MinimumUnits\" optional=\"1\"",
+        );
+    std::fs::write(&design, text).unwrap();
+    let optional_preview_only = mfd::import(&design).unwrap();
+    assert!(
+        optional_preview_only.warnings.iter().any(|warning| {
+            warning.contains("design-time preview value") && warning.contains("iteration skipped")
+        }),
+        "{:?}",
+        optional_preview_only.warnings
+    );
+    let input = format_db::read_instance(
+        &dir.0.join("purchases.sqlite"),
+        &optional_preview_only.project.source,
+    )
+    .unwrap();
+    let preview =
+        engine::ExecutionContext::new(&design).with_purpose(engine::ExecutionPurpose::Preview);
+    let output =
+        engine::run_with_context(&optional_preview_only.project, &input, &preview).unwrap();
+    assert!(
+        matches!(&output, Instance::Group(fields) if fields.is_empty())
+            || matches!(&output, Instance::Repeated(rows) if rows.is_empty()),
+        "an optional preview without a runtime default must not unfilter the query: {output:?}"
+    );
+
     let dir = TempDir::new();
     let design = prepare_joined_query(&dir.0);
     let preview = mfd::import(&design).unwrap();
-    assert!(preview.warnings.is_empty(), "{:?}", preview.warnings);
+    assert!(preview.warnings.iter().any(|warning| {
+        warning.contains("required host query parameter")
+            && warning.contains("same scalar type")
+            && warning.contains("iteration skipped")
+    }));
     assert!(!preview.project.graph.nodes.values().any(|node| matches!(
         node,
         mapping::Node::RuntimeParameter { name, .. }
@@ -965,59 +1027,175 @@ fn required_host_query_types_fail_closed_and_required_preview_stays_literal() {
     let mut parameters = engine::RuntimeParameters::new();
     parameters.insert("MinimumUnits", Value::Int(4)).unwrap();
     let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
-    assert_eq!(
-        engine::run_with_context(&preview.project, &input, &context)
-            .unwrap()
-            .as_repeated()
-            .unwrap()
-            .len(),
-        3,
-        "a required preview-only input retains its literal query threshold"
+    let output = engine::run_with_context(&preview.project, &input, &context).unwrap();
+    assert!(
+        matches!(&output, Instance::Group(fields) if fields.is_empty())
+            || matches!(&output, Instance::Repeated(rows) if rows.is_empty()),
+        "an unsupported cross-type preview query must not iterate unfiltered rows: {output:?}"
     );
+}
+
+#[test]
+fn exact_required_preview_query_is_host_required_at_runtime_and_previewed_only_by_purpose() {
+    let dir = TempDir::new();
+    let design = prepare_joined_query(&dir.0);
+    let mut text = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace(
+            "name=\"MinimumUnits\" type=\"text\"",
+            "name=\"MinimumUnits\" type=\"integer\"",
+        )
+        .replace(
+            "datatype=\"string\" previewvalue=\"2\"",
+            "datatype=\"integer\" previewvalue=\"2\"",
+        );
+    let begin = text.find("<outputnodefunctions>").unwrap();
+    let end = text.find("</outputnodefunctions>").unwrap() + "</outputnodefunctions>".len();
+    text.replace_range(begin..end, "");
+    std::fs::write(&design, text).unwrap();
+    let first = mfd::import(&design).unwrap();
+    assert!(first.warnings.is_empty(), "{:?}", first.warnings);
+    let mut projects = vec![first.project];
+    for cycle in 0..2 {
+        let exported = dir.0.join(format!("preview-threshold-{cycle}.mfd"));
+        let report = mfd::export_with_profile(
+            projects.last().unwrap(),
+            &exported,
+            mfd::ExportProfile::NativeMfd,
+        )
+        .unwrap();
+        assert!(report.is_native_compatible(), "{report}");
+        let native = std::fs::read_to_string(&exported).unwrap();
+        assert!(native.contains("previewvalue=\"2\" usepreviewvalue=\"1\""));
+        assert!(native.contains(":HostThreshold"));
+        let restored = mfd::import(&exported).unwrap();
+        assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+        projects.push(restored.project);
+    }
+    for project in &projects {
+        assert!(project.graph.nodes.values().any(|node| matches!(
+            node,
+            mapping::Node::RuntimeParameter {
+                name,
+                ty: ir::ScalarType::Int,
+                preview: Some(preview),
+            } if name == "MinimumUnits" && preview == "2"
+        )));
+        let input =
+            format_db::read_instance(&dir.0.join("purchases.sqlite"), &project.source).unwrap();
+        assert!(matches!(
+            engine::run(project, &input),
+            Err(engine::EngineError::MissingRuntimeParameter { name, .. })
+                if name == "MinimumUnits"
+        ));
+        let preview_context =
+            engine::ExecutionContext::new(&design).with_purpose(engine::ExecutionPurpose::Preview);
+        assert_eq!(
+            engine::run_with_context(project, &input, &preview_context)
+                .unwrap()
+                .as_repeated()
+                .unwrap()
+                .len(),
+            3
+        );
+        for (value, expected) in [(Value::Int(4), 1), (Value::Null, 0)] {
+            let mut parameters = engine::RuntimeParameters::new();
+            parameters.insert("MinimumUnits", value).unwrap();
+            let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
+            assert_eq!(
+                engine::run_with_context(project, &input, &context)
+                    .unwrap()
+                    .as_repeated()
+                    .unwrap()
+                    .len(),
+                expected
+            );
+        }
+    }
 }
 
 #[test]
 fn optional_connected_query_default_keeps_host_override() {
     let dir = TempDir::new();
     let design = prepare_joined_query(&dir.0);
-    let text = std::fs::read_to_string(&design).unwrap()
+    let mut text = std::fs::read_to_string(&design).unwrap()
         .replace("name=\"MinimumUnits\" type=\"text\"", "name=\"MinimumUnits\" type=\"integer\"")
-        .replace("datatype=\"string\" previewvalue=\"2\" usepreviewvalue=\"1\"", "datatype=\"integer\"")
+        .replace("datatype=\"string\" previewvalue=\"2\" usepreviewvalue=\"1\"", "datatype=\"integer\" previewvalue=\"2\" usepreviewvalue=\"1\"")
         .replace("usageKind=\"input\" name=\"MinimumUnits\"", "usageKind=\"input\" name=\"MinimumUnits\" optional=\"1\"")
         .replace("<sources><datapoint/></sources>", "<sources><datapoint pos=\"0\" key=\"61\"/></sources>")
-        .replace("<component name=\"MinimumUnits\" library=\"core\"", "<component name=\"constant\" library=\"core\" uid=\"99\" kind=\"2\"><targets><datapoint pos=\"0\" key=\"60\"/></targets><data><constant datatype=\"integer\" value=\"2\"/></data></component><component name=\"MinimumUnits\" library=\"core\"")
+        .replace("<component name=\"MinimumUnits\" library=\"core\"", "<component name=\"constant\" library=\"core\" uid=\"99\" kind=\"2\"><targets><datapoint pos=\"0\" key=\"60\"/></targets><data><constant datatype=\"integer\" value=\"1\"/></data></component><component name=\"MinimumUnits\" library=\"core\"")
         .replace("<graph><vertices>", "<graph><vertices><vertex vertexkey=\"60\"><edges><edge vertexkey=\"61\"/></edges></vertex>");
+    let begin = text.find("<outputnodefunctions>").unwrap();
+    let end = text.find("</outputnodefunctions>").unwrap() + "</outputnodefunctions>".len();
+    text.replace_range(begin..end, "");
     std::fs::write(&design, text).unwrap();
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    let input = format_db::read_instance(&dir.0.join("purchases.sqlite"), &imported.project.source)
-        .unwrap();
-    assert_eq!(
-        engine::run(&imported.project, &input)
+    let exported = dir.0.join("optional-preview-threshold.mfd");
+    let report =
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report}");
+    assert!(
+        std::fs::read_to_string(&exported)
             .unwrap()
-            .as_repeated()
-            .unwrap()
-            .len(),
-        3
+            .contains("previewvalue=\"2\" usepreviewvalue=\"1\"")
     );
-    let mut parameters = engine::RuntimeParameters::new();
-    parameters.insert("MinimumUnits", Value::Int(4)).unwrap();
-    let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
-    assert_eq!(
-        engine::run_with_context(&imported.project, &input, &context)
-            .unwrap()
-            .as_repeated()
-            .unwrap()
-            .len(),
-        1
-    );
+    let restored = mfd::import(&exported).unwrap();
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+    for project in [&imported.project, &restored.project] {
+        assert!(project.graph.nodes.values().any(|node| matches!(
+            node,
+            mapping::Node::RuntimeParameterDefault {
+                name,
+                ty: ir::ScalarType::Int,
+                preview: Some(preview),
+                ..
+            } if name == "MinimumUnits" && preview == "2"
+        )));
+        let input =
+            format_db::read_instance(&dir.0.join("purchases.sqlite"), &project.source).unwrap();
+        assert_eq!(
+            engine::run(project, &input)
+                .unwrap()
+                .as_repeated()
+                .unwrap()
+                .len(),
+            4
+        );
+        let preview_context =
+            engine::ExecutionContext::new(&design).with_purpose(engine::ExecutionPurpose::Preview);
+        assert_eq!(
+            engine::run_with_context(project, &input, &preview_context)
+                .unwrap()
+                .as_repeated()
+                .unwrap()
+                .len(),
+            3
+        );
+        for (value, expected) in [(Value::Int(4), 1), (Value::Null, 0)] {
+            let mut parameters = engine::RuntimeParameters::new();
+            parameters.insert("MinimumUnits", value).unwrap();
+            let context = engine::ExecutionContext::new(&design)
+                .with_parameters(&parameters)
+                .with_purpose(engine::ExecutionPurpose::Preview);
+            assert_eq!(
+                engine::run_with_context(project, &input, &context)
+                    .unwrap()
+                    .as_repeated()
+                    .unwrap()
+                    .len(),
+                expected
+            );
+        }
+    }
 }
 
 #[test]
 fn native_joined_select_keeps_sqlite_integer_overflow_promotion() {
     let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let design = prepare_joined_query_with_runtime_literal(&dir.0);
     let database = dir.0.join("purchases.sqlite");
     let connection = Connection::open(&database).unwrap();
     let large = 4_000_000_000_i64;
@@ -1061,7 +1239,7 @@ fn native_joined_select_keeps_sqlite_integer_overflow_promotion() {
 
 #[test]
 #[ignore = "requires the optional local reference sample corpus"]
-fn local_select_component_native_export_preserves_exact_csv() {
+fn local_select_component_cross_type_preview_is_diagnosed_without_unfiltered_rows() {
     let dir = TempDir::new();
     let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples/Tutorial/select-component.mfd");
@@ -1072,33 +1250,19 @@ fn local_select_component_native_export_preserves_exact_csv() {
     std::fs::copy(sample_db, &database).unwrap();
 
     let imported = mfd::import(&design).unwrap();
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("required host query parameter")
+            && warning.contains("same scalar type")
+            && warning.contains("iteration skipped")
+    }));
     let input = format_db::read_instance(&database, &imported.project.source).unwrap();
-    let expected = engine::run(&imported.project, &input).unwrap();
-    let exported = dir.0.join("native-select-component.mfd");
-    let report =
-        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
-            .unwrap();
-    assert!(report.is_native_compatible(), "{report}");
-    let roundtrip = mfd::import(&exported).unwrap();
-    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
-    let input = format_db::read_instance(&database, &roundtrip.project.source).unwrap();
-    let actual = engine::run(&roundtrip.project, &input).unwrap();
-    assert_eq!(actual, expected);
-
-    let output = dir.0.join("report.csv");
-    format_csv::write(
-        &output,
-        &roundtrip.project.target,
-        actual.as_repeated().unwrap(),
-        Some(','),
-        false,
-    )
-    .unwrap();
-    assert_eq!(
-        std::fs::read_to_string(output).unwrap(),
-        "15000,2,2,2008-02-06,Scentia,3,Layer designer,5000,no\n\
-         21000,4,4,2007-12-03,Alpha,7,Visualizer,3000,yes\n"
+    let preview =
+        engine::ExecutionContext::new(&design).with_purpose(engine::ExecutionPurpose::Preview);
+    let output = engine::run_with_context(&imported.project, &input, &preview).unwrap();
+    assert!(
+        matches!(&output, Instance::Group(fields) if fields.is_empty())
+            || matches!(&output, Instance::Repeated(rows) if rows.is_empty()),
+        "unsupported cross-type preview query must not iterate unfiltered rows: {output:?}"
     );
 }
 
@@ -1123,7 +1287,7 @@ fn scalar_only_query_outputs_are_skipped_once() {
 #[test]
 fn computed_only_query_outputs_cannot_bypass_query_scope() {
     let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let design = prepare_joined_query_with_runtime_literal(&dir.0);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
         "<vertex vertexkey=\"30\"><edges/></vertex>",
@@ -1139,7 +1303,7 @@ fn computed_only_query_outputs_cannot_bypass_query_scope() {
 #[test]
 fn joined_integer_multiplication_matches_sqlite_overflow_promotion() {
     let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let design = prepare_joined_query_with_runtime_literal(&dir.0);
     let database = dir.0.join("purchases.sqlite");
     let connection = Connection::open(&database).unwrap();
     let large = 4_000_000_000_i64;

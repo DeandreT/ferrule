@@ -453,9 +453,13 @@ fn build_one(
         ));
         return;
     }
-    let mut existing_filter = feed
-        .filter_expr
-        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
+    let mut missing_filter_predicate =
+        feed.has_filter && feed.filter_expr.is_none() && feed.udf_filters.is_empty();
+    let mut existing_filter = feed.filter_expr.and_then(|key| {
+        let node = builder.scalar_node_at_anchor(key, &iteration_anchor);
+        missing_filter_predicate |= node.is_none();
+        node
+    });
     if feed.filter_inverted
         && let Some(filter) = existing_filter
     {
@@ -468,6 +472,7 @@ fn build_one(
         let Some(mut predicate) =
             predicate.and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor))
         else {
+            missing_filter_predicate = true;
             continue;
         };
         if inverted {
@@ -486,6 +491,7 @@ fn build_one(
     }
     for output in &feed.udf_filters {
         let Some(udf_filter) = builder.udf_iteration_filter_node(*output) else {
+            missing_filter_predicate = true;
             continue;
         };
         existing_filter = Some(match existing_filter {
@@ -516,6 +522,14 @@ fn build_one(
             target_path,
             "has a missing or unsupported filter predicate",
         );
+        return;
+    }
+    if missing_filter_predicate {
+        builder.warnings.push(format!(
+            "filter feeding `{}` has a missing or unsupported predicate; iteration skipped",
+            target_path.join("/")
+        ));
+        skipped.push(target_path);
         return;
     }
     let database_controls = match builder.apply_db_controls(

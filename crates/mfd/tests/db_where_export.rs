@@ -219,6 +219,7 @@ fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
             name: "NamePrefix".into(),
             ty: ir::ScalarType::String,
             default,
+            preview: None,
         },
     );
     // A computed row binding should retain its normal native graph wiring.
@@ -370,9 +371,11 @@ fn local_filter_database_records_strict_export_reimports_same_output()
         &sample.parent().unwrap().join("Nanonull.sqlite"),
         &imported.project.source,
     )?;
+    let preview =
+        engine::ExecutionContext::new(&sample).with_purpose(engine::ExecutionPurpose::Preview);
     assert_eq!(
-        engine::run(&reimported.project, &input)?,
-        engine::run(&imported.project, &input)?
+        engine::run_with_context(&reimported.project, &input, &preview)?,
+        engine::run_with_context(&imported.project, &input, &preview)?
     );
     assert_eq!(
         serde_json::to_value(&reimported.project.root)?,

@@ -292,6 +292,7 @@ fn optional_title_pattern_preserves_default_override_and_null_in_native_where()
             name: "pattern".into(),
             ty: ScalarType::String,
             default: 18,
+            preview: None,
         },
     );
     project.graph.nodes.insert(
@@ -306,6 +307,7 @@ fn optional_title_pattern_preserves_default_override_and_null_in_native_where()
             name: "DepartmentID".into(),
             ty: ScalarType::Int,
             default: 19,
+            preview: None,
         },
     );
     assert!(engine::validate(&project).is_empty());
@@ -406,6 +408,7 @@ fn required_host_title_pattern_survives_two_native_where_cycles() -> Result<(), 
         Node::RuntimeParameter {
             name: "pattern".into(),
             ty: ScalarType::String,
+            preview: None,
         },
     );
     assert!(engine::validate(&project).is_empty());
@@ -438,7 +441,8 @@ fn required_host_title_pattern_survives_two_native_where_cycles() -> Result<(), 
                     node,
                     Node::RuntimeParameter {
                         name,
-                        ty: ScalarType::String
+                        ty: ScalarType::String,
+                        ..
                     } if name == "pattern"
                 ))
                 .count(),

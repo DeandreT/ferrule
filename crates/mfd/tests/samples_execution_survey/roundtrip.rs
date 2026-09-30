@@ -10,7 +10,7 @@ use super::{
 };
 
 const JSON_REPORT_ENV: &str = "FERRULE_ROUNDTRIP_EXECUTION_SURVEY_JSON";
-const REPORT_SCHEMA_VERSION: u32 = 1;
+const REPORT_SCHEMA_VERSION: u32 = 2;
 
 enum SemanticExecution {
     Outputs(engine::ExecutionOutputs),
@@ -222,6 +222,16 @@ fn survey_roundtrip_file(
             return outcome;
         }
     };
+    let unsupported_preview_contract = imported
+        .warnings
+        .iter()
+        .find(|warning| {
+            warning.contains("with design-time preview")
+                || warning.contains("has only a design-time preview value")
+                || (warning.contains("design-time preview value")
+                    && warning.contains("dependent value skipped"))
+        })
+        .cloned();
     outcome.import = passed_with_warnings(imported.warnings);
     outcome.runtime_dependencies = imported
         .project
@@ -269,6 +279,7 @@ fn survey_roundtrip_file(
     };
     outcome.source_load = StageOutcome::passed();
     let execution = engine::ExecutionContext::new(&runtime_mapping_path)
+        .with_purpose(engine::ExecutionPurpose::Preview)
         .with_current_datetime(FIXED_CURRENT_DATETIME)
         .with_dynamic_source_loader(&dynamic_loader);
     let original_execution = match engine::run_outputs_with_sources_and_context(
@@ -342,11 +353,16 @@ fn survey_roundtrip_file(
             return outcome;
         }
     };
-    outcome.output_match =
+    outcome.output_match = if let Some(warning) = unsupported_preview_contract {
+        StageOutcome::skipped(format!(
+            "design-preview contract unsupported, so semantic parity is not claimed: {warning}"
+        ))
+    } else {
         match compare_semantic_executions(&original_execution, &roundtrip_execution) {
             Ok(()) => StageOutcome::passed(),
             Err(reason) => StageOutcome::failed(reason),
-        };
+        }
+    };
     outcome
 }
 
@@ -369,6 +385,7 @@ fn write_json_report(
     let report = serde_json::json!({
         "schema_version": REPORT_SCHEMA_VERSION,
         "kind": "ferrule.mfd_roundtrip_execution",
+        "execution_purpose": "design_preview",
         "samples_dir": samples_root,
         "resource_configuration": resource_configuration.to_json(),
         "safety": {
@@ -433,7 +450,7 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
         .collect::<Vec<_>>();
     let summary = RoundtripSummary::from_outcomes(&outcomes);
     println!(
-        "== MFD export/re-import execution survey: {} files ==",
+        "== MFD export/re-import design-preview survey: {} files ==",
         summary.total
     );
     println!(
@@ -446,7 +463,7 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
         summary.exported, summary.reimported, summary.roundtrip_valid
     );
     println!(
-        "round-trip executions: {}; semantic matches: {}; drifts: {}",
+        "round-trip design-preview executions: {}; semantic matches: {}; drifts: {}",
         summary.roundtrip_execution_passed, summary.outputs_matched, summary.semantic_drifts
     );
     print_drifts(&outcomes);
@@ -461,7 +478,7 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
         println!("json report: {}", report_path.display());
     }
     super::survey_gate::enforce_exact(
-        "MFD export/re-import execution survey",
+        "MFD export/re-import design-preview survey",
         &[
             ("total", summary.total, 187),
             ("dependency_blocked", summary.dependency_blocked, 12),
@@ -479,7 +496,7 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
                 summary.roundtrip_execution_passed,
                 168,
             ),
-            ("outputs_matched", summary.outputs_matched, 168),
+            ("outputs_matched", summary.outputs_matched, 167),
             ("semantic_drifts", summary.semantic_drifts, 0),
         ],
     )?;

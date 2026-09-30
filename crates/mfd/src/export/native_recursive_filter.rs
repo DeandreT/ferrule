@@ -187,6 +187,7 @@ impl NativeRecursiveFilter {
                 name,
                 ty: ScalarType::String,
                 default,
+                ..
             } if !name.is_empty()
                 && matches!(
                     project.graph.nodes.get(default),

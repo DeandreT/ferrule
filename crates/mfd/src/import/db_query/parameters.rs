@@ -6,8 +6,9 @@ use super::super::function::{FnComponent, is_input, parse_constant};
 use super::GraphBuilder;
 
 impl GraphBuilder<'_> {
-    /// A required named input with no connected value or enabled preview must
-    /// come from the host. Keep this separate from optional inputs, whose
+    /// A required named input with no connected value must come from the host.
+    /// Preview text remains metadata, never a runtime SQL literal. Keep this
+    /// separate from optional inputs, whose
     /// absent-value behavior is not established by a defaultless declaration.
     pub(super) fn required_host_query_parameter_feed(
         &self,
@@ -27,7 +28,6 @@ impl GraphBuilder<'_> {
                 .input_parameter_name
                 .as_ref()
                 .is_none_or(|parameter| parameter.optional)
-            || component.input_preview.is_some()
             || component.outputs.as_slice() != [feed]
             || component.inputs.len() > 1
             || component
@@ -39,17 +39,22 @@ impl GraphBuilder<'_> {
             return Ok(None);
         }
         if declared_type != column_type || component.input_type != Some(column_type) {
-            return Err(
-                "required host query parameter, SQL declaration, and compared column must have the same scalar type"
-                    .to_string(),
-            );
+            let preview_note = if component.input_preview.is_some() {
+                " with design-time preview"
+            } else {
+                ""
+            };
+            return Err(format!(
+                "required host query parameter{preview_note}, SQL declaration, and compared column must have the same scalar type (input {:?}, SQL {declared_type:?}, column {column_type:?})",
+                component.input_type
+            ));
         }
         Ok(Some(feed))
     }
 
     /// Keep exact typed optional inputs in the graph instead of freezing their
-    /// literal default into the query. The legacy constant path still handles
-    /// required preview inputs; cross-type dynamic coercion is not inferred.
+    /// connected runtime default into the query. A design-time preview is
+    /// never a runtime query literal; cross-type dynamic coercion is not inferred.
     pub(super) fn optional_query_parameter_feed(
         &self,
         input_key: u32,
@@ -124,10 +129,14 @@ impl GraphBuilder<'_> {
                 Some(input) if self.edge_from.contains_key(&input) => {
                     self.static_query_parameter(input, depth + 1)
                 }
-                _ => component.input_preview.clone().ok_or_else(|| {
-                    "query parameter input has neither an upstream value nor an enabled preview value"
-                        .to_string()
-                }),
+                _ if component.input_preview.is_some() => Err(format!(
+                    "query input `{}` has only a design-time preview value, which cannot be used as a runtime SQL parameter",
+                    component
+                        .input_parameter_name
+                        .as_ref()
+                        .map_or(component.name.as_str(), |parameter| parameter.name.as_str())
+                )),
+                _ => Err("query parameter input has no connected runtime value".to_string()),
             };
         }
         Err(format!(

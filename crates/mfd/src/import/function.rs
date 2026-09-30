@@ -59,9 +59,9 @@ pub(super) struct FnComponent {
     pub(super) input_type: Option<ScalarType>,
     /// Public host parameter declaration of a kind=6 input component.
     pub(super) input_parameter_name: Option<InputParameter>,
-    /// Design-time value used by an otherwise unconnected input parameter.
-    /// Database query parameters need this before the source is loaded.
-    pub(super) input_preview: Option<Value>,
+    /// Raw lexical value used only during design-time preview. Keep it
+    /// separate from a connected runtime default and preserve empty values.
+    pub(super) input_preview: Option<String>,
     pub(super) constant: Option<(String, String)>,
     pub(super) valuemap: Option<ValueMapData>,
     /// Sort directions in key-index order; `Some` also identifies a sort
@@ -186,16 +186,11 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         .then(|| {
             data.and_then(|data| data.descendants().find(|node| node.has_tag_name("input")))
                 .filter(|input| input.attribute("usepreviewvalue") == Some("1"))
-                .and_then(|input| {
-                    input.attribute("previewvalue").map(|value| {
-                        parse_constant(
-                            value,
-                            input
-                                .attribute("datatype")
-                                .or_else(|| input.attribute("type"))
-                                .unwrap_or_default(),
-                        )
-                    })
+                .map(|input| {
+                    input
+                        .attribute("previewvalue")
+                        .unwrap_or_default()
+                        .to_string()
                 })
         })
         .flatten();

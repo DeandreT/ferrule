@@ -930,22 +930,30 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                      \t\t\t\t</component>\n"
                 );
             }
-            Node::RuntimeParameter { name, ty } => {
+            Node::RuntimeParameter { name, ty, preview } => {
                 let out = keys.next();
                 node_out_key.insert(id, out);
                 *uid += 1;
                 let datatype = scalar_type_name(*ty);
                 let escaped_name = xml_escape(name);
+                let preview_attr = preview.as_ref().map_or_else(String::new, |value| {
+                    format!(
+                        " previewvalue=\"{}\" usepreviewvalue=\"1\"",
+                        xml_escape_preview_attribute(value)
+                    )
+                });
                 let _ = write!(
                     components,
                     "\t\t\t\t<component name=\"{escaped_name}\" library=\"core\" uid=\"{uid}\" kind=\"6\">\n\
                      \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                     \t\t\t\t\t<data><input datatype=\"{datatype}\"/><parameter usageKind=\"input\" name=\"{escaped_name}\"/></data>\n\
+                     \t\t\t\t\t<data><input datatype=\"{datatype}\"{preview_attr}/><parameter usageKind=\"input\" name=\"{escaped_name}\"/></data>\n\
                      \t\t\t\t</component>\n"
                 );
             }
-            Node::RuntimeParameterDefault { name, ty, .. } => {
+            Node::RuntimeParameterDefault {
+                name, ty, preview, ..
+            } => {
                 let input = keys.next();
                 let out = keys.next();
                 node_out_key.insert(id, out);
@@ -953,13 +961,19 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 *uid += 1;
                 let datatype = scalar_type_name(*ty);
                 let escaped_name = xml_escape(name);
+                let preview_attr = preview.as_ref().map_or_else(String::new, |value| {
+                    format!(
+                        " previewvalue=\"{}\" usepreviewvalue=\"1\"",
+                        xml_escape_preview_attribute(value)
+                    )
+                });
                 let _ = write!(
                     components,
                     "\t\t\t\t<component name=\"{escaped_name}\" library=\"core\" uid=\"{uid}\" kind=\"6\">\n\
                      \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{input}\"/></sources>\n\
                      \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                     \t\t\t\t\t<data><input datatype=\"{datatype}\"/><parameter usageKind=\"input\" name=\"{escaped_name}\" optional=\"1\"/></data>\n\
+                     \t\t\t\t\t<data><input datatype=\"{datatype}\"{preview_attr}/><parameter usageKind=\"input\" name=\"{escaped_name}\" optional=\"1\"/></data>\n\
                      \t\t\t\t</component>\n"
                 );
             }
@@ -1198,6 +1212,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         siblings,
         json_parser_outputs: json_parsers.outputs.keys().copied().collect(),
     }
+}
+
+fn xml_escape_preview_attribute(value: &str) -> String {
+    xml_escape(value)
+        .replace('\r', "&#xD;")
+        .replace('\n', "&#xA;")
+        .replace('\t', "&#x9;")
 }
 
 fn connect_deferred_inputs(
