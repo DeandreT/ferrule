@@ -10,7 +10,10 @@
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
+mod scalar_lexical;
 mod schema;
+
+pub use scalar_lexical::parse_exact_decimal_i64;
 
 pub use schema::{
     IntegerRange, ItemCountRange, JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
