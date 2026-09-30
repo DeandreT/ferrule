@@ -17,6 +17,7 @@ mod auto_number;
 mod compatibility;
 mod concatenation;
 mod database;
+mod database_query_where;
 mod database_where;
 mod database_xml;
 mod decimal_input;
@@ -33,6 +34,7 @@ mod json_serializer;
 mod mapped_sequence;
 mod native_datetime_cast;
 mod node;
+mod order_decimal_output;
 mod pdf;
 mod pipeline;
 mod position;
@@ -344,8 +346,12 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     let primary_target = &targets[0];
     let mixed_database_pairs = pair_mixed_databases(&sources, &targets);
     let native_database_where = database_where::NativeWhere::plan(project, &sources, &targets);
+    let native_query_where =
+        database_query_where::NativeQueryWhere::plan(project, &sources, &targets);
     let native_database_xml =
         database_xml::DirectColumns::plan(project, &sources, &targets, &mixed_database_pairs);
+    let native_order_decimal =
+        order_decimal_output::NativeOrderDecimal::plan(project, &sources, &targets);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -370,6 +376,13 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     let mut blocked_nodes = dynamic_sources.owned_nodes().clone();
     if let Some(plan) = &native_database_where {
         blocked_nodes.extend(plan.absorbed_nodes());
+    }
+    if let Some(plan) = &native_query_where {
+        blocked_nodes.extend(plan.absorbed_nodes());
+    }
+    if let Some(plan) = &native_order_decimal {
+        blocked_nodes.extend(plan.absorbed_nodes());
+        plan.seed_aliases(&mut node_out_key);
     }
     for target in &targets {
         blocked_nodes.extend(target.mapped_scope_plans.absorbed_nodes());
@@ -465,6 +478,11 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
             native_database_where
                 .as_ref()
                 .map(|plan| plan.scope_without_controls(target.root))
+                .or_else(|| {
+                    native_query_where
+                        .as_ref()
+                        .map(|plan| plan.scope_with_residual(target.root))
+                })
         } else {
             None
         };
@@ -534,6 +552,15 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         }
     }
     if let Some(plan) = &native_database_where {
+        plan.connect(
+            &node_out_key,
+            &mut keys,
+            &mut uid,
+            &mut components,
+            &mut edges,
+        )?;
+    }
+    if let Some(plan) = &native_query_where {
         plan.connect(
             &node_out_key,
             &mut keys,
@@ -653,7 +680,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         {
             continue;
         }
-        let rendered = if let Some(rendered) =
+        let mut rendered = if let Some(rendered) =
             dynamic_json::render_source(dynamic_json::RenderSourceArgs {
                 plan: &dynamic_sources,
                 source_index,
@@ -741,6 +768,11 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 source.document_path_port,
             )?
         };
+        if source_index == 0
+            && let Some(plan) = &native_order_decimal
+        {
+            plan.apply_to_source(&mut rendered)?;
+        }
         out.push_str(&rendered.xml);
         source_components.push(rendered);
     }
@@ -848,6 +880,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         out.push_str("\t\t\t\t\t\t</edges>\n\t\t\t\t\t</vertex>\n");
     }
     out.push_str("\t\t\t\t</vertices>\n\t\t\t</graph>\n\t\t</structure>\n\t</component>\n");
+    if let Some(plan) = &native_order_decimal {
+        out.push_str(&plan.definition(&mut uid));
+    }
     out.push_str(user_functions.declarations());
     out.push_str("</mapping>\n");
 

@@ -2102,6 +2102,7 @@ fn import_resolved(
     let xml_type_conditions = alternatives::conditioned_port_types(&structure);
     let mut builder = GraphBuilder {
         graph: Graph::default(),
+        native_decimal_input_names: BTreeMap::new(),
         next_id: 0,
         fn_nodes: BTreeMap::new(),
         sequence_items: BTreeMap::new(),
@@ -2315,12 +2316,15 @@ fn import_resolved(
     };
     let failure_rules = exception::lower(exception_recipes, &mut builder);
     warnings.extend(builder.warnings);
+    let mut source_options = primary.options.clone();
+    source_options.mfd_decimal_input_names =
+        std::mem::take(&mut builder.native_decimal_input_names);
     let mut project = Project {
         source: primary.schema.clone(),
         target: runtime_target_schema(target, &edge_from),
         source_path,
         target_path,
-        source_options: primary.options.clone(),
+        source_options,
         target_options: target.options.clone(),
         extra_sources,
         extra_targets,

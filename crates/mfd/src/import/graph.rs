@@ -9,6 +9,7 @@ use super::udf::{Call as UdfCall, Registry as UdfRegistry};
 
 pub(super) struct GraphBuilder<'a> {
     pub(super) graph: Graph,
+    pub(super) native_decimal_input_names: BTreeMap<NodeId, String>,
     pub(super) next_id: NodeId,
     pub(super) fn_nodes: BTreeMap<usize, NodeId>,
     pub(super) sequence_items: BTreeMap<usize, NodeId>,

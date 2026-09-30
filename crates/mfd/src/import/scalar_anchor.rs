@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use ir::SchemaKind;
 use mapping::{Node, NodeId};
 
 use super::function::{
@@ -41,7 +42,19 @@ impl GraphBuilder<'_> {
     ) -> Option<NodeId> {
         if let Some(source_path) = self.source_abs_path(key) {
             let source_path = self.source_value_path(source_path.source, source_path.path);
-            return self.source_field_at_anchor(&source_path, active_anchor);
+            let ty = self
+                .schema_node(&source_path)
+                .and_then(|node| match &node.kind {
+                    SchemaKind::Scalar { ty } => Some(*ty),
+                    SchemaKind::ScalarUnion { .. } | SchemaKind::Group { .. } => None,
+                });
+            let input = self.source_field_at_anchor(&source_path, active_anchor)?;
+            return Some(match ty {
+                Some(ty) if self.has_source_node_functions(key) => {
+                    self.apply_source_node_functions(key, ty, input)
+                }
+                Some(_) | None => input,
+            });
         }
 
         let index = *self.fn_by_output.get(&key)?;
