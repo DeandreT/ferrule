@@ -38,7 +38,14 @@ public static partial class FerruleJson
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
-    public static FerruleInstance ParseBytes(string schemaJson, byte[] document)
+    public static FerruleInstance ParseBytes(string schemaJson, byte[] document) =>
+        ParseBytesCore(schemaJson, document, embedded: false);
+
+    /// <summary>Parses a generated host document with a versioned embedded schema.</summary>
+    public static FerruleInstance ParseEmbeddedBytes(string descriptor, byte[] document) =>
+        ParseBytesCore(descriptor, document, embedded: true);
+
+    private static FerruleInstance ParseBytesCore(string schemaJson, byte[] document, bool embedded)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(document);
@@ -58,22 +65,27 @@ public static partial class FerruleJson
             throw Boundary("JSON input is not UTF-8.", error);
         }
 
-        return Parse(schemaJson, text);
+        return ParseCore(schemaJson, text, enforceHostLimits: true, embedded);
     }
 
     public static FerruleInstance Parse(string schemaJson, string document)
-        => ParseCore(schemaJson, document, enforceHostLimits: true);
+        => ParseCore(schemaJson, document, enforceHostLimits: true, embedded: false);
+
+    /// <summary>Parses a generated host document with a versioned embedded schema.</summary>
+    public static FerruleInstance ParseEmbedded(string descriptor, string document)
+        => ParseCore(descriptor, document, enforceHostLimits: true, embedded: true);
 
     // Graph-level json_parse_field receives ordinary runtime strings, not a
     // generated JSON host document. Native format_json::from_str has no
     // general byte or mapped-node cap for this function.
     internal static FerruleInstance ParseFunctionInput(string schemaJson, string document)
-        => ParseCore(schemaJson, document, enforceHostLimits: false);
+        => ParseCore(schemaJson, document, enforceHostLimits: false, embedded: false);
 
     private static FerruleInstance ParseCore(
         string schemaJson,
         string document,
-        bool enforceHostLimits)
+        bool enforceHostLimits,
+        bool embedded)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(document);
@@ -82,7 +94,7 @@ public static partial class FerruleJson
             RequireUtf8Limit(schemaJson, MaximumSchemaBytes, "embedded JSON schema");
             RequireUtf8Limit(document, MaximumDocumentBytes, "JSON input");
         }
-        var schema = ParseSchema(schemaJson);
+        var schema = ParseSchema(schemaJson, embedded);
         try
         {
             var input = document.Length > 0 && document[0] == '\uFEFF'
@@ -139,11 +151,18 @@ public static partial class FerruleJson
     }
 
     public static string Serialize(string schemaJson, FerruleInstance instance)
+        => SerializeCore(schemaJson, instance, embedded: false);
+
+    /// <summary>Serializes a generated host result with a versioned embedded schema.</summary>
+    public static string SerializeEmbedded(string descriptor, FerruleInstance instance)
+        => SerializeCore(descriptor, instance, embedded: true);
+
+    private static string SerializeCore(string schemaJson, FerruleInstance instance, bool embedded)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(instance);
         RequireUtf8Limit(schemaJson, MaximumSchemaBytes, "embedded JSON schema");
-        var schema = ParseSchema(schemaJson);
+        var schema = ParseSchema(schemaJson, embedded);
         try
         {
             var buffer = new ArrayBufferWriter<byte>();
@@ -199,12 +218,19 @@ public static partial class FerruleJson
     public static byte[] SerializeBytes(string schemaJson, FerruleInstance instance) =>
         StrictUtf8.GetBytes(Serialize(schemaJson, instance));
 
-    private static JsonSchemaNode ParseSchema(string schemaJson)
+    /// <summary>Serializes a generated host result as UTF-8 bytes.</summary>
+    public static byte[] SerializeEmbeddedBytes(string descriptor, FerruleInstance instance) =>
+        StrictUtf8.GetBytes(SerializeEmbedded(descriptor, instance));
+
+    private static JsonSchemaNode ParseSchema(string schemaJson, bool embedded = false)
     {
         try
         {
+            var descriptor = embedded
+                ? FerruleEmbeddedSchema.Unwrap(schemaJson, MaximumSchemaBytes)
+                : new FerruleEmbeddedSchema.Descriptor(schemaJson, false);
             using var parsed = JsonDocument.Parse(
-                schemaJson,
+                descriptor.Payload,
                 new JsonDocumentOptions
                 {
                     MaxDepth = MaximumParsedDepth,
@@ -213,7 +239,8 @@ public static partial class FerruleJson
                 });
             var budget = new NodeBudget();
             var patterns = new JsonPatternSchemaContext();
-            var root = ReadSchemaNode(parsed.RootElement, budget, patterns, 0);
+            var root = ReadSchemaNode(
+                parsed.RootElement, budget, patterns, 0, descriptor.ExactFloatMarkers);
             BindRecursiveReferences(root);
             return root;
         }
@@ -232,7 +259,8 @@ public static partial class FerruleJson
         JsonElement element,
         NodeBudget budget,
         JsonPatternSchemaContext patternContext,
-        int depth)
+        int depth,
+        bool exactFloatMarkers)
     {
         budget.Visit(depth);
         RequireKind(element, JsonValueKind.Object, "schema node", "object");
@@ -273,13 +301,15 @@ public static partial class FerruleJson
             scalarDomain,
             jsonAny,
             nullable,
-            fixedValue);
+            fixedValue,
+            exactFloatMarkers);
         var numericRange = ReadNumericRange(
             name,
             element,
             scalarDomain,
             jsonAny,
-            fixedValue);
+            fixedValue,
+            exactFloatMarkers);
         var jsonMultipleOf = ReadJsonMultipleOf(
             name,
             element,
@@ -306,7 +336,8 @@ public static partial class FerruleJson
             repeating,
             budget,
             patternContext,
-            depth);
+            depth,
+            exactFloatMarkers);
         var propertyCountRange = ReadPropertyCountRange(
             name,
             element,
@@ -321,7 +352,8 @@ public static partial class FerruleJson
             scalarDomain == JsonScalarDomain.None,
             budget,
             patternContext,
-            depth);
+            depth,
+            exactFloatMarkers);
         var propertyNames = ReadJsonPropertyNames(
             name,
             element,
@@ -343,14 +375,14 @@ public static partial class FerruleJson
                 RequireKind(childElements, JsonValueKind.Array, $"schema node '{name}' children", "array");
                 foreach (var child in childElements.EnumerateArray())
                 {
-                    children.Add(ReadSchemaNode(child, budget, patternContext, depth + 1));
+                    children.Add(ReadSchemaNode(child, budget, patternContext, depth + 1, exactFloatMarkers));
                 }
             }
 
             if (kindElement.TryGetProperty("dynamic", out var dynamicElement) &&
                 dynamicElement.ValueKind != JsonValueKind.Null)
             {
-                dynamic = ReadSchemaNode(dynamicElement, budget, patternContext, depth + 1);
+                dynamic = ReadSchemaNode(dynamicElement, budget, patternContext, depth + 1, exactFloatMarkers);
             }
 
             if (kindElement.TryGetProperty("alternatives", out var alternativeElements))
@@ -362,7 +394,7 @@ public static partial class FerruleJson
                     "array");
                 foreach (var alternative in alternativeElements.EnumerateArray())
                 {
-                    alternatives.Add(ReadAlternative(alternative));
+                    alternatives.Add(ReadAlternative(alternative, exactFloatMarkers));
                 }
             }
             if (kindElement.TryGetProperty("required", out _))
@@ -855,7 +887,8 @@ public static partial class FerruleJson
         JsonElement element,
         JsonScalarDomain scalarDomain,
         bool jsonAny,
-        FerruleValue? fixedValue)
+        FerruleValue? fixedValue,
+        bool exactFloatMarkers)
     {
         if (!element.TryGetProperty("numeric_range", out var rangeElement) ||
             rangeElement.ValueKind == JsonValueKind.Null)
@@ -881,7 +914,7 @@ public static partial class FerruleJson
             "integer" when scalarDomain == JsonScalarDomain.Int64 =>
                 ReadIntegerRange(name, bounds),
             "number" when scalarDomain == JsonScalarDomain.Double =>
-                ReadNumberRange(name, bounds),
+                ReadNumberRange(name, bounds, exactFloatMarkers),
             "integer" or "number" => throw Boundary(
                 $"Embedded JSON schema node '{name}' numeric range does not match its scalar type."),
             _ => throw Boundary(
@@ -908,10 +941,11 @@ public static partial class FerruleJson
         return new JsonIntegerRange(minimum, maximum);
     }
 
-    private static JsonNumberRange ReadNumberRange(string name, JsonElement bounds)
+    private static JsonNumberRange ReadNumberRange(
+        string name, JsonElement bounds, bool exactFloatMarkers)
     {
-        var minimum = OptionalNumberBound(name, bounds, "minimum");
-        var maximum = OptionalNumberBound(name, bounds, "maximum");
+        var minimum = OptionalNumberBound(name, bounds, "minimum", exactFloatMarkers);
+        var maximum = OptionalNumberBound(name, bounds, "maximum", exactFloatMarkers);
         if (minimum is null && maximum is null)
         {
             throw Boundary(
@@ -942,7 +976,8 @@ public static partial class FerruleJson
     private static JsonNumberBound? OptionalNumberBound(
         string name,
         JsonElement bounds,
-        string property)
+        string property,
+        bool exactFloatMarkers)
     {
         if (!bounds.TryGetProperty(property, out var element))
         {
@@ -954,7 +989,7 @@ public static partial class FerruleJson
             $"schema node '{name}' number {property}",
             "object");
         var valueElement = RequiredProperty(element, "value");
-        if (!TryReadFiniteMetadataDouble(valueElement, out var value))
+        if (!TryReadFiniteMetadataDouble(valueElement, exactFloatMarkers, out var value))
         {
             throw Boundary(
                 $"Embedded JSON schema node '{name}' number {property} must be finite.");
@@ -1031,7 +1066,7 @@ public static partial class FerruleJson
         _ => throw Boundary("Embedded JSON schema scalar domain is invalid."),
     };
 
-    private static JsonAlternative ReadAlternative(JsonElement element)
+    private static JsonAlternative ReadAlternative(JsonElement element, bool exactFloatMarkers)
     {
         RequireKind(element, JsonValueKind.Object, "schema alternative", "object");
         var name = element.TryGetProperty("name", out _)
@@ -1053,11 +1088,17 @@ public static partial class FerruleJson
                 var expected = value.TryGetProperty("value", out var expectedValue)
                     ? expectedValue.Clone()
                     : default;
+                double? expectedFloat = null;
+                if (type == "float" &&
+                    TryReadFiniteMetadataDouble(expected, exactFloatMarkers, out var number))
+                {
+                    expectedFloat = number;
+                }
                 var validExpected = type switch
                 {
                     "string" => HasValidJsonStringScalar(expected),
                     "int" => TryGetSerdeInt64(expected, out _),
-                    "float" => TryReadFiniteMetadataDouble(expected, out _),
+                    "float" => expectedFloat.HasValue,
                     "bool" => expected.ValueKind is JsonValueKind.True or JsonValueKind.False,
                     "json_null" => expected.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null,
                     _ => false,
@@ -1067,7 +1108,7 @@ public static partial class FerruleJson
                     throw Boundary(
                         $"Embedded JSON alternative has an invalid '{type}' constraint value.");
                 }
-                constraints.Add(new JsonConstraint(member, type, expected));
+                constraints.Add(new JsonConstraint(member, type, expected, expectedFloat));
             }
         }
 
@@ -2208,7 +2249,7 @@ public static partial class FerruleJson
                 actualInteger == expectedInteger,
             "float" when domain.HasFlag(JsonScalarDomain.Double) =>
                 TryOutputDouble(value, out var actualNumber) &&
-                TryReadFiniteMetadataDouble(constraint.Expected, out var expectedNumber) &&
+                constraint.ExpectedFloat is { } expectedNumber &&
                 actualNumber == expectedNumber,
             "bool" when domain.HasFlag(JsonScalarDomain.Bool) =>
                 TryOutputBoolean(value, out var actualBoolean) &&
@@ -2232,7 +2273,7 @@ public static partial class FerruleJson
                 TryGetSerdeInt64(constraint.Expected, out var expectedInteger) &&
                 value.Int64Value == expectedInteger,
             ("float", FerruleValueKind.Double) =>
-                TryReadFiniteMetadataDouble(constraint.Expected, out var expectedNumber) &&
+                constraint.ExpectedFloat is { } expectedNumber &&
                 value.DoubleValue == expectedNumber,
             ("bool", FerruleValueKind.Bool) =>
                 constraint.Expected.ValueKind is
@@ -2494,6 +2535,12 @@ public static partial class FerruleJson
         return double.IsFinite(output);
     }
 
+    private static bool TryReadFiniteMetadataDouble(
+        JsonElement value, bool exactFloatMarkers, out double output) =>
+        exactFloatMarkers
+            ? FerruleEmbeddedSchema.TryReadFloat(value, out output)
+            : TryReadFiniteMetadataDouble(value, out output);
+
     private static bool TryExactDouble(long value, out double output)
     {
         output = value;
@@ -2554,7 +2601,7 @@ public static partial class FerruleJson
                      actualInteger == expectedInteger,
             "float" => value.ValueKind == JsonValueKind.Number &&
                        TryReadExactDouble(value, outputNormalizedNumbers, out var actualNumber) &&
-                       TryReadFiniteMetadataDouble(constraint.Expected, out var expectedNumber) &&
+                       constraint.ExpectedFloat is { } expectedNumber &&
                        actualNumber == expectedNumber,
             "bool" => value.ValueKind is JsonValueKind.True or JsonValueKind.False &&
                       constraint.Expected.ValueKind is JsonValueKind.True or JsonValueKind.False &&
@@ -2949,7 +2996,8 @@ public static partial class FerruleJson
 
     private sealed record OutputProperty(JsonSchemaNode Schema, FerruleInstance Value);
 
-    private sealed record JsonConstraint(string Member, string Type, JsonElement Expected);
+    private sealed record JsonConstraint(
+        string Member, string Type, JsonElement Expected, double? ExpectedFloat);
 
     private sealed record JsonAlternative(
         string Name,

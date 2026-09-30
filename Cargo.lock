@@ -955,6 +955,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 name = "codegen"
 version = "0.1.0"
 dependencies = [
+ "codegen-schema",
  "engine",
  "ir",
  "mapping",
@@ -977,6 +978,7 @@ dependencies = [
 name = "codegen-runtime"
 version = "0.1.0"
 dependencies = [
+ "codegen-schema",
  "format-json",
  "format-xml",
  "functions",
@@ -994,6 +996,14 @@ dependencies = [
  "engine",
  "ir",
  "mapping",
+ "serde_json",
+]
+
+[[package]]
+name = "codegen-schema"
+version = "0.1.0"
+dependencies = [
+ "ir",
  "serde_json",
 ]
 

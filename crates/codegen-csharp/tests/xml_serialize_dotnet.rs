@@ -340,7 +340,7 @@ fn generated_xml_serializer_matches_engine_output_and_typed_failures() {
         .and_then(|file| std::str::from_utf8(&file.contents).ok())
         .expect("generated mapping is UTF-8");
     assert!(generated.contains("context.ResolveXmlInstance("));
-    assert!(generated.contains("FerruleXml.Serialize("));
+    assert!(generated.contains("FerruleXml.SerializeEmbedded("));
 
     let directory = TempDirectory::new("xml-serialize");
     for file in artifacts.files() {

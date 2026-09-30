@@ -12,7 +12,8 @@ public static partial class FerruleJson
         bool repeating,
         NodeBudget schemaBudget,
         JsonPatternSchemaContext patternContext,
-        int depth)
+        int depth,
+        bool exactFloatMarkers)
     {
         JsonElement? declared = null;
         foreach (var property in element.EnumerateObject())
@@ -76,7 +77,8 @@ public static partial class FerruleJson
                 schemaBudget,
                 patternContext,
                 depth + 1,
-                "contains");
+                "contains",
+                exactFloatMarkers);
             var range = ReadContainsRange(
                 name,
                 RequiredProperty(termElement, "range"));
@@ -107,7 +109,8 @@ public static partial class FerruleJson
         NodeBudget schemaBudget,
         JsonPatternSchemaContext patternContext,
         int depth,
-        string context)
+        string context,
+        bool exactFloatMarkers)
     {
         RequireKind(
             element,
@@ -140,7 +143,8 @@ public static partial class FerruleJson
             RequiredProperty(element, "schema"),
             schemaBudget,
             patternContext,
-            depth);
+            depth,
+            exactFloatMarkers);
         if (!PrivateUniqueItemsAreExact(schema))
         {
             throw Boundary(

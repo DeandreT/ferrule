@@ -114,6 +114,34 @@ public static class FerruleXml
     private const string XmlMixedContentValueField = "\u001fferrule-xml-mixed-value";
     private const string XmlNodeNameField = "NodeName";
 
+    /// <summary>Serializes XML using a generated versioned schema descriptor.</summary>
+    public static FerruleValue SerializeEmbedded(
+        uint node,
+        string descriptor,
+        FerruleInstance instance,
+        bool declaration,
+        bool indent,
+        string? defaultNamespace)
+    {
+        try
+        {
+            var schema = FerruleEmbeddedSchema.Unwrap(
+                descriptor, MaximumEmbeddedSchemaBytes);
+            return Serialize(node, schema.Payload, instance, declaration, indent, defaultNamespace);
+        }
+        catch (FerruleRuntimeException)
+        {
+            throw;
+        }
+        catch (Exception error) when (
+            error is JsonException or FormatException or InvalidOperationException or
+            OverflowException or
+            ArgumentException or System.Text.EncoderFallbackException)
+        {
+            throw Error(node, error.Message, error);
+        }
+    }
+
     public static FerruleValue Serialize(
         uint node,
         string schemaJson,

@@ -355,13 +355,11 @@ mod tests {
         assert!(source.contains(
             "public static JsonBytesExecutionOutputs ExecuteJsonBytesOutputsWithSources("
         ));
-        assert!(
-            source.contains(
-                "global::Ferrule.Runtime.FerruleJson.ParseBytes(SourceJsonSchema, source)"
-            )
-        );
         assert!(source.contains(
-            "global::Ferrule.Runtime.FerruleJson.SerializeBytes(\n                TargetJsonSchema"
+            "global::Ferrule.Runtime.FerruleJson.ParseEmbeddedBytes(SourceJsonSchema, source)"
+        ));
+        assert!(source.contains(
+            "global::Ferrule.Runtime.FerruleJson.SerializeEmbeddedBytes(\n                TargetJsonSchema"
         ));
         assert!(source.contains("private const string SourceJsonSchema"));
         assert_eq!(
