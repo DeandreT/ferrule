@@ -186,9 +186,18 @@ fn parse_group(
         format!("SG{declared}")
     };
     *cursor += 1;
-    let start = *cursor;
+    let header_start = *cursor;
+    // A group's occurrence directives precede its first child. Inspecting
+    // the complete group body would mistake a repeated child for a repeated
+    // parent, changing the source schema's iteration shape.
+    while let Some(line) = lines.get(*cursor) {
+        if matches!(keyword(line), "BEGIN_SEGMENT" | "BEGIN_GROUP" | "END_GROUP") {
+            break;
+        }
+        *cursor += 1;
+    }
+    let repeating = occurrence_is_repeating(&lines[header_start..*cursor])?;
     let children = parse_nodes(lines, cursor, "END_GROUP", depth)?;
-    let repeating = occurrence_is_repeating(&lines[start..*cursor]);
     if children.is_empty() {
         return Err(IdocConfigError::Invalid(format!(
             "group `{name}` contains no segments"
@@ -222,7 +231,7 @@ fn parse_segment(lines: &[&str], cursor: &mut usize) -> Result<ConfigNode, IdocC
                 }
                 return Ok(ConfigNode::Segment {
                     name,
-                    repeating: occurrence_is_repeating(&lines[start..*cursor]),
+                    repeating: occurrence_is_repeating(&lines[start..*cursor])?,
                     fields,
                 });
             }
@@ -299,15 +308,38 @@ fn parse_nonzero(
         .ok_or_else(|| IdocConfigError::Invalid(format!("{label} must be one-based")))
 }
 
-fn occurrence_is_repeating(lines: &[&str]) -> bool {
-    lines.iter().any(|line| {
-        (keyword(line) == "STATUS"
-            && argument(line).is_some_and(|value| !value.eq_ignore_ascii_case("MANDATORY")))
-            || (keyword(line) == "LOOPMAX"
-                && argument(line)
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .is_some_and(|value| value > 1))
-    })
+fn occurrence_is_repeating(lines: &[&str]) -> Result<bool, IdocConfigError> {
+    let mut optional = false;
+    let mut minimum = None;
+    let mut maximum = None;
+    for line in lines {
+        match keyword(line) {
+            "STATUS" => {
+                let status = argument(line)
+                    .ok_or_else(|| IdocConfigError::Invalid("STATUS has no value".into()))?;
+                optional |= !status.eq_ignore_ascii_case("MANDATORY");
+            }
+            "LOOPMIN" => minimum = Some(parse_loop_bound(line, "LOOPMIN")?),
+            "LOOPMAX" => maximum = Some(parse_loop_bound(line, "LOOPMAX")?),
+            _ => {}
+        }
+    }
+    if minimum.zip(maximum).is_some_and(|(min, max)| min > max) {
+        return Err(IdocConfigError::Invalid("LOOPMIN exceeds LOOPMAX".into()));
+    }
+    Ok(optional || maximum.is_some_and(|max| max > 1))
+}
+
+fn parse_loop_bound(line: &str, label: &str) -> Result<u64, IdocConfigError> {
+    let raw =
+        argument(line).ok_or_else(|| IdocConfigError::Invalid(format!("{label} has no value")))?;
+    let value = raw
+        .parse::<u64>()
+        .map_err(|_| IdocConfigError::Invalid(format!("invalid {label} `{raw}`")))?;
+    if label == "LOOPMAX" && value == 0 {
+        return Err(IdocConfigError::Invalid("LOOPMAX must be positive".into()));
+    }
+    Ok(value)
 }
 
 fn keyword(line: &str) -> &str {
@@ -322,6 +354,70 @@ fn argument(line: &str) -> Option<&str> {
 mod tests {
     use super::*;
     use ir::SchemaKind;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn import_text(text: &str) -> Result<CompiledIdoc, IdocConfigError> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_idoc_occurrence_{}_{}.txt",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&path, text).unwrap();
+        let result = import_config(&path);
+        std::fs::remove_file(path).unwrap();
+        result
+    }
+
+    fn grouped_config(group_occurrence: &str, segment_occurrence: &str) -> String {
+        format!(
+            "BEGIN_SEGMENT_SECTION\nBEGIN_IDOC TEST\nBEGIN_GROUP 1\n{group_occurrence}\
+             BEGIN_SEGMENT ITEM\n{segment_occurrence}\
+             BEGIN_FIELDS\nNAME CODE\nTYPE CHARACTER\nBYTE_FIRST 11\nBYTE_LAST 14\n\
+             END_FIELDS\nEND_SEGMENT\nEND_GROUP\nEND_IDOC\nEND_SEGMENT_SECTION\n"
+        )
+    }
+
+    #[test]
+    fn mandatory_once_group_does_not_inherit_repeated_child_occurrence() {
+        let compiled = import_text(&grouped_config(
+            "STATUS MANDATORY\nLOOPMIN 1\nLOOPMAX 1\n",
+            "STATUS OPTIONAL\nLOOPMIN 0\nLOOPMAX 99\n",
+        ))
+        .unwrap();
+        let group = compiled.schema.child("SG1").unwrap();
+        assert!(!group.repeating);
+        assert!(group.child("ITEM").unwrap().repeating);
+    }
+
+    #[test]
+    fn group_own_loopmax_keeps_it_repeating_when_child_is_single() {
+        let compiled = import_text(&grouped_config(
+            "STATUS MANDATORY\nLOOPMIN 1\nLOOPMAX 3\n",
+            "STATUS MANDATORY\nLOOPMIN 1\nLOOPMAX 1\n",
+        ))
+        .unwrap();
+        let group = compiled.schema.child("SG1").unwrap();
+        assert!(group.repeating);
+        assert!(!group.child("ITEM").unwrap().repeating);
+    }
+
+    #[test]
+    fn malformed_group_loop_bounds_do_not_silently_change_cardinality() {
+        for (header, reason) in [
+            ("STATUS MANDATORY\nLOOPMAX nope\n", "invalid LOOPMAX"),
+            ("STATUS MANDATORY\nLOOPMAX 0\n", "LOOPMAX must be positive"),
+            (
+                "STATUS MANDATORY\nLOOPMIN 3\nLOOPMAX 2\n",
+                "LOOPMIN exceeds LOOPMAX",
+            ),
+        ] {
+            let error = import_text(&grouped_config(header, "STATUS MANDATORY\nLOOPMAX 1\n"))
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(reason), "{error}");
+        }
+    }
 
     #[test]
     fn compiles_nested_groups_occurrences_and_absolute_fields() {
