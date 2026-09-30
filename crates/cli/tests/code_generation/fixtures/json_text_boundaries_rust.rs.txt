@@ -22,10 +22,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn verify(result: Result<String, JsonBoundaryError>, case: &serde_json::Value) {
+    if case["reject_output"] == true {
+        assert!(matches!(result, Err(JsonBoundaryError::InvalidOutput { .. })), "{case}: {result:?}");
+        return;
+    }
     if case["reject"] == true {
         assert!(matches!(result, Err(JsonBoundaryError::InvalidInput { .. })), "{case}: {result:?}");
     } else {
-        let actual: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+        let output = result.unwrap();
+        if case["exact_output"] == true {
+            assert_eq!(output, case["expected_json"].as_str().unwrap(), "{case}");
+            return;
+        }
+        let actual: serde_json::Value = serde_json::from_str(&output).unwrap();
         let expected = match case.get("expected_json").and_then(serde_json::Value::as_str) {
             Some(text) => serde_json::from_str(text).unwrap(),
             None => case["expected"].clone(),

@@ -164,11 +164,24 @@ public static partial class FerruleJson
     private static string CanonicalizeAnyJsonUnchecked(JsonElement element)
     {
         var text = new StringBuilder();
-        AppendCanonicalAnyJson(text, element);
+        AppendCanonicalAnyJson(text, element, preserveNumbers: false);
         return text.ToString();
     }
 
-    private static void AppendCanonicalAnyJson(StringBuilder text, JsonElement element)
+    // Output predicates inspect an already-normalized Value. Reinterpreting
+    // its number tokens through serde's input reader can change a float by one
+    // ULP, so only strings and object keys need canonical escaping here.
+    private static string CanonicalizeOutputAnyJson(JsonElement element)
+    {
+        var text = new StringBuilder();
+        AppendCanonicalAnyJson(text, element, preserveNumbers: true);
+        return text.ToString();
+    }
+
+    private static void AppendCanonicalAnyJson(
+        StringBuilder text,
+        JsonElement element,
+        bool preserveNumbers)
     {
         switch (element.ValueKind)
         {
@@ -185,7 +198,9 @@ public static partial class FerruleJson
                 AppendSerdeString(text, element.GetString() ?? string.Empty);
                 return;
             case JsonValueKind.Number:
-                text.Append(CanonicalSerdeNumber(element.GetRawText()));
+                text.Append(preserveNumbers
+                    ? element.GetRawText()
+                    : CanonicalSerdeNumber(element.GetRawText()));
                 return;
             case JsonValueKind.Array:
                 text.Append('[');
@@ -197,7 +212,7 @@ public static partial class FerruleJson
                         text.Append(',');
                     }
                     firstItem = false;
-                    AppendCanonicalAnyJson(text, item);
+                    AppendCanonicalAnyJson(text, item, preserveNumbers);
                 }
                 text.Append(']');
                 return;
@@ -215,7 +230,7 @@ public static partial class FerruleJson
                     firstProperty = false;
                     AppendSerdeString(text, property.Name);
                     text.Append(':');
-                    AppendCanonicalAnyJson(text, property.Value);
+                    AppendCanonicalAnyJson(text, property.Value, preserveNumbers);
                 }
                 text.Append('}');
                 return;
@@ -267,6 +282,234 @@ public static partial class FerruleJson
             }
         }
         text.Append('"');
+    }
+
+    // Utf8JsonWriter does not indent WriteRawValue consistently inside arrays.
+    // Rebuild serde_json's two-space layout from complete JSON tokens, retaining
+    // each numeric token byte for byte so no float is parsed a second time.
+    private static string CanonicalizeOutputStrings(ReadOnlySpan<byte> encoded)
+    {
+        var reader = new Utf8JsonReader(
+            encoded,
+            new JsonReaderOptions { MaxDepth = MaximumDepth });
+        var text = new StringBuilder(Math.Min(encoded.Length, MaximumDocumentBytes));
+        var frames = new List<PrettyFrame>();
+        var rootWritten = false;
+        while (reader.Read())
+        {
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.StartObject:
+                case JsonTokenType.StartArray:
+                    BeginPrettyValue(text, frames, ref rootWritten);
+                    text.Append(reader.TokenType == JsonTokenType.StartObject ? '{' : '[');
+                    frames.Add(new PrettyFrame(reader.TokenType));
+                    break;
+                case JsonTokenType.EndObject:
+                case JsonTokenType.EndArray:
+                    if (frames.Count == 0)
+                    {
+                        throw Boundary("JSON output has an unmatched container end.");
+                    }
+                    var finished = frames[^1];
+                    if (finished.AwaitingValue ||
+                        reader.TokenType == JsonTokenType.EndObject &&
+                        finished.Kind != JsonTokenType.StartObject ||
+                        reader.TokenType == JsonTokenType.EndArray &&
+                        finished.Kind != JsonTokenType.StartArray)
+                    {
+                        throw Boundary("JSON output has an invalid container end.");
+                    }
+                    frames.RemoveAt(frames.Count - 1);
+                    if (finished.HasItems)
+                    {
+                        text.Append('\n');
+                        AppendPrettyIndent(text, frames.Count);
+                    }
+                    text.Append(reader.TokenType == JsonTokenType.EndObject ? '}' : ']');
+                    break;
+                case JsonTokenType.PropertyName:
+                    if (frames.Count == 0 ||
+                        frames[^1].Kind != JsonTokenType.StartObject ||
+                        frames[^1].AwaitingValue)
+                    {
+                        throw Boundary("JSON output has a property outside an object.");
+                    }
+                    var owner = frames[^1];
+                    text.Append(owner.HasItems ? ",\n" : "\n");
+                    AppendPrettyIndent(text, frames.Count);
+                    AppendSerdeString(text, reader.GetString() ?? string.Empty);
+                    text.Append(": ");
+                    owner.HasItems = true;
+                    owner.AwaitingValue = true;
+                    frames[^1] = owner;
+                    break;
+                case JsonTokenType.String:
+                    BeginPrettyValue(text, frames, ref rootWritten);
+                    AppendSerdeString(text, reader.GetString() ?? string.Empty);
+                    break;
+                case JsonTokenType.Number:
+                    BeginPrettyValue(text, frames, ref rootWritten);
+                    AppendJsonAscii(text, reader.ValueSpan);
+                    break;
+                case JsonTokenType.True:
+                case JsonTokenType.False:
+                case JsonTokenType.Null:
+                    BeginPrettyValue(text, frames, ref rootWritten);
+                    text.Append(reader.TokenType switch
+                    {
+                        JsonTokenType.True => "true",
+                        JsonTokenType.False => "false",
+                        _ => "null",
+                    });
+                    break;
+                default:
+                    throw Boundary("JSON output contains an unsupported token.");
+            }
+        }
+        if (!rootWritten || frames.Count != 0)
+        {
+            throw Boundary("JSON output is incomplete.");
+        }
+        return text.ToString();
+    }
+
+    private static void BeginPrettyValue(
+        StringBuilder text,
+        List<PrettyFrame> frames,
+        ref bool rootWritten)
+    {
+        if (frames.Count == 0)
+        {
+            if (rootWritten)
+            {
+                throw Boundary("JSON output contains more than one root value.");
+            }
+            rootWritten = true;
+            return;
+        }
+
+        var owner = frames[^1];
+        if (owner.Kind == JsonTokenType.StartObject)
+        {
+            if (!owner.AwaitingValue)
+            {
+                throw Boundary("JSON output contains an unnamed object value.");
+            }
+            owner.AwaitingValue = false;
+        }
+        else
+        {
+            text.Append(owner.HasItems ? ",\n" : "\n");
+            AppendPrettyIndent(text, frames.Count);
+            owner.HasItems = true;
+        }
+        frames[^1] = owner;
+    }
+
+    private static void AppendPrettyIndent(StringBuilder text, int depth) =>
+        text.Append(' ', checked(depth * 2));
+
+    private struct PrettyFrame(JsonTokenType kind)
+    {
+        public JsonTokenType Kind { get; } = kind;
+        public bool HasItems { get; set; }
+        public bool AwaitingValue { get; set; }
+    }
+
+    // Intermediate Utf8JsonWriter buffers can be larger than the final JSON:
+    // for example it writes a supplementary scalar as two escaped surrogates.
+    // Count the bytes after serde-compatible string escaping for private
+    // predicate and uniqueness limits without allocating another document.
+    private static int CanonicalOutputUtf8ByteCount(ReadOnlySpan<byte> encoded)
+    {
+        var reader = new Utf8JsonReader(
+            encoded,
+            new JsonReaderOptions { MaxDepth = MaximumDepth });
+        var count = 0;
+        var cursor = 0;
+        while (reader.Read())
+        {
+            if (reader.TokenType is not (JsonTokenType.String or JsonTokenType.PropertyName))
+            {
+                continue;
+            }
+
+            var start = checked((int)reader.TokenStartIndex);
+            count = checked(count + start - cursor);
+            count = checked(count + SerdeStringUtf8ByteCount(reader.GetString() ?? string.Empty));
+            cursor = EndJsonQuotedToken(encoded, start);
+        }
+        return checked(count + encoded.Length - cursor);
+    }
+
+    private static int SerdeStringUtf8ByteCount(string value)
+    {
+        var count = 2; // The surrounding quotes.
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (character is '"' or '\\' or '\b' or '\t' or '\n' or '\f' or '\r')
+            {
+                count = checked(count + 2);
+            }
+            else if (character < ' ')
+            {
+                count = checked(count + 6);
+            }
+            else if (character <= 0x7f)
+            {
+                count = checked(count + 1);
+            }
+            else if (character <= 0x7ff)
+            {
+                count = checked(count + 2);
+            }
+            else if (char.IsHighSurrogate(character) &&
+                     index + 1 < value.Length &&
+                     char.IsLowSurrogate(value[index + 1]))
+            {
+                count = checked(count + 4);
+                index++;
+            }
+            else if (char.IsSurrogate(character))
+            {
+                throw Boundary("JSON output contains an unpaired UTF-16 surrogate.");
+            }
+            else
+            {
+                count = checked(count + 3);
+            }
+        }
+        return count;
+    }
+
+    private static int EndJsonQuotedToken(ReadOnlySpan<byte> encoded, int start)
+    {
+        for (var offset = start + 1; offset < encoded.Length; offset++)
+        {
+            if (encoded[offset] == (byte)'\\')
+            {
+                offset++;
+            }
+            else if (encoded[offset] == (byte)'"')
+            {
+                return offset + 1;
+            }
+        }
+        throw Boundary("JSON output contains an unterminated quoted token.");
+    }
+
+    private static void AppendJsonAscii(StringBuilder text, ReadOnlySpan<byte> encoded)
+    {
+        foreach (var byteValue in encoded)
+        {
+            if (byteValue > 0x7f)
+            {
+                throw Boundary("JSON output contains non-ASCII syntax outside a string.");
+            }
+            text.Append((char)byteValue);
+        }
     }
 
     private static string CanonicalSerdeNumber(string token)

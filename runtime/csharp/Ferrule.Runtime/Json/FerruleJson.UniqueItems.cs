@@ -83,13 +83,15 @@ public static partial class FerruleJson
         }
     }
 
-    private static JsonDocument CreateNormalizedOutputItem(
+    private static (JsonDocument Document, int CanonicalBytes) CreateNormalizedOutputItem(
         JsonSchemaNode schema,
         FerruleInstance item,
         NodeBudget nodeBudget,
         int depth)
     {
-        var buffer = new ArrayBufferWriter<byte>();
+        var buffer = new BoundedJsonBufferWriter(
+            MaximumEscapedDocumentBytes,
+            $"Normalized JSON item in array '{schema.Name}'");
         using (var itemWriter = new Utf8JsonWriter(
                    buffer,
                    new JsonWriterOptions
@@ -101,19 +103,21 @@ public static partial class FerruleJson
         {
             WriteSingleNode(itemWriter, schema, item, nodeBudget, depth);
         }
-        if (buffer.WrittenCount > MaximumDocumentBytes)
+        var canonicalBytes = CanonicalOutputUtf8ByteCount(buffer.WrittenSpan);
+        if (canonicalBytes > MaximumDocumentBytes)
         {
             throw Boundary(
                 $"Normalized JSON item in array '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit.");
         }
-        return JsonDocument.Parse(
-            buffer.WrittenMemory.ToArray(),
+        var document = JsonDocument.Parse(
+            buffer.WrittenMemory,
             new JsonDocumentOptions
             {
                 MaxDepth = MaximumDepth,
                 CommentHandling = JsonCommentHandling.Disallow,
                 AllowTrailingCommas = false,
             });
+        return (document, canonicalBytes);
     }
 
     private static byte[] CreateUniqueItemKey(
@@ -132,7 +136,7 @@ public static partial class FerruleJson
         {
             WriteCanonicalUniqueValue(writer, value, budget);
         }
-        budget.AddBytes(buffer.WrittenCount);
+        budget.AddBytes(CanonicalOutputUtf8ByteCount(buffer.WrittenSpan));
         return buffer.WrittenSpan.ToArray();
     }
 

@@ -7,6 +7,9 @@ namespace Ferrule.Runtime;
 public static partial class FerruleJson
 {
     private const int MaximumJsonDependentSchemas = 32;
+    // The temporary writer may expand one canonical UTF-8 byte to a six-byte
+    // Unicode escape. The exact 64 MiB limit is checked after canonicalizing.
+    private const int MaximumEscapedDocumentBytes = MaximumDocumentBytes * 6;
 
     private static IReadOnlyList<JsonDependentSchema> ReadJsonDependentSchemas(
         string name,
@@ -152,7 +155,7 @@ public static partial class FerruleJson
         int depth)
     {
         var buffer = new BoundedJsonBufferWriter(
-            MaximumDocumentBytes,
+            MaximumEscapedDocumentBytes,
             $"Normalized JSON object '{schema.Name}'");
         using (var objectWriter = new Utf8JsonWriter(
                    buffer,
@@ -164,6 +167,11 @@ public static partial class FerruleJson
                    }))
         {
             WriteObject(objectWriter, schema, group, budget, depth);
+        }
+        if (CanonicalOutputUtf8ByteCount(buffer.WrittenSpan) > MaximumDocumentBytes)
+        {
+            throw Boundary(
+                $"Normalized JSON object '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit.");
         }
         using var document = JsonDocument.Parse(
             buffer.WrittenMemory,
@@ -178,7 +186,7 @@ public static partial class FerruleJson
             schema,
             properties,
             document.RootElement,
-            budget,
+            budget.OutputMatcher(),
             depth);
         document.RootElement.WriteTo(writer);
     }
@@ -200,6 +208,8 @@ public static partial class FerruleJson
         }
 
         public ReadOnlyMemory<byte> WrittenMemory => _buffer.WrittenMemory;
+
+        public ReadOnlySpan<byte> WrittenSpan => _buffer.WrittenSpan;
 
         public void Advance(int count)
         {

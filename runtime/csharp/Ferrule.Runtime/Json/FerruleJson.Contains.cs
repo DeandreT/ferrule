@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 
 namespace Ferrule.Runtime;
@@ -255,15 +254,13 @@ public static partial class FerruleJson
             var totalBytes = 0;
             foreach (var item in items)
             {
-                var document = CreateNormalizedOutputItem(
+                var (document, canonicalBytes) = CreateNormalizedOutputItem(
                     schema,
                     item,
                     budget,
                     depth);
                 documents.Add(document);
-                totalBytes = checked(
-                    totalBytes +
-                    Encoding.UTF8.GetByteCount(document.RootElement.GetRawText()));
+                totalBytes = checked(totalBytes + canonicalBytes);
                 if (totalBytes > MaximumDocumentBytes)
                 {
                     throw Boundary(
@@ -271,7 +268,7 @@ public static partial class FerruleJson
                 }
             }
 
-            var matcher = budget.Matcher();
+            var matcher = budget.OutputMatcher();
             foreach (var constraint in schema.JsonContains)
             {
                 var matches = 0;

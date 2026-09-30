@@ -22,7 +22,7 @@ foreach (var test in cases.RootElement.EnumerateArray())
 
 static void Verify(Func<string> run, JsonElement test)
 {
-    if (test.TryGetProperty("reject", out _))
+    if (test.TryGetProperty("reject", out _) || test.TryGetProperty("reject_output", out _))
     {
         try
         {
@@ -32,12 +32,20 @@ static void Verify(Func<string> run, JsonElement test)
         {
             return;
         }
-        throw new Exception($"Invalid JSON input was accepted: {test}");
+        throw new Exception($"Invalid JSON boundary was accepted: {test}");
     }
     var actual = run();
     var expected = test.TryGetProperty("expected_json", out var expectedText)
         ? expectedText.GetString()!
         : test.GetProperty("expected").GetRawText();
+    if (test.TryGetProperty("exact_output", out var exact) && exact.GetBoolean())
+    {
+        if (!string.Equals(actual, expected, StringComparison.Ordinal))
+        {
+            throw new Exception($"Exact JSON output differs: {test}; actual: {actual}");
+        }
+        return;
+    }
     var comparisonOptions = new JsonDocumentOptions { MaxDepth = 256 };
     if (!JsonNode.DeepEquals(
             JsonNode.Parse(actual, documentOptions: comparisonOptions),
