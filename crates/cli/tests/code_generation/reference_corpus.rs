@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against thirty-one local, gitignored mappings.
+//! Opt-in generated-backend execution against thirty-two local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -23,6 +23,7 @@ enum TargetKind {
     Json,
     Xml,
     Csv,
+    Protobuf,
 }
 
 struct CorpusCase {
@@ -32,7 +33,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 31] = [
+const CASES: [CorpusCase; 32] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -219,6 +220,12 @@ const CASES: [CorpusCase; 31] = [
         source_kind: SourceKind::Json,
         target_kind: TargetKind::Xml,
     },
+    CorpusCase {
+        sample: "PersonsToProtobuf.mfd",
+        input: "Altova_Hierarchical.xml",
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Protobuf,
+    },
 ];
 
 #[test]
@@ -283,6 +290,7 @@ fn run_case(
             TargetKind::Csv => {
                 project.target_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
             }
+            TargetKind::Protobuf => project.target_options.protobuf.is_some(),
         },
         "{sample}: unexpected output format"
     );
@@ -461,6 +469,7 @@ fn run_case(
             | "InputIsSequence.mfd"
             | "SelectPropertyFromJSON.mfd"
             | "JSON_To_Xml_PurchaseOrders.mfd"
+            | "PersonsToProtobuf.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
         if matches!(
@@ -524,6 +533,7 @@ fn run_case(
     let mapped_xml_output = sample == "Tutorial/Expense-valmap.mfd";
     let recursive_xml_output = sample == "RecursiveDirectoryFilter.mfd";
     let purchase_orders_xml_output = sample == "JSON_To_Xml_PurchaseOrders.mfd";
+    let protobuf_output = sample == "PersonsToProtobuf.mfd";
     let typed_xml_output =
         recursive_xml_output || sample == "InputIsSequence.mfd" || purchase_orders_xml_output;
     let expected_xml = if mapped_xml_output || typed_xml_output {
@@ -589,6 +599,32 @@ fn run_case(
         let xml = expected_xml.as_ref().expect("typed XML output");
         assert_eq!(xml.matches("xsi:type=\"ft:EU-Address\"").count(), 1);
         assert_eq!(xml.matches("xsi:type=\"ft:US-Address\"").count(), 5);
+    }
+    if protobuf_output {
+        assert!(
+            project.extra_targets.is_empty(),
+            "{sample}: one binary target"
+        );
+        let people = expected_json["person"]
+            .as_array()
+            .expect("mapped Protobuf people");
+        assert_eq!(people.len(), 21, "{sample}: every XML person is mapped");
+        for (index, person) in people.iter().enumerate() {
+            assert_eq!(
+                person["id"],
+                (index + 1) as i64,
+                "{sample}: source ID order"
+            );
+            let phone = person["phone"].as_array().expect("one phone group");
+            assert_eq!(phone.len(), 1, "{sample}: one phone per person");
+            assert_eq!(phone[0]["type"], 2, "{sample}: WORK enum value");
+        }
+        assert_eq!(people[0]["name"], "Vernon Callaby");
+        assert_eq!(people[0]["email"], "v.callaby@nanonull.com");
+        assert_eq!(people[0]["phone"][0]["number"], "582");
+        assert_eq!(people[20]["name"], "Mark Redgreen");
+        assert_eq!(people[20]["email"], "m.redgreen@nanonull.com");
+        assert_eq!(people[20]["phone"][0]["number"], "152");
     }
     if sample == "BuildHierarchyFromTextfile.mfd" {
         let Instance::Repeated(rows) = &source else {
@@ -1238,12 +1274,35 @@ fn run_case(
     } else {
         None
     };
+    let expected_protobuf = if protobuf_output {
+        let options = project
+            .target_options
+            .protobuf
+            .as_ref()
+            .expect("Protobuf target");
+        assert!(options.imports.is_empty(), "{sample}: local proto2 schema");
+        assert_eq!(options.root_message, "Persons");
+        let layout = format_protobuf::Layout::parse(&options.schema)?;
+        let bytes = format_protobuf::to_vec(&layout, &options.root_message, &expected)?;
+        let decoded = format_protobuf::from_slice(&layout, &options.root_message, &bytes)?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&format_json::to_string(
+                &project.target,
+                &decoded,
+            )?)?,
+            expected_json,
+            "{sample}: native Protobuf encoding changes mapped values"
+        );
+        Some(bytes)
+    } else {
+        None
+    };
 
     let generated_input = case_dir.join("source.json");
     std::fs::write(&generated_input, source_json)?;
     let project_path = case_dir.join("project.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
-    let xml_host_schemas = if mapped_xml_output || typed_xml_output {
+    let typed_host_schemas = if mapped_xml_output || typed_xml_output || protobuf_output {
         let source_schema = case_dir.join("source-schema.json");
         let target_schema = case_dir.join("target-schema.json");
         std::fs::write(&source_schema, serde_json::to_vec(&project.source)?)?;
@@ -1282,6 +1341,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#
     } else if typed_xml_output {
         RECURSIVE_FILTER_RUST_HARNESS
+    } else if protobuf_output {
+        PROTOBUF_TARGET_RUST_HARNESS
     } else {
         r#"use ferrule_generated_mapping::{NamedJsonInput, execute_json_with_sources};
 
@@ -1327,7 +1388,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(&generated_input)
         .current_dir(&rust_output)
         .env("CARGO_TARGET_DIR", rust_target);
-    if let Some((source_schema, target_schema)) = &xml_host_schemas {
+    if let Some((source_schema, target_schema)) = &typed_host_schemas {
         rust_run_command.arg(source_schema).arg(target_schema);
     } else {
         for (name, path) in &named_input_paths {
@@ -1372,6 +1433,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Rust",
             )?;
         }
+        if let Some(expected_protobuf) = &expected_protobuf {
+            assert_generated_protobuf_bytes(
+                &project,
+                &rust_json,
+                expected_protobuf,
+                sample,
+                "Rust",
+            )?;
+        }
     }
 
     let csharp_output = case_dir.join("csharp");
@@ -1408,6 +1478,8 @@ Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, nu
 "#
     } else if typed_xml_output {
         RECURSIVE_FILTER_CSHARP_HARNESS
+    } else if protobuf_output {
+        PROTOBUF_TARGET_CSHARP_HARNESS
     } else {
         r#"using Ferrule.Generated;
 
@@ -1454,7 +1526,7 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
         ])
         .arg(&generated_input)
         .current_dir(&csharp_output);
-    if let Some((source_schema, target_schema)) = &xml_host_schemas {
+    if let Some((source_schema, target_schema)) = &typed_host_schemas {
         csharp_run_command.arg(source_schema).arg(target_schema);
         if purchase_orders_xml_output {
             csharp_run_command.arg("http://www.altova.com/IPO");
@@ -1498,6 +1570,15 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
                 &expected,
                 &csharp_json,
                 expected_csv,
+                sample,
+                "C#",
+            )?;
+        }
+        if let Some(expected_protobuf) = &expected_protobuf {
+            assert_generated_protobuf_bytes(
+                &project,
+                &csharp_json,
+                expected_protobuf,
                 sample,
                 "C#",
             )?;
@@ -1578,6 +1659,39 @@ Console.Out.Write(json);
 Console.Out.Write('\0');
 "#;
 
+const PROTOBUF_TARGET_RUST_HARNESS: &str = r#"use codegen_runtime::{parse_json, serialize_json};
+use ferrule_generated_mapping::{execute, execute_json};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let input = std::fs::read_to_string(args.next().expect("input path"))?;
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema path"))?;
+    let target_schema = std::fs::read_to_string(args.next().expect("target schema path"))?;
+    let source = parse_json(&source_schema, &input)?;
+    let output = execute(&source)?;
+    let json = serialize_json(&target_schema, &output)?;
+    assert_eq!(json, execute_json(&input)?, "typed and JSON generated APIs agree");
+    print!("{json}");
+    Ok(())
+}
+"#;
+
+const PROTOBUF_TARGET_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var input = File.ReadAllText(args[0]);
+var sourceSchema = File.ReadAllText(args[1]);
+var targetSchema = File.ReadAllText(args[2]);
+var source = FerruleJson.Parse(sourceSchema, input);
+var output = GeneratedMapping.Execute(source);
+var json = FerruleJson.Serialize(targetSchema, output);
+if (json != GeneratedMapping.ExecuteJson(input))
+{
+    throw new InvalidOperationException("Typed and JSON generated APIs disagree.");
+}
+Console.Out.Write(json);
+"#;
+
 fn corpus_csv_bytes(project: &Project, instance: &Instance) -> TestResult<Vec<u8>> {
     let Instance::Repeated(rows) = instance else {
         panic!("CSV target should contain repeated rows");
@@ -1624,6 +1738,38 @@ fn assert_generated_csv_bytes(
         corpus_csv_bytes(project, &generated)?,
         expected_csv,
         "{sample}: generated {backend} CSV bytes differ from engine"
+    );
+    Ok(())
+}
+
+fn assert_generated_protobuf_bytes(
+    project: &Project,
+    generated_json: &serde_json::Value,
+    expected_bytes: &[u8],
+    sample: &str,
+    backend: &str,
+) -> TestResult<()> {
+    let options = project
+        .target_options
+        .protobuf
+        .as_ref()
+        .expect("Protobuf target");
+    let layout = format_protobuf::Layout::parse(&options.schema)?;
+    let generated =
+        format_json::from_str(&serde_json::to_string(generated_json)?, &project.target)?;
+    let bytes = format_protobuf::to_vec(&layout, &options.root_message, &generated)?;
+    assert_eq!(
+        bytes, expected_bytes,
+        "{sample}: generated {backend} Protobuf bytes differ from engine"
+    );
+    let decoded = format_protobuf::from_slice(&layout, &options.root_message, &bytes)?;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&format_json::to_string(
+            &project.target,
+            &decoded
+        )?)?,
+        *generated_json,
+        "{sample}: generated {backend} Protobuf bytes decode to different values"
     );
     Ok(())
 }
