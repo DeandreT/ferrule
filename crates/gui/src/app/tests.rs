@@ -4,6 +4,8 @@ use crate::layout_store::layout_path;
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, FunctionId, NamedTarget, Scope, UserFunction};
 
+#[path = "pipeline_preview_tests.rs"]
+mod pipeline_preview;
 #[path = "preview_inputs_tests.rs"]
 mod preview_inputs;
 
@@ -249,21 +251,17 @@ fn pipeline_runner_uses_unambiguous_stored_host_paths() -> anyhow::Result<()> {
     assert_eq!(draft.inputs[0].name, "lookup-file");
     assert_eq!(
         draft.inputs[0].path,
-        directory
-            .join("designs/inputs/lookup.json")
-            .to_string_lossy()
+        directory.join("inputs/lookup.json").to_string_lossy()
     );
     assert_eq!(draft.inputs[1].name, "orders");
     assert_eq!(
         draft.inputs[1].path,
-        directory
-            .join("designs/inputs/orders.json")
-            .to_string_lossy()
+        directory.join("inputs/orders.json").to_string_lossy()
     );
     assert!(draft.outputs[0].path.is_empty());
     draft.outputs[0].path = "result.json".into();
     let (inputs, _) = draft.requests()?;
-    assert_eq!(inputs[1].path, directory.join("designs/inputs/orders.json"));
+    assert_eq!(inputs[1].path, directory.join("inputs/orders.json"));
 
     let mut second = pipeline.stages[0].clone();
     second.id = "second".into();
@@ -4096,8 +4094,11 @@ fn pipeline_editor_stores_sibling_project_identity_as_relative_path() -> anyhow:
     std::fs::create_dir_all(&pipeline_dir)?;
     let source: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&fixture_path)?)?;
     let project_path = project_dir.join("stage.json");
+    std::fs::write(project_dir.join("orders.json"), r#"{"Value":"source"}"#)?;
+    std::fs::write(project_dir.join("invoice.json"), "")?;
     let mut project = source.stages[0].project.clone();
     project.source_path = Some("orders.json".into());
+    project.target_path = Some("invoice.json".into());
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
     let mut document =
         crate::pipeline_edit::PipelineEditorDocument::create(&pipeline_dir.join("flow.json"))?;
@@ -4110,6 +4111,22 @@ fn pipeline_editor_stores_sibling_project_identity_as_relative_path() -> anyhow:
         document.pipeline.stages[0].project.source_path.as_deref(),
         Some("../projects/orders.json")
     );
+    assert_eq!(
+        document.pipeline.stages[0].project.target_path.as_deref(),
+        Some("../projects/invoice.json")
+    );
+    document.save()?;
+    let draft = crate::pipeline_run::PipelineRunDraft::load(&pipeline_dir.join("flow.json"))?;
+    assert!(draft.issues.is_empty(), "{:?}", draft.issues);
+    assert_eq!(
+        std::fs::canonicalize(&draft.inputs[0].path)?,
+        std::fs::canonicalize(project_dir.join("orders.json"))?
+    );
+    assert_eq!(
+        std::fs::canonicalize(&draft.outputs[0].preview_path)?,
+        std::fs::canonicalize(project_dir.join("invoice.json"))?
+    );
+    assert!(draft.outputs[0].path.is_empty());
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }
