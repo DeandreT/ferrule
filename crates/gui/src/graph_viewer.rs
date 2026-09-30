@@ -762,7 +762,6 @@ impl GraphViewer<'_> {
             | Node::RuntimeValue { .. }
             | Node::RuntimeParameter { .. }
             | Node::XmlSerialize { .. } => None,
-            Node::RuntimeParameterDefault { default, .. } => (idx == 0).then_some(*default),
         }
     }
 
@@ -1487,6 +1486,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         .cloned()
                         .unwrap_or_else(|| format!("input {}", idx + 1)),
                     Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
+                    Some(Node::RuntimeParameterDefault { .. }) => "default".to_string(),
                     Some(Node::ValueMap { .. }) => "input".to_string(),
                     Some(Node::Lookup { .. }) => "match/key".to_string(),
                     Some(Node::DynamicSourceField { .. }) => "property name".to_string(),
