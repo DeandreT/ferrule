@@ -681,6 +681,7 @@ impl FerruleApp {
         let mut run = None;
         let mut command = None;
         let mut condition_valid = true;
+        let mut host_parameters_valid = true;
         egui::Window::new("Run pipeline")
             .default_width(650.0)
             .min_width(480.0)
@@ -734,6 +735,10 @@ impl FerruleApp {
                             ui.end_row();
                         }
                     });
+                ui.separator();
+                ui.add_enabled_ui(!running, |ui| {
+                    host_parameters_valid = self.host_parameters.show(ui);
+                });
                 ui.separator();
                 ui.strong("Publish outputs");
                 ui.small("Leave an output blank to keep it in memory only. Dynamic document targets use a base directory.");
@@ -972,7 +977,8 @@ impl FerruleApp {
                         None => {
                             let can_run = draft.issues.is_empty()
                                 && draft.inputs.iter().all(|input| !input.path.trim().is_empty())
-                                && draft.outputs.iter().any(|output| !output.path.trim().is_empty());
+                                && draft.outputs.iter().any(|output| !output.path.trim().is_empty())
+                                && host_parameters_valid;
                             if ui.add_enabled(can_run, egui::Button::new("Run pipeline")).clicked() {
                                 run = Some(false);
                             }
@@ -1046,6 +1052,14 @@ impl FerruleApp {
         if self.pending_pipeline_run.is_some() || self.pending_file_run.is_some() {
             return;
         }
+        let runtime_parameters = match self.host_parameters.compile() {
+            Ok(parameters) => parameters,
+            Err(error) => {
+                self.status = "pipeline run blocked".into();
+                self.diagnostics.error("Pipeline run blocked", error);
+                return;
+            }
+        };
         let value_condition = if debug {
             match self.pipeline_run_value_condition.compile() {
                 Ok(condition) => condition,
@@ -1230,6 +1244,7 @@ impl FerruleApp {
                 .with_stage_source_field_probe(&source_probe)
                 .with_stage_trace_sink(&stage_trace)
                 .with_before_publish(&gate);
+            options.runtime_parameters = Some(&runtime_parameters);
             if hook.expression_condition.is_some() {
                 options = options
                     .with_stage_node_debug_hook(&stage_node_hook)

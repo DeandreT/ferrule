@@ -434,6 +434,7 @@ impl FerruleApp {
             ui.separator();
             ui.add_enabled_ui(editing_enabled, |ui| {
                 ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
+                self.host_parameters.show(ui);
                 self.show_file_debug_controls(ui);
             });
             ui.spacing_mut().item_spacing.y = 0.0;

@@ -874,6 +874,7 @@ impl FerruleApp {
         let input_size = draft.input_text.len();
         let input_too_large = input_size > cli::MAX_PAYLOAD_DOCUMENT_BYTES;
         let mut condition_valid = true;
+        let mut host_parameters_valid = true;
         egui::Window::new("Preview mapping")
             .collapsible(false)
             .resizable(true)
@@ -905,6 +906,9 @@ impl FerruleApp {
                             .on_hover_text("Selects the output format; no file is written");
                             ui.end_row();
                         });
+                });
+                ui.add_enabled_ui(!running, |ui| {
+                    host_parameters_valid = self.host_parameters.show(ui);
                 });
                 ui.horizontal(|ui| {
                     ui.label("Debug breakpoint");
@@ -1078,13 +1082,13 @@ impl FerruleApp {
                             action = Some(PreviewAction::Cancel);
                         }
                         if ui
-                            .add_enabled(draft.can_execute(), egui::Button::new("Preview"))
+                            .add_enabled(draft.can_execute() && host_parameters_valid, egui::Button::new("Preview"))
                             .clicked()
                         {
                             action = Some(PreviewAction::Execute);
                         }
                         if ui
-                            .add_enabled(draft.can_execute() && condition_valid, egui::Button::new("Debug preview"))
+                            .add_enabled(draft.can_execute() && host_parameters_valid && condition_valid, egui::Button::new("Debug preview"))
                             .clicked()
                         {
                             action = Some(PreviewAction::Debug);
@@ -1126,6 +1130,14 @@ impl FerruleApp {
         if self.pending_preview.is_some() {
             return;
         }
+        let runtime_parameters = match self.host_parameters.compile() {
+            Ok(parameters) => parameters,
+            Err(error) => {
+                self.status = "preview blocked".into();
+                self.diagnostics.error("Preview blocked", error);
+                return;
+            }
+        };
         let value_condition = if debug {
             match self.preview_value_condition.compile() {
                 Ok(condition) => condition,
@@ -1240,6 +1252,7 @@ impl FerruleApp {
                 draft,
                 project_path,
                 saved_path,
+                runtime_parameters,
                 debug,
                 value_condition,
                 position_condition,
@@ -1452,6 +1465,7 @@ fn run_preview_worker(
     draft: PreviewDraft,
     project_path: PathBuf,
     saved_path: Option<PathBuf>,
+    runtime_parameters: engine::RuntimeParameters,
     debug: bool,
     value_condition: Option<DebugScalarCondition>,
     position_condition: Option<DebugPositionCondition>,
@@ -1501,6 +1515,7 @@ fn run_preview_worker(
         &draft,
         &project_path,
         saved_path.as_deref(),
+        &runtime_parameters,
         &trace,
         &hook,
         &cancelled,
@@ -1520,11 +1535,13 @@ fn run_preview_worker(
     let _ = events.send(PreviewWorkerEvent::Finished(result, trace.finish()));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_preview_payload(
     project: &Project,
     draft: &PreviewDraft,
     project_path: &std::path::Path,
     saved_path: Option<&std::path::Path>,
+    runtime_parameters: &engine::RuntimeParameters,
     trace: &crate::run_report::TraceCollector,
     debug_hook: &dyn engine::DebugHook,
     cancelled: &AtomicBool,
@@ -1547,6 +1564,7 @@ fn run_preview_payload(
         .with_extra_sources(&named_inputs)
         .with_output_path(&output_path)
         .with_target(draft.target.selection())
+        .with_runtime_parameters(runtime_parameters)
         .with_trace_sink(trace)
         .with_debug_hook(debug_hook);
     cli::run_project_value_payloads(project, project_path, &options)
