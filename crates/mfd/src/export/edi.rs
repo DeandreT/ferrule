@@ -27,6 +27,33 @@ pub(super) fn validate_side(
     options: &FormatOptions,
     side_name: &str,
 ) -> Result<(), MfdError> {
+    if let Some(descriptor) = options.idoc_native_config.as_ref() {
+        if options.edi_kind != Some(EdiBoundaryKind::Idoc) {
+            return Err(MfdError::Unsupported(format!(
+                "the {side_name} IDoc native configuration descriptor requires the IDoc dialect"
+            )));
+        }
+        if options.edi_config_reference.is_some() {
+            return Err(MfdError::Unsupported(format!(
+                "the {side_name} IDoc native configuration descriptor conflicts with an unresolved external configuration"
+            )));
+        }
+        let layout = options.idoc.as_ref().ok_or_else(|| {
+            MfdError::Unsupported(format!(
+                "the {side_name} IDoc native configuration descriptor requires an embedded IDoc layout"
+            ))
+        })?;
+        let (projected_schema, projected_layout) = descriptor.project().map_err(|error| {
+            MfdError::Unsupported(format!(
+                "the {side_name} IDoc native configuration descriptor is invalid: {error}"
+            ))
+        })?;
+        if &projected_schema != schema || &projected_layout != layout {
+            return Err(MfdError::Unsupported(format!(
+                "the {side_name} IDoc native configuration descriptor does not match its schema and layout"
+            )));
+        }
+    }
     let Some(kind) = options.edi_kind else {
         return Ok(());
     };
@@ -509,6 +536,26 @@ fn retained_layout_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> Result
             )
         },
     );
+    if kind == EdiBoundaryKind::Idoc
+        && let Some(descriptor) = options.idoc_native_config.as_ref()
+    {
+        let serialized = serde_json::to_string(descriptor).map_err(|error| {
+            MfdError::Unsupported(format!(
+                "could not serialize the IDoc native configuration descriptor: {error}"
+            ))
+        })?;
+        if serialized.len() > 32 * 1024 * 1024 {
+            return Err(MfdError::Unsupported(
+                "the IDoc native configuration descriptor exceeds the 32 MiB embedded metadata limit"
+                    .to_string(),
+            ));
+        }
+        let _ = writeln!(
+            output,
+            "\t\t\t\t\t\t\t<ferrule-idoc-native-config kind=\"idoc\" version=\"1\">{}</ferrule-idoc-native-config>",
+            xml_escape(&serialized)
+        );
+    }
     if !options.edi_lexical_formats.is_empty() {
         let formats = serde_json::to_string(&options.edi_lexical_formats).map_err(|error| {
             MfdError::Unsupported(format!("could not serialize EDI lexical formats: {error}"))
