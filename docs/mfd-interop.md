@@ -203,7 +203,8 @@ their connected default expression and scalar type. The host value wins when
 the name is supplied; otherwise the default evaluates lazily. Explicit null
 does not select the default. String, integer, and decimal input tests cover
 strict warning-free export/reimport, overrides, and typed errors. Unconnected
-preview-only inputs retain their previous preview-value behavior.
+optional preview-only inputs retain the enabled preview as their lazy default.
+Required preview-only inputs retain their previous preview-value behavior.
 For the exact order-pricing graph, strict export restores the native decimal
 source rules on two XML price leaves. Anchored repeated-row reads apply those
 rules on reimport, preserving all three local CSV rows and the original typed
@@ -211,7 +212,8 @@ conversion error for nonfinite hand-built inputs. Changed arithmetic, shared
 conversions, string leaves, and non-XML sources remain explicit blockers.
 Four local employee and manager mappings also reconstruct one native database
 `where` control for a guarded `%Word%` title predicate. Nested relation
-selection and an independent department or office filter stay connected;
+selection and an independent department or office filter stay connected,
+including typed optional pattern and selection inputs;
 strict reimport reproduces 8, 8, 2, and 5 XML rows respectively. Other
 patterns, shared predicate nodes, row controls, and changed field types reject.
 One joined SQLite order query reconstructs a native `SELECT` with its declared
@@ -219,7 +221,12 @@ foreign key, `Quantity > 2` filter, and computed `Quantity * UnitPrice` column.
 Local strict export/reimport reproduces the two CSV rows and SQLite integer
 overflow behavior. The imported project retains the threshold as a literal,
 so the original host parameter name and override workflow remain outside this
-claim. If the database cannot be resolved for the read-only foreign-key check,
+claim. Exact same-type optional query inputs now retain host overrides rather
+than freezing the default. A guarded joined integer comparison exports its
+optional input through a declared native SELECT parameter; synthetic tests
+cover preview and connected defaults, overrides, nulls, and typed errors.
+Required previews and cross-type dynamic query coercion retain their earlier
+limitations. If the database cannot be resolved for the read-only foreign-key check,
 the exporter leaves its internal function and reports the native limitation.
 Two temperature designs recover their original native numeric wiring. The
 annual PDF mapping retains all eight conversions inside its user function and
@@ -229,15 +236,17 @@ node-function rule; its five yearly rows and typed nonfinite conversion error
 match after strict export/reimport. The recovery requires the closed source,
 target, graph, and scope shapes of these two designs; changed numeric calls,
 shared branches, or added row controls keep the explicit incompatibility.
-Three bounded recursive construction families export as synthesized native user
+Four bounded recursive construction families export as synthesized native user
 functions: one repeated string path list builds a directory/file hierarchy,
 one flat key/parent catalog builds a recursive adjacency tree, and a same-shape
-directory tree filters its direct files at every level. These require
+directory tree filters its direct files at every level, and one recursive
+directory collector emits a flat list of file paths. These require
 plain XML boundaries and exact supported schemas and scopes. Local strict
 round trips preserve the 16-directory/90-file tree and the 49-type hierarchy
 byte for byte. The recursive filter retains all 16 directories and 33 `.xml`
 files by default; a supplied `.xsd` search retains 16 files, with matching XML
-before and after reimport. Original function names and canvas layouts are not retained by
+before and after reimport. The flat collector preserves all 90 paths and
+direct-file-before-child ordering, including interleaved XML input. Original function names and canvas layouts are not retained by
 these normalized constructions; duplicate/cycle behavior in the native
 application remains unverified.
 Native XML date-time target casts can also be reconstructed in nested and
@@ -245,6 +254,13 @@ repeated target scopes when every selected leaf and graph consumer satisfies
 the closed-schema guards. Invalid lexical values retain the same typed local
 failure after reimport. This removes the IDoc sample's internal cast component;
 its separate EDI schema/layout blockers remain.
+A bounded strict IDoc descriptor parser also retains supported group, segment,
+field, cardinality, and code-list metadata. Its canonical rendering reparses
+identically and projects to the same legacy schema and fixed-record layout.
+Unknown syntax leaves legacy import executable without certification. This is
+configuration groundwork: the descriptor is not yet stored in project format
+options or emitted as a native configuration sidecar, and runtime status,
+loop-bound, and code-list semantics still need validation.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
 endpoints, validated against the physical columns, and exported canonically. This
 keeps nested relational reads executable when the database omits foreign-key metadata.

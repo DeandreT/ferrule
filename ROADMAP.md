@@ -63,12 +63,12 @@ are preserved.
   The remaining design retains missing target and embedded string-parser JSON
   Schema provenance across best-effort export/re-import. All 175
   dependency-complete round trips remain engine-valid. Strict Ferrule native
-  export preflight now accepts 166 of 187 local designs. Direct `doc-xml`
+  export preflight now accepts 167 of 187 local designs. Direct `doc-xml`
   reconstruction, guarded SQLite `LIKE` controls, finite numeric input
   identity, a bounded Protobuf numeric UDF, canonical decimal-input
   reconstruction, two XML source-leaf pricing rules, one guarded joined SQLite
   `SELECT`, two temperature designs, two recursive hierarchies, one recursive
-  directory filter, and the optional phone-list filter recover nineteen native
+  directory filter, a recursive file collector, and the optional phone-list filter recover twenty native
   designs across this work.
   This is a static compatibility check, not reference-application acceptance. The
   read-only execution profile attempts 168 safe-input designs and all 168 pass,
@@ -81,7 +81,7 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Named optional host inputs retain their connected defaults through project
+- Named optional host inputs retain connected defaults and enabled preview defaults through project
   serialization and native `.mfd` export/reimport. Defaults run only when the
   host omits the name; an explicit null remains supplied. The interpreter and
   generated Rust/C# typed and JSON hosts agree on defaults, overrides, lazy
@@ -91,8 +91,10 @@ are preserved.
   editable names/types and a connectable default. Successful project changes
   reset project values, while failed changes preserve them. The
   local phone-list design preserves identical XML for its four-person default
-  and three-person `F` override. Unconnected preview-only native inputs and
-  query-folded literal thresholds still need separate host-override work.
+  and three-person `F` override. Exact same-type optional query inputs retain
+  host overrides, including native title controls and joined integer-threshold
+  SELECT parameters. Required preview inputs, host-only query inputs without
+  defaults, and cross-type dynamic query coercion remain outside this profile.
 - Generated Rust and C# hosts have compiled and executed forty warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
@@ -803,7 +805,7 @@ Update these numbers with each parity increment:
   without warnings, and the remaining design retains typed unresolved target
   and embedded string-parser JSON Schema compatibility issues. All 175
   dependency-complete round trips remain engine-valid. Strict local native
-  preflight accepts 166/187, without claiming reference-application acceptance.
+  preflight accepts 167/187, without claiming reference-application acceptance.
 - `.mfd` execution: all 168 attempted read-only executions pass and publish
   165 captured outputs; one SQLite target-constraint rejection is classified as
   an expected output failure, twelve are dependency-blocked, and seven network
