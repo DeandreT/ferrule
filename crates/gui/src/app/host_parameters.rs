@@ -7,14 +7,14 @@ pub(super) struct HostParameterEntry {
     pub(super) value: String,
 }
 
-/// Run-only host values shared by file runs, previews, and pipelines.
+/// Run-only host values for one project or pipeline session.
 #[derive(Clone, Debug, Default)]
-pub(super) struct HostParameterEditor {
+pub(crate) struct HostParameterEditor {
     pub(super) entries: Vec<HostParameterEntry>,
 }
 
 impl HostParameterEditor {
-    pub(super) fn compile(&self) -> Result<RuntimeParameters, String> {
+    pub(crate) fn compile(&self) -> Result<RuntimeParameters, String> {
         let mut parameters = RuntimeParameters::new();
         for (index, entry) in self.entries.iter().enumerate() {
             parameters
@@ -24,7 +24,7 @@ impl HostParameterEditor {
         Ok(parameters)
     }
 
-    pub(super) fn show(&mut self, ui: &mut egui::Ui) -> bool {
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui) -> bool {
         ui.strong("Run values");
         ui.weak("Named values supplied to this run. Remove a value to use its connected default, when available.");
         let mut remove = None;

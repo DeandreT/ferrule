@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
+use crate::app::host_parameters::HostParameterEditor;
 use anyhow::{Context as _, bail};
 use mapping::{Pipeline, PipelineInput};
 
@@ -15,6 +16,7 @@ pub(super) struct PipelineRunDraft {
     pub inputs: Vec<PipelineInputDraft>,
     pub outputs: Vec<PipelineOutputDraft>,
     pub issues: Vec<String>,
+    pub host_parameters: HostParameterEditor,
     original_bytes: Vec<u8>,
 }
 
@@ -97,6 +99,7 @@ impl PipelineRunDraft {
             inputs,
             outputs,
             issues,
+            host_parameters: HostParameterEditor::default(),
             original_bytes: bytes,
         })
     }

@@ -509,6 +509,23 @@ impl GraphViewer<'_> {
                     collection: Vec::new(),
                 },
             ),
+            NodeTemplate::HostInput => self.insert(
+                snarl,
+                pos,
+                Node::RuntimeParameter {
+                    name: String::new(),
+                    ty: ScalarType::String,
+                },
+            ),
+            NodeTemplate::HostInputDefault => {
+                self.insert_with_unconnected_inputs(snarl, pos, 1, |inputs| {
+                    Node::RuntimeParameterDefault {
+                        name: String::new(),
+                        ty: ScalarType::String,
+                        default: inputs[0],
+                    }
+                })
+            }
             NodeTemplate::Builtin(function) => {
                 let input_count = functions::builtin(function)
                     .map(|builtin| builtin.arity.minimum())
@@ -1112,9 +1129,19 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     }
                     Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
                     Some(Node::RuntimeParameter { name, ty }) => {
+                        let name = if name.is_empty() {
+                            "<name required>"
+                        } else {
+                            name
+                        };
                         format!("Runtime input: {name} ({ty:?})")
                     }
                     Some(Node::RuntimeParameterDefault { name, ty, .. }) => {
+                        let name = if name.is_empty() {
+                            "<name required>"
+                        } else {
+                            name
+                        };
                         format!("Runtime input: {name} ({ty:?}, optional)")
                     }
                     Some(Node::Call { function, .. }) => functions::builtin(function).map_or_else(
@@ -1760,7 +1787,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 | Node::RuntimeParameterDefault { name, ty, .. } => {
                     ui.horizontal(|ui| {
                         ui.label("name");
-                        ui.text_edit_singleline(name);
+                        ui.add(
+                            egui::TextEdit::singleline(name)
+                                .hint_text("Name required")
+                                .char_limit(mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES),
+                        );
                     });
                     egui::ComboBox::from_id_salt(ui.id().with("runtime_parameter_type"))
                         .selected_text(format!("{ty:?}").to_lowercase())

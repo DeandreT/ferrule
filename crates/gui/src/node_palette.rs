@@ -31,6 +31,8 @@ pub(super) enum NodeTemplate {
     Constant,
     SourceField,
     Position,
+    HostInput,
+    HostInputDefault,
     Builtin(&'static str),
     If,
     ValueMap,
@@ -81,7 +83,7 @@ struct PaletteEntry {
     template: NodeTemplate,
 }
 
-const STRUCTURAL_ENTRIES: [PaletteEntry; 14] = [
+const STRUCTURAL_ENTRIES: [PaletteEntry; 16] = [
     PaletteEntry {
         category: Category::Input,
         label: "Constant",
@@ -102,6 +104,20 @@ const STRUCTURAL_ENTRIES: [PaletteEntry; 14] = [
         keywords: "index row item collection",
         documentation: "Reads the one-based position in a collection.",
         template: NodeTemplate::Position,
+    },
+    PaletteEntry {
+        category: Category::Input,
+        label: "Host input",
+        keywords: "host runtime parameter run value required named input",
+        documentation: "Reads a named value supplied when the mapping runs.",
+        template: NodeTemplate::HostInput,
+    },
+    PaletteEntry {
+        category: Category::Input,
+        label: "Host input with default",
+        keywords: "host runtime parameter run value optional fallback default named input",
+        documentation: "Uses a named run value when supplied, otherwise its connected default.",
+        template: NodeTemplate::HostInputDefault,
     },
     PaletteEntry {
         category: Category::Transform,
@@ -397,6 +413,8 @@ mod tests {
             NodeTemplate::Constant,
             NodeTemplate::SourceField,
             NodeTemplate::Position,
+            NodeTemplate::HostInput,
+            NodeTemplate::HostInputDefault,
             NodeTemplate::If,
             NodeTemplate::ValueMap,
             NodeTemplate::Lookup,
@@ -425,6 +443,13 @@ mod tests {
                 .map(|entry| entry.template)
                 .collect::<Vec<_>>(),
             vec![NodeTemplate::If]
+        );
+        assert_eq!(
+            matching_entries("host input")
+                .iter()
+                .map(|entry| entry.template)
+                .collect::<Vec<_>>(),
+            vec![NodeTemplate::HostInput, NodeTemplate::HostInputDefault]
         );
         assert_eq!(
             matching_entries("UPPERCASE")
