@@ -30,6 +30,24 @@ pub(super) fn validate_side(
     options: &FormatOptions,
     side_name: &str,
 ) -> Result<(), MfdError> {
+    if let Some(settings) = options.idoc_native_text_settings.as_ref() {
+        if options.idoc_native_config.is_none() || options.edi_kind != Some(EdiBoundaryKind::Idoc) {
+            return Err(MfdError::Unsupported(format!(
+                "the {side_name} native IDoc text settings require a certified IDoc configuration descriptor"
+            )));
+        }
+        if !matches!(
+            (
+                settings.autocomplete_data(),
+                options.edi_autocomplete.as_ref()
+            ),
+            (true, Some(EdiAutocomplete::Idoc)) | (false, None)
+        ) {
+            return Err(MfdError::Unsupported(format!(
+                "the {side_name} native IDoc text settings conflict with EDI autocomplete metadata"
+            )));
+        }
+    }
     if let Some(descriptor) = options.idoc_native_config.as_ref() {
         if options.edi_kind != Some(EdiBoundaryKind::Idoc) {
             return Err(MfdError::Unsupported(format!(
@@ -209,6 +227,19 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     )?;
     let retained_layout = retained_layout_xml(kind, args.options)?;
     let retained_settings = retained_settings_xml(kind, args.options);
+    let retained_text_codes = args
+        .options
+        .idoc_native_text_settings
+        .as_ref()
+        .map(|settings| {
+            format!(
+                " encoding=\"{}\" byteorder=\"{}\" byteordermark=\"{}\"",
+                settings.encoding_code(),
+                settings.byte_order_code(),
+                settings.byte_order_mark_code(),
+            )
+        })
+        .unwrap_or_default();
     let generated_config = args
         .options
         .idoc_native_config
@@ -269,7 +300,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
          \t\t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t</root>\n\
-         \t\t\t\t\t\t<text type=\"edi\" kind=\"{}\"{retained_config}>{retained_settings}{retained_layout}\t\t\t\t\t\t</text>\n\
+         \t\t\t\t\t\t<text type=\"edi\" kind=\"{}\"{retained_config}{retained_text_codes}>{retained_settings}{retained_layout}\t\t\t\t\t\t</text>\n\
          \t\t\t\t\t</data>\n\
          \t\t\t\t</component>\n",
         xml_escape(args.component_name),
@@ -286,6 +317,11 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
 }
 
 fn retained_settings_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> String {
+    if kind == EdiBoundaryKind::Idoc
+        && let Some(settings) = options.idoc_native_text_settings.as_ref()
+    {
+        return render_idoc_text_settings(settings);
+    }
     let autocomplete = options.edi_autocomplete.is_some();
     if kind != EdiBoundaryKind::X12 {
         return match options.edi_autocomplete.as_ref() {
@@ -351,6 +387,53 @@ fn retained_settings_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> Stri
         xml_escape(&repetition),
         xml_escape(&release),
     )
+}
+
+fn render_idoc_text_settings(settings: &mapping::IdocNativeTextSettings) -> String {
+    let flag = |value: bool| if value { "true" } else { "false" };
+    let separators = settings.separators();
+    let mut out = format!(
+        "\n\t\t\t\t\t\t\t<settings unpackedformat=\"{}\" autocompletedata=\"{}\" terminatewithlinefeed=\"{}\" syntaxversionnumber=\"{}\" controllingagency=\"{}\" syntaxlevel=\"{}\" isidoc=\"{}\">\n\
+         \t\t\t\t\t\t\t\t<separators dataelement=\"{}\" component=\"{}\" decimal=\"{}\" escape=\"{}\" repetition=\"{}\" segment=\"{}\" subcomponent=\"{}\"/>\n\
+         \t\t\t\t\t\t\t\t<validation>\n",
+        flag(settings.unpacked_format()),
+        flag(settings.autocomplete_data()),
+        flag(settings.terminate_with_line_feed()),
+        settings.syntax_version_number(),
+        settings.controlling_agency(),
+        settings.syntax_level(),
+        flag(settings.is_idoc()),
+        native_separator(Some(separators.data_element())),
+        native_separator(Some(separators.component())),
+        native_separator(Some(separators.decimal())),
+        native_separator(Some(separators.escape())),
+        native_separator(Some(separators.repetition())),
+        native_separator(Some(separators.segment())),
+        native_separator(separators.subcomponent()),
+    );
+    for case in settings.validation_cases() {
+        let _ = writeln!(
+            out,
+            "\t\t\t\t\t\t\t\t\t<case kind=\"{}\" action=\"{}\"/>",
+            case.kind().native_name(),
+            case.action().native_name(),
+        );
+    }
+    out.push_str("\t\t\t\t\t\t\t\t</validation>\n\t\t\t\t\t\t\t</settings>\n");
+    out
+}
+
+fn native_separator(value: Option<u8>) -> String {
+    match value {
+        None => String::new(),
+        Some(byte)
+            if byte.is_ascii_graphic()
+                && !matches!(byte, b'%' | b'&' | b'<' | b'>' | b'"' | b'\'') =>
+        {
+            char::from(byte).to_string()
+        }
+        Some(byte) => format!("%{byte:02X}"),
+    }
 }
 
 fn separator_attribute(separator: Option<char>) -> String {

@@ -13,6 +13,8 @@ use super::{ComponentFormat, SchemaComponent};
 
 #[path = "edi/config_source.rs"]
 mod config_source;
+#[path = "edi/idoc_text.rs"]
+mod idoc_text;
 
 /// Adds design-only ports exposed through transparent components after the
 /// reachable graph is known. The unresolved configuration reference remains
@@ -367,6 +369,9 @@ pub(super) fn read(
         }
         None
     };
+    let idoc_native_text_settings = (runtime_boundary && kind == "EDIFIXED")
+        .then(|| idoc_text::read(&text, idoc_native_config.is_some(), &name, warnings))
+        .flatten();
 
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
@@ -436,6 +441,7 @@ pub(super) fn read(
             x12_interchange_version,
             idoc,
             idoc_native_config,
+            idoc_native_text_settings,
             swift_mt,
             ..FormatOptions::default()
         },
