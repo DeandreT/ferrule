@@ -623,7 +623,11 @@ fn malformed_join_filter_is_not_silently_dropped() {
 
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(imported.warnings[0].contains("missing or unsupported filter predicate"));
+    assert!(
+        imported.warnings[0].contains("missing or unsupported filter predicate"),
+        "{:?}",
+        imported.warnings
+    );
 }
 
 #[test]
