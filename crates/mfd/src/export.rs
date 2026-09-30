@@ -46,6 +46,7 @@ mod schema;
 mod scope;
 mod sequence;
 mod source;
+mod temperature_native;
 #[cfg(test)]
 mod tests;
 mod udf;
@@ -355,6 +356,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         database_xml::DirectColumns::plan(project, &sources, &targets, &mixed_database_pairs);
     let native_order_decimal =
         order_decimal_output::NativeOrderDecimal::plan(project, &sources, &targets);
+    let native_group_fahrenheit =
+        temperature_native::NativeGroupFahrenheit::plan(project, &sources, &targets);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -391,6 +394,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         blocked_nodes.extend(plan.absorbed_nodes());
         plan.seed_aliases(&mut node_out_key);
     }
+    if let Some(plan) = &native_group_fahrenheit {
+        blocked_nodes.extend(plan.absorbed_nodes());
+    }
     for target in &targets {
         blocked_nodes.extend(target.mapped_scope_plans.absorbed_nodes());
     }
@@ -418,6 +424,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         user_functions: &user_functions,
     });
     json_parser::ensure_provenance_emitted(&project.graph, &json_parser_outputs)?;
+    if let Some(plan) = &native_group_fahrenheit {
+        plan.seed_aliases(&mut node_out_key)?;
+    }
     dynamic_sources.render_nodes(
         &mut keys,
         &mut uid,
@@ -880,6 +889,11 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
             &target.sibling_suffix,
             &mut rendered,
         )?;
+        if target_index == 0
+            && let Some(plan) = &native_group_fahrenheit
+        {
+            plan.apply_to_target(&mut rendered, target)?;
+        }
         out.push_str(&rendered.xml);
         target_components.push(rendered);
     }
@@ -913,6 +927,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     out.push_str("\t\t\t\t</vertices>\n\t\t\t</graph>\n\t\t</structure>\n\t</component>\n");
     if let Some(plan) = &native_order_decimal {
         out.push_str(&plan.definition(&mut uid));
+    }
+    if let Some(plan) = &native_group_fahrenheit {
+        out.push_str(&plan.definition(&user_functions, &mut uid)?);
     }
     out.push_str(user_functions.declarations());
     out.push_str("</mapping>\n");
