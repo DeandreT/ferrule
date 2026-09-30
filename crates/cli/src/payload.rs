@@ -502,7 +502,7 @@ fn normalize_payload_identity(path: &str) -> String {
     path.replace('\\', "/")
 }
 
-fn validate_logical_path<'a>(path: &'a Path, label: &str) -> anyhow::Result<&'a str> {
+pub(crate) fn validate_logical_path<'a>(path: &'a Path, label: &str) -> anyhow::Result<&'a str> {
     let path = path
         .to_str()
         .with_context(|| format!("{label} path {} is not UTF-8", path.display()))?;
@@ -515,7 +515,7 @@ fn validate_logical_path<'a>(path: &'a Path, label: &str) -> anyhow::Result<&'a 
     Ok(path)
 }
 
-enum PayloadDestination {
+pub(crate) enum PayloadDestination {
     Static(PathBuf),
     DynamicBase(PathBuf),
 }
@@ -550,7 +550,7 @@ fn target_destination(
     Ok(PayloadDestination::Static(path))
 }
 
-fn render_target(
+pub(crate) fn render_target(
     name: &str,
     destination: &PayloadDestination,
     schema: &SchemaNode,
@@ -558,7 +558,29 @@ fn render_target(
     options: &FormatOptions,
     current_datetime: &str,
 ) -> anyhow::Result<Vec<PayloadArtifact>> {
-    let files = match (destination, instance) {
+    let mut artifacts = Vec::new();
+    visit_target_documents(destination, instance, |path, instance| {
+        let (bytes, records_written) =
+            render_payload(&path, schema, instance, options, current_datetime)
+                .with_context(|| format!("rendering target payload {}", path.display()))?;
+        artifacts.push(PayloadArtifact {
+            target: name.to_string(),
+            records_written,
+            path,
+            bytes,
+        });
+        Ok(())
+    })?;
+    Ok(artifacts)
+}
+
+/// Visit logical documents without materializing their serialized buffers.
+pub(crate) fn visit_target_documents(
+    destination: &PayloadDestination,
+    instance: &Instance,
+    mut visit: impl FnMut(PathBuf, &Instance) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    match (destination, instance) {
         (PayloadDestination::Static(_), Instance::DocumentSet(_)) => {
             bail!("mapping produced dynamically named documents for a static output path")
         }
@@ -567,32 +589,21 @@ fn render_target(
         {
             bail!("dynamic target mapping did not produce a document set")
         }
-        (PayloadDestination::Static(path), instance) => vec![(path.clone(), instance)],
+        (PayloadDestination::Static(path), instance) => {
+            validate_logical_path(path, "output artifact")?;
+            visit(path.clone(), instance)?;
+        }
         (PayloadDestination::DynamicBase(base), Instance::DocumentSet(documents)) => {
             let paths = super::output_documents::validate_document_paths(documents)?;
-            documents
-                .iter()
-                .zip(paths)
-                .map(|(document, path)| (base.join(path), document.value()))
-                .collect()
+            for (document, path) in documents.iter().zip(paths) {
+                let path = base.join(path);
+                validate_logical_path(&path, "output artifact")?;
+                visit(path, document.value())?;
+            }
         }
         (PayloadDestination::DynamicBase(_), _) => unreachable!("guarded above"),
-    };
-    files
-        .into_iter()
-        .map(|(path, instance)| {
-            validate_logical_path(&path, "output artifact")?;
-            let (bytes, records_written) =
-                render_payload(&path, schema, instance, options, current_datetime)
-                    .with_context(|| format!("rendering target payload {}", path.display()))?;
-            Ok(PayloadArtifact {
-                target: name.to_string(),
-                records_written,
-                path,
-                bytes,
-            })
-        })
-        .collect()
+    }
+    Ok(())
 }
 
 fn validate_artifact_count(
@@ -614,7 +625,7 @@ fn validate_artifact_count(
     Ok(())
 }
 
-fn target_artifact_count(instance: &Instance, dynamic: bool) -> anyhow::Result<usize> {
+pub(crate) fn target_artifact_count(instance: &Instance, dynamic: bool) -> anyhow::Result<usize> {
     match (dynamic, instance) {
         (false, Instance::DocumentSet(_)) => {
             bail!("mapping produced dynamically named documents for a static output path")
@@ -694,7 +705,7 @@ fn utf8<'a>(document: PayloadDocument<'a>, label: &str) -> anyhow::Result<&'a st
         .with_context(|| format!("{label} payload `{}` is not UTF-8", document.path.display()))
 }
 
-fn read_payload(
+pub(crate) fn read_payload(
     document: PayloadDocument<'_>,
     schema: &SchemaNode,
     options: &FormatOptions,
@@ -936,7 +947,7 @@ fn read_xlsx_payload(
     Ok(Instance::Repeated(rows))
 }
 
-fn render_payload(
+pub(crate) fn render_payload(
     path: &Path,
     schema: &SchemaNode,
     instance: &Instance,
