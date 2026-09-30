@@ -281,6 +281,23 @@ enum HistoryMode {
     SourceRows,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum NodeHistoryKey {
+    Graph(mapping::NodeId),
+    Function(mapping::FunctionId, mapping::NodeId),
+}
+
+impl NodeHistoryKey {
+    fn label(self) -> String {
+        match self {
+            Self::Graph(node) => format!("Node {node}"),
+            Self::Function(function, node) => {
+                format!("Function {} · Node {node}", function.get())
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct RunReportView {
     pub report: RunReport,
@@ -288,8 +305,8 @@ pub struct RunReportView {
     page: ReportPage,
     trace_filter: String,
     history_mode: HistoryMode,
-    history_by_node: BTreeMap<mapping::NodeId, Vec<usize>>,
-    history_node: Option<mapping::NodeId>,
+    history_by_node: BTreeMap<NodeHistoryKey, Vec<usize>>,
+    history_node: Option<NodeHistoryKey>,
     history_stage: Option<u16>,
     source_rows: Vec<usize>,
     selected_source_row: Option<usize>,
@@ -384,55 +401,53 @@ impl RunReportView {
     }
 }
 
-fn first_node_in_stage(trace: &TraceReport, stage: Option<u16>) -> Option<mapping::NodeId> {
+fn first_node_in_stage(trace: &TraceReport, stage: Option<u16>) -> Option<NodeHistoryKey> {
     trace.events.iter().enumerate().find_map(|(index, event)| {
         if stage.is_some_and(|stage| trace.event_stages.get(index) != Some(&stage)) {
             return None;
         }
-        match event {
-            cli::TraceEvent::NodeValue { node, .. } => Some(*node),
-            cli::TraceEvent::NodeInputValue { consumer, .. } => Some(*consumer),
-            _ => None,
-        }
+        node_history_key(event)
     })
+}
+
+fn node_history_key(event: &cli::TraceEvent) -> Option<NodeHistoryKey> {
+    match event {
+        cli::TraceEvent::NodeValue { node, .. } => Some(NodeHistoryKey::Graph(*node)),
+        cli::TraceEvent::NodeInputValue { consumer, .. } => Some(NodeHistoryKey::Graph(*consumer)),
+        cli::TraceEvent::FunctionNodeValue { function, node, .. } => {
+            Some(NodeHistoryKey::Function(*function, *node))
+        }
+        cli::TraceEvent::FunctionNodeInputValue {
+            function, consumer, ..
+        } => Some(NodeHistoryKey::Function(*function, *consumer)),
+        _ => None,
+    }
 }
 
 fn index_node_history_for_stage(
     trace: &TraceReport,
     stage: Option<u16>,
-) -> BTreeMap<mapping::NodeId, Vec<usize>> {
+) -> BTreeMap<NodeHistoryKey, Vec<usize>> {
     if stage.is_none() {
         return index_node_history(&trace.events);
     }
-    let mut history = BTreeMap::<mapping::NodeId, Vec<usize>>::new();
+    let mut history = BTreeMap::<NodeHistoryKey, Vec<usize>>::new();
     for (index, event) in trace.events.iter().enumerate() {
         if trace.event_stages.get(index) != stage.as_ref() {
             continue;
         }
-        match event {
-            cli::TraceEvent::NodeValue { node, .. } => {
-                history.entry(*node).or_default().push(index);
-            }
-            cli::TraceEvent::NodeInputValue { consumer, .. } => {
-                history.entry(*consumer).or_default().push(index);
-            }
-            _ => {}
+        if let Some(key) = node_history_key(event) {
+            history.entry(key).or_default().push(index);
         }
     }
     history
 }
 
-fn index_node_history(events: &[cli::TraceEvent]) -> BTreeMap<mapping::NodeId, Vec<usize>> {
-    let mut history = BTreeMap::<mapping::NodeId, Vec<usize>>::new();
+fn index_node_history(events: &[cli::TraceEvent]) -> BTreeMap<NodeHistoryKey, Vec<usize>> {
+    let mut history = BTreeMap::<NodeHistoryKey, Vec<usize>>::new();
     for (index, event) in events.iter().enumerate() {
-        match event {
-            cli::TraceEvent::NodeValue { node, .. } => {
-                history.entry(*node).or_default().push(index);
-            }
-            cli::TraceEvent::NodeInputValue { consumer, .. } => {
-                history.entry(*consumer).or_default().push(index);
-            }
-            _ => {}
+        if let Some(key) = node_history_key(event) {
+            history.entry(key).or_default().push(index);
         }
     }
     history
@@ -882,16 +897,16 @@ fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
 fn show_node_history(ui: &mut egui::Ui, view: &mut RunReportView) {
     show_history_stage_selector(ui, view);
     ui.horizontal_wrapped(|ui| {
-        ui.label("Graph node value history");
+        ui.label("Node value history");
         if let Some(node) = view.history_node {
             egui::ComboBox::from_id_salt("run_history_node")
-                .selected_text(format!("Node {node}"))
+                .selected_text(node.label())
                 .show_ui(ui, |ui| {
                     for (&candidate, events) in &view.history_by_node {
                         ui.selectable_value(
                             &mut view.history_node,
                             Some(candidate),
-                            format!("Node {candidate} ({} events)", events.len()),
+                            format!("{} ({} events)", candidate.label(), events.len()),
                         );
                     }
                 });
@@ -984,6 +999,20 @@ fn history_row(occurrence: usize, event_index: usize, event: &cli::TraceEvent) -
             positions,
             value,
         ),
+        cli::TraceEvent::FunctionNodeValue {
+            positions, value, ..
+        } => ("output".to_string(), positions, value),
+        cli::TraceEvent::FunctionNodeInputValue {
+            input,
+            input_index,
+            positions,
+            value,
+            ..
+        } => (
+            format!("input {} <- node {input}", input_index + 1),
+            positions,
+            value,
+        ),
         _ => return None,
     };
     let context = if positions.is_empty() {
@@ -1032,6 +1061,31 @@ fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
             value,
         } => format!(
             "{prefix}  node {consumer} input {} <- node {input}  {}{}",
+            input_index + 1,
+            format_trace_value(value),
+            format_trace_positions(positions)
+        ),
+        cli::TraceEvent::FunctionNodeValue {
+            function,
+            node,
+            positions,
+            value,
+        } => format!(
+            "{prefix}  function {} node {node}  {}{}",
+            function.get(),
+            format_trace_value(value),
+            format_trace_positions(positions)
+        ),
+        cli::TraceEvent::FunctionNodeInputValue {
+            function,
+            consumer,
+            input,
+            input_index,
+            positions,
+            value,
+        } => format!(
+            "{prefix}  function {} node {consumer} input {} <- node {input}  {}{}",
+            function.get(),
             input_index + 1,
             format_trace_value(value),
             format_trace_positions(positions)
