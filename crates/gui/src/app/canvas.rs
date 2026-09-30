@@ -21,6 +21,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::RuntimeValue { .. }
         | Node::RuntimeParameter { .. }
         | Node::XmlSerialize { .. } => vec![],
+        Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {
             condition,

@@ -150,6 +150,30 @@ fn eval_expr_inner(
                 found: value.type_name(),
             })
         }
+        Node::RuntimeParameterDefault { name, ty, default } => {
+            let value = match context
+                .first()
+                .and_then(|frame| frame.field(&runtime_parameter_field(name)))
+                .and_then(Instance::as_scalar)
+            {
+                Some(value) => value.clone(),
+                None => eval_node_input(
+                    program,
+                    node_id,
+                    *default,
+                    0,
+                    context,
+                    positions,
+                    in_progress,
+                )?,
+            };
+            coerce_value_map_input(&value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
+                node: node_id,
+                name: name.clone(),
+                expected: *ty,
+                found: value.type_name(),
+            })
+        }
         Node::Call { function, args } => {
             let mut values = Vec::with_capacity(args.len());
             for (input_index, arg) in args.iter().enumerate() {

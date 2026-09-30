@@ -137,7 +137,7 @@ fn validate_body(
             | Node::RuntimeValue { .. }
             | Node::If { .. }
             | Node::ValueMap { .. } => {}
-            Node::RuntimeParameter { name, .. } => {
+            Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. } => {
                 validate_runtime_parameter_name(&node_location, name, issues);
             }
             Node::FunctionParameter { parameter } => {

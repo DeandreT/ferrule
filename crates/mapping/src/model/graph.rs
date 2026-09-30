@@ -73,6 +73,13 @@ pub enum Node {
     /// Reads one named, typed scalar supplied explicitly by the execution
     /// host. The name is host-contract data rather than a source field path.
     RuntimeParameter { name: String, ty: ScalarType },
+    /// Reads a named, typed host scalar, evaluating `default` only when the
+    /// host has not supplied that name. A supplied `Null` is still supplied.
+    RuntimeParameterDefault {
+        name: String,
+        ty: ScalarType,
+        default: NodeId,
+    },
     /// Calls a built-in function (see the `functions` crate) with the
     /// evaluated outputs of the given argument nodes.
     Call { function: String, args: Vec<NodeId> },
@@ -235,6 +242,7 @@ impl Node {
             | Self::RuntimeValue { .. }
             | Self::RuntimeParameter { .. }
             | Self::XmlSerialize { .. } => Vec::new(),
+            Self::RuntimeParameterDefault { default, .. } => vec![*default],
             Self::Call { args, .. } | Self::UserFunctionCall { args, .. } => args.clone(),
             Self::If {
                 condition,

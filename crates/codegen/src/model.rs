@@ -709,6 +709,11 @@ pub enum Expression {
         name: String,
         ty: ScalarType,
     },
+    RuntimeParameterDefault {
+        name: String,
+        ty: ScalarType,
+        default: NodeId,
+    },
     Call {
         function: ScalarFunction,
         args: Vec<NodeId>,

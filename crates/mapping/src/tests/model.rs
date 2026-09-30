@@ -225,6 +225,29 @@ fn native_decimal_input_names_default_off_and_roundtrip_in_source_options() {
 }
 
 #[test]
+fn optional_runtime_parameter_serializes_without_changing_required_parameter_shape() {
+    let optional = crate::Node::RuntimeParameterDefault {
+        name: "NamePrefix".into(),
+        ty: ScalarType::String,
+        default: 7,
+    };
+    let encoded = serde_json::to_value(&optional).unwrap();
+    assert_eq!(encoded["kind"], "runtime_parameter_default");
+    assert_eq!(encoded["name"], "NamePrefix");
+    assert_eq!(encoded["default"], 7);
+    assert_eq!(optional.dependencies(), vec![7]);
+    assert!(matches!(
+        serde_json::from_value::<crate::Node>(encoded).unwrap(),
+        crate::Node::RuntimeParameterDefault { default: 7, .. }
+    ));
+
+    let required: crate::Node =
+        serde_json::from_str(r#"{"kind":"runtime_parameter","name":"required","ty":"int"}"#)
+            .unwrap();
+    assert!(matches!(required, crate::Node::RuntimeParameter { .. }));
+}
+
+#[test]
 fn xml_document_identity_roundtrips() {
     let options = FormatOptions {
         xml_document: true,

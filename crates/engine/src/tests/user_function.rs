@@ -1408,3 +1408,80 @@ fn validates_the_function_call_depth_limit() {
             })
     );
 }
+
+#[test]
+fn nested_user_function_reads_optional_host_input_lazily() -> Result<(), Box<dyn std::error::Error>>
+{
+    let inner = FunctionId::new(1);
+    let outer = FunctionId::new(2);
+    let user_functions = BTreeMap::from([
+        (
+            inner,
+            function(
+                "optional_input",
+                Vec::new(),
+                ScalarType::String,
+                [
+                    (
+                        1,
+                        Node::Const {
+                            value: Value::String("fallback".into()),
+                        },
+                    ),
+                    (
+                        2,
+                        Node::RuntimeParameterDefault {
+                            name: "override".into(),
+                            ty: ScalarType::String,
+                            default: 1,
+                        },
+                    ),
+                ],
+                2,
+            ),
+        ),
+        (
+            outer,
+            function(
+                "forward",
+                Vec::new(),
+                ScalarType::String,
+                [(
+                    3,
+                    Node::UserFunctionCall {
+                        function: inner,
+                        args: Vec::new(),
+                    },
+                )],
+                3,
+            ),
+        ),
+    ]);
+    let graph = Graph {
+        nodes: [(
+            0,
+            Node::UserFunctionCall {
+                function: outer,
+                args: Vec::new(),
+            },
+        )]
+        .into_iter()
+        .collect(),
+    };
+    let project = project(graph, user_functions, 0);
+    assert!(validate(&project).is_empty());
+    assert_eq!(
+        output_value(&run(&project, &source("unused"))?),
+        Some(&Value::String("fallback".into()))
+    );
+
+    let mut parameters = crate::RuntimeParameters::new();
+    parameters.insert("override", Value::String("supplied".into()))?;
+    let execution =
+        ExecutionContext::new(Path::new("/maps/test.json")).with_parameters(&parameters);
+    assert_eq!(
+        output_value(&run_with_context(&project, &source("unused"), &execution)?),
+        Some(&Value::String("supplied".into()))
+    );
+    Ok(())
+}

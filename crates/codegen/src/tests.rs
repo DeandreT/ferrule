@@ -797,6 +797,46 @@ fn lowers_typed_runtime_parameters_as_dependency_free_expressions() {
 }
 
 #[test]
+fn optional_runtime_parameter_default_is_a_validated_graph_dependency() {
+    let mut project = supported_project();
+    project.graph.nodes.insert(
+        40,
+        Node::Const {
+            value: Value::String("7".into()),
+        },
+    );
+    project.graph.nodes.insert(
+        41,
+        Node::RuntimeParameterDefault {
+            name: "control".into(),
+            ty: ScalarType::Int,
+            default: 40,
+        },
+    );
+    project.root.bindings[0].node = 41;
+    let mut program = lower(&project).expect("optional default lowers with its expression");
+    assert!(validate_program(&program).is_ok());
+    assert!(program.expressions.iter().any(|expression| {
+        expression.id == 41
+            && expression.expression
+                == Expression::RuntimeParameterDefault {
+                    name: "control".into(),
+                    ty: ScalarType::Int,
+                    default: 40,
+                }
+    }));
+
+    program.expressions.retain(|expression| expression.id != 40);
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::MissingDependency {
+            node: 41,
+            dependency: 40,
+        })
+    );
+}
+
+#[test]
 fn nested_calls_and_if_retain_every_dependency_deterministically() {
     let mut project = supported_project();
     project.graph.nodes.extend([

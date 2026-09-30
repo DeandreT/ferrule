@@ -609,6 +609,7 @@ impl GraphViewer<'_> {
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
                 args[idx] = from_id;
             }
+            Node::RuntimeParameterDefault { default, .. } => *default = from_id,
             Node::If {
                 condition,
                 then,
@@ -708,6 +709,7 @@ impl GraphViewer<'_> {
     fn input_at(&self, node_id: NodeId, idx: usize) -> Option<NodeId> {
         match self.graph.nodes.get(&node_id)? {
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.get(idx).copied(),
+            Node::RuntimeParameterDefault { default, .. } => (idx == 0).then_some(*default),
             Node::If {
                 condition,
                 then,
@@ -760,6 +762,7 @@ impl GraphViewer<'_> {
             | Node::RuntimeValue { .. }
             | Node::RuntimeParameter { .. }
             | Node::XmlSerialize { .. } => None,
+            Node::RuntimeParameterDefault { default, .. } => (idx == 0).then_some(*default),
         }
     }
 
@@ -988,6 +991,7 @@ impl GraphViewer<'_> {
             | Node::RuntimeValue { .. }
             | Node::RuntimeParameter { .. }
             | Node::XmlSerialize { .. } => 0,
+            Node::RuntimeParameterDefault { .. } => 1,
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } | Node::DynamicSourceField { .. } => 1,
@@ -1110,6 +1114,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
                     Some(Node::RuntimeParameter { name, ty }) => {
                         format!("Runtime input: {name} ({ty:?})")
+                    }
+                    Some(Node::RuntimeParameterDefault { name, ty, .. }) => {
+                        format!("Runtime input: {name} ({ty:?}, optional)")
                     }
                     Some(Node::Call { function, .. }) => functions::builtin(function).map_or_else(
                         || format!("Call: {function}"),
@@ -1749,7 +1756,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Node::RuntimeValue { value } => {
                     ui.label(format!("{value:?}"));
                 }
-                Node::RuntimeParameter { name, ty } => {
+                Node::RuntimeParameter { name, ty }
+                | Node::RuntimeParameterDefault { name, ty, .. } => {
                     ui.horizontal(|ui| {
                         ui.label("name");
                         ui.text_edit_singleline(name);

@@ -744,6 +744,13 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             name: name.clone(),
             ty: *ty,
         },
+        Node::RuntimeParameterDefault { name, ty, default } => {
+            Expression::RuntimeParameterDefault {
+                name: name.clone(),
+                ty: *ty,
+                default: *default,
+            }
+        }
         Node::Call { function, args } => {
             if function == "flextext_parse_field" {
                 let [input, layout, path] = args.as_slice() else {

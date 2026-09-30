@@ -204,6 +204,14 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 output.push_str(scalar_type_name(*ty));
                 output.push_str(");\n");
             }
+            Expression::RuntimeParameterDefault { name, ty, default } => {
+                output.push_str(" =>\n        context.ResolveRuntimeParameterOrDefault(");
+                output.push_str(&format!("{node}U, "));
+                output.push_str(&literal::string(name));
+                output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
+                output.push_str(scalar_type_name(*ty));
+                output.push_str(&format!(", () => Node_{default}(context));\n"));
+            }
             Expression::Call { function, args } => {
                 output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
                 output.push_str(&literal::string(function.as_str()));
@@ -738,6 +746,14 @@ fn render_user_function_expression(
             output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
             output.push_str(scalar_type_name(*ty));
             output.push_str(");\n");
+        }
+        Expression::RuntimeParameterDefault { name, ty, default } => {
+            output.push_str(" =>\n        context.ResolveRuntimeParameterOrDefault(");
+            output.push_str(&format!("{node}U, "));
+            output.push_str(&literal::string(name));
+            output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
+            output.push_str(scalar_type_name(*ty));
+            output.push_str(&format!(", () => {});\n", call(*default)));
         }
         Expression::Call {
             function: builtin,

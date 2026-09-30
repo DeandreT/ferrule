@@ -109,6 +109,32 @@ public sealed partial class ScopeContext
         return coerced;
     }
 
+    /// <summary>Uses the default only when the host omits the parameter.</summary>
+    public FerruleValue ResolveRuntimeParameterOrDefault(
+        uint node,
+        string name,
+        FerruleScalarType expected,
+        Func<FerruleValue> defaultValue)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(defaultValue);
+        var value = _executionContext is not null &&
+            _executionContext.TryGetParameter(name, out var supplied)
+            ? supplied
+            : defaultValue();
+        if (!FerruleValueMaps.TryCoerce(value, expected, out var coerced))
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.RuntimeParameterType,
+                $"node {node}: runtime parameter '{name}' expected {expected}, got {value.Kind}",
+                node: node,
+                foundKind: value.Kind,
+                expectedScalarType: expected,
+                runtimeParameter: name);
+        }
+        return coerced;
+    }
+
     /// <summary>Returns the resolved path of the nearest active source document.</summary>
     public FerruleValue ResolveSourceDocumentPath()
     {

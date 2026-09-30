@@ -219,6 +219,32 @@ impl<'a> ScopeContext<'a> {
         })
     }
 
+    /// Uses a lazy default only when the host omitted this parameter. A
+    /// supplied null or invalid value takes precedence over the default.
+    pub fn runtime_parameter_or_else(
+        &self,
+        node: u32,
+        name: &str,
+        expected: crate::ScalarType,
+        default: impl FnOnce() -> Result<Value, RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
+        let value = match self
+            .execution
+            .and_then(|execution| execution.parameter(name))
+        {
+            Some(value) => value.clone(),
+            None => default()?,
+        };
+        crate::value_map::coerce_input(&value, expected).ok_or_else(|| {
+            RuntimeError::RuntimeParameterType {
+                node,
+                name: name.to_string(),
+                expected,
+                found: value.type_name(),
+            }
+        })
+    }
+
     /// Returns the resolved path of the nearest active source document.
     pub fn source_document_path(&self) -> Result<Value, SourcePathError> {
         self.frames
