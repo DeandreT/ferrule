@@ -1563,6 +1563,169 @@ fn blank_run_paths_fall_back_to_stored_project_paths() {
 }
 
 #[test]
+fn file_run_uses_shared_host_value_and_connected_default() -> anyhow::Result<()> {
+    let project_path = temporary_project_path("host-value-file-run");
+    let directory = project_path.parent().expect("project has parent");
+    let input_path = directory.join("input.json");
+    let output_path = directory.join("output.json");
+    std::fs::write(&input_path, r#"{"Value":"source"}"#)?;
+
+    let mut app = FerruleApp {
+        project: run_value_project(),
+        ..FerruleApp::default()
+    };
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.save_document_to(&project_path)?;
+    app.input_path = input_path.display().to_string();
+    app.output_path = output_path.display().to_string();
+    app.host_parameters
+        .entries
+        .push(host_parameters::HostParameterEntry {
+            name: "choice".into(),
+            value: "override".into(),
+        });
+
+    app.run(&egui::Context::default());
+    wait_for_file_run_completion(&mut app);
+    assert!(app.diagnostics.is_empty(), "{}", app.status);
+    assert_eq!(selected_run_value(&output_path)?, "override");
+    assert!(!app.is_dirty(), "run values do not edit the project");
+
+    app.host_parameters.entries.clear();
+    app.run(&egui::Context::default());
+    wait_for_file_run_completion(&mut app);
+    assert!(app.diagnostics.is_empty(), "{}", app.status);
+    assert_eq!(selected_run_value(&output_path)?, "fallback");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn invalid_host_value_reports_declared_type_and_does_not_publish() -> anyhow::Result<()> {
+    let project_path = temporary_project_path("host-value-type-error");
+    let directory = project_path.parent().expect("project has parent");
+    let input_path = directory.join("input.json");
+    let output_path = directory.join("output.json");
+    std::fs::write(&input_path, r#"{"Value":"source"}"#)?;
+
+    let mut app = FerruleApp {
+        project: run_value_project(),
+        ..FerruleApp::default()
+    };
+    app.project.target =
+        SchemaNode::group("Record", vec![SchemaNode::scalar("Value", ScalarType::Int)]);
+    app.project.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::Int(7),
+        },
+    );
+    if let Some(Node::RuntimeParameterDefault { ty, .. }) = app.project.graph.nodes.get_mut(&1) {
+        *ty = ScalarType::Int;
+    }
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.save_document_to(&project_path)?;
+    app.input_path = input_path.display().to_string();
+    app.output_path = output_path.display().to_string();
+    app.host_parameters
+        .entries
+        .push(host_parameters::HostParameterEntry {
+            name: "choice".into(),
+            value: "not an integer".into(),
+        });
+
+    app.run(&egui::Context::default());
+    wait_for_file_run_completion(&mut app);
+    assert!(!output_path.exists());
+    assert!(app.diagnostics.items().iter().any(|item| {
+        item.message.contains("runtime parameter `choice`")
+            && item.message.contains("expected Int, got string")
+    }));
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn preview_uses_host_value_without_publishing_output() -> anyhow::Result<()> {
+    let directory = temporary_project_path("host-value-preview")
+        .parent()
+        .expect("project has parent")
+        .to_path_buf();
+    let logical_output = directory.join("preview.json");
+    let mut app = FerruleApp {
+        project: run_value_project(),
+        ..FerruleApp::default()
+    };
+    app.preview_draft = Some(crate::preview::PreviewDraft {
+        target: crate::preview::PreviewTarget::Primary,
+        input_identity: "input.json".into(),
+        output_identity: logical_output.display().to_string(),
+        input_text: r#"{"Value":"source"}"#.into(),
+        debug_breakpoint: None,
+    });
+    app.host_parameters
+        .entries
+        .push(host_parameters::HostParameterEntry {
+            name: "choice".into(),
+            value: "preview override".into(),
+        });
+
+    app.execute_preview();
+    wait_for_preview_completion(&mut app);
+    assert!(app.diagnostics.is_empty(), "{}", app.status);
+    let report = app.run_report.as_mut().expect("preview has report");
+    assert!(matches!(
+        report.report.outputs[0].preview(),
+        crate::run_report::OutputPreview::Text { content, .. }
+            if content.contains("preview override")
+    ));
+    assert!(!logical_output.exists());
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_run_supplies_host_values_to_its_stages() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("host-value-pipeline");
+    let directory = pipeline_path.parent().expect("project has parent");
+    let input_path = directory.join("input.json");
+    let output_path = directory.join("output.json");
+    std::fs::write(&input_path, r#"{"Value":"source"}"#)?;
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![mapping::PipelineStage {
+            id: "prepare".into(),
+            mapping_path: None,
+            project: run_value_project(),
+            source: mapping::PipelineInput::Host {
+                name: "input".into(),
+            },
+            extra_sources: Vec::new(),
+        }],
+    };
+    std::fs::write(&pipeline_path, serde_json::to_vec_pretty(&pipeline)?)?;
+    let mut app = FerruleApp::default();
+    app.load_pipeline_for_run(&pipeline_path);
+    let draft = app.pipeline_run_draft.as_mut().expect("pipeline opens");
+    assert!(draft.issues.is_empty(), "{:?}", draft.issues);
+    draft.inputs[0].path = input_path.display().to_string();
+    draft.outputs[0].path = output_path.display().to_string();
+    app.host_parameters
+        .entries
+        .push(host_parameters::HostParameterEntry {
+            name: "choice".into(),
+            value: "pipeline override".into(),
+        });
+
+    app.start_pipeline_run();
+    wait_for_pipeline_completion(&mut app);
+    assert!(app.diagnostics.is_empty(), "{}", app.status);
+    assert_eq!(selected_run_value(&output_path)?, "pipeline override");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
 fn first_save_rebases_relative_paths_from_the_untitled_document_base() {
     let project_path = temporary_project_path("first-save-rebase");
     let mut app = FerruleApp::default();
@@ -1680,6 +1843,42 @@ fn wait_for_file_run_completion(app: &mut FerruleApp) {
         }
     }
     assert!(app.pending_file_run.is_none(), "file run worker completes");
+}
+
+fn run_value_project() -> Project {
+    let mut project = blank_project();
+    let schema = SchemaNode::group(
+        "Record",
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    );
+    project.source = schema.clone();
+    project.target = schema;
+    project.source_options.json_document = true;
+    project.target_options.json_document = true;
+    project.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::String("fallback".into()),
+        },
+    );
+    project.graph.nodes.insert(
+        1,
+        Node::RuntimeParameterDefault {
+            name: "choice".into(),
+            ty: ScalarType::String,
+            default: 0,
+        },
+    );
+    project.root.bindings.push(Binding {
+        target_field: "Value".into(),
+        node: 1,
+    });
+    project
+}
+
+fn selected_run_value(path: &Path) -> anyhow::Result<String> {
+    let value: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    Ok(value["Value"].as_str().unwrap_or_default().to_string())
 }
 
 fn wait_for_file_run_pause(app: &mut FerruleApp) -> engine::PendingTargetWrite {

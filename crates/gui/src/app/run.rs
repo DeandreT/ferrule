@@ -619,6 +619,11 @@ impl FerruleApp {
         if self.pending_file_run.is_some() || self.pending_pipeline_run.is_some() {
             return;
         }
+        if let Err(error) = self.host_parameters.compile() {
+            self.status = "run blocked".into();
+            self.diagnostics.error("Run blocked", error);
+            return;
+        }
         if debug && let Err(error) = self.file_run_value_condition.compile() {
             self.status = "debug run blocked".into();
             self.diagnostics.error("Debug Run blocked", error);
@@ -666,6 +671,14 @@ impl FerruleApp {
     }
 
     pub(super) fn run_saved(&mut self, debug: bool) {
+        let runtime_parameters = match self.host_parameters.compile() {
+            Ok(parameters) => parameters,
+            Err(error) => {
+                self.status = "run blocked".into();
+                self.diagnostics.error("Run blocked", error);
+                return;
+            }
+        };
         let value_condition = if debug {
             match self.file_run_value_condition.compile() {
                 Ok(condition) => condition,
@@ -788,6 +801,7 @@ impl FerruleApp {
             };
             let gate = || hook.before_publish();
             let mut options = cli::RunOptions::new()
+                .with_runtime_parameters(&runtime_parameters)
                 .with_trace_sink(&trace)
                 .with_debug_hook(&hook)
                 .with_before_publish(&gate);

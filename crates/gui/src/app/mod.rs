@@ -51,6 +51,8 @@ mod extra_source_ui;
 mod extra_target_ui;
 #[path = "../workspace/functions.rs"]
 mod function_workspace;
+#[path = "host_parameters.rs"]
+mod host_parameters;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
 #[path = "pipeline_editor.rs"]
@@ -442,6 +444,7 @@ pub struct FerruleApp {
     document: DocumentLocation,
     input_path: String,
     output_path: String,
+    host_parameters: host_parameters::HostParameterEditor,
     source_schema_explorer: SchemaExplorerState,
     target_schema_explorer: SchemaExplorerState,
     focused_schema: Option<diagnostic_navigation::SchemaFocus>,
@@ -586,6 +589,7 @@ impl Default for FerruleApp {
             document: DocumentLocation::untitled("project.json"),
             input_path: String::new(),
             output_path: String::new(),
+            host_parameters: Default::default(),
             source_schema_explorer: SchemaExplorerState::default(),
             target_schema_explorer: SchemaExplorerState::default(),
             focused_schema: None,
