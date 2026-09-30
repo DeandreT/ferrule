@@ -445,6 +445,25 @@ impl GraphBuilder<'_> {
                 self.fn_nodes.insert(idx, node);
                 return Some(node);
             }
+            if let (None, Some(parameter), Some(preview)) = (
+                connected_feed,
+                &input_parameter,
+                self.fn_components[idx].input_preview.clone(),
+            ) && parameter.optional
+            {
+                // An enabled preview on an optional named input supplies its
+                // default only when the host did not supply that name.
+                let default = self.alloc(mapping::Node::Const { value: preview });
+                let node = self.alloc(mapping::Node::RuntimeParameterDefault {
+                    name: parameter.name.clone(),
+                    ty: self.fn_components[idx]
+                        .input_type
+                        .unwrap_or(ir::ScalarType::String),
+                    default,
+                });
+                self.fn_nodes.insert(idx, node);
+                return Some(node);
+            }
             let input_parameter_name = input_parameter.map(|parameter| parameter.name);
             let input = match connected_feed {
                 Some(feed) => self.value_node(feed),

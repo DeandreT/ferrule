@@ -175,6 +175,8 @@ fn write_optional_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
     <xs:element name="Prefix" type="xs:string"/>
     <xs:element name="Count" type="xs:int"/>
     <xs:element name="Ratio" type="xs:decimal"/>
+    <xs:element name="PreviewCount" type="xs:int"/>
+    <xs:element name="RequiredPreview" type="xs:string"/>
     <xs:element name="Required" type="xs:string"/>
     <xs:element name="Lazy" type="xs:string"/>
   </xs:sequence></xs:complexType></xs:element>
@@ -194,11 +196,13 @@ fn write_optional_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
   <component name="Prefix" library="core" kind="6"><sources><datapoint pos="0" key="110"/></sources><targets><datapoint pos="0" key="111"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Prefix" optional="1"/></data></component>
   <component name="Count" library="core" kind="6"><sources><datapoint pos="0" key="112"/></sources><targets><datapoint pos="0" key="113"/></targets><data><input datatype="integer"/><parameter usageKind="input" name="Count" optional="1"/></data></component>
   <component name="Ratio" library="core" kind="6"><sources><datapoint pos="0" key="114"/></sources><targets><datapoint pos="0" key="115"/></targets><data><input datatype="decimal"/><parameter usageKind="input" name="Ratio" optional="1"/></data></component>
+  <component name="PreviewCount" library="core" kind="6"><sources><datapoint pos="0" key="120"/></sources><targets><datapoint pos="0" key="121"/></targets><data><input datatype="integer" previewvalue="9" usepreviewvalue="1"/><parameter usageKind="input" name="PreviewCount" optional="1"/></data></component>
+  <component name="RequiredPreview" library="core" kind="6"><sources><datapoint pos="0" key="122"/></sources><targets><datapoint pos="0" key="123"/></targets><data><input datatype="string" previewvalue="legacy" usepreviewvalue="1"/><parameter usageKind="input" name="RequiredPreview"/></data></component>
   <component name="Required" library="core" kind="6"><targets><datapoint pos="0" key="116"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Required"/></data></component>
   <component name="Missing" library="core" kind="6"><targets><datapoint pos="0" key="117"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Missing"/></data></component>
   <component name="Lazy" library="core" kind="6"><sources><datapoint pos="0" key="118"/></sources><targets><datapoint pos="0" key="119"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Lazy" optional="1"/></data></component>
   <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
-    <root><entry name="Output"><entry name="Prefix" inpkey="201"/><entry name="Count" inpkey="202"/><entry name="Ratio" inpkey="203"/><entry name="Required" inpkey="204"/><entry name="Lazy" inpkey="205"/></entry></root>
+    <root><entry name="Output"><entry name="Prefix" inpkey="201"/><entry name="Count" inpkey="202"/><entry name="Ratio" inpkey="203"/><entry name="PreviewCount" inpkey="206"/><entry name="RequiredPreview" inpkey="207"/><entry name="Required" inpkey="204"/><entry name="Lazy" inpkey="205"/></entry></root>
     <document schema="optional-target.xsd" outputinstance="target.xml" instanceroot="{}Output"/>
   </data></component>
 </children><graph><vertices>
@@ -209,6 +213,8 @@ fn write_optional_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
   <vertex vertexkey="111"><edges><edge vertexkey="201"/></edges></vertex>
   <vertex vertexkey="113"><edges><edge vertexkey="202"/></edges></vertex>
   <vertex vertexkey="115"><edges><edge vertexkey="203"/></edges></vertex>
+  <vertex vertexkey="121"><edges><edge vertexkey="206"/></edges></vertex>
+  <vertex vertexkey="123"><edges><edge vertexkey="207"/></edges></vertex>
   <vertex vertexkey="116"><edges><edge vertexkey="204"/></edges></vertex>
   <vertex vertexkey="119"><edges><edge vertexkey="205"/></edges></vertex>
 </vertices></graph></structure></component></mapping>"#,
@@ -238,6 +244,7 @@ fn assert_optional_declarations(project: &mapping::Project) {
             ("Count", ScalarType::Int),
             ("Lazy", ScalarType::String),
             ("Prefix", ScalarType::String),
+            ("PreviewCount", ScalarType::Int),
             ("Ratio", ScalarType::Float),
         ]
     );
@@ -260,6 +267,12 @@ fn assert_optional_declarations(project: &mapping::Project) {
                 Some(Node::Const {
                     value: Value::String(value)
                 }) if value == "8.5"
+            )),
+            "PreviewCount" => assert!(matches!(
+                project.graph.nodes.get(&default),
+                Some(Node::Const {
+                    value: Value::Int(9)
+                })
             )),
             "Lazy" => {
                 let mut input = default;
@@ -292,6 +305,11 @@ fn assert_optional_declarations(project: &mapping::Project) {
             .count(),
         2
     );
+    assert!(!project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. }
+            if name == "RequiredPreview"
+    )));
 }
 
 fn run_optional(
@@ -320,15 +338,43 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
     assert_optional_declarations(&serialized);
 
     let exported_path = directory.0.join("optional-roundtrip.mfd");
-    assert!(mfd::export(&serialized, &exported_path)?.is_empty());
+    assert!(
+        mfd::export_with_profile(&serialized, &exported_path, mfd::ExportProfile::NativeMfd,)?
+            .is_native_compatible()
+    );
     let exported = std::fs::read_to_string(&exported_path)?;
-    assert_eq!(exported.matches("optional=\"1\"").count(), 4);
+    assert_eq!(exported.matches("optional=\"1\"").count(), 5);
     let roundtrip = mfd::import(&exported_path)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert!(engine::validate(&roundtrip.project).is_empty());
     assert_optional_declarations(&roundtrip.project);
+    let second_path = directory.0.join("optional-second-roundtrip.mfd");
+    assert!(
+        mfd::export_with_profile(
+            &roundtrip.project,
+            &second_path,
+            mfd::ExportProfile::NativeMfd,
+        )?
+        .is_native_compatible()
+    );
+    let second_roundtrip = mfd::import(&second_path)?;
+    assert!(
+        second_roundtrip.warnings.is_empty(),
+        "{:?}",
+        second_roundtrip.warnings
+    );
+    assert_optional_declarations(&second_roundtrip.project);
+    assert_eq!(
+        second_roundtrip.project.graph.nodes.len(),
+        roundtrip.project.graph.nodes.len(),
+    );
 
-    for project in [&imported.project, &serialized, &roundtrip.project] {
+    for project in [
+        &imported.project,
+        &serialized,
+        &roundtrip.project,
+        &second_roundtrip.project,
+    ] {
         let mut parameters = RuntimeParameters::new();
         parameters.insert("Required", Value::String("required".into()))?;
         parameters.insert("Lazy", Value::String("host-lazy".into()))?;
@@ -337,6 +383,8 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
             ("Prefix", Value::String("B".into())),
             ("Count", Value::Int(7)),
             ("Ratio", Value::Float(8.5)),
+            ("PreviewCount", Value::Int(9)),
+            ("RequiredPreview", Value::String("legacy".into())),
             ("Required", Value::String("required".into())),
             ("Lazy", Value::String("host-lazy".into())),
         ] {
@@ -352,6 +400,8 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
         overrides.insert("Prefix", Value::String("F".into()))?;
         overrides.insert("Count", Value::String(" 42 ".into()))?;
         overrides.insert("Ratio", Value::String("3.25".into()))?;
+        overrides.insert("PreviewCount", Value::String("17".into()))?;
+        overrides.insert("RequiredPreview", Value::String("ignored".into()))?;
         let output = run_optional(project, &overrides)?;
         assert_eq!(
             output.field("Prefix").and_then(Instance::as_scalar),
@@ -365,12 +415,23 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
             output.field("Ratio").and_then(Instance::as_scalar),
             Some(&Value::Float(3.25))
         );
+        assert_eq!(
+            output.field("PreviewCount").and_then(Instance::as_scalar),
+            Some(&Value::Int(17))
+        );
+        assert_eq!(
+            output
+                .field("RequiredPreview")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("legacy".into()))
+        );
 
         let mut supplied_null = RuntimeParameters::new();
         supplied_null.insert("Required", Value::String("required".into()))?;
         supplied_null.insert("Lazy", Value::String("host-lazy".into()))?;
         supplied_null.insert("Prefix", Value::Null)?;
         supplied_null.insert("Count", Value::Null)?;
+        supplied_null.insert("PreviewCount", Value::Null)?;
         let output = run_optional(project, &supplied_null)?;
         assert_eq!(
             output.field("Prefix").and_then(Instance::as_scalar),
@@ -378,6 +439,10 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
         );
         assert_eq!(
             output.field("Count").and_then(Instance::as_scalar),
+            Some(&Value::Null)
+        );
+        assert_eq!(
+            output.field("PreviewCount").and_then(Instance::as_scalar),
             Some(&Value::Null)
         );
 
@@ -388,6 +453,14 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
         assert!(matches!(
             run_optional(project, &wrong),
             Err(engine::EngineError::RuntimeParameterType { name, expected: ScalarType::Int, found: "bool", .. }) if name == "Count"
+        ));
+        let mut wrong_preview = RuntimeParameters::new();
+        wrong_preview.insert("Required", Value::String("required".into()))?;
+        wrong_preview.insert("Lazy", Value::String("host-lazy".into()))?;
+        wrong_preview.insert("PreviewCount", Value::Bool(false))?;
+        assert!(matches!(
+            run_optional(project, &wrong_preview),
+            Err(engine::EngineError::RuntimeParameterType { name, expected: ScalarType::Int, found: "bool", .. }) if name == "PreviewCount"
         ));
 
         let mut missing_lazy = RuntimeParameters::new();
