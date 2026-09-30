@@ -139,9 +139,11 @@ fn field_string<'a>(row: &'a Instance, name: &str) -> Option<&'a str> {
     }
 }
 
-fn run(project: &mapping::Project, database: &Path) -> Result<Instance, Box<dyn Error>> {
+fn run_preview(project: &mapping::Project, database: &Path) -> Result<Instance, Box<dyn Error>> {
     let source = format_db::read_instance(database, &project.source)?;
-    Ok(engine::run(project, &source)?)
+    let context =
+        engine::ExecutionContext::new(database).with_purpose(engine::ExecutionPurpose::Preview);
+    Ok(engine::run_with_context(project, &source, &context)?)
 }
 
 fn assert_home_rows(output: &Instance) {
@@ -176,9 +178,14 @@ fn keyless_join_over_hierarchical_db_relation_imports_as_plain_iteration()
         imported.project.root.iteration,
         ScopeIteration::InnerJoin { .. }
     ));
-    assert!(imported.project.graph.nodes.values().any(
-        |node| matches!(node, Node::Const { value: Value::String(value) } if value == "home")
-    ));
+    assert!(imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::RuntimeParameter {
+            name,
+            preview: Some(preview),
+            ..
+        } if name == "category" && preview == "home"
+    )));
     assert!(
         imported
             .project
@@ -188,7 +195,12 @@ fn keyless_join_over_hierarchical_db_relation_imports_as_plain_iteration()
             .all(|node| !matches!(node, Node::JoinField { .. }))
     );
 
-    let output = run(&imported.project, &database)?;
+    let source = format_db::read_instance(&database, &imported.project.source)?;
+    assert!(matches!(
+        engine::run(&imported.project, &source),
+        Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "category"
+    ));
+    let output = run_preview(&imported.project, &database)?;
     assert_home_rows(&output);
 
     let exported = dir.0.join("roundtrip.mfd");
@@ -196,7 +208,7 @@ fn keyless_join_over_hierarchical_db_relation_imports_as_plain_iteration()
     let roundtrip = mfd::import(&exported)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert!(engine::validate(&roundtrip.project).is_empty());
-    let roundtrip_output = run(&roundtrip.project, &database)?;
+    let roundtrip_output = run_preview(&roundtrip.project, &database)?;
     assert_eq!(roundtrip_output, output);
     assert_home_rows(&roundtrip_output);
 

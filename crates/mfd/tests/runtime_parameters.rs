@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use engine::{ExecutionContext, RuntimeParameters};
+use engine::{ExecutionContext, ExecutionPurpose, RuntimeParameters};
 use ir::{Instance, ScalarType, Value};
 use mapping::Node;
 
@@ -75,7 +75,7 @@ fn assert_declarations(project: &mapping::Project) {
         .nodes
         .values()
         .filter_map(|node| match node {
-            Node::RuntimeParameter { name, ty } => Some((name.as_str(), *ty)),
+            Node::RuntimeParameter { name, ty, .. } => Some((name.as_str(), *ty)),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -193,6 +193,7 @@ fn write_optional_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
   <component name="constant" library="core" kind="2"><targets><datapoint key="100"/></targets><data><constant value="B" datatype="string"/></data></component>
   <component name="constant" library="core" kind="2"><targets><datapoint key="101"/></targets><data><constant value="7" datatype="string"/></data></component>
   <component name="constant" library="core" kind="2"><targets><datapoint key="102"/></targets><data><constant value="8.5" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="103"/></targets><data><constant value="8" datatype="integer"/></data></component>
   <component name="Prefix" library="core" kind="6"><sources><datapoint pos="0" key="110"/></sources><targets><datapoint pos="0" key="111"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Prefix" optional="1"/></data></component>
   <component name="Count" library="core" kind="6"><sources><datapoint pos="0" key="112"/></sources><targets><datapoint pos="0" key="113"/></targets><data><input datatype="integer"/><parameter usageKind="input" name="Count" optional="1"/></data></component>
   <component name="Ratio" library="core" kind="6"><sources><datapoint pos="0" key="114"/></sources><targets><datapoint pos="0" key="115"/></targets><data><input datatype="decimal"/><parameter usageKind="input" name="Ratio" optional="1"/></data></component>
@@ -209,6 +210,7 @@ fn write_optional_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
   <vertex vertexkey="100"><edges><edge vertexkey="110"/></edges></vertex>
   <vertex vertexkey="101"><edges><edge vertexkey="112"/></edges></vertex>
   <vertex vertexkey="102"><edges><edge vertexkey="114"/></edges></vertex>
+  <vertex vertexkey="103"><edges><edge vertexkey="120"/></edges></vertex>
   <vertex vertexkey="117"><edges><edge vertexkey="118"/></edges></vertex>
   <vertex vertexkey="111"><edges><edge vertexkey="201"/></edges></vertex>
   <vertex vertexkey="113"><edges><edge vertexkey="202"/></edges></vertex>
@@ -228,17 +230,20 @@ fn assert_optional_declarations(project: &mapping::Project) {
         .nodes
         .values()
         .filter_map(|node| match node {
-            Node::RuntimeParameterDefault { name, ty, default } => {
-                Some((name.as_str(), *ty, *default))
-            }
+            Node::RuntimeParameterDefault {
+                name,
+                ty,
+                default,
+                preview,
+            } => Some((name.as_str(), *ty, *default, preview.as_deref())),
             _ => None,
         })
         .collect::<Vec<_>>();
-    declarations.sort_unstable_by_key(|(name, _, _)| *name);
+    declarations.sort_unstable_by_key(|(name, _, _, _)| *name);
     assert_eq!(
         declarations
             .iter()
-            .map(|(name, ty, _)| (*name, *ty))
+            .map(|(name, ty, _, _)| (*name, *ty))
             .collect::<Vec<_>>(),
         vec![
             ("Count", ScalarType::Int),
@@ -248,7 +253,8 @@ fn assert_optional_declarations(project: &mapping::Project) {
             ("Ratio", ScalarType::Float),
         ]
     );
-    for (name, _, default) in declarations {
+    for (name, _, default, preview) in declarations {
+        assert_eq!(preview, (name == "PreviewCount").then_some("9"));
         match name {
             "Count" => assert!(matches!(
                 project.graph.nodes.get(&default),
@@ -271,7 +277,7 @@ fn assert_optional_declarations(project: &mapping::Project) {
             "PreviewCount" => assert!(matches!(
                 project.graph.nodes.get(&default),
                 Some(Node::Const {
-                    value: Value::Int(9)
+                    value: Value::Int(8)
                 })
             )),
             "Lazy" => {
@@ -303,12 +309,12 @@ fn assert_optional_declarations(project: &mapping::Project) {
             .values()
             .filter(|node| matches!(node, Node::RuntimeParameter { .. }))
             .count(),
-        2
+        3
     );
-    assert!(!project.graph.nodes.values().any(|node| matches!(
+    assert!(project.graph.nodes.values().any(|node| matches!(
         node,
-        Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. }
-            if name == "RequiredPreview"
+        Node::RuntimeParameter { name, ty: ScalarType::String, preview: Some(preview) }
+            if name == "RequiredPreview" && preview == "legacy"
     )));
 }
 
@@ -316,11 +322,21 @@ fn run_optional(
     project: &mapping::Project,
     parameters: &RuntimeParameters,
 ) -> Result<Instance, engine::EngineError> {
+    run_optional_for_purpose(project, parameters, ExecutionPurpose::Run)
+}
+
+fn run_optional_for_purpose(
+    project: &mapping::Project,
+    parameters: &RuntimeParameters,
+    purpose: ExecutionPurpose,
+) -> Result<Instance, engine::EngineError> {
     let source = Instance::Group(vec![(
         "Dummy".into(),
         Instance::Scalar(Value::String("source".into())),
     )]);
-    let context = ExecutionContext::new(Path::new("optional.mfd")).with_parameters(parameters);
+    let context = ExecutionContext::new(Path::new("optional.mfd"))
+        .with_parameters(parameters)
+        .with_purpose(purpose);
     engine::run_with_context(project, &source, &context)
 }
 
@@ -344,6 +360,9 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
     );
     let exported = std::fs::read_to_string(&exported_path)?;
     assert_eq!(exported.matches("optional=\"1\"").count(), 5);
+    assert_eq!(exported.matches("usepreviewvalue=\"1\"").count(), 2);
+    assert!(exported.contains("previewvalue=\"9\" usepreviewvalue=\"1\""));
+    assert!(exported.contains("previewvalue=\"legacy\" usepreviewvalue=\"1\""));
     let roundtrip = mfd::import(&exported_path)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert!(engine::validate(&roundtrip.project).is_empty());
@@ -377,14 +396,15 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
     ] {
         let mut parameters = RuntimeParameters::new();
         parameters.insert("Required", Value::String("required".into()))?;
+        parameters.insert("RequiredPreview", Value::String("runtime".into()))?;
         parameters.insert("Lazy", Value::String("host-lazy".into()))?;
         let output = run_optional(project, &parameters)?;
         for (name, expected) in [
             ("Prefix", Value::String("B".into())),
             ("Count", Value::Int(7)),
             ("Ratio", Value::Float(8.5)),
-            ("PreviewCount", Value::Int(9)),
-            ("RequiredPreview", Value::String("legacy".into())),
+            ("PreviewCount", Value::Int(8)),
+            ("RequiredPreview", Value::String("runtime".into())),
             ("Required", Value::String("required".into())),
             ("Lazy", Value::String("host-lazy".into())),
         ] {
@@ -423,11 +443,12 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
             output
                 .field("RequiredPreview")
                 .and_then(Instance::as_scalar),
-            Some(&Value::String("legacy".into()))
+            Some(&Value::String("ignored".into()))
         );
 
         let mut supplied_null = RuntimeParameters::new();
         supplied_null.insert("Required", Value::String("required".into()))?;
+        supplied_null.insert("RequiredPreview", Value::Null)?;
         supplied_null.insert("Lazy", Value::String("host-lazy".into()))?;
         supplied_null.insert("Prefix", Value::Null)?;
         supplied_null.insert("Count", Value::Null)?;
@@ -445,9 +466,16 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
             output.field("PreviewCount").and_then(Instance::as_scalar),
             Some(&Value::Null)
         );
+        assert_eq!(
+            output
+                .field("RequiredPreview")
+                .and_then(Instance::as_scalar),
+            Some(&Value::Null)
+        );
 
         let mut wrong = RuntimeParameters::new();
         wrong.insert("Required", Value::String("required".into()))?;
+        wrong.insert("RequiredPreview", Value::String("runtime".into()))?;
         wrong.insert("Lazy", Value::String("host-lazy".into()))?;
         wrong.insert("Count", Value::Bool(false))?;
         assert!(matches!(
@@ -456,6 +484,7 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
         ));
         let mut wrong_preview = RuntimeParameters::new();
         wrong_preview.insert("Required", Value::String("required".into()))?;
+        wrong_preview.insert("RequiredPreview", Value::String("runtime".into()))?;
         wrong_preview.insert("Lazy", Value::String("host-lazy".into()))?;
         wrong_preview.insert("PreviewCount", Value::Bool(false))?;
         assert!(matches!(
@@ -465,14 +494,198 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
 
         let mut missing_lazy = RuntimeParameters::new();
         missing_lazy.insert("Required", Value::String("required".into()))?;
+        missing_lazy.insert("RequiredPreview", Value::String("runtime".into()))?;
         assert!(matches!(
             run_optional(project, &missing_lazy),
             Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "Missing"
         ));
+        let mut without_required = RuntimeParameters::new();
+        without_required.insert("RequiredPreview", Value::String("runtime".into()))?;
+        without_required.insert("Lazy", Value::String("host-lazy".into()))?;
         assert!(matches!(
-            run_optional(project, &RuntimeParameters::new()),
+            run_optional(project, &without_required),
             Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "Required"
         ));
+
+        let mut required_only = RuntimeParameters::new();
+        required_only.insert("Required", Value::String("required".into()))?;
+        required_only.insert("Lazy", Value::String("host-lazy".into()))?;
+        assert!(matches!(
+            run_optional(project, &required_only),
+            Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "RequiredPreview"
+        ));
+        let preview_output =
+            run_optional_for_purpose(project, &required_only, ExecutionPurpose::Preview)?;
+        assert_eq!(
+            preview_output
+                .field("PreviewCount")
+                .and_then(Instance::as_scalar),
+            Some(&Value::Int(9))
+        );
+        assert_eq!(
+            preview_output
+                .field("RequiredPreview")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("legacy".into()))
+        );
+        let overridden_preview =
+            run_optional_for_purpose(project, &overrides, ExecutionPurpose::Preview)?;
+        assert_eq!(
+            overridden_preview
+                .field("PreviewCount")
+                .and_then(Instance::as_scalar),
+            Some(&Value::Int(17))
+        );
+        assert_eq!(
+            overridden_preview
+                .field("RequiredPreview")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("ignored".into()))
+        );
     }
+    Ok(())
+}
+
+#[test]
+fn preview_text_is_preserved_raw_and_checked_only_during_preview()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new()?;
+    let design = write_optional_design(&directory.0)?;
+    let text = std::fs::read_to_string(&design)?
+        .replace("previewvalue=\"9\"", "previewvalue=\"not-an-integer\"")
+        .replace("previewvalue=\"legacy\"", "previewvalue=\"\"");
+    std::fs::write(&design, text)?;
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let exported = directory.0.join("raw-preview-roundtrip.mfd");
+    assert!(
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd,)?
+            .is_native_compatible()
+    );
+    let text = std::fs::read_to_string(&exported)?;
+    assert!(text.contains("previewvalue=\"not-an-integer\" usepreviewvalue=\"1\""));
+    assert!(text.contains("previewvalue=\"\" usepreviewvalue=\"1\""));
+    let restored = mfd::import(&exported)?;
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+
+    for project in [&imported.project, &restored.project] {
+        let mut hosts = RuntimeParameters::new();
+        hosts.insert("Required", Value::String("required".into()))?;
+        hosts.insert("Lazy", Value::String("lazy".into()))?;
+        hosts.insert("RequiredPreview", Value::String("runtime".into()))?;
+        let run = run_optional(project, &hosts)?;
+        assert_eq!(
+            run.field("PreviewCount").and_then(Instance::as_scalar),
+            Some(&Value::Int(8)),
+        );
+        assert!(matches!(
+            run_optional_for_purpose(project, &hosts, ExecutionPurpose::Preview),
+            Err(engine::EngineError::RuntimeParameterType {
+                name,
+                expected: ScalarType::Int,
+                found: "string",
+                ..
+            }) if name == "PreviewCount"
+        ));
+        hosts.insert("PreviewCount", Value::Int(8))?;
+        let preview = run_optional_for_purpose(project, &hosts, ExecutionPurpose::Preview)?;
+        assert_eq!(
+            preview.field("PreviewCount").and_then(Instance::as_scalar),
+            Some(&Value::Int(8)),
+        );
+        let mut with_null = RuntimeParameters::new();
+        with_null.insert("Required", Value::String("required".into()))?;
+        with_null.insert("Lazy", Value::String("lazy".into()))?;
+        with_null.insert("PreviewCount", Value::Int(8))?;
+        with_null.insert("RequiredPreview", Value::Null)?;
+        let preview = run_optional_for_purpose(project, &with_null, ExecutionPurpose::Preview)?;
+        assert_eq!(
+            preview
+                .field("RequiredPreview")
+                .and_then(Instance::as_scalar),
+            Some(&Value::Null),
+        );
+        // A supplied Null is distinct from an absent host value. Only the
+        // latter reads this empty lexical preview.
+        let mut without_required_preview = RuntimeParameters::new();
+        without_required_preview.insert("Required", Value::String("required".into()))?;
+        without_required_preview.insert("Lazy", Value::String("lazy".into()))?;
+        without_required_preview.insert("PreviewCount", Value::Int(8))?;
+        let preview = run_optional_for_purpose(
+            project,
+            &without_required_preview,
+            ExecutionPurpose::Preview,
+        )?;
+        assert_eq!(
+            preview
+                .field("RequiredPreview")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String(String::new())),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn preview_attribute_roundtrips_xml_whitespace_and_escapes()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new()?;
+    let design = write_optional_design(&directory.0)?;
+    let text = std::fs::read_to_string(&design)?.replace(
+        "previewvalue=\"legacy\"",
+        "previewvalue=\"A&#xD;&#xA;&#x9;&amp;&quot;&lt;\"",
+    );
+    std::fs::write(&design, text)?;
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let expected = "A\r\n\t&\"<";
+    assert!(imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::RuntimeParameter { name, preview: Some(preview), .. }
+            if name == "RequiredPreview" && preview == expected
+    )));
+    let exported = directory.0.join("escaped-preview.mfd");
+    assert!(
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd,)?
+            .is_native_compatible()
+    );
+    let text = std::fs::read_to_string(&exported)?;
+    assert!(text.contains("previewvalue=\"A&#xD;&#xA;&#x9;&amp;&quot;&lt;\""));
+    let restored = mfd::import(&exported)?;
+    assert!(restored.project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::RuntimeParameter { name, preview: Some(preview), .. }
+            if name == "RequiredPreview" && preview == expected
+    )));
+    Ok(())
+}
+
+#[test]
+fn optional_preview_without_connected_runtime_default_is_diagnosed_and_not_frozen()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new()?;
+    let design = write_optional_design(&directory.0)?;
+    let text = std::fs::read_to_string(&design)?.replace(
+        "  <vertex vertexkey=\"103\"><edges><edge vertexkey=\"120\"/></edges></vertex>\n",
+        "",
+    );
+    std::fs::write(&design, text)?;
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("optional input parameter `PreviewCount`")
+            && warning.contains("no connected runtime default")
+            && warning.contains("dependent value skipped")
+    }));
+    assert!(!imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. }
+            if name == "PreviewCount"
+    )));
+    let mut supplied = RuntimeParameters::new();
+    supplied.insert("Required", Value::String("required".into()))?;
+    supplied.insert("RequiredPreview", Value::String("runtime".into()))?;
+    supplied.insert("Lazy", Value::String("host-lazy".into()))?;
+    let output = run_optional(&imported.project, &supplied)?;
+    assert!(output.field("PreviewCount").is_none());
     Ok(())
 }
