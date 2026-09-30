@@ -186,6 +186,7 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
     assert!(defaults.flextext.is_none());
     assert!(defaults.idoc.is_none());
     assert!(defaults.idoc_native_config.is_none());
+    assert!(defaults.idoc_native_text_settings.is_none());
     assert!(defaults.swift_mt.is_none());
     assert!(defaults.pdf.is_none());
     assert!(defaults.http_get.is_none());
@@ -208,7 +209,7 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
 }
 
 #[test]
-fn idoc_native_config_format_option_roundtrips_and_defaults_off() {
+fn idoc_native_provenance_format_options_roundtrip_and_default_off() {
     let field = IdocNativeField::new(
         "name",
         "Name",
@@ -239,8 +240,23 @@ fn idoc_native_config_format_option_roundtrips_and_defaults_off() {
     .unwrap();
     let options = FormatOptions {
         edi_kind: Some(EdiBoundaryKind::Idoc),
+        edi_autocomplete: Some(EdiAutocomplete::Idoc),
         idoc: Some(descriptor.project().unwrap().1),
         idoc_native_config: Some(descriptor),
+        idoc_native_text_settings: Some(
+            IdocNativeTextSettings::new_observed_profile(
+                false,
+                true,
+                false,
+                IdocNativeValidationKind::ALL
+                    .into_iter()
+                    .map(|kind| {
+                        IdocNativeValidationCase::new(kind, IdocNativeValidationAction::Stop)
+                    })
+                    .collect(),
+            )
+            .unwrap(),
+        ),
         ..FormatOptions::default()
     };
     let encoded = serde_json::to_string(&options).unwrap();
@@ -249,6 +265,7 @@ fn idoc_native_config_format_option_roundtrips_and_defaults_off() {
 
     let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
     assert!(defaults.idoc_native_config.is_none());
+    assert!(defaults.idoc_native_text_settings.is_none());
     assert!(
         !serde_json::to_string(&defaults)
             .unwrap()
