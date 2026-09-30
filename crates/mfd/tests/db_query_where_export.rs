@@ -274,6 +274,128 @@ fn root_query_where_with_residual_key_is_native_and_round_trips() -> Result<(), 
 }
 
 #[test]
+fn optional_title_pattern_preserves_default_override_and_null_in_native_where()
+-> Result<(), Box<dyn Error>> {
+    let dir = TempDir::new()?;
+    let database_path = dir.0.join("people.sqlite");
+    database(&database_path)?;
+    let mut project = project();
+    project.graph.nodes.insert(
+        18,
+        Node::Const {
+            value: Value::String("%Manager%".into()),
+        },
+    );
+    project.graph.nodes.insert(
+        1,
+        Node::RuntimeParameterDefault {
+            name: "pattern".into(),
+            ty: ScalarType::String,
+            default: 18,
+        },
+    );
+    project.graph.nodes.insert(
+        19,
+        Node::Const {
+            value: Value::Float(1.0),
+        },
+    );
+    project.graph.nodes.insert(
+        9,
+        Node::RuntimeParameterDefault {
+            name: "DepartmentID".into(),
+            ty: ScalarType::Int,
+            default: 19,
+        },
+    );
+    assert!(engine::validate(&project).is_empty());
+    let design = dir.0.join("optional-pattern.mfd");
+    let report = mfd::export_with_profile(&project, &design, mfd::ExportProfile::NativeMfd)?;
+    assert!(report.is_native_compatible(), "{report}");
+    let restored = mfd::import(&design)?;
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+    assert!(engine::validate(&restored.project).is_empty());
+    let second_design = dir.0.join("optional-pattern-second.mfd");
+    mfd::export_with_profile(
+        &restored.project,
+        &second_design,
+        mfd::ExportProfile::NativeMfd,
+    )?;
+    let second = mfd::import(&second_design)?;
+    assert!(second.warnings.is_empty(), "{:?}", second.warnings);
+    assert_eq!(
+        second.project.graph.nodes.len(),
+        restored.project.graph.nodes.len()
+    );
+    let source = format_db::read_instance(&database_path, &project.source)?;
+    for (value, count) in [
+        (None, 2),
+        (Some(Value::String("%Engineer%".into())), 1),
+        (Some(Value::String("%".into())), 3),
+        (Some(Value::Null), 0),
+    ] {
+        let mut parameters = engine::RuntimeParameters::new();
+        if let Some(value) = value {
+            parameters.insert("pattern", value)?;
+        }
+        let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
+        let before = engine::run_with_context(&project, &source, &context)?;
+        let after = engine::run_with_context(&restored.project, &source, &context)?;
+        assert_eq!(
+            engine::run_with_context(&second.project, &source, &context)?,
+            after
+        );
+        let before_path = dir.0.join("before-optional.xml");
+        let after_path = dir.0.join("after-optional.xml");
+        format_xml::write(&before_path, &project.target, &before)?;
+        format_xml::write(&after_path, &restored.project.target, &after)?;
+        let expected = std::fs::read_to_string(&before_path)?;
+        assert_eq!(expected.matches("<Employee>").count(), count);
+        assert_eq!(std::fs::read_to_string(&after_path)?, expected);
+    }
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("DepartmentID", Value::Int(2))?;
+    let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
+    let before = engine::run_with_context(&project, &source, &context)?;
+    let after = engine::run_with_context(&restored.project, &source, &context)?;
+    assert_eq!(after, before);
+    assert_eq!(
+        after
+            .field("Employees")
+            .and_then(|employees| employees.field("Employee"))
+            .and_then(ir::Instance::as_repeated)
+            .unwrap()
+            .len(),
+        1
+    );
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("DepartmentID", Value::Bool(true))?;
+    let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
+    assert!(matches!(
+        engine::run_with_context(&project, &source, &context),
+        Err(engine::EngineError::RuntimeParameterType {
+            expected: ScalarType::Int,
+            ..
+        })
+    ));
+    assert!(matches!(
+        engine::run_with_context(&restored.project, &source, &context),
+        Err(engine::EngineError::RuntimeParameterType {
+            expected: ScalarType::Int,
+            ..
+        })
+    ));
+    project.graph.nodes.insert(
+        18,
+        Node::Const {
+            value: Value::String("%Man_ger%".into()),
+        },
+    );
+    assert_rejected(&project, &dir.0.join("changed-optional-pattern.mfd"))?;
+    Ok(())
+}
+
+#[test]
 fn title_where_keeps_nonmatching_graphs_strictly_rejected() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
     let mut changed = project();
