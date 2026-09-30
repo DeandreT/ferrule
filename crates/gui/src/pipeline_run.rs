@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::app::host_parameters::HostParameterEditor;
 use anyhow::{Context as _, bail};
@@ -12,7 +13,7 @@ const MAX_PIPELINE_BYTES: u64 = 64 * 1024 * 1024;
 
 pub(super) struct PipelineRunDraft {
     pub path: PathBuf,
-    pub pipeline: Pipeline,
+    pub pipeline: Arc<Pipeline>,
     pub inputs: Vec<PipelineInputDraft>,
     pub outputs: Vec<PipelineOutputDraft>,
     pub issues: Vec<String>,
@@ -25,9 +26,18 @@ pub(super) struct PipelineInputDraft {
     pub path: String,
 }
 
+#[derive(Debug)]
+pub(super) struct LoadedPipelineHost {
+    pub name: String,
+    pub path: PathBuf,
+    pub bytes: Vec<u8>,
+}
+
 pub(super) struct PipelineOutputDraft {
     pub stage: String,
     pub target: Option<String>,
+    /// Logical format identity for in-memory Preview; never selects publication.
+    pub preview_path: String,
     pub path: String,
 }
 
@@ -46,7 +56,6 @@ impl PipelineRunDraft {
             collect_host(
                 &stage.source,
                 stage.project.source_path.as_deref(),
-                stage.mapping_path.as_deref(),
                 path,
                 &mut input_names,
             );
@@ -57,30 +66,31 @@ impl PipelineRunDraft {
                     .iter()
                     .find(|source| source.name == binding.name)
                     .map(|source| source.path.as_str());
-                collect_host(
-                    &binding.from,
-                    source_path,
-                    stage.mapping_path.as_deref(),
-                    path,
-                    &mut input_names,
-                );
+                collect_host(&binding.from, source_path, path, &mut input_names);
             }
             outputs.push(PipelineOutputDraft {
                 stage: stage.id.clone(),
                 target: None,
+                preview_path: stage
+                    .project
+                    .target_path
+                    .as_deref()
+                    .and_then(|value| stored_host_path(value, path))
+                    .unwrap_or_default(),
                 path: String::new(),
             });
-            outputs.extend(
-                stage
-                    .project
-                    .extra_targets
-                    .iter()
-                    .map(|target| PipelineOutputDraft {
-                        stage: stage.id.clone(),
-                        target: Some(target.name.clone()),
-                        path: String::new(),
-                    }),
-            );
+            outputs.extend(stage.project.extra_targets.iter().map(|target| {
+                PipelineOutputDraft {
+                    stage: stage.id.clone(),
+                    target: Some(target.name.clone()),
+                    preview_path: target
+                        .path
+                        .as_deref()
+                        .and_then(|value| stored_host_path(value, path))
+                        .unwrap_or_default(),
+                    path: String::new(),
+                }
+            }));
         }
         let inputs = input_names
             .into_iter()
@@ -95,7 +105,7 @@ impl PipelineRunDraft {
             .collect();
         Ok(Self {
             path: path.to_path_buf(),
-            pipeline,
+            pipeline: Arc::new(pipeline),
             inputs,
             outputs,
             issues,
@@ -107,21 +117,7 @@ impl PipelineRunDraft {
     pub fn requests(
         &self,
     ) -> anyhow::Result<(Vec<cli::PipelineHostFile>, Vec<cli::PipelineOutputFile>)> {
-        if !self.issues.is_empty() {
-            bail!("pipeline has {} validation issue(s)", self.issues.len());
-        }
-        let inputs = self
-            .inputs
-            .iter()
-            .map(|input| {
-                Ok(cli::PipelineHostFile {
-                    name: input.name.clone(),
-                    path: self.resolve_path(&input.path).with_context(|| {
-                        format!("host input `{}` needs a file path", input.name)
-                    })?,
-                })
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+        let inputs = self.input_requests()?;
         let outputs = self
             .outputs
             .iter()
@@ -138,6 +134,42 @@ impl PipelineRunDraft {
             bail!("choose at least one output path");
         }
         Ok((inputs, outputs))
+    }
+
+    pub fn input_requests(&self) -> anyhow::Result<Vec<cli::PipelineHostFile>> {
+        if !self.issues.is_empty() {
+            bail!("pipeline has {} validation issue(s)", self.issues.len());
+        }
+        self.inputs
+            .iter()
+            .map(|input| {
+                Ok(cli::PipelineHostFile {
+                    name: input.name.clone(),
+                    path: self.resolve_path(&input.path).with_context(|| {
+                        format!("host input `{}` needs a file path", input.name)
+                    })?,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()
+    }
+
+    pub fn preview_paths(&self) -> anyhow::Result<Vec<(String, Option<String>, PathBuf)>> {
+        if !self.issues.is_empty() {
+            bail!("pipeline has {} validation issue(s)", self.issues.len());
+        }
+        self.outputs
+            .iter()
+            .map(|output| {
+                let label = output.target.as_deref().unwrap_or("Primary");
+                Ok((
+                    output.stage.clone(),
+                    output.target.clone(),
+                    self.resolve_path(&output.preview_path).with_context(|| {
+                        format!("{} / {label} needs a preview format path", output.stage)
+                    })?,
+                ))
+            })
+            .collect()
     }
 
     pub fn ensure_unchanged(&self) -> anyhow::Result<()> {
@@ -174,25 +206,18 @@ impl PipelineRunDraft {
 fn collect_host(
     input: &PipelineInput,
     stored_path: Option<&str>,
-    mapping_path: Option<&str>,
     pipeline_path: &Path,
     names: &mut BTreeMap<String, BTreeSet<String>>,
 ) {
     if let PipelineInput::Host { name } = input {
         let paths = names.entry(name.clone()).or_default();
-        if let Some(path) =
-            stored_path.and_then(|path| stored_host_path(path, mapping_path, pipeline_path))
-        {
+        if let Some(path) = stored_path.and_then(|path| stored_host_path(path, pipeline_path)) {
             paths.insert(path);
         }
     }
 }
 
-fn stored_host_path(
-    value: &str,
-    mapping_path: Option<&str>,
-    pipeline_path: &Path,
-) -> Option<String> {
+fn stored_host_path(value: &str, pipeline_path: &Path) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {
         return None;
@@ -212,19 +237,7 @@ fn stored_host_path(
     } else {
         std::env::current_dir().ok()?.join(pipeline_dir)
     };
-    let mapping_dir = mapping_path
-        .filter(|path| !path.trim().is_empty())
-        .map(Path::new)
-        .map(|path| {
-            let path = if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                pipeline_dir.join(path)
-            };
-            path.parent().unwrap_or(&pipeline_dir).to_path_buf()
-        })
-        .unwrap_or(pipeline_dir);
-    Some(mapping_dir.join(path).to_string_lossy().into_owned())
+    Some(pipeline_dir.join(path).to_string_lossy().into_owned())
 }
 
 fn read_pipeline(path: &Path) -> anyhow::Result<Vec<u8>> {
@@ -239,4 +252,61 @@ fn read_pipeline(path: &Path) -> anyhow::Result<Vec<u8>> {
         bail!("pipeline file exceeds the 64 MiB inspection limit");
     }
     Ok(bytes)
+}
+
+pub(super) fn load_preview_hosts(
+    inputs: &[cli::PipelineHostFile],
+    is_cancelled: impl Fn() -> bool,
+) -> anyhow::Result<Vec<LoadedPipelineHost>> {
+    if inputs.len() > cli::MAX_PAYLOAD_ARTIFACTS {
+        bail!(
+            "pipeline preview exceeds the limit of {} host inputs",
+            cli::MAX_PAYLOAD_ARTIFACTS
+        );
+    }
+    let mut loaded = Vec::with_capacity(inputs.len());
+    let mut total_bytes = 0usize;
+    for input in inputs {
+        if is_cancelled() {
+            return Err(engine::EngineError::DebugCancelled.into());
+        }
+        let name = &input.name;
+        let path = &input.path;
+        let text = path.to_string_lossy().to_ascii_lowercase();
+        if text.starts_with("http://") || text.starts_with("https://") {
+            bail!("pipeline preview needs a local file for host input `{name}`");
+        }
+        let canonical = std::fs::canonicalize(path).with_context(|| {
+            format!(
+                "resolving pipeline host input `{name}` at {}",
+                path.display()
+            )
+        })?;
+        if !std::fs::metadata(&canonical)?.is_file() {
+            bail!(
+                "pipeline host input `{name}` is not a regular file: {}",
+                canonical.display()
+            );
+        }
+        let bytes = crate::preview::read_bounded(&canonical, name)
+            .with_context(|| format!("loading pipeline host input `{name}`"))?;
+        total_bytes = total_bytes
+            .checked_add(bytes.len())
+            .context("pipeline preview input size overflowed")?;
+        if total_bytes > cli::MAX_PAYLOAD_RUN_BYTES {
+            bail!(
+                "pipeline preview inputs exceed the {} MiB total limit",
+                cli::MAX_PAYLOAD_RUN_BYTES / (1024 * 1024)
+            );
+        }
+        loaded.push(LoadedPipelineHost {
+            name: name.clone(),
+            path: path.clone(),
+            bytes,
+        });
+    }
+    if is_cancelled() {
+        return Err(engine::EngineError::DebugCancelled.into());
+    }
+    Ok(loaded)
 }

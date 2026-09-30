@@ -706,7 +706,7 @@ fn load_source(
     })
 }
 
-fn read_bounded(path: &Path, name: &str) -> anyhow::Result<Vec<u8>> {
+pub(super) fn read_bounded(path: &Path, name: &str) -> anyhow::Result<Vec<u8>> {
     let mut file = std::fs::File::open(path)
         .with_context(|| format!("opening secondary source `{name}` at {}", path.display()))?;
     let limit = u64::try_from(cli::MAX_PAYLOAD_DOCUMENT_BYTES)

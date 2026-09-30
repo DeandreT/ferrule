@@ -163,6 +163,7 @@ pub enum RunReportKind {
     Run,
     Preview,
     Pipeline,
+    PipelinePreview,
 }
 
 impl RunReport {
@@ -203,6 +204,57 @@ impl RunReport {
             .collect();
         Self {
             kind: RunReportKind::Pipeline,
+            duration,
+            records_written,
+            input_path: pipeline_path,
+            outputs,
+            trace,
+        }
+    }
+
+    pub fn from_pipeline_preview_outcome(
+        outcome: cli::PipelinePreviewOutcome,
+        pipeline_path: PathBuf,
+        duration: Duration,
+        trace: TraceReport,
+    ) -> Self {
+        let records_written = outcome.artifacts.iter().fold(0usize, |sum, artifact| {
+            sum.saturating_add(artifact.records_written)
+        });
+        let mut target_counts = std::collections::BTreeMap::new();
+        for artifact in &outcome.artifacts {
+            *target_counts
+                .entry((artifact.stage.clone(), artifact.target.clone()))
+                .or_insert(0usize) += 1;
+        }
+        let outputs = outcome
+            .artifacts
+            .into_iter()
+            .map(|artifact| {
+                let target = artifact.target.as_deref().unwrap_or("Primary");
+                let name = if target_counts
+                    .get(&(artifact.stage.clone(), artifact.target.clone()))
+                    .is_some_and(|count| *count > 1)
+                {
+                    format!(
+                        "{} / {target} - {}",
+                        artifact.stage,
+                        artifact.path.display()
+                    )
+                } else {
+                    format!("{} / {target}", artifact.stage)
+                };
+                RunOutput {
+                    name,
+                    records_written: artifact.records_written,
+                    path: artifact.path,
+                    in_memory: true,
+                    preview: Some(OutputPreview::from_bytes(&artifact.bytes)),
+                }
+            })
+            .collect();
+        Self {
+            kind: RunReportKind::PipelinePreview,
             duration,
             records_written,
             input_path: pipeline_path,
@@ -602,6 +654,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool, view: &mut RunReportView) {
         RunReportKind::Run => "Run results",
         RunReportKind::Preview => "Preview results",
         RunReportKind::Pipeline => "Pipeline results",
+        RunReportKind::PipelinePreview => "Pipeline preview results",
     };
     egui::Window::new(title)
         .open(&mut window_open)
@@ -619,13 +672,14 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
             RunReportKind::Run => "Completed",
             RunReportKind::Preview => "Preview completed",
             RunReportKind::Pipeline => "Pipeline completed",
+            RunReportKind::PipelinePreview => "Pipeline preview completed",
         });
         ui.separator();
         ui.label(match view.report.kind {
             RunReportKind::Run => {
                 format!("Primary: {}", format_records(view.report.records_written))
             }
-            RunReportKind::Preview => {
+            RunReportKind::Preview | RunReportKind::PipelinePreview => {
                 format!("Records: {}", format_records(view.report.records_written))
             }
             RunReportKind::Pipeline => {
@@ -649,7 +703,7 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.weak(match view.report.kind {
             RunReportKind::Run => "Input",
             RunReportKind::Preview => "Logical input",
-            RunReportKind::Pipeline => "Pipeline",
+            RunReportKind::Pipeline | RunReportKind::PipelinePreview => "Pipeline",
         });
         let input = view.report.input_path.display().to_string();
         ui.add(
@@ -714,7 +768,9 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
     let Some(output) = view.report.outputs.get_mut(view.selected_output) else {
         ui.weak(match view.report.kind {
             RunReportKind::Run => "No output files were produced.",
-            RunReportKind::Preview => "No output artifacts were produced.",
+            RunReportKind::Preview | RunReportKind::PipelinePreview => {
+                "No output artifacts were produced."
+            }
             RunReportKind::Pipeline => "No output files were produced.",
         });
         return;

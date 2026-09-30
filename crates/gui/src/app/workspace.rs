@@ -216,6 +216,9 @@ impl FerruleApp {
                                 crate::run_report::RunReportKind::Run => "Run results",
                                 crate::run_report::RunReportKind::Preview => "Preview results",
                                 crate::run_report::RunReportKind::Pipeline => "Pipeline results",
+                                crate::run_report::RunReportKind::PipelinePreview => {
+                                    "Pipeline preview results"
+                                }
                             }
                         });
                         if ui
