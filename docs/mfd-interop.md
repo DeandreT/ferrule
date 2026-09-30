@@ -169,6 +169,25 @@ parent traversal within an explicitly selected package, while canonical
 symlink escapes reject with an actionable column warning. The imported schema
 is embedded in the project, so execution remains independent of the original
 root schema file.
+When one compact, declaration-free serializer feeds only a plain SQLite XML
+column, strict native export restores the column's `doc-xml` structure and
+writes an adjacent XSD. The local XML-to-SQLite sample reimports and stores
+the same XML payloads after export. Serializers with another consumer or
+nontrivial row controls keep their ordinary component and retain explicit
+native-profile diagnostics.
+For a single SQLite table mapped directly to XML rows, a guarded `LIKE`
+predicate with a literal ASCII prefix and one trailing `%`, null guards, and
+sorting by that same string column exports as the native database `where`
+control. Its parameter expression stays connected. Other `LIKE` patterns,
+shared predicate nodes, or additional row controls retain the ordinary
+diagnostic; the local database-filter sample reimports without warnings and
+produces the same output after strict export.
+An isolated canonical decimal string feeding the second input of a supported
+numeric comparison or addition can export through a native decimal input
+component. The local price and temperature samples reimport with identical
+XML. The imported graph does not retain the original input parameter names,
+so export assigns deterministic names; external overrides by the original
+names are not yet covered.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
 endpoints, validated against the physical columns, and exported canonically. This
 keeps nested relational reads executable when the database omits foreign-key metadata.
@@ -193,7 +212,15 @@ payload execution rejects it before publishing any output.
 Zero-input `create-guid` generator components execute in the interpreter and
 generated Rust/C# mappings and round-trip as native `lang` components. Scalar
 and record-producing filter lookup UDFs accept typed XML, EDI, or database
-inputs. Scalar and nested scalar UDFs can also tokenize text, split by fixed
+inputs.
+The exact decimal divide/one-place round UDF pattern fed only by implicit
+Protobuf `float` fields exports with native arithmetic wires. Its internal
+numeric conversions are identities for the finite float32 values accepted by
+the Protobuf file boundary; a string, runtime parameter, changed arithmetic
+pattern, or shared conversion keeps the explicit native-profile blocker. This
+claim concerns file-backed Protobuf execution. Ferrule projects reimported from
+the native design retain conversion errors for hand-built nonfinite instances.
+Scalar and nested scalar UDFs can also tokenize text, split by fixed
 length or bounded regular expressions, or generate an inclusive integer range,
 then select one 1-based item, test a filtered sequence for a match, or apply
 count, sum, average, minimum, maximum, or string-join to raw, filtered, or
@@ -218,10 +245,11 @@ cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.
 ```
 
 Each computed intermediate target supplies the next stage's source, with
-original source components bound as host inputs. In a bounded three-stage XML
-chain, the first intermediate may also feed one named source of the final
-stage while the second remains its primary source. The final intermediate may
-feed one default and up to 255 connected named XML targets. The import validates
+original source components bound as host inputs. In a bounded XML chain of at
+least three stages, one nonadjacent earlier intermediate may also feed a named
+source of the final stage while its immediate predecessor remains the primary
+source. The final intermediate may feed one default and up to 255 connected
+named XML targets. The import validates
 the whole stage graph before writing `flow.json`; other intermediate branches,
 cycles, bypasses, and disconnected XML boundaries reject explicitly. See
 [mapping pipelines](mapping-pipelines.md) for input binding and execution.
@@ -259,9 +287,9 @@ preview or schema default. Repeated target branches connect the unique
 uncloned publication port; zero or multiple base ports reject before output
 artifacts are written. Preflight and native-profile checks run before any
 design or schema sibling is published.
-The three-stage earlier-result named source must match the first intermediate's
-schema and options and share its stage-two source preview path. Independent
-intermediate targets, disconnected final targets, other connected later-stage
+The earlier-result named source must match its producing intermediate's
+schema and options and share the immediate successor's source preview path.
+Independent intermediate targets, disconnected final targets, other connected later-stage
 named sources, and other non-XML intermediate boundaries reject
 explicitly. Other non-XML targets remain final-primary only; updating an
 existing workbook is outside this profile.

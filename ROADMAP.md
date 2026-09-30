@@ -62,7 +62,12 @@ are preserved.
   non-executable. All 187 export and re-import; 186 do so warning-free.
   The remaining design retains missing target and embedded string-parser JSON
   Schema provenance across best-effort export/re-import. All 175
-  dependency-complete round trips remain engine-valid. The
+  dependency-complete round trips remain engine-valid. Strict Ferrule native
+  export preflight now accepts 154 of 187 local designs. Direct `doc-xml`
+  reconstruction, a guarded SQLite `LIKE` control, finite numeric input
+  identity, a bounded Protobuf numeric UDF, and canonical decimal-input
+  reconstruction recover seven native designs across this work.
+  This is a static compatibility check, not reference-application acceptance. The
   read-only execution profile attempts 168 safe-input designs and all 168 pass,
   publishing 165 captured outputs; seven network or captured-service inputs are
   unavailable. All 168 safe export/re-import executions match semantically with
@@ -73,7 +78,7 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Generated Rust and C# hosts have compiled and executed thirty-four warning-free
+- Generated Rust and C# hosts have compiled and executed thirty-nine warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -140,7 +145,25 @@ are preserved.
   rounding. Case thirty-four reads a configured X12 order and maps one customer
   to headerless CSV. Both generated hosts agree with the interpreter's row
   values and exact `Michelle Butler,Mrs,20200430` output line after the native
-  X12 source survives schema-shaped JSON transport.
+  X12 source survives schema-shaped JSON transport. Case thirty-five reads a
+  local XBRL income table into four ordered operating-expense rows for a new
+  XLSX sheet. Generated Rust and C# typed and JSON hosts agree with the
+  interpreter, and the shared workbook writer produces matching decoded
+  headers and cells, including the first period's 3,454,000,000 total. Case
+  thirty-six reads nested SQLite users, groups, and applications into four
+  headerless CSV rows. Generated Rust and C# typed and JSON hosts agree with
+  the interpreter on row order, missing-description substitution, and exact
+  CSV bytes. Case thirty-seven reads four SQLite income periods into an XBRL
+  statement. Both generated hosts agree with the interpreter's typed and JSON
+  results and reproduce the same instance bytes, with four contexts, two
+  units, and 100 ordered facts. Case thirty-eight maps XML organizations to a
+  hierarchical XLSX workbook with two runtime-named sheets. Generated Rust
+  and C# typed and JSON results match the interpreter; decoding the workbooks
+  confirms sheet order, dated office rows, 15 and 6 employees, and department
+  bands. Case thirty-nine reads a local FlexText regex switch and publishes
+  three fixed-width output sets. Generated Rust and C# typed and JSON results
+  agree with the interpreter on 6, 5, and 6 ordered rows and exact padded
+  LF-delimited bytes for every output.
   This small execution sample does not establish that all emitted survey
   designs execute equivalently.
 - Known architectural constraints: each mapping stage has one primary driver,
@@ -159,7 +182,7 @@ are preserved.
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Complete applicable validation/autocompletion behavior, configuration commands, dialects, and versioned release packs |
 | Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
-| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML pass-through chain import and guarded export for up to 64 pass-through targets with XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, bounded XBRL, or new-workbook XLSX final primary output, connected final-stage XML target fan-out or one named CSV or JSON target beside an XML primary, and original XML hosts feeding named inputs across stages through distinct ports or shared-port fan-out, plus one guarded three-stage XML branch that feeds the final stage from an earlier intermediate, and GUI editing/inspection/running of saved pipelines with stored input-path hints | Fully general named N-to-M endpoints, general `.mfd` stage-graph import/export including other connected later-stage named sources, service hosts, and embedded per-stage graph editing |
+| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML pass-through chain import and guarded export for up to 64 pass-through targets with XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, bounded XBRL, or new-workbook XLSX final primary output, connected final-stage XML target fan-out or one named CSV or JSON target beside an XML primary, and original XML hosts feeding named inputs across stages through distinct ports or shared-port fan-out, plus one guarded earlier-intermediate branch that feeds the final stage as a named input, and GUI editing/inspection/running of saved pipelines with stored input-path hints | Fully general named N-to-M endpoints, general `.mfd` stage-graph import/export including other connected later-stage named sources, service hosts, and embedded per-stage graph editing |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV/SQLite blank-project setup, SQLite table introspection for named lookup sources, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
@@ -459,10 +482,12 @@ publication.
 Synthetic two- and four-stage chains
 preserve original XML host sources feeding named inputs in several stages
 across export and reimport, including shared-port fan-out from one graph
-vertex. A guarded three-stage XML chain also retains the first intermediate
-as a named input of the final stage while its successor supplies the primary
-input. Strict native export/reimport preserves one pass-through component and
-shared output vertex; direct and CLI execution preserve the final XML bytes.
+vertex. A guarded XML chain of at least three stages also retains one
+nonadjacent earlier intermediate as a named input of the final stage while
+its immediate predecessor supplies the primary input. Three- and four-stage
+synthetic runs cover branches from the first or second intermediate. Strict
+native export/reimport preserves each pass-through component and a shared output
+vertex; direct and CLI execution preserve the final XML bytes where tested.
 General `.mfd` stage-graph import/export, service hosts, general driver cardinality, and embedded
 per-stage graph editing remain. The file host can supply a distinct active
 mapping path for each stage
