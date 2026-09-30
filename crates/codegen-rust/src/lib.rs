@@ -1352,8 +1352,11 @@ fn render_expression(
     let parameters_argument = parameters
         .map(|_| ", parameters: &[Value]")
         .unwrap_or_default();
+    let parameters_use = parameters
+        .map(|_| "    let _ = parameters;\n")
+        .unwrap_or_default();
     Ok(format!(
-        "fn {prefix}{id}(context: &ScopeContext<'_>{parameters_argument}) -> Result<Value, RuntimeError> {{\n    let _ = context;\n    {body}\n}}\n\n"
+        "fn {prefix}{id}(context: &ScopeContext<'_>{parameters_argument}) -> Result<Value, RuntimeError> {{\n    let _ = context;\n{parameters_use}    {body}\n}}\n\n"
     ))
 }
 

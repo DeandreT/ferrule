@@ -4,8 +4,7 @@ using Ferrule.Runtime;
 var source = new FerruleGroup(Array.Empty<FerruleField>());
 AssertOutput(GeneratedMapping.Execute(source), FerruleValue.FromInt64(7), "inner-default");
 var fallbackJson = GeneratedMapping.ExecuteJson("{}");
-Assert(fallbackJson.Contains("\"Direct\":7", StringComparison.Ordinal));
-Assert(fallbackJson.Contains("\"Nested\":\"inner-default\"", StringComparison.Ordinal));
+AssertJson(fallbackJson, 7, "inner-default");
 
 var supplied = new FerruleRuntimeParameters(new[]
 {
@@ -15,8 +14,7 @@ var supplied = new FerruleRuntimeParameters(new[]
 var context = FerruleExecutionContext.WithParameters("mapping.ferrule", supplied);
 AssertOutput(GeneratedMapping.Execute(source, context), FerruleValue.FromInt64(42), "host");
 var suppliedJson = GeneratedMapping.ExecuteJson("{}", context);
-Assert(suppliedJson.Contains("\"Direct\":42", StringComparison.Ordinal));
-Assert(suppliedJson.Contains("\"Nested\":\"host\"", StringComparison.Ordinal));
+AssertJson(suppliedJson, 42, "host");
 
 var suppliedNull = new FerruleRuntimeParameters(new[]
 {
@@ -45,6 +43,32 @@ catch (FerruleRuntimeException error) when (
 {
 }
 
+var lazy = new FerruleRuntimeParameters(new[]
+{
+    KeyValuePair.Create("explode_default", FerruleValue.FromBoolean(true)),
+    KeyValuePair.Create("control", FerruleValue.FromInt64(9)),
+});
+context = FerruleExecutionContext.WithParameters("mapping.ferrule", lazy);
+AssertOutput(GeneratedMapping.Execute(source, context), FerruleValue.FromInt64(9), "inner-default");
+AssertJson(GeneratedMapping.ExecuteJson("{}", context), 9, "inner-default");
+
+var failing = new FerruleRuntimeParameters(new[]
+{
+    KeyValuePair.Create("explode_default", FerruleValue.FromBoolean(true)),
+});
+context = FerruleExecutionContext.WithParameters("mapping.ferrule", failing);
+try
+{
+    GeneratedMapping.Execute(source, context);
+    throw new InvalidOperationException("Expected the selected default to fail.");
+}
+catch (FerruleRuntimeException error) when (
+    error.Error == FerruleRuntimeError.MissingRuntimeParameter &&
+    error.Node == 7U &&
+    error.RuntimeParameter == "missing_default")
+{
+}
+
 static void AssertOutput(FerruleInstance result, FerruleValue direct, string nested)
 {
     var output = (FerruleGroup)result;
@@ -53,6 +77,13 @@ static void AssertOutput(FerruleInstance result, FerruleValue direct, string nes
     Assert(directField.Value is FerruleScalar directScalar && directScalar.Value == direct);
     Assert(nestedField.Value is FerruleScalar nestedScalar &&
         nestedScalar.Value == FerruleValue.FromString(nested));
+}
+
+static void AssertJson(string document, long direct, string nested)
+{
+    using var parsed = System.Text.Json.JsonDocument.Parse(document);
+    Assert(parsed.RootElement.GetProperty("Direct").GetInt64() == direct);
+    Assert(parsed.RootElement.GetProperty("Nested").GetString() == nested);
 }
 
 static void Assert(bool condition)
