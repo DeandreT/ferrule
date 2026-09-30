@@ -6,6 +6,7 @@ use codegen::{ArtifactPathError, ArtifactSetError, ProgramValidationError};
 pub enum EmitError {
     ProgramValidation(ProgramValidationError),
     SchemaSerialization(String),
+    EmbeddedSchema(codegen::EmbeddedSchemaError),
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
 }
@@ -17,6 +18,7 @@ impl fmt::Display for EmitError {
             Self::SchemaSerialization(message) => {
                 write!(formatter, "cannot serialize embedded schema: {message}")
             }
+            Self::EmbeddedSchema(error) => error.fmt(formatter),
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
         }
@@ -28,6 +30,7 @@ impl std::error::Error for EmitError {
         match self {
             Self::ProgramValidation(error) => Some(error),
             Self::SchemaSerialization(_) => None,
+            Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
         }
@@ -37,6 +40,12 @@ impl std::error::Error for EmitError {
 impl From<ProgramValidationError> for EmitError {
     fn from(error: ProgramValidationError) -> Self {
         Self::ProgramValidation(error)
+    }
+}
+
+impl From<codegen::EmbeddedSchemaError> for EmitError {
+    fn from(error: codegen::EmbeddedSchemaError) -> Self {
+        Self::EmbeddedSchema(error)
     }
 }
 

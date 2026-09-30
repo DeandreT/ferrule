@@ -6,6 +6,7 @@
 
 mod artifact;
 mod diagnostic;
+mod embedded_schema;
 mod join;
 mod lower;
 mod model;
@@ -16,6 +17,10 @@ pub use artifact::{
     GeneratedFile,
 };
 pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
+pub use embedded_schema::{
+    EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,
+    serialize_embedded_schema,
+};
 pub use join::{
     InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,
     JoinSourceCardinality,

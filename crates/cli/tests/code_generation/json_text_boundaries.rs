@@ -318,6 +318,42 @@ fn generated_json_output_constraints_match_interpreter() -> TestResult<()> {
     Ok(())
 }
 
+#[test]
+fn generation_rejects_changed_embedded_schema_before_publication() -> TestResult<()> {
+    let directory = TempDir::new("embedded_schema_publication")?;
+    let project_path = directory.0.join("project.json");
+    std::fs::write(
+        &project_path,
+        include_str!("../../../codegen/src/tests/fixtures/unstable_float_project.json"),
+    )?;
+    for (name, target) in [
+        (
+            "rust",
+            GenerateTarget::Rust {
+                runtime_path: Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime"),
+            },
+        ),
+        ("csharp", GenerateTarget::CSharp),
+    ] {
+        let destination = directory.0.join("unpublished").join(name);
+        let error = generate_project(&project_path, &destination, target)
+            .expect_err("changed constraint metadata must reject generation");
+        let typed = error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<codegen::EmbeddedSchemaError>());
+        assert_eq!(
+            typed,
+            Some(&codegen::EmbeddedSchemaError::MetadataChanged {
+                schema: "Target".into(),
+            }),
+            "{error:?}"
+        );
+        assert!(!destination.exists());
+        assert!(!directory.0.join("unpublished").exists());
+    }
+    Ok(())
+}
+
 fn numeric_tokens() -> Vec<String> {
     let mut tokens: Vec<String> = [
         "0",
