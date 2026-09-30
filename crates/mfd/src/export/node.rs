@@ -205,6 +205,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let auto_numbers = AutoNumbers::collect(&project.graph);
     let mut auto_number_inputs = Vec::new();
     let decimal_inputs = DecimalInputs::plan(project);
+    warnings.extend(decimal_inputs.warnings().iter().cloned());
     let mut decimal_input_wires = Vec::new();
     let mut json_serializer_inputs = Vec::new();
     let mut position_inputs = BTreeMap::new();
@@ -269,7 +270,8 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
             continue;
         }
         if let Some(argument) = decimal_inputs.input(id) {
-            let (input, output) = decimal_input::render_component(id, keys, uid, components);
+            let (input, output) =
+                decimal_input::render_component(id, decimal_inputs.name(id), keys, uid, components);
             node_out_key.insert(id, output);
             decimal_input_wires.push((argument, input));
             continue;

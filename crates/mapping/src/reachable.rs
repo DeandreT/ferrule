@@ -37,6 +37,9 @@ impl Project {
             }
         }
         self.graph.nodes.retain(|id, _| reachable.contains(id));
+        self.source_options
+            .mfd_decimal_input_names
+            .retain(|id, _| reachable.contains(id));
     }
 }
 
@@ -220,11 +223,24 @@ mod tests {
             },
         };
 
+        project
+            .source_options
+            .mfd_decimal_input_names
+            .extend([(1, "kept".into()), (11, "pruned".into())]);
+        project
+            .graph
+            .nodes
+            .insert(11, Node::Const { value: Value::Null });
+
         project.prune_unreachable_nodes();
 
         assert_eq!(
             project.graph.nodes.keys().copied().collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        );
+        assert_eq!(
+            project.source_options.mfd_decimal_input_names,
+            [(1, "kept".to_string())].into_iter().collect()
         );
     }
 }

@@ -426,13 +426,17 @@ impl GraphBuilder<'_> {
             return self.value_node(feed);
         }
         if is_input_component(&self.fn_components[idx]) {
-            let input = match self.input_feed(idx, 0) {
+            if let Some(&node) = self.fn_nodes.get(&idx) {
+                return Some(node);
+            }
+            let connected_feed = self.input_feed(idx, 0);
+            let input_parameter_name = self.fn_components[idx].input_parameter_name.clone();
+            let input = match connected_feed {
                 Some(feed) => self.value_node(feed),
                 None => {
                     if let Some(value) = self.fn_components[idx].input_preview.clone() {
                         Some(self.alloc(mapping::Node::Const { value }))
-                    } else if let Some(name) = self.fn_components[idx].input_parameter_name.clone()
-                    {
+                    } else if let Some(name) = input_parameter_name.clone() {
                         Some(
                             self.alloc(mapping::Node::RuntimeParameter {
                                 name,
@@ -446,15 +450,21 @@ impl GraphBuilder<'_> {
                     }
                 }
             };
-            return match (input, self.fn_components[idx].input_type) {
+            let result = match (input, self.fn_components[idx].input_type) {
                 (Some(input), Some(ir::ScalarType::Int | ir::ScalarType::Float)) => {
                     if numeric_constant_is_to_number_identity(self.graph.nodes.get(&input)) {
                         Some(input)
                     } else {
-                        Some(self.alloc(mapping::Node::Call {
+                        let node = self.alloc(mapping::Node::Call {
                             function: "to_number".to_string(),
                             args: vec![input],
-                        }))
+                        });
+                        if connected_feed.is_some()
+                            && let Some(name) = input_parameter_name
+                        {
+                            self.native_decimal_input_names.insert(node, name);
+                        }
+                        Some(node)
                     }
                 }
                 (Some(input), Some(ir::ScalarType::String)) => {
@@ -466,6 +476,10 @@ impl GraphBuilder<'_> {
                 (None, _) => None,
                 (input, Some(ir::ScalarType::Bool) | None) => input,
             };
+            if let Some(node) = result {
+                self.fn_nodes.insert(idx, node);
+            }
+            return result;
         }
         if is_distinct_values_component(&self.fn_components[idx]) {
             return self

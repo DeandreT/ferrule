@@ -206,6 +206,25 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
 }
 
 #[test]
+fn native_decimal_input_names_default_off_and_roundtrip_in_source_options() {
+    let mut options: FormatOptions = serde_json::from_str("{}").unwrap();
+    assert!(options.mfd_decimal_input_names.is_empty());
+    assert!(
+        !serde_json::to_string(&options)
+            .unwrap()
+            .contains("mfd_decimal_input_names")
+    );
+
+    options.mfd_decimal_input_names.insert(7, "Markup".into());
+    let encoded = serde_json::to_string(&options).unwrap();
+    let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(
+        decoded.mfd_decimal_input_names.get(&7),
+        Some(&"Markup".into())
+    );
+}
+
+#[test]
 fn xml_document_identity_roundtrips() {
     let options = FormatOptions {
         xml_document: true,

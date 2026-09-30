@@ -109,6 +109,16 @@ fn assert_strict_rejected(project: &Project, dir: &Path) -> Result<(), Box<dyn E
 fn native_decimal_inputs_keep_price_calculation_xml() -> Result<(), Box<dyn Error>> {
     let samples = samples()?;
     let project = import_sample(&samples, "PriceCalculation.mfd")?;
+    let (call, _) = conversion(&project, "1.5");
+    assert_eq!(
+        project.source_options.mfd_decimal_input_names.get(&call),
+        Some(&"Markup".to_string())
+    );
+    let project: Project = serde_json::from_str(&serde_json::to_string(&project)?)?;
+    assert_eq!(
+        project.source_options.mfd_decimal_input_names.get(&call),
+        Some(&"Markup".to_string())
+    );
     let input = source(&samples, &project, true)?;
     let expected = engine::run(&project, &input)?;
     assert_eq!(
@@ -125,16 +135,22 @@ fn native_decimal_inputs_keep_price_calculation_xml() -> Result<(), Box<dyn Erro
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd)?;
     let rendered = std::fs::read_to_string(&path)?;
-    assert_eq!(
-        rendered.matches("<component name=\"decimal-input-").count(),
-        1
-    );
+    assert_eq!(rendered.matches("<component name=\"Markup\"").count(), 1);
+    assert!(rendered.contains("<parameter usageKind=\"input\" name=\"Markup\""));
     assert!(!rendered.contains("name=\"to_number\" library=\"ferrule\""));
 
     let reimported = mfd::import(&path)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
-    conversion(&reimported.project, "1.5");
+    let (reimported_call, _) = conversion(&reimported.project, "1.5");
+    assert_eq!(
+        reimported
+            .project
+            .source_options
+            .mfd_decimal_input_names
+            .get(&reimported_call),
+        Some(&"Markup".to_string())
+    );
     let actual_input = source(&samples, &reimported.project, true)?;
     let actual = engine::run(&reimported.project, &actual_input)?;
     assert_eq!(
@@ -150,6 +166,21 @@ fn native_decimal_inputs_keep_price_calculation_xml() -> Result<(), Box<dyn Erro
 fn native_decimal_inputs_keep_temperature_classification_xml() -> Result<(), Box<dyn Error>> {
     let samples = samples()?;
     let project = import_sample(&samples, "ClassifyTemperatures.mfd")?;
+    for (literal, name) in [("5", "lower"), ("20", "upper")] {
+        let (call, _) = conversion(&project, literal);
+        assert_eq!(
+            project.source_options.mfd_decimal_input_names.get(&call),
+            Some(&name.to_string())
+        );
+    }
+    let project: Project = serde_json::from_str(&serde_json::to_string(&project)?)?;
+    for (literal, name) in [("5", "lower"), ("20", "upper")] {
+        let (call, _) = conversion(&project, literal);
+        assert_eq!(
+            project.source_options.mfd_decimal_input_names.get(&call),
+            Some(&name.to_string())
+        );
+    }
     let input = source(&samples, &project, false)?;
     let expected = engine::run(&project, &input)?;
     let rows = expected
@@ -183,17 +214,31 @@ fn native_decimal_inputs_keep_temperature_classification_xml() -> Result<(), Box
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd)?;
     let rendered = std::fs::read_to_string(&path)?;
-    assert_eq!(
-        rendered.matches("<component name=\"decimal-input-").count(),
-        2
-    );
+    for name in ["lower", "upper"] {
+        assert_eq!(
+            rendered
+                .matches(&format!("<component name=\"{name}\""))
+                .count(),
+            1
+        );
+        assert!(rendered.contains(&format!("<parameter usageKind=\"input\" name=\"{name}\"")));
+    }
     assert!(!rendered.contains("name=\"to_number\" library=\"ferrule\""));
 
     let reimported = mfd::import(&path)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
-    conversion(&reimported.project, "5");
-    conversion(&reimported.project, "20");
+    for (literal, name) in [("5", "lower"), ("20", "upper")] {
+        let (call, _) = conversion(&reimported.project, literal);
+        assert_eq!(
+            reimported
+                .project
+                .source_options
+                .mfd_decimal_input_names
+                .get(&call),
+            Some(&name.to_string())
+        );
+    }
     let actual_input = source(&samples, &reimported.project, false)?;
     let actual = engine::run(&reimported.project, &actual_input)?;
     assert_eq!(
@@ -201,6 +246,72 @@ fn native_decimal_inputs_keep_temperature_classification_xml() -> Result<(), Box
         format_json::to_string(&reimported.project.target, &actual)?
     );
     assert_eq!(baseline_xml, xml(&reimported.project, &actual)?);
+    Ok(())
+}
+
+#[test]
+#[ignore = "needs the local ignored ReferenceSamples corpus"]
+fn invalid_or_stale_decimal_names_fall_back_with_diagnostics() -> Result<(), Box<dyn Error>> {
+    let samples = samples()?;
+    let project = import_sample(&samples, "PriceCalculation.mfd")?;
+    let (call, _) = conversion(&project, "1.5");
+    let directory = TempDir::new()?;
+    let oversize = "x".repeat(257);
+    for (label, name) in [("control", "bad\0name"), ("oversize", oversize.as_str())] {
+        let mut invalid = project.clone();
+        invalid
+            .source_options
+            .mfd_decimal_input_names
+            .insert(call, name.to_string());
+        let path = directory.0.join(format!("{label}.mfd"));
+        let report = mfd::preflight_export(&invalid, &path)?;
+        assert!(!report.is_native_compatible());
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("name for node"))
+        );
+        assert!(matches!(
+            mfd::export_with_profile(&invalid, &path, mfd::ExportProfile::NativeMfd),
+            Err(mfd::MfdError::IncompatibleExport(_))
+        ));
+        assert!(!path.exists());
+        let warnings = mfd::export(&invalid, &path)?;
+        assert!(!warnings.is_empty());
+        let rendered = std::fs::read_to_string(&path)?;
+        assert!(rendered.contains(&format!("<component name=\"decimal-input-{call}\"")));
+        assert!(!rendered.contains("bad\0name"));
+    }
+
+    let mut stale = project.clone();
+    stale
+        .source_options
+        .mfd_decimal_input_names
+        .insert(u32::MAX, "Unused".to_string());
+    let path = directory.0.join("stale.mfd");
+    let report = mfd::preflight_export(&stale, &path)?;
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("ignored"))
+    );
+    assert_strict_rejected(&stale, &directory.0)?;
+
+    let mut duplicate = import_sample(&samples, "ClassifyTemperatures.mfd")?;
+    let (upper, _) = conversion(&duplicate, "20");
+    duplicate
+        .source_options
+        .mfd_decimal_input_names
+        .insert(upper, "lower".to_string());
+    let report = mfd::preflight_export(&duplicate, &directory.0.join("duplicate.mfd"))?;
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("duplicated"))
+    );
     Ok(())
 }
 

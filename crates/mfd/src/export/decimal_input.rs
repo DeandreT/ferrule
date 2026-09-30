@@ -5,17 +5,20 @@
 //! The inverse is useful only when that conversion has one proven numeric
 //! consumer; other uses keep the explicit Ferrule function.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use ir::{ScalarType, SchemaKind, Value};
 use mapping::{Node, NodeId, Project};
 
 use super::schema::KeyAlloc;
+use super::schema::xml_escape;
 
 #[derive(Default)]
 pub(super) struct DecimalInputs {
     calls: BTreeMap<NodeId, NodeId>,
+    names: BTreeMap<NodeId, String>,
+    warnings: Vec<String>,
 }
 
 impl DecimalInputs {
@@ -23,7 +26,19 @@ impl DecimalInputs {
         // A SourceField used as the other operand is resolved against the
         // single primary schema. Named sources need their own provenance.
         if !project.extra_sources.is_empty() {
-            return Self::default();
+            return Self {
+                warnings: project
+                    .source_options
+                    .mfd_decimal_input_names
+                    .keys()
+                    .map(|id| {
+                        format!(
+                            "native decimal input name for node {id} was ignored because named sources prevent proving its native form"
+                        )
+                    })
+                    .collect(),
+                ..Self::default()
+            };
         }
         let mut calls = BTreeMap::new();
         for (&id, node) in &project.graph.nodes {
@@ -87,16 +102,57 @@ impl DecimalInputs {
             }
             calls.insert(id, *argument);
         }
-        Self { calls }
+        let fallback_names = calls
+            .keys()
+            .map(|id| format!("decimal-input-{id}"))
+            .collect::<BTreeSet<_>>();
+        let mut names = BTreeMap::new();
+        let mut used_names = BTreeSet::new();
+        let mut warnings = Vec::new();
+        for (&id, name) in &project.source_options.mfd_decimal_input_names {
+            if !calls.contains_key(&id) {
+                warnings.push(format!(
+                    "native decimal input name for node {id} was ignored because the conversion no longer has a provable native form"
+                ));
+            } else if !valid_parameter_name(name) {
+                warnings.push(format!(
+                    "native decimal input name for node {id} is empty, too long, or contains a control character; generated name used"
+                ));
+            } else if fallback_names.contains(name) && name != &format!("decimal-input-{id}") {
+                warnings.push(format!(
+                    "native decimal input name `{name}` for node {id} conflicts with a generated name; generated name used"
+                ));
+            } else if !used_names.insert(name.clone()) {
+                warnings.push(format!(
+                    "native decimal input name `{name}` for node {id} is duplicated; generated name used"
+                ));
+            } else {
+                names.insert(id, name.clone());
+            }
+        }
+        Self {
+            calls,
+            names,
+            warnings,
+        }
     }
 
     pub(super) fn input(&self, call: NodeId) -> Option<NodeId> {
         self.calls.get(&call).copied()
     }
+
+    pub(super) fn name(&self, call: NodeId) -> Option<&str> {
+        self.names.get(&call).map(String::as_str)
+    }
+
+    pub(super) fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
 }
 
 pub(super) fn render_component(
     call: NodeId,
+    preserved_name: Option<&str>,
     keys: &mut KeyAlloc,
     uid: &mut u32,
     components: &mut String,
@@ -104,7 +160,8 @@ pub(super) fn render_component(
     let input = keys.next();
     let output = keys.next();
     *uid += 1;
-    let name = format!("decimal-input-{call}");
+    let generated_name = format!("decimal-input-{call}");
+    let name = xml_escape(preserved_name.unwrap_or(&generated_name));
     let _ = write!(
         components,
         "\t\t\t\t<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"6\">\n\
@@ -114,6 +171,18 @@ pub(super) fn render_component(
          \t\t\t\t</component>\n"
     );
     (input, output)
+}
+
+fn valid_parameter_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES
+        && name.chars().all(|character| {
+            let codepoint = character as u32;
+            !character.is_control()
+                && ((0x20..=0xD7FF).contains(&codepoint)
+                    || (0xE000..=0xFFFD).contains(&codepoint)
+                    || (0x10000..=0x10FFFF).contains(&codepoint))
+        })
 }
 
 fn canonical_finite_decimal_literal(value: &str) -> bool {
@@ -156,7 +225,17 @@ fn finite_numeric_other_operand(project: &Project, node: NodeId) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::canonical_finite_decimal_literal;
+    use super::{canonical_finite_decimal_literal, valid_parameter_name};
+
+    #[test]
+    fn retained_name_must_survive_xml_attribute_roundtrip() {
+        for name in ["Markup", "lower", "upper", "Markup & tax"] {
+            assert!(valid_parameter_name(name), "{name}");
+        }
+        for name in ["", "bad\0name", "bad\nname", "\u{ffff}", &"x".repeat(257)] {
+            assert!(!valid_parameter_name(name), "{name}");
+        }
+    }
 
     #[test]
     fn canonical_finite_numeric_literals_only() {
