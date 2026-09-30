@@ -334,41 +334,8 @@ fn prepare_preview<'a, 'b>(
         let absolute_path = logical_absolute(&path)?;
         validate_logical_path(&absolute_path, "absolute stage mapping")?;
         mapping_paths.insert(stage.id.as_str(), absolute_path);
-        // Typed stage edges do not decode an input format. Still reject a
-        // configured unsupported filesystem format before any stage runs.
-        if let mapping::PipelineInput::StageTarget { .. } = &stage.source
-            && let Some(stored) = stage.project.source_path.as_deref()
-        {
-            let source_path = resolve_run_path(
-                pipeline_path,
-                None,
-                Some(stored),
-                "input",
-                "source_path",
-                true,
-            )?;
-            validate_logical_path(&source_path, "stage input")?;
-            preflight_format(&source_path, &stage.project.source_options, false)?;
-        }
-        for source in &stage.project.extra_sources {
-            if !source.path.is_empty()
-                && stage.extra_sources.iter().any(|binding| {
-                    binding.name == source.name
-                        && matches!(binding.from, mapping::PipelineInput::StageTarget { .. })
-                })
-            {
-                let source_path = resolve_run_path(
-                    pipeline_path,
-                    None,
-                    Some(&source.path),
-                    "input",
-                    "source_path",
-                    true,
-                )?;
-                validate_logical_path(&source_path, "named stage input")?;
-                preflight_format(&source_path, &source.options, false)?;
-            }
-        }
+        // Stage edges carry typed instances. Stored source-file hints have no
+        // decoding role here; format preflight uses actual host identities.
         for (target, stored, dynamic, format) in std::iter::once((
             None,
             stage.project.target_path.as_deref(),

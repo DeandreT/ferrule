@@ -864,6 +864,106 @@ fn cancellation_before_execution_and_after_a_node_callback_discards_outputs() ->
 }
 
 #[test]
+fn typed_primary_and_named_edges_ignore_unused_source_file_hints() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let pipeline_path = dir.0.join("missing/pipeline.json");
+    let hosts = [host(
+        "input",
+        Path::new("input.json"),
+        br#"{"Value":"upstream"}"#,
+    )?];
+    for (primary_hint, named_hint) in [
+        ("unused.sqlite", "unused.unknown"),
+        ("unused.unknown", "unused.sqlite"),
+        (
+            "https://invalid.example/unused",
+            "http://invalid.example/unused",
+        ),
+    ] {
+        let mut pipeline = single(copy_project());
+        let mut consumer = copy_project();
+        consumer.source_path = Some(primary_hint.into());
+        consumer.source_options = FormatOptions::default();
+        consumer.extra_sources.push(NamedSource {
+            name: "lookup".into(),
+            path: named_hint.into(),
+            schema: value_schema(),
+            options: FormatOptions::default(),
+            dynamic_path: None,
+        });
+        consumer.graph.nodes = BTreeMap::from([
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["Value".into()],
+                    frame: None,
+                },
+            ),
+            (
+                1,
+                Node::SourceField {
+                    path: vec!["lookup".into(), "Value".into()],
+                    frame: None,
+                },
+            ),
+            (
+                2,
+                Node::Const {
+                    value: Value::String("-".into()),
+                },
+            ),
+            (
+                3,
+                Node::Call {
+                    function: "concat".into(),
+                    args: vec![0, 2, 1],
+                },
+            ),
+        ]);
+        consumer.root = Scope {
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 3,
+            }],
+            ..Scope::default()
+        };
+        pipeline.stages.push(PipelineStage {
+            id: "consumer".into(),
+            mapping_path: Some("unopened/mapping.mfd".into()),
+            project: consumer,
+            source: PipelineInput::StageTarget {
+                stage: "one".into(),
+                target: None,
+            },
+            extra_sources: vec![PipelineNamedInput {
+                name: "lookup".into(),
+                from: PipelineInput::StageTarget {
+                    stage: "one".into(),
+                    target: None,
+                },
+            }],
+        });
+        validate_pipeline_preview(
+            &pipeline,
+            &pipeline_path,
+            &PipelinePreviewOptions::new(&hosts),
+        )?;
+        let outcome = preview_pipeline_value_payloads(
+            &pipeline,
+            &pipeline_path,
+            &PipelinePreviewOptions::new(&hosts),
+        )?;
+        assert_eq!(outcome.stages_executed, ["one", "consumer"]);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&outcome.artifacts[1].bytes)?,
+            serde_json::json!({"Value":"upstream-upstream"})
+        );
+    }
+    assert!(!dir.0.join("missing").exists());
+    Ok(())
+}
+
+#[test]
 fn input_total_and_artifact_count_limits_precede_parsing_and_rendering() -> anyhow::Result<()> {
     // Borrow one buffer for five distinct host identities to test cumulative
     // accounting without allocating five full documents.
