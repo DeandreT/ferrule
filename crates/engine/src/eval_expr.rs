@@ -159,6 +159,7 @@ pub(crate) fn eval_expr(
                 values,
                 context.first().copied(),
                 program.trace_sink,
+                program.debug_hook,
                 positions,
             )
         }

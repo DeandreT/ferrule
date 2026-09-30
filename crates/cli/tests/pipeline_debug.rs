@@ -2,9 +2,15 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use engine::{DebugDecision, EngineError, PendingNodeInput, PendingNodeValue, PendingTargetWrite};
+use engine::{
+    DebugDecision, EngineError, PendingFunctionNodeValue, PendingNodeInput, PendingNodeValue,
+    PendingTargetWrite,
+};
 use ir::{ScalarType, SchemaNode, Value};
-use mapping::{Binding, Graph, Node, Pipeline, PipelineInput, PipelineStage, Project, Scope};
+use mapping::{
+    Binding, FunctionId, Graph, Node, Pipeline, PipelineInput, PipelineStage, Project, Scope,
+    UserFunction,
+};
 
 struct TempDir(PathBuf);
 
@@ -173,6 +179,72 @@ fn stage_node_hook_alone_cancels_later_stage_before_publication() -> anyhow::Res
     let options = cli::PipelineRunOptions::default().with_stage_node_debug_hook(&hook);
     let error =
         cli::run_pipeline_file_with_options(&pipeline, &inputs, &outputs, &options).unwrap_err();
+    assert!(error.chain().any(|cause| matches!(
+        cause.downcast_ref::<EngineError>(),
+        Some(EngineError::DebugCancelled)
+    )));
+    assert_eq!(*seen.borrow(), ["prepare:A", "finish:B"]);
+    assert_old_outputs(&outputs)?;
+    Ok(())
+}
+
+#[test]
+fn stage_function_node_hook_keeps_function_and_stage_ids_and_cancels_publication()
+-> anyhow::Result<()> {
+    let directory = TempDir::new()?;
+    let (pipeline_path, inputs, outputs) = prepare(&directory)?;
+    let mut pipeline: Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    let function_id = FunctionId::new(7);
+    for stage in &mut pipeline.stages {
+        let value = if stage.id == "prepare" { "A" } else { "B" };
+        stage.project.user_functions.insert(
+            function_id,
+            UserFunction {
+                library: "local".into(),
+                name: "identity".into(),
+                description: None,
+                parameters: Vec::new(),
+                output_name: "result".into(),
+                output_type: ScalarType::String,
+                body: Graph {
+                    nodes: [(
+                        0,
+                        Node::Const {
+                            value: Value::String(value.into()),
+                        },
+                    )]
+                    .into(),
+                },
+                output: 0,
+            },
+        );
+        stage.project.graph.nodes.insert(
+            1,
+            Node::UserFunctionCall {
+                function: function_id,
+                args: Vec::new(),
+            },
+        );
+        stage.project.root.bindings[0].node = 1;
+    }
+    std::fs::write(&pipeline_path, serde_json::to_vec(&pipeline)?)?;
+    let seen = RefCell::new(Vec::<String>::new());
+    let hook = |stage: &str, value: &PendingFunctionNodeValue| {
+        assert_eq!(value.function, function_id);
+        assert_eq!(value.node, 0);
+        assert_eq!(value.value.value_type, "string");
+        assert!(value.source.frames.is_empty());
+        seen.borrow_mut()
+            .push(format!("{stage}:{}", value.value.preview));
+        if stage == "finish" {
+            DebugDecision::Cancel
+        } else {
+            DebugDecision::Resume
+        }
+    };
+    let options = cli::PipelineRunOptions::default().with_stage_function_node_debug_hook(&hook);
+    let error = cli::run_pipeline_file_with_options(&pipeline_path, &inputs, &outputs, &options)
+        .unwrap_err();
     assert!(error.chain().any(|cause| matches!(
         cause.downcast_ref::<EngineError>(),
         Some(EngineError::DebugCancelled)
