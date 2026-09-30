@@ -245,7 +245,7 @@ fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
         names(&engine::run(&restored.project, &source)?),
         ["Bob", "Bex", "Bea"]
     );
-    for prefix in ["G", "b", "_", "%"] {
+    for prefix in ["G", "b", "_", "%", "B%\0", "B\0"] {
         let mut parameters = engine::RuntimeParameters::new();
         parameters.insert("NamePrefix", Value::String(prefix.into()))?;
         let context = engine::ExecutionContext::new(&native).with_parameters(&parameters);
@@ -259,6 +259,22 @@ fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
             .collect::<Result<Vec<_>, _>>()?;
         assert_eq!(names(&after), sql_names, "prefix {prefix:?}");
     }
+    let mut too_long = engine::RuntimeParameters::new();
+    let prefix = "B".repeat(50_000);
+    too_long.insert("NamePrefix", Value::String(prefix.clone()))?;
+    let context = engine::ExecutionContext::new(&native).with_parameters(&too_long);
+    assert!(engine::run_with_context(&project, &source, &context).is_err());
+    assert!(engine::run_with_context(&restored.project, &source, &context).is_err());
+    let connection = Connection::open(directory.0.join("people.sqlite"))?;
+    assert!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM People WHERE Name LIKE ?1",
+                [format!("{prefix}%")],
+                |row| row.get::<_, i64>(0),
+            )
+            .is_err()
+    );
     let mut parameters = engine::RuntimeParameters::new();
     parameters.insert("NamePrefix", Value::Null)?;
     let context = engine::ExecutionContext::new(&native).with_parameters(&parameters);
