@@ -6,7 +6,7 @@ public static partial class FerruleFunctions
 {
     // Match the bundled SQLite LIKE pattern cap before NUL truncation.
     private const int MaxSqlLikePatternUtf8Bytes = 50_000;
-    // Shared with Rust: cap value-rune × pattern-rune DP cell updates.
+    // Shared with Rust: cap value-rune by pattern-rune DP cell updates.
     private const long MaxSqlLikeWorkCells = 100_000_000;
 
     private static FerruleValue Concat(IReadOnlyList<FerruleValue> arguments)
