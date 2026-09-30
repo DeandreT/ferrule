@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use ir::Value;
+use ir::{ScalarType, SchemaKind, Value};
 use mapping::{FunctionId, FunctionParameterId, Node, NodeId, Project, UserFunction};
 
 use crate::MfdError;
@@ -86,10 +86,13 @@ impl Exports {
                     function.name
                 ))
             })?;
+            let numeric_aliases =
+                native_protobuf_numeric_aliases(project, id, function).unwrap_or_default();
             render_definition(
                 function,
                 interface,
                 &interfaces,
+                &numeric_aliases,
                 keys,
                 uid,
                 &mut declarations,
@@ -283,10 +286,167 @@ fn validate_call_graph(project: &Project) -> Result<(), MfdError> {
     Ok(())
 }
 
+/// The scalar UDF importer wraps native decimal arithmetic in `to_number`
+/// nodes so ordinary IR execution also accepts numeric lexical strings. In
+/// this one closed boundary shape every call receives a finite Protobuf f32,
+/// and the fixed divide/round intermediates stay finite in f64. Each wrapper
+/// is therefore an identity at this boundary and can be represented by its
+/// original native wire without changing the saved project graph.
+fn native_protobuf_numeric_aliases(
+    project: &Project,
+    id: FunctionId,
+    function: &UserFunction,
+) -> Option<BTreeMap<NodeId, NodeId>> {
+    if project.user_functions.len() != 1
+        || !project.extra_sources.is_empty()
+        || !project.extra_targets.is_empty()
+        || !project.failure_rules.is_empty()
+        || function.library != "user"
+        || function.parameters.len() != 1
+        || function.parameters[0].ty != ScalarType::Float
+        || function.output_type != ScalarType::Float
+        || function.body.nodes.len() != 9
+    {
+        return None;
+    }
+    let nodes = &function.body.nodes;
+    let [rounded, precision] = call_args(nodes, function.output, "round")? else {
+        return None;
+    };
+    let (rounded, precision) = (*rounded, *precision);
+    let divide = unary_call(nodes, rounded, "to_number")?;
+    let precision_const = unary_call(nodes, precision, "to_number")?;
+    let [input, divisor] = call_args(nodes, divide, "divide")? else {
+        return None;
+    };
+    let (input, divisor) = (*input, *divisor);
+    let parameter = unary_call(nodes, input, "to_number")?;
+    let divisor_const = unary_call(nodes, divisor, "to_number")?;
+    if !matches!(nodes.get(&parameter), Some(Node::FunctionParameter { parameter }) if *parameter == function.parameters[0].id)
+        || !matches!(nodes.get(&divisor_const), Some(Node::Const { value: Value::Float(value) }) if *value == 2.54)
+        || !matches!(nodes.get(&precision_const), Some(Node::Const { value: Value::Float(value) }) if *value == 1.0)
+    {
+        return None;
+    }
+    let exact_nodes = [
+        function.output,
+        rounded,
+        precision,
+        divide,
+        input,
+        divisor,
+        parameter,
+        divisor_const,
+        precision_const,
+    ]
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    if exact_nodes.len() != nodes.len() || !nodes.keys().all(|node| exact_nodes.contains(node)) {
+        return None;
+    }
+
+    let protobuf = project.source_options.protobuf.as_ref()?;
+    let layout = format_protobuf::Layout::parse_files(
+        protobuf.schema_path.as_deref().unwrap_or("root.proto"),
+        &protobuf.schema,
+        protobuf
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )
+    .ok()?;
+    let root = layout.resolve_message(&protobuf.root_message).ok()?;
+    let root = layout.message(root)?;
+    let mut callers = 0usize;
+    for node in project.graph.nodes.values() {
+        let Node::UserFunctionCall {
+            function: callee,
+            args,
+        } = node
+        else {
+            continue;
+        };
+        if *callee != id {
+            return None;
+        }
+        let [argument] = args.as_slice() else {
+            return None;
+        };
+        let Some(Node::SourceField {
+            path,
+            frame: Some(frame),
+        }) = project.graph.nodes.get(argument)
+        else {
+            return None;
+        };
+        let ([collection], [field]) = (frame.as_slice(), path.as_slice()) else {
+            return None;
+        };
+        let collection_schema = project.source.child(collection)?;
+        if !collection_schema.repeating
+            || !matches!(collection_schema.kind, SchemaKind::Group { .. })
+            || !collection_schema.child(field).is_some_and(|leaf| {
+                !leaf.repeating
+                    && matches!(
+                        leaf.kind,
+                        SchemaKind::Scalar {
+                            ty: ScalarType::Float
+                        }
+                    )
+            })
+        {
+            return None;
+        }
+        let collection_field = root.field(collection)?;
+        let format_protobuf::FieldType::Message(message) = collection_field.ty() else {
+            return None;
+        };
+        if collection_field.cardinality() != format_protobuf::Cardinality::Repeated {
+            return None;
+        }
+        let value_field = layout.message(message)?.field(field)?;
+        if value_field.ty()
+            != format_protobuf::FieldType::Scalar(format_protobuf::ScalarType::Float)
+            || value_field.cardinality() != format_protobuf::Cardinality::Implicit
+        {
+            return None;
+        }
+        callers += 1;
+    }
+    if callers == 0 {
+        return None;
+    }
+    Some(BTreeMap::from([
+        (rounded, divide),
+        (precision, precision_const),
+        (input, parameter),
+        (divisor, divisor_const),
+    ]))
+}
+
+fn call_args<'a>(
+    nodes: &'a BTreeMap<NodeId, Node>,
+    id: NodeId,
+    expected: &str,
+) -> Option<&'a [NodeId]> {
+    match nodes.get(&id)? {
+        Node::Call { function, args } if function == expected => Some(args),
+        _ => None,
+    }
+}
+
+fn unary_call(nodes: &BTreeMap<NodeId, Node>, id: NodeId, expected: &str) -> Option<NodeId> {
+    let [argument] = call_args(nodes, id, expected)? else {
+        return None;
+    };
+    Some(*argument)
+}
+
 fn render_definition(
     function: &UserFunction,
     interface: &Interface,
     interfaces: &BTreeMap<FunctionId, Interface>,
+    numeric_aliases: &BTreeMap<NodeId, NodeId>,
     keys: &mut KeyAlloc,
     uid: &mut u32,
     declarations: &mut String,
@@ -319,6 +479,9 @@ fn render_definition(
     }
 
     for &id in &reachable {
+        if numeric_aliases.contains_key(&id) {
+            continue;
+        }
         let node = function.body.nodes.get(&id).ok_or_else(|| {
             unsupported(format!(
                 "user-defined function `{}` references missing node {id}",
@@ -346,7 +509,20 @@ fn render_definition(
                 let output = keys.next();
                 outputs.insert(id, output);
                 inputs.insert(id, pins.clone());
-                render_scalar_call(function, &pins, output, uid, &mut components, "\t\t\t\t");
+                let native_function =
+                    if !numeric_aliases.is_empty() && function == "round" && args.len() == 2 {
+                        "round-precision"
+                    } else {
+                        function
+                    };
+                render_scalar_call(
+                    native_function,
+                    &pins,
+                    output,
+                    uid,
+                    &mut components,
+                    "\t\t\t\t",
+                );
             }
             Node::UserFunctionCall { function, .. } => {
                 let callee = interfaces.get(function).ok_or_else(|| {
@@ -399,6 +575,7 @@ fn render_definition(
             unsupported(format!("user-defined function body node {id} is missing"))
         })?;
         for (argument, input) in node.dependencies().into_iter().zip(pins) {
+            let argument = numeric_aliases.get(&argument).copied().unwrap_or(argument);
             let output = outputs.get(&argument).copied().ok_or_else(|| {
                 unsupported(format!(
                     "user-defined function `{}` references unexported node {argument}",
@@ -409,7 +586,11 @@ fn render_definition(
         }
     }
     let result_input = keys.next();
-    let result_output = outputs.get(&function.output).copied().ok_or_else(|| {
+    let result_node = numeric_aliases
+        .get(&function.output)
+        .copied()
+        .unwrap_or(function.output);
+    let result_output = outputs.get(&result_node).copied().ok_or_else(|| {
         unsupported(format!(
             "user-defined function `{}` has no exported output node",
             function.name
