@@ -153,7 +153,7 @@ public static class FerruleXml
                     writer.Append('\n');
                 }
             }
-            writer.WriteNode(schema, schema, instance, true, 0, 0, defaultNamespace);
+            writer.WriteNode(schema, schema, instance, true, 0, 0, null, defaultNamespace);
             var output = writer.ToString();
             if (Encoding.UTF8.GetByteCount(output) > MaximumOutputBytes)
             {
@@ -229,6 +229,8 @@ public static class FerruleXml
 
     private sealed record XmlSchemaNode(
         string Name,
+        bool NamespaceIsExplicit,
+        string? NamespaceUri,
         bool Repeating,
         string? RecursiveReference,
         bool Attribute,
@@ -264,6 +266,7 @@ public static class FerruleXml
             {
                 _ = XmlConvert.VerifyName(name);
             }
+            var (namespaceIsExplicit, namespaceUri) = ParseNamespace(element);
             XmlScalarType? scalarType = null;
             var children = Array.Empty<XmlSchemaNode>();
             var alternatives = Array.Empty<XmlAlternative>();
@@ -320,6 +323,8 @@ public static class FerruleXml
             }
             return new XmlSchemaNode(
                 name,
+                namespaceIsExplicit,
+                namespaceUri,
                 OptionalBoolean(element, "repeating"),
                 OptionalString(element, "recursive_ref"),
                 OptionalBoolean(element, "attribute"),
@@ -330,6 +335,25 @@ public static class FerruleXml
                 children,
                 alternatives,
                 repeatingChoices);
+        }
+
+        private static (bool IsExplicit, string? Uri) ParseNamespace(JsonElement element)
+        {
+            if (!element.TryGetProperty("xml_namespace", out var identity))
+            {
+                return (false, null);
+            }
+            if (identity.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidOperationException("XML namespace identity must be an object");
+            }
+            return RequiredString(identity, "kind") switch
+            {
+                "unqualified" when !identity.TryGetProperty("uri", out _) => (true, null),
+                "qualified" when OptionalString(identity, "uri") is { Length: > 0 } uri =>
+                    (true, uri),
+                _ => throw new InvalidOperationException("invalid XML namespace identity"),
+            };
         }
 
         private static XmlAlternative[] ParseAlternatives(JsonElement kind)
@@ -507,7 +531,8 @@ public static class FerruleXml
             bool isRoot,
             int recursionDepth,
             int outputDepth,
-            string? defaultNamespace)
+            string? inheritedNamespace,
+            string? legacyRootNamespace)
         {
             schema = Resolve(schema, rootSchema, recursionDepth);
             if (instance is FerruleMappedSequence mapped)
@@ -528,6 +553,7 @@ public static class FerruleXml
                         mapped.Items[index],
                         recursionDepth,
                         outputDepth,
+                        inheritedNamespace,
                         null);
                 }
                 return;
@@ -550,6 +576,7 @@ public static class FerruleXml
                         repeated.Items[index],
                         recursionDepth,
                         outputDepth,
+                        inheritedNamespace,
                         null);
                 }
                 return;
@@ -564,7 +591,8 @@ public static class FerruleXml
                 instance,
                 recursionDepth,
                 outputDepth,
-                isRoot ? defaultNamespace : null);
+                inheritedNamespace,
+                isRoot ? legacyRootNamespace : null);
         }
 
         private void WriteSingle(
@@ -573,8 +601,13 @@ public static class FerruleXml
             FerruleInstance instance,
             int recursionDepth,
             int outputDepth,
-            string? defaultNamespace)
+            string? inheritedNamespace,
+            string? legacyNamespace)
         {
+            var elementNamespace = schema.NamespaceIsExplicit
+                ? schema.NamespaceUri
+                : legacyNamespace ?? inheritedNamespace;
+            var namespaceChanged = elementNamespace != inheritedNamespace;
             if (schema.ScalarType is { } scalarType)
             {
                 if (instance is not FerruleScalar scalar)
@@ -588,13 +621,13 @@ public static class FerruleXml
                         throw new InvalidOperationException(
                             $"element '{schema.Name}' does not permit XML nil");
                     }
-                    Start(schema.Name, defaultNamespace);
+                    Start(schema.Name, elementNamespace, namespaceChanged);
                     Attribute("xmlns:xsi", XsiNamespace);
                     Attribute("xsi:nil", "true");
                     _output.Append("/>");
                     return;
                 }
-                Start(schema.Name, defaultNamespace);
+                Start(schema.Name, elementNamespace, namespaceChanged);
                 _output.Append('>');
                 Text(FormatScalar(schema, scalarType, scalar.Value));
                 End(schema.Name);
@@ -607,7 +640,7 @@ public static class FerruleXml
             }
             ValidateFields(schema, group);
             var alternative = SelectAlternative(schema, group);
-            Start(schema.Name, defaultNamespace);
+            Start(schema.Name, elementNamespace, namespaceChanged);
             if (alternative is not null)
             {
                 Attribute("xmlns:xsi", XsiNamespace);
@@ -621,6 +654,7 @@ public static class FerruleXml
                 }
                 Attribute("xsi:type", typeName);
             }
+            var attributeNamespaces = new List<string>();
             foreach (var attribute in schema.Children.Where(child => child.Attribute))
             {
                 if (!group.TryGetField(attribute.Name, out var field))
@@ -635,7 +669,10 @@ public static class FerruleXml
                 {
                     var type = attribute.ScalarType ?? throw new InvalidOperationException(
                         $"attribute '{attribute.Name}' must have a scalar schema");
-                    Attribute(attribute.Name, FormatScalar(attribute, type, scalar.Value));
+                    SchemaAttribute(
+                        attribute,
+                        FormatScalar(attribute, type, scalar.Value),
+                        attributeNamespaces);
                 }
             }
 
@@ -674,7 +711,8 @@ public static class FerruleXml
                     rootSchema,
                     orderedContent,
                     recursionDepth,
-                    outputDepth);
+                    outputDepth,
+                    elementNamespace);
                 wroteOrderedContent = wroteElement;
             }
             else
@@ -700,6 +738,7 @@ public static class FerruleXml
                         false,
                         childDepth,
                         outputDepth + 1,
+                        elementNamespace,
                         null);
                     wroteElement = true;
                 }
@@ -716,7 +755,8 @@ public static class FerruleXml
             XmlSchemaNode rootSchema,
             FerruleInstance orderedContent,
             int recursionDepth,
-            int outputDepth)
+            int outputDepth,
+            string? inheritedNamespace)
         {
             if (orderedContent is not FerruleRepeated repeated)
             {
@@ -760,6 +800,7 @@ public static class FerruleXml
                     value,
                     childDepth,
                     outputDepth + 1,
+                    inheritedNamespace,
                     null);
             }
             return repeated.Items.Count != 0;
@@ -785,6 +826,8 @@ public static class FerruleXml
             return anchor with
             {
                 Name = schema.Name,
+                NamespaceIsExplicit = schema.NamespaceIsExplicit,
+                NamespaceUri = schema.NamespaceUri,
                 Repeating = schema.Repeating,
                 Nillable = schema.Nillable,
             };
@@ -908,13 +951,38 @@ public static class FerruleXml
             _ => false,
         };
 
-        private void Start(string name, string? defaultNamespace)
+        private void Start(string name, string? namespaceUri, bool changed)
         {
             _output.Append('<').Append(name);
-            if (defaultNamespace is not null)
+            if (changed)
             {
-                Attribute("xmlns", defaultNamespace);
+                Attribute("xmlns", namespaceUri ?? "");
             }
+        }
+
+        private void SchemaAttribute(
+            XmlSchemaNode schema,
+            string value,
+            List<string> namespaces)
+        {
+            if (!schema.NamespaceIsExplicit || schema.NamespaceUri is null)
+            {
+                Attribute(schema.Name, value);
+                return;
+            }
+            if (schema.NamespaceUri == "http://www.w3.org/XML/1998/namespace")
+            {
+                Attribute($"xml:{schema.Name}", value);
+                return;
+            }
+            var index = namespaces.IndexOf(schema.NamespaceUri);
+            if (index < 0)
+            {
+                namespaces.Add(schema.NamespaceUri);
+                index = namespaces.Count - 1;
+                Attribute($"xmlns:fns{index + 1}", schema.NamespaceUri);
+            }
+            Attribute($"fns{index + 1}:{schema.Name}", value);
         }
 
         private void End(string name) => _output.Append("</").Append(name).Append('>');

@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against thirty local, gitignored mappings.
+//! Opt-in generated-backend execution against thirty-one local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -32,7 +32,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 30] = [
+const CASES: [CorpusCase; 31] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -212,6 +212,12 @@ const CASES: [CorpusCase; 30] = [
         input: "itemlist.json",
         source_kind: SourceKind::Json,
         target_kind: TargetKind::Csv,
+    },
+    CorpusCase {
+        sample: "JSON_To_Xml_PurchaseOrders.mfd",
+        input: "ipos.json",
+        source_kind: SourceKind::Json,
+        target_kind: TargetKind::Xml,
     },
 ];
 
@@ -454,9 +460,13 @@ fn run_case(
             | "ParseStringWithFlexText.mfd"
             | "InputIsSequence.mfd"
             | "SelectPropertyFromJSON.mfd"
+            | "JSON_To_Xml_PurchaseOrders.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
-        if matches!(sample, "InputIsSequence.mfd" | "SelectPropertyFromJSON.mfd") {
+        if matches!(
+            sample,
+            "InputIsSequence.mfd" | "SelectPropertyFromJSON.mfd" | "JSON_To_Xml_PurchaseOrders.mfd"
+        ) {
             assert_eq!(
                 round_tripped, source,
                 "{sample}: source changes across schema-shaped JSON transport"
@@ -513,7 +523,9 @@ fn run_case(
     // case through the generated Instance API and XML serializers instead.
     let mapped_xml_output = sample == "Tutorial/Expense-valmap.mfd";
     let recursive_xml_output = sample == "RecursiveDirectoryFilter.mfd";
-    let typed_xml_output = recursive_xml_output || sample == "InputIsSequence.mfd";
+    let purchase_orders_xml_output = sample == "JSON_To_Xml_PurchaseOrders.mfd";
+    let typed_xml_output =
+        recursive_xml_output || sample == "InputIsSequence.mfd" || purchase_orders_xml_output;
     let expected_xml = if mapped_xml_output || typed_xml_output {
         Some(format_xml::to_string_with_options(
             &project.target,
@@ -532,6 +544,52 @@ fn run_case(
     } else {
         serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?
     };
+    if purchase_orders_xml_output {
+        assert!(project.extra_targets.is_empty(), "{sample}: one XML target");
+        assert_eq!(
+            project
+                .target
+                .xml_namespace
+                .as_ref()
+                .and_then(ir::XmlNamespace::uri),
+            Some("http://www.altova.com/IPO"),
+            "{sample}: qualified purchase-order root"
+        );
+        assert_eq!(expected_json["customer"], "MFGB");
+        let orders = expected_json["purchaseOrder"]
+            .as_array()
+            .expect("mapped purchase orders");
+        assert_eq!(orders.len(), 3, "{sample}: all orders");
+        assert_eq!(
+            orders
+                .iter()
+                .map(|order| order["Items"]["item"].as_array().expect("line items").len())
+                .collect::<Vec<_>>(),
+            vec![6, 3, 3],
+            "{sample}: all twelve line items retain their order"
+        );
+        assert_eq!(orders[0]["Items"]["item"][0]["partNum"], "833-AA");
+        assert_eq!(orders[1]["Items"]["item"][0]["partNum"], "150-RS");
+        assert_eq!(orders[2]["Items"]["item"][0]["partNum"], "940-SR");
+        assert!(
+            orders[0]["shipTo"].get("postcode").is_some()
+                && orders[0]["shipTo"].get("state").is_none(),
+            "{sample}: first shipping address selects the EU alternative"
+        );
+        assert!(
+            orders[1..].iter().all(|order| {
+                order["shipTo"].get("postcode").is_none()
+                    && order["shipTo"].get("state").is_some()
+                    && order["shipTo"].get("zip").is_some()
+            }) && orders.iter().all(|order| {
+                order["billTo"].get("state").is_some() && order["billTo"].get("zip").is_some()
+            }),
+            "{sample}: remaining shipping and all billing addresses select the US alternative"
+        );
+        let xml = expected_xml.as_ref().expect("typed XML output");
+        assert_eq!(xml.matches("xsi:type=\"ft:EU-Address\"").count(), 1);
+        assert_eq!(xml.matches("xsi:type=\"ft:US-Address\"").count(), 5);
+    }
     if sample == "BuildHierarchyFromTextfile.mfd" {
         let Instance::Repeated(rows) = &source else {
             panic!("{sample}: CSV source should contain repeated rows");
@@ -1398,6 +1456,9 @@ Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
         .current_dir(&csharp_output);
     if let Some((source_schema, target_schema)) = &xml_host_schemas {
         csharp_run_command.arg(source_schema).arg(target_schema);
+        if purchase_orders_xml_output {
+            csharp_run_command.arg("http://www.altova.com/IPO");
+        }
     } else {
         for (name, path) in &named_input_paths {
             csharp_run_command.arg(name).arg(path);
@@ -1503,7 +1564,8 @@ var sourceSchema = File.ReadAllText(args[1]);
 var targetSchema = File.ReadAllText(args[2]);
 var source = FerruleJson.Parse(sourceSchema, input);
 var output = GeneratedMapping.Execute(source);
-var xml = FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue;
+var rootNamespace = args.Length > 3 ? args[3] : null;
+var xml = FerruleXml.Serialize(0, targetSchema, output, false, false, rootNamespace).StringValue;
 var json = FerruleJson.Serialize(targetSchema, output);
 if (json != GeneratedMapping.ExecuteJson(input))
 {
@@ -1850,9 +1912,10 @@ fn parse_multi_target_outputs(bytes: &[u8]) -> TestResult<Vec<CorpusTargetOutput
     let text = std::str::from_utf8(bytes)?;
     let mut fields = text.split('\0').collect::<Vec<_>>();
     assert_eq!(fields.pop(), Some(""), "missing named output terminator");
-    assert_eq!(fields.len() % 3, 0, "incomplete named output");
-    fields
-        .chunks_exact(3)
+    let (records, remainder) = fields.as_chunks::<3>();
+    assert!(remainder.is_empty(), "incomplete named output");
+    records
+        .iter()
         .map(|fields| {
             Ok(CorpusTargetOutput {
                 name: fields[0].to_owned(),
@@ -3320,9 +3383,10 @@ fn parse_file_set_outputs(bytes: &[u8]) -> TestResult<Vec<CorpusDocumentOutput>>
     let text = std::str::from_utf8(bytes)?;
     let mut fields = text.split('\0').collect::<Vec<_>>();
     assert_eq!(fields.pop(), Some(""), "missing document terminator");
-    assert_eq!(fields.len() % 3, 0, "incomplete document output");
-    fields
-        .chunks_exact(3)
+    let (records, remainder) = fields.as_chunks::<3>();
+    assert!(remainder.is_empty(), "incomplete document output");
+    records
+        .iter()
         .map(|fields| {
             Ok(CorpusDocumentOutput {
                 path: fields[0].to_owned(),

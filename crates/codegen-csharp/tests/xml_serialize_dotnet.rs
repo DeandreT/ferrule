@@ -284,6 +284,29 @@ fn expected(output: &Instance, field_name: &str) -> String {
         .unwrap_or_else(|| panic!("engine output contains {field_name}"))
 }
 
+fn namespace_transition_schema() -> SchemaNode {
+    SchemaNode::group(
+        "Root",
+        vec![
+            SchemaNode::group(
+                "local",
+                vec![
+                    SchemaNode::scalar("flag", ScalarType::String)
+                        .attribute()
+                        .xml_qualified("urn:attributes")
+                        .expect("qualified attribute URI"),
+                    SchemaNode::scalar("qualified", ScalarType::String)
+                        .xml_qualified("urn:root")
+                        .expect("qualified child URI"),
+                ],
+            )
+            .xml_unqualified(),
+        ],
+    )
+    .xml_qualified("urn:root")
+    .expect("qualified root URI")
+}
+
 #[test]
 fn generated_xml_serializer_matches_engine_output_and_typed_failures() {
     let project = project();
@@ -351,6 +374,15 @@ fn generated_xml_serializer_matches_engine_output_and_typed_failures() {
         ])
         .env("EXPECTED_PRETTY", pretty)
         .env("EXPECTED_COMPACT", compact)
+        .env(
+            "NAMESPACED_SCHEMA",
+            serde_json::to_string(&namespace_transition_schema())
+                .expect("namespace schema is serializable"),
+        )
+        .env(
+            "EXPECTED_NAMESPACED_XML",
+            "<Root xmlns=\"urn:root\"><local xmlns=\"\" xmlns:fns1=\"urn:attributes\" fns1:flag=\"yes\"><qualified xmlns=\"urn:root\">value</qualified></local></Root>",
+        )
         .current_dir(directory.path())
         .output()
         .expect("generated harness starts");
@@ -456,6 +488,19 @@ var output = (FerruleGroup)GeneratedMapping.Execute(source);
 var row = (FerruleGroup)((FerruleRepeated)output.Fields.Single(field => field.Name == "Row").Value).Items[0];
 Equal(Environment.GetEnvironmentVariable("EXPECTED_PRETTY"), TextValue(row, "Pretty"));
 Equal(Environment.GetEnvironmentVariable("EXPECTED_COMPACT"), TextValue(row, "Compact"));
+
+var namespaced = Group(Field("local", Group(
+    Field("flag", Scalar(Text("yes"))),
+    Field("qualified", Scalar(Text("value"))))));
+Equal(
+    Environment.GetEnvironmentVariable("EXPECTED_NAMESPACED_XML"),
+    FerruleXml.Serialize(
+        0,
+        Environment.GetEnvironmentVariable("NAMESPACED_SCHEMA")!,
+        namespaced,
+        false,
+        false,
+        null).StringValue);
 
 var missing = Group(Field("Rows", Repeated(Group())));
 var error = Error(() => GeneratedMapping.Execute(missing));
