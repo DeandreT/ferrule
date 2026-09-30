@@ -9,9 +9,9 @@ use mapping::{
 };
 
 use crate::{
-    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingFunctionNodeInput,
-    PendingFunctionNodeValue, PendingNodeValue, PendingTargetWrite, TraceEvent, TraceSink, run,
-    run_with_context, validate,
+    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingFunctionNodeFailure,
+    PendingFunctionNodeInput, PendingFunctionNodeValue, PendingNodeFailure, PendingNodeValue,
+    PendingTargetWrite, TraceEvent, TraceSink, run, run_with_context, validate,
 };
 
 #[derive(Default)]
@@ -728,6 +728,156 @@ fn function_input_breakpoint_is_qualified_lazy_and_cancels_before_consumer_and_w
         event,
         TraceEvent::FunctionNodeValue { function, node: 2, .. } if *function == inner
     )));
+}
+
+struct FunctionFailureHook {
+    decision: DebugDecision,
+    function_failures: RefCell<Vec<PendingFunctionNodeFailure>>,
+    graph_failures: RefCell<Vec<PendingNodeFailure>>,
+    writes: RefCell<usize>,
+}
+
+impl DebugHook for FunctionFailureHook {
+    fn before_target_write(&self, _write: &PendingTargetWrite) -> DebugDecision {
+        *self.writes.borrow_mut() += 1;
+        DebugDecision::Resume
+    }
+
+    fn wants_node_failures(&self) -> bool {
+        true
+    }
+
+    fn wants_function_node_failures(&self) -> bool {
+        true
+    }
+
+    fn after_node_failure(&self, failure: &PendingNodeFailure) -> DebugDecision {
+        self.graph_failures.borrow_mut().push(failure.clone());
+        self.decision
+    }
+
+    fn after_function_node_failure(&self, failure: &PendingFunctionNodeFailure) -> DebugDecision {
+        self.function_failures.borrow_mut().push(failure.clone());
+        self.decision
+    }
+}
+
+#[test]
+fn first_function_failure_is_qualified_and_does_not_repause_as_graph_error() {
+    let function_id = FunctionId::new(7);
+    let mut failing = function(
+        "failing",
+        Vec::new(),
+        ScalarType::String,
+        [
+            (
+                0,
+                Node::Const {
+                    value: Value::Int(1),
+                },
+            ),
+            (
+                1,
+                Node::Const {
+                    value: Value::Int(0),
+                },
+            ),
+            (
+                2,
+                Node::Call {
+                    function: "divide".into(),
+                    args: vec![0, 1],
+                },
+            ),
+        ],
+        2,
+    );
+    let failing_project = project(
+        Graph {
+            nodes: BTreeMap::from([(
+                2,
+                Node::UserFunctionCall {
+                    function: function_id,
+                    args: Vec::new(),
+                },
+            )]),
+        },
+        BTreeMap::from([(function_id, failing.clone())]),
+        2,
+    );
+    for decision in [DebugDecision::Resume, DebugDecision::Cancel] {
+        let hook = FunctionFailureHook {
+            decision,
+            function_failures: RefCell::new(Vec::new()),
+            graph_failures: RefCell::new(Vec::new()),
+            writes: RefCell::new(0),
+        };
+        let execution = ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&hook);
+        let error = run_with_context(&failing_project, &source("unused"), &execution).unwrap_err();
+        match decision {
+            DebugDecision::Resume => assert!(matches!(
+                error,
+                EngineError::UserFunctionBuiltin {
+                    function,
+                    node: 2,
+                    source: functions::FunctionError::DivideByZero,
+                } if function == function_id
+            )),
+            DebugDecision::Cancel => assert!(matches!(error, EngineError::DebugCancelled)),
+        }
+        let failures = hook.function_failures.borrow();
+        assert_eq!(failures.len(), 1);
+        assert_eq!((failures[0].function, failures[0].node), (function_id, 2));
+        assert!(failures[0].source.frames.is_empty());
+        assert!(hook.graph_failures.borrow().is_empty());
+        assert_eq!(*hook.writes.borrow(), 0);
+    }
+
+    failing.body.nodes.insert(
+        3,
+        Node::Const {
+            value: Value::Bool(false),
+        },
+    );
+    failing.body.nodes.insert(
+        4,
+        Node::Const {
+            value: Value::String("safe".into()),
+        },
+    );
+    failing.body.nodes.insert(
+        5,
+        Node::If {
+            condition: 3,
+            then: 2,
+            else_: 4,
+        },
+    );
+    failing.output = 5;
+    let lazy = project(
+        Graph {
+            nodes: BTreeMap::from([(
+                2,
+                Node::UserFunctionCall {
+                    function: function_id,
+                    args: Vec::new(),
+                },
+            )]),
+        },
+        BTreeMap::from([(function_id, failing)]),
+        2,
+    );
+    let hook = FunctionFailureHook {
+        decision: DebugDecision::Resume,
+        function_failures: RefCell::new(Vec::new()),
+        graph_failures: RefCell::new(Vec::new()),
+        writes: RefCell::new(0),
+    };
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&hook);
+    let output = run_with_context(&lazy, &source("unused"), &execution).unwrap();
+    assert_eq!(output_value(&output), Some(&Value::String("safe".into())));
+    assert!(hook.function_failures.borrow().is_empty());
+    assert!(hook.graph_failures.borrow().is_empty());
 }
 
 #[test]

@@ -10,9 +10,95 @@ use mapping::{
 };
 
 use crate::{
-    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingNodeInput, PendingNodeValue,
-    PendingTargetWrite, TraceEvent, TraceSink, TraceTargetFieldBinding, run_with_context,
+    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingNodeFailure, PendingNodeInput,
+    PendingNodeValue, PendingTargetWrite, TraceEvent, TraceSink, TraceTargetFieldBinding,
+    run_with_context,
 };
+
+struct FailureHook {
+    decision: DebugDecision,
+    failures: RefCell<Vec<PendingNodeFailure>>,
+    writes: RefCell<usize>,
+}
+
+impl DebugHook for FailureHook {
+    fn before_target_write(&self, _write: &PendingTargetWrite) -> DebugDecision {
+        *self.writes.borrow_mut() += 1;
+        DebugDecision::Resume
+    }
+
+    fn wants_node_values(&self) -> bool {
+        false
+    }
+
+    fn wants_node_inputs(&self) -> bool {
+        false
+    }
+
+    fn wants_node_failures(&self) -> bool {
+        true
+    }
+
+    fn after_node_failure(&self, failure: &PendingNodeFailure) -> DebugDecision {
+        self.failures.borrow_mut().push(failure.clone());
+        self.decision
+    }
+}
+
+#[test]
+fn first_graph_failure_hook_precedes_filter_error_and_preserves_or_cancels_it() {
+    let mut project = two_field_project();
+    project.graph.nodes.extend([
+        (
+            2,
+            Node::Call {
+                function: "divide".into(),
+                args: vec![3, 4],
+            },
+        ),
+        (
+            3,
+            Node::Const {
+                value: Value::Int(1),
+            },
+        ),
+        (
+            4,
+            Node::Const {
+                value: Value::Int(0),
+            },
+        ),
+    ]);
+    project.root.filter = Some(2);
+    let source = Instance::Group(vec![(
+        "input".into(),
+        Instance::Scalar(Value::String("source value".into())),
+    )]);
+    for decision in [DebugDecision::Resume, DebugDecision::Cancel] {
+        let hook = FailureHook {
+            decision,
+            failures: RefCell::new(Vec::new()),
+            writes: RefCell::new(0),
+        };
+        let execution = ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&hook);
+        let error = run_with_context(&project, &source, &execution).unwrap_err();
+        match decision {
+            DebugDecision::Resume => {
+                assert!(matches!(
+                    error,
+                    EngineError::Function(functions::FunctionError::DivideByZero)
+                ));
+            }
+            DebugDecision::Cancel => assert!(matches!(error, EngineError::DebugCancelled)),
+        }
+        let failures = hook.failures.borrow();
+        assert_eq!(failures.len(), 1, "only the deepest failure pauses");
+        assert_eq!(failures[0].node, 2);
+        assert!(failures[0].error.preview.contains("division by zero"));
+        assert!(!failures[0].error.truncated);
+        assert_eq!(*hook.writes.borrow(), 0);
+    }
+}
 
 struct PausingHook {
     writes: SyncSender<PendingTargetWrite>,

@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{
@@ -25,6 +26,7 @@ pub(crate) struct EvalProgram<'a> {
     pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
     pub(crate) trace_sink: Option<&'a dyn TraceSink>,
     pub(crate) debug_hook: Option<&'a dyn DebugHook>,
+    pub(crate) first_failure_reported: &'a Cell<bool>,
 }
 
 impl<'a> EvalProgram<'a> {
@@ -32,12 +34,14 @@ impl<'a> EvalProgram<'a> {
         graph: &'a Graph,
         user_functions: &'a BTreeMap<FunctionId, UserFunction>,
         trace_sink: Option<&'a dyn TraceSink>,
+        first_failure_reported: &'a Cell<bool>,
     ) -> Self {
         Self {
             graph,
             user_functions,
             trace_sink,
             debug_hook: None,
+            first_failure_reported,
         }
     }
 
@@ -48,6 +52,27 @@ impl<'a> EvalProgram<'a> {
 }
 
 pub(crate) fn eval_expr(
+    program: EvalProgram<'_>,
+    node_id: NodeId,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let result = eval_expr_inner(program, node_id, context, positions, in_progress);
+    if let Err(error) = &result {
+        crate::debug::after_node_failure(
+            program.debug_hook,
+            program.first_failure_reported,
+            node_id,
+            error,
+            positions,
+            context,
+        )?;
+    }
+    result
+}
+
+fn eval_expr_inner(
     program: EvalProgram<'_>,
     node_id: NodeId,
     context: &[&Instance],
@@ -160,6 +185,7 @@ pub(crate) fn eval_expr(
                 context.first().copied(),
                 program.trace_sink,
                 program.debug_hook,
+                program.first_failure_reported,
                 positions,
             )
         }
@@ -792,7 +818,7 @@ mod tests {
         let user_functions = BTreeMap::new();
 
         let value = eval_expr(
-            EvalProgram::new(&graph, &user_functions, None),
+            EvalProgram::new(&graph, &user_functions, None, &Cell::new(false)),
             1,
             &[&source],
             &[],

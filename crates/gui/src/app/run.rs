@@ -73,6 +73,8 @@ enum FileRunEvent {
     PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
     PausedFunctionInput(Box<engine::PendingFunctionNodeInput>),
+    PausedFailure(Box<engine::PendingNodeFailure>),
+    PausedFunctionFailure(Box<engine::PendingFunctionNodeFailure>),
     ReadyToPublish,
     Finished(
         Result<cli::RunOutcome, FileRunError>,
@@ -93,6 +95,8 @@ pub(super) enum FileRunPhase {
     PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
     PausedFunctionInput(Box<engine::PendingFunctionNodeInput>),
+    PausedFailure(Box<engine::PendingNodeFailure>),
+    PausedFunctionFailure(Box<engine::PendingFunctionNodeFailure>),
     Publishing,
     Stopping,
 }
@@ -152,9 +156,46 @@ struct FileRunDebugHook {
     node_condition: Option<DebugNodeCondition>,
     expression_condition: Option<DebugExpressionCondition>,
     input_condition: Option<DebugInputCondition>,
+    pause_on_failure: bool,
 }
 
 impl FileRunDebugHook {
+    fn after_failure(&self, event: FileRunEvent) -> engine::DebugDecision {
+        if self.cancelled.load(Ordering::Acquire) {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            match self.commands.try_recv() {
+                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Ok(
+                    FileRunCommand::Step
+                    | FileRunCommand::Continue
+                    | FileRunCommand::Pause
+                    | FileRunCommand::Publish,
+                ) => {}
+                Err(TryRecvError::Empty) => break,
+            }
+        }
+        if self.events.send(event).is_err() {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            if self.cancelled.load(Ordering::Acquire) {
+                return engine::DebugDecision::Cancel;
+            }
+            match self.commands.recv_timeout(Duration::from_millis(100)) {
+                Ok(FileRunCommand::Continue) => return engine::DebugDecision::Resume,
+                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Ok(FileRunCommand::Pause | FileRunCommand::Step | FileRunCommand::Publish)
+                | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+        }
+    }
+
     fn before_publish(&self) -> bool {
         if self.cancelled.load(Ordering::Acquire)
             || self.events.send(FileRunEvent::ReadyToPublish).is_err()
@@ -206,6 +247,27 @@ impl engine::DebugHook for FileRunDebugHook {
             .is_some_and(DebugInputCondition::targets_function)
             || self.pause_next_input.get()
             || self.cancelled.load(Ordering::Acquire)
+    }
+
+    fn wants_node_failures(&self) -> bool {
+        self.pause_on_failure
+    }
+
+    fn wants_function_node_failures(&self) -> bool {
+        self.pause_on_failure
+    }
+
+    fn after_node_failure(&self, failure: &engine::PendingNodeFailure) -> engine::DebugDecision {
+        self.after_failure(FileRunEvent::PausedFailure(Box::new(failure.clone())))
+    }
+
+    fn after_function_node_failure(
+        &self,
+        failure: &engine::PendingFunctionNodeFailure,
+    ) -> engine::DebugDecision {
+        self.after_failure(FileRunEvent::PausedFunctionFailure(Box::new(
+            failure.clone(),
+        )))
     }
 
     fn source_field_probe(&self) -> Option<(usize, String)> {
@@ -695,6 +757,7 @@ impl FerruleApp {
         let (commands, command_receiver) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
+        let pause_on_failure = debug && self.file_run_pause_on_failure;
         std::thread::spawn(move || {
             let trace = crate::run_report::TraceCollector::new();
             let hook = FileRunDebugHook {
@@ -709,7 +772,8 @@ impl FerruleApp {
                         && source_condition.is_none()
                         && node_condition.is_none()
                         && expression_condition.is_none()
-                        && input_condition.is_none(),
+                        && input_condition.is_none()
+                        && !pause_on_failure,
                 ),
                 pause_next_node: Cell::new(false),
                 pause_next_input: Cell::new(false),
@@ -720,6 +784,7 @@ impl FerruleApp {
                 node_condition,
                 expression_condition,
                 input_condition,
+                pause_on_failure,
             };
             let gate = || hook.before_publish();
             let mut options = cli::RunOptions::new()
@@ -789,6 +854,8 @@ impl FerruleApp {
                         | FileRunPhase::PausedFunctionNode(_)
                         | FileRunPhase::PausedInput(_)
                         | FileRunPhase::PausedFunctionInput(_)
+                        | FileRunPhase::PausedFailure(_)
+                        | FileRunPhase::PausedFunctionFailure(_)
                 ) {
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }
@@ -857,6 +924,28 @@ impl FerruleApp {
                         input.input_index + 1
                     );
                     pending.phase = FileRunPhase::PausedFunctionInput(input);
+                }
+                ctx.request_repaint();
+            }
+            FileRunEvent::PausedFailure(failure) => {
+                if matches!(pending.phase, FileRunPhase::Stopping) {
+                    let _ = pending.commands.send(FileRunCommand::Cancel);
+                } else {
+                    self.status = format!("paused on graph node #{} error", failure.node);
+                    pending.phase = FileRunPhase::PausedFailure(failure);
+                }
+                ctx.request_repaint();
+            }
+            FileRunEvent::PausedFunctionFailure(failure) => {
+                if matches!(pending.phase, FileRunPhase::Stopping) {
+                    let _ = pending.commands.send(FileRunCommand::Cancel);
+                } else {
+                    self.status = format!(
+                        "paused on function #{} node #{} error",
+                        failure.function.get(),
+                        failure.node
+                    );
+                    pending.phase = FileRunPhase::PausedFunctionFailure(failure);
                 }
                 ctx.request_repaint();
             }
@@ -955,6 +1044,12 @@ impl FerruleApp {
                     FileRunPhase::PausedFunctionInput(input) => {
                         preview_ui::show_live_function_input_debug_state(ui, input);
                     }
+                    FileRunPhase::PausedFailure(failure) => {
+                        preview_ui::show_live_failure_debug_state(ui, failure);
+                    }
+                    FileRunPhase::PausedFunctionFailure(failure) => {
+                        preview_ui::show_live_function_failure_debug_state(ui, failure);
+                    }
                     FileRunPhase::Publishing => {
                         ui.horizontal(|ui| {
                             ui.spinner();
@@ -979,6 +1074,14 @@ impl FerruleApp {
                             action = Some(FileRunCommand::Step);
                         }
                         if ui.button("Continue").clicked() {
+                            action = Some(FileRunCommand::Continue);
+                        }
+                        if ui.button("Cancel run").clicked() {
+                            action = Some(FileRunCommand::Cancel);
+                        }
+                    }
+                    FileRunPhase::PausedFailure(_) | FileRunPhase::PausedFunctionFailure(_) => {
+                        if ui.button("Continue to error").clicked() {
                             action = Some(FileRunCommand::Continue);
                         }
                         if ui.button("Cancel run").clicked() {
@@ -1058,6 +1161,10 @@ impl FerruleApp {
             ui,
             &mut self.file_run_input_condition,
             "file_run_debug_input_value_type",
+        );
+        ui.checkbox(
+            &mut self.file_run_pause_on_failure,
+            "Pause at the first graph or function evaluation error",
         );
         if ui
             .add_enabled(condition_valid, egui::Button::new("Debug Run"))

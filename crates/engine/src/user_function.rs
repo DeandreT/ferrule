@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{Instance, ScalarType, Value};
@@ -5,7 +6,9 @@ use mapping::{FunctionId, FunctionParameterId, Node, NodeId, UserFunction};
 
 use crate::EngineError;
 use crate::context::{runtime_field, runtime_parameter_field};
-use crate::debug::{DebugHook, after_function_node_input, after_function_node_value};
+use crate::debug::{
+    DebugHook, after_function_node_failure, after_function_node_input, after_function_node_value,
+};
 use crate::source_iteration::PositionFrame;
 use crate::trace::{TraceSink, record_function_node_input_value, record_function_node_value};
 
@@ -15,6 +18,7 @@ pub(super) const MAX_USER_FUNCTION_DEPTH: usize = 64;
 struct FunctionTrace<'a> {
     sink: Option<&'a dyn TraceSink>,
     debug_hook: Option<&'a dyn DebugHook>,
+    first_failure_reported: &'a Cell<bool>,
     positions: &'a [PositionFrame],
 }
 
@@ -26,6 +30,7 @@ pub(super) fn evaluate(
     runtime: Option<&Instance>,
     trace_sink: Option<&dyn TraceSink>,
     debug_hook: Option<&dyn DebugHook>,
+    first_failure_reported: &Cell<bool>,
     positions: &[PositionFrame],
 ) -> Result<Value, EngineError> {
     evaluate_nested(
@@ -36,6 +41,7 @@ pub(super) fn evaluate(
         FunctionTrace {
             sink: trace_sink,
             debug_hook,
+            first_failure_reported,
             positions,
         },
         &mut Vec::new(),
@@ -110,6 +116,42 @@ fn evaluate_nested(
 
 #[allow(clippy::too_many_arguments)]
 fn evaluate_body_node(
+    functions: &BTreeMap<FunctionId, UserFunction>,
+    function_id: FunctionId,
+    function: &UserFunction,
+    node_id: NodeId,
+    parameters: &[(FunctionParameterId, Value)],
+    runtime: Option<&Instance>,
+    trace: FunctionTrace<'_>,
+    call_stack: &mut Vec<FunctionId>,
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let result = evaluate_body_node_inner(
+        functions,
+        function_id,
+        function,
+        node_id,
+        parameters,
+        runtime,
+        trace,
+        call_stack,
+        in_progress,
+    );
+    if let Err(error) = &result {
+        after_function_node_failure(
+            trace.debug_hook,
+            trace.first_failure_reported,
+            function_id,
+            node_id,
+            error,
+            trace.positions,
+        )?;
+    }
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn evaluate_body_node_inner(
     functions: &BTreeMap<FunctionId, UserFunction>,
     function_id: FunctionId,
     function: &UserFunction,
