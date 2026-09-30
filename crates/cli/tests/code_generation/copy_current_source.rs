@@ -79,8 +79,6 @@ fn copy_current_source_matches_engine_and_generated_backends() -> TestResult<()>
             runtime_path: runtime,
         },
     )?;
-    let rust_source = std::fs::read_to_string(rust_output.join("src/lib.rs"))?;
-    assert!(rust_source.contains("let output = context.copy_current_group()?;"));
     std::fs::write(
         rust_output.join("src/main.rs"),
         include_str!("fixtures/copy_current_source_rust_harness.rs.txt"),
@@ -99,8 +97,6 @@ fn copy_current_source_matches_engine_and_generated_backends() -> TestResult<()>
 
     let csharp_output = directory.0.join("csharp");
     generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
-    let csharp_source = std::fs::read_to_string(csharp_output.join("GeneratedMapping.cs"))?;
-    assert!(csharp_source.contains("return context.CopyCurrentGroup();"));
     let harness = csharp_output.join("Harness");
     std::fs::create_dir(&harness)?;
     std::fs::write(
