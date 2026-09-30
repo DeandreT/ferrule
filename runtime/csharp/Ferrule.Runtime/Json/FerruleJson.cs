@@ -1535,11 +1535,7 @@ public static partial class FerruleJson
                 writer.WriteNumberValue(value.Int64Value);
                 return;
             case (JsonScalarType.Int64, FerruleValueKind.String)
-                when long.TryParse(
-                    value.StringValue.Trim(),
-                    NumberStyles.AllowLeadingSign,
-                    CultureInfo.InvariantCulture,
-                    out var integer):
+                when TryOutputInt64(value, out var integer):
                 writer.WriteNumberValue(integer);
                 return;
             case (JsonScalarType.Double, FerruleValueKind.Int64)
@@ -2163,12 +2159,161 @@ public static partial class FerruleJson
 
         output = 0;
         return value.Kind == FerruleValueKind.String &&
-               long.TryParse(
-                   value.StringValue.Trim(),
-                   NumberStyles.AllowLeadingSign,
-                   CultureInfo.InvariantCulture,
-                   out output);
+               TryExactDecimalInt64(value.StringValue.AsSpan(), out output);
     }
+
+    // Match the XML writer's exact decimal-string output conversion without
+    // passing through double or decimal, either of which can lose i64 precision.
+    private static bool TryExactDecimalInt64(ReadOnlySpan<char> source, out long output)
+    {
+        output = 0;
+        var text = source.Trim();
+        if (long.TryParse(
+                text,
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out output))
+        {
+            return true;
+        }
+        if (text.IsEmpty)
+        {
+            return false;
+        }
+
+        var negative = text[0] == '-';
+        var unsigned = text[0] is '-' or '+' ? text[1..] : text;
+        var exponentMarker = -1;
+        for (var index = 0; index < unsigned.Length; index++)
+        {
+            if (unsigned[index] is 'e' or 'E')
+            {
+                if (exponentMarker >= 0)
+                {
+                    return false;
+                }
+                exponentMarker = index;
+            }
+        }
+        var mantissa = exponentMarker >= 0 ? unsigned[..exponentMarker] : unsigned;
+        var exponent = 0L;
+        if (exponentMarker >= 0 &&
+            !long.TryParse(
+                unsigned[(exponentMarker + 1)..],
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out exponent))
+        {
+            return false;
+        }
+
+        var dot = -1;
+        for (var index = 0; index < mantissa.Length; index++)
+        {
+            if (mantissa[index] == '.')
+            {
+                if (dot >= 0)
+                {
+                    return false;
+                }
+                dot = index;
+            }
+        }
+        var whole = dot >= 0 ? mantissa[..dot] : mantissa;
+        var fraction = dot >= 0 ? mantissa[(dot + 1)..] : ReadOnlySpan<char>.Empty;
+        var totalDigits = whole.Length + fraction.Length;
+        if (totalDigits == 0)
+        {
+            return false;
+        }
+        var firstNonzero = -1;
+        for (var index = 0; index < totalDigits; index++)
+        {
+            var digit = DecimalDigitAt(whole, fraction, index);
+            if (digit is < '0' or > '9')
+            {
+                return false;
+            }
+            if (firstNonzero < 0 && digit != '0')
+            {
+                firstNonzero = index;
+            }
+        }
+        if (firstNonzero < 0)
+        {
+            return true;
+        }
+
+        long scale;
+        try
+        {
+            scale = checked((long)fraction.Length - exponent);
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+        var significantDigits = totalDigits - firstNonzero;
+        var keptDigits = significantDigits;
+        var appendedZeros = 0;
+        if (scale > 0)
+        {
+            if (scale > significantDigits)
+            {
+                return false;
+            }
+            for (var index = totalDigits - (int)scale; index < totalDigits; index++)
+            {
+                if (DecimalDigitAt(whole, fraction, index) != '0')
+                {
+                    return false;
+                }
+            }
+            keptDigits -= (int)scale;
+        }
+        else if (scale < 0)
+        {
+            if (scale < -19)
+            {
+                return false;
+            }
+            appendedZeros = (int)-scale;
+        }
+        if (keptDigits + appendedZeros > 19)
+        {
+            return false;
+        }
+
+        var limit = negative ? (ulong)long.MaxValue + 1UL : (ulong)long.MaxValue;
+        var magnitude = 0UL;
+        for (var index = firstNonzero; index < firstNonzero + keptDigits; index++)
+        {
+            var digit = (ulong)(DecimalDigitAt(whole, fraction, index) - '0');
+            if (magnitude > (limit - digit) / 10UL)
+            {
+                return false;
+            }
+            magnitude = magnitude * 10UL + digit;
+        }
+        for (var index = 0; index < appendedZeros; index++)
+        {
+            if (magnitude > limit / 10UL)
+            {
+                return false;
+            }
+            magnitude *= 10UL;
+        }
+        output = negative
+            ? magnitude == (ulong)long.MaxValue + 1UL ? long.MinValue : -(long)magnitude
+            : (long)magnitude;
+        return true;
+    }
+
+    private static char DecimalDigitAt(
+        ReadOnlySpan<char> whole,
+        ReadOnlySpan<char> fraction,
+        int index) =>
+        index < whole.Length ? whole[index] : fraction[index - whole.Length];
 
     private static bool TryOutputDouble(FerruleValue value, out double output)
     {

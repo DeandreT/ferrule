@@ -318,6 +318,7 @@ internal static partial class Program
         JsonConstantBoundaries();
         JsonAllowedValuesBoundaries();
         JsonRangeBoundaries();
+        JsonExactIntegerOutputBoundaries();
         JsonMultipleOfBoundaries();
         JsonItemCountBoundaries();
         JsonPropertyCountBoundaries();
@@ -330,6 +331,46 @@ internal static partial class Program
         JsonStringLengthBoundaries();
         JsonPatternBoundaries();
         JsonScalarUnionBoundaries();
+    }
+
+    private static void JsonExactIntegerOutputBoundaries()
+    {
+        const string integer =
+            "{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        foreach (var (lexical, expected) in new (string Lexical, string Expected)[]
+                 {
+                     ("1.000", "1\n"),
+                     (" 2e2 ", "200\n"),
+                     ("9007199254740993.0", "9007199254740993\n"),
+                     ("-9223372036854775808.000", "-9223372036854775808\n"),
+                 })
+        {
+            Equal(expected, FerruleJson.Serialize(integer, Scalar(Text(lexical))));
+            Equal(
+                expected,
+                System.Text.Encoding.UTF8.GetString(
+                    FerruleJson.SerializeBytes(integer, Scalar(Text(lexical)))));
+        }
+        foreach (var lexical in new[] { "1.001", "1e-1", "9223372036854775808.0" })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Serialize(integer, Scalar(Text(lexical))));
+        }
+
+        const string constrained =
+            "{\"name\":\"Value\",\"numeric_range\":{\"kind\":\"integer\",\"bounds\":{\"minimum\":6,\"maximum\":8}},\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":3,\"decimal_exponent\":0}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        Equal("6\n", FerruleJson.Serialize(constrained, Scalar(Text("6.000"))));
+        foreach (var lexical in new[] { "7.000", "9.000" })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Serialize(constrained, Scalar(Text(lexical))));
+        }
+        Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(constrained, "\"6.000\""));
+        Equal("1.0\n", FerruleJson.Serialize(IntOrFloatJsonSchema, Scalar(Text("1.000"))));
     }
 
     private static void JsonObjectOpennessBoundaries()
