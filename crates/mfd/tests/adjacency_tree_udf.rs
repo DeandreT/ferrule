@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{Instance, Value};
-use mapping::ScopeConstruction;
+use ir::{Instance, SchemaNode, Value};
+use mapping::{AdjacencyTreePlan, Node, Project, ScopeConstruction};
 
 struct TempDir(PathBuf);
 
@@ -33,19 +33,7 @@ fn write(path: &Path, value: &str) -> Result<(), std::io::Error> {
 #[test]
 fn imports_and_executes_recursive_adjacency_udf() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
-    write(
-        &dir.0.join("catalog.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="catalog"><xs:complexType><xs:sequence><xs:element name="type" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:attribute name="name" type="xs:string" use="required"/><xs:attribute name="base" type="xs:string"/></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    )?;
-    write(
-        &dir.0.join("tree.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="type"><xs:complexType><xs:sequence><xs:element ref="type" minOccurs="0" maxOccurs="unbounded"/></xs:sequence><xs:attribute name="name" type="xs:string" use="required"/></xs:complexType></xs:element></xs:schema>"#,
-    )?;
-    write(
-        &dir.0.join("catalog.xml"),
-        r#"<catalog><type name="Root"/><type name="Beta" base="Root"/><type name="Alpha" base="Root"/><type name="Leaf" base="Beta"/><type name="Detached" base="Detached"/></catalog>"#,
-    )?;
-    write(&dir.0.join("mapping.mfd"), MAPPING)?;
+    write_fixture(&dir)?;
 
     let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -67,15 +55,158 @@ fn imports_and_executes_recursive_adjacency_udf() -> Result<(), Box<dyn std::err
     assert_eq!(string(&grandchildren[0], "name"), Some("Leaf"));
 
     let export = dir.0.join("roundtrip.mfd");
-    assert!(mfd::export(&imported.project, &export)?.is_empty());
+    let report = mfd::preflight_export(&imported.project, &export)?;
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(&imported.project, &export, mfd::ExportProfile::NativeMfd)?;
+    assert!(!std::fs::read_to_string(&export)?.contains("library=\"ferrule\""));
     let reimported = mfd::import(&export)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
-    assert!(matches!(
-        reimported.project.root.construction,
-        ScopeConstruction::AdjacencyTree { .. }
-    ));
     assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(
+        reimported.project.root.construction,
+        imported.project.root.construction
+    );
     assert_eq!(engine::run(&reimported.project, &input)?, output);
+    Ok(())
+}
+
+fn write_fixture(dir: &TempDir) -> Result<(), Box<dyn std::error::Error>> {
+    write(
+        &dir.0.join("catalog.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="catalog"><xs:complexType><xs:sequence><xs:element name="type" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:attribute name="name" type="xs:string" use="required"/><xs:attribute name="base" type="xs:string"/></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    write(
+        &dir.0.join("tree.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="type"><xs:complexType><xs:sequence><xs:element ref="type" minOccurs="0" maxOccurs="unbounded"/></xs:sequence><xs:attribute name="name" type="xs:string" use="required"/></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    write(
+        &dir.0.join("catalog.xml"),
+        r#"<catalog><type name="Root"/><type name="Beta" base="Root"/><type name="Alpha" base="Root"/><type name="Leaf" base="Beta"/><type name="Detached" base="Detached"/></catalog>"#,
+    )?;
+    write(&dir.0.join("mapping.mfd"), MAPPING)?;
+    Ok(())
+}
+
+fn native_rejected(project: &Project, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let report = mfd::preflight_export(project, path)?;
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| { issue.feature == mfd::ExportCompatibilityFeature::RecursiveComponent })
+    );
+    assert!(matches!(
+        mfd::export_with_profile(project, path, mfd::ExportProfile::NativeMfd),
+        Err(mfd::MfdError::IncompatibleExport(_))
+    ));
+    assert!(!path.exists());
+    Ok(())
+}
+
+#[test]
+fn changed_root_and_nested_collection_keep_native_guard_closed()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    write_fixture(&dir)?;
+    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let project = imported.project;
+    let ScopeConstruction::AdjacencyTree { plan } = &project.root.construction else {
+        return Err("expected adjacency plan".into());
+    };
+    let plan = plan.clone();
+
+    let mut rooted = project.clone();
+    rooted.graph.nodes.insert(
+        100,
+        Node::Const {
+            value: Value::String("Root".into()),
+        },
+    );
+    rooted.root.construction = ScopeConstruction::AdjacencyTree {
+        plan: AdjacencyTreePlan::new(
+            plan.collection().to_vec(),
+            plan.key().to_vec(),
+            plan.parent().to_vec(),
+            plan.target_key().to_string(),
+            plan.target_children().to_string(),
+            Some(100),
+        )
+        .unwrap(),
+    };
+    assert!(engine::validate(&rooted).is_empty());
+    native_rejected(&rooted, &dir.0.join("rooted.mfd"))?;
+
+    let mut nested = project;
+    let row = nested.source.child("type").ok_or("missing row")?.clone();
+    nested.source = SchemaNode::group("catalog", vec![SchemaNode::group("nested", vec![row])]);
+    nested.root.construction = ScopeConstruction::AdjacencyTree {
+        plan: AdjacencyTreePlan::new(
+            vec!["nested".into(), "type".into()],
+            plan.key().to_vec(),
+            plan.parent().to_vec(),
+            plan.target_key().to_string(),
+            plan.target_children().to_string(),
+            None,
+        )
+        .unwrap(),
+    };
+    assert!(engine::validate(&nested).is_empty());
+    native_rejected(&nested, &dir.0.join("nested.mfd"))?;
+    Ok(())
+}
+
+fn collect_names(tree: &Instance, names: &mut Vec<String>) {
+    names.push(string(tree, "name").expect("type name").to_string());
+    for child in repeated(tree, "type").unwrap_or_default() {
+        collect_names(child, names);
+    }
+}
+
+#[test]
+#[ignore = "needs the local ignored ReferenceSamples corpus"]
+fn local_schema_type_hierarchy_native_roundtrip_keeps_49_types()
+-> Result<(), Box<dyn std::error::Error>> {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples")
+        .canonicalize()?;
+    let imported = mfd::import_with_options(
+        &samples.join("BuildSchemaTypeHierarchy.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&samples),
+    )?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = format_xml::read(
+        &samples.join("schema-type-list.xml"),
+        &imported.project.source,
+    )?;
+    assert_eq!(repeated(&source, "type").ok_or("input types")?.len(), 50);
+    let before = engine::run(&imported.project, &source)?;
+    let mut names = Vec::new();
+    collect_names(&before, &mut names);
+    assert_eq!(names.len(), 49);
+    assert!(!names.iter().any(|name| name == "xs:ENTITIES"));
+
+    let dir = TempDir::new()?;
+    let design = dir.0.join("native.mfd");
+    let report = mfd::preflight_export(&imported.project, &design)?;
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(&imported.project, &design, mfd::ExportProfile::NativeMfd)?;
+    let emitted = std::fs::read_to_string(&design)?;
+    assert!(emitted.contains("library=\"user\""));
+    assert!(!emitted.contains("library=\"ferrule\""));
+    let restored = mfd::import(&design)?;
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+    assert!(engine::validate(&restored.project).is_empty());
+    assert_eq!(
+        restored.project.root.construction,
+        imported.project.root.construction
+    );
+    let after = engine::run(&restored.project, &source)?;
+    let before_path = dir.0.join("before.xml");
+    let after_path = dir.0.join("after.xml");
+    format_xml::write(&before_path, &imported.project.target, &before)?;
+    format_xml::write(&after_path, &restored.project.target, &after)?;
+    assert_eq!(std::fs::read(before_path)?, std::fs::read(after_path)?);
     Ok(())
 }
 
