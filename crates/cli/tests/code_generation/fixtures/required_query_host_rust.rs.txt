@@ -1,0 +1,62 @@
+use std::path::Path;
+
+use codegen_runtime::{
+    ExecutionContext, Instance, RuntimeError, RuntimeParameters, ScalarType, Value, field, group,
+    repeated, scalar,
+};
+use ferrule_generated_mapping::{execute, execute_with_context};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = source_rows();
+    assert!(matches!(
+        execute(&source),
+        Err(RuntimeError::MissingRuntimeParameter { name, .. }) if name == "Minimum"
+    ));
+    assert_eq!(execute(&repeated([]))?, output_names(&[]));
+    for (value, expected) in [
+        (Value::Int(3), vec!["Bea", "Cal"]),
+        (Value::String(" 5 ".into()), vec!["Cal"]),
+        (Value::Null, vec![]),
+    ] {
+        let mut parameters = RuntimeParameters::new();
+        parameters.insert("Minimum", value)?;
+        let context = ExecutionContext::new(Path::new("required-query.mfd"))
+            .with_parameters(&parameters);
+        assert_eq!(execute_with_context(&source, &context)?, output_names(&expected));
+    }
+    let mut wrong = RuntimeParameters::new();
+    wrong.insert("Minimum", Value::Bool(true))?;
+    let context = ExecutionContext::new(Path::new("required-query.mfd"))
+        .with_parameters(&wrong);
+    assert!(matches!(
+        execute_with_context(&source, &context),
+        Err(RuntimeError::RuntimeParameterType {
+            name,
+            expected: ScalarType::Int,
+            found: "bool",
+            ..
+        }) if name == "Minimum"
+    ));
+    Ok(())
+}
+
+fn source_rows() -> Instance {
+    repeated([
+        source_row("Ada", 2),
+        source_row("Bea", 4),
+        source_row("Cal", 6),
+    ])
+}
+
+fn source_row(name: &str, score: i64) -> Instance {
+    group([
+        field("Name", scalar(Value::String(name.into()))),
+        field("Score", scalar(Value::Int(score))),
+    ])
+}
+
+fn output_names(names: &[&str]) -> Instance {
+    repeated(names.iter().map(|name| {
+        group([field("Name", scalar(Value::String((*name).into())))])
+    }))
+}

@@ -42,6 +42,8 @@ mod path_hierarchy;
 mod recursive_sequences;
 #[path = "code_generation/reference_corpus.rs"]
 mod reference_corpus;
+#[path = "code_generation/required_query_host.rs"]
+mod required_query_host;
 #[path = "code_generation/runtime_values.rs"]
 mod runtime_values;
 #[path = "code_generation/scalar_algorithms.rs"]
