@@ -452,14 +452,17 @@ impl GraphBuilder<'_> {
                     if let Some(value) = self.fn_components[idx].input_preview.clone() {
                         Some(self.alloc(mapping::Node::Const { value }))
                     } else if let Some(name) = input_parameter_name.clone() {
-                        Some(
-                            self.alloc(mapping::Node::RuntimeParameter {
-                                name,
-                                ty: self.fn_components[idx]
-                                    .input_type
-                                    .unwrap_or(ir::ScalarType::String),
-                            }),
-                        )
+                        // RuntimeParameter already performs the declared scalar
+                        // coercion. Adding another input conversion would grow
+                        // the graph after each native export/reimport cycle.
+                        let node = self.alloc(mapping::Node::RuntimeParameter {
+                            name,
+                            ty: self.fn_components[idx]
+                                .input_type
+                                .unwrap_or(ir::ScalarType::String),
+                        });
+                        self.fn_nodes.insert(idx, node);
+                        return Some(node);
                     } else {
                         Some(self.alloc(mapping::Node::Const { value: Value::Null }))
                     }
