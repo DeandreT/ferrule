@@ -25,6 +25,18 @@ struct VariableConstructionIssue {
 
 const MAX_VARIABLE_CONSTRUCTION_PATH_DEPTH: usize = 32;
 
+fn numeric_constant_is_to_number_identity(node: Option<&mapping::Node>) -> bool {
+    match node {
+        Some(mapping::Node::Const {
+            value: Value::Int(_),
+        }) => true,
+        Some(mapping::Node::Const {
+            value: Value::Float(value),
+        }) => value.is_finite(),
+        _ => false,
+    }
+}
+
 fn validate_bounded_repeating_construction(
     component: &SchemaComponent,
     output_path: &[String],
@@ -436,10 +448,14 @@ impl GraphBuilder<'_> {
             };
             return match (input, self.fn_components[idx].input_type) {
                 (Some(input), Some(ir::ScalarType::Int | ir::ScalarType::Float)) => {
-                    Some(self.alloc(mapping::Node::Call {
-                        function: "to_number".to_string(),
-                        args: vec![input],
-                    }))
+                    if numeric_constant_is_to_number_identity(self.graph.nodes.get(&input)) {
+                        Some(input)
+                    } else {
+                        Some(self.alloc(mapping::Node::Call {
+                            function: "to_number".to_string(),
+                            args: vec![input],
+                        }))
+                    }
                 }
                 (Some(input), Some(ir::ScalarType::String)) => {
                     Some(self.alloc(mapping::Node::Call {
@@ -989,5 +1005,62 @@ impl GraphBuilder<'_> {
             projects_whole_group,
             projections,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::numeric_constant_is_to_number_identity;
+    use ir::{ScalarType, Value};
+    use mapping::Node;
+
+    #[test]
+    fn only_finite_numeric_constants_bypass_input_number_conversion() {
+        for (node, expected) in [
+            (
+                Node::Const {
+                    value: Value::Int(2008),
+                },
+                true,
+            ),
+            (
+                Node::Const {
+                    value: Value::Float(10.0),
+                },
+                true,
+            ),
+            (
+                Node::Const {
+                    value: Value::String("10".into()),
+                },
+                false,
+            ),
+            (
+                Node::Const {
+                    value: Value::Float(f64::NAN),
+                },
+                false,
+            ),
+            (
+                Node::Const {
+                    value: Value::Float(f64::INFINITY),
+                },
+                false,
+            ),
+            (
+                Node::RuntimeParameter {
+                    name: "count".into(),
+                    ty: ScalarType::Float,
+                },
+                false,
+            ),
+        ] {
+            assert_eq!(
+                numeric_constant_is_to_number_identity(Some(&node)),
+                expected,
+                "{node:?}"
+            );
+        }
+        assert!(!numeric_constant_is_to_number_identity(None));
     }
 }
