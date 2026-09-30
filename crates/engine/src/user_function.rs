@@ -5,16 +5,37 @@ use mapping::{FunctionId, FunctionParameterId, Node, NodeId, UserFunction};
 
 use crate::EngineError;
 use crate::context::{runtime_field, runtime_parameter_field};
+use crate::source_iteration::PositionFrame;
+use crate::trace::{TraceSink, record_function_node_input_value, record_function_node_value};
 
 pub(super) const MAX_USER_FUNCTION_DEPTH: usize = 64;
 
+#[derive(Clone, Copy)]
+struct FunctionTrace<'a> {
+    sink: Option<&'a dyn TraceSink>,
+    positions: &'a [PositionFrame],
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) fn evaluate(
     functions: &BTreeMap<FunctionId, UserFunction>,
     function: FunctionId,
     arguments: Vec<Value>,
     runtime: Option<&Instance>,
+    trace_sink: Option<&dyn TraceSink>,
+    positions: &[PositionFrame],
 ) -> Result<Value, EngineError> {
-    evaluate_nested(functions, function, arguments, runtime, &mut Vec::new())
+    evaluate_nested(
+        functions,
+        function,
+        arguments,
+        runtime,
+        FunctionTrace {
+            sink: trace_sink,
+            positions,
+        },
+        &mut Vec::new(),
+    )
 }
 
 fn evaluate_nested(
@@ -22,6 +43,7 @@ fn evaluate_nested(
     function_id: FunctionId,
     arguments: Vec<Value>,
     runtime: Option<&Instance>,
+    trace: FunctionTrace<'_>,
     call_stack: &mut Vec<FunctionId>,
 ) -> Result<Value, EngineError> {
     if call_stack.contains(&function_id) {
@@ -68,6 +90,7 @@ fn evaluate_nested(
         function.output,
         &parameters,
         runtime,
+        trace,
         call_stack,
         &mut HashSet::new(),
     );
@@ -89,6 +112,7 @@ fn evaluate_body_node(
     node_id: NodeId,
     parameters: &[(FunctionParameterId, Value)],
     runtime: Option<&Instance>,
+    trace: FunctionTrace<'_>,
     call_stack: &mut Vec<FunctionId>,
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
@@ -142,14 +166,17 @@ fn evaluate_body_node(
             args,
         } => {
             let mut values = Vec::with_capacity(args.len());
-            for argument in args {
-                values.push(evaluate_body_node(
+            for (input_index, argument) in args.iter().enumerate() {
+                values.push(evaluate_body_input(
                     functions,
                     function_id,
                     function,
+                    node_id,
                     *argument,
+                    input_index,
                     parameters,
                     runtime,
+                    trace,
                     call_stack,
                     in_progress,
                 )?);
@@ -165,51 +192,63 @@ fn evaluate_body_node(
             args,
         } => {
             let mut values = Vec::with_capacity(args.len());
-            for argument in args {
-                values.push(evaluate_body_node(
+            for (input_index, argument) in args.iter().enumerate() {
+                values.push(evaluate_body_input(
                     functions,
                     function_id,
                     function,
+                    node_id,
                     *argument,
+                    input_index,
                     parameters,
                     runtime,
+                    trace,
                     call_stack,
                     in_progress,
                 )?);
             }
-            evaluate_nested(functions, *callee, values, runtime, call_stack)
+            evaluate_nested(functions, *callee, values, runtime, trace, call_stack)
         }
         Node::If {
             condition,
             then,
             else_,
-        } => match evaluate_body_node(
+        } => match evaluate_body_input(
             functions,
             function_id,
             function,
+            node_id,
             *condition,
+            0,
             parameters,
             runtime,
+            trace,
             call_stack,
             in_progress,
         )? {
-            Value::Bool(true) => evaluate_body_node(
+            Value::Bool(true) => evaluate_body_input(
                 functions,
                 function_id,
                 function,
+                node_id,
                 *then,
+                1,
                 parameters,
                 runtime,
+                trace,
                 call_stack,
                 in_progress,
             ),
-            Value::Bool(false) => evaluate_body_node(
+            Value::Bool(false) => evaluate_body_input(
                 functions,
                 function_id,
                 function,
+                node_id,
                 *else_,
+                2,
                 parameters,
                 runtime,
+                trace,
                 call_stack,
                 in_progress,
             ),
@@ -225,13 +264,16 @@ fn evaluate_body_node(
             table,
             default,
         } => {
-            let value = evaluate_body_node(
+            let value = evaluate_body_input(
                 functions,
                 function_id,
                 function,
+                node_id,
                 *input,
+                0,
                 parameters,
                 runtime,
+                trace,
                 call_stack,
                 in_progress,
             )?;
@@ -251,7 +293,47 @@ fn evaluate_body_node(
         }),
     };
     in_progress.remove(&node_id);
+    if let Ok(value) = &result {
+        record_function_node_value(trace.sink, function_id, node_id, trace.positions, value);
+    }
     result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn evaluate_body_input(
+    functions: &BTreeMap<FunctionId, UserFunction>,
+    function_id: FunctionId,
+    function: &UserFunction,
+    consumer: NodeId,
+    input: NodeId,
+    input_index: usize,
+    parameters: &[(FunctionParameterId, Value)],
+    runtime: Option<&Instance>,
+    trace: FunctionTrace<'_>,
+    call_stack: &mut Vec<FunctionId>,
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let value = evaluate_body_node(
+        functions,
+        function_id,
+        function,
+        input,
+        parameters,
+        runtime,
+        trace,
+        call_stack,
+        in_progress,
+    )?;
+    record_function_node_input_value(
+        trace.sink,
+        function_id,
+        consumer,
+        input,
+        input_index,
+        trace.positions,
+        &value,
+    );
+    Ok(value)
 }
 
 fn adapt_scalar(value: Value, expected: ScalarType) -> Option<Value> {

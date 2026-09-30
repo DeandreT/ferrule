@@ -65,21 +65,21 @@ pub(super) fn show_replay(ui: &mut egui::Ui, view: &mut RunReportView) {
     });
     show_history_stage_selector(ui, view);
     ui.horizontal_wrapped(|ui| {
-        ui.label("Selected graph node");
+        ui.label("Selected node");
         if let Some(node) = view.history_node {
             egui::ComboBox::from_id_salt("run_replay_node")
-                .selected_text(format!("Node {node}"))
+                .selected_text(node.label())
                 .show_ui(ui, |ui| {
                     for (&candidate, events) in &view.history_by_node {
                         ui.selectable_value(
                             &mut view.history_node,
                             Some(candidate),
-                            format!("Node {candidate} ({} events)", events.len()),
+                            format!("{} ({} events)", candidate.label(), events.len()),
                         );
                     }
                 });
         } else {
-            ui.weak("No graph-node events");
+            ui.weak("No node events");
         }
         let target = replay_target(view, ReplayStep::NextSelectedNode);
         if ui
@@ -149,6 +149,8 @@ fn event_positions(event: &cli::TraceEvent) -> Option<&[cli::TracePosition]> {
     match event {
         cli::TraceEvent::NodeValue { positions, .. }
         | cli::TraceEvent::NodeInputValue { positions, .. }
+        | cli::TraceEvent::FunctionNodeValue { positions, .. }
+        | cli::TraceEvent::FunctionNodeInputValue { positions, .. }
         | cli::TraceEvent::ScopeStarted { positions, .. }
         | cli::TraceEvent::IterationCandidate { positions, .. }
         | cli::TraceEvent::FilterDecision { positions, .. }

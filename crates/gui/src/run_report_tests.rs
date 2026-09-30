@@ -251,8 +251,8 @@ fn node_history_keeps_each_evaluation_in_trace_order() {
     ];
 
     let history = index_node_history(&events);
-    assert_eq!(history[&8], [0, 3, 4, 5]);
-    assert_eq!(history[&9], [2]);
+    assert_eq!(history[&NodeHistoryKey::Graph(8)], [0, 3, 4, 5]);
+    assert_eq!(history[&NodeHistoryKey::Graph(9)], [2]);
 
     let view = RunReportView::new(RunReport {
         kind: RunReportKind::Preview,
@@ -266,10 +266,112 @@ fn node_history_keeps_each_evaluation_in_trace_order() {
             ..Default::default()
         },
     });
-    assert_eq!(view.history_node, Some(8));
-    assert_eq!(view.history_by_node[&8], [0, 3, 4, 5]);
+    assert_eq!(view.history_node, Some(NodeHistoryKey::Graph(8)));
+    assert_eq!(
+        view.history_by_node[&NodeHistoryKey::Graph(8)],
+        [0, 3, 4, 5]
+    );
     assert_eq!(view.report.trace.dropped, 2);
     assert!(trace_row(3, &view.report.trace.events[3]).contains("node 8 input 1 <- node 9"));
+}
+
+#[test]
+fn function_history_and_replay_keep_function_and_stage_identity() {
+    let outer = mapping::FunctionId::new(1);
+    let inner = mapping::FunctionId::new(2);
+    let value = cli::TraceValue {
+        value_type: "string",
+        preview: "result".into(),
+        truncated: false,
+    };
+    let collector = PipelineTraceCollector::new();
+    collector.record("first", trace_event(0, ir::Value::String("main".into())));
+    collector.record(
+        "first",
+        cli::TraceEvent::FunctionNodeValue {
+            function: outer,
+            node: 0,
+            positions: Vec::new(),
+            value: value.clone(),
+        },
+    );
+    collector.record(
+        "first",
+        cli::TraceEvent::FunctionNodeInputValue {
+            function: outer,
+            consumer: 1,
+            input: 0,
+            input_index: 0,
+            positions: Vec::new(),
+            value: value.clone(),
+        },
+    );
+    collector.record(
+        "first",
+        cli::TraceEvent::FunctionNodeValue {
+            function: inner,
+            node: 0,
+            positions: Vec::new(),
+            value: value.clone(),
+        },
+    );
+    collector.record(
+        "second",
+        cli::TraceEvent::FunctionNodeValue {
+            function: outer,
+            node: 0,
+            positions: Vec::new(),
+            value,
+        },
+    );
+    let mut view = RunReportView::new(RunReport {
+        kind: RunReportKind::Pipeline,
+        duration: Duration::ZERO,
+        records_written: 0,
+        input_path: PathBuf::from("pipeline.json"),
+        outputs: Vec::new(),
+        trace: collector.finish(),
+    });
+    assert_eq!(view.history_by_node[&NodeHistoryKey::Graph(0)], [0]);
+    assert_eq!(
+        view.history_by_node[&NodeHistoryKey::Function(outer, 0)],
+        [1]
+    );
+    assert_eq!(
+        view.history_by_node[&NodeHistoryKey::Function(outer, 1)],
+        [2]
+    );
+    assert_eq!(
+        view.history_by_node[&NodeHistoryKey::Function(inner, 0)],
+        [3]
+    );
+    assert!(
+        trace_row(2, &view.report.trace.events[2]).contains("function 1 node 1 input 1 <- node 0")
+    );
+    assert_eq!(
+        NodeHistoryKey::Function(outer, 0).label(),
+        "Function 1 · Node 0"
+    );
+    view.history_node = Some(NodeHistoryKey::Function(outer, 0));
+    view.replay_event = Some(0);
+    assert_eq!(
+        replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
+        Some(1)
+    );
+    assert!(
+        replay::replay_event_details_for_view(&view, 1)
+            .unwrap()
+            .join(" ")
+            .contains("function 1 node 0")
+    );
+    view.select_history_stage(1);
+    assert_eq!(view.replay_event, Some(4));
+    assert_eq!(view.history_node, Some(NodeHistoryKey::Function(outer, 0)));
+    assert_eq!(
+        view.history_by_node[&NodeHistoryKey::Function(outer, 0)],
+        [4]
+    );
+    assert!(!view.history_by_node.contains_key(&NodeHistoryKey::Graph(0)));
 }
 
 #[test]
@@ -292,8 +394,8 @@ fn pipeline_history_and_replay_disambiguate_reused_node_ids_by_stage() {
     );
     let mut view = RunReportView::new(report);
     assert_eq!(view.history_stage, Some(0));
-    assert_eq!(view.history_node, Some(7));
-    assert_eq!(view.history_by_node[&7], [0]);
+    assert_eq!(view.history_node, Some(NodeHistoryKey::Graph(7)));
+    assert_eq!(view.history_by_node[&NodeHistoryKey::Graph(7)], [0]);
     assert!(
         view.trace_row(0, &view.report.trace.events[0])
             .contains("stage prepare")
@@ -305,7 +407,7 @@ fn pipeline_history_and_replay_disambiguate_reused_node_ids_by_stage() {
 
     view.select_history_stage(1);
     assert_eq!(view.replay_event, Some(1));
-    assert_eq!(view.history_by_node[&7], [1, 2]);
+    assert_eq!(view.history_by_node[&NodeHistoryKey::Graph(7)], [1, 2]);
     assert_eq!(
         replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
         Some(2)
@@ -511,7 +613,7 @@ fn replay_moves_only_within_the_retained_event_prefix() {
         replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
         None
     );
-    view.history_node = Some(9);
+    view.history_node = Some(NodeHistoryKey::Graph(9));
     assert_eq!(
         replay::replay_target(&view, replay::ReplayStep::NextSelectedNode),
         None
@@ -550,7 +652,7 @@ fn report_links_replay_exact_retained_indices_after_filtering() {
         trace: collector.finish(),
     });
     assert_eq!(view.report.trace.dropped, 1);
-    assert_eq!(view.history_by_node[&7], [0, 2]);
+    assert_eq!(view.history_by_node[&NodeHistoryKey::Graph(7)], [0, 2]);
     assert_eq!(view.source_rows, [1, 3]);
 
     view.trace_filter = "candidate 2".into();
@@ -568,7 +670,7 @@ fn report_links_replay_exact_retained_indices_after_filtering() {
 
     view.trace_filter = "node 7".into();
     assert_eq!(view.filtered_trace_indices(), [0, 2]);
-    assert!(view.replay_from(view.history_by_node[&7][1]));
+    assert!(view.replay_from(view.history_by_node[&NodeHistoryKey::Graph(7)][1]));
     assert_eq!(view.replay_event, Some(2));
     assert_eq!(view.page, ReportPage::Replay);
 
@@ -908,7 +1010,7 @@ fn results_window_renders_and_loads_only_the_selected_preview() {
     assert!(!output.shapes.is_empty());
 
     view.page = ReportPage::History;
-    assert_eq!(view.history_node, Some(7));
+    assert_eq!(view.history_node, Some(NodeHistoryKey::Graph(7)));
     let output = context.run_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });
