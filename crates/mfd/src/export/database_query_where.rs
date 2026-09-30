@@ -268,22 +268,24 @@ fn guarded_like(
     if !title_field(nodes.get(title)?, collection) {
         return None;
     }
-    let pattern_node = match nodes.get(parameter)? {
-        Node::Const { .. } => nodes.get(parameter)?,
+    let supported_pattern = match nodes.get(parameter)? {
+        Node::Const {
+            value: Value::String(pattern),
+        } => substring_pattern(pattern),
         Node::RuntimeParameterDefault {
             ty: ScalarType::String,
             default,
             ..
-        } => nodes.get(default)?,
-        _ => return None,
+        } => {
+            matches!(nodes.get(default), Some(Node::Const { value: Value::String(pattern) }) if substring_pattern(pattern))
+        }
+        Node::RuntimeParameter {
+            ty: ScalarType::String,
+            ..
+        } => true,
+        _ => false,
     };
-    let Node::Const {
-        value: Value::String(pattern),
-    } = pattern_node
-    else {
-        return None;
-    };
-    if !substring_pattern(pattern) {
+    if !supported_pattern {
         return None;
     }
     let Node::Call { function, args } = nodes.get(condition)? else {
