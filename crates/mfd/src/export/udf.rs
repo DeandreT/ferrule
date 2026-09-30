@@ -86,8 +86,9 @@ impl Exports {
                     function.name
                 ))
             })?;
-            let numeric_aliases =
-                native_protobuf_numeric_aliases(project, id, function).unwrap_or_default();
+            let numeric_aliases = native_protobuf_numeric_aliases(project, id, function)
+                .or_else(|| super::temperature_native::udf_numeric_aliases(project, id, function))
+                .unwrap_or_default();
             render_definition(
                 function,
                 interface,
@@ -106,6 +107,14 @@ impl Exports {
 
     pub(super) fn declarations(&self) -> &str {
         &self.declarations
+    }
+
+    pub(super) fn one_parameter_interface(&self, id: FunctionId) -> Option<(u32, u32)> {
+        let interface = self.interfaces.get(&id)?;
+        let [parameter] = interface.parameters.as_slice() else {
+            return None;
+        };
+        Some((parameter.component_id, interface.output_component_id))
     }
 
     pub(super) fn render_call(

@@ -53,6 +53,10 @@ impl ScopePlan {
 pub(super) struct ScopePlans(BTreeMap<(Vec<String>, Option<usize>), ScopePlan>);
 
 impl ScopePlans {
+    pub(super) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub(super) fn get(&self, path: &[String], branch: Option<usize>) -> Option<&ScopePlan> {
         self.0.get(&(path.to_vec(), branch))
     }
