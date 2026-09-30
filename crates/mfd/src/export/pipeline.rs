@@ -1,7 +1,7 @@
 //! Canonical export for a bounded serial chain of XML mapping stages with
 //! an XML, CSV, fixed-width, FlexText, JSON, Protocol Buffer, bounded XBRL,
 //! or XLSX final primary target and optional independent final XML targets.
-//! A primary XML target may also keep one connected named CSV target.
+//! A primary XML target may also keep one connected named CSV or JSON target.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -36,7 +36,7 @@ pub fn preflight_pipeline_export(
 /// independent intermediate targets, and non-XML intermediate boundaries
 /// reject explicitly. The final primary target may be CSV, fixed-width text,
 /// FlexText, JSON, Protocol Buffers, bounded XBRL, or new-workbook XLSX;
-/// independent final targets remain XML, except for one CSV target beside a
+/// independent final targets remain XML, except for one CSV or JSON target beside a
 /// primary XML final target.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
@@ -163,18 +163,42 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
             .iter()
             .filter(|target| side_format(&target.path, &target.options) == SideFormat::Csv)
             .count();
+        let named_json_targets = stage
+            .project
+            .extra_targets
+            .iter()
+            .filter(|target| side_format(&target.path, &target.options) == SideFormat::Json)
+            .count();
         if named_csv_targets > 1 {
             return Err(MfdError::Unsupported(format!(
                 "pipeline stage `{}` has more than one named CSV target",
                 stage.id
             )));
         }
+        if named_json_targets > 1 {
+            return Err(MfdError::Unsupported(format!(
+                "pipeline stage `{}` has more than one named JSON target",
+                stage.id
+            )));
+        }
+        if named_csv_targets + named_json_targets > 1 {
+            return Err(MfdError::Unsupported(format!(
+                "pipeline stage `{}` has more than one non-XML named target",
+                stage.id
+            )));
+        }
         if stage.project.extra_targets.iter().any(|target| {
             let format = side_format(&target.path, &target.options);
+            let named_json_document = format == SideFormat::Json
+                && !target.options.json_lines
+                && !target.path.as_deref().is_some_and(|path| {
+                    let path = path.to_ascii_lowercase();
+                    path.ends_with(".jsonl") || path.ends_with(".ndjson")
+                });
             !(format == SideFormat::Xml
                 || index + 1 == pipeline.stages.len()
                     && primary_is_xml
-                    && format == SideFormat::Csv)
+                    && (format == SideFormat::Csv || named_json_document))
                 || target.options.protobuf.is_some()
                 || target.options.wsdl.is_some()
         }) {

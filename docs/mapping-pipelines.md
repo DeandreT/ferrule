@@ -18,7 +18,7 @@ The imported host name comes from the source component and is recorded in
 The example has one pass-through target. With three pass-through targets, the
 final stage ID is `mfd-stage-4`.
 The last pass-through target may also feed connected named XML targets in that
-final stage, or one named CSV target beside an XML primary target. Use
+final stage, or one named CSV or JSON document target beside an XML primary target. Use
 `--named-output STAGE TARGET PATH` to publish one. Intermediate
 fan-out and targets that bypass the last pass-through stage reject during import.
 CSV, fixed-width text, FlexText, JSON, Protocol Buffers, bounded XBRL, and XLSX
@@ -33,8 +33,9 @@ XLSX retains decoded worksheet cells through strict export and reimport. A
 fixture-backed XBRL final target retains exact instance XML bytes and parsed
 fact/context elements; presentation metadata and numeric fact bindings remain outside this
 chain profile.
-An XML-primary chain with a named CSV target retains both exact XML and CSV
-output through strict export, reimport, and CLI publication.
+XML-primary chains with a named CSV or JSON target retain both exact serialized
+outputs through strict export, reimport, and CLI publication. Named JSON Lines
+remain outside this profile.
 Protocol Buffers export includes a referenced `.proto` sibling. These checks do
 not establish reference-application acceptance.
 An intermediate XML pass-through component can retain its declared output
