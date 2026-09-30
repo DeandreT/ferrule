@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against thirty-two local, gitignored mappings.
+//! Opt-in generated-backend execution against thirty-four local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -11,6 +11,8 @@ enum SourceKind {
     Xml,
     XmlFileSet,
     Edifact,
+    X12,
+    Idoc,
     FlexText,
     Csv,
     Pdf,
@@ -33,7 +35,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 32] = [
+const CASES: [CorpusCase; 34] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -226,6 +228,18 @@ const CASES: [CorpusCase; 32] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Protobuf,
     },
+    CorpusCase {
+        sample: "IDoc_Order.mfd",
+        input: "ORDERS.idoc",
+        source_kind: SourceKind::Idoc,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "Tutorial/ExtractCustomX12.mfd",
+        input: "Tutorial/Orders-Custom.X12",
+        source_kind: SourceKind::X12,
+        target_kind: TargetKind::Csv,
+    },
 ];
 
 #[test]
@@ -304,6 +318,15 @@ fn run_case(
             SourceKind::Edifact => {
                 project.source_options.edi_kind == Some(mapping::EdiBoundaryKind::Edifact)
             }
+            SourceKind::X12 => {
+                project.source_options.edi_kind == Some(mapping::EdiBoundaryKind::X12)
+                    && project.source_options.x12_separators.is_some()
+                    && !project.source_options.edi_implied_decimals.is_empty()
+            }
+            SourceKind::Idoc => {
+                project.source_options.edi_kind == Some(mapping::EdiBoundaryKind::Idoc)
+                    && project.source_options.idoc.is_some()
+            }
             SourceKind::FlexText => project.source_options.flextext.is_some(),
             SourceKind::Csv => {
                 project.source_options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
@@ -358,6 +381,44 @@ fn run_case(
             )?;
             instance
         }
+        SourceKind::X12 => {
+            let separators = project
+                .source_options
+                .x12_separators
+                .expect("retained X12 separators");
+            assert_eq!(separators.element, '+');
+            assert_eq!(separators.component, ':');
+            assert_eq!(separators.segment, '\'');
+            assert_eq!(separators.repetition, Some('!'));
+            assert_eq!(separators.release, Some('?'));
+            let mut instance = format_edi::x12::read_with_separators(
+                &input_path,
+                &project.source,
+                project.source_options.lenient_segments,
+                Some(format_edi::x12::Separators {
+                    element: separators.element,
+                    component: separators.component,
+                    segment: separators.segment,
+                    repetition: separators.repetition,
+                    release: separators.release,
+                }),
+            )?;
+            format_edi::apply_implied_decimals(
+                &mut instance,
+                &project.source_options.edi_implied_decimals,
+            )?;
+            instance
+        }
+        SourceKind::Idoc => format_edi::idoc::read(
+            &input_path,
+            &project.source,
+            project
+                .source_options
+                .idoc
+                .as_ref()
+                .expect("embedded IDoc layout"),
+            project.source_options.lenient_segments,
+        )?,
         SourceKind::FlexText => format_flextext::read(
             &input_path,
             &project.source,
@@ -421,6 +482,8 @@ fn run_case(
         SourceKind::Json => std::fs::read_to_string(&input_path)?,
         SourceKind::Xml
         | SourceKind::Edifact
+        | SourceKind::X12
+        | SourceKind::Idoc
         | SourceKind::FlexText
         | SourceKind::Csv
         | SourceKind::Pdf
@@ -470,11 +533,15 @@ fn run_case(
             | "SelectPropertyFromJSON.mfd"
             | "JSON_To_Xml_PurchaseOrders.mfd"
             | "PersonsToProtobuf.mfd"
+            | "IDoc_Order.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
         if matches!(
             sample,
-            "InputIsSequence.mfd" | "SelectPropertyFromJSON.mfd" | "JSON_To_Xml_PurchaseOrders.mfd"
+            "InputIsSequence.mfd"
+                | "SelectPropertyFromJSON.mfd"
+                | "JSON_To_Xml_PurchaseOrders.mfd"
+                | "IDoc_Order.mfd"
         ) {
             assert_eq!(
                 round_tripped, source,
@@ -487,11 +554,19 @@ fn run_case(
             "{sample}: schema-shaped JSON boundary changed mapping output"
         );
     }
-    if sample == "Tutorial/ExtractCustomEDIFACT.mfd" {
+    if matches!(
+        sample,
+        "Tutorial/ExtractCustomEDIFACT.mfd" | "Tutorial/ExtractCustomX12.mfd"
+    ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
         assert_eq!(
             round_tripped, source,
-            "{sample}: schema-shaped JSON changes the native EDIFACT instance"
+            "{sample}: schema-shaped JSON changes the native EDI instance"
+        );
+        assert_eq!(
+            engine::run(&project, &round_tripped)?,
+            expected,
+            "{sample}: schema-shaped JSON changes the mapped customer row"
         );
     }
     if sample == "RecursiveDirectoryFilter.mfd" {
@@ -534,8 +609,11 @@ fn run_case(
     let recursive_xml_output = sample == "RecursiveDirectoryFilter.mfd";
     let purchase_orders_xml_output = sample == "JSON_To_Xml_PurchaseOrders.mfd";
     let protobuf_output = sample == "PersonsToProtobuf.mfd";
-    let typed_xml_output =
-        recursive_xml_output || sample == "InputIsSequence.mfd" || purchase_orders_xml_output;
+    let idoc_xml_output = sample == "IDoc_Order.mfd";
+    let typed_xml_output = recursive_xml_output
+        || sample == "InputIsSequence.mfd"
+        || purchase_orders_xml_output
+        || idoc_xml_output;
     let expected_xml = if mapped_xml_output || typed_xml_output {
         Some(format_xml::to_string_with_options(
             &project.target,
@@ -551,9 +629,87 @@ fn run_case(
     };
     let expected_json: serde_json::Value = if mapped_xml_output {
         serde_json::Value::Null
+    } else if idoc_xml_output {
+        // The IDoc fields remain lexical strings in the mapped Instance. Both
+        // XML and JSON output boundaries convert exact decimal Amount values.
+        let direct = format_json::to_string(&project.target, &expected)?;
+        let normalized = format_xml::from_str(
+            expected_xml.as_ref().expect("IDoc XML target"),
+            &project.target,
+        )?;
+        let xml_json = format_json::to_string(&project.target, &normalized)?;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&direct)?,
+            serde_json::from_str::<serde_json::Value>(&xml_json)?,
+            "{sample}: native JSON and XML target boundaries disagree"
+        );
+        serde_json::from_str(&direct)?
     } else {
         serde_json::from_str(&format_json::to_string(&project.target, &expected)?)?
     };
+    if sample == "IDoc_Order.mfd" {
+        assert!(
+            project.source_options.idoc.is_some(),
+            "{sample}: the local parser layout must be embedded in the imported project"
+        );
+        assert!(project.extra_targets.is_empty(), "{sample}: one XML target");
+        assert_eq!(expected_json["Header"]["Number"], "4500000327");
+        assert_eq!(
+            expected_json["Header"]["Received"], "1999-06-21T09:30:00",
+            "{sample}: the two-argument IDoc date function"
+        );
+        let customer = expected_json["Customer"]
+            .as_object()
+            .expect("mapped customer group");
+        assert!(
+            customer
+                .get("Address")
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(serde_json::Map::is_empty)
+                && !customer.contains_key("Number")
+                && !customer.contains_key("ContactName")
+                && !customer.contains_key("CompanyName"),
+            "{sample}: the first sparse partner segment is selected"
+        );
+        let items = expected_json["LineItems"]["LineItem"]
+            .as_array()
+            .expect("mapped order items");
+        assert_eq!(items.len(), 2, "{sample}: both IDoc item records");
+        let raw_amounts = expected
+            .field("LineItems")
+            .and_then(|items| items.field("LineItem"))
+            .and_then(Instance::as_repeated)
+            .expect("raw IDoc order items")
+            .iter()
+            .map(|item| {
+                item.field("Article")
+                    .and_then(|article| article.field("Amount"))
+                    .and_then(Instance::as_scalar)
+                    .cloned()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            raw_amounts,
+            vec![
+                Some(Value::String("1.000".into())),
+                Some(Value::String("2.000".into())),
+            ],
+            "{sample}: IDoc lexical decimal strings reach integer XML fields"
+        );
+        for (item, (number, amount, price, tax)) in
+            items.iter().zip([(10, 1, 7.2, 1.44), (20, 2, 13.2, 2.64)])
+        {
+            let article = &item["Article"];
+            assert_eq!(article["Number"], number);
+            assert_eq!(article["Amount"], amount);
+            assert_eq!(article["Price"], price);
+            assert_eq!(article["Tax"], tax);
+            assert!(
+                article.get("Name").is_none(),
+                "{sample}: the first sparse text segment is selected"
+            );
+        }
+    }
     if purchase_orders_xml_output {
         assert!(project.extra_targets.is_empty(), "{sample}: one XML target");
         assert_eq!(
@@ -1197,6 +1353,17 @@ fn run_case(
             "{sample}: EDIFACT 2379 date-time conversion"
         );
         Some(corpus_csv_bytes(&project, &expected)?)
+    } else if sample == "Tutorial/ExtractCustomX12.mfd" {
+        assert_eq!(project.target_options.delimiter, Some(','));
+        assert_eq!(project.target_options.has_header_row, Some(false));
+        let rows = expected_json.as_array().expect("X12 customer CSV rows");
+        assert_eq!(rows.len(), 1, "{sample}: one customer row");
+        assert_eq!(rows[0]["Name"], "Michelle Butler");
+        assert_eq!(rows[0]["Salutation"], "Mrs");
+        assert_eq!(rows[0]["Date"], "20200430");
+        let bytes = corpus_csv_bytes(&project, &expected)?;
+        assert_eq!(bytes, b"Michelle Butler,Mrs,20200430\n");
+        Some(bytes)
     } else if sample == "ParseStringWithFlexText.mfd" {
         assert_eq!(
             project
@@ -1618,7 +1785,7 @@ fn collect_recursive_directory_files<'a>(
 }
 
 const RECURSIVE_FILTER_RUST_HARNESS: &str = r#"use codegen_runtime::{Value, parse_json, serialize_json, serialize_xml};
-use ferrule_generated_mapping::{execute, execute_json};
+use ferrule_generated_mapping::{execute, execute_json, execute_json_bytes};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
@@ -1632,6 +1799,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let json = serialize_json(&target_schema, &output)?;
     assert_eq!(json, execute_json(&input)?, "typed and JSON generated APIs agree");
+    assert_eq!(json.as_bytes(), execute_json_bytes(input.as_bytes())?);
     print!("\0{xml}\0{json}\0");
     Ok(())
 }
@@ -1651,6 +1819,11 @@ var json = FerruleJson.Serialize(targetSchema, output);
 if (json != GeneratedMapping.ExecuteJson(input))
 {
     throw new InvalidOperationException("Typed and JSON generated APIs disagree.");
+}
+if (!System.Text.Encoding.UTF8.GetBytes(json).AsSpan().SequenceEqual(
+        GeneratedMapping.ExecuteJsonBytes(System.Text.Encoding.UTF8.GetBytes(input))))
+{
+    throw new InvalidOperationException("String and byte JSON generated APIs disagree.");
 }
 Console.Out.Write('\0');
 Console.Out.Write(xml);
@@ -1717,23 +1890,17 @@ fn assert_generated_csv_bytes(
 ) -> TestResult<()> {
     let generated =
         format_json::from_str(&serde_json::to_string(generated_json)?, &project.target)?;
-    if sample == "SelectPropertyFromJSON.mfd" {
-        // This mapping binds fields in a different order from its CSV schema.
-        // The JSON host boundary restores schema order without changing values.
-        let normalized_expected = format_json::from_str(
-            &format_json::to_string(&project.target, expected)?,
-            &project.target,
-        )?;
-        assert_eq!(
-            generated, normalized_expected,
-            "{sample}: generated {backend} typed CSV target differs after schema-shaped JSON transport"
-        );
-    } else {
-        assert_eq!(
-            &generated, expected,
-            "{sample}: generated {backend} typed CSV target differs from engine"
-        );
-    }
+    // A CSV mapping may bind fields in a different order from its flat row
+    // schema. Both generated hosts cross a JSON boundary that restores schema
+    // order; compare the interpreter after the same boundary normalization.
+    let normalized_expected = format_json::from_str(
+        &format_json::to_string(&project.target, expected)?,
+        &project.target,
+    )?;
+    assert_eq!(
+        generated, normalized_expected,
+        "{sample}: generated {backend} typed CSV target differs after schema-shaped JSON transport"
+    );
     assert_eq!(
         corpus_csv_bytes(project, &generated)?,
         expected_csv,
