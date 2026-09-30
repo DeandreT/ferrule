@@ -3,6 +3,26 @@ use mapping::XbrlBoundaryOptions;
 use super::*;
 
 #[test]
+fn failed_project_serialization_clears_the_prior_download() {
+    let mut app = DemoApp::new();
+    assert!(!app.project_json.is_empty());
+    app.project.graph.nodes.insert(
+        999,
+        mapping::Node::Const {
+            value: ir::Value::Float(f64::INFINITY),
+        },
+    );
+    app.sync_project_json();
+    assert!(app.project_json.is_empty());
+    assert_eq!(app.status, "Project serialization failed");
+    let diagnostic = app.diagnostic.clone();
+    assert!(diagnostic.is_some());
+    app.download_project();
+    assert_eq!(app.status, "Project download unavailable");
+    assert_eq!(app.diagnostic, diagnostic);
+}
+
+#[test]
 fn demo_project_runs_on_the_sample_input() {
     let mut app = DemoApp::new();
     app.run();
