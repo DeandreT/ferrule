@@ -163,7 +163,7 @@ fn node_title(node: &Node) -> String {
             format!("function parameter {}", parameter.get())
         }
         Node::RuntimeValue { value } => format!("runtime · {value:?}"),
-        Node::RuntimeParameter { name, ty } => format!("runtime · {name}: {ty:?}"),
+        Node::RuntimeParameter { name, ty, .. } => format!("runtime · {name}: {ty:?}"),
         Node::RuntimeParameterDefault { name, ty, .. } => {
             format!("optional input · {name}: {ty:?}")
         }

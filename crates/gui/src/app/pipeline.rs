@@ -741,7 +741,7 @@ impl FerruleApp {
                 });
                 ui.separator();
                 ui.strong("Publish outputs");
-                ui.small("Leave an output blank to keep it in memory only. Dynamic document targets use a base directory.");
+                ui.small("Leave an output blank to skip saving it. Dynamic document targets use a base directory.");
                 egui::ScrollArea::vertical()
                     .max_height(210.0)
                     .show(ui, |ui| {
