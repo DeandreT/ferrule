@@ -6,6 +6,7 @@ use ir::{Value, XML_TEXT_FIELD};
 use mapping::{Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
 
 use super::auto_number::{self, AutoNumbers};
+use super::database_xml::DirectColumns;
 use super::function::{
     aggregate_component_name, constant_parts, function_library, scalar_type_name,
     unmap_function_name, value_scalar_type, value_text,
@@ -29,6 +30,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) structural_edges: &'a mut BTreeSet<(u32, u32)>,
     pub(super) warnings: &'a mut Vec<String>,
     pub(super) blocked_nodes: &'a BTreeSet<NodeId>,
+    pub(super) native_database_xml: &'a DirectColumns,
     pub(super) native_datetime_casts: &'a BTreeMap<NodeId, NodeId>,
     pub(super) mfd_path: &'a Path,
     pub(super) user_functions: &'a UserFunctionExports,
@@ -54,6 +56,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         structural_edges,
         warnings,
         blocked_nodes,
+        native_database_xml,
         native_datetime_casts,
         mfd_path,
         user_functions,
@@ -247,6 +250,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
             || blocked_nodes.contains(&id)
             || native_datetime_casts.contains_key(&id)
         {
+            continue;
+        }
+        if let Some(source_port) = native_database_xml.source_port(id) {
+            node_out_key.insert(id, source_port);
             continue;
         }
         if auto_numbers.owns_internal(id) {

@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ir::{Instance, Value};
-use mapping::Node;
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use mapping::{Binding, Node};
 use rusqlite::Connection;
 
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
@@ -157,28 +157,143 @@ fn embedded_xml_database_columns_execute_compactly_and_round_trip() {
 
     let exported_path = dir.0.join("roundtrip.mfd");
     let native_report = mfd::preflight_export(&imported.project, &exported_path).unwrap();
-    assert!(
-        native_report.issues.iter().any(|issue| {
-            issue.feature == mfd::ExportCompatibilityFeature::XmlSerializationIndent
-        })
-    );
-    let error = mfd::export_with_profile(
+    assert!(native_report.is_native_compatible(), "{native_report}");
+    assert!(native_report.warnings.is_empty());
+    assert!(native_report.issues.is_empty());
+    let published = mfd::export_with_profile(
         &imported.project,
         &exported_path,
         mfd::ExportProfile::NativeMfd,
     )
-    .unwrap_err();
-    assert!(matches!(error, mfd::MfdError::IncompatibleExport(_)));
-    assert!(!exported_path.exists());
-    let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
-    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    .unwrap();
+    assert_eq!(published, native_report);
     let exported = std::fs::read_to_string(&exported_path).unwrap();
-    assert!(exported.contains(r#"ferrule-indent="0""#));
+    assert!(exported.contains(r#"type="doc-xml""#));
+    assert!(exported.contains(r#"<entry name="payload" datatype="string">"#));
+    assert!(exported.contains(r#"schemafile="roundtrip-target-database-xml-0.xsd""#));
+    assert!(!exported.contains("ferrule-indent"));
+    assert!(!exported.contains("stringserialize"));
+    assert!(dir.0.join("roundtrip-target-database-xml-0.xsd").is_file());
     let reimported = mfd::import(&exported_path).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
     let roundtrip = engine::run(&reimported.project, &input).unwrap();
     assert_eq!(payloads(&roundtrip), payloads(&output));
+    format_db::write_instance(&database, &reimported.project.target, &roundtrip).unwrap();
+    let connection = Connection::open(&database).unwrap();
+    let roundtrip_stored = connection
+        .prepare("SELECT payload FROM Inventory ORDER BY rowid")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(0))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(roundtrip_stored, stored);
+
+    // Portable exports retain the column type even when the SQLite file is
+    // not available beside the exported mapping.
+    let mut detached = imported.project.clone();
+    detached.target_path = Some("missing.sqlite".into());
+    let detached_path = dir.0.join("detached.mfd");
+    assert!(
+        mfd::preflight_export(&detached, &detached_path)
+            .unwrap()
+            .is_native_compatible()
+    );
+    mfd::export_with_profile(&detached, &detached_path, mfd::ExportProfile::NativeMfd).unwrap();
+    assert!(!dir.0.join("missing.sqlite").exists());
+    let detached_import = mfd::import(&detached_path).unwrap();
+    assert!(
+        detached_import.warnings.is_empty(),
+        "{:?}",
+        detached_import.warnings
+    );
+    assert!(matches!(
+        detached_import
+            .project
+            .target
+            .child("payload")
+            .map(|field| &field.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::String
+        })
+    ));
+    let detached_output = engine::run(&detached_import.project, &input).unwrap();
+    assert_eq!(payloads(&detached_output), payloads(&output));
+
+    // Another live consumer needs the serialized string, so the native
+    // database-column fold cannot replace this node with a group port.
+    let mut shared = imported.project.clone();
+    let serializer = *shared
+        .graph
+        .nodes
+        .iter()
+        .find_map(|(id, node)| matches!(node, Node::XmlSerialize { .. }).then_some(id))
+        .unwrap();
+    let consumer = shared.graph.nodes.keys().next_back().copied().unwrap() + 1;
+    shared.graph.nodes.insert(
+        consumer,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![serializer, serializer],
+        },
+    );
+    let SchemaKind::Group { children, .. } = &mut shared.target.kind else {
+        panic!("database target is a table");
+    };
+    children.push(SchemaNode::scalar("backup", ScalarType::String));
+    shared.root.bindings.push(Binding {
+        target_field: "backup".into(),
+        node: consumer,
+    });
+    assert!(engine::validate(&shared).is_empty());
+    let shared_report = mfd::preflight_export(&shared, &dir.0.join("shared.mfd")).unwrap();
+    assert!(
+        shared_report.issues.iter().any(|issue| {
+            issue.feature == mfd::ExportCompatibilityFeature::XmlSerializationIndent
+        })
+    );
+}
+
+#[test]
+#[ignore = "needs the local ReferenceSamples corpus; informational only"]
+fn local_xml_to_sqlite_field_strict_export_preserves_sqlite_payloads()
+-> Result<(), Box<dyn std::error::Error>> {
+    let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples/Tutorial/XmlToSqliteField.mfd");
+    let imported = mfd::import(&sample)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let input_file = sample.parent().unwrap().join("books.xml");
+    let input = format_xml::from_str(
+        &std::fs::read_to_string(input_file)?,
+        &imported.project.source,
+    )?;
+    let original = engine::run(&imported.project, &input)?;
+
+    let directory = TempDir::new();
+    let original_db = directory.0.join("original.sqlite");
+    format_db::write_instance(&original_db, &imported.project.target, &original)?;
+    let mut project = imported.project.clone();
+    project.target_path = Some(original_db.to_string_lossy().into_owned());
+    let exported_path = directory.0.join("strict.mfd");
+    let report = mfd::preflight_export(&project, &exported_path)?;
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(&project, &exported_path, mfd::ExportProfile::NativeMfd)?;
+    let reimported = mfd::import(&exported_path)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let roundtrip = engine::run(&reimported.project, &input)?;
+
+    let roundtrip_db = directory.0.join("roundtrip.sqlite");
+    format_db::write_instance(&roundtrip_db, &reimported.project.target, &roundtrip)?;
+    let read_payloads = |database: &Path| -> Result<Vec<String>, rusqlite::Error> {
+        let connection = Connection::open(database)?;
+        let mut query = connection.prepare("SELECT metadata FROM BOOKS ORDER BY rowid")?;
+        query
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect()
+    };
+    assert_eq!(read_payloads(&roundtrip_db)?, read_payloads(&original_db)?);
+    Ok(())
 }
 
 #[test]

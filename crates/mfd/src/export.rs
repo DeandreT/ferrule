@@ -17,6 +17,7 @@ mod auto_number;
 mod compatibility;
 mod concatenation;
 mod database;
+mod database_xml;
 mod dynamic_json;
 mod edi;
 mod exception;
@@ -340,6 +341,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     }
     let primary_target = &targets[0];
     let mixed_database_pairs = pair_mixed_databases(&sources, &targets);
+    let native_database_xml =
+        database_xml::DirectColumns::plan(project, &sources, &targets, &mixed_database_pairs);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -383,6 +386,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         structural_edges: &mut structural_edges,
         warnings: &mut warnings,
         blocked_nodes: &blocked_nodes,
+        native_database_xml: &native_database_xml,
         native_datetime_casts: native_datetime_casts.calls(),
         mfd_path: path,
         user_functions: &user_functions,
@@ -532,6 +536,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         }
     }
     components.push_str(&scope_components);
+    native_database_xml.mark_structural_edges(&edges, &mut structural_edges)?;
 
     // Database components reference a mapping-level datasource.
     let mut datasources: Vec<(String, String, BTreeSet<String>)> = Vec::new();
@@ -783,6 +788,12 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
             )?
         };
         native_datetime_casts.apply_to_target(target_index, target.schema, &mut rendered)?;
+        native_database_xml.apply_to_target(
+            target_index,
+            path,
+            &target.sibling_suffix,
+            &mut rendered,
+        )?;
         out.push_str(&rendered.xml);
         target_components.push(rendered);
     }
