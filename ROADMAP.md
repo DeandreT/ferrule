@@ -66,15 +66,20 @@ are preserved.
   export preflight now accepts 167 of 187 local designs. Direct `doc-xml`
   reconstruction, guarded SQLite `LIKE` controls, finite numeric input
   identity, a bounded Protobuf numeric UDF, canonical decimal-input
-  reconstruction, two XML source-leaf pricing rules, one guarded joined SQLite
-  `SELECT`, two temperature designs, two recursive hierarchies, one recursive
-  directory filter, a recursive file collector, and the optional phone-list filter recover twenty native
-  designs across this work.
+  reconstruction, two XML source-leaf pricing rules, guarded same-type SQLite
+  `SELECT` parameters, two temperature designs, two recursive hierarchies, one recursive
+  directory filter, a recursive file collector, and the optional phone-list filter
+  recover native design structures across this work. The text-to-numeric SQL
+  parameter in `Tutorial/select-component.mfd` remains unsupported.
   This is a static compatibility check, not reference-application acceptance. The
-  read-only execution profile attempts 168 safe-input designs and all 168 pass,
-  publishing 165 captured outputs; seven network or captured-service inputs are
-  unavailable. All 168 safe export/re-import executions match semantically with
-  zero drift. A previous isolated behavioral manifest recorded 79 exact
+  direct CLI resource profile has 168 warning-free imports and 160 designs with
+  both warning-free import and static export acceptance. The isolated execution
+  profile below resolves its own resources and has 170 warning-free imports.
+  The read-only design-preview profile attempts 168 safe-input designs and all
+  168 execute, publishing 164 captured outputs; seven network or captured-service inputs are
+  unavailable. Of 168 safe export/re-import design-preview executions, 167 match
+  semantically with zero drift; the unsupported cross-type query withholds a
+  match claim. A previous isolated behavioral manifest recorded 79 exact
   deterministic reference matches. This machine has no pinned native reference
   outputs, so its strict reference gate remains unverified. These measurements
   describe the local sample profile, not commercial-product parity.
@@ -95,11 +100,14 @@ are preserved.
   host overrides, including native title controls and joined integer-threshold
   SELECT parameters. Required host-only inputs retain exact same-type query
   values through native SELECT and title WHERE controls, including lazy empty
-  sources and typed missing/type failures. Required previews, optional inputs
-  without defaults, and cross-type dynamic query coercion remain outside this
-  profile. Imported design-time preview values are still folded into runtime
-  defaults or constants, and connected defaults can hide them in GUI preview.
-  Separating preview metadata from runtime contracts is an identified parity gap.
+  sources and typed missing/type failures. Required and connected-default inputs
+  retain raw lexical preview metadata through project serialization and native
+  export. Explicit design-preview execution uses it before a connected default
+  when no host value is supplied; normal and generated runs ignore it. The GUI
+  supports editing the saved value, previewing it, and inspecting it in the
+  debugger. Optional inputs without defaults and cross-type dynamic SQL coercion
+  remain unsupported. Missing imported filter predicates skip the dependent
+  iteration with a diagnostic instead of producing unfiltered rows.
 - Generated Rust and C# hosts have compiled and executed forty warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
@@ -212,7 +220,7 @@ are preserved.
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV/SQLite blank-project setup, SQLite table introspection for named lookup sources, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
 | Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, dynamic keys, collection searches, XML mixed-content replacements, generated-sequence generator arguments, existence predicates, item-at indexes, and aggregate and generated-sequence reduction expressions/arguments, bounded source-row previews with nested row/join context, event-by-event replay of completed traces with direct links from retained trace/history/source-row entries, stage-attributed pipeline traces with stage-specific Node History/Source Rows/Replay, opt-in target-write, post-evaluation graph-node, and delivered graph-input debug hooks, and worker-backed live GUI Preview/file-Run/pipeline stepping with static target-field breakpoints, bounded typed scalar-value, innermost active-position, exact active-frame source-field, target-write value-node, exact expression-node/value, recorded consumer-pin conditions, first failing graph or reusable-function node pauses, and shallow active source-frame snapshots | Remaining connector classes, full source-row inspection, richer expression/context breakpoint predicates |
-| `.mfd` | 187/187 imports (171 warning-free; 175 engine-valid, including four warned chains), 187 Ferrule exports/re-imports (186 warning-free; one retains unresolved target and embedded string-parser JSON Schema provenance), 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 168/168 semantically exact Ferrule export/re-import executions there, and 79/79 available deterministic references exact | Reference-application open/validate/execute/re-save verification, complete deterministic behavioral-reference coverage, and broader explicit extension-dependent export reporting |
+| `.mfd` | 187/187 imports (170 warning-free; 175 engine-valid, including four warned chains), 187 Ferrule exports/re-imports (186 warning-free; one retains unresolved target and embedded string-parser JSON Schema provenance), 175 dependency-complete engine-valid self-round trips, typed missing EDI-catalog dependencies preserved across round trips, explicitly trusted ordered EDI catalog roots with confined direct/ZIP resolution, ordered JSON Schema catalog roots with confined nested reference graphs, 168/168 safe-input executions in the latest isolated execution manifest, 167 semantic matches and one unsupported preview-contract skip across 168 Ferrule export/re-import executions there; 79 exact deterministic references were recorded by an earlier manifest and have not been rechecked after the preview correction | Reference-application open/validate/execute/re-save verification, complete deterministic behavioral-reference coverage, and broader explicit extension-dependent export reporting |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 175 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
 
 ## Workstreams
@@ -434,14 +442,16 @@ intermediate target as the next target's source; the bounded pipeline importer
 validates all four. All 187 export and re-import; 186 are warning-free, while
 one retains unresolved target JSON Schema provenance. All 175 dependency-complete round trips
 remaining engine-valid. Twelve designs preserve typed unresolved external
-EDI-catalog dependencies. A broad isolated execution survey runs all
-168 safe-input originals successfully, publishing 165 captured outputs and
+EDI-catalog dependencies. A broad isolated design-preview survey executes all
+168 safe-input originals, publishing 164 captured outputs and
 classifying one SQLite target-constraint rejection as an expected output
 failure, with seven network or captured-service cases unavailable. The round-trip profile
-executes the same 168 safe originals; all 168 exportable/re-importable
-executions match semantically. The latest
-isolated manifests provide 79 deterministic references, all of which match
-exactly. Reference manifests remain a separate behavioral measure and are not
+executes the same 168 safe originals; 167 exportable/re-importable
+executions match semantically and one unsupported text-to-numeric SQL preview
+contract is excluded from the match claim. An earlier
+isolated manifest recorded 79 exact deterministic references; that gate has not
+been rechecked after separating preview values from runtime inputs. Reference
+manifests remain a separate behavioral measure and are not
 inferred from structural success. Single-project runs of the four newly warned
 chains cannot establish faithful chain execution; pipeline import and execution
 are tracked separately.
@@ -800,7 +810,7 @@ Runtime support proceeds in parallel:
 Update these numbers with each parity increment:
 
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
-- `.mfd` import: 187/187 import; 171 are warning-free, four connected chains
+- `.mfd` import: 187/187 import; 170 are warning-free, four connected chains
   warn in single-project mode, and twelve retain typed missing EDI-catalog
   dependencies. The four corpus chains validate as typed two-stage pipelines;
   synthetic linear three- and four-stage XML chains also import and execute.
@@ -811,19 +821,22 @@ Update these numbers with each parity increment:
   and embedded string-parser JSON Schema compatibility issues. All 175
   dependency-complete round trips remain engine-valid. Strict local native
   preflight accepts 167/187, without claiming reference-application acceptance.
-- `.mfd` execution: all 168 attempted read-only executions pass and publish
-  165 captured outputs; one SQLite target-constraint rejection is classified as
+- `.mfd` design-preview execution: all 168 attempted read-only executions
+  complete and publish 164 captured outputs; one SQLite target-constraint rejection is classified as
   an expected output failure, twelve are dependency-blocked, and seven network
   or captured-service inputs are unavailable.
-- `.mfd` execution round trips: all 168 safe projects export, re-import,
-  validate, execute, and produce semantically identical outputs.
+- `.mfd` design-preview round trips: all 168 safe projects export, re-import,
+  validate, and execute; 167 match semantically. The unsupported text-to-numeric
+  SQL parameter contract is skipped explicitly rather than counted as a match.
 - Code generation: 175/175 dependency-complete designs lower and emit for both
   Rust and C#. Forty opt-in local samples across JSON, XML, FlexText, CSV,
   Protobuf, XLSX, XBRL, PDF, and EDI inputs also compile and execute in both generated
   backends with output equal to the interpreter; the remaining survey designs are not yet
   execution-checked after generation.
-- Behavioral references: 79/79 available deterministic outputs across the current
-  isolated manifests match exactly; these are not inferred from structural success.
+- Behavioral references: an earlier isolated manifest recorded 79 exact
+  deterministic outputs. That reference gate is not available on this machine
+  and has not been rechecked after correcting preview semantics; these results
+  are not inferred from structural success.
 - Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample
   compatibility report and `FERRULE_SURVEY_DETAILS=1` for text diagnostics.
 - All three report-producing read-only surveys accept one explicitly selected

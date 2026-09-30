@@ -70,6 +70,9 @@ cargo +nightly run -p cli -- run \
 
 CLI parameter values begin as strings and are coerced by each declaration's
 scalar type. Names are exact and duplicates are rejected before input is read.
+Saved input preview values apply only to the editor's preview and debug preview.
+Supplied run values override them; normal runs use connected defaults or require
+a host value, independently of the saved preview.
 
 Projects with additional targets can evaluate and publish only one target. This
 is useful when target paths intentionally overlap or a host needs one artifact
@@ -122,6 +125,9 @@ tracing. Inputs and outputs are bounded to 64 MiB per document, 256 MiB per
 run, and 4096 output artifacts; logical paths are limited to 4096 UTF-8 bytes
 and source names to 256. SQLite and update-existing XLSX operations remain
 filesystem APIs because they modify persistent state.
+Payload hosts can explicitly select design-time inputs with
+`.with_execution_purpose(engine::ExecutionPurpose::Preview)`; the default is a
+normal run.
 
 Generated Rust and C# libraries also expose bounded schema-shaped JSON methods
 such as `execute_json` and `GeneratedMapping.ExecuteJson`. Source-aware variants

@@ -139,8 +139,12 @@ cargo test -p mfd --test samples_survey -- --ignored --nocapture
 
 The same variables apply to `samples_execution_survey`, including its
 `survey_sample_execution` and `survey_export_reimport_execution` entry points,
-and to `codegen_samples_survey`. Version-1 JSON reports retain their existing
-schema version and add an optional `resource_configuration` member. It records
+and to `codegen_samples_survey`. Execution reports explicitly use
+`execution_purpose: design_preview` (schema version 3); export/re-import
+execution reports use the same purpose (schema version 2). Unsupported preview
+contracts withhold reference and semantic-match claims even when a partially
+imported graph can execute. Other version-1 reports add an optional
+`resource_configuration` member. It records
 selection mode, effective catalog counts, and search precedence without
 disclosing package, manifest, or catalog host paths.
 
@@ -202,15 +206,22 @@ project serialization and strict export. Named optional native inputs now retain
 their connected default expression and scalar type. The host value wins when
 the name is supplied; otherwise the default evaluates lazily. Explicit null
 does not select the default. String, integer, and decimal input tests cover
-strict warning-free export/reimport, overrides, and typed errors. Unconnected
-optional preview-only inputs currently retain the enabled preview as a lazy
-runtime default. This is a compatibility gap: the reference
+strict warning-free export/reimport, overrides, and typed errors. Required and
+connected-default inputs retain enabled preview text separately, including
+empty and malformed lexical values. The reference
 [input settings](https://www.altova.com/manual/MapForce/MapForceenterprise/mff_in_settings.html)
-define those values as design-time only. Required preview-only inputs also lose
-their host contract when lowered to constants, while connected optional defaults
-hide stored previews. Separating preview metadata from ordinary and generated
-runtime execution remains required; local roundtrip equality alone does not
-prove those workflows match.
+define those values as design-time only. `ExecutionPurpose::Preview` selects
+saved preview text only when no host value was supplied; it precedes a connected
+default. Explicit host null still wins. Ordinary runs and generated Rust/C#
+ignore preview metadata, so required inputs remain required and connected
+defaults stay lazy. The GUI preview and debugger use that explicit purpose;
+normal file and pipeline runs keep the runtime contract. Native export restores
+the preview settings, and the node editor can enable and edit them. Invalid
+preview text reports a typed error instead of becoming null or silently using
+the default. Optional preview-only inputs without a connected default and
+unnamed preview-only inputs remain unsupported; dependent bindings and
+iterations are skipped with diagnostics. Old serialized graphs that already
+lost preview provenance cannot reconstruct it.
 For the exact order-pricing graph, strict export restores the native decimal
 source rules on two XML price leaves. Anchored repeated-row reads apply those
 rules on reimport, preserving all three local CSV rows and the original typed
@@ -222,22 +233,36 @@ selection and an independent department or office filter stay connected,
 including typed optional pattern and selection inputs;
 strict reimport reproduces 8, 8, 2, and 5 XML rows respectively. Other
 patterns, shared predicate nodes, row controls, and changed field types reject.
-One joined SQLite order query reconstructs a native `SELECT` with its declared
-foreign key, `Quantity > 2` filter, and computed `Quantity * UnitPrice` column.
-Local strict export/reimport reproduces the two CSV rows and SQLite integer
-overflow behavior. The imported project retains the threshold as a literal,
-so the original host parameter name and override workflow remain outside this
-claim. Exact same-type optional query inputs now retain host overrides rather
+The guarded `concat(prefix, "%")` family also retains required String host
+inputs and their preview metadata. Two strict self-authored roundtrips cover
+normal missing-input errors, preview and host overrides, and explicit null.
+Null stays supplied; the existing concat semantics leave `%` and therefore match
+all present text rows. The local prefix-filter tutorial exports strictly again.
+Self-authored joined SQLite query tests reconstruct a native `SELECT` with a
+declared foreign key, numeric threshold filter, and computed column, including
+typed overflow behavior. The local `Tutorial/select-component.mfd` design has a
+text-declared required input compared to numeric `Quantity`; that cross-type
+query is now diagnosed and skipped rather than freezing its preview `2` as a
+runtime threshold. Its former local row match does not establish compatibility.
+Exact same-type optional query inputs retain host overrides rather
 than freezing the default. A guarded joined integer comparison exports its
 optional input through a declared native SELECT parameter; synthetic tests
 cover preview and connected defaults, overrides, nulls, and typed errors.
-Required host-only inputs also retain exact same-type query parameters,
+Required inputs also retain exact same-type query parameters and preview metadata,
 including native joined integer SELECT thresholds and title WHERE patterns.
 Nonempty source rows require a supplied value; empty sources retain lazy reads.
-Required previews, optional inputs without defaults, and cross-type dynamic
-query coercion retain their earlier limitations. If the database cannot be
+Ordinary execution requires host values for those required inputs; design
+preview may use the saved text. Optional inputs without defaults and cross-type
+dynamic query coercion remain unsupported. In particular, a text-declared
+parameter compared to a numeric column is diagnosed rather than freezing its
+preview into the runtime query. A filter whose predicate could not import also
+skips its dependent iteration instead of producing unfiltered rows.
+If the database cannot be
 resolved for the read-only foreign-key check, the exporter leaves its internal
 function and reports the native limitation.
+For supported nonempty `NOT IN` lists, an absent or null column/list operand
+excludes the row, preserving SQL WHERE behavior when equality results are
+negated. Literal NULL list entries and empty lists remain explicitly unsupported.
 Two temperature designs recover their original native numeric wiring. The
 annual PDF mapping retains all eight conversions inside its user function and
 reimports to the same 148 CSV rows. The grouped XML mapping restores 21
@@ -275,14 +300,20 @@ authoritative. Unknown versions, duplicate metadata, altered schema/layout, and
 missing layouts discard certification with a warning. Export also renders a
 certified configuration as an adjacent, uniquely named file with a relative
 reference. Self-authored relocation tests reimport it without the original
-configuration; native schema/layout/settings compatibility remains open.
+configuration. A closed native text-settings model also retains the observed
+encoding/order codes, BOM and termination flags, fixed syntax/separators,
+auto-completion flag, and all 16 ordered validation actions. These codes are
+preserved without inferring their byte-level meaning. Unknown, duplicate, or
+incomplete settings discard settings certification with a warning; engine
+validation requires the paired IDoc descriptor, schema/layout, and matching
+auto-completion flag. Native schema/layout/settings compatibility remains open.
 The explicit `format_edi::idoc::validate_native` and descriptor-aware read/write
 APIs check per-parent occurrence limits and present scalar code values under
 separate work, text, and diagnostic budgets. Ferrule accepts absent OPTIONAL
 nodes and applies LOOPMIN when present; MANDATORY nodes require at least one.
 This is an explicit validation policy, not a native acceptance result. Legacy
-layout-only APIs and CLI behavior retain their existing policy until native
-validation actions can be preserved and verified.
+layout-only APIs and CLI behavior retain their existing policy; the retained
+native validation actions are not yet applied or behaviorally verified.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
 endpoints, validated against the physical columns, and exported canonically. This
 keeps nested relational reads executable when the database omits foreign-key metadata.
