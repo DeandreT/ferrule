@@ -1,8 +1,9 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{Instance, Value};
-use mapping::ScopeConstruction;
+use ir::{Instance, ScalarType, SchemaNode, Value};
+use mapping::{FormatOptions, Graph, PathHierarchyPlan, Project, Scope, ScopeConstruction};
 
 struct TempDir(PathBuf);
 
@@ -34,6 +35,38 @@ fn scalar<'a>(instance: &'a Instance, field: &str) -> Option<&'a str> {
     match instance.field(field) {
         Some(Instance::Scalar(Value::String(value))) => Some(value),
         _ => None,
+    }
+}
+
+fn directory_paths(
+    directory: &Instance,
+    parent: &str,
+    directories: &mut Vec<String>,
+    files: &mut Vec<String>,
+) {
+    let name = scalar(directory, "name").expect("directory name");
+    let path = if parent.is_empty() {
+        name.to_string()
+    } else {
+        format!("{parent}\\{name}")
+    };
+    directories.push(path.clone());
+    for file in directory
+        .field("file")
+        .and_then(Instance::as_repeated)
+        .unwrap_or_default()
+    {
+        files.push(format!(
+            "{path}\\{}",
+            scalar(file, "name").expect("file name")
+        ));
+    }
+    for child in directory
+        .field("directory")
+        .and_then(Instance::as_repeated)
+        .unwrap_or_default()
+    {
+        directory_paths(child, &path, directories, files);
     }
 }
 
@@ -116,7 +149,10 @@ fn imports_and_executes_bounded_recursive_path_grouping() -> Result<(), Box<dyn 
     assert_eq!(scalar(&directories[1], "name"), Some("tests"));
 
     let export = dir.0.join("roundtrip.mfd");
-    assert!(mfd::export(&imported.project, &export)?.is_empty());
+    let report = mfd::preflight_export(&imported.project, &export)?;
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(&imported.project, &export, mfd::ExportProfile::NativeMfd)?;
+    assert!(!std::fs::read_to_string(&export)?.contains("library=\"ferrule\""));
     let reimported = mfd::import(&export)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(matches!(
@@ -125,5 +161,137 @@ fn imports_and_executes_bounded_recursive_path_grouping() -> Result<(), Box<dyn 
     ));
     assert!(engine::validate(&reimported.project).is_empty());
     assert_eq!(engine::run(&reimported.project, &input)?, output);
+    Ok(())
+}
+
+#[test]
+fn nested_path_collection_keeps_the_native_guard_closed() -> Result<(), Box<dyn std::error::Error>>
+{
+    let source = SchemaNode::group(
+        "Paths",
+        vec![SchemaNode::group(
+            "Nested",
+            vec![SchemaNode::scalar("Path", ScalarType::String).repeating()],
+        )],
+    );
+    let target = SchemaNode::group(
+        "directory",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String).attribute(),
+            SchemaNode::group(
+                "file",
+                vec![SchemaNode::scalar("name", ScalarType::String).attribute()],
+            )
+            .repeating(),
+            SchemaNode::recursive_group("directory", "directory").repeating(),
+        ],
+    );
+    let plan = PathHierarchyPlan::new(
+        vec!["Nested".into(), "Path".into()],
+        "\\".into(),
+        "directory".into(),
+        "file".into(),
+        "name".into(),
+    )
+    .unwrap();
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: FormatOptions {
+            xml_document: true,
+            ..FormatOptions::default()
+        },
+        target_options: FormatOptions {
+            xml_document: true,
+            ..FormatOptions::default()
+        },
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph::default(),
+        root: Scope {
+            construction: ScopeConstruction::PathHierarchy { plan },
+            ..Scope::default()
+        },
+    };
+    assert!(engine::validate(&project).is_empty());
+    let dir = TempDir::new()?;
+    let design = dir.0.join("nested.mfd");
+    let report = mfd::preflight_export(&project, &design)?;
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| { issue.feature == mfd::ExportCompatibilityFeature::RecursiveComponent })
+    );
+    assert!(matches!(
+        mfd::export_with_profile(&project, &design, mfd::ExportProfile::NativeMfd),
+        Err(mfd::MfdError::IncompatibleExport(_))
+    ));
+    assert!(!design.exists());
+    Ok(())
+}
+
+#[test]
+#[ignore = "needs the local ignored ReferenceSamples corpus"]
+fn local_path_hierarchy_native_roundtrip_keeps_directory_tree()
+-> Result<(), Box<dyn std::error::Error>> {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples")
+        .canonicalize()?;
+    let imported = mfd::import_with_options(
+        &samples.join("BuildHierarchyRecursive.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&samples),
+    )?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let source = format_xml::read(&samples.join("FileList.xml"), &imported.project.source)?;
+    let before = engine::run(&imported.project, &source)?;
+    let reference = format_xml::read(&samples.join("Directory.xml"), &imported.project.target)?;
+    let mut before_directories = Vec::new();
+    let mut before_files = Vec::new();
+    directory_paths(&before, "", &mut before_directories, &mut before_files);
+    let mut reference_directories = Vec::new();
+    let mut reference_files = Vec::new();
+    directory_paths(
+        &reference,
+        "",
+        &mut reference_directories,
+        &mut reference_files,
+    );
+    assert_eq!(before_directories.len(), 16);
+    assert_eq!(before_files.len(), 90);
+    assert_eq!(
+        before_directories.into_iter().collect::<BTreeSet<_>>(),
+        reference_directories.into_iter().collect::<BTreeSet<_>>()
+    );
+    assert_eq!(
+        before_files.into_iter().collect::<BTreeSet<_>>(),
+        reference_files.into_iter().collect::<BTreeSet<_>>()
+    );
+
+    let dir = TempDir::new()?;
+    let design = dir.0.join("native.mfd");
+    let report = mfd::preflight_export(&imported.project, &design)?;
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(&imported.project, &design, mfd::ExportProfile::NativeMfd)?;
+    let emitted = std::fs::read_to_string(&design)?;
+    assert!(emitted.contains("library=\"user\""));
+    assert!(!emitted.contains("library=\"ferrule\""));
+    let restored = mfd::import(&design)?;
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+    assert!(engine::validate(&restored.project).is_empty());
+    assert_eq!(
+        restored.project.root.construction,
+        imported.project.root.construction
+    );
+    let after = engine::run(&restored.project, &source)?;
+    let before_path = dir.0.join("before.xml");
+    let after_path = dir.0.join("after.xml");
+    format_xml::write(&before_path, &imported.project.target, &before)?;
+    format_xml::write(&after_path, &restored.project.target, &after)?;
+    assert_eq!(std::fs::read(before_path)?, std::fs::read(after_path)?);
     Ok(())
 }
