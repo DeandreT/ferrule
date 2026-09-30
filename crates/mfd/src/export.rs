@@ -36,6 +36,7 @@ mod mapped_sequence;
 mod native_adjacency_tree;
 mod native_datetime_cast;
 mod native_path_hierarchy;
+mod native_recursive_collect;
 mod native_recursive_filter;
 mod node;
 mod order_decimal_output;
@@ -367,6 +368,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         native_adjacency_tree::NativeAdjacencyTree::plan(project, &sources, &targets, path);
     let native_recursive_filter =
         native_recursive_filter::NativeRecursiveFilter::plan(project, &sources, &targets, path);
+    let native_recursive_collect =
+        native_recursive_collect::NativeRecursiveCollect::plan(project, &sources, &targets, path);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -409,6 +412,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     if let Some(plan) = &native_recursive_filter {
         blocked_nodes.insert(plan.predicate_node());
     }
+    if let Some(plan) = &native_recursive_collect {
+        blocked_nodes.extend(plan.absorbed_nodes());
+    }
     for target in &targets {
         blocked_nodes.extend(target.mapped_scope_plans.absorbed_nodes());
     }
@@ -430,6 +436,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         structural_edges: &mut structural_edges,
         warnings: &mut warnings,
         blocked_nodes: &blocked_nodes,
+        native_recursive_collect_item: native_recursive_collect
+            .as_ref()
+            .map(|plan| plan.item_node()),
         native_database_xml: &native_database_xml,
         native_datetime_casts: native_datetime_casts.calls(),
         mfd_path: path,
@@ -503,6 +512,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     let mut native_path_hierarchy_definition = None;
     let mut native_adjacency_tree_definition = None;
     let mut native_recursive_filter_definition = None;
+    let mut native_recursive_collect_definition = None;
     for (target_index, target) in targets.iter().enumerate() {
         let prior_position_contexts = position_contexts.clone();
         let native_scope = if target_index == 0 {
@@ -559,6 +569,17 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                     &mut edges,
                     &mut structural_edges,
                 )?);
+            } else if target_index == 0
+                && let Some(plan) = &native_recursive_collect
+            {
+                native_recursive_collect_definition = Some(plan.render(
+                    &mut keys,
+                    &mut uid,
+                    &node_out_key,
+                    &mut scope_components,
+                    &mut edges,
+                    &mut structural_edges,
+                )?);
             } else {
                 recursive::render_construction(recursive::RenderArgs {
                     scope: static_root,
@@ -570,6 +591,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                     components: &mut scope_components,
                     edges: &mut edges,
                 })?;
+            }
+            if target_index == 0 && native_recursive_collect.is_some() {
+                continue;
             }
             scope::connect(scope::ConnectArgs {
                 scope: static_root,
@@ -919,7 +943,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 target.path,
                 target.options,
                 path,
-                target.force_root_port,
+                target.force_root_port || (target_index == 0 && native_recursive_collect.is_some()),
                 false,
                 Some(&target.branches),
                 target.component_name,
@@ -986,6 +1010,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         out.push_str(&definition);
     }
     if let Some(definition) = native_recursive_filter_definition {
+        out.push_str(&definition);
+    }
+    if let Some(definition) = native_recursive_collect_definition {
         out.push_str(&definition);
     }
     out.push_str(user_functions.declarations());
