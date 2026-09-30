@@ -86,6 +86,9 @@ fn expected() -> Instance {
             ("NonAsciiExact", Value::Bool(false)),
             ("EmptyPercent", Value::Bool(true)),
             ("RepeatedPercent", Value::Bool(true)),
+            ("NulValue", Value::Bool(true)),
+            ("NulPattern", Value::Bool(true)),
+            ("BackslashLiteral", Value::Bool(true)),
         ])),
         field("Pad", values([
             ("FloatLength", Value::String("007".into())),

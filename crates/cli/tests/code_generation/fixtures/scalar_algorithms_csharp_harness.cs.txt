@@ -95,6 +95,9 @@ static IEnumerable<(string Group, string Name, FerruleValue Value)> ExpectedValu
     yield return ("Like", "NonAsciiExact", FerruleValue.FromBoolean(false));
     yield return ("Like", "EmptyPercent", FerruleValue.FromBoolean(true));
     yield return ("Like", "RepeatedPercent", FerruleValue.FromBoolean(true));
+    yield return ("Like", "NulValue", FerruleValue.FromBoolean(true));
+    yield return ("Like", "NulPattern", FerruleValue.FromBoolean(true));
+    yield return ("Like", "BackslashLiteral", FerruleValue.FromBoolean(true));
     yield return ("Pad", "FloatLength", Text("007"));
     yield return ("Pad", "EmojiPadding", Text("🙂🙂é"));
     yield return ("Pad", "EmojiValue", Text("🙂éé"));
