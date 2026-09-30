@@ -7,6 +7,48 @@ use mapping::{
 };
 use std::num::NonZeroU32;
 
+fn native_idoc_fixture() -> (mapping::IdocNativeConfig, SchemaNode, mapping::IdocLayout) {
+    let field = mapping::IdocNativeField::new(
+        "name",
+        "Name",
+        mapping::IdocNativeFieldType::Character,
+        NonZeroU32::new(4).unwrap(),
+        NonZeroU32::new(1).unwrap(),
+        NonZeroU32::new(12).unwrap(),
+        NonZeroU32::new(15).unwrap(),
+        Vec::new(),
+    )
+    .unwrap();
+    let segment = mapping::IdocNativeSegment::new(
+        "HEADER0001",
+        "E1HEADER",
+        false,
+        NonZeroU32::new(1).unwrap(),
+        mapping::IdocNativeStatus::Mandatory,
+        1,
+        1,
+        vec![field],
+    )
+    .unwrap();
+    let descriptor =
+        mapping::IdocNativeConfig::new("ORDERS01", vec![mapping::IdocNativeNode::Segment(segment)])
+            .unwrap();
+    let (schema, layout) = descriptor.project().unwrap();
+    (descriptor, schema, layout)
+}
+
+fn native_idoc_options(
+    descriptor: mapping::IdocNativeConfig,
+    layout: mapping::IdocLayout,
+) -> mapping::FormatOptions {
+    mapping::FormatOptions {
+        edi_kind: Some(mapping::EdiBoundaryKind::Idoc),
+        idoc: Some(layout),
+        idoc_native_config: Some(descriptor),
+        ..mapping::FormatOptions::default()
+    }
+}
+
 pub(super) fn valid_project() -> Project {
     let mut graph = Graph::default();
     graph.nodes.insert(
@@ -317,6 +359,130 @@ fn validates_idoc_output_and_structured_edi_format_exclusivity() {
         issue.location == "target format options"
             && issue.message.contains("only for mapping sources")
     }));
+}
+
+#[test]
+fn accepts_matching_native_idoc_metadata_on_primary_and_named_boundaries() {
+    let (descriptor, schema, layout) = native_idoc_fixture();
+    let options = native_idoc_options(descriptor, layout);
+    let mut project = valid_project();
+    project.source = schema.clone();
+    project.target = schema.clone();
+    project.source_options = options.clone();
+    project.target_options = options.clone();
+    project.graph.nodes.insert(
+        0,
+        Node::SourceField {
+            frame: None,
+            path: vec!["HEADER0001".into(), "name".into()],
+        },
+    );
+    project.root.bindings.clear();
+    project.root.children.push(Scope {
+        target_field: "HEADER0001".into(),
+        bindings: vec![Binding {
+            target_field: "name".into(),
+            node: 0,
+        }],
+        ..Scope::default()
+    });
+    project.extra_sources.push(NamedSource {
+        name: "reference".into(),
+        path: "reference.idoc".into(),
+        schema: schema.clone(),
+        options: options.clone(),
+        dynamic_path: None,
+    });
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "archive".into(),
+        path: Some("archive.idoc".into()),
+        schema,
+        options,
+        root: project.root.clone(),
+    });
+
+    let issues = validate(&project);
+    assert!(issues.is_empty(), "{issues:?}");
+}
+
+#[test]
+fn native_idoc_metadata_requires_dialect_layout_and_resolved_configuration() {
+    let (descriptor, schema, layout) = native_idoc_fixture();
+    let mut project = valid_project();
+    project.source = schema.clone();
+    project.source_options = native_idoc_options(descriptor.clone(), layout.clone());
+    project.source_options.edi_kind = Some(mapping::EdiBoundaryKind::X12);
+    project.target_options = native_idoc_options(descriptor.clone(), layout.clone());
+    project.target_options.edi_kind = None;
+    project.target_options.idoc = None;
+    project.extra_sources.push(NamedSource {
+        name: "reference".into(),
+        path: "reference.idoc".into(),
+        schema,
+        options: mapping::FormatOptions {
+            edi_config_reference: Some("old/parser.txt".into()),
+            ..native_idoc_options(descriptor, layout)
+        },
+        dynamic_path: None,
+    });
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "source format options"
+            && issue.message.contains("requires `edi_kind` to be `idoc`")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target format options"
+            && issue.message.contains("requires an embedded `idoc` layout")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "extra source `reference` format options"
+            && issue
+                .message
+                .contains("unresolved EDI configuration dependency")
+    }));
+}
+
+#[test]
+fn native_idoc_metadata_rejects_stale_schema_and_layout_on_named_target() {
+    let (descriptor, schema, layout) = native_idoc_fixture();
+    let other_field = mapping::IdocFieldLayout::new(
+        "name",
+        NonZeroU32::new(16).unwrap(),
+        NonZeroU32::new(19).unwrap(),
+    )
+    .unwrap();
+    let other_layout = mapping::IdocLayout::new(vec![
+        mapping::IdocSegmentLayout::new("HEADER0001", vec![other_field]).unwrap(),
+    ])
+    .unwrap();
+    let mut project = valid_project();
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "archive".into(),
+        path: Some("archive.idoc".into()),
+        schema: SchemaNode::group("stale", Vec::new()),
+        options: native_idoc_options(descriptor, other_layout),
+        root: Scope::default(),
+    });
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "extra target `archive` format options"
+            && issue.message.contains("does not match the boundary schema")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "extra target `archive` format options"
+            && issue
+                .message
+                .contains("does not match the embedded `idoc` layout")
+    }));
+
+    project.extra_targets[0].schema = schema;
+    project.extra_targets[0].options.idoc = Some(layout);
+    assert!(
+        !validate(&project)
+            .iter()
+            .any(|issue| issue.message.contains("idoc_native_config"))
+    );
 }
 
 #[test]

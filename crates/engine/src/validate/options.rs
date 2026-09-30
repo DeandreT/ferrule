@@ -1,5 +1,5 @@
 use ir::{SchemaKind, SchemaNode};
-use mapping::{FormatOptions, WsdlMessageRole, XbrlBoundaryMode};
+use mapping::{EdiBoundaryKind, FormatOptions, WsdlMessageRole, XbrlBoundaryMode};
 
 use super::ValidationIssue;
 
@@ -85,6 +85,7 @@ pub(super) fn validate_json5_options(
     if options.lenient_segments
         || options.edi_kind.is_some()
         || options.idoc.is_some()
+        || options.idoc_native_config.is_some()
         || options.swift_mt.is_some()
         || options.xml_document
         || options.wsdl.is_some()
@@ -143,6 +144,56 @@ pub(super) fn validate_structured_edi_options(
     }
 }
 
+pub(super) fn validate_idoc_native_options(
+    location: &str,
+    options: &FormatOptions,
+    schema: &SchemaNode,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let Some(descriptor) = &options.idoc_native_config else {
+        return;
+    };
+    if options.edi_kind != Some(EdiBoundaryKind::Idoc) {
+        issues.push(ValidationIssue::new(
+            location,
+            "`idoc_native_config` requires `edi_kind` to be `idoc`",
+        ));
+    }
+    if options.edi_config_reference.is_some() {
+        issues.push(ValidationIssue::new(
+            location,
+            "`idoc_native_config` cannot be combined with an unresolved EDI configuration dependency",
+        ));
+    }
+    let Some(layout) = &options.idoc else {
+        issues.push(ValidationIssue::new(
+            location,
+            "`idoc_native_config` requires an embedded `idoc` layout",
+        ));
+        return;
+    };
+    match descriptor.project() {
+        Ok((projected_schema, projected_layout)) => {
+            if &projected_schema != schema {
+                issues.push(ValidationIssue::new(
+                    location,
+                    "`idoc_native_config` does not match the boundary schema",
+                ));
+            }
+            if &projected_layout != layout {
+                issues.push(ValidationIssue::new(
+                    location,
+                    "`idoc_native_config` does not match the embedded `idoc` layout",
+                ));
+            }
+        }
+        Err(error) => issues.push(ValidationIssue::new(
+            location,
+            format!("`idoc_native_config` cannot project to an IDoc boundary: {error}"),
+        )),
+    }
+}
+
 fn has_non_idoc_format_options(options: &FormatOptions) -> bool {
     options.delimiter.is_some()
         || options.csv_quote.is_some()
@@ -169,6 +220,7 @@ fn has_non_swift_format_options(options: &FormatOptions) -> bool {
         || options.fixed_width.is_some()
         || options.flextext.is_some()
         || options.idoc.is_some()
+        || options.idoc_native_config.is_some()
         || options.pdf.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
@@ -224,6 +276,7 @@ fn has_non_external_source_format_options(options: &FormatOptions) -> bool {
         || options.fixed_width.is_some()
         || options.flextext.is_some()
         || options.idoc.is_some()
+        || options.idoc_native_config.is_some()
         || options.swift_mt.is_some()
         || options.pdf.is_some()
         || options.http_get.is_some()
@@ -283,6 +336,7 @@ fn has_non_xbrl_format_options(options: &FormatOptions) -> bool {
         || options.fixed_width.is_some()
         || options.flextext.is_some()
         || options.idoc.is_some()
+        || options.idoc_native_config.is_some()
         || options.swift_mt.is_some()
         || options.pdf.is_some()
         || options.http_get.is_some()
@@ -427,6 +481,7 @@ pub(super) fn validate_wsdl_options(
     }
     let conflict = options.edi_kind.is_some()
         || options.idoc.is_some()
+        || options.idoc_native_config.is_some()
         || options.swift_mt.is_some()
         || options.local_xml_file_set
         || options.json_document

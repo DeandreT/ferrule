@@ -4,7 +4,7 @@ use std::path::Path;
 use ir::{SchemaKind, SchemaNode};
 use mapping::{
     EdiAutocomplete, EdiBoundaryKind, EdiConfigDependency, EdifactAutocomplete, FormatOptions,
-    X12Autocomplete, X12Separators,
+    IdocNativeConfig, X12Autocomplete, X12Separators,
 };
 
 use crate::resource::ResourceResolver;
@@ -171,6 +171,7 @@ pub(super) fn read(
         .map(str::to_string)
         .collect::<Vec<_>>();
     let (embedded_idoc, embedded_swift_mt) = embedded_runtime_layout(&text, kind, &name, warnings);
+    let embedded_idoc_native = embedded_idoc_native_config(&text, kind, &name, warnings);
     let embedded_implied_decimals = embedded_implied_decimals(&text, &name, warnings);
     let embedded_lexical_formats = embedded_lexical_formats(&text, &name, warnings);
     let embedded_value_constraints = embedded_value_constraints(&text, &name, warnings);
@@ -235,6 +236,7 @@ pub(super) fn read(
                             (
                                 compiled.schema,
                                 Some(compiled.layout),
+                                compiled.native,
                                 None,
                                 Vec::new(),
                                 Vec::new(),
@@ -253,6 +255,7 @@ pub(super) fn read(
                         (
                             compiled.schema,
                             None,
+                            None,
                             Some(compiled.layout),
                             Vec::new(),
                             Vec::new(),
@@ -268,6 +271,7 @@ pub(super) fn read(
                     .map(|compiled| {
                         (
                             compiled.schema,
+                            None,
                             None,
                             None,
                             compiled.implied_decimals,
@@ -309,6 +313,7 @@ pub(super) fn read(
     let (
         mut schema,
         idoc,
+        compiled_idoc_native,
         swift_mt,
         edi_implied_decimals,
         edi_lexical_formats,
@@ -316,6 +321,7 @@ pub(super) fn read(
     ) = compiled.unwrap_or((
         fallback_schema,
         embedded_idoc,
+        None,
         embedded_swift_mt,
         embedded_implied_decimals,
         embedded_lexical_formats,
@@ -324,6 +330,43 @@ pub(super) fn read(
     if has_compiled_schema && kind == "EDIX12" {
         merge_parser_error_entries(&entry, &mut schema);
     }
+    // External configuration compilation is authoritative. Embedded Ferrule
+    // provenance is usable only when the file has no external config reference
+    // and both executable boundary halves were already retained independently.
+    let idoc_native_config = if has_compiled_schema {
+        compiled_idoc_native
+    } else if config.is_none() && kind == "EDIFIXED" && has_embedded_schema {
+        embedded_idoc_native.and_then(|descriptor| {
+            let Some(layout) = idoc.as_ref() else {
+                warnings.push(format!(
+                    "EDI component `{name}` has IDoc native configuration metadata without an \
+                     independently typed schema and layout; the metadata was ignored"
+                ));
+                return None;
+            };
+            if descriptor
+                .project()
+                .is_ok_and(|projected| projected == (schema.clone(), layout.clone()))
+            {
+                Some(descriptor)
+            } else {
+                warnings.push(format!(
+                    "EDI component `{name}` has IDoc native configuration metadata that does not \
+                     match its typed schema and embedded layout; the metadata was ignored"
+                ));
+                None
+            }
+        })
+    } else {
+        if embedded_idoc_native.is_some() {
+            warnings.push(format!(
+                "EDI component `{name}` has IDoc native configuration metadata without an \
+                 independently typed schema and layout, or alongside an external configuration; \
+                 the metadata was ignored"
+            ));
+        }
+        None
+    };
 
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
@@ -392,6 +435,7 @@ pub(super) fn read(
             x12_separators,
             x12_interchange_version,
             idoc,
+            idoc_native_config,
             swift_mt,
             ..FormatOptions::default()
         },
@@ -693,6 +737,79 @@ fn embedded_runtime_layout(
                  that does not match component dialect `{component_kind}`; the layout was ignored"
             ));
             (None, None)
+        }
+    }
+}
+
+const MAX_EMBEDDED_IDOC_DESCRIPTOR_JSON_BYTES: usize = 32 * 1024 * 1024;
+
+fn embedded_idoc_native_config(
+    text: &roxmltree::Node<'_, '_>,
+    component_kind: &str,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> Option<IdocNativeConfig> {
+    let mut descriptors = text
+        .children()
+        .filter(|node| node.has_tag_name("ferrule-idoc-native-config"));
+    let descriptor = descriptors.next()?;
+    if descriptors.next().is_some() {
+        warnings.push(format!(
+            "EDI component `{component_name}` has duplicate IDoc native configuration \
+             metadata; the metadata was ignored"
+        ));
+        return None;
+    }
+    if component_kind != "EDIFIXED"
+        || descriptor.attribute("kind") != Some("idoc")
+        || descriptor.attribute("version") != Some("1")
+        || descriptor
+            .attributes()
+            .any(|attribute| !matches!(attribute.name(), "kind" | "version"))
+    {
+        warnings.push(format!(
+            "EDI component `{component_name}` has IDoc native configuration metadata with an \
+             unsupported dialect, version, or attribute; the metadata was ignored"
+        ));
+        return None;
+    }
+    let mut children = descriptor.children();
+    let Some(body) = children.next() else {
+        warnings.push(format!(
+            "EDI component `{component_name}` has invalid IDoc native configuration metadata \
+             content; the metadata was ignored"
+        ));
+        return None;
+    };
+    if children.next().is_some() {
+        warnings.push(format!(
+            "EDI component `{component_name}` has mixed IDoc native configuration metadata \
+             content; the metadata was ignored"
+        ));
+        return None;
+    }
+    let Some(contents) = body.text().filter(|_| body.is_text()) else {
+        warnings.push(format!(
+            "EDI component `{component_name}` has non-text IDoc native configuration metadata; \
+             the metadata was ignored"
+        ));
+        return None;
+    };
+    if contents.len() > MAX_EMBEDDED_IDOC_DESCRIPTOR_JSON_BYTES {
+        warnings.push(format!(
+            "EDI component `{component_name}` has oversized IDoc native configuration metadata; \
+             the metadata was ignored"
+        ));
+        return None;
+    }
+    match serde_json::from_str::<IdocNativeConfig>(contents) {
+        Ok(descriptor) => Some(descriptor),
+        Err(error) => {
+            warnings.push(format!(
+                "EDI component `{component_name}` has invalid IDoc native configuration \
+                 metadata ({error}); the metadata was ignored"
+            ));
+            None
         }
     }
 }

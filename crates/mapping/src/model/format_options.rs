@@ -4,9 +4,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint,
-    ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout, NodeId,
-    PdfLayout, ProtobufOptions, SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions,
-    X12Separators, XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
+    ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout,
+    IdocNativeConfig, NodeId, PdfLayout, ProtobufOptions, SwiftMtLayout, TabularBoundaryKind,
+    WsdlMessageOptions, X12Separators, XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -288,9 +288,13 @@ pub struct FormatOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub x12_interchange_version: Option<String>,
     /// SAP IDoc: embedded fixed-record layout compiled from the external
-    /// parser configuration. This mode is input-only.
+    /// parser configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idoc: Option<IdocLayout>,
+    /// Certified native IDoc configuration metadata. Its projected schema and
+    /// layout must exactly match this boundary's executable schema and layout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idoc_native_config: Option<IdocNativeConfig>,
     /// SWIFT MT: embedded selected-message field grammar. This mode is
     /// input-only and takes precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]

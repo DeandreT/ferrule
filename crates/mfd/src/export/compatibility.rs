@@ -36,6 +36,7 @@ pub enum ExportCompatibilityFeature {
     RecursiveComponent,
     EdiSchema,
     EdiLayout,
+    EdiConfigDescriptor,
     EdiLexicalFormats,
     EdiImpliedDecimals,
     EdiValueConstraints,
@@ -212,6 +213,10 @@ fn element_dependency(name: &str) -> Option<(ExportCompatibilityFeature, &str)> 
         "ferrule-layout" => (
             EdiLayout,
             "the embedded IDoc or SWIFT layout uses Ferrule's layout format",
+        ),
+        "ferrule-idoc-native-config" => (
+            EdiConfigDescriptor,
+            "the certified IDoc configuration is retained in Ferrule metadata, not emitted as a native configuration file",
         ),
         "ferrule-lexical-formats" => (
             EdiLexicalFormats,

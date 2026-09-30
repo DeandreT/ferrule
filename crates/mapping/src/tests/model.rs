@@ -1,5 +1,6 @@
 use super::*;
 use ir::ScalarType;
+use std::num::NonZeroU32;
 
 #[test]
 fn failure_rules_roundtrip_in_declaration_order() {
@@ -184,6 +185,7 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
     assert!(defaults.fixed_width.is_none());
     assert!(defaults.flextext.is_none());
     assert!(defaults.idoc.is_none());
+    assert!(defaults.idoc_native_config.is_none());
     assert!(defaults.swift_mt.is_none());
     assert!(defaults.pdf.is_none());
     assert!(defaults.http_get.is_none());
@@ -203,6 +205,55 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
     assert!(encoded.contains("\"json_lines\":true"));
     let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
     assert!(decoded.json_lines);
+}
+
+#[test]
+fn idoc_native_config_format_option_roundtrips_and_defaults_off() {
+    let field = IdocNativeField::new(
+        "name",
+        "Name",
+        IdocNativeFieldType::Character,
+        NonZeroU32::new(4).unwrap(),
+        NonZeroU32::new(1).unwrap(),
+        NonZeroU32::new(12).unwrap(),
+        NonZeroU32::new(15).unwrap(),
+        vec![IdocNativeCode::new("A", "Active").unwrap()],
+    )
+    .unwrap();
+    let descriptor = IdocNativeConfig::new(
+        "ORDERS01",
+        vec![IdocNativeNode::Segment(
+            IdocNativeSegment::new(
+                "HEADER0001",
+                "E1HEADER",
+                true,
+                NonZeroU32::new(1).unwrap(),
+                IdocNativeStatus::Mandatory,
+                1,
+                9_999_999_999,
+                vec![field],
+            )
+            .unwrap(),
+        )],
+    )
+    .unwrap();
+    let options = FormatOptions {
+        edi_kind: Some(EdiBoundaryKind::Idoc),
+        idoc: Some(descriptor.project().unwrap().1),
+        idoc_native_config: Some(descriptor),
+        ..FormatOptions::default()
+    };
+    let encoded = serde_json::to_string(&options).unwrap();
+    let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(decoded, options);
+
+    let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
+    assert!(defaults.idoc_native_config.is_none());
+    assert!(
+        !serde_json::to_string(&defaults)
+            .unwrap()
+            .contains("idoc_native_config")
+    );
 }
 
 #[test]
