@@ -5,7 +5,7 @@ use mapping::{FunctionId, FunctionParameterId, Node, NodeId, UserFunction};
 
 use crate::EngineError;
 use crate::context::{runtime_field, runtime_parameter_field};
-use crate::debug::{DebugHook, after_function_node_value};
+use crate::debug::{DebugHook, after_function_node_input, after_function_node_value};
 use crate::source_iteration::PositionFrame;
 use crate::trace::{TraceSink, record_function_node_input_value, record_function_node_value};
 
@@ -344,6 +344,15 @@ fn evaluate_body_input(
         trace.positions,
         &value,
     );
+    after_function_node_input(
+        trace.debug_hook,
+        function_id,
+        consumer,
+        input,
+        input_index,
+        &value,
+        trace.positions,
+    )?;
     Ok(value)
 }
 

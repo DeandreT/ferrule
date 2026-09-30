@@ -215,6 +215,22 @@ pub struct PendingNodeInput {
     pub source: DebugSourceContext,
 }
 
+/// One value delivered to a visible input of a reusable-function body node.
+/// Node IDs are local to `function`; the input index is zero-based. Positions
+/// identify the caller, and function bodies have no source frames.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingFunctionNodeInput {
+    pub function: FunctionId,
+    pub consumer: NodeId,
+    pub input: NodeId,
+    pub input_index: usize,
+    pub value: TraceValue,
+    pub positions: Vec<TracePosition>,
+    pub omitted_outer_positions: usize,
+    pub position_paths_truncated: bool,
+    pub source: DebugSourceContext,
+}
+
 /// The host decides when to resume a pending write or node evaluation. It may
 /// block inside a callback to implement stepping or breakpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -252,6 +268,13 @@ pub trait DebugHook {
         true
     }
 
+    /// Return true to inspect values delivered to reusable-function body
+    /// inputs. This is separate from main-graph input hooks so local node IDs
+    /// cannot be mistaken for main-graph IDs.
+    fn wants_function_node_inputs(&self) -> bool {
+        false
+    }
+
     /// Called after a successful graph evaluation, including filters and
     /// pre-target rules. The host may block here or cancel the run.
     fn after_node_value(&self, _node: &PendingNodeValue) -> DebugDecision {
@@ -267,6 +290,12 @@ pub trait DebugHook {
     /// Called after a successful value reaches a recorded consumer input and
     /// before the consumer finishes. Untaken inputs do not call this hook.
     fn after_node_input(&self, _input: &PendingNodeInput) -> DebugDecision {
+        DebugDecision::Resume
+    }
+
+    /// Called after a value reaches a function-body input and before the
+    /// consumer continues. Untaken conditional inputs do not call this hook.
+    fn after_function_node_input(&self, _input: &PendingFunctionNodeInput) -> DebugDecision {
         DebugDecision::Resume
     }
 }
@@ -338,6 +367,36 @@ pub(crate) fn after_node_input(
         source: delivered.source,
     };
     match hook.after_node_input(&snapshot) {
+        DebugDecision::Resume => Ok(()),
+        DebugDecision::Cancel => Err(EngineError::DebugCancelled),
+    }
+}
+
+pub(crate) fn after_function_node_input(
+    hook: Option<&dyn DebugHook>,
+    function: FunctionId,
+    consumer: NodeId,
+    input: NodeId,
+    input_index: usize,
+    value: &Value,
+    caller_positions: &[PositionFrame],
+) -> Result<(), EngineError> {
+    let Some(hook) = hook.filter(|hook| hook.wants_function_node_inputs()) else {
+        return Ok(());
+    };
+    let delivered = node_value_snapshot(input, value, caller_positions, &[]);
+    let snapshot = PendingFunctionNodeInput {
+        function,
+        consumer,
+        input: delivered.node,
+        input_index,
+        value: delivered.value,
+        positions: delivered.positions,
+        omitted_outer_positions: delivered.omitted_outer_positions,
+        position_paths_truncated: delivered.position_paths_truncated,
+        source: delivered.source,
+    };
+    match hook.after_function_node_input(&snapshot) {
         DebugDecision::Resume => Ok(()),
         DebugDecision::Cancel => Err(EngineError::DebugCancelled),
     }

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use engine::{
-    DebugDecision, EngineError, PendingFunctionNodeValue, PendingNodeInput, PendingNodeValue,
-    PendingTargetWrite,
+    DebugDecision, EngineError, PendingFunctionNodeInput, PendingFunctionNodeValue,
+    PendingNodeInput, PendingNodeValue, PendingTargetWrite,
 };
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
@@ -300,6 +300,95 @@ fn stage_input_hook_alone_cancels_recorded_pin_before_publication() -> anyhow::R
     assert_eq!(
         *seen.borrow(),
         ["prepare:1:A", "prepare:2:!", "finish:1:B", "finish:2:!"]
+    );
+    assert_old_outputs(&outputs)?;
+    Ok(())
+}
+
+#[test]
+fn stage_function_input_hook_qualifies_pins_and_cancels_publication() -> anyhow::Result<()> {
+    let directory = TempDir::new()?;
+    let (pipeline_path, inputs, outputs) = prepare(&directory)?;
+    let mut pipeline: Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    let function_id = FunctionId::new(7);
+    for stage in &mut pipeline.stages {
+        stage.project.user_functions.insert(
+            function_id,
+            UserFunction {
+                library: "local".into(),
+                name: "append".into(),
+                description: None,
+                parameters: Vec::new(),
+                output_name: "result".into(),
+                output_type: ScalarType::String,
+                body: Graph {
+                    nodes: [
+                        (
+                            0,
+                            Node::Const {
+                                value: Value::String(stage.id.clone()),
+                            },
+                        ),
+                        (
+                            1,
+                            Node::Const {
+                                value: Value::String("!".into()),
+                            },
+                        ),
+                        (
+                            2,
+                            Node::Call {
+                                function: "concat".into(),
+                                args: vec![0, 1],
+                            },
+                        ),
+                    ]
+                    .into(),
+                },
+                output: 2,
+            },
+        );
+        stage.project.graph.nodes.insert(
+            2,
+            Node::UserFunctionCall {
+                function: function_id,
+                args: Vec::new(),
+            },
+        );
+        stage.project.root.bindings[0].node = 2;
+    }
+    std::fs::write(&pipeline_path, serde_json::to_vec(&pipeline)?)?;
+    let seen = RefCell::new(Vec::<String>::new());
+    let hook = |stage: &str, input: &PendingFunctionNodeInput| {
+        assert_eq!(input.function, function_id);
+        assert_eq!(input.consumer, 2);
+        assert!(input.source.frames.is_empty());
+        seen.borrow_mut().push(format!(
+            "{stage}:{}:{}",
+            input.input_index + 1,
+            input.value.preview
+        ));
+        if stage == "finish" && input.input_index == 1 {
+            DebugDecision::Cancel
+        } else {
+            DebugDecision::Resume
+        }
+    };
+    let options = cli::PipelineRunOptions::default().with_stage_function_input_debug_hook(&hook);
+    let error = cli::run_pipeline_file_with_options(&pipeline_path, &inputs, &outputs, &options)
+        .unwrap_err();
+    assert!(error.chain().any(|cause| matches!(
+        cause.downcast_ref::<EngineError>(),
+        Some(EngineError::DebugCancelled)
+    )));
+    assert_eq!(
+        *seen.borrow(),
+        [
+            "prepare:1:prepare",
+            "prepare:2:!",
+            "finish:1:finish",
+            "finish:2:!"
+        ]
     );
     assert_old_outputs(&outputs)?;
     Ok(())

@@ -42,6 +42,15 @@ pub(super) fn show_breakpoint_input_condition(
     });
     if condition.enabled {
         ui.horizontal_wrapped(|ui| {
+            ui.label("Function # (blank = main graph)");
+            ui.add(
+                egui::TextEdit::singleline(&mut condition.function_text)
+                    .char_limit(20)
+                    .desired_width(110.0)
+                    .hint_text("Optional function ID"),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
             ui.checkbox(
                 &mut condition.value.enabled,
                 "Only when delivered value equals",
@@ -67,7 +76,7 @@ pub(super) fn show_breakpoint_input_condition(
                 }
             }
         });
-        ui.weak("Input numbers are 1-based. This pauses only on graph inputs currently recorded in Node History; untaken branches, target bindings, and scope-control edges do not match. Step advances to the next recorded input delivery.");
+        ui.weak("Input numbers are 1-based. This pauses only on graph or function-body inputs currently recorded in Node History; untaken branches, target bindings, and scope-control edges do not match. Step advances to the next recorded input delivery.");
     }
     match condition.compile() {
         Ok(_) => true,
@@ -307,6 +316,7 @@ enum PreviewWorkerEvent {
     PausedNode(Box<engine::PendingNodeValue>),
     PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
+    PausedFunctionInput(Box<engine::PendingFunctionNodeInput>),
     Finished(
         Result<cli::PayloadRunOutcome, PreviewRunError>,
         crate::run_report::TraceReport,
@@ -325,6 +335,7 @@ pub(super) enum PreviewPhase {
     PausedNode(Box<engine::PendingNodeValue>),
     PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
+    PausedFunctionInput(Box<engine::PendingFunctionNodeInput>),
     Stopping,
 }
 
@@ -395,6 +406,14 @@ impl engine::DebugHook for PreviewDebugHook {
 
     fn wants_node_inputs(&self) -> bool {
         self.input_condition.is_some()
+            || self.pause_next_input.get()
+            || self.cancelled.load(Ordering::Acquire)
+    }
+
+    fn wants_function_node_inputs(&self) -> bool {
+        self.input_condition
+            .as_ref()
+            .is_some_and(DebugInputCondition::targets_function)
             || self.pause_next_input.get()
             || self.cancelled.load(Ordering::Acquire)
     }
@@ -665,6 +684,68 @@ impl engine::DebugHook for PreviewDebugHook {
             }
         }
     }
+
+    fn after_function_node_input(
+        &self,
+        input: &engine::PendingFunctionNodeInput,
+    ) -> engine::DebugDecision {
+        if self.cancelled.load(Ordering::Acquire) {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            match self.commands.try_recv() {
+                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
+                    self.pause_each_write.set(true);
+                }
+                Ok(PreviewCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
+                }
+                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Err(TryRecvError::Empty) => break,
+            }
+        }
+        let matches_pin = self
+            .input_condition
+            .as_ref()
+            .is_some_and(|condition| condition.matches_function(input));
+        if !self.pause_next_input.replace(false) && !matches_pin {
+            return engine::DebugDecision::Resume;
+        }
+        if self
+            .events
+            .send(PreviewWorkerEvent::PausedFunctionInput(Box::new(
+                input.clone(),
+            )))
+            .is_err()
+        {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            if self.cancelled.load(Ordering::Acquire) {
+                return engine::DebugDecision::Cancel;
+            }
+            match self.commands.recv_timeout(Duration::from_millis(100)) {
+                Ok(PreviewCommand::Step) => {
+                    self.pause_next_input.set(true);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(PreviewCommand::Continue) => {
+                    self.pause_next_input.set(false);
+                    self.pause_next_node.set(false);
+                    self.pause_each_write.set(false);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+            }
+        }
+    }
 }
 
 impl FerruleApp {
@@ -893,7 +974,8 @@ impl FerruleApp {
                         PreviewPhase::Paused(_)
                         | PreviewPhase::PausedNode(_)
                         | PreviewPhase::PausedFunctionNode(_)
-                        | PreviewPhase::PausedInput(_),
+                        | PreviewPhase::PausedInput(_)
+                        | PreviewPhase::PausedFunctionInput(_),
                     ) => {
                         if ui.button("Step").clicked() {
                             action = Some(PreviewAction::Step);
@@ -1139,6 +1221,7 @@ impl FerruleApp {
                         | PreviewPhase::PausedNode(_)
                         | PreviewPhase::PausedFunctionNode(_)
                         | PreviewPhase::PausedInput(_)
+                        | PreviewPhase::PausedFunctionInput(_)
                 ) {
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }
@@ -1193,6 +1276,20 @@ impl FerruleApp {
                         input.input_index + 1
                     );
                     pending.phase = PreviewPhase::PausedInput(input);
+                }
+                ctx.request_repaint();
+            }
+            PreviewWorkerEvent::PausedFunctionInput(input) => {
+                if matches!(pending.phase, PreviewPhase::Stopping) {
+                    pending.command(PreviewCommand::Cancel);
+                } else {
+                    self.status = format!(
+                        "paused at function #{} node #{} input #{}",
+                        input.function.get(),
+                        input.consumer,
+                        input.input_index + 1
+                    );
+                    pending.phase = PreviewPhase::PausedFunctionInput(input);
                 }
                 ctx.request_repaint();
             }
@@ -1477,6 +1574,7 @@ pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, deb
         PreviewPhase::PausedNode(value) => show_live_node_debug_state(ui, value),
         PreviewPhase::PausedFunctionNode(value) => show_live_function_node_debug_state(ui, value),
         PreviewPhase::PausedInput(input) => show_live_input_debug_state(ui, input),
+        PreviewPhase::PausedFunctionInput(input) => show_live_function_input_debug_state(ui, input),
     }
 }
 
@@ -1541,6 +1639,32 @@ pub(super) fn show_live_input_debug_state(ui: &mut egui::Ui, input: &engine::Pen
         &input.source,
     );
     ui.weak("Step continues to the next recorded input delivery. Cancel stops before output publication.");
+}
+
+pub(super) fn show_live_function_input_debug_state(
+    ui: &mut egui::Ui,
+    input: &engine::PendingFunctionNodeInput,
+) {
+    ui.strong(format!(
+        "Paused after function #{} node #{} reached node #{} input #{}",
+        input.function.get(),
+        input.input,
+        input.consumer,
+        input.input_index + 1
+    ));
+    let suffix = if input.value.truncated { "…" } else { "" };
+    ui.monospace(format!(
+        "Delivered: {}: {}{suffix}",
+        input.value.value_type, input.value.preview
+    ));
+    show_live_expression_context(
+        ui,
+        &input.positions,
+        input.omitted_outer_positions,
+        input.position_paths_truncated,
+        &input.source,
+    );
+    ui.weak("Positions identify the caller. Reusable function bodies have no source frames. Step continues to the next recorded input delivery; Cancel stops before output publication.");
 }
 
 fn show_live_expression_context(

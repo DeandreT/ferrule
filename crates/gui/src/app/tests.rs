@@ -171,6 +171,30 @@ fn two_stage_function_pipeline_app(test_name: &str) -> anyhow::Result<(FerruleAp
     Ok((app, pipeline_path))
 }
 
+fn two_stage_function_input_pipeline_app(test_name: &str) -> anyhow::Result<(FerruleApp, PathBuf)> {
+    let pipeline_path = temporary_project_path(test_name);
+    two_stage_pipeline_fixture(&pipeline_path)?;
+    let mut pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    for stage in &mut pipeline.stages {
+        let value = if stage.id == "prepare" { "A" } else { "B" };
+        attach_input_function(&mut stage.project, value);
+        stage.project.root.bindings[0].node = 2;
+    }
+    std::fs::write(&pipeline_path, serde_json::to_vec_pretty(&pipeline)?)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    std::fs::write(directory.join("orders.json"), r#"{"Value":"source"}"#)?;
+    std::fs::write(directory.join("prepare.json"), "old prepare")?;
+    std::fs::write(directory.join("finish.json"), "old finish")?;
+    let mut app = FerruleApp::default();
+    app.load_pipeline_for_run(&pipeline_path);
+    let draft = app.pipeline_run_draft.as_mut().expect("pipeline opens");
+    assert!(draft.issues.is_empty(), "{:?}", draft.issues);
+    draft.inputs[0].path = "orders.json".into();
+    draft.outputs[0].path = "prepare.json".into();
+    draft.outputs[1].path = "finish.json".into();
+    Ok((app, pipeline_path))
+}
+
 #[test]
 fn pipeline_runner_uses_unambiguous_stored_host_paths() -> anyhow::Result<()> {
     let pipeline_path = temporary_project_path("pipeline-stored-host-paths");
@@ -336,6 +360,29 @@ fn wait_for_pipeline_input_pause(app: &mut FerruleApp) -> (String, engine::Pendi
     }
 }
 
+fn wait_for_pipeline_function_input_pause(
+    app: &mut FerruleApp,
+) -> (String, engine::PendingFunctionNodeInput) {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_pipeline_run(&context);
+        match app
+            .pending_pipeline_run
+            .as_ref()
+            .map(|pending| &pending.phase)
+        {
+            Some(pipeline_ui::PipelineRunPhase::PausedFunctionInput(stage, input)) => {
+                return (stage.clone(), (**input).clone());
+            }
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug pipeline did not pause at a function input: {other:?}"),
+        }
+    }
+}
+
 fn named_target(name: &str) -> NamedTarget {
     NamedTarget {
         name: name.to_owned(),
@@ -383,6 +430,28 @@ fn attach_no_arg_function(project: &mut mapping::Project, value: &str) {
             args: Vec::new(),
         },
     );
+}
+
+fn attach_input_function(project: &mut mapping::Project, value: &str) {
+    attach_no_arg_function(project, value);
+    let definition = project
+        .user_functions
+        .get_mut(&FunctionId::new(7))
+        .expect("function exists");
+    definition.body.nodes.insert(
+        1,
+        Node::Const {
+            value: ir::Value::String("!".into()),
+        },
+    );
+    definition.body.nodes.insert(
+        2,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![0, 1],
+        },
+    );
+    definition.output = 2;
 }
 
 #[test]
@@ -1610,6 +1679,21 @@ fn wait_for_file_input_pause(app: &mut FerruleApp) -> engine::PendingNodeInput {
     }
 }
 
+fn wait_for_file_function_input_pause(app: &mut FerruleApp) -> engine::PendingFunctionNodeInput {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_file_run(&context);
+        match app.pending_file_run.as_ref().map(|pending| &pending.phase) {
+            Some(run_ui::FileRunPhase::PausedFunctionInput(input)) => return (**input).clone(),
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug file run did not pause at a function input: {other:?}"),
+        }
+    }
+}
+
 fn wait_for_debug_pause(app: &mut FerruleApp) -> engine::PendingTargetWrite {
     let context = egui::Context::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -1666,6 +1750,21 @@ fn wait_for_preview_input_pause(app: &mut FerruleApp) -> engine::PendingNodeInpu
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
             other => panic!("debug preview did not pause at an input before deadline: {other:?}"),
+        }
+    }
+}
+
+fn wait_for_preview_function_input_pause(app: &mut FerruleApp) -> engine::PendingFunctionNodeInput {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_preview(&context);
+        match app.pending_preview.as_ref().map(|pending| &pending.phase) {
+            Some(preview_ui::PreviewPhase::PausedFunctionInput(input)) => return (**input).clone(),
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug preview did not pause at a function input: {other:?}"),
         }
     }
 }
@@ -2822,6 +2921,147 @@ fn function_expression_breakpoint_selects_pipeline_stage_and_steps_before_public
     let (stage, next) = wait_for_pipeline_node_pause(&mut app);
     assert_eq!(stage, "finish");
     assert_eq!(next.node, 2);
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
+    wait_for_pipeline_completion(&mut app);
+    assert_eq!(app.status, "pipeline cancelled");
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn function_input_breakpoint_qualifies_preview_pin_and_steps_in_delivery_order() {
+    let mut app = two_field_debug_preview_app();
+    attach_input_function(&mut app.project, "A");
+    app.project.graph.nodes.insert(
+        2,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![0, 1],
+        },
+    );
+    app.project.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: FunctionId::new(7),
+            args: Vec::new(),
+        },
+    );
+    app.project.root.bindings[0].node = 2;
+    app.project.root.bindings[1].node = 3;
+    app.preview_input_condition.enabled = true;
+    app.preview_input_condition.consumer_text = "2".into();
+    app.preview_input_condition.function_text = "7".into();
+    app.preview_input_condition.input_number_text = "1".into();
+    app.preview_input_condition.value.enabled = true;
+    app.preview_input_condition.value.text = "A".into();
+    let draft = app.preview_draft.clone();
+    app.execute_debug_preview();
+    let first = wait_for_preview_function_input_pause(&mut app);
+    assert_eq!(
+        (first.function, first.consumer, first.input_index),
+        (FunctionId::new(7), 2, 0)
+    );
+    assert_eq!(first.value.preview, "A");
+    assert!(first.source.frames.is_empty());
+    app.preview_command(preview_ui::PreviewCommand::Step);
+    let next = wait_for_preview_function_input_pause(&mut app);
+    assert_eq!(
+        (next.input, next.input_index, next.value.preview.as_str()),
+        (1, 1, "!")
+    );
+    app.preview_command(preview_ui::PreviewCommand::Cancel);
+    wait_for_preview_completion(&mut app);
+    assert_eq!(app.status, "preview cancelled");
+    assert!(app.run_report.is_none());
+
+    app.preview_draft = draft;
+    app.execute_debug_preview();
+    let resumed = wait_for_preview_function_input_pause(&mut app);
+    assert_eq!(resumed.input_index, 0);
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert!(app.run_report.is_some());
+}
+
+#[test]
+fn function_input_breakpoint_cancels_saved_run_before_publication() {
+    let (mut app, project_path, output) = two_field_file_run_app("function-input-file");
+    attach_input_function(&mut app.project, "A");
+    app.project.root.bindings[1].node = 2;
+    app.save_document_to(&project_path).unwrap();
+    app.file_run_input_condition.enabled = true;
+    app.file_run_input_condition.consumer_text = "2".into();
+    app.file_run_input_condition.function_text = "7".into();
+    app.file_run_input_condition.input_number_text = "2".into();
+    app.file_run_input_condition.value.enabled = true;
+    app.file_run_input_condition.value.text = "!".into();
+    app.debug_run(&egui::Context::default());
+    let paused = wait_for_file_function_input_pause(&mut app);
+    assert_eq!(
+        (paused.function, paused.consumer, paused.input_index),
+        (FunctionId::new(7), 2, 1)
+    );
+    assert_eq!(paused.value.preview, "!");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    app.file_run_command(run_ui::FileRunCommand::Cancel);
+    wait_for_file_run_completion(&mut app);
+    assert_eq!(app.status, "run cancelled");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn function_input_breakpoint_filters_pipeline_stage_and_step_overrides_it() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) =
+        two_stage_function_input_pipeline_app("function-input-pipeline")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.pipeline_run_input_condition.enabled = true;
+    app.pipeline_run_input_condition.consumer_text = "2".into();
+    app.pipeline_run_input_condition.function_text = "7".into();
+    app.pipeline_run_input_condition.input_number_text = "1".into();
+    app.pipeline_run_input_stage = Some("finish".into());
+    app.start_pipeline_debug_run();
+    let (stage, first) = wait_for_pipeline_function_input_pause(&mut app);
+    assert_eq!(stage, "finish");
+    assert_eq!(
+        (first.function, first.consumer, first.input_index),
+        (FunctionId::new(7), 2, 0)
+    );
+    assert_eq!(first.value.preview, "B");
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
+    wait_for_pipeline_completion(&mut app);
+    assert_eq!(app.status, "pipeline cancelled");
+
+    app.pipeline_run_input_condition.input_number_text = "2".into();
+    app.pipeline_run_input_stage = Some("prepare".into());
+    app.start_pipeline_debug_run();
+    let (stage, first) = wait_for_pipeline_function_input_pause(&mut app);
+    assert_eq!(
+        (
+            stage.as_str(),
+            first.input_index,
+            first.value.preview.as_str()
+        ),
+        ("prepare", 1, "!")
+    );
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Step);
+    let (stage, next) = wait_for_pipeline_function_input_pause(&mut app);
+    assert_eq!(
+        (
+            stage.as_str(),
+            next.input_index,
+            next.value.preview.as_str()
+        ),
+        ("finish", 0, "B")
+    );
     app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Cancel);
     wait_for_pipeline_completion(&mut app);
     assert_eq!(app.status, "pipeline cancelled");
