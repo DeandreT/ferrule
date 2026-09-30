@@ -139,6 +139,68 @@ fn unconnected_input_parameters_become_typed_host_inputs_and_roundtrip()
 }
 
 #[test]
+fn optional_input_without_preview_or_default_skips_scalar_and_rejects_executable_import()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new()?;
+    let design = write_design(&directory.0)?;
+    let text = std::fs::read_to_string(&design)?.replace(
+        "name=\"correlation_id\"/>",
+        "name=\"correlation_id\" optional=\"1\"/>",
+    );
+    std::fs::write(&design, text)?;
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("optional input parameter `correlation_id`")
+            && warning.contains("omitted-input semantics are unsupported")
+            && warning.contains("dependent value skipped")
+    }));
+    assert!(!imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. }
+            if name == "correlation_id"
+    )));
+    assert!(imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::RuntimeParameter { name, ty: ScalarType::Int, .. }
+            if name == "control_number"
+    )));
+    assert!(engine::validate(&imported.project).is_empty());
+    assert!(matches!(
+        mfd::import_with_profile(
+            &design,
+            &mfd::ImportOptions::default(),
+            mfd::ImportProfile::Executable,
+        ),
+        Err(mfd::MfdError::IncompatibleImport(_))
+    ));
+
+    let source = format_xml::from_str(
+        "<Input><Dummy>source</Dummy></Input>",
+        &imported.project.source,
+    )?;
+    let mut hosts = RuntimeParameters::new();
+    hosts.insert("control_number", Value::Int(7001))?;
+    let absent = ExecutionContext::new(&design).with_parameters(&hosts);
+    let absent_output = engine::run_with_context(&imported.project, &source, &absent)?;
+    hosts.insert("correlation_id", Value::String("ignored".into()))?;
+    let supplied = ExecutionContext::new(&design).with_parameters(&hosts);
+    let supplied_output = engine::run_with_context(&imported.project, &source, &supplied)?;
+    assert_eq!(absent_output, supplied_output);
+    assert_eq!(
+        supplied_output.field("Echo").and_then(Instance::as_scalar),
+        Some(&Value::String("source".into()))
+    );
+    assert_eq!(
+        supplied_output
+            .field("Control")
+            .and_then(Instance::as_scalar),
+        Some(&Value::Int(7001))
+    );
+    assert!(supplied_output.field("Correlation").is_none());
+    Ok(())
+}
+
+#[test]
 fn required_host_input_graph_stays_bounded_across_repeated_native_roundtrips()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory = TempDir::new()?;

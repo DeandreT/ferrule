@@ -450,11 +450,15 @@ impl GraphBuilder<'_> {
             if connected_feed.is_none()
                 && let Some(parameter) = &input_parameter
                 && parameter.optional
-                && preview.is_some()
             {
+                let preview_note = if preview.is_some() {
+                    "; design-time preview is not a runtime default"
+                } else {
+                    ""
+                };
                 self.warnings.push(format!(
-                    "optional input parameter `{}` has a design-time preview value but no connected runtime default; runtime omission semantics are unsupported; dependent value skipped",
-                    parameter.name
+                    "optional input parameter `{}` has no connected runtime default{preview_note}; omitted-input semantics are unsupported; dependent value skipped",
+                    parameter.name,
                 ));
                 return None;
             }
