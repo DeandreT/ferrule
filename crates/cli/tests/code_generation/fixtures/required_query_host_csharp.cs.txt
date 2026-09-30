@@ -1,0 +1,81 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var source = SourceRows();
+var missing = ExpectError(() => GeneratedMapping.Execute(source), FerruleRuntimeError.MissingRuntimeParameter);
+Assert(missing.RuntimeParameter == "Minimum");
+AssertNames(GeneratedMapping.Execute(new FerruleRepeated(Array.Empty<FerruleInstance>())), Array.Empty<string>());
+
+AssertNames(ExecuteWith(Value: FerruleValue.FromInt64(3)), new[] { "Bea", "Cal" });
+AssertNames(ExecuteWith(Value: FerruleValue.FromString(" 5 ")), new[] { "Cal" });
+AssertNames(ExecuteWith(Value: FerruleValue.Null), Array.Empty<string>());
+
+var wrong = ExpectError(
+    () => ExecuteWith(Value: FerruleValue.FromBoolean(true)),
+    FerruleRuntimeError.RuntimeParameterType);
+Assert(wrong.RuntimeParameter == "Minimum");
+Assert(wrong.ExpectedScalarType == FerruleScalarType.Int64);
+Assert(wrong.FoundKind == FerruleValueKind.Bool);
+
+FerruleInstance ExecuteWith(FerruleValue Value)
+{
+    var parameters = new FerruleRuntimeParameters(new[]
+    {
+        KeyValuePair.Create("Minimum", Value),
+    });
+    var context = FerruleExecutionContext.WithParameters("required-query.mfd", parameters);
+    return GeneratedMapping.Execute(source, context);
+}
+
+static FerruleRepeated SourceRows() => new(new FerruleInstance[]
+{
+    SourceRow("Ada", 2),
+    SourceRow("Bea", 4),
+    SourceRow("Cal", 6),
+});
+
+static FerruleGroup SourceRow(string name, long score) => new(new FerruleField[]
+{
+    new("Name", new FerruleScalar(FerruleValue.FromString(name))),
+    new("Score", new FerruleScalar(FerruleValue.FromInt64(score))),
+});
+
+static void AssertNames(FerruleInstance result, string[] expected)
+{
+    if (result is not FerruleRepeated rows || rows.Items.Count != expected.Length)
+    {
+        throw new InvalidOperationException("Generated query row count differs from the interpreter.");
+    }
+    for (var index = 0; index < expected.Length; index++)
+    {
+        if (rows.Items[index] is not FerruleGroup row ||
+            row.Fields.Count != 1 ||
+            row.Fields[0].Name != "Name" ||
+            row.Fields[0].Value is not FerruleScalar value ||
+            value.Value != FerruleValue.FromString(expected[index]))
+        {
+            throw new InvalidOperationException("Generated query row differs from the interpreter.");
+        }
+    }
+}
+
+static FerruleRuntimeException ExpectError(Func<FerruleInstance> action, FerruleRuntimeError expected)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException error) when (error.Error == expected)
+    {
+        return error;
+    }
+    throw new InvalidOperationException($"Expected generated query error {expected}.");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("Generated query host input differs from the interpreter.");
+    }
+}
