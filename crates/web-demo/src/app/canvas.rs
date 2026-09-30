@@ -88,6 +88,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::XmlSerialize { .. } => vec![],
+        Node::RuntimeParameterDefault { default, .. } => vec![Some(*default)],
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
             args.iter().copied().map(Some).collect()
         }
@@ -163,6 +164,9 @@ fn node_title(node: &Node) -> String {
         }
         Node::RuntimeValue { value } => format!("runtime · {value:?}"),
         Node::RuntimeParameter { name, ty } => format!("runtime · {name}: {ty:?}"),
+        Node::RuntimeParameterDefault { name, ty, .. } => {
+            format!("optional input · {name}: {ty:?}")
+        }
         Node::Call { function, .. } => function.clone(),
         Node::UserFunctionCall { function, .. } => {
             format!("user function {}", function.get())
