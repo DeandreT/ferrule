@@ -36,6 +36,7 @@ mod mapped_sequence;
 mod native_adjacency_tree;
 mod native_datetime_cast;
 mod native_path_hierarchy;
+mod native_recursive_filter;
 mod node;
 mod order_decimal_output;
 mod pdf;
@@ -364,6 +365,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         native_path_hierarchy::NativePathHierarchy::plan(project, &sources, &targets, path);
     let native_adjacency_tree =
         native_adjacency_tree::NativeAdjacencyTree::plan(project, &sources, &targets, path);
+    let native_recursive_filter =
+        native_recursive_filter::NativeRecursiveFilter::plan(project, &sources, &targets, path);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -402,6 +405,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     }
     if let Some(plan) = &native_group_fahrenheit {
         blocked_nodes.extend(plan.absorbed_nodes());
+    }
+    if let Some(plan) = &native_recursive_filter {
+        blocked_nodes.insert(plan.predicate_node());
     }
     for target in &targets {
         blocked_nodes.extend(target.mapped_scope_plans.absorbed_nodes());
@@ -496,6 +502,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     let mut exception_branches = exception::Branches::new(project);
     let mut native_path_hierarchy_definition = None;
     let mut native_adjacency_tree_definition = None;
+    let mut native_recursive_filter_definition = None;
     for (target_index, target) in targets.iter().enumerate() {
         let prior_position_contexts = position_contexts.clone();
         let native_scope = if target_index == 0 {
@@ -541,6 +548,17 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                     &mut edges,
                     &mut structural_edges,
                 ));
+            } else if target_index == 0
+                && let Some(plan) = &native_recursive_filter
+            {
+                native_recursive_filter_definition = Some(plan.render(
+                    &mut keys,
+                    &mut uid,
+                    &node_out_key,
+                    &mut scope_components,
+                    &mut edges,
+                    &mut structural_edges,
+                )?);
             } else {
                 recursive::render_construction(recursive::RenderArgs {
                     scope: static_root,
@@ -965,6 +983,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         out.push_str(&definition);
     }
     if let Some(definition) = native_adjacency_tree_definition {
+        out.push_str(&definition);
+    }
+    if let Some(definition) = native_recursive_filter_definition {
         out.push_str(&definition);
     }
     out.push_str(user_functions.declarations());

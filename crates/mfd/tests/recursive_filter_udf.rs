@@ -1,7 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use mapping::ScopeConstruction;
+use engine::{ExecutionContext, RuntimeParameters};
+use ir::{Instance, Value};
+use mapping::{Node, Project, ScopeConstruction};
 
 struct TempDir(PathBuf);
 
@@ -54,8 +56,19 @@ fn recursive_udf_filters_each_level_and_preserves_the_group_shape() {
     assert_eq!(initial, expected);
 
     let export_path = dir.0.join("roundtrip.mfd");
-    let warnings = mfd::export(&imported.project, &export_path).unwrap();
-    assert!(warnings.is_empty(), "{warnings:?}");
+    let report = mfd::preflight_export(&imported.project, &export_path).unwrap();
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(
+        &imported.project,
+        &export_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    assert!(
+        !fs::read_to_string(&export_path)
+            .unwrap()
+            .contains("library=\"ferrule\"")
+    );
     let reimported = mfd::import(&export_path).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(matches!(
@@ -64,6 +77,165 @@ fn recursive_udf_filters_each_level_and_preserves_the_group_shape() {
     ));
     assert!(engine::validate(&reimported.project).is_empty());
     assert_eq!(engine::run(&reimported.project, &source), Ok(initial));
+}
+
+fn native_rejected(project: &Project, path: &Path) {
+    let report = mfd::preflight_export(project, path).unwrap();
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| { issue.feature == mfd::ExportCompatibilityFeature::RecursiveComponent })
+    );
+    assert!(matches!(
+        mfd::export_with_profile(project, path, mfd::ExportProfile::NativeMfd),
+        Err(mfd::MfdError::IncompatibleExport(_))
+    ));
+    assert!(!path.exists());
+}
+
+#[test]
+fn changed_predicate_and_shared_predicate_keep_native_guard_closed() {
+    let dir = TempDir::new();
+    fs::write(dir.0.join("folder.xsd"), schema()).unwrap();
+    fs::write(dir.0.join("mapping.mfd"), mapping()).unwrap();
+    let original = mfd::import(&dir.0.join("mapping.mfd")).unwrap().project;
+    let ScopeConstruction::RecursiveFilter { plan } = &original.root.construction else {
+        panic!("expected recursive filter");
+    };
+    let predicate = plan.predicate();
+
+    let mut changed = original.clone();
+    let Some(Node::Call { function, .. }) = changed.graph.nodes.get_mut(&predicate) else {
+        panic!("expected contains predicate");
+    };
+    *function = "equal".into();
+    assert!(engine::validate(&changed).is_empty());
+    native_rejected(&changed, &dir.0.join("changed.mfd"));
+
+    let mut shared = original;
+    shared.graph.nodes.insert(
+        100,
+        Node::Call {
+            function: "not".into(),
+            args: vec![predicate],
+        },
+    );
+    assert!(engine::validate(&shared).is_empty());
+    native_rejected(&shared, &dir.0.join("shared.mfd"));
+}
+
+#[test]
+fn scope_control_keeps_native_guard_closed() {
+    let dir = TempDir::new();
+    fs::write(dir.0.join("folder.xsd"), schema()).unwrap();
+    fs::write(dir.0.join("mapping.mfd"), mapping()).unwrap();
+    let mut project = mfd::import(&dir.0.join("mapping.mfd")).unwrap().project;
+    let ScopeConstruction::RecursiveFilter { plan } = &project.root.construction else {
+        panic!("expected recursive filter");
+    };
+    project.root.filter = Some(plan.predicate());
+    let path = dir.0.join("controlled.mfd");
+    assert!(mfd::preflight_export(&project, &path).is_err());
+    assert!(!path.exists());
+}
+
+fn file_names(tree: &Instance, names: &mut Vec<String>) -> usize {
+    for file in tree
+        .field("file")
+        .and_then(Instance::as_repeated)
+        .unwrap_or(&[])
+    {
+        let name = file
+            .field("name")
+            .and_then(Instance::as_scalar)
+            .and_then(|value| match value {
+                Value::String(name) => Some(name),
+                _ => None,
+            })
+            .expect("file name");
+        names.push(name.clone());
+    }
+    1 + tree
+        .field("directory")
+        .and_then(Instance::as_repeated)
+        .unwrap_or(&[])
+        .iter()
+        .map(|child| file_names(child, names))
+        .sum::<usize>()
+}
+
+fn output_xml(project: &Project, output: &Instance) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(format_xml::to_string_with_options(
+        &project.target,
+        output,
+        &format_xml::XmlWriteOptions {
+            declaration: false,
+            indent: false,
+            default_namespace: None,
+        },
+    )?)
+}
+
+#[test]
+#[ignore = "needs the local ignored ReferenceSamples corpus"]
+fn local_recursive_directory_filter_native_roundtrip_keeps_33_xml_files()
+-> Result<(), Box<dyn std::error::Error>> {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples")
+        .canonicalize()?;
+    let imported = mfd::import_with_options(
+        &samples.join("RecursiveDirectoryFilter.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&samples),
+    )?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let input = format_xml::read(&samples.join("Directory.xml"), &imported.project.source)?;
+    let expected = engine::run(&imported.project, &input)?;
+    let mut names = Vec::new();
+    assert_eq!(file_names(&expected, &mut names), 16);
+    assert_eq!(names.len(), 33);
+    assert!(names.iter().all(|name| name.contains(".xml")));
+    for name in ["blocks.xml", "Newsml-example.xml", "datatypes.xml"] {
+        assert!(names.iter().any(|candidate| candidate == name));
+    }
+
+    let dir = TempDir::new();
+    let design = dir.0.join("native.mfd");
+    let report = mfd::preflight_export(&imported.project, &design)?;
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(&imported.project, &design, mfd::ExportProfile::NativeMfd)?;
+    let emitted = fs::read_to_string(&design)?;
+    assert!(emitted.contains("library=\"user\""));
+    assert!(!emitted.contains("library=\"ferrule\""));
+    assert_eq!(emitted.matches("optional=\"1\"").count(), 1);
+    let restored = mfd::import(&design)?;
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+    assert!(engine::validate(&restored.project).is_empty());
+    assert!(matches!(
+        restored.project.root.construction,
+        ScopeConstruction::RecursiveFilter { .. }
+    ));
+    let actual = engine::run(&restored.project, &input)?;
+    assert_eq!(
+        output_xml(&imported.project, &expected)?,
+        output_xml(&restored.project, &actual)?
+    );
+
+    let mut override_parameters = RuntimeParameters::new();
+    override_parameters.insert("SearchFor", Value::String(".xsd".into()))?;
+    let context = ExecutionContext::new(&design).with_parameters(&override_parameters);
+    let before_override = engine::run_with_context(&imported.project, &input, &context)?;
+    let after_override = engine::run_with_context(&restored.project, &input, &context)?;
+    let mut names = Vec::new();
+    assert_eq!(file_names(&before_override, &mut names), 16);
+    assert_eq!(names.len(), 16);
+    assert!(names.iter().all(|name| name.contains(".xsd")));
+    assert_eq!(
+        output_xml(&imported.project, &before_override)?,
+        output_xml(&restored.project, &after_override)?
+    );
+    Ok(())
 }
 
 fn schema() -> &'static str {
