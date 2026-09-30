@@ -22,6 +22,8 @@
 
 #[path = "samples_execution_survey/format_io.rs"]
 mod format_io;
+#[path = "support/input_contract.rs"]
+mod input_contract;
 #[path = "samples_execution_survey/output_support.rs"]
 mod output_support;
 #[path = "samples_execution_survey/reference_support.rs"]
@@ -551,16 +553,8 @@ fn survey_file(
             return outcome;
         }
     };
-    let unsupported_preview_contract = imported
-        .warnings
-        .iter()
-        .find(|warning| {
-            warning.contains("with design-time preview")
-                || warning.contains("has only a design-time preview value")
-                || (warning.contains("design-time preview value")
-                    && warning.contains("dependent value skipped"))
-        })
-        .cloned();
+    let unsupported_input_contract =
+        input_contract::unsupported_input_contract_warning(&imported.warnings).map(str::to_owned);
     outcome.import = StageOutcome {
         status: Status::Passed,
         message: (!imported.warnings.is_empty()).then(|| {
@@ -699,7 +693,7 @@ fn survey_file(
     outcome.output = Some(written.primary.display().to_string());
     outcome.output_write = StageOutcome::passed();
 
-    if let Some(reason) = unsupported_preview_contract {
+    if let Some(reason) = unsupported_input_contract {
         outcome.reference_match = StageOutcome::skipped(format!(
             "design-preview reference comparison is unavailable: {reason}"
         ));

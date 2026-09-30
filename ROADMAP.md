@@ -105,8 +105,10 @@ are preserved.
   export. Explicit design-preview execution uses it before a connected default
   when no host value is supplied; normal and generated runs ignore it. The GUI
   supports editing the saved value, previewing it, and inspecting it in the
-  debugger. Optional inputs without defaults and cross-type dynamic SQL coercion
-  remain unsupported. Missing imported filter predicates skip the dependent
+  debugger. Optional inputs without connected defaults are diagnosed and skipped
+  instead of silently becoming required inputs; their omitted-value behavior
+  remains unverified and the executable import profile rejects them. Cross-type
+  dynamic SQL coercion remains unsupported. Missing imported filter predicates skip the dependent
   iteration with a diagnostic instead of producing unfiltered rows.
 - Generated Rust and C# hosts have compiled and executed forty warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
