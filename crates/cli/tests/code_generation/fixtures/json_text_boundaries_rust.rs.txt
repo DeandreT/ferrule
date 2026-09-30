@@ -26,6 +26,10 @@ fn verify(result: Result<String, JsonBoundaryError>, case: &serde_json::Value) {
         assert!(matches!(result, Err(JsonBoundaryError::InvalidInput { .. })), "{case}: {result:?}");
     } else {
         let actual: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
-        assert_eq!(actual, case["expected"], "{case}");
+        let expected = match case.get("expected_json").and_then(serde_json::Value::as_str) {
+            Some(text) => serde_json::from_str(text).unwrap(),
+            None => case["expected"].clone(),
+        };
+        assert_eq!(actual, expected, "{case}");
     }
 }

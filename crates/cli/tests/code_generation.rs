@@ -659,7 +659,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 49,
+            files_written: 50,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -701,6 +701,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleXml.cs",
             "Runtime/FerruleXmlMixedContent.cs",
             "Runtime/Json/FerruleJson.AllowedValues.cs",
+            "Runtime/Json/FerruleJson.Canonical.cs",
             "Runtime/Json/FerruleJson.Contains.cs",
             "Runtime/Json/FerruleJson.DependentSchemas.cs",
             "Runtime/Json/FerruleJson.MultipleOf.cs",

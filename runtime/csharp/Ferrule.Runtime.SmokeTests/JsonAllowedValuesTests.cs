@@ -6,6 +6,7 @@ internal static partial class Program
 {
     private static void JsonAllowedValuesBoundaries()
     {
+        JsonAllowedValueMetadataNumberTags();
         const string mixed =
             "{\"name\":\"Value\",\"nullable\":true,\"json_allowed_values\":[{\"type\":\"json_null\"},{\"type\":\"bool\",\"value\":false},{\"type\":\"bool\",\"value\":true},{\"type\":\"int\",\"value\":-2},{\"type\":\"int\",\"value\":1},{\"type\":\"float\",\"value\":1.5},{\"type\":\"string\",\"value\":\"A\"}],\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\",\"float\",\"bool\"]}}";
         foreach (var input in new[] { "null", "false", "true", "-2", "1", "1.0", "1.5", "\"A\"" })
@@ -158,5 +159,62 @@ internal static partial class Program
             () => FerruleJson.Parse(
                 $"{{\"name\":\"Value\",\"json_allowed_values\":[{{\"type\":\"string\",\"value\":{System.Text.Json.JsonSerializer.Serialize(oversizedString)}}},{{\"type\":\"string\",\"value\":\"z\"}}],\"kind\":{{\"kind\":\"scalar\",\"ty\":\"string\"}}}}",
                 "\"z\""));
+    }
+
+    private static void JsonAllowedValueMetadataNumberTags()
+    {
+        static string Schema(string integer) =>
+            "{\"name\":\"Value\",\"json_allowed_values\":[{\"type\":\"int\",\"value\":" + integer +
+            "},{\"type\":\"string\",\"value\":\"x\"}],\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"int\"]}}";
+
+        foreach (var integer in new[] { "0", "9223372036854775807", "-9223372036854775808" })
+        {
+            var schema = Schema(integer);
+            Equal(Text("x"), ((FerruleScalar)FerruleJson.Parse(schema, "\"x\"")).Value);
+            Equal("\"x\"\n", FerruleJson.Serialize(schema, Scalar(Text("x"))));
+        }
+        // Typed metadata requires the integer tag even when a floating token
+        // represents an integral value. In serde_json, -0 is a floating token.
+        foreach (var floatingOrOutOfRange in new[] { "-0", "1.0", "1e0", "9223372036854775808" })
+        {
+            var schema = Schema(floatingOrOutOfRange);
+            var error = Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(schema, "\"x\""));
+            Equal(true, error.Message.Contains("JSON allowed int payload", StringComparison.Ordinal));
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Serialize(schema, Scalar(Text("x"))));
+        }
+
+        static string FloatSchema(string number) =>
+            "{\"name\":\"Value\",\"json_allowed_values\":[{\"type\":\"float\",\"value\":" + number +
+            "},{\"type\":\"string\",\"value\":\"x\"}],\"kind\":{\"kind\":\"scalar_union\",\"types\":[\"string\",\"float\"]}}";
+
+        // Float metadata uses typed finite-f64 deserialization, which permits
+        // integer rounding. Ordinary float input still requires exact coercion.
+        foreach (var (metadata, actual) in new[]
+                 {
+                     ("9223372036854775807", "9.223372036854776e18"),
+                     ("18446744073709551615", "1.8446744073709552e19"),
+                 })
+        {
+            var schema = FloatSchema(metadata);
+            Equal(Text("x"), ((FerruleScalar)FerruleJson.Parse(schema, "\"x\"")).Value);
+            Equal("\"x\"\n", FerruleJson.Serialize(schema, Scalar(Text("x"))));
+            Equal(
+                FerruleValueKind.Double,
+                ((FerruleScalar)FerruleJson.Parse(schema, actual)).Value.Kind);
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(schema, metadata));
+        }
+        foreach (var integralFloat in new[] { "9007199254740993", "-9007199254740993", "-0" })
+        {
+            var error = Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(FloatSchema(integralFloat), "\"x\""));
+            Equal(true, error.Message.Contains("JSON allowed float payload", StringComparison.Ordinal));
+        }
     }
 }

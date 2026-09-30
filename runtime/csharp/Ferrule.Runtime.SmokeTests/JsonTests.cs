@@ -1297,7 +1297,7 @@ internal static partial class Program
             "{\"name\":\"Numbers\",\"repeating\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";
         var parsed = FerruleJson.Parse(numbers, "[1,2.5,-0]");
         Equal(
-            "[\n  1.0,\n  2.5,\n  0.0\n]\n",
+            "[\n  1.0,\n  2.5,\n  -0.0\n]\n",
             FerruleJson.Serialize(numbers, parsed));
         Error(
             FerruleRuntimeError.JsonBoundary,
@@ -1498,9 +1498,10 @@ internal static partial class Program
         const string large =
             "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":20}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";
         _ = FerruleJson.Parse(large, "1e21");
+        _ = FerruleJson.Parse(large, "1.0000000000000001e21");
         Error(
             FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Parse(large, "1.0000000000000001e21"));
+            () => FerruleJson.Parse(large, "1.0000000000000002e21"));
 
         const string small =
             "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":-7}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";

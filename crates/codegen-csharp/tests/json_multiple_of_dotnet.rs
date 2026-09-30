@@ -14,8 +14,15 @@ fn emitted_package_enforces_exact_source_and_normalized_target_multiples()
 -> Result<(), Box<dyn std::error::Error>> {
     let corpus = multiple_of_corpus()?;
     assert_eq!(corpus.len(), 406);
-    assert!(corpus.iter().any(|case| case.expected));
-    assert!(corpus.iter().any(|case| !case.expected));
+    assert!(corpus.iter().any(|case| case.expected_input));
+    assert!(corpus.iter().any(|case| !case.expected_input));
+    assert!(corpus.iter().any(|case| case.expected_output));
+    assert!(corpus.iter().any(|case| !case.expected_output));
+    assert!(
+        corpus
+            .iter()
+            .any(|case| case.expected_input != case.expected_output)
+    );
 
     let mut source_fields = vec![
         multiple_of_scalar("Quantity", ScalarType::Int, "3")?,
@@ -90,9 +97,11 @@ struct MultipleOfCase {
     name: String,
     divisor_source: &'static str,
     divisor: JsonMultipleOf,
+    schema_json: String,
     value_lexical: String,
     value_bits: u64,
-    expected: bool,
+    expected_input: bool,
+    expected_output: bool,
 }
 
 fn multiple_of_corpus() -> Result<Vec<MultipleOfCase>, Box<dyn std::error::Error>> {
@@ -154,13 +163,26 @@ fn multiple_of_corpus() -> Result<Vec<MultipleOfCase>, Box<dyn std::error::Error
                 1 => format!("{value:e}"),
                 _ => format!("{value:E}"),
             };
+            let name = format!("Case{:03}", cases.len());
+            let schema_json = serde_json::to_string(&multiple_of_scalar_with_divisor(
+                &name,
+                ScalarType::Float,
+                divisor,
+            )?)?;
+            // The raw token is parsed by serde_json before multipleOf is
+            // checked. Its default binary64 parser can reject an expanded
+            // finite f64 lexical or round it differently from the original
+            // value bits, so source and output expectations are independent.
+            let expected_input = codegen_runtime::parse_json(&schema_json, &value_lexical).is_ok();
             cases.push(MultipleOfCase {
-                name: format!("Case{:03}", cases.len()),
+                name,
                 divisor_source,
                 divisor,
+                schema_json,
                 value_lexical,
                 value_bits: value.to_bits(),
-                expected: divisor.divides_f64(value),
+                expected_input,
+                expected_output: divisor.divides_f64(value),
             });
         }
     }
@@ -244,7 +266,7 @@ fn render_harness(corpus: &[MultipleOfCase]) -> Result<String, Box<dyn std::erro
         r#""Fraction":0.3"#.to_owned(),
         r#""Raw":"1.50""#.to_owned(),
     ];
-    for case in corpus.iter().filter(|case| case.expected) {
+    for case in corpus.iter().filter(|case| case.expected_input) {
         valid_fields.push(format!(r#""{}":{}"#, case.name, case.value_lexical));
     }
     let valid_input = format!("{{{}}}", valid_fields.join(","));
@@ -263,7 +285,7 @@ fn render_harness(corpus: &[MultipleOfCase]) -> Result<String, Box<dyn std::erro
             r#"{"Raw":"1.3"}"#.to_owned(),
         ),
     ];
-    for case in corpus.iter().filter(|case| !case.expected) {
+    for case in corpus.iter().filter(|case| !case.expected_input) {
         invalid_cases.push((
             format!(
                 "{} divisor={} value={} bits={:016x}",
@@ -322,6 +344,62 @@ foreach (var (label, input) in new (string Label, string Input)[]
         when (error.Error == FerruleRuntimeError.JsonBoundary)
     {
     }
+}
+
+foreach (var (label, schema, input, bits, expectedInput, expectedOutput) in
+         new (string Label, string Schema, string Input, ulong Bits,
+              bool ExpectedInput, bool ExpectedOutput)[]
+         {
+"#,
+    );
+    for case in corpus {
+        writeln!(
+            harness,
+            "             ({}, {}, {}, 0x{:016x}UL, {}, {}),",
+            serde_json::to_string(&case.name)?,
+            serde_json::to_string(&case.schema_json)?,
+            serde_json::to_string(&case.value_lexical)?,
+            case.value_bits,
+            case.expected_input,
+            case.expected_output,
+        )?;
+    }
+    harness.push_str(
+        r#"         })
+{
+    if (expectedInput)
+    {
+        _ = FerruleJson.Parse(schema, input);
+    }
+    else
+    {
+        ExpectJsonBoundary($"source {label}", () => FerruleJson.Parse(schema, input));
+    }
+
+    var value = BitConverter.Int64BitsToDouble(unchecked((long)bits));
+    var instance = new FerruleScalar(FerruleValue.FromDouble(value));
+    if (expectedOutput)
+    {
+        _ = FerruleJson.Serialize(schema, instance);
+    }
+    else
+    {
+        ExpectJsonBoundary($"target {label}", () => FerruleJson.Serialize(schema, instance));
+    }
+}
+
+static void ExpectJsonBoundary(string label, Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException error)
+        when (error.Error == FerruleRuntimeError.JsonBoundary)
+    {
+        return;
+    }
+    throw new Exception($"JSON multipleOf boundary should fail: {label}");
 }
 
 Console.WriteLine("generated JSON multipleOf passed");
