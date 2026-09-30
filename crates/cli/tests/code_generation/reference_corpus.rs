@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against thirty-eight local, gitignored mappings.
+//! Opt-in generated-backend execution against thirty-nine local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -31,6 +31,7 @@ enum TargetKind {
     Xlsx,
     XlsxHierarchical,
     Xbrl,
+    FixedWidth,
 }
 
 struct CorpusCase {
@@ -40,7 +41,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 38] = [
+const CASES: [CorpusCase; 39] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -269,6 +270,12 @@ const CASES: [CorpusCase; 38] = [
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::XlsxHierarchical,
     },
+    CorpusCase {
+        sample: "Tutorial/FlexTextSwitchByRegEx.mfd",
+        input: "Tutorial/SampleDatabaseLog.txt",
+        source_kind: SourceKind::FlexText,
+        target_kind: TargetKind::FixedWidth,
+    },
 ];
 
 #[test]
@@ -357,6 +364,7 @@ fn run_case(
                 project.target_options.xbrl.as_ref().is_some_and(
                     |options| options.mode() == mapping::XbrlBoundaryMode::ExternalTarget
                 ),
+            TargetKind::FixedWidth => project.target_options.fixed_width.is_some(),
         },
         "{sample}: unexpected output format"
     );
@@ -540,6 +548,9 @@ fn run_case(
     }
     if sample == "Tutorial/Tut-ExpReport-multi.mfd" {
         return run_multi_target_case(case_dir, rust_target, &project, &source, sample);
+    }
+    if sample == "Tutorial/FlexTextSwitchByRegEx.mfd" {
+        return run_fixed_width_output_set_case(case_dir, rust_target, &project, &source, sample);
     }
     if sample == "HandlingXsiNil.mfd" {
         return run_xml_nil_case(case_dir, rust_target, &project, &source, sample);
@@ -2444,6 +2455,429 @@ struct CorpusTargetOutput {
     xml: String,
     value: serde_json::Value,
 }
+
+#[derive(Debug, PartialEq)]
+struct CorpusJsonTargetOutput {
+    name: String,
+    value: serde_json::Value,
+}
+
+fn run_fixed_width_output_set_case(
+    case_dir: &Path,
+    rust_target: &Path,
+    project: &Project,
+    source: &Instance,
+    sample: &str,
+) -> TestResult<()> {
+    assert_eq!(project.source.name, "Root", "{sample}: FlexText root");
+    let source_lines = source
+        .field("Repeated split")
+        .and_then(Instance::as_repeated)
+        .expect("source log lines");
+    assert_eq!(source_lines.len(), 17, "{sample}: complete local log");
+    for (line, expected_branch) in source_lines.iter().zip([
+        "Output C", "Output A", "Output C", "Output A", "Output B", "Output C", "Output A",
+        "Output B", "Output C", "Output A", "Output B", "Output C", "Output A", "Output B",
+        "Output C", "Output A", "Output B",
+    ]) {
+        let switch = line.field("Switch").expect("FlexText switch frame");
+        let branches = ["Output A", "Output B", "Output C"]
+            .into_iter()
+            .filter(|name| {
+                switch
+                    .field(name)
+                    .and_then(Instance::as_scalar)
+                    .is_some_and(|value| !matches!(value, Value::Null))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            branches,
+            [expected_branch],
+            "{sample}: first-match Switch chooses exactly one branch"
+        );
+    }
+    assert_eq!(
+        project
+            .target_path
+            .as_deref()
+            .and_then(|path| Path::new(path).file_name())
+            .and_then(OsStr::to_str),
+        Some("OutputA.txt"),
+        "{sample}: primary output path"
+    );
+    let [target_b, target_c] = project.extra_targets.as_slice() else {
+        panic!("{sample}: two named fixed-width targets");
+    };
+    for (target, name, file) in [
+        (target_b, "Output B", "OutputB.txt"),
+        (target_c, "Output C", "OutputC.txt"),
+    ] {
+        assert_eq!(target.name, name, "{sample}: named output order");
+        assert_eq!(
+            target
+                .path
+                .as_deref()
+                .and_then(|path| Path::new(path).file_name())
+                .and_then(OsStr::to_str),
+            Some(file),
+            "{sample}: named output path"
+        );
+        assert_eq!(target.schema, project.target, "{sample}: shared row schema");
+        assert_eq!(
+            target.options.fixed_width, project.target_options.fixed_width,
+            "{sample}: shared fixed-width layout"
+        );
+    }
+    let layout = project
+        .target_options
+        .fixed_width
+        .as_ref()
+        .expect("fixed-width output layout");
+    assert_eq!(layout.record_width(), 100);
+    assert_eq!(layout.fill_char(), ' ');
+    assert!(layout.record_delimiters());
+
+    let source_json = format_json::to_string(&project.source, source)?;
+    let transported_source = format_json::from_str(&source_json, &project.source)?;
+    assert_eq!(
+        format_json::to_string(&project.source, &transported_source)?,
+        source_json,
+        "{sample}: schema-shaped JSON changes FlexText switch values"
+    );
+    let interpreted = engine::run_outputs(project, source)?;
+    let transported = engine::run_outputs(project, &transported_source)?;
+    assert_eq!(interpreted.primary, transported.primary);
+    assert_eq!(interpreted.extras, transported.extras);
+    let [output_b, output_c] = interpreted.extras.as_slice() else {
+        panic!("{sample}: interpreter returned two named outputs");
+    };
+    assert_eq!(output_b.name, target_b.name);
+    assert_eq!(output_c.name, target_c.name);
+
+    let targets = [
+        ("", &project.target, &interpreted.primary),
+        (target_b.name.as_str(), &target_b.schema, &output_b.instance),
+        (target_c.name.as_str(), &target_c.schema, &output_c.instance),
+    ];
+    let expected = targets
+        .into_iter()
+        .map(|(name, schema, instance)| -> TestResult<_> {
+            let rows = instance.as_repeated().expect("fixed-width output rows");
+            Ok((
+                CorpusJsonTargetOutput {
+                    name: name.to_owned(),
+                    value: serde_json::from_str(&format_json::to_string(schema, instance)?)?,
+                },
+                format_csv::to_string_fixed_width(schema, rows, layout)?.into_bytes(),
+            ))
+        })
+        .collect::<TestResult<Vec<_>>>()?;
+    let expected_json = expected
+        .iter()
+        .map(|(output, _)| CorpusJsonTargetOutput {
+            name: output.name.clone(),
+            value: output.value.clone(),
+        })
+        .collect::<Vec<_>>();
+    for ((output, bytes), count) in expected.iter().zip([6, 5, 6]) {
+        let rows = output.value.as_array().expect("fixed-width JSON rows");
+        assert_eq!(rows.len(), count, "{sample}: branch row count");
+        assert_eq!(bytes.len(), count * 101, "{sample}: padded LF records");
+        assert_eq!(bytes.iter().filter(|&&byte| byte == b'\n').count(), count);
+        let (records, remainder) = bytes.as_chunks::<101>();
+        assert!(remainder.is_empty(), "{sample}: whole fixed-width records");
+        for (row, record) in rows.iter().zip(records) {
+            assert_eq!(record[100], b'\n', "{sample}: LF record delimiter");
+            let field = row["Field1"].as_str().expect("stored log line");
+            assert_eq!(
+                std::str::from_utf8(&record[..100])?.trim_end_matches(' '),
+                field,
+                "{sample}: fixed-width padding preserves the stored field"
+            );
+            assert_eq!(field.trim(), field, "{sample}: FlexText Store trimming");
+        }
+    }
+    let branch_rows = expected_json
+        .iter()
+        .map(|output| {
+            output
+                .value
+                .as_array()
+                .expect("target row array")
+                .iter()
+                .map(|row| row["Field1"].as_str().expect("log line"))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        branch_rows[0]
+            .iter()
+            .all(|row| row.starts_with("Action start "))
+    );
+    assert!(
+        branch_rows[1]
+            .iter()
+            .all(|row| row.starts_with("Action ended ") && row.contains("Return value "))
+    );
+    assert!(
+        branch_rows[2]
+            .iter()
+            .all(|row| { row.starts_with("Action ") && !row.starts_with("Action start ") })
+    );
+    assert_eq!(branch_rows[0][0], "Action start 18:11:51: INSTALL.");
+    assert_eq!(branch_rows[2][0], "Action 18:11:51: INSTALL.");
+    assert_eq!(
+        branch_rows
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        17,
+        "{sample}: every source line reaches exactly one output"
+    );
+
+    let source_schema_path = case_dir.join("source-schema.json");
+    let target_schema_path = case_dir.join("target-schema.json");
+    let source_path = case_dir.join("source.json");
+    let project_path = case_dir.join("project.json");
+    std::fs::write(&source_schema_path, serde_json::to_vec(&project.source)?)?;
+    std::fs::write(&target_schema_path, serde_json::to_vec(&project.target)?)?;
+    std::fs::write(&source_path, source_json)?;
+    std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
+
+    let rust_output = case_dir.join("rust");
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
+    generate_project(
+        &project_path,
+        &rust_output,
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+    )?;
+    std::fs::write(
+        rust_output.join("src/main.rs"),
+        FIXED_WIDTH_OUTPUT_SET_RUST_HARNESS,
+    )?;
+    let rust_build = Command::new("cargo")
+        .args(["build", "--quiet"])
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_build.status.success(),
+        "{sample}: generated Rust compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_build.stdout),
+        String::from_utf8_lossy(&rust_build.stderr)
+    );
+    let rust_run = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .arg(&source_schema_path)
+        .arg(&target_schema_path)
+        .arg(&source_path)
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .isolated_output()?;
+    assert!(
+        rust_run.status.success(),
+        "{sample}: generated Rust execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&rust_run.stdout),
+        String::from_utf8_lossy(&rust_run.stderr)
+    );
+    assert_fixed_width_generated_outputs(
+        &rust_run.stdout,
+        &expected_json,
+        &expected,
+        &project.target,
+        layout,
+        sample,
+        "Rust",
+    )?;
+
+    let csharp_output = case_dir.join("csharp");
+    generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
+    let harness = csharp_output.join("Harness");
+    std::fs::create_dir(&harness)?;
+    std::fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj" />
+  </ItemGroup>
+</Project>
+"#,
+    )?;
+    std::fs::write(
+        harness.join("Program.cs"),
+        FIXED_WIDTH_OUTPUT_SET_CSHARP_HARNESS,
+    )?;
+    let csharp_build = dotnet_command(&csharp_output)
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "Harness/Harness.csproj",
+        ])
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_build.status.success(),
+        "{sample}: generated C# compile failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_build.stdout),
+        String::from_utf8_lossy(&csharp_build.stderr)
+    );
+    let csharp_run = dotnet_command(&csharp_output)
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+            "--no-build",
+            "--no-restore",
+            "--",
+        ])
+        .arg(&source_schema_path)
+        .arg(&target_schema_path)
+        .arg(&source_path)
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp_run.status.success(),
+        "{sample}: generated C# execution failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&csharp_run.stdout),
+        String::from_utf8_lossy(&csharp_run.stderr)
+    );
+    assert_fixed_width_generated_outputs(
+        &csharp_run.stdout,
+        &expected_json,
+        &expected,
+        &project.target,
+        layout,
+        sample,
+        "C#",
+    )?;
+    println!("{sample}: generated Rust and C# fixed-width output sets match the interpreter");
+    Ok(())
+}
+
+fn assert_fixed_width_generated_outputs(
+    bytes: &[u8],
+    expected_json: &[CorpusJsonTargetOutput],
+    expected: &[(CorpusJsonTargetOutput, Vec<u8>)],
+    schema: &SchemaNode,
+    layout: &mapping::FixedWidthLayout,
+    sample: &str,
+    backend: &str,
+) -> TestResult<()> {
+    let actual = parse_json_target_outputs(bytes)?;
+    assert_eq!(
+        actual, expected_json,
+        "{sample}: generated {backend} target order or values differ from engine"
+    );
+    for (output, (_, expected_bytes)) in actual.iter().zip(expected) {
+        let instance = format_json::from_str(&serde_json::to_string(&output.value)?, schema)?;
+        let rows = instance.as_repeated().expect("fixed-width output rows");
+        let actual_bytes = format_csv::to_string_fixed_width(schema, rows, layout)?.into_bytes();
+        assert_eq!(
+            actual_bytes, *expected_bytes,
+            "{sample}: generated {backend} fixed-width bytes differ from engine"
+        );
+    }
+    Ok(())
+}
+
+fn parse_json_target_outputs(bytes: &[u8]) -> TestResult<Vec<CorpusJsonTargetOutput>> {
+    let text = std::str::from_utf8(bytes)?;
+    let mut fields = text.split('\0').collect::<Vec<_>>();
+    assert_eq!(fields.pop(), Some(""), "missing JSON output terminator");
+    let (records, remainder) = fields.as_chunks::<2>();
+    assert!(remainder.is_empty(), "incomplete JSON output");
+    records
+        .iter()
+        .map(|[name, json]| {
+            Ok(CorpusJsonTargetOutput {
+                name: (*name).to_owned(),
+                value: serde_json::from_str(json)?,
+            })
+        })
+        .collect()
+}
+
+const FIXED_WIDTH_OUTPUT_SET_RUST_HARNESS: &str = r#"use codegen_runtime::{parse_json, serialize_json};
+use ferrule_generated_mapping::{execute_json_outputs, execute_outputs};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let source_schema = std::fs::read_to_string(args.next().expect("source schema"))?;
+    let target_schema = std::fs::read_to_string(args.next().expect("target schema"))?;
+    let source_json = std::fs::read_to_string(args.next().expect("source JSON"))?;
+    let source = parse_json(&source_schema, &source_json)?;
+    let typed = execute_outputs(&source)?;
+    let json = execute_json_outputs(&source_json)?;
+    assert_eq!(typed.extras.len(), 2, "two named outputs");
+    assert_eq!(json.extras.len(), 2, "two named JSON outputs");
+    print_output("", &typed.primary, &json.primary, &target_schema)?;
+    for (typed, json) in typed.extras.iter().zip(&json.extras) {
+        assert_eq!(typed.name, json.name, "named output identity");
+        print_output(typed.name, &typed.instance, &json.document, &target_schema)?;
+    }
+    Ok(())
+}
+
+fn print_output(name: &str, instance: &codegen_runtime::Instance, json: &str, schema: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let typed_json = serialize_json(schema, instance)?;
+    assert_eq!(typed_json, json, "typed and JSON generated APIs agree");
+    print!("{name}\0{json}\0");
+    Ok(())
+}
+"#;
+
+const FIXED_WIDTH_OUTPUT_SET_CSHARP_HARNESS: &str = r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var sourceSchema = File.ReadAllText(args[0]);
+var targetSchema = File.ReadAllText(args[1]);
+var sourceJson = File.ReadAllText(args[2]);
+var source = FerruleJson.Parse(sourceSchema, sourceJson);
+var typed = GeneratedMapping.ExecuteOutputs(source);
+var json = GeneratedMapping.ExecuteJsonOutputs(sourceJson);
+if (typed.Extras.Count != 2 || json.Extras.Count != 2)
+{
+    throw new InvalidOperationException("Expected two named outputs.");
+}
+WriteOutput("", typed.Primary, json.Primary, targetSchema);
+for (var index = 0; index < typed.Extras.Count; index++)
+{
+    if (typed.Extras[index].Name != json.Extras[index].Name)
+    {
+        throw new InvalidOperationException("Named output identities differ.");
+    }
+    WriteOutput(typed.Extras[index].Name, typed.Extras[index].Instance,
+        json.Extras[index].Document, targetSchema);
+}
+
+static void WriteOutput(string name, FerruleInstance instance, string json, string schema)
+{
+    var typedJson = FerruleJson.Serialize(schema, instance);
+    if (typedJson != json)
+    {
+        throw new InvalidOperationException("Typed and JSON generated APIs disagree.");
+    }
+    Console.Out.Write(name);
+    Console.Out.Write('\0');
+    Console.Out.Write(json);
+    Console.Out.Write('\0');
+}
+"#;
 
 fn run_multi_target_case(
     case_dir: &Path,
