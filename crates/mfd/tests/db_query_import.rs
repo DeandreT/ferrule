@@ -610,6 +610,147 @@ fn many_to_one_joined_query_imports_computed_projection_and_filter() {
 }
 
 #[test]
+fn joined_query_recovers_native_select_without_internal_multiply() {
+    let dir = TempDir::new();
+    let design = prepare_joined_query(&dir.0);
+    let mut text = std::fs::read_to_string(&design).unwrap();
+    let begin = text.find("<outputnodefunctions>").unwrap();
+    let end = text.find("</outputnodefunctions>").unwrap() + "</outputnodefunctions>".len();
+    text.replace_range(begin..end, "");
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let database = dir.0.join("purchases.sqlite");
+    let input = format_db::read_instance(&database, &imported.project.source).unwrap();
+    let expected = engine::run(&imported.project, &input).unwrap();
+    let exported = dir.0.join("native-joined-query.mfd");
+    let report =
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report}");
+    let native = std::fs::read_to_string(&exported).unwrap();
+    assert!(native.contains("<LocalViewStorage>"));
+    assert!(native.contains("kind=\"28\""));
+    assert!(!native.contains("sqlite_multiply"));
+    let roundtrip = mfd::import(&exported).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    let input = format_db::read_instance(&database, &roundtrip.project.source).unwrap();
+    assert_eq!(engine::run(&roundtrip.project, &input).unwrap(), expected);
+
+    let mut altered = imported.project;
+    let filter = altered.root.filter.unwrap();
+    let then = match altered.graph.nodes.get(&filter).unwrap() {
+        mapping::Node::Call { args, .. } => match altered.graph.nodes.get(&args[1]).unwrap() {
+            mapping::Node::If { then, .. } => *then,
+            other => panic!("expected imported query predicate, got {other:?}"),
+        },
+        other => panic!("expected imported query filter, got {other:?}"),
+    };
+    let mapping::Node::Call { function, .. } = altered.graph.nodes.get_mut(&then).unwrap() else {
+        panic!("expected comparison call");
+    };
+    *function = "greater_or_equal".into();
+    let report = mfd::preflight_export(&altered, &dir.0.join("mutated.mfd")).unwrap();
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.feature == mfd::ExportCompatibilityFeature::FerruleComponent),
+        "a different predicate must not be folded into the native SELECT"
+    );
+}
+
+#[test]
+fn native_joined_select_keeps_sqlite_integer_overflow_promotion() {
+    let dir = TempDir::new();
+    let design = prepare_joined_query(&dir.0);
+    let database = dir.0.join("purchases.sqlite");
+    let connection = Connection::open(&database).unwrap();
+    let large = 4_000_000_000_i64;
+    connection
+        .execute(
+            "INSERT INTO Purchase (Id, ItemId, Units) VALUES (?1, 1, ?1)",
+            [large],
+        )
+        .unwrap();
+    let sqlite_product = connection
+        .query_row(
+            "SELECT Id * Units FROM Purchase WHERE Id = ?1",
+            [large],
+            |row| row.get::<_, f64>(0),
+        )
+        .unwrap();
+    drop(connection);
+    let mut text = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace("(Units * Cost)", "(Purchase.Id * Purchase.Units)");
+    let begin = text.find("<outputnodefunctions>").unwrap();
+    let end = text.find("</outputnodefunctions>").unwrap() + "</outputnodefunctions>".len();
+    text.replace_range(begin..end, "");
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let input = format_db::read_instance(&database, &imported.project.source).unwrap();
+    let expected = engine::run(&imported.project, &input).unwrap();
+    assert_eq!(expected.as_repeated().unwrap().len(), 4);
+    assert_eq!(sqlite_product, 16_000_000_000_000_000_000.0);
+    let exported = dir.0.join("native-overflow.mfd");
+    let report =
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report}");
+    let roundtrip = mfd::import(&exported).unwrap();
+    let input = format_db::read_instance(&database, &roundtrip.project.source).unwrap();
+    assert_eq!(engine::run(&roundtrip.project, &input).unwrap(), expected);
+}
+
+#[test]
+#[ignore = "requires the optional local reference sample corpus"]
+fn local_select_component_native_export_preserves_exact_csv() {
+    let dir = TempDir::new();
+    let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples/Tutorial/select-component.mfd");
+    let sample_db = sample.with_file_name("Altova-Products.sqlite");
+    let design = dir.0.join("select-component.mfd");
+    let database = dir.0.join("Altova-Products.sqlite");
+    std::fs::copy(&sample, &design).unwrap();
+    std::fs::copy(sample_db, &database).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let input = format_db::read_instance(&database, &imported.project.source).unwrap();
+    let expected = engine::run(&imported.project, &input).unwrap();
+    let exported = dir.0.join("native-select-component.mfd");
+    let report =
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report}");
+    let roundtrip = mfd::import(&exported).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    let input = format_db::read_instance(&database, &roundtrip.project.source).unwrap();
+    let actual = engine::run(&roundtrip.project, &input).unwrap();
+    assert_eq!(actual, expected);
+
+    let output = dir.0.join("report.csv");
+    format_csv::write(
+        &output,
+        &roundtrip.project.target,
+        actual.as_repeated().unwrap(),
+        Some(','),
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(output).unwrap(),
+        "15000,2,2,2008-02-06,Scentia,3,Layer designer,5000,no\n\
+         21000,4,4,2007-12-03,Alpha,7,Visualizer,3000,yes\n"
+    );
+}
+
+#[test]
 fn scalar_only_query_outputs_are_skipped_once() {
     let dir = TempDir::new();
     prepare_database(&dir.0);
