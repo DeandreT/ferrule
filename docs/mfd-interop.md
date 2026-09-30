@@ -221,14 +221,22 @@ node-function rule; its five yearly rows and typed nonfinite conversion error
 match after strict export/reimport. The recovery requires the closed source,
 target, graph, and scope shapes of these two designs; changed numeric calls,
 shared branches, or added row controls keep the explicit incompatibility.
-Two bounded recursive construction families export as synthesized native user
+Three bounded recursive construction families export as synthesized native user
 functions: one repeated string path list builds a directory/file hierarchy,
-and one flat key/parent catalog builds a recursive adjacency tree. Both require
+one flat key/parent catalog builds a recursive adjacency tree, and a same-shape
+directory tree filters its direct files at every level. These require
 plain XML boundaries and exact supported schemas and scopes. Local strict
 round trips preserve the 16-directory/90-file tree and the 49-type hierarchy
-byte for byte. Original function names and canvas layouts are not retained by
+byte for byte. The recursive filter retains all 16 directories and 33 `.xml`
+files by default; a supplied `.xsd` search retains 16 files, with matching XML
+before and after reimport. Original function names and canvas layouts are not retained by
 these normalized constructions; duplicate/cycle behavior in the native
 application remains unverified.
+Native XML date-time target casts can also be reconstructed in nested and
+repeated target scopes when every selected leaf and graph consumer satisfies
+the closed-schema guards. Invalid lexical values retain the same typed local
+failure after reimport. This removes the IDoc sample's internal cast component;
+its separate EDI schema/layout blockers remain.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
 endpoints, validated against the physical columns, and exported canonically. This
 keeps nested relational reads executable when the database omits foreign-key metadata.
