@@ -19,6 +19,7 @@ mod concatenation;
 mod database;
 mod database_where;
 mod database_xml;
+mod decimal_input;
 mod dynamic_json;
 mod edi;
 mod exception;
