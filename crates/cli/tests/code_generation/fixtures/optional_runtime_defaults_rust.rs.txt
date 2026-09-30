@@ -1,0 +1,48 @@
+use std::path::Path;
+
+use codegen_runtime::{ExecutionContext, Instance, RuntimeError, RuntimeParameters, ScalarType, Value};
+use ferrule_generated_mapping::{execute, execute_json, execute_json_with_context, execute_with_context};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = Instance::Group(Vec::new());
+    assert_eq!(execute(&source)?, output(Value::Int(7), "inner-default"));
+    let fallback_json = execute_json("{}")?;
+    assert!(fallback_json.contains("\"Direct\":7"));
+    assert!(fallback_json.contains("\"Nested\":\"inner-default\""));
+
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("control", Value::String(" 42 ".into()))?;
+    parameters.insert("nested", Value::String("host".into()))?;
+    let context = ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&parameters);
+    assert_eq!(execute_with_context(&source, &context)?, output(Value::Int(42), "host"));
+    let supplied_json = execute_json_with_context("{}", &context)?;
+    assert!(supplied_json.contains("\"Direct\":42"));
+    assert!(supplied_json.contains("\"Nested\":\"host\""));
+
+    let mut supplied_null = RuntimeParameters::new();
+    supplied_null.insert("control", Value::Null)?;
+    let context = ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&supplied_null);
+    assert_eq!(execute_with_context(&source, &context)?, output(Value::Null, "inner-default"));
+    assert!(!execute_json_with_context("{}", &context)?.contains("\"Direct\""));
+
+    let mut wrong = RuntimeParameters::new();
+    wrong.insert("control", Value::Bool(false))?;
+    let context = ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&wrong);
+    assert_eq!(
+        execute_with_context(&source, &context),
+        Err(RuntimeError::RuntimeParameterType {
+            node: 2,
+            name: "control".into(),
+            expected: ScalarType::Int,
+            found: "bool",
+        })
+    );
+    Ok(())
+}
+
+fn output(direct: Value, nested: &str) -> Instance {
+    Instance::Group(vec![
+        ("Direct".into(), Instance::Scalar(direct)),
+        ("Nested".into(), Instance::Scalar(Value::String(nested.into()))),
+    ])
+}

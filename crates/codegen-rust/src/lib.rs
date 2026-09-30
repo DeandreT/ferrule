@@ -1101,6 +1101,13 @@ fn render_expression(
             rust_string(name),
             scalar_type_name(*ty)
         ),
+        Expression::RuntimeParameterDefault { name, ty, default } => format!(
+            "context.runtime_parameter_or_else({}, {}, ScalarType::{}, || {})",
+            id,
+            rust_string(name),
+            scalar_type_name(*ty),
+            call_expression(*default, "context")
+        ),
         Expression::Call { function, args } => {
             let mut body = String::from("{\n        let args = vec![\n");
             for arg in args {

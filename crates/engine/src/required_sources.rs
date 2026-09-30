@@ -216,6 +216,7 @@ impl<'a> Analysis<'a> {
             | Node::FunctionParameter { .. }
             | Node::RuntimeValue { .. }
             | Node::RuntimeParameter { .. }
+            | Node::RuntimeParameterDefault { .. }
             | Node::Call { .. }
             | Node::UserFunctionCall { .. }
             | Node::If { .. }

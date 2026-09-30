@@ -207,6 +207,33 @@ fn evaluate_body_node_inner(
                 found: value.type_name(),
             })
         }
+        Node::RuntimeParameterDefault { name, ty, default } => {
+            let value = match runtime
+                .and_then(|frame| frame.field(&runtime_parameter_field(name)))
+                .and_then(Instance::as_scalar)
+            {
+                Some(value) => value.clone(),
+                None => evaluate_body_input(
+                    functions,
+                    function_id,
+                    function,
+                    node_id,
+                    *default,
+                    0,
+                    parameters,
+                    runtime,
+                    trace,
+                    call_stack,
+                    in_progress,
+                )?,
+            };
+            adapt_scalar(value.clone(), *ty).ok_or_else(|| EngineError::RuntimeParameterType {
+                node: node_id,
+                name: name.clone(),
+                expected: *ty,
+                found: value.type_name(),
+            })
+        }
         Node::Call {
             function: name,
             args,
