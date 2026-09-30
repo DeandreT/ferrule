@@ -7,6 +7,7 @@ use mapping::{Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
 
 use super::auto_number::{self, AutoNumbers};
 use super::database_xml::DirectColumns;
+use super::decimal_input::{self, DecimalInputs};
 use super::function::{
     aggregate_component_name, constant_parts, function_library, scalar_type_name,
     unmap_function_name, value_scalar_type, value_text,
@@ -203,6 +204,8 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut fn_inputs: BTreeMap<NodeId, Vec<u32>> = BTreeMap::new();
     let auto_numbers = AutoNumbers::collect(&project.graph);
     let mut auto_number_inputs = Vec::new();
+    let decimal_inputs = DecimalInputs::plan(project);
+    let mut decimal_input_wires = Vec::new();
     let mut json_serializer_inputs = Vec::new();
     let mut position_inputs = BTreeMap::new();
     let mut sequence_context_pins = Vec::new();
@@ -263,6 +266,12 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
             let (out, inputs) = auto_number::render_component(pattern, keys, uid, components);
             node_out_key.insert(id, out);
             auto_number_inputs.push(inputs);
+            continue;
+        }
+        if let Some(argument) = decimal_inputs.input(id) {
+            let (input, output) = decimal_input::render_component(id, keys, uid, components);
+            node_out_key.insert(id, output);
+            decimal_input_wires.push((argument, input));
             continue;
         }
         match node {
@@ -1107,6 +1116,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         &fn_inputs,
         node_out_key,
         &sequence_inputs,
+        edges,
+        warnings,
+    );
+    connect_deferred_inputs(
+        "native decimal input",
+        &decimal_input_wires,
+        node_out_key,
         edges,
         warnings,
     );
