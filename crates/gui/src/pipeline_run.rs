@@ -44,7 +44,7 @@ pub(super) struct PipelineOutputDraft {
 impl PipelineRunDraft {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let bytes = read_pipeline(path)?;
-        let pipeline: Pipeline = serde_json::from_slice(&bytes)
+        let pipeline = mapping::pipeline_file::decode_bytes(&bytes)
             .with_context(|| format!("parsing pipeline {}", path.display()))?;
         let issues = engine::validate_pipeline(&pipeline)
             .into_iter()

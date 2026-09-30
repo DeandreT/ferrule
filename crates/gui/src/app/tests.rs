@@ -1381,6 +1381,122 @@ fn project_dirty_state_tracks_saved_content() {
     );
 }
 
+fn float_constant_bits(project: &Project, node: NodeId) -> u64 {
+    match project.graph.nodes.get(&node) {
+        Some(Node::Const {
+            value: ir::Value::Float(value),
+        }) => value.to_bits(),
+        other => panic!("expected float constant at node {node}, got {other:?}"),
+    }
+}
+
+#[test]
+fn project_file_preserves_float_layout_and_history() -> anyhow::Result<()> {
+    const BITS: u64 = 0x3feffffffffffc19;
+    let project_path = temporary_project_path("lossless-project");
+    let mut app = FerruleApp::default();
+    app.project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Float(f64::from_bits(BITS)),
+        },
+    );
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    let saved_position = egui::pos2(321.0, 245.0);
+    move_canvas_node(
+        &mut app.main_canvas.snarl,
+        CanvasNode::Graph(9),
+        saved_position,
+    );
+    app.observe_editor_history(std::time::Instant::now(), false);
+    assert!(app.is_dirty());
+    app.undo_project();
+    assert!(!app.project.graph.nodes.contains_key(&9));
+    app.redo_project();
+    assert_eq!(float_constant_bits(&app.project, 9), BITS);
+
+    app.save_document_to(&project_path)?;
+    assert!(!app.is_dirty());
+    let stored = std::fs::read(&project_path)?;
+    assert_eq!(
+        float_constant_bits(&mapping::project_file::decode_bytes(&stored)?, 9),
+        BITS
+    );
+
+    let mut reopened = FerruleApp::default();
+    reopened.load_project_from(&project_path);
+    assert_eq!(float_constant_bits(&reopened.project, 9), BITS);
+    assert_eq!(
+        canvas_position(&reopened.main_canvas.snarl, CanvasNode::Graph(9)),
+        saved_position
+    );
+    assert!(!reopened.is_dirty());
+    if let Some(Node::Const {
+        value: ir::Value::Float(value),
+    }) = reopened.project.graph.nodes.get_mut(&9)
+    {
+        *value = f64::from_bits(BITS + 1);
+    }
+    assert!(reopened.is_dirty());
+    if let Some(Node::Const {
+        value: ir::Value::Float(value),
+    }) = reopened.project.graph.nodes.get_mut(&9)
+    {
+        *value = f64::from_bits(BITS);
+    }
+    assert!(!reopened.is_dirty());
+    std::fs::remove_dir_all(project_path.parent().unwrap())?;
+    Ok(())
+}
+
+#[test]
+fn nonfinite_float_changes_are_dirty_and_undoable() {
+    let mut app = FerruleApp::default();
+    app.project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Null,
+        },
+    );
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.rebase_history();
+    app.mark_clean();
+    assert!(!app.is_dirty());
+
+    let first = 0x7ff8000000000001;
+    let second = 0x7ff8000000000002;
+    app.project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Float(f64::from_bits(first)),
+        },
+    );
+    assert!(app.is_dirty());
+    let now = std::time::Instant::now();
+    app.observe_editor_history(now, false);
+    app.project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Float(f64::from_bits(second)),
+        },
+    );
+    app.observe_editor_history(now, false);
+
+    app.undo_project();
+    assert_eq!(float_constant_bits(&app.project, 9), first);
+    assert!(app.is_dirty());
+    app.undo_project();
+    assert!(matches!(
+        app.project.graph.nodes.get(&9),
+        Some(Node::Const {
+            value: ir::Value::Null
+        })
+    ));
+    assert!(!app.is_dirty());
+    app.redo_project();
+    assert_eq!(float_constant_bits(&app.project, 9), first);
+}
+
 #[test]
 fn destructive_actions_wait_for_confirmation_when_dirty() {
     let mut app = FerruleApp::default();
@@ -3832,6 +3948,63 @@ fn pipeline_runner_requires_reinspection_after_file_changes() -> anyhow::Result<
     assert!(app.pending_pipeline_run.is_none());
     assert!(!directory.join("result.json").exists());
     assert!(app.status.contains("blocked"));
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_editor_and_run_draft_preserve_exact_embedded_float() -> anyhow::Result<()> {
+    const BITS: u64 = 0x3feffffffffffc19;
+    let project_path = temporary_project_path("lossless-pipeline-stage");
+    let directory = project_path.parent().expect("project has directory");
+    let pipeline_path = directory.join("flow.json");
+    let mut project = blank_project();
+    project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Float(f64::from_bits(BITS)),
+        },
+    );
+    std::fs::write(
+        &project_path,
+        mapping::project_file::encode_pretty(&project)?,
+    )?;
+
+    let mut editor = crate::pipeline_edit::PipelineEditorDocument::create(&pipeline_path)?;
+    editor.add_project(&project_path)?;
+    assert_eq!(
+        float_constant_bits(&editor.pipeline.stages[0].project, 9),
+        BITS
+    );
+    assert!(editor.is_dirty());
+    editor.save()?;
+    assert!(!editor.is_dirty());
+    if let Some(Node::Const {
+        value: ir::Value::Float(value),
+    }) = editor.pipeline.stages[0].project.graph.nodes.get_mut(&9)
+    {
+        *value = f64::from_bits(BITS + 1);
+    }
+    assert!(editor.is_dirty());
+    if let Some(Node::Const {
+        value: ir::Value::Float(value),
+    }) = editor.pipeline.stages[0].project.graph.nodes.get_mut(&9)
+    {
+        *value = f64::from_bits(BITS);
+    }
+    assert!(!editor.is_dirty());
+    let reopened = crate::pipeline_edit::PipelineEditorDocument::load(&pipeline_path)?;
+    assert_eq!(
+        float_constant_bits(&reopened.pipeline.stages[0].project, 9),
+        BITS
+    );
+    assert!(!reopened.is_dirty());
+    let run = crate::pipeline_run::PipelineRunDraft::load(&pipeline_path)?;
+    assert_eq!(
+        float_constant_bits(&run.pipeline.stages[0].project, 9),
+        BITS
+    );
+
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }

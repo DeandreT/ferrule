@@ -138,6 +138,7 @@ impl DemoApp {
         match project_document::to_json(&self.project) {
             Ok(json) => self.project_json = json,
             Err(error) => {
+                self.project_json.clear();
                 self.status = "Project serialization failed".to_string();
                 self.diagnostic = Some(error.to_string());
             }
@@ -145,6 +146,10 @@ impl DemoApp {
     }
 
     fn download_project(&mut self) {
+        if self.project_json.is_empty() {
+            self.status = "Project download unavailable".to_string();
+            return;
+        }
         match download_utf8_text("ferrule-project.json", &self.project_json) {
             Ok(()) => self.status = "Project download started".to_string(),
             Err(error) => {
@@ -279,7 +284,10 @@ impl DemoApp {
             if ui.button("Apply").clicked() {
                 self.apply_project_json();
             }
-            if ui.button("Download").clicked() {
+            if ui
+                .add_enabled(!self.project_json.is_empty(), egui::Button::new("Download"))
+                .clicked()
+            {
                 self.download_project();
             }
         });

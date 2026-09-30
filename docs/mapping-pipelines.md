@@ -73,8 +73,9 @@ stable dependency order, and returns all stage outputs only after every stage
 succeeds. `engine::run_pipeline` is the simpler entry point for projects that
 do not need host runtime context.
 
-The serialized envelope has this shape; each `project` is an ordinary existing
-Ferrule project:
+The ordinary serialized form has this shape; each `project` is a Ferrule
+project. [Pipeline file loading](project-files.md) also accepts the versioned
+JSON form used to retain exact floating-point values inside stages:
 
 ```json
 {

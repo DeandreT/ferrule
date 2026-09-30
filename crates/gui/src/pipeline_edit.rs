@@ -16,7 +16,7 @@ pub(super) struct PipelineEditorDocument {
     pub path: PathBuf,
     pub pipeline: Pipeline,
     original_bytes: Option<Vec<u8>>,
-    saved_semantic: Option<Vec<u8>>,
+    saved_semantic: Option<String>,
 }
 
 impl PipelineEditorDocument {
@@ -27,9 +27,9 @@ impl PipelineEditorDocument {
             );
         }
         let bytes = read_bounded(path)?;
-        let pipeline: Pipeline = serde_json::from_slice(&bytes)
+        let pipeline = mapping::pipeline_file::decode_bytes(&bytes)
             .with_context(|| format!("parsing pipeline {}", path.display()))?;
-        let saved_semantic = serde_json::to_vec(&pipeline)?;
+        let saved_semantic = crate::project_state::pipeline_snapshot_key(&pipeline);
         Ok(Self {
             path: path.to_path_buf(),
             pipeline,
@@ -62,7 +62,7 @@ impl PipelineEditorDocument {
 
     pub fn is_dirty(&self) -> bool {
         self.saved_semantic.as_ref().is_none_or(|saved| {
-            serde_json::to_vec(&self.pipeline).map_or(true, |current| &current != saved)
+            &crate::project_state::pipeline_snapshot_key(&self.pipeline) != saved
         })
     }
 
@@ -82,7 +82,7 @@ impl PipelineEditorDocument {
             bail!("pipeline already contains 1024 stages");
         }
         let bytes = read_bounded(project_path)?;
-        let mut project: Project = serde_json::from_slice(&bytes)
+        let mut project: Project = mapping::project_file::decode_bytes(&bytes)
             .with_context(|| format!("parsing project {}", project_path.display()))?;
         cli::rebase_project_paths(&mut project, project_path, &self.path)?;
         let base = project_path
@@ -306,14 +306,13 @@ impl PipelineEditorDocument {
             );
         }
         self.ensure_unchanged()?;
-        let mut bytes = serde_json::to_vec_pretty(&self.pipeline)?;
-        bytes.push(b'\n');
+        let bytes = mapping::pipeline_file::encode_pretty(&self.pipeline)?.into_bytes();
         if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
             bail!("serialized pipeline exceeds the 64 MiB file limit");
         }
         atomic_replace(&self.path, &bytes)?;
         self.original_bytes = Some(bytes);
-        self.saved_semantic = Some(serde_json::to_vec(&self.pipeline)?);
+        self.saved_semantic = Some(crate::project_state::pipeline_snapshot_key(&self.pipeline));
         Ok(())
     }
 }

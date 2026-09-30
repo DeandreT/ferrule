@@ -420,6 +420,39 @@ fn generated_unstable_source_schema_matches_native_json_inputs() -> TestResult<(
 }
 
 #[test]
+fn generated_saved_project_preserves_exact_float_constants() -> TestResult<()> {
+    let mut project = text_boundary_project();
+    project.source = SchemaNode::group("Source", Vec::new());
+    project.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::Float),
+            string("Text"),
+        ],
+    );
+    project.graph.nodes = BTreeMap::from([(
+        1,
+        Node::Const {
+            value: Value::Float(f64::from_bits(0x0031_fa18_2c40_c60e)),
+        },
+    )]);
+    project.root.bindings = vec![
+        Binding {
+            target_field: "Value".into(),
+            node: 1,
+        },
+        Binding {
+            target_field: "Text".into(),
+            node: 1,
+        },
+    ];
+    let encoded = mapping::project_file::encode_pretty(&project)?;
+    assert!(serde_json::from_str::<Project>(&encoded).is_err());
+    let cases = interpreter_cases(&project, &["{}".into()])?;
+    run_generated_boundary_cases_json(encoded.as_bytes(), &cases, "saved_float_constants")
+}
+
+#[test]
 fn generation_rejects_oversized_embedded_schema_before_publication() -> TestResult<()> {
     let directory = TempDir::new("embedded_schema_publication")?;
     let project_path = directory.0.join("project.json");
@@ -541,7 +574,11 @@ fn run_generated_boundary_cases(
     cases: &[serde_json::Value],
     name: &str,
 ) -> TestResult<()> {
-    run_generated_boundary_cases_json(&serde_json::to_vec_pretty(project)?, cases, name)
+    run_generated_boundary_cases_json(
+        mapping::project_file::encode_pretty(project)?.as_bytes(),
+        cases,
+        name,
+    )
 }
 
 fn run_generated_boundary_cases_json(

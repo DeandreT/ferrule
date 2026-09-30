@@ -5,9 +5,10 @@ and target schemas with functions, filters, aggregates, lookups, and joins,
 then run the mapping from the native editor, the CLI, or an embedded Rust
 application.
 
-Projects are plain JSON. The mapping engine and format adapters are separate,
-so one mapping can cross XML, JSON, tabular, database, EDI, binary, and other
-document formats without format-specific graph logic.
+Projects are [JSON files](docs/project-files.md) that preserve exact finite
+floating-point values when saved and reopened. The mapping engine and format
+adapters are separate, so one mapping can cross XML, JSON, tabular, database,
+EDI, binary, and other document formats without format-specific graph logic.
 
 ## Highlights
 

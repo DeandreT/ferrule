@@ -4,8 +4,8 @@ use mapping::Project;
 
 #[derive(Debug)]
 pub enum ProjectDocumentError {
-    Serialize(serde_json::Error),
-    Parse(serde_json::Error),
+    Serialize(mapping::FileCodecError),
+    Parse(mapping::FileCodecError),
     Validation(Vec<engine::ValidationIssue>),
 }
 
@@ -42,11 +42,11 @@ impl std::error::Error for ProjectDocumentError {
 }
 
 pub fn to_json(project: &Project) -> Result<String, ProjectDocumentError> {
-    serde_json::to_string_pretty(project).map_err(ProjectDocumentError::Serialize)
+    mapping::project_file::encode_pretty(project).map_err(ProjectDocumentError::Serialize)
 }
 
 pub fn parse_and_validate(json: &str) -> Result<Project, ProjectDocumentError> {
-    let project: Project = serde_json::from_str(json).map_err(ProjectDocumentError::Parse)?;
+    let project = mapping::project_file::decode_str(json).map_err(ProjectDocumentError::Parse)?;
     let issues = engine::validate(&project);
     if issues.is_empty() {
         Ok(project)
@@ -58,8 +58,8 @@ pub fn parse_and_validate(json: &str) -> Result<Project, ProjectDocumentError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::{ScalarType, SchemaNode};
-    use mapping::{Binding, Graph, Scope};
+    use ir::{ScalarType, SchemaNode, Value};
+    use mapping::{Binding, Graph, Node, Scope};
 
     fn valid_project() -> Project {
         Project {
@@ -103,12 +103,66 @@ mod tests {
         let ProjectDocumentError::Parse(source) = &error else {
             panic!("expected a parse error, got {error}");
         };
+        let mapping::FileCodecError::Deserialization(source) = source else {
+            panic!("expected a JSON syntax error, got {source}");
+        };
         assert!(source.line() > 0);
         assert!(
             error
                 .to_string()
                 .starts_with("could not parse project JSON:")
         );
+    }
+
+    #[test]
+    fn downloaded_projects_preserve_float_bits_through_edit_and_reapply() {
+        let mut project = valid_project();
+        project.target = SchemaNode::group(
+            "target",
+            vec![SchemaNode::scalar("result", ScalarType::Float)],
+        );
+        let bits = 0x0031_fa18_2c40_c60e;
+        project.graph.nodes.insert(
+            1,
+            Node::Const {
+                value: Value::Float(f64::from_bits(bits)),
+            },
+        );
+        project.root.bindings.push(Binding {
+            target_field: "result".into(),
+            node: 1,
+        });
+
+        let mut json = to_json(&project).expect("finite project can be downloaded");
+        assert!(serde_json::from_str::<serde_json::Value>(&json).is_ok());
+        for _ in 0..2 {
+            let reapplied = parse_and_validate(&json).expect("downloaded project can be applied");
+            let Some(Node::Const {
+                value: Value::Float(value),
+            }) = reapplied.graph.nodes.get(&1)
+            else {
+                panic!("downloaded float retains its scalar type");
+            };
+            assert_eq!(value.to_bits(), bits);
+            json = to_json(&reapplied).expect("reapplied project can be downloaded again");
+        }
+    }
+
+    #[test]
+    fn download_rejects_nonfinite_values_without_turning_them_into_null() {
+        let mut project = valid_project();
+        project.graph.nodes.insert(
+            1,
+            Node::Const {
+                value: Value::Float(f64::INFINITY),
+            },
+        );
+        assert!(matches!(
+            to_json(&project),
+            Err(ProjectDocumentError::Serialize(
+                mapping::FileCodecError::NonFiniteValue { .. }
+            ))
+        ));
     }
 
     #[test]

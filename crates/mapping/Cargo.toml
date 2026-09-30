@@ -10,6 +10,4 @@ description = "Mapping graph IR (nodes/edges/functions/conditions) and project f
 ir = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
-
-[dev-dependencies]
 serde_json = { workspace = true }

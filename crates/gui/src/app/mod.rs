@@ -634,8 +634,7 @@ fn editor_state(
     workspace: &MappingWorkspace,
 ) -> EditorState {
     EditorState {
-        serialized_project: serde_json::to_string(project)
-            .expect("Project serialization cannot fail"),
+        serialized_project: crate::project_state::project_snapshot_key(project),
         layout: CanvasLayout::capture(project, snarl, workspace),
     }
 }
@@ -1011,9 +1010,11 @@ impl FerruleApp {
     }
 
     fn load_project_from(&mut self, path: &std::path::Path) {
-        match std::fs::read_to_string(path).and_then(|text| {
-            serde_json::from_str::<Project>(&text).map_err(|e| std::io::Error::other(e.to_string()))
-        }) {
+        let loaded = (|| -> anyhow::Result<Project> {
+            let bytes = std::fs::read(path)?;
+            Ok(mapping::project_file::decode_bytes(&bytes)?)
+        })();
+        match loaded {
             Ok(project) => {
                 let (layout, layout_warning) = match read_layout(path) {
                     Ok(layout) => (layout, None),
@@ -1060,7 +1061,7 @@ impl FerruleApp {
         let mut project = self.project.clone();
         let previous_path = self.document.suggested_path();
         cli::rebase_project_paths(&mut project, previous_path, path)?;
-        let json = serde_json::to_string_pretty(&project)?;
+        let json = mapping::project_file::encode_pretty(&project)?;
         let layout =
             CanvasLayout::capture(&project, &self.main_canvas.snarl, &self.mapping_workspace);
         std::fs::write(path, json)?;

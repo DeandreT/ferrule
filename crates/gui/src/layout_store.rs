@@ -5,8 +5,8 @@ use mapping::Project;
 use crate::app::{CanvasLayout, LAYOUT_VERSION};
 
 pub fn project_fingerprint(project: &Project) -> String {
-    let json = serde_json::to_vec(project).expect("Project serialization cannot fail");
-    let hash = json.into_iter().fold(0xcbf29ce484222325_u64, |hash, byte| {
+    let key = crate::project_state::project_snapshot_key(project);
+    let hash = key.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| {
         (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
     });
     format!("{hash:016x}")
