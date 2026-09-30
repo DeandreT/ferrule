@@ -73,7 +73,7 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Generated Rust and C# hosts have compiled and executed twenty-nine warning-free
+- Generated Rust and C# hosts have compiled and executed thirty warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -121,7 +121,10 @@ are preserved.
   generated typed JSON and exact headerless CSV with the interpreter. Case
   twenty-nine drives an XML target with one generated sequence item and computes
   three expression-valued temperature aggregates inside it; generated Rust and
-  C# typed JSON and exact XML match the interpreter.
+  C# typed JSON and exact XML match the interpreter. Case thirty selects a
+  computed JSON property across twelve item rows, filters absent and false
+  values, then sorts five output rows into exact headered CSV; generated Rust
+  and C# JSON values and CSV bytes match the interpreter.
   This small execution sample does not establish that all emitted survey
   designs execute equivalently.
 - Known architectural constraints: each mapping stage has one primary driver,
@@ -140,7 +143,7 @@ are preserved.
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Complete applicable validation/autocompletion behavior, configuration commands, dialects, and versioned release packs |
 | Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
-| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML pass-through chain import and guarded export for up to 64 pass-through targets with XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or new-workbook XLSX final primary output, connected final-stage XML target fan-out, and original XML hosts feeding named inputs across stages through distinct ports or shared-port fan-out, and GUI editing/inspection/running of saved pipelines with stored input-path hints | Fully general named N-to-M endpoints, general `.mfd` stage-graph import/export including other connected later-stage named sources, service hosts, and embedded per-stage graph editing |
+| Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML pass-through chain import and guarded export for up to 64 pass-through targets with XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, bounded XBRL, or new-workbook XLSX final primary output, connected final-stage XML target fan-out, and original XML hosts feeding named inputs across stages through distinct ports or shared-port fan-out, and GUI editing/inspection/running of saved pipelines with stored input-path hints | Fully general named N-to-M endpoints, general `.mfd` stage-graph import/export including other connected later-stage named sources, service hosts, and embedded per-stage graph editing |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV/SQLite blank-project setup, SQLite table introspection for named lookup sources, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
@@ -411,7 +414,7 @@ static named inputs. It validates IDs, references, schemas, and cycles before
 execution, then runs stages in stable dependency order. The file host publishes
 selected outputs atomically only after the complete graph succeeds. Bounded
 serial XML pass-through chains import and export as connected `.mfd` designs,
-with XML, CSV, fixed-width text, FlexText, JSON, Protocol Buffers, or
+with XML, CSV, fixed-width text, FlexText, JSON, Protocol Buffers, bounded XBRL, or
 new-workbook XLSX final primary targets. Native export preflight rejects
 unsupported stage shapes before publishing artifacts. Intermediate XML
 boundaries retain their output instance and
@@ -428,6 +431,9 @@ Local XML-to-FlexText and XML-to-Protocol-Buffers mappings also run after an
 identity XML stage; their final artifacts remain byte-exact across strict
 export and reimport. The Protobuf chain publishes the same binary output
 through the CLI and writes an adjacent schema during export.
+An XML-to-XBRL chain publishes the same instance bytes through the CLI and
+strict export/reimport. Its guarded profile excludes presentation and numeric
+fact metadata that the current XBRL boundary cannot represent.
 Intermediate or named XLSX targets and update-existing workbooks reject before
 publication.
 Synthetic two- and four-stage chains
@@ -564,6 +570,10 @@ generation. Null-short-circuited and failed later arguments remain undelivered.
 Completed pipeline reports now retain a stage-attributed, globally bounded
 trace. Node History, Source Rows, and Replay select a stage to distinguish
 reused graph-node IDs without changing the trace-event schema.
+Version 4 CLI JSON traces also carry function-qualified body-node outputs and
+delivered inputs. Nested calls keep their own function IDs, while GUI History
+and Replay distinguish function-local nodes from main-graph nodes in each
+pipeline stage. Live breakpoints inside function bodies remain open.
 Preview selects the active primary or named target and preflights every required
 secondary source. Direct graph input consumption is now recorded for calls,
 conditionals, value maps, lookups, dynamic keys, collection-search predicates
