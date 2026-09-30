@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Source>
+  <Record>
+    <Entity>Example Corp</Entity>
+    <Scheme>urn:ferrule:test:entity</Scheme>
+    <Instant>2026-06-30</Instant>
+    <Label>reported</Label>
+  </Record>
+</Source>
