@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use engine::{
     DebugDecision, EngineError, PendingFunctionNodeInput, PendingFunctionNodeValue,
-    PendingNodeInput, PendingNodeValue, PendingTargetWrite,
+    PendingNodeFailure, PendingNodeInput, PendingNodeValue, PendingTargetWrite,
 };
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
@@ -390,6 +390,60 @@ fn stage_function_input_hook_qualifies_pins_and_cancels_publication() -> anyhow:
             "finish:2:!"
         ]
     );
+    assert_old_outputs(&outputs)?;
+    Ok(())
+}
+
+#[test]
+fn stage_failure_hook_cancels_only_the_failing_stage_before_publication() -> anyhow::Result<()> {
+    let directory = TempDir::new()?;
+    let (pipeline_path, inputs, outputs) = prepare(&directory)?;
+    let mut pipeline: Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    let finish = pipeline
+        .stages
+        .iter_mut()
+        .find(|stage| stage.id == "finish")
+        .unwrap();
+    finish.project.graph.nodes.extend([
+        (
+            1,
+            Node::Const {
+                value: Value::Int(1),
+            },
+        ),
+        (
+            2,
+            Node::Const {
+                value: Value::Int(0),
+            },
+        ),
+        (
+            3,
+            Node::Call {
+                function: "divide".into(),
+                args: vec![1, 2],
+            },
+        ),
+    ]);
+    finish.project.root.bindings[0].node = 3;
+    std::fs::write(&pipeline_path, serde_json::to_vec(&pipeline)?)?;
+    let seen = RefCell::new(Vec::<(String, u32, String)>::new());
+    let hook = |stage: &str, failure: &PendingNodeFailure| {
+        seen.borrow_mut()
+            .push((stage.into(), failure.node, failure.error.preview.clone()));
+        DebugDecision::Cancel
+    };
+    let options = cli::PipelineRunOptions::default().with_stage_node_failure_debug_hook(&hook);
+    let error = cli::run_pipeline_file_with_options(&pipeline_path, &inputs, &outputs, &options)
+        .unwrap_err();
+    assert!(error.chain().any(|cause| matches!(
+        cause.downcast_ref::<EngineError>(),
+        Some(EngineError::DebugCancelled)
+    )));
+    let seen = seen.borrow();
+    assert_eq!(seen.len(), 1);
+    assert_eq!((seen[0].0.as_str(), seen[0].1), ("finish", 3));
+    assert!(seen[0].2.contains("division by zero"));
     assert_old_outputs(&outputs)?;
     Ok(())
 }

@@ -317,6 +317,8 @@ enum PreviewWorkerEvent {
     PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
     PausedFunctionInput(Box<engine::PendingFunctionNodeInput>),
+    PausedFailure(Box<engine::PendingNodeFailure>),
+    PausedFunctionFailure(Box<engine::PendingFunctionNodeFailure>),
     Finished(
         Result<cli::PayloadRunOutcome, PreviewRunError>,
         crate::run_report::TraceReport,
@@ -336,6 +338,8 @@ pub(super) enum PreviewPhase {
     PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
     PausedFunctionInput(Box<engine::PendingFunctionNodeInput>),
+    PausedFailure(Box<engine::PendingNodeFailure>),
+    PausedFunctionFailure(Box<engine::PendingFunctionNodeFailure>),
     Stopping,
 }
 
@@ -387,6 +391,40 @@ struct PreviewDebugHook {
     node_condition: Option<DebugNodeCondition>,
     expression_condition: Option<DebugExpressionCondition>,
     input_condition: Option<DebugInputCondition>,
+    pause_on_failure: bool,
+}
+
+impl PreviewDebugHook {
+    fn after_failure(&self, event: PreviewWorkerEvent) -> engine::DebugDecision {
+        if self.cancelled.load(Ordering::Acquire) {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            match self.commands.try_recv() {
+                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Ok(PreviewCommand::Step | PreviewCommand::Continue | PreviewCommand::Pause) => {}
+                Err(TryRecvError::Empty) => break,
+            }
+        }
+        if self.events.send(event).is_err() {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            if self.cancelled.load(Ordering::Acquire) {
+                return engine::DebugDecision::Cancel;
+            }
+            match self.commands.recv_timeout(Duration::from_millis(100)) {
+                Ok(PreviewCommand::Continue) => return engine::DebugDecision::Resume,
+                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Ok(PreviewCommand::Pause | PreviewCommand::Step)
+                | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+        }
+    }
 }
 
 impl engine::DebugHook for PreviewDebugHook {
@@ -416,6 +454,27 @@ impl engine::DebugHook for PreviewDebugHook {
             .is_some_and(DebugInputCondition::targets_function)
             || self.pause_next_input.get()
             || self.cancelled.load(Ordering::Acquire)
+    }
+
+    fn wants_node_failures(&self) -> bool {
+        self.pause_on_failure
+    }
+
+    fn wants_function_node_failures(&self) -> bool {
+        self.pause_on_failure
+    }
+
+    fn after_node_failure(&self, failure: &engine::PendingNodeFailure) -> engine::DebugDecision {
+        self.after_failure(PreviewWorkerEvent::PausedFailure(Box::new(failure.clone())))
+    }
+
+    fn after_function_node_failure(
+        &self,
+        failure: &engine::PendingFunctionNodeFailure,
+    ) -> engine::DebugDecision {
+        self.after_failure(PreviewWorkerEvent::PausedFunctionFailure(Box::new(
+            failure.clone(),
+        )))
     }
 
     fn source_field_probe(&self) -> Option<(usize, String)> {
@@ -903,6 +962,10 @@ impl FerruleApp {
                         &mut self.preview_input_condition,
                         "preview_debug_input_value_type",
                     );
+                    ui.checkbox(
+                        &mut self.preview_pause_on_failure,
+                        "Pause at the first graph or function evaluation error",
+                    );
                 });
                 if draft.input_identity.trim().is_empty() {
                     ui.colored_label(
@@ -981,6 +1044,17 @@ impl FerruleApp {
                             action = Some(PreviewAction::Step);
                         }
                         if ui.button("Continue").clicked() {
+                            action = Some(PreviewAction::Continue);
+                        }
+                        if ui.button("Cancel debug preview").clicked() {
+                            action = Some(PreviewAction::Cancel);
+                        }
+                    }
+                    Some(
+                        PreviewPhase::PausedFailure(_)
+                        | PreviewPhase::PausedFunctionFailure(_),
+                    ) => {
+                        if ui.button("Continue to error").clicked() {
                             action = Some(PreviewAction::Continue);
                         }
                         if ui.button("Cancel debug preview").clicked() {
@@ -1159,6 +1233,7 @@ impl FerruleApp {
         let (commands, command_rx) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
+        let pause_on_failure = debug && self.preview_pause_on_failure;
         std::thread::spawn(move || {
             run_preview_worker(
                 project,
@@ -1172,6 +1247,7 @@ impl FerruleApp {
                 node_condition,
                 expression_condition,
                 input_condition,
+                pause_on_failure,
                 event_tx,
                 command_rx,
                 worker_cancelled,
@@ -1222,6 +1298,8 @@ impl FerruleApp {
                         | PreviewPhase::PausedFunctionNode(_)
                         | PreviewPhase::PausedInput(_)
                         | PreviewPhase::PausedFunctionInput(_)
+                        | PreviewPhase::PausedFailure(_)
+                        | PreviewPhase::PausedFunctionFailure(_)
                 ) {
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }
@@ -1293,6 +1371,28 @@ impl FerruleApp {
                 }
                 ctx.request_repaint();
             }
+            PreviewWorkerEvent::PausedFailure(failure) => {
+                if matches!(pending.phase, PreviewPhase::Stopping) {
+                    pending.command(PreviewCommand::Cancel);
+                } else {
+                    self.status = format!("paused on graph node #{} error", failure.node);
+                    pending.phase = PreviewPhase::PausedFailure(failure);
+                }
+                ctx.request_repaint();
+            }
+            PreviewWorkerEvent::PausedFunctionFailure(failure) => {
+                if matches!(pending.phase, PreviewPhase::Stopping) {
+                    pending.command(PreviewCommand::Cancel);
+                } else {
+                    self.status = format!(
+                        "paused on function #{} node #{} error",
+                        failure.function.get(),
+                        failure.node
+                    );
+                    pending.phase = PreviewPhase::PausedFunctionFailure(failure);
+                }
+                ctx.request_repaint();
+            }
             PreviewWorkerEvent::Finished(result, trace) => {
                 let pending = self.pending_preview.take().expect("preview worker exists");
                 if matches!(pending.phase, PreviewPhase::Stopping)
@@ -1359,6 +1459,7 @@ fn run_preview_worker(
     node_condition: Option<DebugNodeCondition>,
     expression_condition: Option<DebugExpressionCondition>,
     input_condition: Option<DebugInputCondition>,
+    pause_on_failure: bool,
     events: Sender<PreviewWorkerEvent>,
     commands: Receiver<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
@@ -1381,7 +1482,8 @@ fn run_preview_worker(
                 && source_condition.is_none()
                 && node_condition.is_none()
                 && expression_condition.is_none()
-                && input_condition.is_none(),
+                && input_condition.is_none()
+                && !pause_on_failure,
         ),
         pause_next_node: std::cell::Cell::new(false),
         pause_next_input: std::cell::Cell::new(false),
@@ -1392,6 +1494,7 @@ fn run_preview_worker(
         node_condition,
         expression_condition,
         input_condition,
+        pause_on_failure,
     };
     let result = run_preview_payload(
         &project,
@@ -1575,6 +1678,10 @@ pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, deb
         PreviewPhase::PausedFunctionNode(value) => show_live_function_node_debug_state(ui, value),
         PreviewPhase::PausedInput(input) => show_live_input_debug_state(ui, input),
         PreviewPhase::PausedFunctionInput(input) => show_live_function_input_debug_state(ui, input),
+        PreviewPhase::PausedFailure(failure) => show_live_failure_debug_state(ui, failure),
+        PreviewPhase::PausedFunctionFailure(failure) => {
+            show_live_function_failure_debug_state(ui, failure)
+        }
     }
 }
 
@@ -1665,6 +1772,44 @@ pub(super) fn show_live_function_input_debug_state(
         &input.source,
     );
     ui.weak("Positions identify the caller. Reusable function bodies have no source frames. Step continues to the next recorded input delivery; Cancel stops before output publication.");
+}
+
+pub(super) fn show_live_failure_debug_state(
+    ui: &mut egui::Ui,
+    failure: &engine::PendingNodeFailure,
+) {
+    ui.strong(format!("Paused as graph node #{} failed", failure.node));
+    let suffix = if failure.error.truncated { "…" } else { "" };
+    ui.monospace(format!("Error: {}{suffix}", failure.error.preview));
+    show_live_expression_context(
+        ui,
+        &failure.positions,
+        failure.omitted_outer_positions,
+        failure.position_paths_truncated,
+        &failure.source,
+    );
+    ui.weak("Continue reports the original error. Cancel stops the run before output publication.");
+}
+
+pub(super) fn show_live_function_failure_debug_state(
+    ui: &mut egui::Ui,
+    failure: &engine::PendingFunctionNodeFailure,
+) {
+    ui.strong(format!(
+        "Paused as function #{} node #{} failed",
+        failure.function.get(),
+        failure.node
+    ));
+    let suffix = if failure.error.truncated { "…" } else { "" };
+    ui.monospace(format!("Error: {}{suffix}", failure.error.preview));
+    show_live_expression_context(
+        ui,
+        &failure.positions,
+        failure.omitted_outer_positions,
+        failure.position_paths_truncated,
+        &failure.source,
+    );
+    ui.weak("Positions identify the caller. Reusable function bodies have no source frames. Continue reports the original error; Cancel stops before output publication.");
 }
 
 fn show_live_expression_context(

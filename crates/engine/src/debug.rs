@@ -1,5 +1,8 @@
 //! Opt-in control point for a host-driven live debugger.
 
+use std::cell::Cell;
+use std::fmt::{self, Write as _};
+
 use ir::{Instance, Value};
 use mapping::{FunctionId, NodeId};
 
@@ -16,6 +19,7 @@ const MAX_DEBUG_SOURCE_FIELDS: usize = 8;
 const MAX_DEBUG_FIELD_NAME_CHARS: usize = 160;
 const MAX_DEBUG_POSITIONS: usize = 16;
 const MAX_DEBUG_POSITION_SEGMENTS: usize = 16;
+const MAX_DEBUG_ERROR_CHARS: usize = 512;
 
 /// A bounded preview of an instance. Collections and groups expose only their
 /// immediate length, never a copy of their contents.
@@ -231,6 +235,72 @@ pub struct PendingFunctionNodeInput {
     pub source: DebugSourceContext,
 }
 
+/// A bounded display copy of the original typed execution error. Continuing
+/// from a failure pause propagates the unchanged `EngineError`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DebugErrorPreview {
+    pub preview: String,
+    pub truncated: bool,
+}
+
+impl DebugErrorPreview {
+    fn new(error: &EngineError) -> Self {
+        struct Writer {
+            preview: String,
+            chars: usize,
+            truncated: bool,
+        }
+
+        impl fmt::Write for Writer {
+            fn write_str(&mut self, text: &str) -> fmt::Result {
+                for character in text.chars() {
+                    if self.chars == MAX_DEBUG_ERROR_CHARS {
+                        self.truncated = true;
+                        return Err(fmt::Error);
+                    }
+                    self.preview.push(character);
+                    self.chars += 1;
+                }
+                Ok(())
+            }
+        }
+
+        let mut writer = Writer {
+            preview: String::new(),
+            chars: 0,
+            truncated: false,
+        };
+        let _ = write!(&mut writer, "{error}");
+        Self {
+            preview: writer.preview,
+            truncated: writer.truncated,
+        }
+    }
+}
+
+/// The deepest failing interpreted main-graph node in one run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingNodeFailure {
+    pub node: NodeId,
+    pub error: DebugErrorPreview,
+    pub positions: Vec<TracePosition>,
+    pub omitted_outer_positions: usize,
+    pub position_paths_truncated: bool,
+    pub source: DebugSourceContext,
+}
+
+/// The deepest failing reusable-function body node in one run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingFunctionNodeFailure {
+    pub function: FunctionId,
+    pub node: NodeId,
+    pub error: DebugErrorPreview,
+    pub positions: Vec<TracePosition>,
+    pub omitted_outer_positions: usize,
+    pub position_paths_truncated: bool,
+    pub source: DebugSourceContext,
+}
+
 /// The host decides when to resume a pending write or node evaluation. It may
 /// block inside a callback to implement stepping or breakpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,6 +345,18 @@ pub trait DebugHook {
         false
     }
 
+    /// Opt in to one pause opportunity at the deepest failing main-graph
+    /// evaluation. Propagated ancestor errors do not trigger another callback.
+    fn wants_node_failures(&self) -> bool {
+        false
+    }
+
+    /// Opt in to one pause opportunity at the deepest failing function-body
+    /// evaluation, with the function ID qualifying its local node ID.
+    fn wants_function_node_failures(&self) -> bool {
+        false
+    }
+
     /// Called after a successful graph evaluation, including filters and
     /// pre-target rules. The host may block here or cancel the run.
     fn after_node_value(&self, _node: &PendingNodeValue) -> DebugDecision {
@@ -296,6 +378,17 @@ pub trait DebugHook {
     /// Called after a value reaches a function-body input and before the
     /// consumer continues. Untaken conditional inputs do not call this hook.
     fn after_function_node_input(&self, _input: &PendingFunctionNodeInput) -> DebugDecision {
+        DebugDecision::Resume
+    }
+
+    /// Resume propagates the original typed error; Cancel replaces it with
+    /// `EngineError::DebugCancelled`. The failed evaluation is not retried.
+    fn after_node_failure(&self, _failure: &PendingNodeFailure) -> DebugDecision {
+        DebugDecision::Resume
+    }
+
+    /// As `after_node_failure`, for a function-local body node.
+    fn after_function_node_failure(&self, _failure: &PendingFunctionNodeFailure) -> DebugDecision {
         DebugDecision::Resume
     }
 }
@@ -397,6 +490,67 @@ pub(crate) fn after_function_node_input(
         source: delivered.source,
     };
     match hook.after_function_node_input(&snapshot) {
+        DebugDecision::Resume => Ok(()),
+        DebugDecision::Cancel => Err(EngineError::DebugCancelled),
+    }
+}
+
+pub(crate) fn after_node_failure(
+    hook: Option<&dyn DebugHook>,
+    first_failure_reported: &Cell<bool>,
+    node: NodeId,
+    error: &EngineError,
+    positions: &[PositionFrame],
+    context: &[&Instance],
+) -> Result<(), EngineError> {
+    if first_failure_reported.get() || matches!(error, EngineError::DebugCancelled) {
+        return Ok(());
+    }
+    let Some(hook) = hook.filter(|hook| hook.wants_node_failures()) else {
+        return Ok(());
+    };
+    first_failure_reported.set(true);
+    let evaluated = node_value_snapshot(node, &Value::Null, positions, context);
+    let failure = PendingNodeFailure {
+        node,
+        error: DebugErrorPreview::new(error),
+        positions: evaluated.positions,
+        omitted_outer_positions: evaluated.omitted_outer_positions,
+        position_paths_truncated: evaluated.position_paths_truncated,
+        source: evaluated.source,
+    };
+    match hook.after_node_failure(&failure) {
+        DebugDecision::Resume => Ok(()),
+        DebugDecision::Cancel => Err(EngineError::DebugCancelled),
+    }
+}
+
+pub(crate) fn after_function_node_failure(
+    hook: Option<&dyn DebugHook>,
+    first_failure_reported: &Cell<bool>,
+    function: FunctionId,
+    node: NodeId,
+    error: &EngineError,
+    caller_positions: &[PositionFrame],
+) -> Result<(), EngineError> {
+    if first_failure_reported.get() || matches!(error, EngineError::DebugCancelled) {
+        return Ok(());
+    }
+    let Some(hook) = hook.filter(|hook| hook.wants_function_node_failures()) else {
+        return Ok(());
+    };
+    first_failure_reported.set(true);
+    let evaluated = node_value_snapshot(node, &Value::Null, caller_positions, &[]);
+    let failure = PendingFunctionNodeFailure {
+        function,
+        node,
+        error: DebugErrorPreview::new(error),
+        positions: evaluated.positions,
+        omitted_outer_positions: evaluated.omitted_outer_positions,
+        position_paths_truncated: evaluated.position_paths_truncated,
+        source: evaluated.source,
+    };
+    match hook.after_function_node_failure(&failure) {
         DebugDecision::Resume => Ok(()),
         DebugDecision::Cancel => Err(EngineError::DebugCancelled),
     }
@@ -514,6 +668,14 @@ mod tests {
     use ir::Value;
 
     use super::*;
+
+    #[test]
+    fn error_preview_stops_formatting_at_the_bounded_limit() {
+        let error = EngineError::MissingSourceField("x".repeat(10_000));
+        let preview = DebugErrorPreview::new(&error);
+        assert_eq!(preview.preview.chars().count(), MAX_DEBUG_ERROR_CHARS);
+        assert!(preview.truncated);
+    }
 
     #[derive(Default)]
     struct Collector(RefCell<Vec<PendingTargetWrite>>);

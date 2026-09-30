@@ -1,5 +1,6 @@
 //! Interprets a mapping graph against a source instance to produce a target instance.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -38,9 +39,10 @@ use context::{runtime_field, runtime_parameter_field};
 use eval_scope::eval_scope;
 
 pub use debug::{
-    DebugDecision, DebugDraftField, DebugHook, DebugInstancePreview, DebugScopeDraft,
-    DebugSourceContext, DebugSourceFieldProbe, DebugSourceFrame, PendingFunctionNodeInput,
-    PendingFunctionNodeValue, PendingNodeInput, PendingNodeValue, PendingTargetWrite,
+    DebugDecision, DebugDraftField, DebugErrorPreview, DebugHook, DebugInstancePreview,
+    DebugScopeDraft, DebugSourceContext, DebugSourceFieldProbe, DebugSourceFrame,
+    PendingFunctionNodeFailure, PendingFunctionNodeInput, PendingFunctionNodeValue,
+    PendingNodeFailure, PendingNodeInput, PendingNodeValue, PendingTargetWrite,
 };
 pub use pipeline::{
     PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue, run_pipeline,
@@ -684,10 +686,12 @@ fn evaluate_run<R>(
     );
     let extras_frame = Instance::Group(extras);
     let context = [&runtime_frame, &extras_frame, source];
+    let first_failure_reported = Cell::new(false);
     let program = eval_expr::EvalProgram::new(
         &project.graph,
         &project.user_functions,
         execution.and_then(|execution| execution.trace_sink),
+        &first_failure_reported,
     )
     .with_debug_hook(execution.and_then(|execution| execution.debug_hook));
     failure::evaluate(program, &project.failure_rules, &context)?;
