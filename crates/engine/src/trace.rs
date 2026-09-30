@@ -1,5 +1,5 @@
 use ir::{Instance, Value};
-use mapping::{JoinId, NodeId, ScopeIteration, SequenceExpr};
+use mapping::{FunctionId, JoinId, NodeId, ScopeIteration, SequenceExpr};
 
 use crate::source_iteration::PositionFrame;
 
@@ -319,6 +319,24 @@ pub enum TraceEvent {
         positions: Vec<TracePosition>,
         value: TraceValue,
     },
+    /// A successful node inside a reusable function body. Function-local node
+    /// IDs may overlap project graph IDs and must remain qualified.
+    FunctionNodeValue {
+        function: FunctionId,
+        node: NodeId,
+        positions: Vec<TracePosition>,
+        value: TraceValue,
+    },
+    /// A successful value delivered to a visible input of a function-body
+    /// node. `input_index` is zero-based, as for `NodeInputValue`.
+    FunctionNodeInputValue {
+        function: FunctionId,
+        consumer: NodeId,
+        input: NodeId,
+        input_index: usize,
+        positions: Vec<TracePosition>,
+        value: TraceValue,
+    },
     ScopeStarted {
         scope: TraceScope,
         iteration: TraceIteration,
@@ -435,6 +453,46 @@ pub(crate) fn record_node_input_value(
         return;
     };
     sink.record(TraceEvent::NodeInputValue {
+        consumer,
+        input,
+        input_index,
+        positions: positions.iter().map(TracePosition::from).collect(),
+        value: TraceValue::new(value),
+    });
+}
+
+pub(crate) fn record_function_node_value(
+    sink: Option<&dyn TraceSink>,
+    function: FunctionId,
+    node: NodeId,
+    positions: &[PositionFrame],
+    value: &Value,
+) {
+    let Some(sink) = sink else {
+        return;
+    };
+    sink.record(TraceEvent::FunctionNodeValue {
+        function,
+        node,
+        positions: positions.iter().map(TracePosition::from).collect(),
+        value: TraceValue::new(value),
+    });
+}
+
+pub(crate) fn record_function_node_input_value(
+    sink: Option<&dyn TraceSink>,
+    function: FunctionId,
+    consumer: NodeId,
+    input: NodeId,
+    input_index: usize,
+    positions: &[PositionFrame],
+    value: &Value,
+) {
+    let Some(sink) = sink else {
+        return;
+    };
+    sink.record(TraceEvent::FunctionNodeInputValue {
+        function,
         consumer,
         input,
         input_index,

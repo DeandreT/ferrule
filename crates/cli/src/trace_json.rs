@@ -14,7 +14,7 @@ use serde_json::{Value as JsonValue, json};
 
 use crate::WrittenOutput;
 
-const TRACE_SCHEMA_VERSION: u64 = 3;
+const TRACE_SCHEMA_VERSION: u64 = 4;
 const STAGE_ATTEMPTS: usize = 64;
 static STAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -258,6 +258,34 @@ fn event_value(event: &TraceEvent) -> JsonValue {
             value,
         } => json!({
             "kind": "node_input_value",
+            "consumer": consumer,
+            "input": input,
+            "input_index": input_index,
+            "positions": positions_value(positions),
+            "value": trace_value(value),
+        }),
+        TraceEvent::FunctionNodeValue {
+            function,
+            node,
+            positions,
+            value,
+        } => json!({
+            "kind": "function_node_value",
+            "function": function.get(),
+            "node": node,
+            "positions": positions_value(positions),
+            "value": trace_value(value),
+        }),
+        TraceEvent::FunctionNodeInputValue {
+            function,
+            consumer,
+            input,
+            input_index,
+            positions,
+            value,
+        } => json!({
+            "kind": "function_node_input_value",
+            "function": function.get(),
             "consumer": consumer,
             "input": input,
             "input_index": input_index,
@@ -729,7 +757,7 @@ mod tests {
 
         let line = trace_line(9, &event);
 
-        assert_eq!(line["schema_version"], 3);
+        assert_eq!(line["schema_version"], 4);
         assert_eq!(line["sequence"], 9);
         assert_eq!(line["event"]["kind"], "iteration_candidate");
         assert_eq!(line["event"]["source_row"]["kind"], "group");
@@ -747,5 +775,45 @@ mod tests {
             source_row: None,
         };
         assert!(trace_line(10, &absent)["event"].get("source_row").is_none());
+    }
+
+    #[test]
+    fn function_body_events_use_v4_and_qualify_local_node_ids() {
+        let function = mapping::FunctionId::new(12);
+        let value = TraceValue {
+            value_type: "string",
+            preview: "done".into(),
+            truncated: false,
+        };
+        let output = trace_line(
+            2,
+            &TraceEvent::FunctionNodeValue {
+                function,
+                node: 3,
+                positions: Vec::new(),
+                value: value.clone(),
+            },
+        );
+        let input = trace_line(
+            3,
+            &TraceEvent::FunctionNodeInputValue {
+                function,
+                consumer: 4,
+                input: 3,
+                input_index: 1,
+                positions: Vec::new(),
+                value,
+            },
+        );
+
+        assert_eq!(output["schema_version"], 4);
+        assert_eq!(output["event"]["kind"], "function_node_value");
+        assert_eq!(output["event"]["function"], 12);
+        assert_eq!(output["event"]["node"], 3);
+        assert_eq!(input["event"]["kind"], "function_node_input_value");
+        assert_eq!(input["event"]["function"], 12);
+        assert_eq!(input["event"]["consumer"], 4);
+        assert_eq!(input["event"]["input"], 3);
+        assert_eq!(input["event"]["input_index"], 1);
     }
 }

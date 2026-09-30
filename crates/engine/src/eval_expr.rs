@@ -158,6 +158,8 @@ pub(crate) fn eval_expr(
                 *function,
                 values,
                 context.first().copied(),
+                program.trace_sink,
+                positions,
             )
         }
         Node::If {

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -7,7 +8,18 @@ use mapping::{
     RuntimeValue, Scope, UserFunction,
 };
 
-use crate::{EngineError, ExecutionContext, run, run_with_context, validate};
+use crate::{
+    EngineError, ExecutionContext, TraceEvent, TraceSink, run, run_with_context, validate,
+};
+
+#[derive(Default)]
+struct TraceCollector(RefCell<Vec<TraceEvent>>);
+
+impl TraceSink for TraceCollector {
+    fn record(&self, event: TraceEvent) {
+        self.0.borrow_mut().push(event);
+    }
+}
 
 fn parameter(id: u64, name: &str, ty: ScalarType) -> FunctionParameter {
     FunctionParameter {
@@ -205,6 +217,169 @@ fn evaluates_nested_functions_with_isolated_parameters_and_coercion() {
     assert!(validate(&project).is_empty());
     let output = run(&project, &source("41")).unwrap();
     assert_eq!(output_value(&output), Some(&Value::String("42".into())));
+}
+
+#[test]
+fn function_body_trace_qualifies_overlapping_nodes_and_preserves_lazy_order() {
+    let outer = FunctionId::new(1);
+    let inner = FunctionId::new(2);
+    let functions = BTreeMap::from([
+        (
+            inner,
+            function(
+                "inner",
+                vec![parameter(2, "text", ScalarType::String)],
+                ScalarType::String,
+                [
+                    (
+                        0,
+                        Node::FunctionParameter {
+                            parameter: FunctionParameterId::new(2),
+                        },
+                    ),
+                    (
+                        1,
+                        Node::Const {
+                            value: Value::String("!".into()),
+                        },
+                    ),
+                    (
+                        2,
+                        Node::Call {
+                            function: "concat".into(),
+                            args: vec![0, 1],
+                        },
+                    ),
+                ],
+                2,
+            ),
+        ),
+        (
+            outer,
+            function(
+                "outer",
+                vec![parameter(1, "text", ScalarType::String)],
+                ScalarType::String,
+                [
+                    (
+                        0,
+                        Node::FunctionParameter {
+                            parameter: FunctionParameterId::new(1),
+                        },
+                    ),
+                    (
+                        1,
+                        Node::Const {
+                            value: Value::String("untaken".into()),
+                        },
+                    ),
+                    (
+                        2,
+                        Node::UserFunctionCall {
+                            function: inner,
+                            args: vec![0],
+                        },
+                    ),
+                    (
+                        3,
+                        Node::Const {
+                            value: Value::Bool(false),
+                        },
+                    ),
+                    (
+                        4,
+                        Node::If {
+                            condition: 3,
+                            then: 1,
+                            else_: 2,
+                        },
+                    ),
+                ],
+                4,
+            ),
+        ),
+    ]);
+    let graph = Graph {
+        nodes: BTreeMap::from([
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["value".into()],
+                    frame: None,
+                },
+            ),
+            (
+                1,
+                Node::UserFunctionCall {
+                    function: outer,
+                    args: vec![0],
+                },
+            ),
+        ]),
+    };
+    let project = project(graph, functions, 1);
+    let collector = TraceCollector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
+
+    let output = run_with_context(&project, &source("A"), &execution).unwrap();
+    assert_eq!(output_value(&output), Some(&Value::String("A!".into())));
+    let events = collector.0.into_inner();
+    let main_input = events
+        .iter()
+        .position(|event| matches!(event, TraceEvent::NodeValue { node: 0, .. }))
+        .unwrap();
+    let first_function = events
+        .iter()
+        .position(|event| matches!(event, TraceEvent::FunctionNodeValue { .. }))
+        .unwrap();
+    let main_output = events
+        .iter()
+        .position(|event| matches!(event, TraceEvent::NodeValue { node: 1, .. }))
+        .unwrap();
+    assert!(main_input < first_function && first_function < main_output);
+    let function_events = events
+        .iter()
+        .filter_map(|event| match event {
+            TraceEvent::FunctionNodeValue { function, node, .. } => Some((*function, *node, None)),
+            TraceEvent::FunctionNodeInputValue {
+                function,
+                consumer,
+                input_index,
+                ..
+            } => Some((*function, *consumer, Some(*input_index))),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        function_events,
+        [
+            (outer, 3, None),
+            (outer, 4, Some(0)),
+            (outer, 0, None),
+            (outer, 2, Some(0)),
+            (inner, 0, None),
+            (inner, 2, Some(0)),
+            (inner, 1, None),
+            (inner, 2, Some(1)),
+            (inner, 2, None),
+            (outer, 2, None),
+            (outer, 4, Some(2)),
+            (outer, 4, None),
+        ]
+    );
+    assert!(!events.iter().any(|event| matches!(
+        event,
+        TraceEvent::FunctionNodeValue { function, node: 1, .. } if *function == outer
+    )));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, TraceEvent::NodeValue { node: 0, .. }))
+    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        TraceEvent::FunctionNodeValue { function, node: 0, .. } if *function == outer
+    )));
 }
 
 #[test]

@@ -37,7 +37,7 @@ Every line is one JSON object:
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "sequence": 0,
   "event": {
     "kind": "node_value",
@@ -55,9 +55,11 @@ Every line is one JSON object:
 `sequence` is zero-based, contiguous, and follows deterministic interpreter
 evaluation order. Consumers must reject unsupported `schema_version` values and
 ignore unknown fields within a supported version.
-Version 3 adds graph input-consumption events. It leaves the payloads of all
-version 1 and 2 event kinds unchanged; previously saved trace files retain
-their declared versions. JSON diagnostics on stderr use a separate schema.
+Version 4 adds function-qualified value and input-delivery events for reusable
+function bodies. It leaves existing event payloads unchanged and records the
+function ID separately from its local node IDs. Version 3 added graph
+input-consumption events; previously saved trace files retain their declared
+versions. JSON diagnostics on stderr use a separate schema.
 
 Scalar previews retain their Ferrule domain and are capped at 160 Unicode
 scalar values:
@@ -82,6 +84,8 @@ The `event.kind` tag selects the event payload:
 | --- | --- |
 | `node_value` | Successful graph-node result with active positions |
 | `node_input_value` | Successful value delivered from a graph node to one input pin of a consuming node |
+| `function_node_value` | Successful result of a node inside a reusable function body, qualified by `function` ID |
+| `function_node_input_value` | Successful value delivered to one function-body input pin, qualified by `function` ID |
 | `scope_started` | Scope identity, iteration source, and parent positions |
 | `iteration_candidate` | Candidate ordinal, raw source positions, and optional bounded source-row preview |
 | `filter_decision` | Predicate node, control phase, and boolean result |
@@ -107,8 +111,8 @@ are never copied into this event.
 
 Position records contain the source collection path, one-based index, grouping
 state, optional join identity and tuple position, and optional document path.
-All scalar previews are Unicode-safe and bounded, including `node_value`
-and `node_input_value` records.
+All scalar previews are Unicode-safe and bounded, including graph and
+function-body node input/output records.
 
 For source and dynamic-document iterations, `iteration_candidate.source_row`
 captures the current source item before filters and sorting. This optional
@@ -134,8 +138,8 @@ Input indices match visible pins: the expression is 0, and the argument is 1
 when an expression is present or 0 otherwise. Direct aggregate value paths are
 not graph inputs and do not emit input events. An untaken conditional branch
 and a producer that errors do not emit an input event. Generated-sequence,
-mixed-content, and collection-search inputs are not yet recorded as input-pin
-events, though their successful graph-node outputs remain visible. The native
+mixed-content, and collection-search inputs are recorded at the visible pins
+that are evaluated. The native
 GUI's History tab has graph-node and source-row views. The source-row view
 shows retained candidate rows by scope, ordinal, and raw source position, with
 their bounded field previews; it does not link them to node evaluations whose
@@ -149,6 +153,16 @@ This is navigation of recorded history, not a live pause or re-execution. The
 GUI retains at most 50,000 trace events and reports when later events were
 omitted; replay ends at the retained prefix. Run and Preview currently show
 this trace only after successful completion.
+
+`function_node_value` and `function_node_input_value` use the same bounded
+values, positions, and zero-based pin indexing inside an isolated reusable
+function body. Their `function` ID qualifies each local node ID, including in
+nested calls; the ordinary `node_value` and `node_input_value` events continue
+to identify nodes in the project graph. Only successfully evaluated nodes and
+delivered inputs are recorded, so untaken conditional branches and failed
+expressions have no value event. Saved GUI History and Replay show these
+function-qualified events. Live breakpoints do not yet pause inside function
+bodies.
 
 Library hosts can opt into a synchronous pre-insertion control point with
 `ExecutionContext::with_debug_hook`. For ordinary static and dynamic target
