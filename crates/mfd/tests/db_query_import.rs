@@ -663,6 +663,164 @@ fn joined_query_recovers_native_select_without_internal_multiply() {
 }
 
 #[test]
+fn optional_typed_query_threshold_keeps_host_override_through_native_export() {
+    let dir = TempDir::new();
+    let design = prepare_joined_query(&dir.0);
+    let mut text = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace(
+            "name=\"MinimumUnits\" type=\"text\"",
+            "name=\"MinimumUnits\" type=\"integer\"",
+        )
+        .replace(
+            "datatype=\"string\" previewvalue=\"2\"",
+            "datatype=\"integer\" previewvalue=\"2\"",
+        )
+        .replace(
+            "usageKind=\"input\" name=\"MinimumUnits\"",
+            "usageKind=\"input\" name=\"MinimumUnits\" optional=\"1\"",
+        );
+    let begin = text.find("<outputnodefunctions>").unwrap();
+    let end = text.find("</outputnodefunctions>").unwrap() + "</outputnodefunctions>".len();
+    text.replace_range(begin..end, "");
+    std::fs::write(&design, text).unwrap();
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    assert!(imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        mapping::Node::RuntimeParameterDefault { name, ty: ir::ScalarType::Int, .. }
+        if name == "MinimumUnits"
+    )));
+
+    let exported = dir.0.join("optional-threshold.mfd");
+    let report =
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report}");
+    let native = std::fs::read_to_string(&exported).unwrap();
+    assert!(native.contains(":HostThreshold"));
+    assert!(native.contains("<Parameter name=\"HostThreshold\" type=\"integer\"/>"));
+    assert!(!native.contains("library=\"ferrule\""));
+    let restored = mfd::import(&exported).unwrap();
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+    assert!(engine::validate(&restored.project).is_empty());
+
+    let database = dir.0.join("purchases.sqlite");
+    for (value, rows) in [
+        (None, 3),
+        (Some(Value::Int(4)), 1),
+        (Some(Value::Int(-1)), 4),
+        (Some(Value::Null), 0),
+    ] {
+        let mut parameters = engine::RuntimeParameters::new();
+        if let Some(value) = value {
+            parameters.insert("MinimumUnits", value).unwrap();
+        }
+        let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
+        let original_input = format_db::read_instance(&database, &imported.project.source).unwrap();
+        let restored_input = format_db::read_instance(&database, &restored.project.source).unwrap();
+        let expected =
+            engine::run_with_context(&imported.project, &original_input, &context).unwrap();
+        let actual =
+            engine::run_with_context(&restored.project, &restored_input, &context).unwrap();
+        assert_eq!(expected.as_repeated().unwrap().len(), rows);
+        assert_eq!(actual, expected);
+        let expected_csv = format_csv::to_string(
+            &imported.project.target,
+            expected.as_repeated().unwrap(),
+            Some(','),
+            true,
+        )
+        .unwrap();
+        let actual_csv = format_csv::to_string(
+            &restored.project.target,
+            actual.as_repeated().unwrap(),
+            Some(','),
+            true,
+        )
+        .unwrap();
+        assert_eq!(actual_csv, expected_csv);
+    }
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters
+        .insert("MinimumUnits", Value::String("bad".into()))
+        .unwrap();
+    let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
+    for project in [&imported.project, &restored.project] {
+        let input = format_db::read_instance(&database, &project.source).unwrap();
+        assert!(matches!(
+            engine::run_with_context(project, &input, &context),
+            Err(engine::EngineError::RuntimeParameterType {
+                expected: ir::ScalarType::Int,
+                ..
+            })
+        ));
+    }
+
+    let mut changed = imported.project;
+    let default = changed
+        .graph
+        .nodes
+        .values()
+        .find_map(|node| match node {
+            mapping::Node::RuntimeParameterDefault { default, .. } => Some(*default),
+            _ => None,
+        })
+        .unwrap();
+    changed.graph.nodes.insert(
+        default,
+        mapping::Node::Const {
+            value: Value::Int(-1),
+        },
+    );
+    let rejected = dir.0.join("changed-threshold.mfd");
+    assert!(matches!(
+        mfd::export_with_profile(&changed, &rejected, mfd::ExportProfile::NativeMfd),
+        Err(mfd::MfdError::IncompatibleExport(_))
+    ));
+    assert!(!rejected.exists());
+}
+
+#[test]
+fn optional_connected_query_default_keeps_host_override() {
+    let dir = TempDir::new();
+    let design = prepare_joined_query(&dir.0);
+    let text = std::fs::read_to_string(&design).unwrap()
+        .replace("name=\"MinimumUnits\" type=\"text\"", "name=\"MinimumUnits\" type=\"integer\"")
+        .replace("datatype=\"string\" previewvalue=\"2\" usepreviewvalue=\"1\"", "datatype=\"integer\"")
+        .replace("usageKind=\"input\" name=\"MinimumUnits\"", "usageKind=\"input\" name=\"MinimumUnits\" optional=\"1\"")
+        .replace("<sources><datapoint/></sources>", "<sources><datapoint pos=\"0\" key=\"61\"/></sources>")
+        .replace("<component name=\"MinimumUnits\" library=\"core\"", "<component name=\"constant\" library=\"core\" uid=\"99\" kind=\"2\"><targets><datapoint pos=\"0\" key=\"60\"/></targets><data><constant datatype=\"integer\" value=\"2\"/></data></component><component name=\"MinimumUnits\" library=\"core\"")
+        .replace("<graph><vertices>", "<graph><vertices><vertex vertexkey=\"60\"><edges><edge vertexkey=\"61\"/></edges></vertex>");
+    std::fs::write(&design, text).unwrap();
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let input = format_db::read_instance(&dir.0.join("purchases.sqlite"), &imported.project.source)
+        .unwrap();
+    assert_eq!(
+        engine::run(&imported.project, &input)
+            .unwrap()
+            .as_repeated()
+            .unwrap()
+            .len(),
+        3
+    );
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("MinimumUnits", Value::Int(4)).unwrap();
+    let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
+    assert_eq!(
+        engine::run_with_context(&imported.project, &input, &context)
+            .unwrap()
+            .as_repeated()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn native_joined_select_keeps_sqlite_integer_overflow_promotion() {
     let dir = TempDir::new();
     let design = prepare_joined_query(&dir.0);

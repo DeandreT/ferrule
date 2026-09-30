@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use ir::{ScalarType, SchemaKind, Value};
 use mapping::{IterationOutput, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
+use crate::MfdError;
+
 use super::TargetExport;
 use super::schema::{
     DbLayout, KeyAlloc, RenderedSchemaComponent, SideFormat, db_layout, xml_escape,
@@ -20,6 +22,11 @@ struct Projection {
     name: String,
     expression: String,
     port: u32,
+}
+
+enum Threshold {
+    Literal(i64),
+    Host(NodeId),
 }
 
 /// This plan has no fallback path: any departure from the imported joined
@@ -35,6 +42,7 @@ pub(super) struct NativeSelect {
     sql: String,
     projections: Vec<Projection>,
     absorbed: BTreeSet<NodeId>,
+    threshold_input: Option<(NodeId, u32)>,
 }
 
 impl NativeSelect {
@@ -195,8 +203,16 @@ impl NativeSelect {
             return None;
         }
         let source_port = source.ports.key_for_abs(&[])?;
+        let threshold_input = match threshold {
+            Threshold::Literal(_) => None,
+            Threshold::Host(node) => Some((node, keys.next())),
+        };
+        let threshold_sql = match threshold {
+            Threshold::Literal(value) => value.to_string(),
+            Threshold::Host(_) => ":HostThreshold".to_string(),
+        };
         let sql = format!(
-            "SELECT {} FROM {} INNER JOIN {} ON {}.{} = {}.{} WHERE {}.{} > {threshold}",
+            "SELECT {} FROM {} INNER JOIN {} ON {}.{} = {}.{} WHERE {}.{} > {threshold_sql}",
             projections
                 .iter()
                 .map(|projection| format!("{} AS {}", projection.expression, projection.name))
@@ -231,6 +247,7 @@ impl NativeSelect {
             sql,
             projections,
             absorbed,
+            threshold_input,
         })
     }
 
@@ -257,16 +274,25 @@ impl NativeSelect {
     }
 
     pub(super) fn local_view(&self) -> String {
+        let parameters = if self.threshold_input.is_some() {
+            "\t\t\t\t\t\t<Parameters><Parameter name=\"HostThreshold\" type=\"integer\"/></Parameters>\n"
+        } else {
+            ""
+        };
         format!(
             "\t\t\t\t\t<LocalViewStorage><LocalViewElement SQL=\"{}\">\n\
              \t\t\t\t\t\t<PathElement Name=\"main\" Kind=\"Database\"/>\n\
              \t\t\t\t\t\t<PathElement Name=\"{QUERY_NAME}\" Kind=\"Select Statement\"/>\n\
+             {parameters}\
              \t\t\t\t\t</LocalViewElement></LocalViewStorage>\n",
             xml_escape(&self.sql)
         )
     }
 
     pub(super) fn render_source(&self) -> RenderedSchemaComponent {
+        let parameter_entry = self.threshold_input.map_or_else(String::new, |(_, port)| {
+            format!("<entry name=\"{QUERY_NAME}\"><entry name=\"HostThreshold\" type=\"attribute\" inpkey=\"{port}\"/></entry>")
+        });
         let mut entries = String::new();
         for projection in &self.projections {
             let _ = writeln!(
@@ -280,7 +306,7 @@ impl NativeSelect {
             "\t\t\t\t<component name=\"{QUERY_NAME}\" library=\"db\" uid=\"{}\" kind=\"28\">\n\
              \t\t\t\t\t<view rbx=\"300\" rby=\"240\"/>\n\
              \t\t\t\t\t<data>\n\
-             \t\t\t\t\t\t<root><entry name=\"procedure\" inpkey=\"{}\"/></root>\n\
+             \t\t\t\t\t\t<root><entry name=\"procedure\" inpkey=\"{}\"/>{parameter_entry}</root>\n\
              \t\t\t\t\t\t<root><entry name=\"{QUERY_NAME}\" outkey=\"{}\" expanded=\"1\">\n\
              \t\t\t\t\t\t\t<entry name=\"{QUERY_NAME}\" expanded=\"1\">\n\
              {entries}\
@@ -300,7 +326,18 @@ impl NativeSelect {
         uid: &mut u32,
         components: &mut String,
         edges: &mut Vec<(u32, u32)>,
-    ) {
+        node_out_key: &BTreeMap<NodeId, u32>,
+    ) -> Result<(), MfdError> {
+        let threshold_edge = if let Some((node, input)) = self.threshold_input {
+            let output = node_out_key.get(&node).copied().ok_or_else(|| {
+                MfdError::Unsupported(
+                    "native database query host threshold has no rendered output port".into(),
+                )
+            })?;
+            Some((output, input))
+        } else {
+            None
+        };
         *uid += 1;
         let _ = write!(
             components,
@@ -316,6 +353,10 @@ impl NativeSelect {
             xml_escape(&self.datasource)
         );
         edges.push((self.catalog_output, self.procedure_input));
+        if let Some(edge) = threshold_edge {
+            edges.push(edge);
+        }
+        Ok(())
     }
 }
 
@@ -405,7 +446,7 @@ fn match_query_filter(
     filter: NodeId,
     relation: &str,
     child_key: &str,
-) -> Option<(String, i64, BTreeSet<NodeId>)> {
+) -> Option<(String, Threshold, BTreeSet<NodeId>)> {
     let [relation_exists, predicate_if] = call_args(nodes, filter, "and", 2)? else {
         return None;
     };
@@ -450,16 +491,23 @@ fn match_query_filter(
     let [predicate] = predicate else {
         return None;
     };
-    let Some(Node::Const {
-        value: Value::Int(threshold),
-    }) = nodes.get(constant)
-    else {
-        return None;
+    let threshold = match nodes.get(constant)? {
+        Node::Const {
+            value: Value::Int(value),
+        } if *value >= 0 => Threshold::Literal(*value),
+        Node::RuntimeParameterDefault {
+            ty: ScalarType::Int,
+            default,
+            ..
+        } if matches!(nodes.get(default), Some(Node::Const { value: Value::Int(value) }) if *value >= 0) => {
+            Threshold::Host(*constant)
+        }
+        _ => return None,
     };
-    if *threshold < 0 || !safe_identifier(predicate) {
+    if !safe_identifier(predicate) {
         return None;
     }
-    let absorbed = BTreeSet::from([
+    let mut absorbed = BTreeSet::from([
         filter,
         *relation_exists,
         *predicate_if,
@@ -470,7 +518,10 @@ fn match_query_filter(
         *constant_exists,
         *constant,
     ]);
-    Some((predicate.clone(), *threshold, absorbed))
+    if matches!(threshold, Threshold::Host(_)) {
+        absorbed.remove(constant);
+    }
+    Some((predicate.clone(), threshold, absorbed))
 }
 
 fn call_args<'a>(
