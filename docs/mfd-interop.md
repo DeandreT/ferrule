@@ -186,6 +186,14 @@ supplies `NamePrefix=F`. Other `LIKE` patterns,
 shared predicate nodes, or additional row controls retain the ordinary
 diagnostic; the local database-filter sample reimports without warnings and
 produces the same output after strict export.
+The interpreter and generated Rust/C# `sql_like` calls compare text before the
+first NUL, fold ASCII case only, and treat `_` as one Unicode scalar. Patterns
+are limited to 50,000 UTF-8 bytes before NUL truncation, matching the bundled
+SQLite limit. Ferrule also limits matching to 100 million value-scalar by
+normalized-pattern-scalar cell updates. Over-budget calls report typed errors.
+This work bound deliberately rejects some costly SQLite matches. An oversized
+pattern on a null source row still differs: the imported null guard skips the
+call, while SQLite reports a pattern-length error.
 An isolated canonical decimal string feeding the second input of a supported
 numeric comparison or addition can export through a native decimal input
 component. The local price and temperature samples reimport with identical
