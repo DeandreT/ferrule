@@ -9,8 +9,9 @@ use mapping::{
 };
 
 use crate::{
-    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingFunctionNodeValue,
-    PendingNodeValue, PendingTargetWrite, TraceEvent, TraceSink, run, run_with_context, validate,
+    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingFunctionNodeInput,
+    PendingFunctionNodeValue, PendingNodeValue, PendingTargetWrite, TraceEvent, TraceSink, run,
+    run_with_context, validate,
 };
 
 #[derive(Default)]
@@ -526,6 +527,207 @@ fn function_node_breakpoint_is_opt_in_qualified_and_cancels_before_target_write(
     );
     assert!(breakpoint_hook.main_nodes.borrow().is_empty());
     assert_eq!(*breakpoint_hook.writes.borrow(), 0);
+}
+
+struct FunctionInputHook<'a> {
+    trace: &'a TraceCollector,
+    opt_in: bool,
+    cancel_inner: bool,
+    delivered: RefCell<Vec<(FunctionId, u32, usize, String)>>,
+    writes: RefCell<usize>,
+}
+
+impl DebugHook for FunctionInputHook<'_> {
+    fn before_target_write(&self, _write: &PendingTargetWrite) -> DebugDecision {
+        *self.writes.borrow_mut() += 1;
+        DebugDecision::Resume
+    }
+
+    fn wants_node_values(&self) -> bool {
+        false
+    }
+
+    fn wants_node_inputs(&self) -> bool {
+        false
+    }
+
+    fn wants_function_node_inputs(&self) -> bool {
+        self.opt_in
+    }
+
+    fn after_function_node_input(&self, input: &PendingFunctionNodeInput) -> DebugDecision {
+        assert!(input.source.frames.is_empty());
+        assert!(matches!(
+            self.trace.0.borrow().last(),
+            Some(TraceEvent::FunctionNodeInputValue { function, consumer, input_index, .. })
+                if (*function, *consumer, *input_index)
+                    == (input.function, input.consumer, input.input_index)
+        ));
+        self.delivered.borrow_mut().push((
+            input.function,
+            input.consumer,
+            input.input_index,
+            format!("{}:{}", input.value.value_type, input.value.preview),
+        ));
+        if self.cancel_inner
+            && input.function == FunctionId::new(2)
+            && input.consumer == 2
+            && input.input_index == 1
+        {
+            DebugDecision::Cancel
+        } else {
+            DebugDecision::Resume
+        }
+    }
+}
+
+#[test]
+fn function_input_breakpoint_is_qualified_lazy_and_cancels_before_consumer_and_write() {
+    let outer = FunctionId::new(1);
+    let inner = FunctionId::new(2);
+    let functions = BTreeMap::from([
+        (
+            inner,
+            function(
+                "inner",
+                vec![parameter(1, "value", ScalarType::String)],
+                ScalarType::String,
+                [
+                    (
+                        0,
+                        Node::FunctionParameter {
+                            parameter: FunctionParameterId::new(1),
+                        },
+                    ),
+                    (
+                        1,
+                        Node::Const {
+                            value: Value::String("!".into()),
+                        },
+                    ),
+                    (
+                        2,
+                        Node::Call {
+                            function: "concat".into(),
+                            args: vec![0, 1],
+                        },
+                    ),
+                ],
+                2,
+            ),
+        ),
+        (
+            outer,
+            function(
+                "outer",
+                Vec::new(),
+                ScalarType::String,
+                [
+                    (
+                        0,
+                        Node::Const {
+                            value: Value::Bool(false),
+                        },
+                    ),
+                    (
+                        1,
+                        Node::Const {
+                            value: Value::String("untaken".into()),
+                        },
+                    ),
+                    (
+                        2,
+                        Node::UserFunctionCall {
+                            function: inner,
+                            args: vec![4],
+                        },
+                    ),
+                    (
+                        3,
+                        Node::If {
+                            condition: 0,
+                            then: 1,
+                            else_: 2,
+                        },
+                    ),
+                    (
+                        4,
+                        Node::Const {
+                            value: Value::String("chosen".into()),
+                        },
+                    ),
+                ],
+                3,
+            ),
+        ),
+    ]);
+    let project = project(
+        Graph {
+            nodes: BTreeMap::from([(
+                0,
+                Node::UserFunctionCall {
+                    function: outer,
+                    args: Vec::new(),
+                },
+            )]),
+        },
+        functions,
+        0,
+    );
+
+    let trace = TraceCollector::default();
+    let ordinary = FunctionInputHook {
+        trace: &trace,
+        opt_in: false,
+        cancel_inner: false,
+        delivered: RefCell::new(Vec::new()),
+        writes: RefCell::new(0),
+    };
+    let execution = ExecutionContext::new(Path::new("mapping.json"))
+        .with_trace_sink(&trace)
+        .with_debug_hook(&ordinary);
+    let output = run_with_context(&project, &source("unused"), &execution).unwrap();
+    assert_eq!(
+        output_value(&output),
+        Some(&Value::String("chosen!".into()))
+    );
+    assert!(ordinary.delivered.borrow().is_empty());
+    assert_eq!(*ordinary.writes.borrow(), 1);
+    assert!(!trace.0.borrow().iter().any(|event| matches!(
+        event,
+        TraceEvent::FunctionNodeInputValue { function, consumer: 3, input_index: 1, .. }
+            if *function == outer
+    )));
+
+    let trace = TraceCollector::default();
+    let breakpoint = FunctionInputHook {
+        trace: &trace,
+        opt_in: true,
+        cancel_inner: true,
+        delivered: RefCell::new(Vec::new()),
+        writes: RefCell::new(0),
+    };
+    let execution = ExecutionContext::new(Path::new("mapping.json"))
+        .with_trace_sink(&trace)
+        .with_debug_hook(&breakpoint);
+    assert!(matches!(
+        run_with_context(&project, &source("unused"), &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    assert_eq!(
+        *breakpoint.delivered.borrow(),
+        [
+            (outer, 3, 0, "bool:false".into()),
+            (outer, 2, 0, "string:chosen".into()),
+            (inner, 2, 0, "string:chosen".into()),
+            (inner, 2, 1, "string:!".into()),
+        ]
+    );
+    assert_eq!(*breakpoint.writes.borrow(), 0);
+    assert!(!trace.0.borrow().iter().any(|event| matches!(
+        event,
+        TraceEvent::FunctionNodeValue { function, node: 2, .. } if *function == inner
+    )));
 }
 
 #[test]

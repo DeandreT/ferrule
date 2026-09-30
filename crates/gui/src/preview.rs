@@ -132,6 +132,8 @@ pub(super) struct DebugExpressionCondition {
 pub(super) struct BreakpointInputConditionDraft {
     pub(super) enabled: bool,
     pub(super) consumer_text: String,
+    /// Blank selects the main graph; otherwise this is a reusable function ID.
+    pub(super) function_text: String,
     pub(super) input_number_text: String,
     pub(super) value: BreakpointValueConditionDraft,
 }
@@ -141,6 +143,7 @@ impl Default for BreakpointInputConditionDraft {
         Self {
             enabled: false,
             consumer_text: String::new(),
+            function_text: String::new(),
             input_number_text: "1".into(),
             value: BreakpointValueConditionDraft::default(),
         }
@@ -149,6 +152,7 @@ impl Default for BreakpointInputConditionDraft {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct DebugInputCondition {
+    function: Option<mapping::FunctionId>,
     consumer: mapping::NodeId,
     input_index: usize,
     value: Option<DebugScalarCondition>,
@@ -169,6 +173,19 @@ impl BreakpointInputConditionDraft {
         let consumer = consumer
             .parse::<mapping::NodeId>()
             .map_err(|_| "Consumer node ID exceeds the supported range.")?;
+        let function = self.function_text.trim();
+        let function = if function.is_empty() {
+            None
+        } else {
+            if function.len() > 20 || !function.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err("Enter a nonnegative numeric function ID, or leave it blank.");
+            }
+            Some(mapping::FunctionId::new(
+                function
+                    .parse::<u64>()
+                    .map_err(|_| "Function ID exceeds the supported range.")?,
+            ))
+        };
         let input_number = self.input_number_text.trim();
         if input_number.is_empty()
             || input_number.len() > 4
@@ -183,6 +200,7 @@ impl BreakpointInputConditionDraft {
             return Err("Enter an input number from 1 to 1024.");
         }
         Ok(Some(DebugInputCondition {
+            function,
             consumer,
             input_index: input_number - 1,
             value: self.value.compile()?,
@@ -192,12 +210,27 @@ impl BreakpointInputConditionDraft {
 
 impl DebugInputCondition {
     pub(super) fn matches(&self, input: &engine::PendingNodeInput) -> bool {
-        self.consumer == input.consumer
+        self.function.is_none()
+            && self.consumer == input.consumer
             && self.input_index == input.input_index
             && self
                 .value
                 .as_ref()
                 .is_none_or(|condition| condition.matches_trace_value(&input.value))
+    }
+
+    pub(super) fn matches_function(&self, input: &engine::PendingFunctionNodeInput) -> bool {
+        self.function == Some(input.function)
+            && self.consumer == input.consumer
+            && self.input_index == input.input_index
+            && self
+                .value
+                .as_ref()
+                .is_none_or(|condition| condition.matches_trace_value(&input.value))
+    }
+
+    pub(super) fn targets_function(&self) -> bool {
+        self.function.is_some()
     }
 }
 
@@ -815,6 +848,7 @@ mod tests {
         let mut draft = BreakpointInputConditionDraft {
             enabled: true,
             consumer_text: "2".into(),
+            function_text: String::new(),
             input_number_text: "2".into(),
             value: BreakpointValueConditionDraft {
                 enabled: true,
@@ -862,6 +896,64 @@ mod tests {
             draft.consumer_text = invalid.into();
             assert!(draft.compile().is_err(), "{invalid:?} must be rejected");
         }
+    }
+
+    #[test]
+    fn function_input_pin_condition_qualifies_equal_graph_and_function_pins() {
+        let mut draft = BreakpointInputConditionDraft {
+            enabled: true,
+            consumer_text: "2".into(),
+            function_text: "7".into(),
+            input_number_text: "1".into(),
+            value: BreakpointValueConditionDraft {
+                enabled: true,
+                text: "same".into(),
+                ..Default::default()
+            },
+        };
+        let condition = draft.compile().unwrap().unwrap();
+        let value = engine::TraceValue {
+            value_type: "string",
+            preview: "same".into(),
+            truncated: false,
+        };
+        let source = engine::DebugSourceContext {
+            frames: Vec::new(),
+            omitted_outer_frames: 0,
+        };
+        let graph_input = engine::PendingNodeInput {
+            consumer: 2,
+            input: 0,
+            input_index: 0,
+            value: value.clone(),
+            positions: Vec::new(),
+            omitted_outer_positions: 0,
+            position_paths_truncated: false,
+            source: source.clone(),
+        };
+        assert!(!condition.matches(&graph_input));
+        let mut function_input = engine::PendingFunctionNodeInput {
+            function: mapping::FunctionId::new(7),
+            consumer: 2,
+            input: 0,
+            input_index: 0,
+            value,
+            positions: Vec::new(),
+            omitted_outer_positions: 0,
+            position_paths_truncated: false,
+            source,
+        };
+        assert!(condition.matches_function(&function_input));
+        function_input.function = mapping::FunctionId::new(8);
+        assert!(!condition.matches_function(&function_input));
+        function_input.function = mapping::FunctionId::new(7);
+        function_input.input_index = 1;
+        assert!(!condition.matches_function(&function_input));
+        function_input.input_index = 0;
+        function_input.value.value_type = "int";
+        assert!(!condition.matches_function(&function_input));
+        draft.function_text = "18446744073709551616".into();
+        assert!(draft.compile().is_err());
     }
 
     #[test]
