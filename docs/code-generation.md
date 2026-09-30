@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports thirty-two warning-free designs: JSON to
+An opt-in local-corpus smoke test imports thirty-four warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -558,6 +558,26 @@ phone records with the fixed WORK enum value. Generated Rust/C# typed and JSON
 APIs must agree with the interpreter's schema-shaped values; the same embedded
 Protobuf layout must encode both results to identical bytes and decode them
 back to the mapped values. No native reference binary is pinned for this design.
+The thirty-third reads a local SAP IDoc order using its embedded fixed-record
+layout and maps it to XML. It checks the order number, the date/time converted
+by the imported two-argument user function, both item amounts and prices, and
+the empty customer and item-name fields selected from the first sparse partner
+and description records. The native IDoc instance must survive schema-shaped
+JSON transport unchanged. Generated Rust/C# typed APIs must produce the
+interpreter's exact XML bytes. The mapping leaves `Amount` as lexical strings
+`1.000` and `2.000` in the typed target; XML and JSON output boundaries convert
+them to exact integers without changing the typed mapping result. Both
+generated JSON string and byte APIs match the interpreter's schema-shaped
+output, and parsing each XML result through the target schema yields the same
+values. No native reference XML output is pinned for this design.
+The thirty-fourth reads a local X12 order with separators and implied-decimal
+metadata retained from its embedded `X12.Nanonull.zip` configuration. The
+native reader's typed instance must survive schema-shaped JSON transport
+unchanged. The mapping selects one customer row with name `Michelle Butler`,
+salutation `Mrs`, and date `20200430`. The test pins the interpreter's exact
+headerless CSV bytes and compares generated Rust and C# results after the same
+CSV writer. Generated hosts receive the parsed JSON source; they do not parse
+X12 themselves. No native reference CSV output is pinned for this design.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
