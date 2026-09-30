@@ -63,12 +63,13 @@ are preserved.
   The remaining design retains missing target and embedded string-parser JSON
   Schema provenance across best-effort export/re-import. All 175
   dependency-complete round trips remain engine-valid. Strict Ferrule native
-  export preflight now accepts 165 of 187 local designs. Direct `doc-xml`
+  export preflight now accepts 166 of 187 local designs. Direct `doc-xml`
   reconstruction, guarded SQLite `LIKE` controls, finite numeric input
   identity, a bounded Protobuf numeric UDF, canonical decimal-input
   reconstruction, two XML source-leaf pricing rules, one guarded joined SQLite
-  `SELECT`, two temperature designs, two recursive hierarchies, and the optional
-  phone-list filter recover eighteen native designs across this work.
+  `SELECT`, two temperature designs, two recursive hierarchies, one recursive
+  directory filter, and the optional phone-list filter recover nineteen native
+  designs across this work.
   This is a static compatibility check, not reference-application acceptance. The
   read-only execution profile attempts 168 safe-input designs and all 168 pass,
   publishing 165 captured outputs; seven network or captured-service inputs are
@@ -85,7 +86,10 @@ are preserved.
   host omits the name; an explicit null remains supplied. The interpreter and
   generated Rust/C# typed and JSON hosts agree on defaults, overrides, lazy
   evaluation, and typed failures, including nested user functions. GUI file
-  runs, previews, and pipelines share editable session-only run values. The
+  runs and previews use editable session-only project values; pipelines keep
+  their own values. The palette creates required or optional host inputs with
+  editable names/types and a connectable default. Successful project changes
+  reset project values, while failed changes preserve them. The
   local phone-list design preserves identical XML for its four-person default
   and three-person `F` override. Unconnected preview-only native inputs and
   query-folded literal thresholds still need separate host-override work.
@@ -799,7 +803,7 @@ Update these numbers with each parity increment:
   without warnings, and the remaining design retains typed unresolved target
   and embedded string-parser JSON Schema compatibility issues. All 175
   dependency-complete round trips remain engine-valid. Strict local native
-  preflight accepts 165/187, without claiming reference-application acceptance.
+  preflight accepts 166/187, without claiming reference-application acceptance.
 - `.mfd` execution: all 168 attempted read-only executions pass and publish
   165 captured outputs; one SQLite target-constraint rejection is classified as
   an expected output failure, twelve are dependency-blocked, and seven network
