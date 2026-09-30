@@ -1249,6 +1249,113 @@ fn imports_and_runs_a_connected_four_stage_design() -> Result<(), Box<dyn Error>
 }
 
 #[test]
+fn imported_chain_previews_all_stages_without_reopening_inputs_or_writing_outputs()
+-> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new()?;
+    let design = write_earlier_result_named_source_chain(&directory.0)?;
+    let flow = directory.0.join("flow.json");
+    let warnings = cli::import_mfd_pipeline(&design, &flow, Some(&directory.0), None, &[], &[])?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let mut pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&flow)?)?;
+    let input_path = directory.0.join("maps/source.xml");
+    let input_bytes = std::fs::read(&input_path)?;
+    std::fs::remove_file(&input_path)?;
+    let logical_output = directory.0.join("untouched.xml");
+    std::fs::write(&logical_output, b"existing output")?;
+    let PipelineInput::Host { name } = &pipeline.stages[0].source else {
+        panic!("first stage must read a host");
+    };
+    let hosts = [cli::PipelineHostPayload::new(
+        name,
+        cli::PayloadDocument::new(&input_path, &input_bytes)?,
+    )?];
+    let identities: Vec<_> = pipeline
+        .stages
+        .iter()
+        .skip(1)
+        .map(|stage| cli::PipelinePreviewOutputIdentity {
+            stage: stage.id.clone(),
+            target: None,
+            path: logical_output.clone(),
+        })
+        .collect();
+    let preview = cli::preview_pipeline_value_payloads(
+        &pipeline,
+        &flow,
+        &cli::PipelinePreviewOptions::new(&hosts).with_output_identities(&identities),
+    )?;
+    // Embedded project paths were rebased to the pipeline location at import.
+    assert_eq!(
+        preview.artifacts[0].path,
+        directory.0.join("maps/first-out.xml")
+    );
+    let mut expected = None;
+    for cycle in 0..3 {
+        let PipelineInput::Host { name } = &pipeline.stages[0].source else {
+            panic!("first stage must read a host");
+        };
+        let hosts = [cli::PipelineHostPayload::new(
+            name,
+            cli::PayloadDocument::new(&input_path, &input_bytes)?,
+        )?];
+        // Stage identity distinguishes artifacts even when their logical paths agree.
+        let identities: Vec<_> = pipeline
+            .stages
+            .iter()
+            .map(|stage| cli::PipelinePreviewOutputIdentity {
+                stage: stage.id.clone(),
+                target: None,
+                path: logical_output.clone(),
+            })
+            .collect();
+        let outcome = cli::preview_pipeline_value_payloads(
+            &pipeline,
+            &flow,
+            &cli::PipelinePreviewOptions::new(&hosts).with_output_identities(&identities),
+        )?;
+        assert_eq!(outcome.stages_executed.len(), 3);
+        assert_eq!(outcome.artifacts.len(), 3);
+        for (artifact, stage) in outcome.artifacts.iter().zip(&outcome.stages_executed) {
+            assert_eq!(&artifact.stage, stage);
+            assert_eq!(artifact.target, None);
+            assert_eq!(artifact.path, logical_output);
+        }
+        let documents: Vec<_> = outcome
+            .artifacts
+            .into_iter()
+            .map(|artifact| artifact.bytes)
+            .collect();
+        let xml = std::str::from_utf8(&documents[2])?;
+        assert!(xml.contains("<Result>main value</Result>"));
+        assert!(xml.contains("<Lookup>main value</Lookup>"));
+        assert!(xml.contains("<Shadow>side value</Shadow>"));
+        if let Some(expected) = &expected {
+            assert_eq!(&documents, expected, "native round trip {cycle}");
+        } else {
+            expected = Some(documents);
+        }
+        assert!(!input_path.exists());
+        assert_eq!(std::fs::read(&logical_output)?, b"existing output");
+        assert!(!directory.0.join("maps/first-out.xml").exists());
+        assert!(!directory.0.join("maps/target.xml").exists());
+        if cycle < 2 {
+            let exported = directory.0.join(format!("preview-roundtrip-{cycle}.mfd"));
+            let report = mfd::export_pipeline_with_profile(
+                &pipeline,
+                &exported,
+                mfd::ExportProfile::NativeMfd,
+            )?;
+            assert!(report.is_native_compatible(), "{report:?}");
+            let warnings =
+                cli::import_mfd_pipeline(&exported, &flow, Some(&directory.0), None, &[], &[])?;
+            assert!(warnings.is_empty(), "{warnings:?}");
+            pipeline = serde_json::from_slice(&std::fs::read(&flow)?)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn unsupported_chain_does_not_replace_an_existing_pipeline_file() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new()?;
     let mapping = write_chain(&directory.0)?;

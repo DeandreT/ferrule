@@ -129,6 +129,11 @@ Payload hosts can explicitly select design-time inputs with
 `.with_execution_purpose(engine::ExecutionPurpose::Preview)`; the default is a
 normal run.
 
+Pipelines also support an [in-memory preview](docs/mapping-pipelines.md#in-memory-preview)
+that returns every stage's outputs, with stage-qualified tracing and debug
+controls. The GUI's Run Pipeline dialog keeps preview format paths separate
+from output files selected for saving.
+
 Generated Rust and C# libraries also expose bounded schema-shaped JSON methods
 such as `execute_json` and `GeneratedMapping.ExecuteJson`. Source-aware variants
 accept exact named JSON inputs, and output-set variants return the primary
