@@ -91,6 +91,10 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
     let xml = combined.expect("validated pipeline has at least two stages");
     if pipeline.stages.last().is_some_and(|stage| {
         !stage.project.extra_targets.is_empty()
+            || stage
+                .extra_sources
+                .iter()
+                .any(|binding| matches!(&binding.from, PipelineInput::StageTarget { .. }))
             || stage.project.target_options.protobuf.is_some()
             || matches!(
                 side_format(&stage.project.target_path, &stage.project.target_options),
@@ -127,6 +131,7 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
         )));
     }
     let mut original_hosts = BTreeSet::new();
+    let mut earlier_named_outputs = 0;
     for (index, stage) in pipeline.stages.iter().enumerate() {
         let connected = if index == 0 {
             if let PipelineInput::Host { name } = &stage.source {
@@ -208,19 +213,64 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
             )));
         }
         for binding in &stage.extra_sources {
-            let PipelineInput::Host { name } = &binding.from else {
-                return Err(MfdError::Unsupported(format!(
-                    "pipeline stage `{}` has a non-host named input",
-                    stage.id
-                )));
-            };
-            if index > 0 && !original_hosts.contains(name.as_str()) {
-                return Err(MfdError::Unsupported(format!(
-                    "pipeline stage `{}` introduces host input `{name}` after the first stage",
-                    stage.id
-                )));
+            match &binding.from {
+                PipelineInput::Host { name } => {
+                    if index > 0 && !original_hosts.contains(name.as_str()) {
+                        return Err(MfdError::Unsupported(format!(
+                            "pipeline stage `{}` introduces host input `{name}` after the first stage",
+                            stage.id
+                        )));
+                    }
+                    original_hosts.insert(name.as_str());
+                }
+                PipelineInput::StageTarget {
+                    stage: producer,
+                    target: None,
+                } if pipeline.stages.len() == 3
+                    && index == 2
+                    && producer == &pipeline.stages[0].id
+                    && primary_is_xml
+                    && stage.project.extra_targets.is_empty() =>
+                {
+                    earlier_named_outputs += 1;
+                    if earlier_named_outputs > 1 {
+                        return Err(MfdError::Unsupported(
+                            "final stage has multiple earlier-stage named inputs".into(),
+                        ));
+                    }
+                    let earlier = &pipeline.stages[0].project;
+                    let preview = &pipeline.stages[1].project;
+                    let named = stage
+                        .project
+                        .extra_sources
+                        .iter()
+                        .find(|source| source.name == binding.name)
+                        .ok_or_else(|| {
+                            MfdError::Unsupported(format!(
+                                "stage named source `{}` is not declared",
+                                binding.name
+                            ))
+                        })?;
+                    if named.schema != earlier.target
+                        || named.options != earlier.target_options
+                        || preview.source != earlier.target
+                        || preview.source_options != named.options
+                        || preview.source_path.as_deref() != Some(named.path.as_str())
+                        || named.path.is_empty()
+                    {
+                        return Err(MfdError::Unsupported(format!(
+                            "stage named source `{}` does not match the earlier XML boundary and shared source preview path",
+                            binding.name
+                        )));
+                    }
+                }
+                PipelineInput::StageTarget { .. } => {
+                    return Err(MfdError::Unsupported(format!(
+                        "pipeline stage `{}` has an unsupported stage-target named input",
+                        stage.id
+                    )));
+                }
             }
-            original_hosts.insert(name.as_str());
         }
         if stage.project.extra_sources.iter().any(|source| {
             source.dynamic_path.is_some()
@@ -495,9 +545,9 @@ fn append_stage(
     apply_edits(previous.to_string(), edits)
 }
 
-/// Replace a late stage's duplicate host-source output ports with the ports
-/// of the one original source component retained from stage one. A later
-/// connection to an already used port is merged into its existing vertex.
+/// Reuse the retained output ports of an original host or the first XML
+/// intermediate for a connected late named source. A later connection to an
+/// already used port is merged into its existing vertex.
 fn late_named_source_key_remap(
     first_stage: &PipelineStage,
     stage: &PipelineStage,
@@ -519,65 +569,109 @@ fn late_named_source_key_remap(
     let mut used_hosts = BTreeSet::new();
     for (index, component) in source_components.iter().enumerate().skip(1) {
         let late_keys = entry_output_keys(*component)?;
-        if !late_keys
+        let is_connected = late_keys
             .values()
-            .any(|key| connected.contains(key.to_string().as_str()))
-        {
-            continue;
-        }
+            .any(|key| connected.contains(key.to_string().as_str()));
         let late_source = &stage.project.extra_sources[index - 1];
-        let host_name = stage
+        let binding = stage
             .extra_sources
             .iter()
             .find(|binding| binding.name == late_source.name)
-            .and_then(|binding| match &binding.from {
-                PipelineInput::Host { name } => Some(name.as_str()),
-                PipelineInput::StageTarget { .. } => None,
-            })
             .ok_or_else(|| {
                 MfdError::Unsupported(format!(
-                    "stage named source `{}` has no original host binding",
+                    "stage named source `{}` has no pipeline binding",
                     late_source.name
                 ))
             })?;
-        if !used_hosts.insert(host_name) {
-            return Err(MfdError::Unsupported(format!(
-                "original host `{host_name}` is connected through multiple late sources"
-            )));
+        if !is_connected {
+            if matches!(&binding.from, PipelineInput::StageTarget { .. }) {
+                return Err(MfdError::Unsupported(format!(
+                    "stage named source `{}` does not connect its earlier result",
+                    late_source.name
+                )));
+            }
+            continue;
         }
-        let first_index = first_stage
-            .project
-            .extra_sources
-            .iter()
-            .position(|source| {
-                source.name == late_source.name
-                    && first_stage.extra_sources.iter().any(|binding| {
-                        binding.name == source.name
-                            && matches!(&binding.from, PipelineInput::Host { name } if name == host_name)
+        let original_component = match &binding.from {
+            PipelineInput::Host { name: host_name } => {
+                if !used_hosts.insert(host_name.as_str()) {
+                    return Err(MfdError::Unsupported(format!(
+                        "original host `{host_name}` is connected through multiple late sources"
+                    )));
+                }
+                let first_index = first_stage
+                    .project
+                    .extra_sources
+                    .iter()
+                    .position(|source| {
+                        source.name == late_source.name
+                            && first_stage.extra_sources.iter().any(|binding| {
+                                binding.name == source.name
+                                    && matches!(&binding.from, PipelineInput::Host { name } if name == host_name)
+                            })
                     })
-            })
-            .ok_or_else(|| {
-                MfdError::Unsupported(format!(
-                    "stage named source `{}` is not an original named host source",
-                    late_source.name
-                ))
-            })?;
-        let original = &first_stage.project.extra_sources[first_index];
-        if original.schema != late_source.schema
-            || original.path != late_source.path
-            || original.options != late_source.options
-        {
-            return Err(MfdError::Unsupported(format!(
-                "stage named source `{}` does not match its original XML boundary",
-                late_source.name
-            )));
-        }
-        let original_component = first_sources[first_index + 1];
-        if original_component.attribute("name") != Some(original.name.as_str()) {
-            return Err(MfdError::Unsupported(
-                "original pipeline source component order changed".into(),
-            ));
-        }
+                    .ok_or_else(|| {
+                        MfdError::Unsupported(format!(
+                            "stage named source `{}` is not an original named host source",
+                            late_source.name
+                        ))
+                    })?;
+                let original = &first_stage.project.extra_sources[first_index];
+                if original.schema != late_source.schema
+                    || original.path != late_source.path
+                    || original.options != late_source.options
+                {
+                    return Err(MfdError::Unsupported(format!(
+                        "stage named source `{}` does not match its original XML boundary",
+                        late_source.name
+                    )));
+                }
+                let component = first_sources[first_index + 1];
+                if component.attribute("name") != Some(original.name.as_str()) {
+                    return Err(MfdError::Unsupported(
+                        "original pipeline source component order changed".into(),
+                    ));
+                }
+                component
+            }
+            PipelineInput::StageTarget {
+                stage: from,
+                target: None,
+            } if from == &first_stage.id => {
+                let intermediates = previous_children
+                    .children()
+                    .filter(|component| {
+                        component.has_tag_name("component")
+                            && component.attribute("library") == Some("xml")
+                            && component.children().any(|node| {
+                                node.has_tag_name("properties")
+                                    && node.attribute("PassThrough") == Some("1")
+                            })
+                    })
+                    .collect::<Vec<_>>();
+                let [earlier] = intermediates.as_slice() else {
+                    return Err(MfdError::Unsupported(
+                        "earlier XML intermediate is not unique".into(),
+                    ));
+                };
+                let earlier_preview =
+                    child(child(*earlier, "data")?, "document")?.attribute("inputinstance");
+                let late_preview =
+                    child(child(*component, "data")?, "document")?.attribute("inputinstance");
+                if earlier_preview.is_none() || earlier_preview != late_preview {
+                    return Err(MfdError::Unsupported(format!(
+                        "stage named source `{}` has a different XML preview path",
+                        late_source.name
+                    )));
+                }
+                *earlier
+            }
+            PipelineInput::StageTarget { .. } => {
+                return Err(MfdError::Unsupported(
+                    "stage named source has an unsupported producer".into(),
+                ));
+            }
+        };
         let original_keys = entry_output_keys(original_component)?;
         if !late_keys.keys().eq(original_keys.keys()) {
             return Err(MfdError::Unsupported(format!(

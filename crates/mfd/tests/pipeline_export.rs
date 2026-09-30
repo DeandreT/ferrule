@@ -66,6 +66,44 @@ fn make_chain_with_intermediate_output(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_earlier_result_named_source_chain(directory: &Path) -> PathBuf {
+    for (file, root, fields) in [
+        ("source.xsd", "Source", &["Start", "Shadow"][..]),
+        ("first.xsd", "FirstBuffer", &["Value", "Shadow"][..]),
+        ("second.xsd", "SecondBuffer", &["Processed"][..]),
+        ("target.xsd", "Target", &["Result", "Lookup", "Shadow"][..]),
+    ] {
+        let fields = fields
+            .iter()
+            .map(|field| format!("<xs:element name=\"{field}\" type=\"xs:string\"/>"))
+            .collect::<String>();
+        std::fs::write(
+            directory.join(file),
+            format!(
+                "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence>{fields}</xs:sequence></xs:complexType></xs:element></xs:schema>"
+            ),
+        )
+        .unwrap();
+    }
+    std::fs::write(
+        directory.join("source.xml"),
+        "<Source><Start>main value</Start><Shadow>side value</Shadow></Source>",
+    )
+    .unwrap();
+    let path = directory.join("earlier-named-source.mfd");
+    std::fs::write(
+        &path,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Start" outkey="10"/><entry name="Shadow" outkey="11"/></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+          <component name="first-buffer" library="xml" kind="14"><properties PassThrough="1"/><data><root><entry name="FirstBuffer"><entry name="Value" inpkey="20" outkey="30"/><entry name="Shadow" inpkey="21" outkey="31"/></entry></root><document schema="first.xsd" inputinstance="first-preview.xml" outputinstance="first-out.xml" instanceroot="{}FirstBuffer"/></data></component>
+          <component name="second-buffer" library="xml" kind="14"><properties PassThrough="1"/><data><root><entry name="SecondBuffer"><entry name="Processed" inpkey="40" outkey="50"/></entry></root><document schema="second.xsd" inputinstance="second-preview.xml" outputinstance="second-out.xml" instanceroot="{}SecondBuffer"/></data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="Result" inpkey="60"/><entry name="Lookup" inpkey="61"/><entry name="Shadow" inpkey="62"/></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/><edge vertexkey="61"/></edges></vertex><vertex vertexkey="31"><edges><edge vertexkey="62"/></edges></vertex><vertex vertexkey="50"><edges><edge vertexkey="60"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+    path
+}
+
 fn make_csv_final_chain(directory: &Path) -> PathBuf {
     let path = make_chain(directory);
     let original = std::fs::read_to_string(&path).unwrap();
@@ -4049,6 +4087,311 @@ fn original_host_can_feed_first_and_later_stage_from_one_vertex() {
                 .unwrap()
                 .primary,
         );
+    }
+}
+
+#[test]
+fn earlier_xml_result_feeds_final_named_input_and_round_trips_natively() {
+    let directory = TempDir::new();
+    let original =
+        mfd::import_pipeline(&make_earlier_result_named_source_chain(&directory.0)).unwrap();
+    assert!(original.warnings.is_empty(), "{:?}", original.warnings);
+    assert_eq!(original.pipeline.stages.len(), 3);
+    let final_stage = &original.pipeline.stages[2];
+    let named_bindings = final_stage
+        .extra_sources
+        .iter()
+        .filter(|binding| matches!(&binding.from, PipelineInput::StageTarget { .. }))
+        .collect::<Vec<_>>();
+    let [earlier] = named_bindings.as_slice() else {
+        panic!("final stage must read one earlier result as a named input");
+    };
+    assert_eq!(
+        earlier.from,
+        PipelineInput::StageTarget {
+            stage: "mfd-stage-1".into(),
+            target: None,
+        }
+    );
+    let preview = original.pipeline.stages[1]
+        .project
+        .source_path
+        .as_ref()
+        .unwrap();
+    let named = final_stage
+        .project
+        .extra_sources
+        .iter()
+        .find(|source| source.name == earlier.name)
+        .unwrap();
+    assert_eq!(&named.path, preview);
+    let PipelineInput::Host { name } = &original.pipeline.stages[0].source else {
+        panic!("first stage must read a host");
+    };
+    let hosts = BTreeMap::from([(
+        name.clone(),
+        Instance::Group(vec![
+            (
+                "Start".into(),
+                Instance::Scalar(Value::String("main value".into())),
+            ),
+            (
+                "Shadow".into(),
+                Instance::Scalar(Value::String("side value".into())),
+            ),
+        ]),
+    )]);
+    let before = engine::run_pipeline(&original.pipeline, &hosts).unwrap();
+    assert_eq!(
+        before.stage("mfd-stage-1").unwrap().primary.field("Shadow"),
+        Some(&Instance::Scalar(Value::String("side value".into())))
+    );
+    assert_eq!(
+        before
+            .stage("mfd-stage-2")
+            .unwrap()
+            .primary
+            .field("Processed"),
+        Some(&Instance::Scalar(Value::String("main value".into())))
+    );
+    let final_before = &before.stage("mfd-stage-3").unwrap().primary;
+    for (field, expected) in [
+        ("Result", "main value"),
+        ("Lookup", "main value"),
+        ("Shadow", "side value"),
+    ] {
+        assert_eq!(
+            final_before.field(field).and_then(Instance::as_scalar),
+            Some(&Value::String(expected.into()))
+        );
+    }
+    let before_xml = format_xml::to_string(&final_stage.project.target, final_before).unwrap();
+
+    let exported_path = directory.0.join("earlier-named-export.mfd");
+    let preflight = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported_path.exists());
+    let report = mfd::export_pipeline_with_profile(
+        &original.pipeline,
+        &exported_path,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let exported = std::fs::read_to_string(&exported_path).unwrap();
+    assert_eq!(exported.matches("PassThrough=\"1\"").count(), 2);
+    let document = roxmltree::Document::parse(&exported).unwrap();
+    let earlier_components = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("component") && node.attribute("name") == Some("FirstBuffer")
+        })
+        .collect::<Vec<_>>();
+    let [earlier_component] = earlier_components.as_slice() else {
+        panic!("earlier result must keep one native XML component");
+    };
+    assert!(earlier_component.children().any(|node| {
+        node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1")
+    }));
+    let preview = earlier_component
+        .descendants()
+        .find(|node| node.has_tag_name("document"))
+        .and_then(|node| node.attribute("inputinstance"));
+    assert!(preview.is_some_and(|path| path.ends_with("first-preview.xml")));
+    let value_key = earlier_component
+        .descendants()
+        .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Value"))
+        .and_then(|node| node.attribute("outkey"))
+        .unwrap();
+    let value_vertices = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("vertex") && node.attribute("vertexkey") == Some(value_key)
+        })
+        .collect::<Vec<_>>();
+    let [value_vertex] = value_vertices.as_slice() else {
+        panic!("earlier output port must have one graph vertex");
+    };
+    assert_eq!(
+        value_vertex
+            .descendants()
+            .filter(|node| node.has_tag_name("edge"))
+            .count(),
+        2,
+        "earlier value must feed both the next stage and the final named input"
+    );
+    let reimported = mfd::import_pipeline(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate_pipeline(&reimported.pipeline).is_empty());
+    assert!(reimported.pipeline.stages[2].extra_sources.iter().any(|binding| {
+        matches!(&binding.from, PipelineInput::StageTarget { stage, target: None } if stage == "mfd-stage-1")
+    }));
+    let PipelineInput::Host {
+        name: reimported_host,
+    } = &reimported.pipeline.stages[0].source
+    else {
+        panic!("reimported first stage must read a host");
+    };
+    let after = engine::run_pipeline(
+        &reimported.pipeline,
+        &BTreeMap::from([(reimported_host.clone(), hosts[name].clone())]),
+    )
+    .unwrap();
+    for index in 0..3 {
+        assert_eq!(
+            before
+                .stage(&original.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            after
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            "stage {}",
+            index + 1
+        );
+    }
+    let after_xml = format_xml::to_string(
+        &reimported.pipeline.stages[2].project.target,
+        &after.stage("mfd-stage-3").unwrap().primary,
+    )
+    .unwrap();
+    assert_eq!(before_xml.as_bytes(), after_xml.as_bytes());
+}
+
+#[test]
+fn earlier_result_branch_rejects_other_stage_graphs_and_unrepresented_inputs() {
+    let directory = TempDir::new();
+    let path = make_four_stage_chain(&directory.0);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let branch = original
+        .replace(
+            "<entry name=\"Result\" inpkey=\"80\"/>",
+            "<entry name=\"Result\" inpkey=\"80\"/><entry name=\"Lookup\" inpkey=\"90\"/>",
+        )
+        .replace(
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"90\"/></edges></vertex>",
+        );
+    assert_ne!(branch, original);
+    std::fs::write(&path, branch).unwrap();
+    let error = mfd::import_pipeline(&path).err().unwrap().to_string();
+    assert!(error.contains("serial XML chain"), "{error}");
+
+    let path = make_earlier_result_named_source_chain(&directory.0);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let unrepresented = original
+        .replace(
+            "<entry name=\"Shadow\" inpkey=\"62\"/>",
+            "<entry name=\"Shadow\" inpkey=\"62\"/><entry name=\"Bogus\" inpkey=\"63\"/>",
+        )
+        .replace(
+            "<vertex vertexkey=\"31\"><edges><edge vertexkey=\"62\"/></edges></vertex>",
+            "<vertex vertexkey=\"31\"><edges><edge vertexkey=\"62\"/><edge vertexkey=\"63\"/></edges></vertex>",
+        );
+    assert_ne!(unrepresented, original);
+    std::fs::write(&path, unrepresented).unwrap();
+    let error = mfd::import_pipeline(&path).err().unwrap().to_string();
+    assert!(
+        error.contains("target port path `Bogus` not found"),
+        "{error}"
+    );
+
+    std::fs::write(&path, original.replace("<edge vertexkey=\"60\"/>", "")).unwrap();
+    let error = mfd::import_pipeline(&path).err().unwrap().to_string();
+    assert!(
+        error.contains("serial XML chain") || error.contains("cannot classify component"),
+        "{error}"
+    );
+}
+
+#[test]
+fn earlier_result_branch_requires_a_source_preview_path() {
+    let directory = TempDir::new();
+    let path = make_earlier_result_named_source_chain(&directory.0);
+    let original = std::fs::read_to_string(&path).unwrap();
+    for replacement in [
+        "outputinstance=\"first-out.xml\"",
+        "inputinstance=\"   \" outputinstance=\"first-out.xml\"",
+    ] {
+        let missing_preview = original.replace(
+            "inputinstance=\"first-preview.xml\" outputinstance=\"first-out.xml\"",
+            replacement,
+        );
+        assert_ne!(missing_preview, original);
+        std::fs::write(&path, missing_preview).unwrap();
+        let error = mfd::import_pipeline(&path).err().unwrap().to_string();
+        assert!(
+            error.contains("without branches, cycles, or bypasses"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn earlier_result_named_source_export_guards_publish_no_artifacts() {
+    let directory = TempDir::new();
+    let original = mfd::import_pipeline(&make_earlier_result_named_source_chain(&directory.0))
+        .unwrap()
+        .pipeline;
+    for (label, mutate) in [
+        (
+            "preview",
+            Box::new(|pipeline: &mut mapping::Pipeline| {
+                let source = pipeline.stages[2]
+                    .project
+                    .extra_sources
+                    .iter_mut()
+                    .find(|source| source.name == "first-buffer")
+                    .unwrap();
+                source.path = "different-preview.xml".into();
+            }) as Box<dyn Fn(&mut mapping::Pipeline)>,
+        ),
+        (
+            "producer",
+            Box::new(|pipeline: &mut mapping::Pipeline| {
+                let binding = pipeline.stages[2]
+                    .extra_sources
+                    .iter_mut()
+                    .find(|binding| matches!(&binding.from, PipelineInput::StageTarget { .. }))
+                    .unwrap();
+                binding.from = PipelineInput::StageTarget {
+                    stage: "mfd-stage-2".into(),
+                    target: None,
+                };
+            }),
+        ),
+        (
+            "schema",
+            Box::new(|pipeline: &mut mapping::Pipeline| {
+                let source = pipeline.stages[2]
+                    .project
+                    .extra_sources
+                    .iter_mut()
+                    .find(|source| source.name == "first-buffer")
+                    .unwrap();
+                source.schema.name = "ChangedRoot".into();
+            }),
+        ),
+    ] {
+        let mut pipeline = original.clone();
+        mutate(&mut pipeline);
+        let destination = directory
+            .0
+            .join(format!("not-created-{label}"))
+            .join("rejected.mfd");
+        let error = mfd::export_pipeline(&pipeline, &destination)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(
+            error.contains("shared source preview path")
+                || error.contains("unsupported stage-target named input")
+                || error.contains("pipeline validation failed"),
+            "{label}: {error}"
+        );
+        assert!(!destination.exists(), "{label}");
+        assert!(!destination.parent().unwrap().exists(), "{label}");
     }
 }
 
