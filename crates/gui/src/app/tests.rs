@@ -195,6 +195,28 @@ fn two_stage_function_input_pipeline_app(test_name: &str) -> anyhow::Result<(Fer
     Ok((app, pipeline_path))
 }
 
+fn two_stage_failure_pipeline_app(test_name: &str) -> anyhow::Result<(FerruleApp, PathBuf)> {
+    let pipeline_path = temporary_project_path(test_name);
+    two_stage_pipeline_fixture(&pipeline_path)?;
+    let mut pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
+    let finish = &mut pipeline.stages[1].project;
+    attach_divide_failure(finish);
+    finish.root.bindings[0].node = 2;
+    std::fs::write(&pipeline_path, serde_json::to_vec_pretty(&pipeline)?)?;
+    let directory = pipeline_path.parent().expect("pipeline has directory");
+    std::fs::write(directory.join("orders.json"), r#"{"Value":"source"}"#)?;
+    std::fs::write(directory.join("prepare.json"), "old prepare")?;
+    std::fs::write(directory.join("finish.json"), "old finish")?;
+    let mut app = FerruleApp::default();
+    app.load_pipeline_for_run(&pipeline_path);
+    let draft = app.pipeline_run_draft.as_mut().expect("pipeline opens");
+    assert!(draft.issues.is_empty(), "{:?}", draft.issues);
+    draft.inputs[0].path = "orders.json".into();
+    draft.outputs[0].path = "prepare.json".into();
+    draft.outputs[1].path = "finish.json".into();
+    Ok((app, pipeline_path))
+}
+
 #[test]
 fn pipeline_runner_uses_unambiguous_stored_host_paths() -> anyhow::Result<()> {
     let pipeline_path = temporary_project_path("pipeline-stored-host-paths");
@@ -383,6 +405,27 @@ fn wait_for_pipeline_function_input_pause(
     }
 }
 
+fn wait_for_pipeline_failure_pause(app: &mut FerruleApp) -> (String, engine::PendingNodeFailure) {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_pipeline_run(&context);
+        match app
+            .pending_pipeline_run
+            .as_ref()
+            .map(|pending| &pending.phase)
+        {
+            Some(pipeline_ui::PipelineRunPhase::PausedFailure(stage, failure)) => {
+                return (stage.clone(), (**failure).clone());
+            }
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug pipeline did not pause on evaluation failure: {other:?}"),
+        }
+    }
+}
+
 fn named_target(name: &str) -> NamedTarget {
     NamedTarget {
         name: name.to_owned(),
@@ -452,6 +495,28 @@ fn attach_input_function(project: &mut mapping::Project, value: &str) {
         },
     );
     definition.output = 2;
+}
+
+fn attach_divide_failure(project: &mut mapping::Project) {
+    project.graph.nodes.insert(
+        2,
+        Node::Call {
+            function: "divide".into(),
+            args: vec![3, 4],
+        },
+    );
+    project.graph.nodes.insert(
+        3,
+        Node::Const {
+            value: ir::Value::Int(1),
+        },
+    );
+    project.graph.nodes.insert(
+        4,
+        Node::Const {
+            value: ir::Value::Int(0),
+        },
+    );
 }
 
 #[test]
@@ -1694,6 +1759,21 @@ fn wait_for_file_function_input_pause(app: &mut FerruleApp) -> engine::PendingFu
     }
 }
 
+fn wait_for_file_failure_pause(app: &mut FerruleApp) -> engine::PendingNodeFailure {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_file_run(&context);
+        match app.pending_file_run.as_ref().map(|pending| &pending.phase) {
+            Some(run_ui::FileRunPhase::PausedFailure(failure)) => return (**failure).clone(),
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug file run did not pause on evaluation failure: {other:?}"),
+        }
+    }
+}
+
 fn wait_for_debug_pause(app: &mut FerruleApp) -> engine::PendingTargetWrite {
     let context = egui::Context::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -1767,6 +1847,154 @@ fn wait_for_preview_function_input_pause(app: &mut FerruleApp) -> engine::Pendin
             other => panic!("debug preview did not pause at a function input: {other:?}"),
         }
     }
+}
+
+fn wait_for_preview_failure_pause(app: &mut FerruleApp) -> engine::PendingNodeFailure {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_preview(&context);
+        match app.pending_preview.as_ref().map(|pending| &pending.phase) {
+            Some(preview_ui::PreviewPhase::PausedFailure(failure)) => return (**failure).clone(),
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug preview did not pause on evaluation failure: {other:?}"),
+        }
+    }
+}
+
+fn wait_for_preview_function_failure_pause(
+    app: &mut FerruleApp,
+) -> engine::PendingFunctionNodeFailure {
+    let context = egui::Context::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.poll_preview(&context);
+        match app.pending_preview.as_ref().map(|pending| &pending.phase) {
+            Some(preview_ui::PreviewPhase::PausedFunctionFailure(failure)) => {
+                return (**failure).clone();
+            }
+            Some(_) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => panic!("debug preview did not pause on function failure: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn evaluation_failure_preview_pauses_before_a_write_and_continues_to_error() {
+    let mut app = two_field_debug_preview_app();
+    attach_divide_failure(&mut app.project);
+    app.project.root.bindings[0].node = 2;
+    app.preview_pause_on_failure = true;
+    app.execute_debug_preview();
+    let failure = wait_for_preview_failure_pause(&mut app);
+    assert_eq!(failure.node, 2);
+    assert!(failure.error.preview.contains("division by zero"));
+    assert!(app.run_report.is_none());
+    app.preview_command(preview_ui::PreviewCommand::Continue);
+    wait_for_preview_completion(&mut app);
+    assert_eq!(app.status, "preview failed");
+    assert!(app.run_report.is_none());
+}
+
+#[test]
+fn evaluation_failure_preview_qualifies_function_body_and_cancels() {
+    let mut app = two_field_debug_preview_app();
+    attach_no_arg_function(&mut app.project, "unused");
+    let body = &mut app
+        .project
+        .user_functions
+        .get_mut(&FunctionId::new(7))
+        .expect("function exists")
+        .body;
+    body.nodes.insert(
+        0,
+        Node::Const {
+            value: ir::Value::Int(1),
+        },
+    );
+    body.nodes.insert(
+        1,
+        Node::Const {
+            value: ir::Value::Int(0),
+        },
+    );
+    body.nodes.insert(
+        2,
+        Node::Call {
+            function: "divide".into(),
+            args: vec![0, 1],
+        },
+    );
+    app.project
+        .user_functions
+        .get_mut(&FunctionId::new(7))
+        .unwrap()
+        .output = 2;
+    app.project.root.bindings[1].node = 2;
+    app.preview_pause_on_failure = true;
+    app.execute_debug_preview();
+    let failure = wait_for_preview_function_failure_pause(&mut app);
+    assert_eq!((failure.function, failure.node), (FunctionId::new(7), 2));
+    assert!(failure.source.frames.is_empty());
+    assert!(failure.error.preview.contains("division by zero"));
+    app.preview_command(preview_ui::PreviewCommand::Cancel);
+    wait_for_preview_completion(&mut app);
+    assert_eq!(app.status, "preview cancelled");
+    assert!(app.run_report.is_none());
+}
+
+#[test]
+fn evaluation_failure_saved_run_cancels_before_publication() {
+    let (mut app, project_path, output) = two_field_file_run_app("evaluation-failure-file");
+    attach_divide_failure(&mut app.project);
+    app.project.root.bindings[1].node = 2;
+    app.save_document_to(&project_path).unwrap();
+    app.file_run_pause_on_failure = true;
+    app.debug_run(&egui::Context::default());
+    let failure = wait_for_file_failure_pause(&mut app);
+    assert_eq!(failure.node, 2);
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    app.file_run_command(run_ui::FileRunCommand::Cancel);
+    wait_for_file_run_completion(&mut app);
+    assert_eq!(app.status, "run cancelled");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn evaluation_failure_pipeline_selects_stage_and_preserves_outputs() -> anyhow::Result<()> {
+    let (mut app, pipeline_path) = two_stage_failure_pipeline_app("evaluation-failure-pipeline")?;
+    let directory = pipeline_path.parent().unwrap();
+    app.pipeline_run_pause_on_failure = true;
+    app.pipeline_run_failure_stage = Some("finish".into());
+    app.start_pipeline_debug_run();
+    let (stage, failure) = wait_for_pipeline_failure_pause(&mut app);
+    assert_eq!((stage.as_str(), failure.node), ("finish", 2));
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
+    app.pipeline_run_command(pipeline_ui::PipelineRunCommand::Continue);
+    wait_for_pipeline_completion(&mut app);
+    assert_eq!(app.status, "pipeline run failed");
+    assert_eq!(
+        std::fs::read_to_string(directory.join("prepare.json"))?,
+        "old prepare"
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.join("finish.json"))?,
+        "old finish"
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
 }
 
 fn two_field_debug_preview_app() -> FerruleApp {
