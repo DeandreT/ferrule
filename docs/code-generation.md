@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports twenty-nine warning-free designs: JSON to
+An opt-in local-corpus smoke test imports thirty warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -538,6 +538,12 @@ select the 2008 readings inside that generated-item scope, producing minimum
 −0.5, maximum 24, and average 11.6. The test proves native XML survives
 schema-shaped JSON transport, then compares generated Rust/C# typed and JSON
 APIs with the interpreter as typed JSON and exact XML bytes. No native
+reference output is pinned for this design.
+The thirtieth reads twelve local JSON item rows and selects a computed
+`out-of-stock` property. Absent and false values are excluded before the five
+remaining rows are sorted by part number into a headered CSV table. The test
+checks their names and order, then compares generated Rust/C# typed JSON and
+exact CSV bytes with the interpreter through the same CSV writer. No native
 reference output is pinned for this design.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with

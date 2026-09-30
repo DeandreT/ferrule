@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against twenty-nine local, gitignored mappings.
+//! Opt-in generated-backend execution against thirty local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -32,7 +32,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 29] = [
+const CASES: [CorpusCase; 30] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -206,6 +206,12 @@ const CASES: [CorpusCase; 29] = [
         input: "Temperatures.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: "SelectPropertyFromJSON.mfd",
+        input: "itemlist.json",
+        source_kind: SourceKind::Json,
+        target_kind: TargetKind::Csv,
     },
 ];
 
@@ -447,12 +453,13 @@ fn run_case(
             | "ArticlesInStock.mfd"
             | "ParseStringWithFlexText.mfd"
             | "InputIsSequence.mfd"
+            | "SelectPropertyFromJSON.mfd"
     ) {
         let round_tripped = format_json::from_str(&source_json, &project.source)?;
-        if sample == "InputIsSequence.mfd" {
+        if matches!(sample, "InputIsSequence.mfd" | "SelectPropertyFromJSON.mfd") {
             assert_eq!(
                 round_tripped, source,
-                "{sample}: native XML source changes across JSON transport"
+                "{sample}: source changes across schema-shaped JSON transport"
             );
         }
         assert_eq!(
@@ -1124,6 +1131,52 @@ fn run_case(
             assert_eq!(row["Father's Name"], father);
         }
         Some(corpus_csv_bytes(&project, &expected)?)
+    } else if sample == "SelectPropertyFromJSON.mfd" {
+        assert_eq!(
+            project
+                .graph
+                .nodes
+                .values()
+                .filter(|node| matches!(node, Node::DynamicSourceField { .. }))
+                .count(),
+            1,
+            "{sample}: one computed JSON source property"
+        );
+        assert_eq!(
+            project.root.sort_filter_order,
+            mapping::SortFilterOrder::FilterThenSort,
+            "{sample}: filter runs before the part-number sort"
+        );
+        assert_eq!(project.target_options.delimiter, Some(','));
+        assert_eq!(project.target_options.has_header_row, Some(true));
+        let inputs = source.as_repeated().expect("JSON root rows");
+        assert_eq!(inputs.len(), 12);
+        assert_eq!(
+            inputs
+                .iter()
+                .filter(|row| {
+                    row.field("out-of-stock")
+                        .and_then(Instance::as_scalar)
+                        .is_none_or(|value| matches!(value, Value::Null))
+                })
+                .count(),
+            5,
+            "{sample}: absent properties remain distinct from false"
+        );
+        let rows = expected_json.as_array().expect("out-of-stock CSV rows");
+        let expected_rows = [
+            ("148-ON", "Coral necklace"),
+            ("229-OB", "Pearl necklace"),
+            ("238-KK", "Amber ring"),
+            ("745-JW", "White pearl jade necklace"),
+            ("748-OT", "Diamond heart"),
+        ];
+        assert_eq!(rows.len(), expected_rows.len());
+        for (row, (part, name)) in rows.iter().zip(expected_rows) {
+            assert_eq!(row["Part Number (Out of Stock)"], part);
+            assert_eq!(row["Product Name"], name);
+        }
+        Some(corpus_csv_bytes(&project, &expected)?)
     } else {
         None
     };
@@ -1488,10 +1541,23 @@ fn assert_generated_csv_bytes(
 ) -> TestResult<()> {
     let generated =
         format_json::from_str(&serde_json::to_string(generated_json)?, &project.target)?;
-    assert_eq!(
-        &generated, expected,
-        "{sample}: generated {backend} typed CSV target differs from engine"
-    );
+    if sample == "SelectPropertyFromJSON.mfd" {
+        // This mapping binds fields in a different order from its CSV schema.
+        // The JSON host boundary restores schema order without changing values.
+        let normalized_expected = format_json::from_str(
+            &format_json::to_string(&project.target, expected)?,
+            &project.target,
+        )?;
+        assert_eq!(
+            generated, normalized_expected,
+            "{sample}: generated {backend} typed CSV target differs after schema-shaped JSON transport"
+        );
+    } else {
+        assert_eq!(
+            &generated, expected,
+            "{sample}: generated {backend} typed CSV target differs from engine"
+        );
+    }
     assert_eq!(
         corpus_csv_bytes(project, &generated)?,
         expected_csv,
