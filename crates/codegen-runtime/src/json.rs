@@ -10,6 +10,8 @@ mod contains;
 #[cfg(test)]
 mod dependent_schemas;
 #[cfg(test)]
+mod embedded_schema;
+#[cfg(test)]
 mod large_collections;
 mod multiple_of;
 #[cfg(test)]
@@ -233,14 +235,13 @@ pub fn serialize_json_bytes(
 }
 
 fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
-    if schema.len() > MAX_EMBEDDED_JSON_SCHEMA_BYTES {
-        return Err(JsonBoundaryError::EmbeddedSchemaTooLarge {
-            bytes: schema.len(),
-            max: MAX_EMBEDDED_JSON_SCHEMA_BYTES,
-        });
-    }
-    serde_json::from_str(schema).map_err(|error| JsonBoundaryError::InvalidEmbeddedSchema {
-        message: error.to_string(),
+    codegen_schema::decode(schema, MAX_EMBEDDED_JSON_SCHEMA_BYTES).map_err(|error| match error {
+        codegen_schema::CodecError::TooLarge { bytes, max } => {
+            JsonBoundaryError::EmbeddedSchemaTooLarge { bytes, max }
+        }
+        error => JsonBoundaryError::InvalidEmbeddedSchema {
+            message: error.to_string(),
+        },
     })
 }
 

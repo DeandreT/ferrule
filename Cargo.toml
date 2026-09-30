@@ -9,6 +9,7 @@ members = [
     "crates/functions",
     "crates/engine",
     "crates/codegen",
+    "crates/codegen-schema",
     "crates/codegen-runtime",
     "crates/codegen-rust",
     "crates/codegen-csharp",
@@ -42,6 +43,7 @@ mapping = { path = "crates/mapping" }
 functions = { path = "crates/functions" }
 engine = { path = "crates/engine" }
 codegen = { path = "crates/codegen" }
+codegen-schema = { path = "crates/codegen-schema" }
 codegen-runtime = { path = "crates/codegen-runtime" }
 codegen-rust = { path = "crates/codegen-rust" }
 codegen-csharp = { path = "crates/codegen-csharp" }

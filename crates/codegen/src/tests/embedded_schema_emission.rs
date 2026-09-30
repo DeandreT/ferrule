@@ -43,8 +43,29 @@ fn padded_schema(name: &str, bytes: usize) -> SchemaNode {
     schema
 }
 
+fn padded_lossless_schema(name: &str, bytes: usize) -> SchemaNode {
+    let mut schema = changed_schema(name);
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        unreachable!()
+    };
+    let mut padding = SchemaNode::scalar("Padding", ScalarType::String);
+    padding.fixed = Some(String::new());
+    children.push(padding);
+    let overhead = codegen::serialize_embedded_schema(&schema, usize::MAX)
+        .unwrap()
+        .len();
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        unreachable!()
+    };
+    children[1].fixed = Some("x".repeat(bytes - overhead));
+    let descriptor = codegen::serialize_embedded_schema(&schema, usize::MAX).unwrap();
+    assert!(descriptor.starts_with("FERRULE-EMBEDDED-SCHEMA/2\n"));
+    assert_eq!(descriptor.len(), bytes);
+    schema
+}
+
 #[test]
-fn embedded_schema_emission_rejects_physical_constraint_drift_before_artifacts() {
+fn embedded_schema_emission_preserves_physical_constraint_without_decimal_drift() {
     let program = physical_program();
     let Some(NumericRange::Number(range)) = program.target.child("Out").unwrap().numeric_range
     else {
@@ -69,16 +90,27 @@ fn embedded_schema_emission_rejects_physical_constraint_drift_before_artifacts()
         weakened.contains(value),
         "unprotected embedding would weaken the range"
     );
-    assert_eq!(
-        emit_schema_fixture(&program),
-        Err(EmbeddedSchemaError::MetadataChanged {
-            schema: "Target".into()
-        })
+    let descriptor =
+        codegen::serialize_embedded_schema(&program.target, MAX_EMBEDDED_JSON_SCHEMA_BYTES)
+            .expect("physical metadata encodes losslessly");
+    assert!(descriptor.starts_with("FERRULE-EMBEDDED-SCHEMA/2\n"));
+    let artifacts = emit_schema_fixture(&program).expect("physical fixture emits losslessly");
+    assert_descriptor_is_emitted(&artifacts, &descriptor);
+}
+
+fn assert_descriptor_is_emitted(artifacts: &ArtifactSet, descriptor: &str) {
+    let literal = serde_json::to_string(descriptor).expect("descriptor escapes");
+    assert!(
+        artifacts
+            .files()
+            .iter()
+            .any(|file| { String::from_utf8_lossy(&file.contents).contains(&literal) }),
+        "generated artifacts contain the exact descriptor"
     );
 }
 
 #[test]
-fn embedded_schema_emission_guards_primary_named_dynamic_and_expression_schemas() {
+fn embedded_schema_emission_preserves_primary_named_dynamic_and_expression_schemas() {
     let mut cases = Vec::new();
 
     let mut primary = stable_program();
@@ -147,12 +179,14 @@ fn embedded_schema_emission_guards_primary_named_dynamic_and_expression_schemas(
 
     for (program, name) in cases {
         codegen::validate_program(&program).expect("fixture is valid before emission");
-        assert_eq!(
-            emit_schema_fixture(&program),
-            Err(EmbeddedSchemaError::MetadataChanged {
-                schema: name.into()
-            })
-        );
+        let descriptor = codegen::serialize_embedded_schema(
+            &changed_schema(name),
+            MAX_EMBEDDED_XML_SCHEMA_BYTES,
+        )
+        .expect("unstable schema encodes");
+        assert!(descriptor.starts_with("FERRULE-EMBEDDED-SCHEMA/2\n"));
+        let artifacts = emit_schema_fixture(&program).expect("valid metadata emits losslessly");
+        assert_descriptor_is_emitted(&artifacts, &descriptor);
     }
 }
 
@@ -327,6 +361,60 @@ fn embedded_schema_emission_uses_xml_expression_cap_independently() {
             schema: "Serialized".into(),
             bytes: MAX_EMBEDDED_XML_SCHEMA_BYTES + 1,
             max: MAX_EMBEDDED_XML_SCHEMA_BYTES,
+        })
+    );
+}
+
+#[test]
+fn embedded_schema_emission_counts_lossless_encoding_before_artifacts() {
+    let max = MAX_EMBEDDED_JSON_SCHEMA_BYTES;
+    let mut program = stable_program();
+    program.source = padded_lossless_schema("Input", max);
+    assert!(emit_schema_fixture(&program).is_ok());
+    program.source = padded_lossless_schema("Input", max + 1);
+    assert_eq!(
+        emit_schema_fixture(&program),
+        Err(EmbeddedSchemaError::TooLarge {
+            schema: "Input".into(),
+            bytes: max + 1,
+            max,
+        })
+    );
+
+    let max = MAX_EMBEDDED_XML_SCHEMA_BYTES;
+    let mut program = stable_program();
+    program.source = SchemaNode::group(
+        "Source",
+        vec![SchemaNode::group(
+            "Serialized",
+            vec![
+                SchemaNode::scalar("Out", ScalarType::Float),
+                SchemaNode::scalar("Padding", ScalarType::String),
+            ],
+        )],
+    );
+    program.target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::scalar("Out", ScalarType::String)],
+    );
+    program.root.bindings[0].target_domain = ScalarType::String.into();
+    let make = |schema| Expression::XmlSerialize {
+        frame: None,
+        path: vec!["Serialized".into()],
+        schema: Box::new(schema),
+        declaration: false,
+        indent: false,
+        namespace: None,
+    };
+    program.expressions[0].expression = make(padded_lossless_schema("Serialized", max));
+    assert!(emit_schema_fixture(&program).is_ok());
+    program.expressions[0].expression = make(padded_lossless_schema("Serialized", max + 1));
+    assert_eq!(
+        emit_schema_fixture(&program),
+        Err(EmbeddedSchemaError::TooLarge {
+            schema: "Serialized".into(),
+            bytes: max + 1,
+            max,
         })
     );
 }

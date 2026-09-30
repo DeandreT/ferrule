@@ -110,7 +110,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 }
                 output.push_str(", ");
                 render_path(path, &mut output);
-                output.push_str("\n        );\n        return global::Ferrule.Runtime.FerruleXml.Serialize(\n            ");
+                output.push_str("\n        );\n        return global::Ferrule.Runtime.FerruleXml.SerializeEmbedded(\n            ");
                 output.push_str(&format!("{node}U, "));
                 output.push_str(&literal::string(&schema));
                 output.push_str(", instance, ");
@@ -1053,8 +1053,8 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
          \n    public static string ExecuteJsonWithSources(\n        string source,\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        return ExecuteJsonOutputsWithSources(source, extraSources, executionContext).Primary;\n    }\n\
          \n    public static JsonExecutionOutputs ExecuteJsonOutputs(string source)\n    {\n        return ExecuteJsonOutputsWithSources(source, global::System.Array.Empty<NamedJsonInput>());\n    }\n\
          \n    public static JsonExecutionOutputs ExecuteJsonOutputs(\n        string source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        return ExecuteJsonOutputsWithSources(\n            source,\n            global::System.Array.Empty<NamedJsonInput>(),\n            executionContext);\n    }\n\
-         \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithSources(\n        string source,\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n        ValidateNamedJsonInputNames(extraSources);\n        var parsedSource = global::Ferrule.Runtime.FerruleJson.Parse(SourceJsonSchema, source);\n        var parsedInputs = ParseNamedJsonInputs(extraSources);\n        return SerializeJsonOutputs(ExecuteOutputsWithSources(parsedSource, parsedInputs));\n    }\n\
-         \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithSources(\n        string source,\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        ValidateNamedJsonInputNames(extraSources);\n        var parsedSource = global::Ferrule.Runtime.FerruleJson.Parse(SourceJsonSchema, source);\n        var parsedInputs = ParseNamedJsonInputs(extraSources);\n        return SerializeJsonOutputs(ExecuteOutputsWithSources(\n            parsedSource,\n            parsedInputs,\n            executionContext));\n    }\n",
+         \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithSources(\n        string source,\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n        ValidateNamedJsonInputNames(extraSources);\n        var parsedSource = global::Ferrule.Runtime.FerruleJson.ParseEmbedded(SourceJsonSchema, source);\n        var parsedInputs = ParseNamedJsonInputs(extraSources);\n        return SerializeJsonOutputs(ExecuteOutputsWithSources(parsedSource, parsedInputs));\n    }\n\
+         \n    public static JsonExecutionOutputs ExecuteJsonOutputsWithSources(\n        string source,\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        ValidateNamedJsonInputNames(extraSources);\n        var parsedSource = global::Ferrule.Runtime.FerruleJson.ParseEmbedded(SourceJsonSchema, source);\n        var parsedInputs = ParseNamedJsonInputs(extraSources);\n        return SerializeJsonOutputs(ExecuteOutputsWithSources(\n            parsedSource,\n            parsedInputs,\n            executionContext));\n    }\n",
     );
     output.push_str(
         r#"
@@ -1110,7 +1110,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
         global::System.ArgumentNullException.ThrowIfNull(extraSources);
         ValidateNamedJsonBytesInputNames(extraSources);
         var parsedSource =
-            global::Ferrule.Runtime.FerruleJson.ParseBytes(SourceJsonSchema, source);
+            global::Ferrule.Runtime.FerruleJson.ParseEmbeddedBytes(SourceJsonSchema, source);
         var parsedInputs = ParseNamedJsonBytesInputs(extraSources);
         return SerializeJsonBytesOutputs(
             ExecuteOutputsWithSources(parsedSource, parsedInputs));
@@ -1126,7 +1126,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
         global::System.ArgumentNullException.ThrowIfNull(executionContext);
         ValidateNamedJsonBytesInputNames(extraSources);
         var parsedSource =
-            global::Ferrule.Runtime.FerruleJson.ParseBytes(SourceJsonSchema, source);
+            global::Ferrule.Runtime.FerruleJson.ParseEmbeddedBytes(SourceJsonSchema, source);
         var parsedInputs = ParseNamedJsonBytesInputs(extraSources);
         return SerializeJsonBytesOutputs(ExecuteOutputsWithSources(
             parsedSource,
@@ -1205,7 +1205,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
                  global::System.ArgumentNullException.ThrowIfNull(extraSources);\n\
                  global::System.ArgumentNullException.ThrowIfNull(loader);\n\
                  ValidateNamedJsonInputNames(extraSources);\n\
-                 var parsedSource = global::Ferrule.Runtime.FerruleJson.Parse(SourceJsonSchema, source);\n\
+                 var parsedSource = global::Ferrule.Runtime.FerruleJson.ParseEmbedded(SourceJsonSchema, source);\n\
                  var parsedInputs = ParseNamedJsonInputs(extraSources);\n\
                  var adapter = new GeneratedDynamicJsonSourceLoader(loader);\n\
                  var outputs = executionContext is null\n\
@@ -1261,7 +1261,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
             "                _ => throw new global::System.InvalidOperationException(\n\
                                  $\"undeclared dynamic source '{sourceName}'\"),\n\
                          };\n\
-                     return global::Ferrule.Runtime.FerruleJson.Parse(schema, text);\n\
+                     return global::Ferrule.Runtime.FerruleJson.ParseEmbedded(schema, text);\n\
                  }\n\
              }\n",
         );
@@ -1344,7 +1344,7 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
             output.push_str(&format!(" => ExtraSourceJsonSchemas[{index}],\n"));
         }
         output.push_str(
-            "                _ => throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                    $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                    detail: extraSource.Name),\n            };\n            parsed.Add(new NamedInput(\n                extraSource.Name,\n                global::Ferrule.Runtime.FerruleJson.Parse(schema, extraSource.Document)));\n        }\n        return parsed;\n",
+            "                _ => throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                    $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                    detail: extraSource.Name),\n            };\n            parsed.Add(new NamedInput(\n                extraSource.Name,\n                global::Ferrule.Runtime.FerruleJson.ParseEmbedded(schema, extraSource.Document)));\n        }\n        return parsed;\n",
         );
     }
     output.push_str("    }\n");
@@ -1366,16 +1366,16 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
             output.push_str(&format!(" => ExtraSourceJsonSchemas[{index}],\n"));
         }
         output.push_str(
-            "                _ => throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                    $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                    detail: extraSource.Name),\n            };\n            parsed.Add(new NamedInput(\n                extraSource.Name,\n                global::Ferrule.Runtime.FerruleJson.ParseBytes(schema, extraSource.Document)));\n        }\n        return parsed;\n",
+            "                _ => throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                    $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                    detail: extraSource.Name),\n            };\n            parsed.Add(new NamedInput(\n                extraSource.Name,\n                global::Ferrule.Runtime.FerruleJson.ParseEmbeddedBytes(schema, extraSource.Document)));\n        }\n        return parsed;\n",
         );
     }
     output.push_str("    }\n");
 
     output.push_str(
-        "\n    private static JsonExecutionOutputs SerializeJsonOutputs(ExecutionOutputs outputs)\n    {\n        if (outputs.Extras.Count != ExtraTargetJsonSchemas.Length)\n        {\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.JsonBoundary,\n                \"generated mapping returned an unexpected number of named targets\",\n                detail: \"named target count\");\n        }\n        var extras = new global::System.Collections.Generic.List<NamedJsonOutput>(outputs.Extras.Count);\n        for (var index = 0; index < outputs.Extras.Count; index++)\n        {\n            var extra = outputs.Extras[index];\n            extras.Add(new NamedJsonOutput(\n                extra.Name,\n                global::Ferrule.Runtime.FerruleJson.Serialize(\n                    ExtraTargetJsonSchemas[index],\n                    extra.Instance)));\n        }\n        return new JsonExecutionOutputs(\n            global::Ferrule.Runtime.FerruleJson.Serialize(TargetJsonSchema, outputs.Primary),\n            extras);\n    }\n",
+        "\n    private static JsonExecutionOutputs SerializeJsonOutputs(ExecutionOutputs outputs)\n    {\n        if (outputs.Extras.Count != ExtraTargetJsonSchemas.Length)\n        {\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.JsonBoundary,\n                \"generated mapping returned an unexpected number of named targets\",\n                detail: \"named target count\");\n        }\n        var extras = new global::System.Collections.Generic.List<NamedJsonOutput>(outputs.Extras.Count);\n        for (var index = 0; index < outputs.Extras.Count; index++)\n        {\n            var extra = outputs.Extras[index];\n            extras.Add(new NamedJsonOutput(\n                extra.Name,\n                global::Ferrule.Runtime.FerruleJson.SerializeEmbedded(\n                    ExtraTargetJsonSchemas[index],\n                    extra.Instance)));\n        }\n        return new JsonExecutionOutputs(\n            global::Ferrule.Runtime.FerruleJson.SerializeEmbedded(TargetJsonSchema, outputs.Primary),\n            extras);\n    }\n",
     );
     output.push_str(
-        "\n    private static JsonBytesExecutionOutputs SerializeJsonBytesOutputs(ExecutionOutputs outputs)\n    {\n        if (outputs.Extras.Count != ExtraTargetJsonSchemas.Length)\n        {\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.JsonBoundary,\n                \"generated mapping returned an unexpected number of named targets\",\n                detail: \"named target count\");\n        }\n        var extras = new global::System.Collections.Generic.List<NamedJsonBytesOutput>(outputs.Extras.Count);\n        for (var index = 0; index < outputs.Extras.Count; index++)\n        {\n            var extra = outputs.Extras[index];\n            extras.Add(new NamedJsonBytesOutput(\n                extra.Name,\n                global::Ferrule.Runtime.FerruleJson.SerializeBytes(\n                    ExtraTargetJsonSchemas[index],\n                    extra.Instance)));\n        }\n        return new JsonBytesExecutionOutputs(\n            global::Ferrule.Runtime.FerruleJson.SerializeBytes(\n                TargetJsonSchema,\n                outputs.Primary),\n            extras);\n    }\n",
+        "\n    private static JsonBytesExecutionOutputs SerializeJsonBytesOutputs(ExecutionOutputs outputs)\n    {\n        if (outputs.Extras.Count != ExtraTargetJsonSchemas.Length)\n        {\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.JsonBoundary,\n                \"generated mapping returned an unexpected number of named targets\",\n                detail: \"named target count\");\n        }\n        var extras = new global::System.Collections.Generic.List<NamedJsonBytesOutput>(outputs.Extras.Count);\n        for (var index = 0; index < outputs.Extras.Count; index++)\n        {\n            var extra = outputs.Extras[index];\n            extras.Add(new NamedJsonBytesOutput(\n                extra.Name,\n                global::Ferrule.Runtime.FerruleJson.SerializeEmbeddedBytes(\n                    ExtraTargetJsonSchemas[index],\n                    extra.Instance)));\n        }\n        return new JsonBytesExecutionOutputs(\n            global::Ferrule.Runtime.FerruleJson.SerializeEmbeddedBytes(\n                TargetJsonSchema,\n                outputs.Primary),\n            extras);\n    }\n",
     );
     Ok(())
 }

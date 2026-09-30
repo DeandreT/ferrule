@@ -16,7 +16,8 @@ public static partial class FerruleJson
         JsonScalarDomain scalarDomain,
         bool jsonAny,
         bool nullable,
-        FerruleValue? fixedValue)
+        FerruleValue? fixedValue,
+        bool exactFloatMarkers)
     {
         JsonElement? declaredValues = null;
         foreach (var property in element.EnumerateObject())
@@ -57,7 +58,7 @@ public static partial class FerruleJson
                 throw Boundary(
                     $"Embedded JSON schema node '{name}' has more than {MaximumJsonAllowedValues} JSON allowed values.");
             }
-            var value = ReadJsonAllowedValue(name, valueElement);
+            var value = ReadJsonAllowedValue(name, valueElement, exactFloatMarkers);
             if (!value.IsAdmittedBy(scalarDomain, nullable))
             {
                 throw Boundary(
@@ -111,7 +112,8 @@ public static partial class FerruleJson
 
     private static JsonAllowedValue ReadJsonAllowedValue(
         string name,
-        JsonElement element)
+        JsonElement element,
+        bool exactFloatMarkers)
     {
         RequireKind(
             element,
@@ -147,7 +149,7 @@ public static partial class FerruleJson
             "int" when payload.ValueKind == JsonValueKind.Number &&
                        TryGetSerdeInt64(payload, out var integer) =>
                 JsonAllowedValue.FromInt64(integer),
-            "float" when TryReadFiniteMetadataDouble(payload, out var number) &&
+            "float" when TryReadFiniteMetadataDouble(payload, exactFloatMarkers, out var number) &&
                          !TryExactInt64(number, out _) =>
                 JsonAllowedValue.FromDouble(number),
             "string" when payload.ValueKind == JsonValueKind.String =>

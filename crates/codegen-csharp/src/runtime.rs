@@ -18,7 +18,7 @@ pub(crate) const PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
 </Project>
 "#;
 
-pub(crate) const SOURCES: [(&str, &str); 47] = [
+pub(crate) const SOURCES: [(&str, &str); 48] = [
     (
         "Runtime/FerruleRuntimeException.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleRuntimeException.cs"),
@@ -58,6 +58,10 @@ pub(crate) const SOURCES: [(&str, &str); 47] = [
     (
         "Runtime/FerruleInstance.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleInstance.cs"),
+    ),
+    (
+        "Runtime/FerruleEmbeddedSchema.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleEmbeddedSchema.cs"),
     ),
     (
         "Runtime/Json/FerruleJson.cs",
