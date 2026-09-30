@@ -5,8 +5,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint,
     ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout,
-    IdocNativeConfig, NodeId, PdfLayout, ProtobufOptions, SwiftMtLayout, TabularBoundaryKind,
-    WsdlMessageOptions, X12Separators, XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
+    IdocNativeConfig, IdocNativeTextSettings, NodeId, PdfLayout, ProtobufOptions, SwiftMtLayout,
+    TabularBoundaryKind, WsdlMessageOptions, X12Separators, XbrlBoundaryOptions,
+    XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -295,6 +296,10 @@ pub struct FormatOptions {
     /// layout must exactly match this boundary's executable schema and layout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idoc_native_config: Option<IdocNativeConfig>,
+    /// Certified native IDoc text codes, separators, and validation actions.
+    /// This records provenance only; runtime I/O keeps its legacy behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idoc_native_text_settings: Option<IdocNativeTextSettings>,
     /// SWIFT MT: embedded selected-message field grammar. This mode is
     /// input-only and takes precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]

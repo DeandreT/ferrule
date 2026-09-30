@@ -1,5 +1,5 @@
 use ir::{SchemaKind, SchemaNode};
-use mapping::{EdiBoundaryKind, FormatOptions, WsdlMessageRole, XbrlBoundaryMode};
+use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions, WsdlMessageRole, XbrlBoundaryMode};
 
 use super::ValidationIssue;
 
@@ -86,6 +86,7 @@ pub(super) fn validate_json5_options(
         || options.edi_kind.is_some()
         || options.idoc.is_some()
         || options.idoc_native_config.is_some()
+        || options.idoc_native_text_settings.is_some()
         || options.swift_mt.is_some()
         || options.xml_document
         || options.wsdl.is_some()
@@ -150,6 +151,32 @@ pub(super) fn validate_idoc_native_options(
     schema: &SchemaNode,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    if let Some(settings) = options.idoc_native_text_settings.as_ref() {
+        if options.idoc_native_config.is_none() {
+            issues.push(ValidationIssue::new(
+                location,
+                "`idoc_native_text_settings` requires a certified `idoc_native_config` descriptor",
+            ));
+        }
+        if options.edi_kind != Some(EdiBoundaryKind::Idoc) {
+            issues.push(ValidationIssue::new(
+                location,
+                "`idoc_native_text_settings` requires `edi_kind` to be `idoc`",
+            ));
+        }
+        if !matches!(
+            (
+                settings.autocomplete_data(),
+                options.edi_autocomplete.as_ref()
+            ),
+            (true, Some(EdiAutocomplete::Idoc)) | (false, None)
+        ) {
+            issues.push(ValidationIssue::new(
+                location,
+                "`idoc_native_text_settings` conflicts with the EDI autocomplete option",
+            ));
+        }
+    }
     let Some(descriptor) = &options.idoc_native_config else {
         return;
     };
@@ -221,6 +248,7 @@ fn has_non_swift_format_options(options: &FormatOptions) -> bool {
         || options.flextext.is_some()
         || options.idoc.is_some()
         || options.idoc_native_config.is_some()
+        || options.idoc_native_text_settings.is_some()
         || options.pdf.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
@@ -277,6 +305,7 @@ fn has_non_external_source_format_options(options: &FormatOptions) -> bool {
         || options.flextext.is_some()
         || options.idoc.is_some()
         || options.idoc_native_config.is_some()
+        || options.idoc_native_text_settings.is_some()
         || options.swift_mt.is_some()
         || options.pdf.is_some()
         || options.http_get.is_some()
@@ -337,6 +366,7 @@ fn has_non_xbrl_format_options(options: &FormatOptions) -> bool {
         || options.flextext.is_some()
         || options.idoc.is_some()
         || options.idoc_native_config.is_some()
+        || options.idoc_native_text_settings.is_some()
         || options.swift_mt.is_some()
         || options.pdf.is_some()
         || options.http_get.is_some()
@@ -482,6 +512,7 @@ pub(super) fn validate_wsdl_options(
     let conflict = options.edi_kind.is_some()
         || options.idoc.is_some()
         || options.idoc_native_config.is_some()
+        || options.idoc_native_text_settings.is_some()
         || options.swift_mt.is_some()
         || options.local_xml_file_set
         || options.json_document
@@ -505,5 +536,51 @@ pub(super) fn validate_wsdl_options(
             location,
             "a WSDL message cannot be combined with another format identity",
         ));
+    }
+}
+
+#[cfg(test)]
+mod idoc_text_tests {
+    use mapping::{
+        IdocNativeTextSettings, IdocNativeValidationAction, IdocNativeValidationCase,
+        IdocNativeValidationKind,
+    };
+
+    use super::*;
+
+    #[test]
+    fn text_certificate_requires_a_paired_descriptor_and_autocomplete_state() {
+        let settings = IdocNativeTextSettings::new_observed_profile(
+            false,
+            true,
+            false,
+            IdocNativeValidationKind::ALL
+                .into_iter()
+                .map(|kind| IdocNativeValidationCase::new(kind, IdocNativeValidationAction::Stop))
+                .collect(),
+        )
+        .unwrap();
+        let options = FormatOptions {
+            edi_kind: Some(EdiBoundaryKind::Idoc),
+            idoc_native_text_settings: Some(settings),
+            ..FormatOptions::default()
+        };
+        let mut issues = Vec::new();
+        validate_idoc_native_options(
+            "source",
+            &options,
+            &SchemaNode::group("IDOC", Vec::new()),
+            &mut issues,
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.message.contains("requires a certified"))
+        );
+        assert!(issues.iter().any(|issue| {
+            issue
+                .message
+                .contains("conflicts with the EDI autocomplete")
+        }));
     }
 }

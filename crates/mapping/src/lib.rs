@@ -11,6 +11,7 @@ mod flextext;
 mod http;
 mod idoc;
 mod idoc_native_config;
+mod idoc_native_text;
 mod iteration;
 mod model;
 mod path_hierarchy;
@@ -54,6 +55,11 @@ pub use idoc_native_config::{
     IdocNativeGroup, IdocNativeNode, IdocNativeSegment, IdocNativeStatus, MAX_IDOC_NATIVE_BYTES,
     MAX_IDOC_NATIVE_CODES, MAX_IDOC_NATIVE_DEPTH, MAX_IDOC_NATIVE_NODES,
     MAX_IDOC_NATIVE_TEXT_BYTES,
+};
+pub use idoc_native_text::{
+    IDOC_NATIVE_VALIDATION_CASES, IdocNativeSeparators, IdocNativeTextError,
+    IdocNativeTextSettings, IdocNativeValidationAction, IdocNativeValidationCase,
+    IdocNativeValidationKind,
 };
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
