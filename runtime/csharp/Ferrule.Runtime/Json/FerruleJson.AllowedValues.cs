@@ -145,9 +145,9 @@ public static partial class FerruleJson
             "bool" when payload.ValueKind is JsonValueKind.True or JsonValueKind.False =>
                 JsonAllowedValue.FromBoolean(payload.GetBoolean()),
             "int" when payload.ValueKind == JsonValueKind.Number &&
-                       payload.TryGetInt64(out var integer) =>
+                       TryGetSerdeInt64(payload, out var integer) =>
                 JsonAllowedValue.FromInt64(integer),
-            "float" when TryReadExactDouble(payload, out var number) &&
+            "float" when TryReadFiniteMetadataDouble(payload, out var number) &&
                          !TryExactInt64(number, out _) =>
                 JsonAllowedValue.FromDouble(number),
             "string" when payload.ValueKind == JsonValueKind.String =>

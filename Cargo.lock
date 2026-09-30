@@ -966,6 +966,7 @@ name = "codegen-csharp"
 version = "0.1.0"
 dependencies = [
  "codegen",
+ "codegen-runtime",
  "engine",
  "ir",
  "mapping",
