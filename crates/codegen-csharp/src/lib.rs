@@ -10,6 +10,9 @@ mod runtime;
 #[cfg(test)]
 mod dynamic_targets_tests;
 
+#[cfg(test)]
+mod embedded_schema_tests;
+
 pub use error::EmitError;
 
 use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_program};

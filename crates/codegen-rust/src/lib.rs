@@ -11,7 +11,7 @@ use codegen::{
     ArtifactSetError, Binding, Expression, GeneratedFile, GeneratedSequence, GroupingPlan,
     InnerJoin, IterationOutput, IterationPlan, IterationSource, Program, ProgramValidationError,
     RuntimeValue, ScalarTargetDomain, SequenceWindow, SortFilterOrder, TargetConstruction,
-    TargetScope, UserFunctionProgram, validate_program,
+    TargetScope, UserFunctionProgram, serialize_embedded_schema, validate_program,
 };
 use ir::{ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, NodeId};
@@ -42,6 +42,7 @@ pub enum EmitError {
     InvalidProgram(ProgramValidationError),
     InvalidPackageName(String),
     SchemaSerialization(String),
+    EmbeddedSchema(codegen::EmbeddedSchemaError),
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
 }
@@ -56,6 +57,7 @@ impl fmt::Display for EmitError {
             Self::SchemaSerialization(message) => {
                 write!(formatter, "cannot serialize embedded schema: {message}")
             }
+            Self::EmbeddedSchema(error) => error.fmt(formatter),
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
         }
@@ -66,6 +68,7 @@ impl std::error::Error for EmitError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::InvalidProgram(error) => Some(error),
+            Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
             Self::InvalidPackageName(_) | Self::SchemaSerialization(_) => None,
@@ -76,6 +79,12 @@ impl std::error::Error for EmitError {
 impl From<ProgramValidationError> for EmitError {
     fn from(error: ProgramValidationError) -> Self {
         Self::InvalidProgram(error)
+    }
+}
+
+impl From<codegen::EmbeddedSchemaError> for EmitError {
+    fn from(error: codegen::EmbeddedSchemaError) -> Self {
+        Self::EmbeddedSchema(error)
     }
 }
 
@@ -382,35 +391,35 @@ fn render_json_api(program: &Program) -> Result<String, EmitError> {
         .iter()
         .filter(|source| source.dynamic.is_some())
         .collect::<Vec<_>>();
-    let source_schema = serde_json::to_string(&program.source)
-        .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
-    let target_schema = serde_json::to_string(&program.target)
-        .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
+    let source_schema =
+        serialize_embedded_schema(&program.source, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)?;
+    let target_schema =
+        serialize_embedded_schema(&program.target, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)?;
     let extra_source_schemas = program
         .extra_sources
         .iter()
         .filter(|source| source.dynamic.is_none())
         .map(|source| {
-            serde_json::to_string(&source.source)
+            serialize_embedded_schema(&source.source, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)
                 .map(|schema| rust_string(&schema))
-                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))
+                .map_err(EmitError::from)
         })
         .collect::<Result<Vec<_>, _>>()?;
     let dynamic_source_schemas = dynamic_sources
         .iter()
         .map(|source| {
-            serde_json::to_string(&source.source)
+            serialize_embedded_schema(&source.source, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)
                 .map(|schema| rust_string(&schema))
-                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))
+                .map_err(EmitError::from)
         })
         .collect::<Result<Vec<_>, _>>()?;
     let extra_target_schemas = program
         .extra_targets
         .iter()
         .map(|target| {
-            serde_json::to_string(&target.target)
+            serialize_embedded_schema(&target.target, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)
                 .map(|schema| rust_string(&schema))
-                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))
+                .map_err(EmitError::from)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -1009,8 +1018,7 @@ fn render_expression(
             indent,
             namespace,
         } => {
-            let schema = serde_json::to_string(schema)
-                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
+            let schema = serialize_embedded_schema(schema, codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?;
             let path = render_string_path(path);
             let frame = frame.as_ref().map_or_else(
                 || "None".to_string(),
