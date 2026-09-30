@@ -737,7 +737,7 @@ impl FerruleApp {
                     });
                 ui.separator();
                 ui.add_enabled_ui(!running, |ui| {
-                    host_parameters_valid = self.host_parameters.show(ui);
+                    host_parameters_valid = draft.host_parameters.show(ui);
                 });
                 ui.separator();
                 ui.strong("Publish outputs");
@@ -1052,7 +1052,10 @@ impl FerruleApp {
         if self.pending_pipeline_run.is_some() || self.pending_file_run.is_some() {
             return;
         }
-        let runtime_parameters = match self.host_parameters.compile() {
+        let Some(draft) = self.pipeline_run_draft.as_ref() else {
+            return;
+        };
+        let runtime_parameters = match draft.host_parameters.compile() {
             Ok(parameters) => parameters,
             Err(error) => {
                 self.status = "pipeline run blocked".into();
