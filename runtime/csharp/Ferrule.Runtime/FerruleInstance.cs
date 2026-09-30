@@ -25,7 +25,9 @@ public sealed class FerruleField
 {
     public FerruleField(string name, FerruleInstance value)
     {
-        Name = name ?? throw new ArgumentNullException(nameof(name));
+        ArgumentNullException.ThrowIfNull(name);
+        FerruleUnicode.RequireWellFormed(name, nameof(name));
+        Name = name;
         Value = value ?? throw new ArgumentNullException(nameof(value));
     }
 
@@ -101,6 +103,14 @@ public sealed class FerruleDocument
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.InvalidDocumentPath,
                 "Ferrule document paths must not be empty.");
+        }
+
+        if (!FerruleUnicode.IsWellFormed(path) ||
+            resolvedSourcePath is not null && !FerruleUnicode.IsWellFormed(resolvedSourcePath))
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.InvalidDocumentPath,
+                "Ferrule document paths must contain valid Unicode scalar values.");
         }
 
         ArgumentNullException.ThrowIfNull(value);

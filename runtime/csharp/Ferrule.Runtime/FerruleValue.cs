@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace Ferrule.Runtime;
 
@@ -44,8 +45,12 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
     public static FerruleValue FromDouble(double value) =>
         new(FerruleValueKind.Double, value);
 
-    public static FerruleValue FromString(string value) =>
-        new(FerruleValueKind.String, value ?? throw new ArgumentNullException(nameof(value)));
+    public static FerruleValue FromString(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        FerruleUnicode.RequireWellFormed(value, nameof(value));
+        return new(FerruleValueKind.String, value);
+    }
 
     public bool BooleanValue => Payload<bool>(FerruleValueKind.Bool);
 
@@ -129,5 +134,72 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
 
             return (int)hash;
         }
+    }
+}
+
+/// <summary>Checks the UTF-16 strings accepted by the public C# value model.</summary>
+internal static class FerruleUnicode
+{
+    internal static bool IsWellFormed(string value)
+    {
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (char.IsHighSurrogate(character))
+            {
+                if (index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1]))
+                {
+                    return false;
+                }
+                index++;
+            }
+            else if (char.IsLowSurrogate(character))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    internal static void RequireWellFormed(string value, string parameterName)
+    {
+        if (!IsWellFormed(value))
+        {
+            throw new ArgumentException(
+                "Text must contain valid Unicode scalar values.",
+                parameterName);
+        }
+    }
+
+    // Rust's Path::to_string_lossy replaces invalid OS-path text only when it
+    // becomes a runtime string value. Preserve the original C# context path.
+    internal static string ReplaceMalformed(string value)
+    {
+        if (IsWellFormed(value))
+        {
+            return value;
+        }
+
+        var result = new StringBuilder(value.Length);
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (char.IsHighSurrogate(character) &&
+                index + 1 < value.Length &&
+                char.IsLowSurrogate(value[index + 1]))
+            {
+                result.Append(character);
+                result.Append(value[++index]);
+            }
+            else if (char.IsSurrogate(character))
+            {
+                result.Append('\uFFFD');
+            }
+            else
+            {
+                result.Append(character);
+            }
+        }
+        return result.ToString();
     }
 }

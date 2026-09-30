@@ -119,6 +119,10 @@ public sealed class FerruleExecutionContext
             throw new ArgumentNullException(nameof(mappingFilePath));
         MainMappingFilePath = mainMappingFilePath ??
             throw new ArgumentNullException(nameof(mainMappingFilePath));
+        if (currentDateTime is not null)
+        {
+            FerruleUnicode.RequireWellFormed(currentDateTime, nameof(currentDateTime));
+        }
         CurrentDateTime = currentDateTime;
         RuntimeParameters = runtimeParameters ?? FerruleRuntimeParameters.Empty;
     }
@@ -145,8 +149,10 @@ public sealed class FerruleExecutionContext
 
     internal string? GetValue(FerruleRuntimeValue value) => value switch
     {
-        FerruleRuntimeValue.MappingFilePath => MappingFilePath,
-        FerruleRuntimeValue.MainMappingFilePath => MainMappingFilePath,
+        FerruleRuntimeValue.MappingFilePath =>
+            FerruleUnicode.ReplaceMalformed(MappingFilePath),
+        FerruleRuntimeValue.MainMappingFilePath =>
+            FerruleUnicode.ReplaceMalformed(MainMappingFilePath),
         FerruleRuntimeValue.CurrentDateTime => CurrentDateTime,
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
     };

@@ -1,0 +1,42 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    if (test.TryGetProperty("input", out var inputElement))
+    {
+        var input = inputElement.GetString()!;
+        Verify(() => GeneratedMapping.ExecuteJson(input), test);
+        Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input))), test);
+    }
+    else
+    {
+        var bytes = test.GetProperty("bytes").EnumerateArray().Select(item => item.GetByte()).ToArray();
+        Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(bytes)), test);
+    }
+}
+
+static void Verify(Func<string> run, JsonElement test)
+{
+    if (test.TryGetProperty("reject", out _))
+    {
+        try
+        {
+            _ = run();
+        }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
+        {
+            return;
+        }
+        throw new Exception($"Invalid JSON input was accepted: {test}");
+    }
+    var actual = run();
+    if (!JsonNode.DeepEquals(JsonNode.Parse(actual), JsonNode.Parse(test.GetProperty("expected").GetRawText())))
+    {
+        throw new Exception($"JSON output differs: {test}; actual: {actual}");
+    }
+}
