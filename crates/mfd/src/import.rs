@@ -117,6 +117,7 @@ enum StageSelection<'a> {
     },
     OutOf {
         intermediate_key: u32,
+        earlier_source_key: Option<u32>,
         final_key: u32,
         label: &'a str,
         final_inputs: &'a TargetInputCoverage,
@@ -354,6 +355,7 @@ pub fn import_pipeline_with_options(
         &resources,
         StageSelection::OutOf {
             intermediate_key: last_intermediate.key,
+            earlier_source_key: chain.final_named_source_key,
             final_key: chain.final_key,
             label: &last_intermediate.label,
             final_inputs: &chain.final_inputs,
@@ -412,6 +414,9 @@ pub fn import_pipeline_with_options(
             "pipeline source boundaries do not match imported stages".into(),
         ));
     }
+    let final_named_output_key = chain
+        .final_named_source_key
+        .map(|_| lowered[1].source_components[0].key);
     let mapping_path = resources.mapping_path().to_path_buf();
     let mapping_identity = mapping_path.to_string_lossy().into_owned();
     let mut stages = Vec::with_capacity(lowered.len());
@@ -441,7 +446,16 @@ pub fn import_pipeline_with_options(
             if source.dynamic_path.is_some() {
                 continue;
             }
-            let Some(host_name) = host_names.get(&identity.key) else {
+            let from = if let Some(host_name) = host_names.get(&identity.key) {
+                PipelineInput::Host {
+                    name: host_name.clone(),
+                }
+            } else if index == 2 && Some(identity.key) == final_named_output_key {
+                PipelineInput::StageTarget {
+                    stage: "mfd-stage-1".into(),
+                    target: None,
+                }
+            } else {
                 return Err(MfdError::UnsupportedImport(format!(
                     "pipeline stage {} reads an unbound source `{}`",
                     index + 1,
@@ -450,10 +464,20 @@ pub fn import_pipeline_with_options(
             };
             extra_sources.push(PipelineNamedInput {
                 name: source.name.clone(),
-                from: PipelineInput::Host {
-                    name: host_name.clone(),
-                },
+                from,
             });
+        }
+        if index == 2
+            && final_named_output_key.is_some()
+            && extra_sources
+                .iter()
+                .filter(|binding| matches!(binding.from, PipelineInput::StageTarget { .. }))
+                .count()
+                != 1
+        {
+            return Err(MfdError::UnsupportedImport(
+                "earlier intermediate output is not a unique final named input".into(),
+            ));
         }
         stages.push(PipelineStage {
             id,
@@ -556,6 +580,7 @@ struct PipelineIntermediate {
 
 struct DiscoveredPipelineChain {
     intermediates: Vec<PipelineIntermediate>,
+    final_named_source_key: Option<u32>,
     final_key: u32,
     final_inputs: TargetInputCoverage,
 }
@@ -929,7 +954,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
             "pipeline import needs an XML source component".into(),
         ));
     }
-    let order = strict_serial_stage_order(
+    let (order, final_named_source) = strict_serial_stage_order(
         &components,
         &intermediates,
         &terminal_targets,
@@ -938,6 +963,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         &function_outputs,
     )?;
     Ok(DiscoveredPipelineChain {
+        final_named_source_key: final_named_source.map(|index| intermediate_keys[index]),
         intermediates: order
             .into_iter()
             .map(|index| PipelineIntermediate {
@@ -1138,11 +1164,10 @@ fn is_xlsx_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
             .is_some_and(|data| data.children().any(|node| node.has_tag_name("excel")))
 }
 
-/// Keep imported stages to one linear chain of XML intermediates, allowing the
-/// last intermediate to feed multiple final targets. Multiple field connections
-/// to the same next boundary are valid; an earlier connection to a final target
-/// would read a bypassed stage value. Original host sources may supplement any
-/// stage.
+/// Keep imported stages to one linear chain of XML intermediates. One bounded
+/// three-stage branch may also feed the final target from the first intermediate;
+/// that earlier result becomes a separate named source of the final stage.
+/// Original host sources may supplement any stage.
 fn strict_serial_stage_order(
     components: &[roxmltree::Node<'_, '_>],
     intermediates: &[&roxmltree::Node<'_, '_>],
@@ -1150,7 +1175,7 @@ fn strict_serial_stage_order(
     connected_outputs: &BTreeSet<u32>,
     consumers: &BTreeMap<u32, Vec<u32>>,
     function_outputs: &BTreeMap<u32, Vec<u32>>,
-) -> Result<Vec<usize>, MfdError> {
+) -> Result<(Vec<usize>, Option<usize>), MfdError> {
     let intermediate_indices = intermediates
         .iter()
         .map(|intermediate| {
@@ -1245,10 +1270,27 @@ fn strict_serial_stage_order(
 
     let mut successors = BTreeMap::new();
     let mut predecessor_counts = BTreeMap::<usize, usize>::new();
+    let mut final_named_source = None;
     for &index in &intermediate_indices {
         let sinks = sinks_by_component.get(&index).ok_or_else(invalid_chain)?;
         let next = if sinks == &terminal_indices {
             None
+        } else if intermediates.len() == 2
+            && terminal_indices.len() == 1
+            && terminal_indices
+                .iter()
+                .all(|target| components[*target].attribute("library") == Some("xml"))
+            && sinks.len() == 2
+            && terminal_indices.is_subset(sinks)
+        {
+            let next = sinks.difference(&terminal_indices).next().copied();
+            let Some(next) = next.filter(|next| intermediate_indices.contains(next)) else {
+                return Err(invalid_chain());
+            };
+            if final_named_source.replace(index).is_some() {
+                return Err(invalid_chain());
+            }
+            Some(next)
         } else {
             let mut remaining = sinks.iter();
             let (Some(&next), None) = (remaining.next(), remaining.next()) else {
@@ -1284,9 +1326,28 @@ fn strict_serial_stage_order(
         );
         let next = successors[&current];
         let Some(next) = next else {
-            return (ordered.len() == intermediate_indices.len())
-                .then_some(ordered)
-                .ok_or_else(invalid_chain);
+            if ordered.len() != intermediate_indices.len()
+                || final_named_source.is_some_and(|source| source != *head)
+            {
+                return Err(invalid_chain());
+            }
+            if final_named_source.is_some_and(|source| {
+                !components[source]
+                    .children()
+                    .find(|node| node.has_tag_name("data"))
+                    .and_then(|data| data.children().find(|node| node.has_tag_name("document")))
+                    .and_then(|document| document.attribute("inputinstance"))
+                    .is_some_and(|preview| !preview.trim().is_empty())
+            }) {
+                return Err(invalid_chain());
+            }
+            let final_named_source = final_named_source.map(|source| {
+                intermediate_indices
+                    .iter()
+                    .position(|&index| index == source)
+                    .expect("branching intermediate belongs to the chain")
+            });
+            return Ok((ordered, final_named_source));
         };
         current = next;
     }
@@ -1806,6 +1867,25 @@ fn import_resolved(
             component.is_pass_through = false;
         }
     }
+    if let StageSelection::OutOf {
+        earlier_source_key: Some(earlier_source_key),
+        ..
+    } = selection
+    {
+        let component = schema_components
+            .iter_mut()
+            .find(|component| {
+                component.input_keys.contains(&earlier_source_key) && component.is_pass_through
+            })
+            .ok_or_else(|| {
+                MfdError::UnsupportedImport(
+                    "earlier intermediate named source could not be imported".into(),
+                )
+            })?;
+        component.is_variable = false;
+        component.is_source = true;
+        component.is_pass_through = false;
+    }
     if let StageSelection::Between { target_key, .. } = selection {
         let component = schema_components
             .iter_mut()
@@ -2078,6 +2158,12 @@ fn import_resolved(
     // same framed suffix as the loader path expression.
     let mut dynamic_source_inputs: Vec<Option<(u32, SourcePath)>> = vec![None; sources.len()];
     for (index, extra) in sources.iter().enumerate().skip(1) {
+        if matches!(selection, StageSelection::OutOf { earlier_source_key: Some(key), .. } if extra.input_keys.contains(&key))
+        {
+            // These inputs computed the earlier stage result; they are not
+            // run-time loader paths for this stage's named source.
+            continue;
+        }
         if extra.format == ComponentFormat::Db
             || !extra.db_queries.is_empty()
             || extra.options.external_source.is_some()

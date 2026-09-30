@@ -218,9 +218,11 @@ cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.
 ```
 
 Each computed intermediate target supplies the next stage's source, with
-original source components bound as host inputs. The final intermediate may
+original source components bound as host inputs. In a bounded three-stage XML
+chain, the first intermediate may also feed one named source of the final
+stage while the second remains its primary source. The final intermediate may
 feed one default and up to 255 connected named XML targets. The import validates
-the whole stage graph before writing `flow.json`; intermediate branches,
+the whole stage graph before writing `flow.json`; other intermediate branches,
 cycles, bypasses, and disconnected XML boundaries reject explicitly. See
 [mapping pipelines](mapping-pipelines.md) for input binding and execution.
 
@@ -257,8 +259,10 @@ preview or schema default. Repeated target branches connect the unique
 uncloned publication port; zero or multiple base ports reject before output
 artifacts are written. Preflight and native-profile checks run before any
 design or schema sibling is published.
-Independent intermediate targets, disconnected final targets, other connected
-later-stage named sources, and other non-XML intermediate boundaries reject
+The three-stage earlier-result named source must match the first intermediate's
+schema and options and share its stage-two source preview path. Independent
+intermediate targets, disconnected final targets, other connected later-stage
+named sources, and other non-XML intermediate boundaries reject
 explicitly. Other non-XML targets remain final-primary only; updating an
 existing workbook is outside this profile.
 Synthetic two- and four-stage export/re-import runs preserve stage results;

@@ -19,8 +19,10 @@ The example has one pass-through target. With three pass-through targets, the
 final stage ID is `mfd-stage-4`.
 The last pass-through target may also feed connected named XML targets in that
 final stage, or one named CSV or JSON document target beside an XML primary target. Use
-`--named-output STAGE TARGET PATH` to publish one. Intermediate
-fan-out and targets that bypass the last pass-through stage reject during import.
+`--named-output STAGE TARGET PATH` to publish one. A bounded three-stage XML
+chain may also feed the final stage from the first intermediate as one named
+source while the second intermediate remains its primary source. Other
+intermediate branches and bypasses reject during import.
 CSV, fixed-width text, FlexText, JSON, Protocol Buffers, bounded XBRL, and XLSX
 are supported as the final primary target. Intermediate targets remain XML;
 other named targets remain XML.
@@ -51,7 +53,9 @@ inputs in later stages, including intermediate stages and repeated use of the
 same source. Export reuses that original component when its name, schema, path,
 options, and output ports still match. Repeated connections from one output port
 share one graph vertex with multiple edges. Other connected later-stage named
-sources reject before publication.
+sources reject before publication. The three-stage earlier-result named source
+requires the same XML schema, options, and preview path used when stage two
+reads that result; one native component carries both connections.
 The same trusted package manifest and ordered EDI/JSON catalog options used
 by ordinary `import-mfd` apply. Unsupported stage shapes fail before the
 pipeline file is written. Each imported stage records the original `.mfd`

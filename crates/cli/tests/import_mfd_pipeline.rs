@@ -84,6 +84,54 @@ fn write_three_stage_chain(directory: &Path) -> Result<PathBuf, Box<dyn Error>> 
     Ok(mapping)
 }
 
+fn write_earlier_result_named_source_chain(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let mapping = write_three_stage_chain(directory)?;
+    let maps = mapping.parent().unwrap();
+    std::fs::write(
+        maps.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Start" type="xs:string"/><xs:element name="Shadow" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    std::fs::write(
+        maps.join("first.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="FirstBuffer"><xs:complexType><xs:sequence><xs:element name="First" type="xs:string"/><xs:element name="Shadow" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    std::fs::write(
+        maps.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string"/><xs:element name="Lookup" type="xs:string"/><xs:element name="Shadow" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    std::fs::write(
+        maps.join("source.xml"),
+        "<Source><Start>main value</Start><Shadow>side value</Shadow></Source>",
+    )?;
+    let design = std::fs::read_to_string(&mapping)?
+        .replace(
+            "<entry name=\"Start\" outkey=\"10\"/>",
+            "<entry name=\"Start\" outkey=\"10\"/><entry name=\"Shadow\" outkey=\"11\"/>",
+        )
+        .replace(
+            "<entry name=\"First\" inpkey=\"20\" outkey=\"30\"/>",
+            "<entry name=\"First\" inpkey=\"20\" outkey=\"30\"/><entry name=\"Shadow\" inpkey=\"21\" outkey=\"31\"/>",
+        )
+        .replace(
+            "<document schema=\"first.xsd\" instanceroot=\"{}FirstBuffer\"/>",
+            "<document schema=\"first.xsd\" inputinstance=\"first-preview.xml\" outputinstance=\"first-out.xml\" instanceroot=\"{}FirstBuffer\"/>",
+        )
+        .replace(
+            "<entry name=\"Result\" inpkey=\"60\"/>",
+            "<entry name=\"Result\" inpkey=\"60\"/><entry name=\"Lookup\" inpkey=\"61\"/><entry name=\"Shadow\" inpkey=\"62\"/>",
+        )
+        .replace(
+            "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/></edges></vertex>",
+            "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/></edges></vertex><vertex vertexkey=\"11\"><edges><edge vertexkey=\"21\"/></edges></vertex>",
+        )
+        .replace(
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"61\"/></edges></vertex><vertex vertexkey=\"31\"><edges><edge vertexkey=\"62\"/></edges></vertex>",
+        );
+    std::fs::write(&mapping, design)?;
+    Ok(mapping)
+}
+
 fn write_four_stage_chain(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let mapping = write_three_stage_chain(directory)?;
     let maps = mapping.parent().unwrap();
@@ -1008,6 +1056,142 @@ fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error
             path.display()
         );
     }
+    Ok(())
+}
+
+#[test]
+fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new()?;
+    let design = write_earlier_result_named_source_chain(&directory.0)?;
+    let flow = directory.0.join("flow.json");
+    let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&design)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&flow)
+        .output()?;
+    assert!(imported.status.success(), "{}", output_message(&imported));
+    let pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&flow)?)?;
+    assert_eq!(pipeline.stages.len(), 3);
+    assert!(pipeline.stages[2].extra_sources.iter().any(|binding| {
+        matches!(&binding.from, PipelineInput::StageTarget { stage, target: None } if stage == "mfd-stage-1")
+    }));
+    let PipelineInput::Host { name } = &pipeline.stages[0].source else {
+        panic!("first stage must read a host");
+    };
+    let first = directory.0.join("first.xml");
+    let second = directory.0.join("second.xml");
+    let final_output = directory.0.join("final.xml");
+    let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&flow)
+        .args(["--input"])
+        .arg(name)
+        .arg(directory.0.join("maps/source.xml"))
+        .args(["--output", "mfd-stage-1"])
+        .arg(&first)
+        .args(["--output", "mfd-stage-2"])
+        .arg(&second)
+        .args(["--output", "mfd-stage-3"])
+        .arg(&final_output)
+        .output()?;
+    assert!(run.status.success(), "{}", output_message(&run));
+    assert!(std::fs::read_to_string(&first)?.contains("<Shadow>side value</Shadow>"));
+    assert!(std::fs::read_to_string(&second)?.contains("<Second>main value</Second>"));
+    let xml = std::fs::read(&final_output)?;
+    let source = format_xml::read(
+        &directory.0.join("maps/source.xml"),
+        &pipeline.stages[0].project.source,
+    )?;
+    let direct = engine::run_pipeline(
+        &pipeline,
+        &std::collections::BTreeMap::from([(name.clone(), source)]),
+    )?;
+    let expected = format_xml::to_string(
+        &pipeline.stages[2].project.target,
+        &direct.stage("mfd-stage-3").unwrap().primary,
+    )?;
+    assert_eq!(xml, expected.as_bytes());
+    assert!(expected.contains("<Lookup>main value</Lookup>"));
+    assert!(expected.contains("<Shadow>side value</Shadow>"));
+
+    let exported = directory.0.join("reexported.mfd");
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)?;
+    assert!(report.is_native_compatible(), "{report:?}");
+    let flow_again = directory.0.join("flow-again.json");
+    let reimported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&exported)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&flow_again)
+        .output()?;
+    assert!(
+        reimported.status.success(),
+        "{}",
+        output_message(&reimported)
+    );
+    let again: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&flow_again)?)?;
+    let PipelineInput::Host { name: again_host } = &again.stages[0].source else {
+        panic!("reimported first stage must read a host");
+    };
+    let again_final = directory.0.join("again-final.xml");
+    let rerun = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&flow_again)
+        .args(["--input"])
+        .arg(again_host)
+        .arg(directory.0.join("maps/source.xml"))
+        .args(["--output", "mfd-stage-1"])
+        .arg(directory.0.join("again-first.xml"))
+        .args(["--output", "mfd-stage-2"])
+        .arg(directory.0.join("again-second.xml"))
+        .args(["--output", "mfd-stage-3"])
+        .arg(&again_final)
+        .output()?;
+    assert!(rerun.status.success(), "{}", output_message(&rerun));
+    assert_eq!(std::fs::read(again_final)?, xml);
+    Ok(())
+}
+
+#[test]
+fn rejects_an_unrepresented_earlier_result_pin_before_cli_publication() -> Result<(), Box<dyn Error>>
+{
+    let directory = TempDir::new()?;
+    let design = write_earlier_result_named_source_chain(&directory.0)?;
+    let original = std::fs::read_to_string(&design)?;
+    let unsupported = original
+        .replace(
+            "<entry name=\"Shadow\" inpkey=\"62\"/>",
+            "<entry name=\"Shadow\" inpkey=\"62\"/><entry name=\"Bogus\" inpkey=\"63\"/>",
+        )
+        .replace(
+            "<vertex vertexkey=\"31\"><edges><edge vertexkey=\"62\"/></edges></vertex>",
+            "<vertex vertexkey=\"31\"><edges><edge vertexkey=\"62\"/><edge vertexkey=\"63\"/></edges></vertex>",
+        );
+    assert_ne!(unsupported, original);
+    std::fs::write(&design, unsupported)?;
+    let output = directory.0.join("not-created").join("flow.json");
+    let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&design)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&output)
+        .output()?;
+    assert!(!imported.status.success(), "{}", output_message(&imported));
+    assert!(
+        String::from_utf8_lossy(&imported.stderr).contains("target port path `Bogus` not found"),
+        "{}",
+        output_message(&imported)
+    );
+    assert!(!output.exists());
+    assert!(!output.parent().unwrap().exists());
     Ok(())
 }
 
