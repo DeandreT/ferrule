@@ -7,8 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = Instance::Group(Vec::new());
     assert_eq!(execute(&source)?, output(Value::Int(7), "inner-default"));
     let fallback_json = execute_json("{}")?;
-    assert!(fallback_json.contains("\"Direct\":7"));
-    assert!(fallback_json.contains("\"Nested\":\"inner-default\""));
+    assert_eq!(codegen_runtime::parse_json(include_str!("../target-schema.json"), &fallback_json)?, output(Value::Int(7), "inner-default"));
 
     let mut parameters = RuntimeParameters::new();
     parameters.insert("control", Value::String(" 42 ".into()))?;
@@ -16,8 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let context = ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&parameters);
     assert_eq!(execute_with_context(&source, &context)?, output(Value::Int(42), "host"));
     let supplied_json = execute_json_with_context("{}", &context)?;
-    assert!(supplied_json.contains("\"Direct\":42"));
-    assert!(supplied_json.contains("\"Nested\":\"host\""));
+    assert_eq!(codegen_runtime::parse_json(include_str!("../target-schema.json"), &supplied_json)?, output(Value::Int(42), "host"));
 
     let mut supplied_null = RuntimeParameters::new();
     supplied_null.insert("control", Value::Null)?;
@@ -37,6 +35,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             found: "bool",
         })
     );
+
+    let mut lazy = RuntimeParameters::new();
+    lazy.insert("explode_default", Value::Bool(true))?;
+    lazy.insert("control", Value::Int(9))?;
+    let context = ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&lazy);
+    assert_eq!(execute_with_context(&source, &context)?, output(Value::Int(9), "inner-default"));
+    let lazy_json = execute_json_with_context("{}", &context)?;
+    assert_eq!(codegen_runtime::parse_json(include_str!("../target-schema.json"), &lazy_json)?, output(Value::Int(9), "inner-default"));
+
+    let mut failing = RuntimeParameters::new();
+    failing.insert("explode_default", Value::Bool(true))?;
+    let context = ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&failing);
+    assert_eq!(execute_with_context(&source, &context), Err(RuntimeError::MissingRuntimeParameter {
+        node: 7,
+        name: "missing_default".into(),
+    }));
     Ok(())
 }
 
