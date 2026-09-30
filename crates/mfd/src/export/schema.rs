@@ -201,9 +201,11 @@ pub(super) fn render_schema_component(
                 side,
                 instance_path,
                 options,
+                mfd_path,
                 target_branches,
                 component_name,
                 component_uid,
+                sibling_suffix,
                 force_root_port,
                 default_output,
             });

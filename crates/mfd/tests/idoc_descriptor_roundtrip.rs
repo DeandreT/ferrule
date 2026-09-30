@@ -109,6 +109,113 @@ fn replace_within(xml: &str, tag: &str, before: &str, after: &str) -> String {
     )
 }
 
+fn idoc_config_references(xml: &str) -> Vec<String> {
+    let document = roxmltree::Document::parse(xml).unwrap();
+    document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("text")
+                && node.attribute("type") == Some("edi")
+                && node.attribute("kind") == Some("EDIFIXED")
+        })
+        .map(|node| node.attribute("config").unwrap().to_string())
+        .collect()
+}
+
+fn without_idoc_config_reference(xml: &str) -> String {
+    let references = idoc_config_references(xml);
+    assert_eq!(references.len(), 1);
+    xml.replacen(&format!(" config=\"{}\"", references[0]), "", 1)
+}
+
+fn assert_portable_config_reference(dir: &Path, reference: &str) -> String {
+    let relative = Path::new(reference);
+    assert!(!relative.is_absolute(), "{reference}");
+    assert!(
+        relative
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_))),
+        "{reference}"
+    );
+    assert!(reference.ends_with(".txt"), "{reference}");
+    assert_ne!(reference, "parser.txt");
+    let sibling = dir.join(relative);
+    assert!(sibling.is_file(), "{}", sibling.display());
+    std::fs::read_to_string(sibling).unwrap()
+}
+
+#[test]
+fn exported_idoc_config_sibling_survives_relocation_and_keeps_native_blockers() {
+    let dir = TempDir::new();
+    let (project, _) = exported_project(&dir.0);
+    let original_config = dir.0.join("parser.txt");
+    let bundle = dir.0.join("exported");
+    std::fs::create_dir_all(&bundle).unwrap();
+    let output = bundle.join("portable.mfd");
+    mfd::export(&project, &output).unwrap();
+    let xml = std::fs::read_to_string(&output).unwrap();
+    let references = idoc_config_references(&xml);
+    assert_eq!(references.len(), 1);
+    let rendered = assert_portable_config_reference(&bundle, &references[0]);
+    let descriptor = project.source_options.idoc_native_config.as_ref().unwrap();
+    assert_eq!(
+        format_edi::config::idoc::parse_native_config(&rendered).unwrap(),
+        *descriptor
+    );
+    let compiled = format_edi::config::idoc::import_config(&bundle.join(&references[0])).unwrap();
+    assert_eq!(compiled.native.as_ref(), Some(descriptor));
+    assert_eq!(compiled.schema, project.source);
+    assert_eq!(
+        compiled.layout,
+        project.source_options.idoc.clone().unwrap()
+    );
+
+    let relocated = dir.0.join("relocated");
+    std::fs::rename(&bundle, &relocated).unwrap();
+    std::fs::remove_file(original_config).unwrap();
+    let reimported = mfd::import(&relocated.join("portable.mfd")).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(reimported.project.source, project.source);
+    assert_eq!(reimported.project.source_options, project.source_options);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let report = mfd::preflight_export(&reimported.project, &relocated.join("native.mfd")).unwrap();
+    assert_eq!(report.compatibility, ExportCompatibility::FerruleExtensions);
+    for feature in [
+        Feature::EdiSchema,
+        Feature::EdiLayout,
+        Feature::EdiConfigDescriptor,
+    ] {
+        assert!(report.issues.iter().any(|issue| issue.feature == feature));
+    }
+}
+
+#[test]
+fn multiple_idoc_boundaries_receive_distinct_config_siblings() {
+    let dir = TempDir::new();
+    let (mut project, _) = exported_project(&dir.0);
+    project.extra_sources.push(NamedSource {
+        name: "secondary".into(),
+        path: "secondary.idoc".into(),
+        schema: project.source.clone(),
+        options: project.source_options.clone(),
+        dynamic_path: None,
+    });
+    let bundle = dir.0.join("multiple");
+    let output = bundle.join("portable.mfd");
+    mfd::export(&project, &output).unwrap();
+    let xml = std::fs::read_to_string(output).unwrap();
+    let references = idoc_config_references(&xml);
+    assert_eq!(references.len(), 2);
+    assert_ne!(references[0], references[1]);
+    for reference in references {
+        let rendered = assert_portable_config_reference(&bundle, &reference);
+        assert_eq!(
+            format_edi::config::idoc::parse_native_config(&rendered).unwrap(),
+            *project.source_options.idoc_native_config.as_ref().unwrap()
+        );
+    }
+}
+
 #[test]
 fn certified_idoc_provenance_survives_project_and_ferrule_mfd_roundtrips() {
     let dir = TempDir::new();
@@ -137,28 +244,34 @@ fn certified_idoc_provenance_survives_project_and_ferrule_mfd_roundtrips() {
         Err(mfd::MfdError::IncompatibleExport(_))
     ));
     assert!(!strict_path.exists());
+    assert!(!std::fs::read_dir(&dir.0).unwrap().any(|entry| {
+        let name = entry.unwrap().file_name();
+        let name = name.to_string_lossy();
+        name.starts_with("native-not-published-") && name.ends_with(".idoc-config.txt")
+    }));
 }
 
 #[test]
 fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
     let dir = TempDir::new();
     let (project, xml) = exported_project(&dir.0);
+    let embedded_only = without_idoc_config_reference(&xml);
     let altered = [
         replace_within(
-            &xml,
+            &embedded_only,
             "ferrule-idoc-native-config",
             "version=\"1\"",
             "version=\"2\"",
         ),
         replace_within(
-            &xml,
+            &embedded_only,
             "ferrule-idoc-native-config",
             "kind=\"idoc\"",
             "kind=\"x12\"",
         ),
-        replace_within(&xml, "ferrule-layout", "DOCNO", "OTHER"),
-        xml.replacen("<entry name=\"DOCNO\"", "<entry name=\"ALTERED\"", 1),
-        xml.replacen("kind=\"EDIFIXED\"", "kind=\"EDIX12\"", 1),
+        replace_within(&embedded_only, "ferrule-layout", "DOCNO", "OTHER"),
+        embedded_only.replacen("<entry name=\"DOCNO\"", "<entry name=\"ALTERED\"", 1),
+        embedded_only.replacen("kind=\"EDIFIXED\"", "kind=\"EDIX12\"", 1),
     ];
     for (index, modified) in altered.into_iter().enumerate() {
         assert_ne!(modified, xml);
@@ -169,11 +282,18 @@ fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
         assert!(!imported.warnings.is_empty(), "case {index}");
     }
 
-    let start = xml.find("<ferrule-idoc-native-config").unwrap();
+    let start = embedded_only.find("<ferrule-idoc-native-config").unwrap();
     let end = start
-        + xml[start..].find("</ferrule-idoc-native-config>").unwrap()
+        + embedded_only[start..]
+            .find("</ferrule-idoc-native-config>")
+            .unwrap()
         + "</ferrule-idoc-native-config>".len();
-    let duplicate = format!("{}{}{}", &xml[..start], &xml[start..end], &xml[start..]);
+    let duplicate = format!(
+        "{}{}{}",
+        &embedded_only[..start],
+        &embedded_only[start..end],
+        &embedded_only[start..]
+    );
     let duplicate_path = dir.0.join("duplicate.mfd");
     std::fs::write(&duplicate_path, duplicate).unwrap();
     let imported = mfd::import(&duplicate_path).unwrap();
@@ -185,11 +305,17 @@ fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
             .any(|warning| warning.contains("duplicate IDoc"))
     );
 
-    let layout_start = xml.find("<ferrule-layout").unwrap();
+    let layout_start = embedded_only.find("<ferrule-layout").unwrap();
     let layout_end = layout_start
-        + xml[layout_start..].find("</ferrule-layout>").unwrap()
+        + embedded_only[layout_start..]
+            .find("</ferrule-layout>")
+            .unwrap()
         + "</ferrule-layout>".len();
-    let without_layout = format!("{}{}", &xml[..layout_start], &xml[layout_end..]);
+    let without_layout = format!(
+        "{}{}",
+        &embedded_only[..layout_start],
+        &embedded_only[layout_end..]
+    );
     let no_layout_path = dir.0.join("missing-layout.mfd");
     std::fs::write(&no_layout_path, without_layout).unwrap();
     let imported = mfd::import(&no_layout_path).unwrap();
@@ -203,13 +329,8 @@ fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
     );
 
     let tampered = replace_within(&xml, "ferrule-idoc-native-config", "Active", "Tampered");
-    let external = tampered.replacen(
-        "<text type=\"edi\" kind=\"EDIFIXED\"",
-        "<text type=\"edi\" kind=\"EDIFIXED\" config=\"parser.txt\"",
-        1,
-    );
     let path = dir.0.join("external-authoritative.mfd");
-    std::fs::write(&path, external).unwrap();
+    std::fs::write(&path, tampered).unwrap();
     let imported = mfd::import(&path).unwrap();
     assert_eq!(
         imported.project.source_options.idoc_native_config,
@@ -309,6 +430,35 @@ fn export_preflight_pairs_descriptor_with_every_source_and_target_boundary() {
         );
     }
     assert!(!output.exists());
+}
+
+#[test]
+fn invalid_stale_and_unresolved_descriptors_publish_no_artifacts() {
+    let dir = TempDir::new();
+    let (base, _) = exported_project(&dir.0);
+    type ProjectMutation = fn(&mut Project);
+    let mutations: [(&str, ProjectMutation); 4] = [
+        ("wrong-dialect", |project| {
+            project.source_options.edi_kind = Some(EdiBoundaryKind::X12);
+        }),
+        ("missing-layout", |project| {
+            project.source_options.idoc = None;
+        }),
+        ("stale-schema", |project| {
+            project.source.name = "Altered".into();
+        }),
+        ("unresolved-config", |project| {
+            project.source_options.edi_config_reference = Some("missing/parser.txt".into());
+        }),
+    ];
+    for (name, mutate) in mutations {
+        let mut project = base.clone();
+        mutate(&mut project);
+        let output_dir = dir.0.join(name);
+        let output = output_dir.join("portable.mfd");
+        assert!(mfd::export(&project, &output).is_err(), "{name}");
+        assert!(!output_dir.exists(), "{name} published artifacts");
+    }
 }
 
 #[test]
