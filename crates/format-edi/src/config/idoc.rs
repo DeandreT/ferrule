@@ -5,8 +5,12 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use ir::{ScalarType, SchemaNode};
+use mapping::IdocNativeConfig;
 use mapping::{IdocFieldLayout, IdocLayout, IdocSegmentLayout};
 use thiserror::Error;
+
+pub mod native;
+pub use native::{parse_native_config, render_native_config};
 
 const MAX_CONFIG_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_LINES: usize = 200_000;
@@ -16,6 +20,9 @@ const MAX_DEPTH: usize = 128;
 pub struct CompiledIdoc {
     pub schema: SchemaNode,
     pub layout: IdocLayout,
+    /// Complete native metadata only when the strict grammar accounts for the
+    /// entire configuration and projects to the executable compiler's result.
+    pub native: Option<IdocNativeConfig>,
 }
 
 #[derive(Debug, Error)]
@@ -71,9 +78,16 @@ pub fn import_config(path: &Path) -> Result<CompiledIdoc, IdocConfigError> {
         .collect::<Result<Vec<_>, _>>()?;
     let layout = IdocLayout::new(segment_layouts)
         .map_err(|error| IdocConfigError::Invalid(error.to_string()))?;
+    let schema = SchemaNode::group("IDOC", children);
+    let native = parse_native_config(&text).ok().filter(|descriptor| {
+        descriptor
+            .project()
+            .is_ok_and(|projected| projected == (schema.clone(), layout.clone()))
+    });
     Ok(CompiledIdoc {
-        schema: SchemaNode::group("IDOC", children),
+        schema,
         layout,
+        native,
     })
 }
 
