@@ -245,7 +245,7 @@ pass-through chain of 2–65 stages. Each intermediate primary target becomes
 the next stage's pass-through source. The final primary target may be XML,
 delimited CSV, fixed-width text, configured FlexText, JSON, Protocol Buffers,
 XBRL without presentation metadata, or a new XLSX workbook. Connected named
-final targets may be XML, or one CSV target beside an XML primary target. An original static XML
+final targets may be XML, or one CSV or JSON document target beside an XML primary target. An original static XML
 host source may connect to named inputs in multiple stages, including the
 first and later intermediate stages, when its boundary and output ports still
 match. Connections from a
@@ -269,8 +269,9 @@ fixed-width results pass local write/read checks; fixed-width text, FlexText,
 and JSON retain exact serialized bytes after re-import, Protocol Buffers retains
 exact encoded bytes and decoded messages, bounded XBRL retains exact instance
 XML bytes and parsed fact/context elements, and XLSX retains decoded worksheet cells.
-An XML-primary chain with a named CSV target retains both exact serialized
-outputs through strict export, reimport, and CLI publication. FlexText
+XML-primary chains with a named CSV or JSON target retain both exact serialized
+outputs through strict export, reimport, and CLI publication. Named JSON Lines
+remain outside this profile. FlexText
 export writes a new `.mft` beside the combined design
 and refers to that sibling by name; unsupported layouts reject before either
 artifact is published. Protocol Buffers export likewise writes a `.proto`

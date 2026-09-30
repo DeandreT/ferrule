@@ -311,7 +311,7 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
 /// This profile accepts a bounded serial XML pass-through chain whose final
 /// primary target may be XML, CSV, fixed-width text, FlexText, JSON, Protocol
 /// Buffers, XBRL without presentation metadata, or a new XLSX workbook. Connected
-/// final named targets may be XML, or one CSV target when the primary is XML.
+/// final named targets may be XML, or one CSV or JSON target when the primary is XML.
 /// Other stage graph shapes reject.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
@@ -710,9 +710,38 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
                 })
         })
         .collect::<Vec<_>>();
+    let named_json_targets = components
+        .iter()
+        .filter(|component| {
+            final_target.attribute("library") == Some("xml")
+                && component.id() != final_target.id()
+                && is_json_terminal_component(component)
+                && component
+                    .children()
+                    .find(|node| node.has_tag_name("data"))
+                    .and_then(|data| data.children().find(|node| node.has_tag_name("json")))
+                    .is_some_and(|json| json.attribute("jsonlines").is_none())
+                && connected_inputs(component)
+                && !connected_component_outputs(component)
+                && !component.children().any(|node| {
+                    node.has_tag_name("properties")
+                        && node.attribute("XSLTDefaultOutput") == Some("1")
+                })
+        })
+        .collect::<Vec<_>>();
     if named_csv_targets.len() > 1 {
         return Err(MfdError::UnsupportedImport(
             "pipeline import supports at most one connected named CSV final target".into(),
+        ));
+    }
+    if named_json_targets.len() > 1 {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import supports at most one connected named JSON final target".into(),
+        ));
+    }
+    if !named_csv_targets.is_empty() && !named_json_targets.is_empty() {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import supports at most one non-XML named final target".into(),
         ));
     }
     if is_protobuf_terminal_component(final_target)
@@ -743,10 +772,11 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
     }
     if components.iter().any(|component| {
         component.attribute("library") == Some("json")
-            && (component.id() != final_target.id() || connected_component_outputs(component))
+            && (component.id() != final_target.id() && !named_json_targets.contains(&component)
+                || connected_component_outputs(component))
     }) {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import supports JSON components only as the final primary target".into(),
+            "pipeline import supports JSON components only as the final primary target, except one named JSON target beside a primary XML target".into(),
         ));
     }
     if components.iter().any(|component| {
@@ -779,6 +809,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         .filter(|component| {
             (component.attribute("library") == Some("xml")
                 || named_csv_targets.contains(component)
+                || named_json_targets.contains(component)
                 || component.id() == final_target.id()
                     && (is_csv_terminal_component(component)
                         || is_fixed_width_terminal_component(component)

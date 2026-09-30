@@ -93,6 +93,27 @@ fn make_json_final_chain(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_xml_final_with_json_named_target(directory: &Path) -> PathBuf {
+    let path = make_json_final_chain(directory);
+    write_schema(&directory.join("secondary.xsd"), "Secondary", "Copy");
+    let original = std::fs::read_to_string(&path).unwrap();
+    let with_xml = original.replace(
+        "</children><graph>",
+        r#"<component name="secondary" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Secondary"><entry name="Copy" inpkey="50"/></entry></root><document schema="secondary.xsd" outputinstance="secondary.xml" instanceroot="{}Secondary"/></data></component></children><graph>"#,
+    );
+    let with_fanout = with_xml.replace(
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"50\"/></edges></vertex>",
+    );
+    let named = with_fanout.replace(
+        "<component name=\"target\" library=\"json\" kind=\"31\"><properties XSLTDefaultOutput=\"1\"/>",
+        "<component name=\"target\" library=\"json\" kind=\"31\">",
+    );
+    assert_ne!(named, original);
+    std::fs::write(&path, named).unwrap();
+    path
+}
+
 fn make_repeated_csv_final_chain(directory: &Path) -> PathBuf {
     for (file, root) in [("source.xsd", "Source"), ("buffer.xsd", "Buffer")] {
         std::fs::write(
@@ -1213,6 +1234,235 @@ fn xml_primary_named_csv_import_rejects_ambiguous_malformed_and_bypassed_targets
         .to_string();
     assert!(
         error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
+    assert!(!directory.0.join("not-created").exists());
+}
+
+#[test]
+fn xml_primary_may_keep_one_connected_json_named_target_with_exact_output() {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    if !samples.join("Altova_Hierarchical_JSON.mfd").is_file()
+        || !samples.join("Altova_Hierarchical.xml").is_file()
+    {
+        return;
+    }
+    let (pipeline, hosts) = local_xml_with_named_json_pipeline();
+    let before = engine::run_pipeline(&pipeline, &hosts).unwrap();
+    assert_eq!(before.stage("copy").unwrap().primary, hosts["input"]);
+    let final_stage = &pipeline.stages[1];
+    let final_before = before.stage(&final_stage.id).unwrap();
+    assert_eq!(final_before.primary, hosts["input"]);
+    let [json] = final_stage.project.extra_targets.as_slice() else {
+        panic!("final stage must keep one named JSON target");
+    };
+    let [named_before] = final_before.extras.as_slice() else {
+        panic!("final stage must produce one named JSON output");
+    };
+    assert_eq!(named_before.name, json.name);
+    let xml_before =
+        format_xml::to_string(&final_stage.project.target, &final_before.primary).unwrap();
+    let json_before = format_json::to_string(&json.schema, &named_before.instance).unwrap();
+    assert!(json_before.contains("\"Office\""));
+
+    let directory = TempDir::new();
+    let exported = directory.0.join("xml-with-named-json.mfd");
+    let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported.exists());
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let design = std::fs::read_to_string(&exported).unwrap();
+    assert_eq!(design.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(design.matches("library=\"json\"").count(), 1);
+    assert_eq!(design.matches("XSLTDefaultOutput=\"1\"").count(), 1);
+    let reimported = mfd::import_pipeline(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let PipelineInput::Host { name } = &reimported.pipeline.stages[0].source else {
+        panic!("reimported first stage must read a host source");
+    };
+    let after = engine::run_pipeline(
+        &reimported.pipeline,
+        &BTreeMap::from([(name.clone(), hosts["input"].clone())]),
+    )
+    .unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            before.stage(&pipeline.stages[index].id).unwrap().primary,
+            after
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            "stage {}",
+            index + 1
+        );
+    }
+    let final_after = after.stage(&reimported.pipeline.stages[1].id).unwrap();
+    assert_eq!(final_before.extras, final_after.extras);
+    let xml_after = format_xml::to_string(
+        &reimported.pipeline.stages[1].project.target,
+        &final_after.primary,
+    )
+    .unwrap();
+    assert_eq!(xml_after.as_bytes(), xml_before.as_bytes());
+    let json_after = format_json::to_string(
+        &reimported.pipeline.stages[1].project.extra_targets[0].schema,
+        &final_after.extras[0].instance,
+    )
+    .unwrap();
+    assert_eq!(json_after.as_bytes(), json_before.as_bytes());
+}
+
+#[test]
+fn xml_primary_named_json_export_rejects_nonfinal_multiple_and_json_lines_without_artifacts() {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    if !samples.join("Altova_Hierarchical_JSON.mfd").is_file()
+        || !samples.join("Altova_Hierarchical.xml").is_file()
+    {
+        return;
+    }
+    let (pipeline, _) = local_xml_with_named_json_pipeline();
+    let directory = TempDir::new();
+
+    let mut nonfinal = pipeline.clone();
+    let named = nonfinal.stages[1].project.extra_targets.remove(0);
+    nonfinal.stages[0].project.graph = nonfinal.stages[1].project.graph.clone();
+    nonfinal.stages[0].project.extra_targets.push(named);
+    assert!(engine::validate_pipeline(&nonfinal).is_empty());
+    let path = directory.0.join("not-created/nonfinal.mfd");
+    let error = mfd::export_pipeline_with_profile(&nonfinal, &path, mfd::ExportProfile::NativeMfd)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("independent targets before the final stage"),
+        "{error}"
+    );
+    assert!(!path.parent().unwrap().exists());
+
+    let mut multiple = pipeline.clone();
+    let mut other = multiple.stages[1].project.extra_targets[0].clone();
+    other.name = "other report".into();
+    other.path = Some("other.json".into());
+    multiple.stages[1].project.extra_targets.push(other);
+    assert!(engine::validate_pipeline(&multiple).is_empty());
+    let path = directory.0.join("not-created/multiple.mfd");
+    let error = mfd::export_pipeline_with_profile(&multiple, &path, mfd::ExportProfile::NativeMfd)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("more than one named JSON target"), "{error}");
+    assert!(!path.parent().unwrap().exists());
+
+    let mut json_lines = pipeline;
+    json_lines.stages[1].project.extra_targets[0].path = Some("report.jsonl".into());
+    let path = directory.0.join("not-created/json-lines.mfd");
+    let error =
+        mfd::export_pipeline_with_profile(&json_lines, &path, mfd::ExportProfile::NativeMfd)
+            .unwrap_err()
+            .to_string();
+    assert!(error.contains("non-file-XML named target"), "{error}");
+    assert!(!path.parent().unwrap().exists());
+}
+
+#[test]
+fn xml_primary_named_json_import_rejects_ambiguous_malformed_bypass_and_unrepresented_pins() {
+    let directory = TempDir::new();
+    let path = make_xml_final_with_json_named_target(&directory.0);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let imported = mfd::import_pipeline(&path).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.pipeline.stages[1].project.extra_targets.len(), 1);
+
+    let ambiguous = original.replace(
+        "<component name=\"target\" library=\"json\" kind=\"31\"><data>",
+        "<component name=\"target\" library=\"json\" kind=\"31\"><properties XSLTDefaultOutput=\"1\"/><data>",
+    );
+    assert_ne!(ambiguous, original);
+    std::fs::write(&path, ambiguous).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("ambiguous final target must reject")
+        .to_string();
+    assert!(error.contains("one connected XML"), "{error}");
+
+    let malformed = original.replace(
+        "<component name=\"target\" library=\"json\" kind=\"31\">",
+        "<component name=\"target\" library=\"json\" kind=\"30\">",
+    );
+    assert_ne!(malformed, original);
+    std::fs::write(&path, malformed).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("malformed named JSON target must reject")
+        .to_string();
+    assert!(
+        error.contains("JSON components only as the final primary target"),
+        "{error}"
+    );
+
+    let json_lines = original.replace(
+        "<json schema=\"target.schema.json\" outputinstance=\"target.json\"/>",
+        "<json schema=\"target.schema.json\" outputinstance=\"target.json\" jsonlines=\"1\"/>",
+    );
+    assert_ne!(json_lines, original);
+    std::fs::write(&path, json_lines).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("named JSON Lines target must reject")
+        .to_string();
+    assert!(
+        error.contains("JSON components only as the final primary target"),
+        "{error}"
+    );
+
+    let disconnected = original.replace(
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"50\"/></edges></vertex>",
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"50\"/></edges></vertex>",
+    );
+    assert_ne!(disconnected, original);
+    std::fs::write(&path, &disconnected).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("disconnected named JSON target must reject")
+        .to_string();
+    assert!(
+        error.contains("JSON components only as the final primary target"),
+        "{error}"
+    );
+
+    let bypassed = disconnected.replace(
+        "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/></edges></vertex>",
+        "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/><edge vertexkey=\"40\"/></edges></vertex>",
+    );
+    assert_ne!(bypassed, disconnected);
+    std::fs::write(&path, bypassed).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("bypassed named JSON target must reject")
+        .to_string();
+    assert!(
+        error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
+
+    let extra_input = original
+        .replace(
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"50\"/></edges></vertex>",
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"50\"/><edge vertexkey=\"4294967289\"/></edges></vertex>",
+        )
+        .replace(
+            "<root><entry name=\"FileInstance\">",
+            "<root><entry name=\"bogus\" inpkey=\"4294967289\"/><entry name=\"FileInstance\">",
+        );
+    assert_ne!(extra_input, original);
+    std::fs::write(&path, extra_input).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("unrepresented connected named JSON pin must reject")
+        .to_string();
+    assert!(
+        error.contains("unrepresented connected input port"),
         "{error}"
     );
     assert!(!directory.0.join("not-created").exists());
@@ -2357,6 +2607,33 @@ fn local_xml_with_named_csv_pipeline() -> (mapping::Pipeline, BTreeMap<String, I
         &fixtures.join("people.xml"),
         "people-copy.xml",
         "xml-and-csv",
+    )
+}
+
+fn local_xml_with_named_json_pipeline() -> (mapping::Pipeline, BTreeMap<String, Instance>) {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let imported = mfd::import(&samples.join("Altova_Hierarchical_JSON.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut final_project = imported.project;
+    let json = mapping::NamedTarget {
+        name: "json-report".into(),
+        path: final_project.target_path.take(),
+        schema: final_project.target.clone(),
+        options: std::mem::take(&mut final_project.target_options),
+        root: std::mem::take(&mut final_project.root),
+    };
+    final_project.target = final_project.source.clone();
+    final_project.target_options = final_project.source_options.clone();
+    final_project.root = mapping::Scope {
+        construction: mapping::ScopeConstruction::CopyCurrentSource,
+        ..mapping::Scope::default()
+    };
+    final_project.extra_targets.push(json);
+    identity_xml_to_final_pipeline(
+        final_project,
+        &samples.join("Altova_Hierarchical.xml"),
+        "hierarchy-copy.xml",
+        "xml-and-json",
     )
 }
 
