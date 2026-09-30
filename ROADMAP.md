@@ -529,7 +529,10 @@ mapping path for each stage
 while retaining the pipeline path as the top-level mapping path. The native
 GUI can edit, validate, atomically save, inspect, run, and debug a saved pipeline
 independently of the open project; each stage's Project internals are still
-edited in the ordinary Project editor.
+edited in the ordinary Project editor. In-memory pipeline Preview and Debug
+Preview return every stage's primary and named outputs through a bounded byte
+host, with separate logical format paths and no output publication. Typed
+stage edges retain their values without temporary files.
 
 - Named source and target endpoints with runtime-overridable locations.
 - Ordered target writes and deterministic failure semantics.
@@ -627,9 +630,10 @@ active source frames, and supports Step,
 Continue, Pause at next write, Cancel, and a selector for exact static
 target-field breakpoints. Saved file-backed Run uses the same live controls,
 with cancellation before output publication and app-close deferral during
-publication. Saved pipeline runs also support worker-backed stepping across
-stages, stage-qualified static breakpoints, and cancellation before the shared
-publication boundary. Preview and saved runs can narrow a breakpoint by a
+publication. Saved pipelines support in-memory Preview and Debug Preview of
+all stage outputs, stage-qualified traces, and the same worker-backed stepping
+controls. File pipeline runs support cancellation before the shared publication
+boundary. Preview and saved runs can narrow a breakpoint by a
 complete typed scalar value within the debugger's bounded preview or by the
 innermost active 1-based position after scope controls. A source-field
 condition can match one immediate field in active frame 0–3 by complete typed

@@ -172,6 +172,58 @@ pipeline file remains the main mapping path. Referenced local mapping files are
 protected from output overwrite. All stages share one captured date-time
 value. Ordinary `Project` JSON and single-project execution remain valid.
 
+## In-memory preview
+
+`cli::preview_pipeline_value_payloads` accepts host-owned bytes through
+`PipelineHostPayload` and executes the complete graph once. Stage edges carry
+typed instances directly, so an intermediate result does not need a temporary
+file or a serialization round trip. The outcome contains every stage's primary
+and named artifacts in execution order, with each artifact identified by its
+stage, optional target name, and logical path. No output files are written.
+
+```rust
+let hosts = [cli::PipelineHostPayload::new(
+    "orders",
+    cli::PayloadDocument::new(std::path::Path::new("orders.json"), input_bytes)?,
+)?];
+let identities = [cli::PipelinePreviewOutputIdentity {
+    stage: "invoice".into(),
+    target: None,
+    path: "preview/invoice.json".into(),
+}];
+let outcome = cli::preview_pipeline_value_payloads(
+    &pipeline,
+    std::path::Path::new("flow.json"),
+    &cli::PipelinePreviewOptions::new(&hosts).with_output_identities(&identities),
+)?;
+```
+
+Each target needs a logical format path, supplied explicitly or by its stored
+target path. These paths identify returned bytes; they never select files for
+publication. Stored relative instance paths resolve from the pipeline file's
+directory, independently of the stage's runtime mapping identity. Distinct
+stages may use the same logical path. Missing, extra,
+duplicate, or incompatible host inputs and known unsupported decode/render
+formats fail before stage evaluation. Typed stage edges ignore unused source
+file hints. A stage or rendering failure returns no partial
+outcome. Inputs and serialized outputs are limited to 64 MiB per document and
+256 MiB each across the preview, with at most 4096 output artifacts.
+
+Preview uses saved design-time host values when no host override is supplied.
+Explicit overrides, including null, take precedence. All stages share one
+captured date-time and main mapping identity, while retaining their own active
+mapping identities. Stage-qualified trace and debug callbacks and a cancellation
+flag are available through `PipelinePreviewOptions`. SQLite, update-existing
+XLSX, local XML file sets, and dynamic named source loading require other hosts
+and are unavailable in this preview API. Captured external-service payloads
+can be supplied as bytes without a network request.
+
+Local tests cover typed XML named-target to JSON transfers, stage-qualified
+runtime values and observers, host overrides including null, late failures,
+cancellation, and actual serialized output limits. A self-authored three-stage
+import retains all output bytes across two strict native export/reimport cycles
+without reopening a removed input file or modifying an existing output.
+
 ## Editing in the GUI
 
 Use **File → Edit Pipeline** to open a saved pipeline as a separate document,
@@ -187,11 +239,19 @@ bindings for them from the selected stage. The editor shows whole-pipeline
 validation issues and saves only a valid pipeline. It detects external file
 changes before an atomic save and asks before discarding unsaved pipeline edits.
 The **Run Pipeline** dialog prepopulates a host input path when stored paths
-from its bound stages resolve to one file through their mapping identities.
+from its bound stages resolve to one file relative to the pipeline location.
 Conflicting path hints leave that input blank. Output selection remains
 explicit in the dialog.
 
-The Run Pipeline dialog can run or debug a saved pipeline on a worker. Debug
+The Run Pipeline dialog can run, preview, or debug a saved pipeline on a worker.
+**Preview pipeline** returns all intermediate and final outputs in the run
+report without saving files. Its format paths are separate from the selected
+Run output paths and start from stored target paths when available.
+**Debug Preview** provides the same stage-aware stepping controls and retains
+the completed trace for Node History, Source Rows, and Replay. Cancelling or
+failing a preview discards its results without changing output files.
+
+Debug
 pauses before ordinary target-field writes, labels each pause with its stage
 and target, and supports **Step**, **Continue**, **Pause at next write**, and
 **Cancel pipeline**. Its breakpoint selector can choose one declared static
@@ -205,7 +265,7 @@ combined with these filters. A value-node ID condition narrows the pause to a
 target write driven by that node in the selected stage; it does not pause at
 intermediate graph evaluation. **Step** and **Pause at next write** still stop at
 the next ordinary write. Ordinary runs can also be cancelled before publication.
-Both modes
+File Run and Debug pipeline
 wait for all stages to finish before publishing selected outputs together; the
 dialog and app close wait while publication is
 in progress. Runs with no ordinary target-field write finish without a live
