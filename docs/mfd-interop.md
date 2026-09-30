@@ -203,8 +203,14 @@ their connected default expression and scalar type. The host value wins when
 the name is supplied; otherwise the default evaluates lazily. Explicit null
 does not select the default. String, integer, and decimal input tests cover
 strict warning-free export/reimport, overrides, and typed errors. Unconnected
-optional preview-only inputs retain the enabled preview as their lazy default.
-Required preview-only inputs retain their previous preview-value behavior.
+optional preview-only inputs currently retain the enabled preview as a lazy
+runtime default. This is a compatibility gap: the reference
+[input settings](https://www.altova.com/manual/MapForce/MapForceenterprise/mff_in_settings.html)
+define those values as design-time only. Required preview-only inputs also lose
+their host contract when lowered to constants, while connected optional defaults
+hide stored previews. Separating preview metadata from ordinary and generated
+runtime execution remains required; local roundtrip equality alone does not
+prove those workflows match.
 For the exact order-pricing graph, strict export restores the native decimal
 source rules on two XML price leaves. Anchored repeated-row reads apply those
 rules on reimport, preserving all three local CSV rows and the original typed
@@ -225,9 +231,13 @@ claim. Exact same-type optional query inputs now retain host overrides rather
 than freezing the default. A guarded joined integer comparison exports its
 optional input through a declared native SELECT parameter; synthetic tests
 cover preview and connected defaults, overrides, nulls, and typed errors.
-Required previews and cross-type dynamic query coercion retain their earlier
-limitations. If the database cannot be resolved for the read-only foreign-key check,
-the exporter leaves its internal function and reports the native limitation.
+Required host-only inputs also retain exact same-type query parameters,
+including native joined integer SELECT thresholds and title WHERE patterns.
+Nonempty source rows require a supplied value; empty sources retain lazy reads.
+Required previews, optional inputs without defaults, and cross-type dynamic
+query coercion retain their earlier limitations. If the database cannot be
+resolved for the read-only foreign-key check, the exporter leaves its internal
+function and reports the native limitation.
 Two temperature designs recover their original native numeric wiring. The
 annual PDF mapping retains all eight conversions inside its user function and
 reimports to the same 148 CSV rows. The grouped XML mapping restores 21
@@ -258,9 +268,21 @@ A bounded strict IDoc descriptor parser also retains supported group, segment,
 field, cardinality, and code-list metadata. Its canonical rendering reparses
 identically and projects to the same legacy schema and fixed-record layout.
 Unknown syntax leaves legacy import executable without certification. This is
-configuration groundwork: the descriptor is not yet stored in project format
-options or emitted as a native configuration sidecar, and runtime status,
-loop-bound, and code-list semantics still need validation.
+configuration groundwork: certified descriptors now survive project format
+options and versioned Ferrule design metadata only when their projected schema
+and layout exactly match the executable boundary. External configurations stay
+authoritative. Unknown versions, duplicate metadata, altered schema/layout, and
+missing layouts discard certification with a warning. Export also renders a
+certified configuration as an adjacent, uniquely named file with a relative
+reference. Self-authored relocation tests reimport it without the original
+configuration; native schema/layout/settings compatibility remains open.
+The explicit `format_edi::idoc::validate_native` and descriptor-aware read/write
+APIs check per-parent occurrence limits and present scalar code values under
+separate work, text, and diagnostic budgets. Ferrule accepts absent OPTIONAL
+nodes and applies LOOPMIN when present; MANDATORY nodes require at least one.
+This is an explicit validation policy, not a native acceptance result. Legacy
+layout-only APIs and CLI behavior retain their existing policy until native
+validation actions can be preserved and verified.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
 endpoints, validated against the physical columns, and exported canonically. This
 keeps nested relational reads executable when the database omits foreign-key metadata.
@@ -333,6 +355,12 @@ HTTP URLs and graph-computed paths are unchanged. Moving or using Save As on a
 project applies the same rebasing rule, including wildcard input paths.
 
 ## Export
+
+Ordinary and connected `.mfd` designs share a 64 MiB UTF-8 byte limit. Import
+checks file size before reading and bounds the actual read; export checks the
+complete XML, including escaping and embedded metadata, before publishing any
+design or schema sibling. Each connected stage and the combined design must
+fit the same limit.
 
 ```sh
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd

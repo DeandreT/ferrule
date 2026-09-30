@@ -81,7 +81,7 @@ are preserved.
   The single-project execution counts do not establish faithful behavior for
   the newly warned connected chains. The typed pipeline path is measured
   separately.
-- Named optional host inputs retain connected defaults and enabled preview defaults through project
+- Named optional host inputs retain connected defaults and overrides through project
   serialization and native `.mfd` export/reimport. Defaults run only when the
   host omits the name; an explicit null remains supplied. The interpreter and
   generated Rust/C# typed and JSON hosts agree on defaults, overrides, lazy
@@ -93,8 +93,13 @@ are preserved.
   local phone-list design preserves identical XML for its four-person default
   and three-person `F` override. Exact same-type optional query inputs retain
   host overrides, including native title controls and joined integer-threshold
-  SELECT parameters. Required preview inputs, host-only query inputs without
-  defaults, and cross-type dynamic query coercion remain outside this profile.
+  SELECT parameters. Required host-only inputs retain exact same-type query
+  values through native SELECT and title WHERE controls, including lazy empty
+  sources and typed missing/type failures. Required previews, optional inputs
+  without defaults, and cross-type dynamic query coercion remain outside this
+  profile. Imported design-time preview values are still folded into runtime
+  defaults or constants, and connected defaults can hide them in GUI preview.
+  Separating preview metadata from runtime contracts is an identified parity gap.
 - Generated Rust and C# hosts have compiled and executed forty warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
