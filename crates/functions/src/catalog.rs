@@ -485,7 +485,7 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         true,
         Authoring,
-        "Matches SQL LIKE wildcards."
+        "Matches bounded SQLite-style LIKE wildcards with ASCII case folding and NUL termination."
     ),
     builtin!(
         PadStringLeft,

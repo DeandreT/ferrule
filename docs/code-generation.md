@@ -432,6 +432,12 @@ Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable
 function implementations preserve the interpreter's typed arity, type, and
 invalid-argument failures, including the one-million-character padding bound.
+Rust and C# SQL `LIKE` matching truncates both strings at their first NUL,
+folds ASCII case only, and uses Unicode scalars for `_`. It rejects patterns
+over 50,000 UTF-8 bytes before truncation and matching work over 100 million
+value-scalar by normalized-pattern-scalar cell updates. Both limits produce
+typed invalid-argument failures; consecutive `%` tokens collapse before the
+work calculation.
 Generated scopes, failure rules, and sequence reducers support bounded regex
 tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
 expose materially different regex dialects and Unicode behavior, so patterns
