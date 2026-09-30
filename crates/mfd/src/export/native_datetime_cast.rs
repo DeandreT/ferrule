@@ -1,9 +1,9 @@
-//! Bounded native XML target casting for direct date-time bindings.
+//! Bounded native XML target casting for date-time bindings.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD};
-use mapping::{Node, NodeId, Project, ScopeConstruction};
+use mapping::{Node, NodeId, Project, Scope, ScopeConstruction};
 use roxmltree::{Document, Node as XmlNode};
 
 use super::TargetExport;
@@ -13,7 +13,15 @@ use crate::MfdError;
 #[derive(Default)]
 pub(super) struct NativeDatetimeCasts {
     calls: BTreeMap<NodeId, NodeId>,
-    fields_by_target: BTreeMap<usize, BTreeSet<String>>,
+    fields_by_target: BTreeMap<usize, BTreeSet<Vec<String>>>,
+}
+
+struct CastBinding {
+    target_index: usize,
+    scope_indices: Vec<usize>,
+    binding_index: usize,
+    call: NodeId,
+    argument: NodeId,
 }
 
 impl NativeDatetimeCasts {
@@ -29,55 +37,17 @@ impl NativeDatetimeCasts {
             {
                 continue;
             }
-            for (binding_index, binding) in target.root.bindings.iter().enumerate() {
-                let Some(Node::Call { function, args }) = project.graph.nodes.get(&binding.node)
-                else {
-                    continue;
-                };
-                let [argument] = args.as_slice() else {
-                    continue;
-                };
-                if function != "coerce_datetime"
-                    || target
-                        .root
-                        .bindings
-                        .iter()
-                        .filter(|other| other.target_field == binding.target_field)
-                        .count()
-                        != 1
-                    || target
-                        .branches
-                        .count(std::slice::from_ref(&binding.target_field))
-                        .is_some()
-                    || target
-                        .schema
-                        .child(&binding.target_field)
-                        .is_none_or(|field| {
-                            field.repeating
-                                || field.attribute
-                                || field.text
-                                || !matches!(
-                                    field.kind,
-                                    SchemaKind::Scalar {
-                                        ty: ScalarType::String
-                                    }
-                                )
-                        })
-                    || target
-                        .ports
-                        .key_for_abs(std::slice::from_ref(&binding.target_field))
-                        .is_none()
-                    || plan.calls.contains_key(&binding.node)
-                {
-                    continue;
-                }
-                plan.calls.insert(binding.node, *argument);
-                plan.fields_by_target
-                    .entry(target_index)
-                    .or_default()
-                    .insert(binding.target_field.clone());
-                bindings.push((target_index, binding_index, binding.node, *argument));
-            }
+            collect_cast_bindings(
+                project,
+                target,
+                target_index,
+                target.root,
+                target.schema,
+                &mut Vec::new(),
+                &mut Vec::new(),
+                &mut plan,
+                &mut bindings,
+            );
         }
         if plan.calls.is_empty() || plan.calls.values().any(|id| plan.calls.contains_key(id)) {
             return Self::default();
@@ -87,23 +57,27 @@ impl NativeDatetimeCasts {
         // unreachable. This checks graph consumers, controls, other targets,
         // and failure rules without guessing which expressions may use it.
         let mut without_casts = project.clone();
-        for &(target_index, binding_index, _, argument) in &bindings {
-            let root = if target_index == 0 {
+        for binding in &bindings {
+            let root = if binding.target_index == 0 {
                 &mut without_casts.root
             } else {
-                &mut without_casts.extra_targets[target_index - 1].root
+                &mut without_casts.extra_targets[binding.target_index - 1].root
             };
-            root.bindings[binding_index].node = argument;
+            let scope = binding
+                .scope_indices
+                .iter()
+                .fold(root, |scope, &index| &mut scope.children[index]);
+            scope.bindings[binding.binding_index].node = binding.argument;
         }
         without_casts.prune_unreachable_nodes();
         if bindings
             .iter()
-            .any(|&(_, _, call, _)| without_casts.graph.nodes.contains_key(&call))
+            .any(|binding| without_casts.graph.nodes.contains_key(&binding.call))
         {
             return Self::default();
         }
 
-        // The generated XSD must have one direct string element at each
+        // The generated XSD must have one inline string element at each
         // selected path so its dateTime type can be restored exactly.
         for (&target_index, fields) in &plan.fields_by_target {
             let target = &targets[target_index];
@@ -151,6 +125,110 @@ impl NativeDatetimeCasts {
         rendered.xml = patch_document_entry(&rendered.xml)?;
         Ok(())
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_cast_bindings(
+    project: &Project,
+    target: &TargetExport<'_>,
+    target_index: usize,
+    scope: &Scope,
+    schema: &SchemaNode,
+    path: &mut Vec<String>,
+    scope_indices: &mut Vec<usize>,
+    plan: &mut NativeDatetimeCasts,
+    bindings: &mut Vec<CastBinding>,
+) {
+    if scope.construction != ScopeConstruction::Constructed
+        || !scope.dynamic_bindings.is_empty()
+        || !scope.dynamic_children.is_empty()
+        || scope.merge_dynamic_fields
+        || path_has_branch(target, path)
+    {
+        return;
+    }
+    for (binding_index, binding) in scope.bindings.iter().enumerate() {
+        let Some(Node::Call { function, args }) = project.graph.nodes.get(&binding.node) else {
+            continue;
+        };
+        let [argument] = args.as_slice() else {
+            continue;
+        };
+        path.push(binding.target_field.clone());
+        let field = schema.child(&binding.target_field);
+        if function == "coerce_datetime"
+            && scope
+                .bindings
+                .iter()
+                .filter(|other| other.target_field == binding.target_field)
+                .count()
+                == 1
+            && !path_has_branch(target, path)
+            && field.is_some_and(|field| {
+                !field.repeating
+                    && !field.attribute
+                    && !field.text
+                    && matches!(
+                        field.kind,
+                        SchemaKind::Scalar {
+                            ty: ScalarType::String
+                        }
+                    )
+            })
+            && target.ports.key_for_abs(path).is_some()
+            && !plan.calls.contains_key(&binding.node)
+        {
+            plan.calls.insert(binding.node, *argument);
+            plan.fields_by_target
+                .entry(target_index)
+                .or_default()
+                .insert(path.clone());
+            bindings.push(CastBinding {
+                target_index,
+                scope_indices: scope_indices.clone(),
+                binding_index,
+                call: binding.node,
+                argument: *argument,
+            });
+        }
+        path.pop();
+    }
+    for (index, child) in scope.children.iter().enumerate() {
+        if scope
+            .children
+            .iter()
+            .filter(|other| other.target_field == child.target_field)
+            .count()
+            != 1
+        {
+            continue;
+        }
+        let Some(child_schema) = schema.child(&child.target_field) else {
+            continue;
+        };
+        if !matches!(child_schema.kind, SchemaKind::Group { .. }) {
+            continue;
+        }
+        path.push(child.target_field.clone());
+        scope_indices.push(index);
+        collect_cast_bindings(
+            project,
+            target,
+            target_index,
+            child,
+            child_schema,
+            path,
+            scope_indices,
+            plan,
+            bindings,
+        );
+        scope_indices.pop();
+        path.pop();
+    }
+}
+
+fn path_has_branch(target: &TargetExport<'_>, path: &[String]) -> bool {
+    (0..=path.len()).any(|length| target.branches.count(&path[..length]).is_some())
 }
 
 // The document flag applies to the complete subtree. Limit its use to a
@@ -222,7 +300,7 @@ fn patch_document_entry(xml: &str) -> Result<String, MfdError> {
 fn patch_xsd(
     xml: &str,
     schema: &SchemaNode,
-    fields: &BTreeSet<String>,
+    fields: &BTreeSet<Vec<String>>,
 ) -> Result<String, MfdError> {
     let document = Document::parse(xml)?;
     let roots = document
@@ -235,21 +313,28 @@ fn patch_xsd(
     let [root] = roots.as_slice() else {
         return Err(unsupported("generated XML Schema root is not unique"));
     };
-    let sequence = child(*root, "complexType")
-        .and_then(|node| child(node, "sequence"))
-        .ok_or_else(|| unsupported("generated XML Schema root has no direct sequence"))?;
     let mut replacements = Vec::new();
-    for field in fields {
-        let entries = sequence
-            .children()
-            .filter(|node| {
-                is_xsd(*node, "element") && node.attribute("name") == Some(field.as_str())
-            })
-            .collect::<Vec<_>>();
-        let [entry] = entries.as_slice() else {
-            return Err(unsupported("generated date-time element is not unique"));
-        };
-        let attribute = entry
+    for path in fields {
+        let mut parent = *root;
+        for field in path {
+            let sequence = child(parent, "complexType")
+                .and_then(|node| child(node, "sequence"))
+                .ok_or_else(|| unsupported("generated XML Schema parent has no inline sequence"))?;
+            let entries = sequence
+                .children()
+                .filter(|node| {
+                    is_xsd(*node, "element") && node.attribute("name") == Some(field.as_str())
+                })
+                .collect::<Vec<_>>();
+            let [entry] = entries.as_slice() else {
+                return Err(unsupported("generated date-time element is not unique"));
+            };
+            parent = *entry;
+        }
+        if path.is_empty() {
+            return Err(unsupported("date-time binding has no target field"));
+        }
+        let attribute = parent
             .attributes()
             .find(|attribute| attribute.name() == "type" && attribute.value() == "xs:string")
             .ok_or_else(|| unsupported("generated date-time element is not a string scalar"))?;

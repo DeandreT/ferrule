@@ -90,6 +90,272 @@ fn source() -> Instance {
     ])
 }
 
+fn write_nested_design(directory: &Path) -> PathBuf {
+    std::fs::write(
+        directory.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Source"><xs:complexType><xs:sequence>
+            <xs:element name="Day" type="xs:string"/>
+            <xs:element name="Existing" type="xs:string"/>
+            <xs:element name="Row" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+              <xs:element name="When" type="xs:string"/>
+            </xs:sequence></xs:complexType></xs:element>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Target"><xs:complexType><xs:sequence>
+            <xs:element name="Header"><xs:complexType><xs:sequence>
+              <xs:element name="Received" type="xs:dateTime"/>
+            </xs:sequence></xs:complexType></xs:element>
+            <xs:element name="Existing" type="xs:string"/>
+            <xs:element name="Row" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+              <xs:element name="Received" type="xs:dateTime"/>
+            </xs:sequence></xs:complexType></xs:element>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    let design = directory.join("nested.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="31"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Source">
+              <entry name="Day" outkey="1"/><entry name="Existing" outkey="2"/>
+              <entry name="Row" outkey="3"><entry name="When" outkey="4"/></entry>
+            </entry></entry></entry></root>
+            <document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/>
+          </data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="FileInstance"><entry name="document" casttotargettypemode="cast-in-subtree"><entry name="Target">
+              <entry name="Header"><entry name="Received" inpkey="11"/></entry>
+              <entry name="Existing" inpkey="12"/>
+              <entry name="Row" inpkey="13"><entry name="Received" inpkey="14"/></entry>
+            </entry></entry></entry></root>
+            <document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/>
+          </data></component>
+        </children><graph><vertices>
+          <vertex vertexkey="1"><edges><edge vertexkey="11"/></edges></vertex>
+          <vertex vertexkey="2"><edges><edge vertexkey="12"/></edges></vertex>
+          <vertex vertexkey="3"><edges><edge vertexkey="13"/></edges></vertex>
+          <vertex vertexkey="4"><edges><edge vertexkey="14"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+    design
+}
+
+fn nested_source(values: &[&str]) -> Instance {
+    Instance::Group(vec![
+        (
+            "Day".into(),
+            Instance::Scalar(Value::String("2031-08-17+05:45".into())),
+        ),
+        (
+            "Existing".into(),
+            Instance::Scalar(Value::String("uncast".into())),
+        ),
+        (
+            "Row".into(),
+            Instance::Repeated(
+                values
+                    .iter()
+                    .map(|value| {
+                        Instance::Group(vec![(
+                            "When".into(),
+                            Instance::Scalar(Value::String((*value).into())),
+                        )])
+                    })
+                    .collect(),
+            ),
+        ),
+    ])
+}
+
+fn nested_cast<'a>(project: &'a mapping::Project, field: &str) -> &'a mapping::Scope {
+    project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == field)
+        .unwrap()
+}
+
+#[test]
+fn nested_and_repeated_datetime_casts_export_with_native_xsd_types() {
+    let directory = TempDir::new();
+    let design = write_nested_design(&directory.0);
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    for field in ["Header", "Row"] {
+        let scope = nested_cast(&imported.project, field);
+        assert!(scope.bindings.iter().any(|binding| {
+            matches!(
+                imported.project.graph.nodes.get(&binding.node),
+                Some(Node::Call { function, .. }) if function == "coerce_datetime"
+            )
+        }));
+    }
+
+    let input = nested_source(&["2031-08-17T06:07:08Z", "2031-08-18+05:45"]);
+    let expected = engine::run(&imported.project, &input).unwrap();
+    let exported = directory.0.join("nested-round-trip.mfd");
+    let report = mfd::preflight_export(&imported.project, &exported).unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    assert!(
+        mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap()
+            .is_native_compatible()
+    );
+    let rendered = std::fs::read_to_string(&exported).unwrap();
+    let document = roxmltree::Document::parse(&rendered).unwrap();
+    let target = document
+        .descendants()
+        .find(|node| node.has_tag_name("component") && node.attribute("name") == Some("Target"))
+        .unwrap();
+    assert_eq!(
+        target
+            .descendants()
+            .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("document"))
+            .and_then(|node| node.attribute("casttotargettypemode")),
+        Some("cast-in-subtree")
+    );
+    let schema_file = target
+        .descendants()
+        .find(|node| node.has_tag_name("document"))
+        .and_then(|node| node.attribute("schema"))
+        .unwrap();
+    let xsd = std::fs::read_to_string(directory.0.join(schema_file)).unwrap();
+    let xsd_doc = roxmltree::Document::parse(&xsd).unwrap();
+    let received = xsd_doc
+        .descendants()
+        .filter(|node| node.has_tag_name("element") && node.attribute("name") == Some("Received"))
+        .collect::<Vec<_>>();
+    assert_eq!(received.len(), 2);
+    assert!(
+        received
+            .iter()
+            .all(|node| node.attribute("type") == Some("xs:dateTime"))
+    );
+    assert_eq!(
+        xsd_doc
+            .descendants()
+            .find(|node| node.has_tag_name("element") && node.attribute("name") == Some("Existing"))
+            .and_then(|node| node.attribute("type")),
+        Some("xs:string")
+    );
+
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(engine::run(&reimported.project, &input).unwrap(), expected);
+    let bad = nested_source(&["invalid datetime"]);
+    for project in [&imported.project, &reimported.project] {
+        let error = engine::run(project, &bad).unwrap_err().to_string();
+        assert!(error.contains("coerce_datetime"), "{error}");
+    }
+}
+
+#[test]
+fn nested_datetime_cast_shared_with_filter_stays_non_native() {
+    let directory = TempDir::new();
+    let mut project = mfd::import(&write_nested_design(&directory.0))
+        .unwrap()
+        .project;
+    let call = nested_cast(&project, "Row").bindings[0].node;
+    let filter = project.graph.nodes.keys().next_back().unwrap() + 1;
+    project.graph.nodes.insert(
+        filter,
+        Node::Call {
+            function: "exists".into(),
+            args: vec![call],
+        },
+    );
+    project
+        .root
+        .children
+        .iter_mut()
+        .find(|scope| scope.target_field == "Row")
+        .unwrap()
+        .filter = Some(filter);
+    let rejected = directory.0.join("not-created/rejected.mfd");
+    let report = mfd::preflight_export(&project, &rejected).unwrap();
+    assert!(!report.is_native_compatible(), "{report:?}");
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.component == "coerce_datetime")
+    );
+    assert!(!rejected.parent().unwrap().exists());
+}
+
+#[test]
+fn nested_datetime_cast_with_multiple_binding_owners_stays_non_native() {
+    let directory = TempDir::new();
+    let mut project = mfd::import(&write_nested_design(&directory.0))
+        .unwrap()
+        .project;
+    let header = project
+        .root
+        .children
+        .iter_mut()
+        .find(|scope| scope.target_field == "Header")
+        .unwrap();
+    header.bindings.push(header.bindings[0].clone());
+    let rejected = directory.0.join("not-created/rejected.mfd");
+    let report = mfd::preflight_export(&project, &rejected).unwrap();
+    assert!(!report.is_native_compatible(), "{report:?}");
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.component == "coerce_datetime")
+    );
+    assert!(!rejected.parent().unwrap().exists());
+}
+
+#[test]
+#[ignore = "needs the local ignored ReferenceSamples corpus; informational only"]
+fn local_idoc_order_keeps_edi_native_export_blockers() {
+    let sample =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples/IDoc_Order.mfd");
+    if !sample.is_file() {
+        return;
+    }
+    let imported = mfd::import(&sample).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(node, Node::Call { function, .. } if function == "coerce_datetime")
+    }));
+    let directory = TempDir::new();
+    let report = mfd::preflight_export(&imported.project, &directory.0.join("idoc.mfd")).unwrap();
+    assert!(!report.is_native_compatible());
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.feature == mfd::ExportCompatibilityFeature::EdiSchema)
+    );
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.feature == mfd::ExportCompatibilityFeature::EdiLayout)
+    );
+    assert!(
+        !report
+            .issues
+            .iter()
+            .any(|issue| issue.component == "coerce_datetime"),
+        "{report:?}"
+    );
+}
+
 #[test]
 fn cast_in_subtree_coerces_connected_datetime_leaves_and_serializes_them() {
     let directory = TempDir::new();
