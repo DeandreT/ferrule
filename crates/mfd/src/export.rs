@@ -18,6 +18,7 @@ mod compatibility;
 mod concatenation;
 mod database;
 mod database_query_where;
+mod database_select;
 mod database_where;
 mod database_xml;
 mod decimal_input;
@@ -348,6 +349,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     let native_database_where = database_where::NativeWhere::plan(project, &sources, &targets);
     let native_query_where =
         database_query_where::NativeQueryWhere::plan(project, &sources, &targets);
+    let native_database_select =
+        database_select::NativeSelect::plan(project, &sources, &targets, path, &mut keys);
     let native_database_xml =
         database_xml::DirectColumns::plan(project, &sources, &targets, &mixed_database_pairs);
     let native_order_decimal =
@@ -379,6 +382,10 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     }
     if let Some(plan) = &native_query_where {
         blocked_nodes.extend(plan.absorbed_nodes());
+    }
+    if let Some(plan) = &native_database_select {
+        blocked_nodes.extend(plan.absorbed_nodes());
+        plan.seed_alias(&mut node_out_key);
     }
     if let Some(plan) = &native_order_decimal {
         blocked_nodes.extend(plan.absorbed_nodes());
@@ -483,6 +490,11 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                         .as_ref()
                         .map(|plan| plan.scope_with_residual(target.root))
                 })
+                .or_else(|| {
+                    native_database_select
+                        .as_ref()
+                        .map(|plan| plan.scope_without_filter(target.root))
+                })
         } else {
             None
         };
@@ -569,6 +581,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
             &mut edges,
         )?;
     }
+    if let Some(plan) = &native_database_select {
+        plan.render_catalog(&mut uid, &mut components, &mut edges);
+    }
     exception_branches.render(exception::RenderArgs {
         graph: &project.graph,
         node_out_key: &node_out_key,
@@ -619,7 +634,11 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     } else {
         let mut resources = String::from("\t<resources>\n\t\t<datasources>\n");
         for (name, conn, relations) in &datasources {
-            let connection = if relations.is_empty() {
+            let local_view = native_database_select
+                .as_ref()
+                .filter(|plan| plan.datasource() == name)
+                .map_or_else(String::new, database_select::NativeSelect::local_view);
+            let connection = if relations.is_empty() && local_view.is_empty() {
                 format!(
                     "\t\t\t\t<database_connection database_kind=\"SQLite\" import_kind=\"SQLite\" ConnectionString=\"{}\" name=\"{}\" path=\"{}\"/>\n",
                     xml_escape(conn),
@@ -627,15 +646,21 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                     xml_escape(name),
                 )
             } else {
+                let relation_storage = if relations.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "\t\t\t\t\t<LocalRelationsStorage>\n{}\t\t\t\t\t</LocalRelationsStorage>\n",
+                        relations.iter().cloned().collect::<String>()
+                    )
+                };
                 format!(
                     "\t\t\t\t<database_connection database_kind=\"SQLite\" import_kind=\"SQLite\" ConnectionString=\"{}\" name=\"{}\" path=\"{}\">\n\
-                     \t\t\t\t\t<LocalRelationsStorage>\n{}\
-                     \t\t\t\t\t</LocalRelationsStorage>\n\
+                     {relation_storage}{local_view}\
                      \t\t\t\t</database_connection>\n",
                     xml_escape(conn),
                     xml_escape(name),
                     xml_escape(name),
-                    relations.iter().cloned().collect::<String>(),
                 )
             };
             let _ = write!(
@@ -680,7 +705,12 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         {
             continue;
         }
-        let mut rendered = if let Some(rendered) =
+        let mut rendered = if let Some(plan) = native_database_select
+            .as_ref()
+            .filter(|plan| plan.owns_source(source.component_uid))
+        {
+            plan.render_source()
+        } else if let Some(rendered) =
             dynamic_json::render_source(dynamic_json::RenderSourceArgs {
                 plan: &dynamic_sources,
                 source_index,
@@ -696,7 +726,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 component_name: source.name,
                 component_uid: source.component_uid,
                 sibling_suffix: &source.sibling_suffix,
-            })? {
+            })?
+        {
             rendered
         } else if source.options.external_source.is_some() {
             if matches!(
