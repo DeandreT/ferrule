@@ -799,6 +799,133 @@ fn imports_and_runs_an_xml_primary_with_exact_named_csv_bytes() -> Result<(), Bo
 }
 
 #[test]
+fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), Box<dyn Error>> {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let sample_design = samples.join("Altova_Hierarchical_JSON.mfd");
+    let sample_input = samples.join("Altova_Hierarchical.xml");
+    if !sample_design.is_file() || !sample_input.is_file() {
+        return Ok(());
+    }
+    let imported = mfd::import(&sample_design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut final_project = imported.project;
+    let named_json = mapping::NamedTarget {
+        name: "json-report".into(),
+        path: final_project.target_path.take(),
+        schema: final_project.target.clone(),
+        options: std::mem::take(&mut final_project.target_options),
+        root: std::mem::take(&mut final_project.root),
+    };
+    final_project.target = final_project.source.clone();
+    final_project.target_options = final_project.source_options.clone();
+    final_project.root = mapping::Scope {
+        construction: mapping::ScopeConstruction::CopyCurrentSource,
+        ..Default::default()
+    };
+    final_project.extra_targets.push(named_json);
+    let copy_project = mapping::Project {
+        source: final_project.source.clone(),
+        target: final_project.source.clone(),
+        source_path: Some("Altova_Hierarchical.xml".into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: final_project.source_options.clone(),
+        target_options: final_project.source_options.clone(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Default::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..Default::default()
+        },
+    };
+    final_project.source_path = None;
+    final_project.target_path = Some("hierarchy-copy.xml".into());
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "xml-and-json".into(),
+                mapping_path: None,
+                project: final_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+
+    let directory = TempDir::new()?;
+    let maps = directory.0.join("maps");
+    std::fs::create_dir_all(&maps)?;
+    let design = maps.join("xml-and-json.mfd");
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
+    assert!(report.is_native_compatible(), "{report:?}");
+    let saved_pipeline = directory.0.join("flow.json");
+    let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&design)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&saved_pipeline)
+        .output()?;
+    assert!(import.status.success(), "{}", output_message(&import));
+    let imported_pipeline: mapping::Pipeline =
+        serde_json::from_slice(&std::fs::read(&saved_pipeline)?)?;
+    let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
+        panic!("first stage must read a host source");
+    };
+    let [named] = imported_pipeline.stages[1].project.extra_targets.as_slice() else {
+        panic!("final stage must keep one named JSON target");
+    };
+    let output_xml = directory.0.join("primary.xml");
+    let output_json = directory.0.join("report.json");
+    let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&saved_pipeline)
+        .args(["--input"])
+        .arg(name)
+        .arg(&sample_input)
+        .args(["--output", "mfd-stage-2"])
+        .arg(&output_xml)
+        .args(["--named-output", "mfd-stage-2"])
+        .arg(&named.name)
+        .arg(&output_json)
+        .output()?;
+    assert!(run.status.success(), "{}", output_message(&run));
+
+    let source = format_xml::read(&sample_input, &pipeline.stages[0].project.source)?;
+    let direct = engine::run_pipeline(
+        &pipeline,
+        &std::collections::BTreeMap::from([("input".into(), source)]),
+    )?;
+    let expected = direct.stage("xml-and-json").unwrap();
+    let expected_xml =
+        format_xml::to_string(&pipeline.stages[1].project.target, &expected.primary)?;
+    assert_eq!(std::fs::read(&output_xml)?, expected_xml.as_bytes());
+    let json = &pipeline.stages[1].project.extra_targets[0];
+    let expected_json = format_json::to_string(&json.schema, &expected.extras[0].instance)?;
+    assert_eq!(std::fs::read(&output_json)?, expected_json.as_bytes());
+    assert!(expected_json.contains("\"Office\""));
+    Ok(())
+}
+
+#[test]
 fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new()?;
     let mapping = write_three_stage_chain(&directory.0)?;
