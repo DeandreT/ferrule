@@ -10,6 +10,7 @@ internal static partial class Program
         NumericConversionFunctions();
         FormatNumberFunction();
         DelayPassthroughFunction();
+        JsonScalarFunctions();
     }
 
     private static void TrimFunction()
@@ -254,6 +255,138 @@ internal static partial class Program
             "requires a finite number",
             FerruleValue.FromDouble(double.PositiveInfinity),
             Text("0"));
+    }
+
+    private static void JsonScalarFunctions()
+    {
+        const string anySchema =
+            "{\"name\":\"Any\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        const string intSchema =
+            "{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
+        const string stringFieldSchema =
+            "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"v\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
+
+        CallEquals(
+            Text("-0.0"),
+            "json_parse_field",
+            Text("-0"),
+            Text(anySchema),
+            Text("[]"));
+        CallEquals(
+            FerruleValue.FromInt64(9_007_199_254_740_993),
+            "json_parse_field",
+            Text("9007199254740993"),
+            Text(intSchema),
+            Text("[]"));
+        CallEquals(
+            Text("😀"),
+            "json_parse_field",
+            Text("\"😀\""),
+            Text("{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}"),
+            Text("[]"));
+        foreach (var invalidInput in new[]
+        {
+            "{\"v\":1e400,\"v\":\"ok\"}",
+            "{\"v\":\"\\uD800\",\"v\":\"ok\"}",
+        })
+        {
+            AssertInvalidArgument(
+                "json_parse_field",
+                "input does not match the JSON schema",
+                Text(invalidInput),
+                Text(stringFieldSchema),
+                Text("[\"v\"]"));
+        }
+
+        var nested127 = new string('[', 127) + "0" + new string(']', 127);
+        var nested128 = new string('[', 128) + "0" + new string(']', 128);
+        CallEquals(
+            Text(nested127),
+            "json_parse_field",
+            Text(nested127),
+            Text(anySchema),
+            Text("[]"));
+        AssertInvalidArgument(
+            "json_parse_field",
+            "input does not match the JSON schema",
+            Text(nested128),
+            Text(anySchema),
+            Text("[]"));
+
+        foreach (var malformedPath in new[] { "[\"\\uD800\"]", "[\"\\uDC00\"]" })
+        {
+            AssertInvalidArgument(
+                "json_parse_field",
+                "field path descriptor is invalid",
+                Text("42"),
+                Text(intSchema),
+                Text(malformedPath));
+            AssertInvalidArgument(
+                "json_serialize_object",
+                "path descriptors must be JSON string arrays",
+                Text(malformedPath),
+                Text("number"),
+                FerruleValue.FromInt64(1));
+        }
+
+        foreach (var (value, expected) in new[]
+        {
+            (1e20, "{\"v\":1e+20}"),
+            (1e-6, "{\"v\":1e-6}"),
+            (double.Epsilon, "{\"v\":5e-324}"),
+            (-0.0, "{\"v\":-0.0}"),
+            (1e15, "{\"v\":1000000000000000.0}"),
+        })
+        {
+            CallEquals(
+                Text(expected),
+                "json_serialize_object",
+                Text("[\"v\"]"),
+                Text("number"),
+                FerruleValue.FromDouble(value));
+        }
+        CallEquals(
+            Text("{\"v\":\"100000000000000000000\"}"),
+            "json_serialize_object",
+            Text("[\"v\"]"),
+            Text("string"),
+            FerruleValue.FromDouble(1e20));
+        CallEquals(
+            Text("{\"😀\":\"a\u2028b\u2029c😀\"}"),
+            "json_serialize_object",
+            Text("[\"\\uD83D\\uDE00\"]"),
+            Text("string"),
+            Text("a\u2028b\u2029c😀"));
+        CallEquals(
+            Text("{\"v\":\"\\u0000\\t\\n\"}"),
+            "json_serialize_object",
+            Text("[\"v\"]"),
+            Text("string"),
+            Text("\0\t\n"));
+        CallEquals(
+            Text("{\"flag\":true,\"count\":7,\"nested\":{\"text\":\"ready\",\"missing\":null}}"),
+            "json_serialize_object",
+            Text("[\"flag\"]"), Text("boolean"), Bool(true),
+            Text("[\"count\"]"), Text("integer"), FerruleValue.FromInt64(7),
+            Text("[\"nested\",\"text\"]"), Text("string"), Text("ready"),
+            Text("[\"nested\",\"missing\"]"), Text("string"), FerruleValue.JsonNull,
+            Text("[\"omitted\"]"), Text("string"), FerruleValue.Null);
+
+        foreach (var depth in new[] { 257, 300 })
+        {
+            var path = "[" + string.Join(
+                ",",
+                Enumerable.Range(0, depth).Select(index => "\"k" + index + "\"")) + "]";
+            var expected = string.Concat(
+                Enumerable.Range(0, depth).Select(index => "{\"k" + index + "\":")) +
+                "1.0" + new string('}', depth);
+            CallEquals(
+                Text(expected),
+                "json_serialize_object",
+                Text(path),
+                Text("number"),
+                FerruleValue.FromDouble(1.0));
+        }
     }
 
     private static void DelayPassthroughFunction()

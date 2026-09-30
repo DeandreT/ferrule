@@ -35,7 +35,13 @@ static void Verify(Func<string> run, JsonElement test)
         throw new Exception($"Invalid JSON input was accepted: {test}");
     }
     var actual = run();
-    if (!JsonNode.DeepEquals(JsonNode.Parse(actual), JsonNode.Parse(test.GetProperty("expected").GetRawText())))
+    var expected = test.TryGetProperty("expected_json", out var expectedText)
+        ? expectedText.GetString()!
+        : test.GetProperty("expected").GetRawText();
+    var comparisonOptions = new JsonDocumentOptions { MaxDepth = 256 };
+    if (!JsonNode.DeepEquals(
+            JsonNode.Parse(actual, documentOptions: comparisonOptions),
+            JsonNode.Parse(expected, documentOptions: comparisonOptions)))
     {
         throw new Exception($"JSON output differs: {test}; actual: {actual}");
     }

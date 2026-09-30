@@ -120,10 +120,227 @@ fn generated_json_text_boundaries_match_interpreter_in_rust_and_csharp() -> Test
         cases.push(serde_json::json!({"bytes": bytes, "reject": true}));
     }
 
-    let directory = TempDir::new("json_text_boundaries")?;
+    run_generated_boundary_cases(&project, &cases, "json_text_boundaries")
+}
+
+#[test]
+fn generated_arbitrary_json_canonicalization_matches_interpreter() -> TestResult<()> {
+    let mut project = text_boundary_project();
+    let ir::SchemaKind::Group { children, .. } = &mut project.target.kind else {
+        unreachable!("test target is a group");
+    };
+    children.push(string("Encoded"));
+    project.root.bindings.push(Binding {
+        target_field: "Encoded".into(),
+        node: 2,
+    });
+    let mut inputs = Vec::new();
+    for token in numeric_tokens() {
+        inputs.push(format!(
+            r#"{{"Text":{},"Any":{token}}}"#,
+            serde_json::to_string(&token)?
+        ));
+        inputs.push(format!(
+            r#"{{"Text":{},"Any":{{"first":{token},"nested":[{token}],"first":{token}}}}}"#,
+            serde_json::to_string(&format!(r#"{{"nested":{token}}}"#))?
+        ));
+    }
+    inputs.push(r#"{"Text":"ok","Any":{"😀":"😀","control":"\u001f","slash":"/","cjk":"中","separator":"\u2028","del":"\u007f"}}"#.into());
+    inputs.push(r#"{"Text":"ok","Any":{"first":1e1,"nested":{"x":1,"x":-0},"first":1e-400,"last":18446744073709551615}}"#.into());
+    // A malformed number overwritten outside json_any still fails the complete
+    // input parse; schema projection must not hide that error.
+    inputs.push(r#"{"Text":1.7976931348623158e308,"Text":"ok","Any":0}"#.into());
+    // The same token inside an ordinary string uses the output string fallback.
+    inputs.push(serde_json::json!({"Text": "1.7976931348623158e308", "Any": 0}).to_string());
+    for depth in [126, 128, 129] {
+        let nested = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+        inputs.push(format!(r#"{{"Text":"ok","Any":{nested}}}"#));
+        inputs.push(serde_json::json!({"Text": nested, "Any": 0}).to_string());
+    }
+    let cases = interpreter_cases(&project, &inputs)?;
+    run_generated_boundary_cases(&project, &cases, "json_canonicalization")
+}
+
+#[test]
+fn generated_json_numeric_domains_match_interpreter() -> TestResult<()> {
+    for ty in [ScalarType::Float, ScalarType::Int] {
+        let mut project = text_boundary_project();
+        project.source = SchemaNode::group("Source", vec![SchemaNode::scalar("Value", ty)]);
+        project.target = SchemaNode::group(
+            "Target",
+            vec![SchemaNode::scalar("Value", ty), string("Text")],
+        );
+        project.graph.nodes = BTreeMap::from([(
+            1,
+            Node::SourceField {
+                path: vec!["Value".into()],
+                frame: None,
+            },
+        )]);
+        project.root.bindings = vec![
+            Binding {
+                target_field: "Value".into(),
+                node: 1,
+            },
+            Binding {
+                target_field: "Text".into(),
+                node: 1,
+            },
+        ];
+        let inputs = numeric_tokens()
+            .iter()
+            .map(|token| format!(r#"{{"Value":{token}}}"#))
+            .collect::<Vec<_>>();
+        let cases = interpreter_cases(&project, &inputs)?;
+        run_generated_boundary_cases(&project, &cases, "json_numeric_domains")?;
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_json_object_text_matches_interpreter() -> TestResult<()> {
+    let mut project = text_boundary_project();
+    project.source = SchemaNode::group("Source", Vec::new());
+    project.target = SchemaNode::group(
+        "Target",
+        vec![string("Unicode"), string("Numbers"), string("Deep")],
+    );
+    project.graph.nodes.clear();
+    project.root.bindings.clear();
+    let mut next = 1;
+    for (field, entries) in [
+        (
+            "Unicode",
+            vec![(
+                vec![String::from("😀")],
+                "string",
+                Value::String("😀\u{2028}\u{2029}\u{1f}".into()),
+            )],
+        ),
+        (
+            "Numbers",
+            vec![
+                (vec!["large".into()], "number", Value::Float(1e20)),
+                (vec!["small".into()], "number", Value::Float(1e-6)),
+                (
+                    vec!["tiny".into()],
+                    "number",
+                    Value::Float(f64::from_bits(1)),
+                ),
+                (vec!["zero".into()], "number", Value::Float(-0.0)),
+                (vec!["whole".into()], "number", Value::Float(1.0)),
+                (vec!["integer".into()], "integer", Value::Int(i64::MAX)),
+            ],
+        ),
+        (
+            "Deep",
+            vec![(vec!["nested".into(); 300], "boolean", Value::Bool(true))],
+        ),
+    ] {
+        let mut args = Vec::new();
+        for (path, ty, value) in entries {
+            for value in [
+                Value::String(serde_json::to_string(&path)?),
+                Value::String(ty.into()),
+                value,
+            ] {
+                project.graph.nodes.insert(next, Node::Const { value });
+                args.push(next);
+                next += 1;
+            }
+        }
+        project.graph.nodes.insert(
+            next,
+            Node::Call {
+                function: "json_serialize_object".into(),
+                args,
+            },
+        );
+        project.root.bindings.push(Binding {
+            target_field: field.into(),
+            node: next,
+        });
+        next += 1;
+    }
+    let cases = interpreter_cases(&project, &["{}".into()])?;
+    run_generated_boundary_cases(&project, &cases, "json_object_text")
+}
+
+fn numeric_tokens() -> Vec<String> {
+    let mut tokens: Vec<String> = [
+        "0",
+        "-0",
+        "-0.0",
+        "1.0",
+        "1e0",
+        "1e1",
+        "1e-5",
+        "1e-6",
+        "1e15",
+        "1e16",
+        "1e-307",
+        "0e-309",
+        "-0e-309",
+        "1e-400",
+        "-1e-400",
+        "5e-324",
+        "2.4703282292062328e-324",
+        "1.00000000000000011102230246251565404236316680908203125",
+        "9007199254740993",
+        "9007199254740993.0",
+        "-9223372036854775808",
+        "-9223372036854775809",
+        "9223372036854775807",
+        "9223372036854775808",
+        "18446744073709551615",
+        "18446744073709551616",
+        "1.7976931348623157e308",
+        "1.7976931348623158e308",
+        "-1.7976931348623158e308",
+        "1e309",
+        "-1e309",
+        "0e999999999999999999999999999999999999",
+        "-0e999999999999999999999999999999999999",
+        "1e-999999999999999999999999999999999999",
+        "1e999999999999999999999999999999999999",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    for sign in ["", "-"] {
+        tokens.push(format!("{sign}0.{}1", "0".repeat(4096)));
+        tokens.push(format!("{sign}0.{}0", "0".repeat(4096)));
+        tokens.push(format!("{sign}0.0e-2147483647"));
+    }
+    tokens
+}
+
+fn interpreter_cases(project: &Project, inputs: &[String]) -> TestResult<Vec<serde_json::Value>> {
+    assert!(engine::validate(project).is_empty());
+    inputs
+        .iter()
+        .map(
+            |input| match format_json::from_str(input, &project.source) {
+                Ok(source) => {
+                    let result = engine::run(project, &source)?;
+                    let expected = format_json::to_string(&project.target, &result)?;
+                    Ok(serde_json::json!({"input": input, "expected_json": expected}))
+                }
+                Err(_) => Ok(serde_json::json!({"input": input, "reject": true})),
+            },
+        )
+        .collect()
+}
+
+fn run_generated_boundary_cases(
+    project: &Project,
+    cases: &[serde_json::Value],
+    name: &str,
+) -> TestResult<()> {
+    let directory = TempDir::new(name)?;
     let project_path = directory.0.join("project.json");
-    std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
-    let fixtures = serde_json::to_vec(&cases)?;
+    std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
+    let fixtures = serde_json::to_vec(cases)?;
     let rust_output = directory.0.join("rust");
     generate_project(
         &project_path,

@@ -174,6 +174,25 @@ constructors reject such text before it enters a mapping. Invalid encoded JSON
 held in an ordinary graph string remains a JSON string when written through an
 arbitrary-JSON target, preserving the interpreter's fallback behavior.
 
+Arbitrary JSON source values retain the interpreter's canonical compact text
+inside the graph, including Unicode escaping, exact signed/unsigned integers,
+finite floating-point normalization, and negative zero. Duplicate object names
+keep their first position and their last value. C# uses the same numeric parsing
+contract for typed JSON leaves and integral schema metadata; integer-to-number
+conversion still requires exact representation. Raw JSON and embedded schema
+parsing accept at most 127 nested containers, matching the interpreter.
+Over-depth encoded JSON in an ordinary graph string uses the same string
+fallback as other invalid encoded JSON. Constructed output traversal retains
+its separate depth bound. Canonical intermediate strings can grow beyond the
+input document size, so document limits do not establish complete allocation
+isolation.
+
+The `json_serialize_object` function also preserves the interpreter's exact
+compact text, including Unicode property names, floating-point scalar tags,
+and negative zero. Its C# renderer walks nested objects iteratively, so deep
+constructed property paths do not inherit the raw JSON reader's depth limit.
+Malformed path descriptors retain typed function errors.
+
 Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated
 output in Rust and C#, including after supported output coercion. Embedded

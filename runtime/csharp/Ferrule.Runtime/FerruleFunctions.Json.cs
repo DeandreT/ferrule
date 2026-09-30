@@ -1,7 +1,5 @@
-using System.Buffers;
 using System.Globalization;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace Ferrule.Runtime;
@@ -114,22 +112,10 @@ public static partial class FerruleFunctions
 
         try
         {
-            var buffer = new ArrayBufferWriter<byte>();
-            using (var writer = new Utf8JsonWriter(
-                       buffer,
-                       new JsonWriterOptions
-                       {
-                           Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                           MaxDepth = FerruleJson.MaximumDepth,
-                           SkipValidation = false,
-                       }))
-            {
-                WriteJsonObject(writer, root);
-            }
-            return FerruleValue.FromString(Encoding.UTF8.GetString(buffer.WrittenSpan));
+            return FerruleValue.FromString(RenderJsonObject(root));
         }
         catch (Exception error) when (
-            error is JsonException or InvalidOperationException or OverflowException)
+            error is InvalidOperationException or OverflowException)
         {
             throw InvalidArgument(
                 JsonSerializeObjectName,
@@ -235,61 +221,79 @@ public static partial class FerruleFunctions
         }
     }
 
-    private static void WriteJsonObject(Utf8JsonWriter writer, ConstructedJsonObject value)
+    private static string RenderJsonObject(ConstructedJsonObject root)
     {
-        writer.WriteStartObject();
-        foreach (var (name, child) in value.Properties)
+        var text = new StringBuilder();
+        var frames = new Stack<JsonObjectRenderFrame>();
+        text.Append('{');
+        frames.Push(new JsonObjectRenderFrame(root));
+        try
         {
-            writer.WritePropertyName(name);
-            switch (child)
+            while (frames.Count > 0)
             {
-                case ConstructedJsonObject nested:
-                    WriteJsonObject(writer, nested);
-                    break;
-                case ConstructedJsonScalar scalar:
-                    WriteJsonScalar(writer, scalar.Value);
-                    break;
+                var frame = frames.Peek();
+                if (!frame.Properties.MoveNext())
+                {
+                    text.Append('}');
+                    frames.Pop().Dispose();
+                    continue;
+                }
+
+                if (!frame.First)
+                {
+                    text.Append(',');
+                }
+                frame.First = false;
+                var (name, child) = frame.Properties.Current;
+                FerruleJson.AppendSerdeString(text, name);
+                text.Append(':');
+                if (child is ConstructedJsonObject nested)
+                {
+                    text.Append('{');
+                    frames.Push(new JsonObjectRenderFrame(nested));
+                }
+                else if (child is ConstructedJsonScalar scalar)
+                {
+                    AppendJsonScalar(text, scalar.Value);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Constructed JSON value is invalid.");
+                }
+            }
+
+            return text.ToString();
+        }
+        finally
+        {
+            while (frames.Count > 0)
+            {
+                frames.Pop().Dispose();
             }
         }
-        writer.WriteEndObject();
     }
 
-    private static void WriteJsonScalar(Utf8JsonWriter writer, FerruleValue value)
+    private static void AppendJsonScalar(StringBuilder text, FerruleValue value)
     {
         switch (value.Kind)
         {
             case FerruleValueKind.JsonNull:
-                writer.WriteNullValue();
+                text.Append("null");
                 break;
             case FerruleValueKind.String:
-                writer.WriteStringValue(value.StringValue);
+                FerruleJson.AppendSerdeString(text, value.StringValue);
                 break;
             case FerruleValueKind.Bool:
-                writer.WriteBooleanValue(value.BooleanValue);
+                text.Append(value.BooleanValue ? "true" : "false");
                 break;
             case FerruleValueKind.Int64:
-                writer.WriteNumberValue(value.Int64Value);
+                text.Append(value.Int64Value.ToString(CultureInfo.InvariantCulture));
                 break;
             case FerruleValueKind.Double:
-                // JSON keeps the source scalar tag: an integral double is
-                // still rendered as 25.0 rather than the integer 25.
-                var number = value.DoubleValue;
-                var lexical = number.ToString("R", CultureInfo.InvariantCulture);
-                if (number == 0 && BitConverter.DoubleToInt64Bits(number) < 0)
-                {
-                    writer.WriteRawValue("-0.0");
-                }
-                else if (!lexical.Contains('.') &&
-                         !lexical.Contains('E') &&
-                         !lexical.Contains('e'))
-                {
-                    writer.WriteRawValue(lexical + ".0");
-                }
-                else
-                {
-                    writer.WriteNumberValue(number);
-                }
+                text.Append(FerruleJson.FormatSerdeFloat(value.DoubleValue));
                 break;
+            default:
+                throw Type(JsonSerializeObjectName, value);
         }
     }
 
@@ -332,7 +336,7 @@ public static partial class FerruleFunctions
         {
             throw;
         }
-        catch (JsonException)
+        catch (Exception error) when (error is JsonException or InvalidOperationException)
         {
             throw InvalidArgument(
                 function,
@@ -353,5 +357,19 @@ public static partial class FerruleFunctions
     private sealed class ConstructedJsonScalar(FerruleValue value) : ConstructedJsonValue
     {
         internal FerruleValue Value { get; } = value;
+    }
+
+    private sealed class JsonObjectRenderFrame : IDisposable
+    {
+        internal JsonObjectRenderFrame(ConstructedJsonObject value)
+        {
+            Properties = value.Properties.GetEnumerator();
+        }
+
+        internal IEnumerator<KeyValuePair<string, ConstructedJsonValue>> Properties { get; }
+
+        internal bool First { get; set; } = true;
+
+        public void Dispose() => Properties.Dispose();
     }
 }

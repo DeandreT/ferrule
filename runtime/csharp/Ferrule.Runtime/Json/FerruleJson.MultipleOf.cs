@@ -111,7 +111,7 @@ public static partial class FerruleJson
                 }
                 var coefficientElement = RequiredProperty(termElement, "coefficient");
                 if (coefficientElement.ValueKind != JsonValueKind.Number ||
-                    !coefficientElement.TryGetUInt64(out var coefficient) ||
+                    !TryGetSerdeUInt64(coefficientElement, out var coefficient) ||
                     coefficient == 0 ||
                     coefficient % 10 == 0)
                 {
@@ -120,7 +120,7 @@ public static partial class FerruleJson
                 }
                 var exponentElement = RequiredProperty(termElement, "decimal_exponent");
                 if (exponentElement.ValueKind != JsonValueKind.Number ||
-                    !exponentElement.TryGetInt32(out var exponent) ||
+                    !TryGetSerdeInt64(exponentElement, out var exponent) ||
                     exponent is < short.MinValue or > short.MaxValue)
                 {
                     throw Boundary(
