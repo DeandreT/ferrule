@@ -33,6 +33,7 @@ mod join;
 mod json_parser;
 mod json_serializer;
 mod mapped_sequence;
+mod native_adjacency_tree;
 mod native_datetime_cast;
 mod native_path_hierarchy;
 mod node;
@@ -361,6 +362,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         temperature_native::NativeGroupFahrenheit::plan(project, &sources, &targets);
     let native_path_hierarchy =
         native_path_hierarchy::NativePathHierarchy::plan(project, &sources, &targets, path);
+    let native_adjacency_tree =
+        native_adjacency_tree::NativeAdjacencyTree::plan(project, &sources, &targets, path);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -492,6 +495,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     }
     let mut exception_branches = exception::Branches::new(project);
     let mut native_path_hierarchy_definition = None;
+    let mut native_adjacency_tree_definition = None;
     for (target_index, target) in targets.iter().enumerate() {
         let prior_position_contexts = position_contexts.clone();
         let native_scope = if target_index == 0 {
@@ -527,6 +531,16 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                     &mut edges,
                     &mut structural_edges,
                 )?);
+            } else if target_index == 0
+                && let Some(plan) = &native_adjacency_tree
+            {
+                native_adjacency_tree_definition = Some(plan.render(
+                    &mut keys,
+                    &mut uid,
+                    &mut scope_components,
+                    &mut edges,
+                    &mut structural_edges,
+                ));
             } else {
                 recursive::render_construction(recursive::RenderArgs {
                     scope: static_root,
@@ -948,6 +962,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         out.push_str(&plan.definition(&user_functions, &mut uid)?);
     }
     if let Some(definition) = native_path_hierarchy_definition {
+        out.push_str(&definition);
+    }
+    if let Some(definition) = native_adjacency_tree_definition {
         out.push_str(&definition);
     }
     out.push_str(user_functions.declarations());
