@@ -75,6 +75,7 @@ public static partial class FerruleJson
                     CommentHandling = JsonCommentHandling.Disallow,
                     AllowTrailingCommas = false,
                 });
+            ValidateInputJsonScalars(schema, parsed.RootElement);
             var budget = new NodeBudget();
             if (!schema.Repeating && !schema.IsScalar && !schema.JsonAny &&
                 parsed.RootElement.ValueKind == JsonValueKind.Array)
@@ -1463,21 +1464,16 @@ public static partial class FerruleJson
         switch (scalar.Value.Kind)
         {
             case FerruleValueKind.String:
-                try
+                using (var document = ParseAnyJson(scalar.Value.StringValue))
                 {
-                    using var document = JsonDocument.Parse(
-                        scalar.Value.StringValue,
-                        new JsonDocumentOptions
-                        {
-                            MaxDepth = MaximumDepth,
-                            CommentHandling = JsonCommentHandling.Disallow,
-                            AllowTrailingCommas = false,
-                        });
-                    document.RootElement.WriteTo(writer);
-                }
-                catch (JsonException)
-                {
-                    writer.WriteStringValue(scalar.Value.StringValue);
+                    if (document is null)
+                    {
+                        writer.WriteStringValue(scalar.Value.StringValue);
+                    }
+                    else
+                    {
+                        document.RootElement.WriteTo(writer);
+                    }
                 }
 
                 break;
@@ -2459,10 +2455,23 @@ public static partial class FerruleJson
         }).ToArray();
     }
 
-    private static JsonElement RequiredProperty(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value)
-            ? value
-            : throw Boundary($"Embedded JSON schema is missing field '{name}'.");
+    private static JsonElement RequiredProperty(JsonElement element, string name)
+    {
+        JsonElement? value = null;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!property.NameEquals(name))
+            {
+                continue;
+            }
+            if (value is not null)
+            {
+                throw Boundary($"Embedded JSON schema has duplicate field '{name}'.");
+            }
+            value = property.Value;
+        }
+        return value ?? throw Boundary($"Embedded JSON schema is missing field '{name}'.");
+    }
 
     private static string RequiredString(JsonElement element, string name)
     {
@@ -2536,10 +2545,180 @@ public static partial class FerruleJson
 
     private static void RequireUtf8Limit(string value, int maximum, string label)
     {
-        var bytes = Encoding.UTF8.GetByteCount(value);
+        int bytes;
+        try
+        {
+            bytes = StrictUtf8.GetByteCount(value);
+        }
+        catch (EncoderFallbackException error)
+        {
+            throw Boundary($"{label} contains an unpaired UTF-16 surrogate.", error);
+        }
         if (bytes > maximum)
         {
             throw Boundary($"{label} is {bytes} bytes; maximum is {maximum}.");
+        }
+    }
+
+    // JsonDocument defers decoding strings and permits numbers outside the
+    // finite double range. Validate the complete syntax tree before projecting
+    // fields or collapsing duplicates, matching the Rust JSON value boundary.
+    private static void ValidateJsonScalars(JsonElement element)
+    {
+        try
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.String:
+                    _ = element.GetString();
+                    break;
+                case JsonValueKind.Number:
+                    if (!element.TryGetDouble(out var number) || !double.IsFinite(number))
+                    {
+                        throw new JsonException("JSON number is outside the finite number range.");
+                    }
+                    break;
+                case JsonValueKind.Array:
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        ValidateJsonScalars(item);
+                    }
+                    break;
+                case JsonValueKind.Object:
+                    foreach (var property in element.EnumerateObject())
+                    {
+                        _ = property.Name;
+                        ValidateJsonScalars(property.Value);
+                    }
+                    break;
+            }
+        }
+        catch (Exception error) when (
+            error is InvalidOperationException or FormatException or OverflowException)
+        {
+            throw new JsonException("JSON scalar is invalid.", error);
+        }
+    }
+
+    private static void ValidateInputJsonScalars(JsonSchemaNode schema, JsonElement element)
+    {
+        try
+        {
+            ValidateJsonScalars(element);
+        }
+        catch (JsonException)
+        {
+            // Rust checks exact raw uniqueItems before decoding JSON numbers.
+            // Preserve that error precedence without repeating uniqueness work
+            // for valid documents or consuming additional pattern-match work.
+            var budget = new NodeBudget();
+            if (!schema.Repeating && !schema.IsScalar && !schema.JsonAny &&
+                element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var row in element.EnumerateArray())
+                {
+                    ValidateRawUniqueSingle(schema, row, budget, 1);
+                }
+            }
+            else
+            {
+                ValidateRawUniqueNode(schema, element, budget, 0);
+            }
+            throw;
+        }
+    }
+
+    private static void ValidateRawUniqueNode(
+        JsonSchemaNode schema,
+        JsonElement element,
+        NodeBudget budget,
+        int depth)
+    {
+        budget.Visit(depth);
+        if (schema.ContainerNullable && element.ValueKind == JsonValueKind.Null)
+        {
+            return;
+        }
+        if (schema.Repeating && element.ValueKind == JsonValueKind.Array)
+        {
+            ValidateUniqueInputItems(schema, element, budget);
+            foreach (var item in element.EnumerateArray())
+            {
+                ValidateRawUniqueSingle(schema, item, budget, depth + 1);
+            }
+        }
+        else if (!schema.Repeating)
+        {
+            ValidateRawUniqueSingle(schema, element, budget, depth);
+        }
+    }
+
+    private static void ValidateRawUniqueSingle(
+        JsonSchemaNode schema,
+        JsonElement element,
+        NodeBudget budget,
+        int depth)
+    {
+        if (schema.RecursiveReference is not null)
+        {
+            var resolved = schema.ResolvedRecursiveSchema ??
+                throw Boundary($"Embedded JSON recursive reference '{schema.Name}' has no group anchor.");
+            budget.EnterRecursiveReference();
+            try
+            {
+                ValidateRawUniqueSingle(resolved, element, budget, depth);
+            }
+            finally
+            {
+                budget.ExitRecursiveReference();
+            }
+            return;
+        }
+        if (schema.JsonAny || schema.IsScalar || element.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+        foreach (var child in schema.Children)
+        {
+            if (element.TryGetProperty(child.Name, out var value))
+            {
+                ValidateRawUniqueNode(child, value, budget, depth + 1);
+            }
+        }
+        if (schema.Dynamic is { } dynamic)
+        {
+            foreach (var property in OrderedProperties(element).OrderBy(
+                         property => property.Name,
+                         Comparer<string>.Create(CompareUtf8Ordinal)))
+            {
+                if (schema.Child(property.Name) is null)
+                {
+                    ValidateRawUniqueNode(dynamic, property.Value, budget, depth + 1);
+                }
+            }
+        }
+    }
+
+    private static JsonDocument? ParseAnyJson(string value)
+    {
+        JsonDocument? document = null;
+        try
+        {
+            document = JsonDocument.Parse(
+                value,
+                new JsonDocumentOptions
+                {
+                    MaxDepth = MaximumDepth,
+                    CommentHandling = JsonCommentHandling.Disallow,
+                    AllowTrailingCommas = false,
+                });
+            ValidateJsonScalars(document.RootElement);
+            return document;
+        }
+        catch (JsonException)
+        {
+            document?.Dispose();
+            return null;
         }
     }
 

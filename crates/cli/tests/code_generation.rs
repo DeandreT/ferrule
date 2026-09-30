@@ -32,6 +32,8 @@ mod iteration_controls;
 mod iteration_metadata;
 #[path = "code_generation/joins.rs"]
 mod joins;
+#[path = "code_generation/json_text_boundaries.rs"]
+mod json_text_boundaries;
 #[path = "code_generation/lookups.rs"]
 mod lookups;
 #[path = "code_generation/optional_runtime_defaults.rs"]

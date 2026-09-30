@@ -230,10 +230,41 @@ internal static partial class Program
 
         Throws<ArgumentNullException>(() => new FerruleExecutionContext(null!));
         Throws<ArgumentNullException>(() => new FerruleExecutionContext("active", null!));
+
+        var unicodeClock = new FerruleExecutionContext("active", "main", "clock-\U0001F600");
+        Equal(
+            Text("clock-\U0001F600"),
+            ScopeContext.FromSource(Group(), unicodeClock)
+                .ResolveRuntimeValue(FerruleRuntimeValue.CurrentDateTime));
+        Throws<ArgumentException>(() =>
+            new FerruleExecutionContext("active", "main", "clock-\uD800"));
+        Throws<ArgumentException>(() =>
+            new FerruleExecutionContext("active", "main", "clock-\uDC00"));
+
+        var malformedPaths = new FerruleExecutionContext("active-\uD800", "main-\uDC00");
+        Equal("active-\uD800", malformedPaths.MappingFilePath);
+        Equal("main-\uDC00", malformedPaths.MainMappingFilePath);
+        var lossyPaths = ScopeContext.FromSource(Group(), malformedPaths);
+        Equal(
+            Text("active-\uFFFD"),
+            lossyPaths.ResolveRuntimeValue(FerruleRuntimeValue.MappingFilePath));
+        Equal(
+            Text("main-\uFFFD"),
+            lossyPaths.ResolveRuntimeValue(FerruleRuntimeValue.MainMappingFilePath));
     }
 
     private static void RuntimeParameters()
     {
+        Equal(Text(string.Empty), FerruleValue.FromString(string.Empty));
+        Equal(Text("\U0001F600"), FerruleValue.FromString("\uD83D\uDE00"));
+        Throws<ArgumentNullException>(() => FerruleValue.FromString(null!));
+        Throws<ArgumentException>(() => FerruleValue.FromString("before\uD800after"));
+        Throws<ArgumentException>(() => FerruleValue.FromString("before\uDC00after"));
+        var unicodeField = Field("\U0001F600", Scalar(Text("value")));
+        Equal("\U0001F600", unicodeField.Name);
+        Throws<ArgumentException>(() => Field("key\uD800", Scalar(Text("value"))));
+        Throws<ArgumentException>(() => Field("key\uDC00", Scalar(Text("value"))));
+
         var parameters = new FerruleRuntimeParameters(new[]
         {
             KeyValuePair.Create("control_number", Text(" 42 ")),
@@ -336,6 +367,27 @@ internal static partial class Program
             FerruleRuntimeError.MissingSourceField,
             () => ScopeContext.FromSource(Group()).ResolveSourceDocumentPath());
         Equal("<document-path>", missing.Detail);
+
+        var unicodeDocument = new FerruleDocument(
+            "portable/\U0001F600.xml",
+            Group(),
+            "/inputs/\U0001F600.xml");
+        Equal(
+            Text("/inputs/\U0001F600.xml"),
+            ScopeContext.FromSource(new FerruleDocumentSet(new[] { unicodeDocument }))
+                .ResolveSourceDocumentPath());
+        Error(
+            FerruleRuntimeError.InvalidDocumentPath,
+            () => new FerruleDocument("portable/\uD800.xml", Group()));
+        Error(
+            FerruleRuntimeError.InvalidDocumentPath,
+            () => new FerruleDocument("portable/ok.xml", Group(), "/inputs/\uDC00.xml"));
+        Error(
+            FerruleRuntimeError.InvalidDocumentPath,
+            () => new FerruleDocument(string.Empty, Group()));
+        Error(
+            FerruleRuntimeError.NestedDocumentSet,
+            () => new FerruleDocument("portable/ok.xml", new FerruleDocumentSet([])));
     }
 
     private static void MapEquals(
