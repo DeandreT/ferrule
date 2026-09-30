@@ -1021,10 +1021,11 @@ impl GraphBuilder<'_> {
             let QueryOperand::List(operands) = predicate.operand else {
                 return Err("IN query predicate requires an operand list".to_string());
             };
+            let not_in = matches!(predicate.operator, QueryOperator::NotIn);
             let mut comparisons = operands
                 .into_iter()
                 .map(|operand| {
-                    self.query_binary_predicate_node(
+                    self.query_binary_predicate_with_presence(
                         source_path,
                         column,
                         column_type,
@@ -1034,29 +1035,41 @@ impl GraphBuilder<'_> {
                 })
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter();
-            let Some(first) = comparisons.next() else {
+            let Some((first, first_present)) = comparisons.next() else {
                 return Err("IN query predicate requires at least one operand".to_string());
             };
-            let predicate_node = comparisons.fold(first, |left, right| {
-                self.alloc(Node::Call {
-                    function: "or".to_string(),
-                    args: vec![left, right],
-                })
-            });
-            return if matches!(predicate.operator, QueryOperator::In) {
+            let (predicate_node, all_present) = comparisons.fold(
+                (first, first_present),
+                |(left, present), (right, right_present)| {
+                    let comparison = self.alloc(Node::Call {
+                        function: "or".to_string(),
+                        args: vec![left, right],
+                    });
+                    let present = if not_in {
+                        self.alloc(Node::Call {
+                            function: "and".to_string(),
+                            args: vec![present, right_present],
+                        })
+                    } else {
+                        present
+                    };
+                    (comparison, present)
+                },
+            );
+            return if !not_in {
                 Ok(predicate_node)
             } else {
-                let column_exists = self.alloc(Node::Call {
-                    function: "exists".to_string(),
-                    args: vec![column],
-                });
+                // Equality guards map SQL NULL to false for WHERE. Negating
+                // that result alone would select an unmatched row when any
+                // list operand is NULL, so NOT IN also requires every operand
+                // (and the column) to be present.
                 let inverted = self.alloc(Node::Call {
                     function: "not".to_string(),
                     args: vec![predicate_node],
                 });
                 Ok(self.alloc(Node::Call {
                     function: "and".to_string(),
-                    args: vec![column_exists, inverted],
+                    args: vec![all_present, inverted],
                 }))
             };
         }
@@ -1077,6 +1090,24 @@ impl GraphBuilder<'_> {
         operator: QueryOperator,
         operand: QueryOperand,
     ) -> Result<NodeId, String> {
+        self.query_binary_predicate_with_presence(
+            source_path,
+            column,
+            column_type,
+            operator,
+            operand,
+        )
+        .map(|(predicate, _)| predicate)
+    }
+
+    fn query_binary_predicate_with_presence(
+        &mut self,
+        source_path: &SourcePath,
+        column: NodeId,
+        column_type: ScalarType,
+        operator: QueryOperator,
+        operand: QueryOperand,
+    ) -> Result<(NodeId, NodeId), String> {
         let operand = match operand {
             QueryOperand::Literal(value) => {
                 let value = coerce_value(value, column_type)?;
@@ -1175,11 +1206,12 @@ impl GraphBuilder<'_> {
         let false_value = self.alloc(Node::Const {
             value: Value::Bool(false),
         });
-        Ok(self.alloc(Node::If {
+        let predicate = self.alloc(Node::If {
             condition: both_exist,
             then: comparison,
             else_: false_value,
-        }))
+        });
+        Ok((predicate, both_exist))
     }
 }
 
