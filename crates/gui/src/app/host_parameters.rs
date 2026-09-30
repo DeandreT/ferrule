@@ -26,7 +26,7 @@ impl HostParameterEditor {
 
     pub(crate) fn show(&mut self, ui: &mut egui::Ui) -> bool {
         ui.strong("Run values");
-        ui.weak("Named values supplied to this run. Remove a value to use its connected default, when available.");
+        ui.weak("Supplied values override saved preview values and connected defaults. Preview uses a saved preview value first when no run value is supplied.");
         let mut remove = None;
         egui::ScrollArea::vertical()
             .id_salt("run_values_scroll")
