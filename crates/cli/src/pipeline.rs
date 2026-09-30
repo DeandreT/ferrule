@@ -156,16 +156,16 @@ impl<'a> PipelineRunOptions<'a> {
     }
 }
 
-struct StageDebugHook<'a> {
-    stage: RefCell<String>,
-    hook: Option<&'a PipelineStageDebugCallback<'a>>,
-    node_hook: Option<&'a PipelineStageNodeDebugCallback<'a>>,
-    function_node_hook: Option<&'a PipelineStageFunctionNodeDebugCallback<'a>>,
-    input_hook: Option<&'a PipelineStageInputDebugCallback<'a>>,
-    function_input_hook: Option<&'a PipelineStageFunctionInputDebugCallback<'a>>,
-    node_failure_hook: Option<&'a PipelineStageNodeFailureDebugCallback<'a>>,
-    function_failure_hook: Option<&'a PipelineStageFunctionFailureDebugCallback<'a>>,
-    probe: Option<&'a PipelineSourceFieldProbeCallback<'a>>,
+pub(crate) struct StageDebugHook<'a> {
+    pub(crate) stage: RefCell<String>,
+    pub(crate) hook: Option<&'a PipelineStageDebugCallback<'a>>,
+    pub(crate) node_hook: Option<&'a PipelineStageNodeDebugCallback<'a>>,
+    pub(crate) function_node_hook: Option<&'a PipelineStageFunctionNodeDebugCallback<'a>>,
+    pub(crate) input_hook: Option<&'a PipelineStageInputDebugCallback<'a>>,
+    pub(crate) function_input_hook: Option<&'a PipelineStageFunctionInputDebugCallback<'a>>,
+    pub(crate) node_failure_hook: Option<&'a PipelineStageNodeFailureDebugCallback<'a>>,
+    pub(crate) function_failure_hook: Option<&'a PipelineStageFunctionFailureDebugCallback<'a>>,
+    pub(crate) probe: Option<&'a PipelineSourceFieldProbeCallback<'a>>,
 }
 
 impl engine::DebugHook for StageDebugHook<'_> {
@@ -255,9 +255,9 @@ impl engine::DebugHook for StageDebugHook<'_> {
     }
 }
 
-struct StageTraceSink<'a> {
-    stage: RefCell<String>,
-    sink: &'a PipelineStageTraceCallback<'a>,
+pub(crate) struct StageTraceSink<'a> {
+    pub(crate) stage: RefCell<String>,
+    pub(crate) sink: &'a PipelineStageTraceCallback<'a>,
 }
 
 impl engine::TraceSink for StageTraceSink<'_> {
@@ -508,12 +508,14 @@ fn run_pipeline_value_with_options(
     })
 }
 
-struct HostBoundary<'a> {
-    schema: &'a SchemaNode,
-    options: &'a FormatOptions,
+pub(crate) struct HostBoundary<'a> {
+    pub(crate) schema: &'a SchemaNode,
+    pub(crate) options: &'a FormatOptions,
 }
 
-fn infer_host_boundaries(pipeline: &Pipeline) -> anyhow::Result<BTreeMap<&str, HostBoundary<'_>>> {
+pub(crate) fn infer_host_boundaries(
+    pipeline: &Pipeline,
+) -> anyhow::Result<BTreeMap<&str, HostBoundary<'_>>> {
     let mut hosts = BTreeMap::new();
     for stage in &pipeline.stages {
         if let PipelineInput::Host { name } = &stage.source {
