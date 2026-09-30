@@ -430,7 +430,22 @@ impl GraphBuilder<'_> {
                 return Some(node);
             }
             let connected_feed = self.input_feed(idx, 0);
-            let input_parameter_name = self.fn_components[idx].input_parameter_name.clone();
+            let input_parameter = self.fn_components[idx].input_parameter_name.clone();
+            if let (Some(feed), Some(parameter)) = (connected_feed, &input_parameter)
+                && parameter.optional
+            {
+                let default = self.value_node(feed)?;
+                let node = self.alloc(mapping::Node::RuntimeParameterDefault {
+                    name: parameter.name.clone(),
+                    ty: self.fn_components[idx]
+                        .input_type
+                        .unwrap_or(ir::ScalarType::String),
+                    default,
+                });
+                self.fn_nodes.insert(idx, node);
+                return Some(node);
+            }
+            let input_parameter_name = input_parameter.map(|parameter| parameter.name);
             let input = match connected_feed {
                 Some(feed) => self.value_node(feed),
                 None => {
