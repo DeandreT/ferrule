@@ -8,6 +8,11 @@ use mapping::{IdocLayout, IdocSegmentLayout};
 use crate::segments::{Segment, scalar_or_fixed, validate_instance_shape};
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
+mod validation;
+pub use validation::{
+    IdocConstraintViolation, IdocValidationIssue, IdocValidationReport, validate_native,
+};
+
 const CONTROL_RECORD: &[u8] = b"EDI_DC40";
 const MAX_RECORDS: usize = 100_000;
 
@@ -82,6 +87,38 @@ pub fn from_bytes(
     crate::segments::read_segments(schema, &segments, ' ', None, lenient)
 }
 
+/// Reads with explicitly requested descriptor validation. `lenient` retains
+/// its existing meaning: skip unknown records, while declared constraints are
+/// still checked. The legacy [`read`] API does not enforce descriptor metadata.
+pub fn read_with_native(
+    path: &Path,
+    schema: &SchemaNode,
+    layout: &IdocLayout,
+    descriptor: &mapping::IdocNativeConfig,
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
+    validation::require_pair(schema, layout, descriptor)?;
+    let bytes = read_bounded_input(path, EdiFormatError::IdocLimit("input size"))?;
+    from_bytes_with_native(&bytes, schema, layout, descriptor, lenient)
+}
+
+/// Parses with the same wire rules as [`from_bytes`], then checks the paired
+/// descriptor's occurrence limits and present scalar code values. Record
+/// matching and projected field materialization are bounded before parsing.
+pub fn from_bytes_with_native(
+    bytes: &[u8],
+    schema: &SchemaNode,
+    layout: &IdocLayout,
+    descriptor: &mapping::IdocNativeConfig,
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
+    validation::require_pair(schema, layout, descriptor)?;
+    validation::bound_input_work(bytes, layout, descriptor)?;
+    let instance = from_bytes(bytes, schema, layout, lenient)?;
+    validation::require_valid(schema, &instance, layout, descriptor)?;
+    Ok(instance)
+}
+
 pub fn write(
     path: &Path,
     schema: &SchemaNode,
@@ -114,6 +151,36 @@ pub fn to_bytes(
         output.extend_from_slice(b"\r\n");
     }
     Ok(output)
+}
+
+/// Validates before serialization and before touching the destination. The
+/// legacy [`write`] API remains governed by its executable layout alone.
+pub fn write_with_native(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    layout: &IdocLayout,
+    descriptor: &mapping::IdocNativeConfig,
+) -> Result<(), EdiFormatError> {
+    std::fs::write(
+        path,
+        to_bytes_with_native(schema, instance, layout, descriptor)?,
+    )?;
+    Ok(())
+}
+
+/// Serializes only after explicit descriptor validation succeeds. A separate
+/// 100-million work budget conservatively bounds the legacy writer's field and
+/// name comparisons; unusually wide instances fail before serialization.
+pub fn to_bytes_with_native(
+    schema: &SchemaNode,
+    instance: &Instance,
+    layout: &IdocLayout,
+    descriptor: &mapping::IdocNativeConfig,
+) -> Result<Vec<u8>, EdiFormatError> {
+    validation::require_valid(schema, instance, layout, descriptor)?;
+    validation::bound_output_work(schema, instance, layout)?;
+    to_bytes(schema, instance, layout)
 }
 
 fn render_node(

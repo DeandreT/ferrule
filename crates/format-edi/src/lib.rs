@@ -62,6 +62,10 @@ pub enum EdiFormatError {
     InvalidIdocOutputText { segment: String, field: String },
     #[error("IDoc segment `{segment}` field `{field}` overlaps another record field")]
     IdocFieldOverlap { segment: String, field: String },
+    #[error("IDoc native descriptor does not match the executable schema and layout")]
+    IdocDescriptorMismatch,
+    #[error("{0}")]
+    IdocValidation(idoc::IdocValidationReport),
     #[error("not a SWIFT MT message stream: {0}")]
     NotSwift(&'static str),
     #[error("SWIFT message type `{0}` has no embedded layout")]
