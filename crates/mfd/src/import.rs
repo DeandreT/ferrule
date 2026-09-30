@@ -620,7 +620,7 @@ impl TargetInputCoverage {
 const MAX_IMPORTED_PIPELINE_INTERMEDIATES: usize = 64;
 
 fn discover_pipeline_chain(path: &Path) -> Result<DiscoveredPipelineChain, MfdError> {
-    let text = std::fs::read_to_string(path)?;
+    let text = crate::design::read(path)?;
     discover_pipeline_chain_text(&text)
 }
 
@@ -1424,7 +1424,7 @@ fn import_resolved(
     selection: StageSelection<'_>,
 ) -> Result<LoweredStage, MfdError> {
     let path = resources.mapping_path();
-    let text = std::fs::read_to_string(path)?;
+    let text = crate::design::read(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let mapping_el = doc.root_element();
     if mapping_el.tag_name().name() != "mapping" {

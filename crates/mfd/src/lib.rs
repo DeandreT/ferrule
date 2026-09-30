@@ -50,6 +50,7 @@
 //! the application that produces those files.
 
 mod canonical_function;
+mod design;
 mod export;
 mod import;
 mod json_parser_recipe;
@@ -68,6 +69,11 @@ pub use import::{
 pub use resource::PackageManifest;
 
 use thiserror::Error;
+
+/// Maximum UTF-8 byte length of one imported or exported `.mfd` design,
+/// including embedded metadata and XML escaping. Schema siblings have their
+/// own format-specific limits.
+pub const MAX_MFD_DESIGN_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum MfdError {
