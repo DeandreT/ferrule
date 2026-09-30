@@ -141,17 +141,17 @@ impl NativeWhere {
             return None;
         }
 
-        // Only a literal ASCII prefix followed by '%' is reversible here.
-        // It has no escape or single-character wildcard ambiguity, and the
-        // parameter remains a graph expression feeding the native control.
-        let pattern = literal_string(&project.graph.nodes, *parameter)?;
-        let prefix = pattern.strip_suffix('%')?;
-        if prefix.is_empty() || !prefix.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+        // Retain the connected expression on the native parameter pin, including
+        // a named optional host input. Its literal default keeps this inverse
+        // bounded to the same prefix family as ordinary constant patterns.
+        if !prefix_pattern(&project.graph.nodes, *parameter) {
             return None;
         }
-        if !row.bindings.iter().all(|binding| {
-            matches!(project.graph.nodes.get(&binding.node), Some(Node::SourceField { path, frame: None }) if path.len() == 1)
-        }) {
+        if !row
+            .bindings
+            .iter()
+            .all(|binding| native_projection(&project.graph.nodes, binding.node))
+        {
             return None;
         }
 
@@ -294,6 +294,49 @@ fn literal_string(nodes: &BTreeMap<NodeId, Node>, id: NodeId) -> Option<String> 
             })
         }
         _ => None,
+    }
+}
+
+fn prefix_pattern(nodes: &BTreeMap<NodeId, Node>, id: NodeId) -> bool {
+    if let Some(pattern) = literal_string(nodes, id) {
+        return pattern.strip_suffix('%').is_some_and(ascii_prefix);
+    }
+    let Some(Node::Call { function, args }) = nodes.get(&id) else {
+        return false;
+    };
+    let [prefix, suffix] = args.as_slice() else {
+        return false;
+    };
+    function == "concat"
+        && literal_string(nodes, *suffix).as_deref() == Some("%")
+        && optional_prefix(nodes, *prefix)
+}
+
+fn optional_prefix(nodes: &BTreeMap<NodeId, Node>, id: NodeId) -> bool {
+    match nodes.get(&id) {
+        Some(Node::Call { function, args }) if function == "string" => {
+            matches!(args.as_slice(), [input] if optional_prefix(nodes, *input))
+        }
+        Some(Node::RuntimeParameterDefault {
+            ty: ScalarType::String,
+            default,
+            ..
+        }) => literal_string(nodes, *default).is_some_and(|value| ascii_prefix(&value)),
+        _ => false,
+    }
+}
+
+fn ascii_prefix(prefix: &str) -> bool {
+    !prefix.is_empty() && prefix.bytes().all(|byte| byte.is_ascii_alphanumeric())
+}
+
+fn native_projection(nodes: &BTreeMap<NodeId, Node>, id: NodeId) -> bool {
+    match nodes.get(&id) {
+        Some(Node::SourceField { frame: None, .. } | Node::Const { .. }) => true,
+        Some(Node::Call { function, args }) if matches!(function.as_str(), "concat" | "string") => {
+            args.iter().all(|input| native_projection(nodes, *input))
+        }
+        _ => false,
     }
 }
 

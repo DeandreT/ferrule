@@ -192,6 +192,149 @@ fn shared_like_expression_is_not_absorbed_into_the_database_control()
 }
 
 #[test]
+fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new();
+    let imported = mfd::import(&fixture(&directory.0))?;
+    let mut project = imported.project;
+    let default = project.graph.nodes.keys().max().copied().unwrap() + 1;
+    let prefix = project
+        .graph
+        .nodes
+        .iter()
+        .find_map(|(id, node)| {
+            matches!(node, mapping::Node::Const { value: Value::String(value) } if value == "B")
+                .then_some(*id)
+        })
+        .unwrap();
+    project.graph.nodes.insert(
+        default,
+        mapping::Node::Const {
+            value: Value::String("B".into()),
+        },
+    );
+    project.graph.nodes.insert(
+        prefix,
+        mapping::Node::RuntimeParameterDefault {
+            name: "NamePrefix".into(),
+            ty: ir::ScalarType::String,
+            default,
+        },
+    );
+    // A computed row binding should retain its normal native graph wiring.
+    let department = project.root.children[0].bindings[1].node;
+    let label = default + 1;
+    project.graph.nodes.insert(
+        label,
+        mapping::Node::Call {
+            function: "concat".into(),
+            args: vec![department, department],
+        },
+    );
+    project.root.children[0].bindings[1].node = label;
+    assert!(engine::validate(&project).is_empty());
+    let source = format_db::read_instance(&directory.0.join("people.sqlite"), &project.source)?;
+    let native = directory.0.join("optional.mfd");
+    let report = mfd::preflight_export(&project, &native)?;
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(&project, &native, mfd::ExportProfile::NativeMfd)?;
+    let restored = mfd::import(&native)?;
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+    assert!(engine::validate(&restored.project).is_empty());
+    assert_eq!(
+        names(&engine::run(&restored.project, &source)?),
+        ["Bob", "Bex", "Bea"]
+    );
+    for prefix in ["G", "b", "_", "%"] {
+        let mut parameters = engine::RuntimeParameters::new();
+        parameters.insert("NamePrefix", Value::String(prefix.into()))?;
+        let context = engine::ExecutionContext::new(&native).with_parameters(&parameters);
+        let before = engine::run_with_context(&project, &source, &context)?;
+        let after = engine::run_with_context(&restored.project, &source, &context)?;
+        assert_eq!(after, before, "prefix {prefix:?}");
+        let connection = Connection::open(directory.0.join("people.sqlite"))?;
+        let sql_names = connection
+            .prepare("SELECT Name FROM People WHERE Name LIKE ?1 ORDER BY Name DESC")?
+            .query_map([format!("{prefix}%")], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(names(&after), sql_names, "prefix {prefix:?}");
+    }
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("NamePrefix", Value::Null)?;
+    let context = engine::ExecutionContext::new(&native).with_parameters(&parameters);
+    assert_eq!(
+        engine::run_with_context(&restored.project, &source, &context)?,
+        engine::run_with_context(&project, &source, &context)?,
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "needs the local ignored ReferenceSamples corpus"]
+fn local_phone_list_native_roundtrip_keeps_optional_prefix_and_related_fields()
+-> Result<(), Box<dyn std::error::Error>> {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples")
+        .canonicalize()?;
+    let imported = mfd::import(&samples.join("DB_PhoneList.mfd"))?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let source =
+        format_db::read_instance(&samples.join("Altova.sqlite"), &imported.project.source)?;
+    let directory = TempDir::new();
+    let native = directory.0.join("phone-list.mfd");
+    let report = mfd::preflight_export(&imported.project, &native)?;
+    assert!(report.is_native_compatible(), "{report}");
+    mfd::export_with_profile(&imported.project, &native, mfd::ExportProfile::NativeMfd)?;
+    let restored = mfd::import(&native)?;
+    assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+    assert!(engine::validate(&restored.project).is_empty());
+    let last_names = |output: &Instance| {
+        output
+            .field("Person")
+            .and_then(Instance::as_repeated)
+            .unwrap()
+            .iter()
+            .map(|person| {
+                person
+                    .field("Last")
+                    .and_then(Instance::as_scalar)
+                    .unwrap()
+                    .clone()
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = engine::run(&imported.project, &source)?;
+    assert_eq!(
+        last_names(&before),
+        ["Bander", "Bass", "Bone", "Butler"].map(|name| Value::String(name.into()))
+    );
+    let after = engine::run(&restored.project, &source)?;
+    let xml_bytes = |project: &mapping::Project, value: &Instance, name: &str| {
+        let path = directory.0.join(name);
+        format_xml::write(&path, &project.target, value)?;
+        std::fs::read(path).map_err(Box::<dyn std::error::Error>::from)
+    };
+    assert_eq!(
+        xml_bytes(&restored.project, &after, "default-after.xml")?,
+        xml_bytes(&imported.project, &before, "default-before.xml")?,
+    );
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("NamePrefix", Value::String("F".into()))?;
+    let context = engine::ExecutionContext::new(&native).with_parameters(&parameters);
+    let before = engine::run_with_context(&imported.project, &source, &context)?;
+    assert_eq!(
+        last_names(&before),
+        ["Firstbread", "Franken", "Further"].map(|name| Value::String(name.into()))
+    );
+    let after = engine::run_with_context(&restored.project, &source, &context)?;
+    assert_eq!(
+        xml_bytes(&restored.project, &after, "override-after.xml")?,
+        xml_bytes(&imported.project, &before, "override-before.xml")?,
+    );
+    Ok(())
+}
+
+#[test]
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn local_filter_database_records_strict_export_reimports_same_output()
 -> Result<(), Box<dyn std::error::Error>> {
