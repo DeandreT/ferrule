@@ -379,6 +379,10 @@ named XML targets. The import validates
 the whole stage graph before writing `flow.json`; other intermediate branches,
 cycles, bypasses, and disconnected XML boundaries reject explicitly. See
 [mapping pipelines](mapping-pipelines.md) for input binding and execution.
+The GUI can preview or debug the saved pipeline without publishing outputs.
+Its bounded byte host retains typed intermediate results and returns each
+stage's primary and named artifacts with stage-qualified traces. This local
+workflow does not establish reference-application acceptance of exported designs.
 
 Static source, target, named-source, and named-target paths are rebased when
 the generated project is written somewhere other than the design directory.
