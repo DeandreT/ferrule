@@ -66,8 +66,10 @@ fn optional_project() -> Project {
             nodes: BTreeMap::from([
                 (
                     1,
-                    Node::Const {
-                        value: Value::String("7".into()),
+                    Node::If {
+                        condition: 6,
+                        then: 7,
+                        else_: 4,
                     },
                 ),
                 (
@@ -83,6 +85,33 @@ fn optional_project() -> Project {
                     Node::UserFunctionCall {
                         function: outer,
                         args: Vec::new(),
+                    },
+                ),
+                (
+                    4,
+                    Node::Const {
+                        value: Value::String("7".into()),
+                    },
+                ),
+                (
+                    5,
+                    Node::Const {
+                        value: Value::Bool(false),
+                    },
+                ),
+                (
+                    6,
+                    Node::RuntimeParameterDefault {
+                        name: "explode_default".into(),
+                        ty: ScalarType::Bool,
+                        default: 5,
+                    },
+                ),
+                (
+                    7,
+                    Node::RuntimeParameter {
+                        name: "missing_default".into(),
+                        ty: ScalarType::Int,
                     },
                 ),
             ]),
@@ -131,6 +160,26 @@ fn optional_runtime_defaults_match_interpreter_in_generated_rust_and_csharp() ->
             ),
         ])
     );
+    let mut lazy = engine::RuntimeParameters::new();
+    lazy.insert("explode_default", Value::Bool(true))?;
+    lazy.insert("control", Value::Int(9))?;
+    let context =
+        engine::ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&lazy);
+    assert_eq!(
+        engine::run_with_context(&project, &source, &context)?.field("Direct"),
+        Some(&Instance::Scalar(Value::Int(9)))
+    );
+    let mut failing = engine::RuntimeParameters::new();
+    failing.insert("explode_default", Value::Bool(true))?;
+    let context =
+        engine::ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&failing);
+    assert_eq!(
+        engine::run_with_context(&project, &source, &context),
+        Err(engine::EngineError::MissingRuntimeParameter {
+            node: 7,
+            name: "missing_default".into(),
+        })
+    );
 
     let directory = TempDir::new("optional_runtime_defaults")?;
     let project_path = directory.0.join("project.json");
@@ -145,6 +194,10 @@ fn optional_runtime_defaults_match_interpreter_in_generated_rust_and_csharp() ->
         },
     )?;
     std::fs::write(
+        rust_output.join("target-schema.json"),
+        serde_json::to_vec(&project.target)?,
+    )?;
+    std::fs::write(
         rust_output.join("src/main.rs"),
         include_str!("fixtures/optional_runtime_defaults_rust.rs.txt"),
     )?;
@@ -152,6 +205,7 @@ fn optional_runtime_defaults_match_interpreter_in_generated_rust_and_csharp() ->
         .args(["run", "--quiet"])
         .current_dir(&rust_output)
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
+        .env("RUSTFLAGS", "-Dwarnings")
         .isolated_output()?;
     assert!(
         rust.status.success(),
