@@ -230,6 +230,102 @@ mod tests {
     }
 
     #[test]
+    fn parse_field_accepts_raw_function_inputs_beyond_generated_host_limits() {
+        const HOST_SCHEMA_BYTES: usize = 1024 * 1024;
+        const HOST_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
+
+        let mut large_schema = SchemaNode::scalar("", ScalarType::Int);
+        let overhead = serde_json::to_string(&large_schema).unwrap().len();
+        large_schema.name = "N".repeat(HOST_SCHEMA_BYTES + 1 - overhead);
+        let descriptor = serde_json::to_string(&large_schema).unwrap();
+        assert_eq!(descriptor.len(), HOST_SCHEMA_BYTES + 1);
+        assert_eq!(
+            parse_field(&[
+                Value::String("42".into()),
+                Value::String(descriptor),
+                Value::String("[]".into()),
+            ]),
+            Ok(Value::Int(42)),
+        );
+
+        let ordinary_schema =
+            serde_json::to_string(&SchemaNode::scalar("Value", ScalarType::Int)).unwrap();
+        let large_input = format!("42{}", " ".repeat(HOST_DOCUMENT_BYTES));
+        assert_eq!(large_input.len(), HOST_DOCUMENT_BYTES + 2);
+        assert_eq!(
+            parse_field(&[
+                Value::String(large_input),
+                Value::String(ordinary_schema),
+                Value::String("[]".into()),
+            ]),
+            Ok(Value::Int(42)),
+        );
+
+        let mut row = SchemaNode::group("Rows", vec![SchemaNode::scalar("v", ScalarType::Int)]);
+        row.repeating = true;
+        let schema = SchemaNode::group(
+            "Root",
+            vec![row, SchemaNode::scalar("Count", ScalarType::Int)],
+        );
+        let descriptor = serde_json::to_string(&schema).unwrap();
+        let mut input = String::with_capacity(8_000_032);
+        input.push_str(r#"{"Rows":[{"v":1}"#);
+        for _ in 1..=1_000_000 {
+            input.push_str(r#",{"v":1}"#);
+        }
+        input.push_str(r#"],"Count":7}"#);
+        assert_eq!(input.len(), 8_000_028);
+        assert_eq!(
+            parse_field(&[
+                Value::String(input),
+                Value::String(descriptor),
+                Value::String(r#"["Count"]"#.into()),
+            ]),
+            Ok(Value::Int(7)),
+        );
+    }
+
+    #[test]
+    fn parse_field_preserves_schema_path_input_error_order_and_null_short_circuit() {
+        let valid = serde_json::to_string(&SchemaNode::scalar("Value", ScalarType::Int)).unwrap();
+        let error = |input: Value, schema: &str, path: &str| {
+            parse_field(&[
+                input,
+                Value::String(schema.into()),
+                Value::String(path.into()),
+            ])
+        };
+        assert_eq!(
+            error(
+                Value::String("not JSON".into()),
+                "not a schema",
+                "not a path"
+            ),
+            Err(FunctionError::InvalidArgument {
+                function: "json_parse_field",
+                message: "schema descriptor is invalid",
+            }),
+        );
+        assert_eq!(
+            error(Value::String("not JSON".into()), &valid, "not a path"),
+            Err(FunctionError::InvalidArgument {
+                function: "json_parse_field",
+                message: "field path descriptor is invalid",
+            }),
+        );
+        assert_eq!(
+            error(Value::String("not JSON".into()), &valid, "[]"),
+            Err(FunctionError::InvalidArgument {
+                function: "json_parse_field",
+                message: "input does not match the JSON schema",
+            }),
+        );
+        for input in [Value::Null, Value::json_null()] {
+            assert_eq!(error(input, "not a schema", "not a path"), Ok(Value::Null));
+        }
+    }
+
+    #[test]
     fn serializes_nested_typed_properties_and_omits_nulls() {
         let value = serialize_object(&[
             Value::String(r#"["Shares"]"#.into()),

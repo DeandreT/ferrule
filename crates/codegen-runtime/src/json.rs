@@ -9,6 +9,8 @@ mod allowed_values;
 mod contains;
 #[cfg(test)]
 mod dependent_schemas;
+#[cfg(test)]
+mod large_collections;
 mod multiple_of;
 #[cfg(test)]
 mod output_normalization;

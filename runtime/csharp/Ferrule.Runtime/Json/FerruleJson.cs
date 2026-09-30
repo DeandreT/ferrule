@@ -13,6 +13,8 @@ public static partial class FerruleJson
     public const int MaximumSchemaBytes = 1024 * 1024;
     public const int MaximumDocumentBytes = 64 * 1024 * 1024;
     public const int MaximumDepth = 256;
+    // Retained for keyword-specific validation and source compatibility;
+    // ordinary schema/document traversal has no general node-count cap.
     public const int MaximumNodes = 1_000_000;
 
     // serde_json's default reader permits 127 nested JSON containers. Keep
@@ -60,11 +62,26 @@ public static partial class FerruleJson
     }
 
     public static FerruleInstance Parse(string schemaJson, string document)
+        => ParseCore(schemaJson, document, enforceHostLimits: true);
+
+    // Graph-level json_parse_field receives ordinary runtime strings, not a
+    // generated JSON host document. Native format_json::from_str has no
+    // general byte or mapped-node cap for this function.
+    internal static FerruleInstance ParseFunctionInput(string schemaJson, string document)
+        => ParseCore(schemaJson, document, enforceHostLimits: false);
+
+    private static FerruleInstance ParseCore(
+        string schemaJson,
+        string document,
+        bool enforceHostLimits)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(document);
-        RequireUtf8Limit(schemaJson, MaximumSchemaBytes, "embedded JSON schema");
-        RequireUtf8Limit(document, MaximumDocumentBytes, "JSON input");
+        if (enforceHostLimits)
+        {
+            RequireUtf8Limit(schemaJson, MaximumSchemaBytes, "embedded JSON schema");
+            RequireUtf8Limit(document, MaximumDocumentBytes, "JSON input");
+        }
         var schema = ParseSchema(schemaJson);
         try
         {
@@ -112,6 +129,12 @@ public static partial class FerruleJson
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         RequireUtf8Limit(schemaJson, MaximumSchemaBytes, "embedded JSON schema");
+        _ = ParseSchema(schemaJson);
+    }
+
+    internal static void ValidateFunctionSchema(string schemaJson)
+    {
+        ArgumentNullException.ThrowIfNull(schemaJson);
         _ = ParseSchema(schemaJson);
     }
 
@@ -3227,7 +3250,6 @@ public static partial class FerruleJson
     {
         private readonly PatternWorkBudget _patternWork;
         private readonly bool _outputNormalizedNumbers;
-        private int _nodes;
         private int _recursiveReferences;
         private bool _fatalTraversalLimit;
         private NodeBudget? _matcher;
@@ -3282,13 +3304,6 @@ public static partial class FerruleJson
             {
                 _fatalTraversalLimit = true;
                 throw Boundary($"JSON nesting exceeds the {MaximumDepth}-level limit.");
-            }
-
-            _nodes = checked(_nodes + 1);
-            if (_nodes > MaximumNodes)
-            {
-                _fatalTraversalLimit = true;
-                throw Boundary($"JSON document exceeds the {MaximumNodes}-node limit.");
             }
         }
 
