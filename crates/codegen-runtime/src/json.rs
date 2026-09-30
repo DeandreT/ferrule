@@ -11,6 +11,8 @@ mod contains;
 mod dependent_schemas;
 mod multiple_of;
 #[cfg(test)]
+mod output_normalization;
+#[cfg(test)]
 mod pattern_properties;
 #[cfg(test)]
 mod property_names;
@@ -131,21 +133,26 @@ impl ConstraintBoundary {
     ) -> Result<String, JsonBoundaryError> {
         let schema = self.parse_schema(schema)?;
         let formatter_schema = without_boundary_constraints(schema.clone());
-        let document = format_json::to_string(&formatter_schema, instance).map_err(|error| {
+        let value = format_json::to_value(&formatter_schema, instance).map_err(|error| {
             JsonBoundaryError::InvalidOutput {
                 message: error.to_string(),
             }
         })?;
+        let mut document = serde_json::to_string_pretty(&value).map_err(|error| {
+            JsonBoundaryError::InvalidOutput {
+                message: error.to_string(),
+            }
+        })?;
+        document.push('\n');
         if document.len() > MAX_JSON_DOCUMENT_BYTES {
             return Err(JsonBoundaryError::OutputTooLarge {
                 bytes: document.len(),
                 max: MAX_JSON_DOCUMENT_BYTES,
             });
         }
-        let value =
-            serde_json::from_str(&document).map_err(|error| JsonBoundaryError::InvalidOutput {
-                message: error.to_string(),
-            })?;
+        // Validate normalized output values directly. Parsing the text again
+        // can move a float by one ULP with serde_json's default number reader,
+        // changing allowed-value, multiple-of, or structural-uniqueness results.
         self.validate_output(&schema, &value)?;
         Ok(document)
     }

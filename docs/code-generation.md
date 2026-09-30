@@ -182,7 +182,7 @@ contract for typed JSON leaves and integral schema metadata; integer-to-number
 conversion still requires exact representation. Raw JSON and embedded schema
 parsing accept at most 127 nested containers, matching the interpreter.
 Over-depth encoded JSON in an ordinary graph string uses the same string
-fallback as other invalid encoded JSON. Constructed output traversal retains
+fallback as other invalid encoded JSON. Schema-shaped output traversal retains
 its separate depth bound. Canonical intermediate strings can grow beyond the
 input document size, so document limits do not establish complete allocation
 isolation.
@@ -192,6 +192,13 @@ compact text, including Unicode property names, floating-point scalar tags,
 and negative zero. Its C# renderer walks nested objects iteratively, so deep
 constructed property paths do not inherit the raw JSON reader's depth limit.
 Malformed path descriptors retain typed function errors.
+
+Generated JSON outputs use the interpreter's pretty formatting, Unicode
+escaping, and floating-point text in both languages. Output constraints inspect
+the normalized value before serialization. Reparsing that text can change a
+floating-point value, so generated Rust validates its normalized JSON tree
+directly; valid arbitrary-JSON leaves also retain their own input depth check
+when nested into a deeper final target document.
 
 Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated

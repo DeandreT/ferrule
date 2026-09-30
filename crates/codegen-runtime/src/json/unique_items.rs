@@ -214,6 +214,65 @@ mod tests {
     }
 
     #[test]
+    fn distinct_output_floats_are_checked_without_reparsing_their_text()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let schema = SchemaNode::scalar("Numbers", ScalarType::Float)
+            .repeating()
+            .with_json_unique_items()
+            .ok_or("test number array accepts uniqueItems")?;
+        let encoded = serde_json::to_string(&schema)?;
+        let first = f64::from_bits(0x3fef_ffff_ffff_fc19);
+        let second = f64::from_bits(0x3fef_ffff_ffff_fc1a);
+        let distinct = Instance::Repeated(vec![
+            Instance::Scalar(Value::Float(first)),
+            Instance::Scalar(Value::Float(second)),
+        ]);
+        let native = format_json::to_string(&schema, &distinct)?;
+        assert_eq!(
+            native,
+            "[\n  0.9999999999998891,\n  0.9999999999998892\n]\n"
+        );
+        // serde_json's fast reader rounds these two distinct emitted floats
+        // to one value. Output validation must use the normalized value tree.
+        let reparsed: Vec<f64> = serde_json::from_str(&native)?;
+        assert_eq!(reparsed[0], reparsed[1]);
+        assert_eq!(serialize_json(&encoded, &distinct)?, native);
+
+        let duplicate = Instance::Repeated(vec![
+            Instance::Scalar(Value::Float(second)),
+            Instance::Scalar(Value::Float(second)),
+        ]);
+        assert!(format_json::to_string(&schema, &duplicate).is_err());
+        assert!(matches!(
+            serialize_json(&encoded, &duplicate),
+            Err(JsonBoundaryError::InvalidOutput { ref message })
+                if message.contains("indexes 1 and 2")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn parsed_any_output_can_be_nested_beyond_the_input_text_depth_limit()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let any = SchemaNode::scalar("Payload", ScalarType::String)
+            .json_any()
+            .ok_or("test scalar accepts arbitrary JSON")?;
+        let schema = SchemaNode::group("Root", vec![any]);
+        let encoded = serde_json::to_string(&schema)?;
+        let nested = format!("{}0{}", "[".repeat(127), "]".repeat(127));
+        let instance = Instance::Group(vec![(
+            "Payload".into(),
+            Instance::Scalar(Value::String(nested)),
+        )]);
+        let native = format_json::to_string(&schema, &instance)?;
+        // The arbitrary JSON leaf was valid at its own parse boundary. One
+        // enclosing target object creates 128 containers in the final output.
+        assert!(serde_json::from_str::<serde_json::Value>(&native).is_err());
+        assert_eq!(serialize_json(&encoded, &instance)?, native);
+        Ok(())
+    }
+
+    #[test]
     fn malformed_embedded_unique_items_domain_is_schema_error() {
         let malformed = r#"{
             "name":"Value",
