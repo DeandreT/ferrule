@@ -740,17 +740,17 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::RuntimeValue { value } => Expression::RuntimeValue {
             value: (*value).into(),
         },
-        Node::RuntimeParameter { name, ty } => Expression::RuntimeParameter {
+        Node::RuntimeParameter { name, ty, .. } => Expression::RuntimeParameter {
             name: name.clone(),
             ty: *ty,
         },
-        Node::RuntimeParameterDefault { name, ty, default } => {
-            Expression::RuntimeParameterDefault {
-                name: name.clone(),
-                ty: *ty,
-                default: *default,
-            }
-        }
+        Node::RuntimeParameterDefault {
+            name, ty, default, ..
+        } => Expression::RuntimeParameterDefault {
+            name: name.clone(),
+            ty: *ty,
+            default: *default,
+        },
         Node::Call { function, args } => {
             if function == "flextext_parse_field" {
                 let [input, layout, path] = args.as_slice() else {

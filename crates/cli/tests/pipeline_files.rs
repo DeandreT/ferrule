@@ -337,6 +337,7 @@ fn three_stage_mixed_format_pipeline_publishes_only_after_every_stage_succeeds()
         Node::RuntimeParameter {
             name: "missing".into(),
             ty: ScalarType::String,
+            preview: None,
         },
     );
     pipeline.stages[0].project.root = Scope {
@@ -375,6 +376,7 @@ fn later_stage_failure_publishes_nothing_and_preserves_existing_files() -> Resul
         Node::RuntimeParameter {
             name: "required".into(),
             ty: ScalarType::String,
+            preview: None,
         },
     );
     consumer.root = Scope {

@@ -288,6 +288,12 @@ pub enum EngineError {
         expected: ScalarType,
         found: &'static str,
     },
+    #[error("graph node {node}: runtime parameter `{name}` preview exceeds {limit} UTF-8 bytes")]
+    RuntimeParameterPreviewTooLong {
+        node: NodeId,
+        name: String,
+        limit: usize,
+    },
     #[error("dynamic source `{source_name}` requires a host source loader")]
     MissingDynamicSourceLoader { source_name: String },
     #[error("dynamic source `{source_name}` path expression produced {found}, expected a string")]
@@ -417,13 +423,24 @@ pub fn run_selected_target(
     run_selected_target_internal(project, source, Vec::new(), None, selection)
 }
 
-/// Host values available to runtime graph nodes.
+/// Whether interpreter evaluation may use retained host-input previews.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ExecutionPurpose {
+    /// Uses supplied host values and connected defaults, ignoring previews.
+    #[default]
+    Run,
+    /// Uses each host node's preview when its named host value is absent.
+    Preview,
+}
+
+/// Host values and explicit purpose available to runtime graph nodes.
 #[derive(Clone, Copy)]
 pub struct ExecutionContext<'a> {
     mapping_file_path: &'a Path,
     main_mapping_file_path: &'a Path,
     current_datetime: Option<&'a str>,
     parameters: Option<&'a RuntimeParameters>,
+    purpose: ExecutionPurpose,
     dynamic_source_loader: Option<&'a dyn DynamicSourceLoader>,
     trace_sink: Option<&'a dyn TraceSink>,
     debug_hook: Option<&'a dyn DebugHook>,
@@ -442,6 +459,7 @@ impl<'a> ExecutionContext<'a> {
             main_mapping_file_path: mapping_file_path,
             current_datetime: None,
             parameters: None,
+            purpose: ExecutionPurpose::Run,
             dynamic_source_loader: None,
             trace_sink: None,
             debug_hook: None,
@@ -458,6 +476,7 @@ impl<'a> ExecutionContext<'a> {
             main_mapping_file_path,
             current_datetime: None,
             parameters: None,
+            purpose: ExecutionPurpose::Run,
             dynamic_source_loader: None,
             trace_sink: None,
             debug_hook: None,
@@ -474,6 +493,17 @@ impl<'a> ExecutionContext<'a> {
     pub fn with_parameters(mut self, parameters: &'a RuntimeParameters) -> Self {
         self.parameters = Some(parameters);
         self
+    }
+
+    /// Selects whether host nodes may use their retained lexical previews.
+    /// Supplied host values, including Null, always take precedence.
+    pub fn with_purpose(mut self, purpose: ExecutionPurpose) -> Self {
+        self.purpose = purpose;
+        self
+    }
+
+    pub const fn purpose(&self) -> ExecutionPurpose {
+        self.purpose
     }
 
     /// Supplies lazy typed-source loading for dynamic secondary inputs.
@@ -693,7 +723,8 @@ fn evaluate_run<R>(
         execution.and_then(|execution| execution.trace_sink),
         &first_failure_reported,
     )
-    .with_debug_hook(execution.and_then(|execution| execution.debug_hook));
+    .with_debug_hook(execution.and_then(|execution| execution.debug_hook))
+    .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose));
     failure::evaluate(program, &project.failure_rules, &context)?;
     evaluate(program, &context)
 }

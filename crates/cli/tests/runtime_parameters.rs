@@ -55,6 +55,7 @@ fn project() -> Project {
                     Node::RuntimeParameter {
                         name: "correlation_id".into(),
                         ty: ScalarType::String,
+                        preview: None,
                     },
                 ),
                 (
@@ -62,6 +63,7 @@ fn project() -> Project {
                     Node::RuntimeParameter {
                         name: "control_number".into(),
                         ty: ScalarType::Int,
+                        preview: None,
                     },
                 ),
                 (
@@ -69,6 +71,7 @@ fn project() -> Project {
                     Node::RuntimeParameter {
                         name: "test_mode".into(),
                         ty: ScalarType::Bool,
+                        preview: None,
                     },
                 ),
             ]),

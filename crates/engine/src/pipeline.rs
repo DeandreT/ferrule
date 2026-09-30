@@ -643,6 +643,7 @@ mod tests {
             Node::RuntimeParameter {
                 name: "required".into(),
                 ty: ScalarType::String,
+                preview: None,
             },
         );
         let pipeline = Pipeline {

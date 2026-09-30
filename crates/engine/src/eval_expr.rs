@@ -8,7 +8,7 @@ use ir::{
 use mapping::{FunctionId, Graph, Node, NodeId, UserFunction};
 
 use crate::aggregate::aggregate;
-use crate::context::{runtime_field, runtime_parameter_field};
+use crate::context::{parameter_value, runtime_field};
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
 use crate::resolve::{
     dynamic_scalar, field_scalar, instance_in_active_collection, instance_in_frame, join_scalar,
@@ -18,7 +18,7 @@ use crate::sequence::{eval_sequence_aggregate, eval_sequence_exists, eval_sequen
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{TraceSink, record_node_input_value, record_node_value};
 use crate::user_function;
-use crate::{DebugHook, EngineError};
+use crate::{DebugHook, EngineError, ExecutionPurpose};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EvalProgram<'a> {
@@ -27,6 +27,7 @@ pub(crate) struct EvalProgram<'a> {
     pub(crate) trace_sink: Option<&'a dyn TraceSink>,
     pub(crate) debug_hook: Option<&'a dyn DebugHook>,
     pub(crate) first_failure_reported: &'a Cell<bool>,
+    purpose: ExecutionPurpose,
 }
 
 impl<'a> EvalProgram<'a> {
@@ -42,11 +43,17 @@ impl<'a> EvalProgram<'a> {
             trace_sink,
             debug_hook: None,
             first_failure_reported,
+            purpose: ExecutionPurpose::Run,
         }
     }
 
     pub(crate) fn with_debug_hook(mut self, hook: Option<&'a dyn DebugHook>) -> Self {
         self.debug_hook = hook;
+        self
+    }
+
+    pub(crate) fn with_purpose(mut self, purpose: ExecutionPurpose) -> Self {
+        self.purpose = purpose;
         self
     }
 }
@@ -134,29 +141,39 @@ fn eval_expr_inner(
             .and_then(Instance::as_scalar)
             .cloned()
             .ok_or(EngineError::MissingRuntimeValue(*value)),
-        Node::RuntimeParameter { name, ty } => {
-            let value = context
-                .first()
-                .and_then(|frame| frame.field(&runtime_parameter_field(name)))
-                .and_then(Instance::as_scalar)
-                .ok_or_else(|| EngineError::MissingRuntimeParameter {
-                    node: node_id,
-                    name: name.clone(),
-                })?;
-            coerce_value_map_input(value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
+        Node::RuntimeParameter { name, ty, preview } => {
+            let value = parameter_value(
+                context.first().copied(),
+                name,
+                preview.as_deref(),
+                program.purpose,
+                node_id,
+            )?
+            .ok_or_else(|| EngineError::MissingRuntimeParameter {
+                node: node_id,
+                name: name.clone(),
+            })?;
+            coerce_value_map_input(&value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
                 node: node_id,
                 name: name.clone(),
                 expected: *ty,
                 found: value.type_name(),
             })
         }
-        Node::RuntimeParameterDefault { name, ty, default } => {
-            let value = match context
-                .first()
-                .and_then(|frame| frame.field(&runtime_parameter_field(name)))
-                .and_then(Instance::as_scalar)
-            {
-                Some(value) => value.clone(),
+        Node::RuntimeParameterDefault {
+            name,
+            ty,
+            default,
+            preview,
+        } => {
+            let value = match parameter_value(
+                context.first().copied(),
+                name,
+                preview.as_deref(),
+                program.purpose,
+                node_id,
+            )? {
+                Some(value) => value.into_owned(),
                 None => eval_node_input(
                     program,
                     node_id,
@@ -211,6 +228,7 @@ fn eval_expr_inner(
                 program.debug_hook,
                 program.first_failure_reported,
                 positions,
+                program.purpose,
             )
         }
         Node::If {

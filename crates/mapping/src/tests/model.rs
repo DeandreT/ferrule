@@ -281,6 +281,7 @@ fn optional_runtime_parameter_serializes_without_changing_required_parameter_sha
         name: "NamePrefix".into(),
         ty: ScalarType::String,
         default: 7,
+        preview: None,
     };
     let encoded = serde_json::to_value(&optional).unwrap();
     assert_eq!(encoded["kind"], "runtime_parameter_default");
@@ -296,6 +297,59 @@ fn optional_runtime_parameter_serializes_without_changing_required_parameter_sha
         serde_json::from_str(r#"{"kind":"runtime_parameter","name":"required","ty":"int"}"#)
             .unwrap();
     assert!(matches!(required, crate::Node::RuntimeParameter { .. }));
+}
+
+#[test]
+fn host_preview_metadata_preserves_raw_lexicals_and_legacy_absence() {
+    for kind in ["runtime_parameter", "runtime_parameter_default"] {
+        let default = if kind.ends_with("default") {
+            r#", "default":7"#
+        } else {
+            ""
+        };
+        let legacy = format!(r#"{{"kind":"{kind}","name":"control","ty":"int"{default}}}"#);
+        let node: crate::Node = serde_json::from_str(&legacy).unwrap();
+        assert!(!serde_json::to_string(&node).unwrap().contains("preview"));
+        for lexical in ["", "not an integer", "  17  "] {
+            let mut encoded = serde_json::from_str::<serde_json::Value>(&legacy).unwrap();
+            encoded["preview"] = lexical.into();
+            let node: crate::Node = serde_json::from_value(encoded.clone()).unwrap();
+            assert_eq!(serde_json::to_value(node).unwrap(), encoded);
+        }
+    }
+}
+
+#[test]
+fn host_preview_metadata_bounds_utf8_bytes_on_read_and_write() {
+    let mut node = crate::Node::RuntimeParameter {
+        name: "control".into(),
+        ty: ScalarType::String,
+        preview: Some("é".repeat(4 * 1024 * 1024)),
+    };
+    let at_limit = serde_json::to_string(&node).unwrap();
+    assert!(serde_json::from_str::<crate::Node>(&at_limit).is_ok());
+    let crate::Node::RuntimeParameter {
+        preview: Some(preview),
+        ..
+    } = &mut node
+    else {
+        panic!("preview");
+    };
+    preview.push('X');
+    assert!(
+        serde_json::to_string(&node)
+            .unwrap_err()
+            .to_string()
+            .contains("preview exceeds")
+    );
+    let mut encoded: serde_json::Value = serde_json::from_str(&at_limit).unwrap();
+    encoded["preview"] = format!("{}X", encoded["preview"].as_str().unwrap()).into();
+    assert!(
+        serde_json::from_value::<crate::Node>(encoded)
+            .unwrap_err()
+            .to_string()
+            .contains("preview exceeds")
+    );
 }
 
 #[test]
