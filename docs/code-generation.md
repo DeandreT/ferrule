@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports thirty-eight warning-free designs: JSON to
+An opt-in local-corpus smoke test imports thirty-nine warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -610,6 +610,14 @@ and C# typed and JSON APIs match the interpreter; the same hierarchical writer
 produces each workbook, which is decoded to compare sheet order and cells.
 ZIP bytes are not used as a semantic equality check. No native reference
 workbook is pinned for this design.
+The thirty-ninth parses a local database log through an embedded FlexText
+first-match switch. The test checks that all 17 source lines reach exactly
+one of three fixed-width outputs in primary, `Output B`, `Output C` order,
+with 6, 5, and 6 rows. It verifies schema-shaped JSON transport of the
+nested Switch instance, interpreter and generated Rust/C# typed and JSON
+output sets, and exact 100-column space-padded LF records from the same
+fixed-width writer. No native reference output files are pinned for this
+design.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
