@@ -32,6 +32,7 @@ mod code_generation;
 mod output_documents;
 mod payload;
 mod pipeline;
+mod pipeline_preview;
 mod project_paths;
 mod stdio;
 mod trace_json;
@@ -53,6 +54,10 @@ pub use payload::{
 pub use pipeline::{
     PipelineArtifact, PipelineHostFile, PipelineOutputFile, PipelineRunOptions, PipelineRunOutcome,
     run_pipeline_file, run_pipeline_file_with_options,
+};
+pub use pipeline_preview::{
+    PipelineHostPayload, PipelinePreviewArtifact, PipelinePreviewOptions, PipelinePreviewOutcome,
+    PipelinePreviewOutputIdentity, preview_pipeline_value_payloads, validate_pipeline_preview,
 };
 pub use project_paths::rebase as rebase_project_paths;
 pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
@@ -801,7 +806,7 @@ pub fn import_mfd(
     Ok(imported.warnings)
 }
 
-/// Imports a connected two- or three-stage XML `.mfd` design as a runnable typed pipeline.
+/// Imports a bounded serial XML `.mfd` design as a runnable typed pipeline.
 /// The complete pipeline is validated before its JSON file is written.
 pub fn import_mfd_pipeline(
     mfd_path: &Path,
