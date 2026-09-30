@@ -442,7 +442,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports thirty-one warning-free designs: JSON to
+An opt-in local-corpus smoke test imports thirty-two warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -552,6 +552,12 @@ must agree with their JSON APIs and the interpreter's schema-shaped JSON; their
 XML serialization must match the interpreter byte for byte. The C# host passes
 the imported root namespace explicitly to its XML serializer. No native
 reference output is pinned for this design.
+The thirty-second maps local XML employees to a proto2 `Persons` target. It
+checks all 21 ordered people, representative names, IDs, email addresses, and
+phone records with the fixed WORK enum value. Generated Rust/C# typed and JSON
+APIs must agree with the interpreter's schema-shaped values; the same embedded
+Protobuf layout must encode both results to identical bytes and decode them
+back to the mapped values. No native reference binary is pinned for this design.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
