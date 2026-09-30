@@ -4,6 +4,11 @@ namespace Ferrule.Runtime;
 
 public static partial class FerruleFunctions
 {
+    // Match the bundled SQLite LIKE pattern cap before NUL truncation.
+    private const int MaxSqlLikePatternUtf8Bytes = 50_000;
+    // Shared with Rust: cap value-rune × pattern-rune DP cell updates.
+    private const long MaxSqlLikeWorkCells = 100_000_000;
+
     private static FerruleValue Concat(IReadOnlyList<FerruleValue> arguments)
     {
         var result = new StringBuilder();
@@ -108,38 +113,65 @@ public static partial class FerruleFunctions
 
     private static bool SqlLike(string value, string pattern)
     {
-        var valueRunes = Runes(value);
-        var previous = new bool[valueRunes.Count + 1];
-        previous[0] = true;
-        foreach (var token in pattern.EnumerateRunes())
+        if (Encoding.UTF8.GetByteCount(pattern) > MaxSqlLikePatternUtf8Bytes)
         {
-            var current = new bool[valueRunes.Count + 1];
-            if (token.Value == '%')
-            {
-                current[0] = previous[0];
-                for (var index = 1; index <= valueRunes.Count; index++)
-                {
-                    current[index] = previous[index] || current[index - 1];
-                }
-            }
-            else if (token.Value == '_')
-            {
-                for (var index = 1; index <= valueRunes.Count; index++)
-                {
-                    current[index] = previous[index - 1];
-                }
-            }
-            else
-            {
-                for (var index = 1; index <= valueRunes.Count; index++)
-                {
-                    current[index] = previous[index - 1] &&
-                        EqualIgnoringAsciiCase(valueRunes[index - 1], token);
-                }
-            }
-            previous = current;
+            throw InvalidArgument("sql_like", "pattern exceeds 50000 UTF-8 bytes");
         }
-        return previous[valueRunes.Count];
+        var valueNul = value.IndexOf('\0');
+        var patternNul = pattern.IndexOf('\0');
+        var visibleValue = value.AsSpan(0, valueNul < 0 ? value.Length : valueNul);
+        var visiblePattern = pattern.AsSpan(0, patternNul < 0 ? pattern.Length : patternNul);
+        var tokens = new List<Rune>();
+        foreach (var token in visiblePattern.EnumerateRunes())
+        {
+            if (token.Value != '%' || tokens.Count == 0 || tokens[^1].Value != '%')
+            {
+                tokens.Add(token);
+            }
+        }
+        var valueRuneCount = 0;
+        foreach (var _ in visibleValue.EnumerateRunes())
+        {
+            valueRuneCount++;
+        }
+        if ((long)valueRuneCount * tokens.Count > MaxSqlLikeWorkCells)
+        {
+            throw InvalidArgument("sql_like", "matching work exceeds 100000000 cell updates");
+        }
+
+        var states = new bool[tokens.Count + 1];
+        states[0] = true;
+        for (var index = 0; index < tokens.Count; index++)
+        {
+            if (tokens[index].Value == '%')
+            {
+                states[index + 1] = states[index];
+            }
+        }
+        foreach (var character in visibleValue.EnumerateRunes())
+        {
+            var diagonal = states[0];
+            states[0] = false;
+            for (var index = 0; index < tokens.Count; index++)
+            {
+                var previous = states[index + 1];
+                if (tokens[index].Value == '%')
+                {
+                    states[index + 1] = previous || states[index];
+                }
+                else if (tokens[index].Value == '_')
+                {
+                    states[index + 1] = diagonal;
+                }
+                else
+                {
+                    states[index + 1] = diagonal &&
+                        EqualIgnoringAsciiCase(character, tokens[index]);
+                }
+                diagonal = previous;
+            }
+        }
+        return states[tokens.Count];
     }
 
     private static FerruleValue PadString(

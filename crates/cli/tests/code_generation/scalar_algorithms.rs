@@ -166,6 +166,9 @@ fn scalar_algorithm_project() -> Project {
     let non_ascii_exact = like(&mut graph, "É", "é");
     let empty_percent = like(&mut graph, "", "%");
     let repeated_percent = like(&mut graph, "abc", "a%%c");
+    let nul_value = like(&mut graph, "ab\0cd", "ab");
+    let nul_pattern = like(&mut graph, "ab", "ab\0%");
+    let backslash_literal = like(&mut graph, "abc\\def", "abc\\%");
     add_group(
         &mut target,
         &mut scopes,
@@ -176,6 +179,9 @@ fn scalar_algorithm_project() -> Project {
             ("NonAsciiExact", ScalarType::Bool, non_ascii_exact),
             ("EmptyPercent", ScalarType::Bool, empty_percent),
             ("RepeatedPercent", ScalarType::Bool, repeated_percent),
+            ("NulValue", ScalarType::Bool, nul_value),
+            ("NulPattern", ScalarType::Bool, nul_pattern),
+            ("BackslashLiteral", ScalarType::Bool, backslash_literal),
         ],
     );
 
@@ -533,6 +539,9 @@ fn expected() -> Instance {
                 ("NonAsciiExact", Value::Bool(false)),
                 ("EmptyPercent", Value::Bool(true)),
                 ("RepeatedPercent", Value::Bool(true)),
+                ("NulValue", Value::Bool(true)),
+                ("NulPattern", Value::Bool(true)),
+                ("BackslashLiteral", Value::Bool(true)),
             ]),
         ),
         (

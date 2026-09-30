@@ -119,6 +119,13 @@ internal static partial class Program
             (string.Empty, "_", false),
             ("\U0001F642", "_", true),
             ("é", "É", false),
+            ("\\", "\\", true),
+            ("abc\\def", "abc\\%", true),
+            ("ab\0cd", "ab", true),
+            ("a\0b", "a_b", false),
+            ("ab", "ab\0%", true),
+            ("abX", "ab\0%", false),
+            ("ab\0xyz", "ab\0%", true),
         })
         {
             CallEquals(Bool(expected), "sql_like", Text(value), Text(pattern));
@@ -126,6 +133,30 @@ internal static partial class Program
 
         AssertFunctionArity("sql_like", 2, Text("value"));
         AssertFunctionType("sql_like", Text("value"), Bool(true));
+        CallEquals(Bool(true), "sql_like", Text("a"), Text("a\0" + new string('x', 49_998)));
+        CallEquals(Bool(false), "sql_like", Text(""), Text(new string('é', 25_000)));
+        CallEquals(Bool(true), "sql_like", Text(new string('a', 100_000)), Text("a%"));
+        CallEquals(Bool(true), "sql_like", Text(new string('a', 2_001)), Text(new string('%', 50_000)));
+        AssertInvalidArgument(
+            "sql_like",
+            "pattern exceeds 50000 UTF-8 bytes",
+            Text("a"),
+            Text("a\0" + new string('x', 49_999)));
+        AssertInvalidArgument(
+            "sql_like",
+            "pattern exceeds 50000 UTF-8 bytes",
+            Text(""),
+            Text(new string('é', 25_000) + "a"));
+        AssertInvalidArgument(
+            "sql_like",
+            "matching work exceeds 100000000 cell updates",
+            Text(new string('a', 25_001)),
+            Text(string.Concat(Enumerable.Repeat("a%", 2_000))));
+        AssertFunctionTypeKind(
+            "sql_like",
+            FerruleValueKind.Null,
+            FerruleValue.Null,
+            Text(new string('x', 50_001)));
     }
 
     private static void PaddingFunctions()

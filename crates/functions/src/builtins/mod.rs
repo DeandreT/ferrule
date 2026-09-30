@@ -11,6 +11,10 @@ mod isbn;
 mod regex_match;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
+// Match the bundled SQLite LIKE pattern cap, measured before NUL truncation.
+const MAX_SQL_LIKE_PATTERN_BYTES: usize = 50_000;
+// Shared with the C# runtime: cap value-rune × pattern-rune DP cell updates.
+const MAX_SQL_LIKE_WORK_CELLS: usize = 100_000_000;
 
 pub(super) fn call_builtin(
     builtin: &BuiltinDefinition,
@@ -135,35 +139,56 @@ fn is_xml_nil(args: &[Value]) -> Result<Value, FunctionError> {
     Ok(Value::Bool(value.is_xml_nil()))
 }
 
-/// Matches a complete string using SQL LIKE's `%` (zero or more characters)
-/// and `_` (exactly one character) wildcards. ASCII literals use SQLite's
-/// default case-insensitive LIKE behavior; non-ASCII literals compare exactly.
-fn sql_like(value: &str, pattern: &str) -> bool {
-    let value = value.chars().collect::<Vec<_>>();
-    let mut previous = vec![false; value.len() + 1];
-    previous[0] = true;
-    for token in pattern.chars() {
-        let mut current = vec![false; value.len() + 1];
-        match token {
-            '%' => {
-                current[0] = previous[0];
-                for index in 1..=value.len() {
-                    current[index] = previous[index] || current[index - 1];
-                }
-            }
-            '_' => {
-                current[1..].copy_from_slice(&previous[..value.len()]);
-            }
-            literal => {
-                for index in 1..=value.len() {
-                    current[index] =
-                        previous[index - 1] && value[index - 1].eq_ignore_ascii_case(&literal);
-                }
-            }
-        }
-        previous = current;
+/// SQLite-style LIKE over the text before each first NUL. `%` matches zero or
+/// more Unicode scalar values, `_` matches one, and only ASCII folds case.
+/// The DP stores one state per pattern scalar, not per value scalar.
+fn sql_like(value: &str, pattern: &str) -> Result<bool, FunctionError> {
+    if pattern.len() > MAX_SQL_LIKE_PATTERN_BYTES {
+        return Err(FunctionError::InvalidArgument {
+            function: "sql_like",
+            message: "pattern exceeds 50000 UTF-8 bytes",
+        });
     }
-    previous[value.len()]
+    let value = value.split('\0').next().unwrap_or_default();
+    let pattern = pattern.split('\0').next().unwrap_or_default();
+    let mut tokens = Vec::new();
+    for token in pattern.chars() {
+        if token != '%' || tokens.last() != Some(&'%') {
+            tokens.push(token);
+        }
+    }
+    let value_chars = value.chars().count();
+    if value_chars
+        .checked_mul(tokens.len())
+        .is_none_or(|work| work > MAX_SQL_LIKE_WORK_CELLS)
+    {
+        return Err(FunctionError::InvalidArgument {
+            function: "sql_like",
+            message: "matching work exceeds 100000000 cell updates",
+        });
+    }
+
+    let mut states = vec![false; tokens.len() + 1];
+    states[0] = true;
+    for (index, token) in tokens.iter().enumerate() {
+        if *token == '%' {
+            states[index + 1] = states[index];
+        }
+    }
+    for character in value.chars() {
+        let mut diagonal = states[0];
+        states[0] = false;
+        for (index, token) in tokens.iter().enumerate() {
+            let previous = states[index + 1];
+            states[index + 1] = match token {
+                '%' => previous || states[index],
+                '_' => diagonal,
+                literal => diagonal && character.eq_ignore_ascii_case(literal),
+            };
+            diagonal = previous;
+        }
+    }
+    Ok(states[tokens.len()])
 }
 
 fn concat(args: &[Value]) -> Value {
@@ -225,10 +250,10 @@ fn normalize_space(value: &str) -> String {
 fn binary_string(
     args: &[Value],
     name: &'static str,
-    f: impl Fn(&str, &str) -> bool,
+    f: impl Fn(&str, &str) -> Result<bool, FunctionError>,
 ) -> Result<Value, FunctionError> {
     match args {
-        [Value::String(a), Value::String(b)] => Ok(Value::Bool(f(a, b))),
+        [Value::String(a), Value::String(b)] => f(a, b).map(Value::Bool),
         [a, b] => {
             let bad = if matches!(a, Value::String(_)) { b } else { a };
             Err(FunctionError::TypeMismatch {
