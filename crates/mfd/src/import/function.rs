@@ -57,8 +57,8 @@ pub(super) struct FnComponent {
     pub(super) output_pins: Vec<Option<u32>>,
     /// Scalar coercion declared by a transparent kind=6 input parameter.
     pub(super) input_type: Option<ScalarType>,
-    /// Public host parameter name declared by a kind=6 input component.
-    pub(super) input_parameter_name: Option<String>,
+    /// Public host parameter declaration of a kind=6 input component.
+    pub(super) input_parameter_name: Option<InputParameter>,
     /// Design-time value used by an otherwise unconnected input parameter.
     /// Database query parameters need this before the source is loaded.
     pub(super) input_preview: Option<Value>,
@@ -69,6 +69,12 @@ pub(super) struct FnComponent {
     pub(super) sort_directions: Option<Vec<bool>>,
     pub(super) db_where: Option<DbWhereComponent>,
     pub(super) recursive: Option<RecursiveComponent>,
+}
+
+#[derive(Clone)]
+pub(super) struct InputParameter {
+    pub(super) name: String,
+    pub(super) optional: bool,
 }
 
 #[derive(Clone)]
@@ -164,9 +170,15 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                         node.has_tag_name("parameter")
                             && node.attribute("usageKind") == Some("input")
                     })
-                    .and_then(|parameter| parameter.attribute("name"))
-                    .filter(|name| !name.is_empty())
-                    .map(str::to_string)
+                    .and_then(|parameter| {
+                        parameter
+                            .attribute("name")
+                            .filter(|name| !name.is_empty())
+                            .map(|name| InputParameter {
+                                name: name.to_string(),
+                                optional: parameter.attribute("optional") == Some("1"),
+                            })
+                    })
             })
         })
         .flatten();
