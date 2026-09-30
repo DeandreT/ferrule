@@ -662,6 +662,143 @@ fn imports_and_runs_a_connected_xbrl_design_with_exact_instance_bytes() -> Resul
 }
 
 #[test]
+fn imports_and_runs_an_xml_primary_with_exact_named_csv_bytes() -> Result<(), Box<dyn Error>> {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
+    let imported = mfd::import(&fixtures.join("people-to-csv.mfd"))?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut final_project = imported.project;
+    let named_csv = mapping::NamedTarget {
+        name: "rows".into(),
+        path: final_project.target_path.take(),
+        schema: final_project.target.clone(),
+        options: std::mem::take(&mut final_project.target_options),
+        root: std::mem::take(&mut final_project.root),
+    };
+    final_project.target = final_project.source.clone();
+    final_project.target_options = final_project.source_options.clone();
+    final_project.root = mapping::Scope {
+        construction: mapping::ScopeConstruction::CopyCurrentSource,
+        ..Default::default()
+    };
+    final_project.extra_targets.push(named_csv);
+    let copy_project = mapping::Project {
+        source: final_project.source.clone(),
+        target: final_project.source.clone(),
+        source_path: Some("people.xml".into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: final_project.source_options.clone(),
+        target_options: final_project.source_options.clone(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Default::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..Default::default()
+        },
+    };
+    final_project.source_path = None;
+    final_project.target_path = Some("people-copy.xml".into());
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "xml-and-csv".into(),
+                mapping_path: None,
+                project: final_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+
+    let directory = TempDir::new()?;
+    let maps = directory.0.join("maps");
+    std::fs::create_dir_all(&maps)?;
+    let design = maps.join("xml-and-csv.mfd");
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
+    assert!(report.is_native_compatible(), "{report:?}");
+    let saved_pipeline = directory.0.join("flow.json");
+    let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&design)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&saved_pipeline)
+        .output()?;
+    assert!(import.status.success(), "{}", output_message(&import));
+    let imported_pipeline: mapping::Pipeline =
+        serde_json::from_slice(&std::fs::read(&saved_pipeline)?)?;
+    let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
+        panic!("first stage must read a host source");
+    };
+    let [named] = imported_pipeline.stages[1].project.extra_targets.as_slice() else {
+        panic!("final stage must keep one named CSV target");
+    };
+    let output_xml = directory.0.join("primary.xml");
+    let output_csv = directory.0.join("rows.csv");
+    let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&saved_pipeline)
+        .args(["--input"])
+        .arg(name)
+        .arg(fixtures.join("people.xml"))
+        .args(["--output", "mfd-stage-2"])
+        .arg(&output_xml)
+        .args(["--named-output", "mfd-stage-2"])
+        .arg(&named.name)
+        .arg(&output_csv)
+        .output()?;
+    assert!(run.status.success(), "{}", output_message(&run));
+
+    let source = format_xml::read(
+        &fixtures.join("people.xml"),
+        &pipeline.stages[0].project.source,
+    )?;
+    let direct = engine::run_pipeline(
+        &pipeline,
+        &std::collections::BTreeMap::from([("input".into(), source)]),
+    )?;
+    let expected = direct.stage("xml-and-csv").unwrap();
+    let expected_xml =
+        format_xml::to_string(&pipeline.stages[1].project.target, &expected.primary)?;
+    assert_eq!(std::fs::read(&output_xml)?, expected_xml.as_bytes());
+    let csv = &pipeline.stages[1].project.extra_targets[0];
+    let expected_csv = directory.0.join("expected.csv");
+    format_csv::write_with_dialect(
+        &expected_csv,
+        &csv.schema,
+        expected.extras[0].instance.as_repeated().unwrap(),
+        csv.options.delimiter,
+        csv.options.csv_quote,
+        csv.options.csv_quote_disabled,
+        csv.options.has_header_row.unwrap_or(true),
+    )?;
+    assert_eq!(std::fs::read(&output_csv)?, std::fs::read(&expected_csv)?);
+    assert_eq!(
+        std::fs::read(&output_csv)?,
+        b"Alice Carter;34\nBo Diaz;41\n"
+    );
+    Ok(())
+}
+
+#[test]
 fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new()?;
     let mapping = write_three_stage_chain(&directory.0)?;

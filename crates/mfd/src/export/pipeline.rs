@@ -1,6 +1,7 @@
 //! Canonical export for a bounded serial chain of XML mapping stages with
 //! an XML, CSV, fixed-width, FlexText, JSON, Protocol Buffer, bounded XBRL,
 //! or XLSX final primary target and optional independent final XML targets.
+//! A primary XML target may also keep one connected named CSV target.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -35,7 +36,8 @@ pub fn preflight_pipeline_export(
 /// independent intermediate targets, and non-XML intermediate boundaries
 /// reject explicitly. The final primary target may be CSV, fixed-width text,
 /// FlexText, JSON, Protocol Buffers, bounded XBRL, or new-workbook XLSX;
-/// independent final targets remain XML.
+/// independent final targets remain XML, except for one CSV target beside a
+/// primary XML final target.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
         .map(|report| report.warnings)
@@ -152,8 +154,27 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
                 stage.id
             )));
         }
+        let primary_is_xml = side_format(&stage.project.target_path, &stage.project.target_options)
+            == SideFormat::Xml
+            && stage.project.target_options.protobuf.is_none();
+        let named_csv_targets = stage
+            .project
+            .extra_targets
+            .iter()
+            .filter(|target| side_format(&target.path, &target.options) == SideFormat::Csv)
+            .count();
+        if named_csv_targets > 1 {
+            return Err(MfdError::Unsupported(format!(
+                "pipeline stage `{}` has more than one named CSV target",
+                stage.id
+            )));
+        }
         if stage.project.extra_targets.iter().any(|target| {
-            side_format(&target.path, &target.options) != SideFormat::Xml
+            let format = side_format(&target.path, &target.options);
+            !(format == SideFormat::Xml
+                || index + 1 == pipeline.stages.len()
+                    && primary_is_xml
+                    && format == SideFormat::Csv)
                 || target.options.protobuf.is_some()
                 || target.options.wsdl.is_some()
         }) {
