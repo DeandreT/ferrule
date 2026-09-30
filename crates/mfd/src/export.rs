@@ -34,6 +34,7 @@ mod json_parser;
 mod json_serializer;
 mod mapped_sequence;
 mod native_datetime_cast;
+mod native_path_hierarchy;
 mod node;
 mod order_decimal_output;
 mod pdf;
@@ -358,6 +359,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         order_decimal_output::NativeOrderDecimal::plan(project, &sources, &targets);
     let native_group_fahrenheit =
         temperature_native::NativeGroupFahrenheit::plan(project, &sources, &targets);
+    let native_path_hierarchy =
+        native_path_hierarchy::NativePathHierarchy::plan(project, &sources, &targets, path);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -488,6 +491,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         );
     }
     let mut exception_branches = exception::Branches::new(project);
+    let mut native_path_hierarchy_definition = None;
     for (target_index, target) in targets.iter().enumerate() {
         let prior_position_contexts = position_contexts.clone();
         let native_scope = if target_index == 0 {
@@ -513,16 +517,28 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
             .map_or(Some(target.root), dynamic_json::TargetPlan::static_root);
         let static_root = native_scope.as_ref().or(static_root);
         if let Some(static_root) = static_root {
-            recursive::render_construction(recursive::RenderArgs {
-                scope: static_root,
-                sources: &sources,
-                target_ports: &target.ports,
-                node_out_key: &node_out_key,
-                keys: &mut keys,
-                uid: &mut uid,
-                components: &mut scope_components,
-                edges: &mut edges,
-            })?;
+            if target_index == 0
+                && let Some(plan) = &native_path_hierarchy
+            {
+                native_path_hierarchy_definition = Some(plan.render(
+                    &mut keys,
+                    &mut uid,
+                    &mut scope_components,
+                    &mut edges,
+                    &mut structural_edges,
+                )?);
+            } else {
+                recursive::render_construction(recursive::RenderArgs {
+                    scope: static_root,
+                    sources: &sources,
+                    target_ports: &target.ports,
+                    node_out_key: &node_out_key,
+                    keys: &mut keys,
+                    uid: &mut uid,
+                    components: &mut scope_components,
+                    edges: &mut edges,
+                })?;
+            }
             scope::connect(scope::ConnectArgs {
                 scope: static_root,
                 sources: &sources,
@@ -930,6 +946,9 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     }
     if let Some(plan) = &native_group_fahrenheit {
         out.push_str(&plan.definition(&user_functions, &mut uid)?);
+    }
+    if let Some(definition) = native_path_hierarchy_definition {
+        out.push_str(&definition);
     }
     out.push_str(user_functions.declarations());
     out.push_str("</mapping>\n");
