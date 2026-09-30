@@ -310,8 +310,8 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
 ///
 /// This profile accepts a bounded serial XML pass-through chain whose final
 /// primary target may be XML, CSV, fixed-width text, FlexText, JSON, Protocol
-/// Buffers, or a new XLSX workbook, with any connected named targets remaining
-/// XML. Other stage graph shapes reject explicitly.
+/// Buffers, XBRL without presentation metadata, or a new XLSX workbook, with
+/// any connected named targets remaining XML. Other stage graph shapes reject.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
 }
@@ -628,6 +628,8 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
             Some("xml" | "core" | "lang" | "xpath2" | "text" | "json" | "xlsx")
         ) && !(component.attribute("library") == Some("binary")
             && is_protobuf_terminal_component(component))
+            && !(component.attribute("library") == Some("xbrl")
+                && is_xbrl_terminal_component(component))
     }) {
         return Err(MfdError::UnsupportedImport(format!(
             "pipeline import does not yet support `{}` components",
@@ -678,6 +680,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
                 || is_flextext_terminal_component(component)
                 || is_json_terminal_component(component)
                 || is_protobuf_terminal_component(component)
+                || is_xbrl_terminal_component(component)
                 || is_xlsx_terminal_component(component))
                 && component.children().any(|node| {
                     node.has_tag_name("properties")
@@ -688,7 +691,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         .collect::<Vec<_>>();
     let [final_target] = final_outputs.as_slice() else {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import currently needs one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"
+            "pipeline import currently needs one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, XBRL, or XLSX final target"
                 .into(),
         ));
     };
@@ -735,6 +738,14 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         ));
     }
     if components.iter().any(|component| {
+        component.attribute("library") == Some("xbrl")
+            && (component.id() != final_target.id() || connected_component_outputs(component))
+    }) {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import supports XBRL components only as the final primary target".into(),
+        ));
+    }
+    if components.iter().any(|component| {
         component.attribute("library") == Some("xlsx")
             && (component.id() != final_target.id() || connected_component_outputs(component))
     }) {
@@ -752,6 +763,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
                         || is_flextext_terminal_component(component)
                         || is_json_terminal_component(component)
                         || is_protobuf_terminal_component(component)
+                        || is_xbrl_terminal_component(component)
                         || is_xlsx_terminal_component(component)))
                 && connected_inputs(component)
                 && !component.children().any(|node| {
@@ -798,7 +810,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
     for component in &components {
         if matches!(
             component.attribute("library"),
-            Some("xml" | "text" | "json" | "binary" | "xlsx")
+            Some("xml" | "text" | "json" | "binary" | "xbrl" | "xlsx")
         ) {
             continue;
         }
@@ -1013,6 +1025,18 @@ fn is_protobuf_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
             })
 }
 
+fn is_xbrl_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("library") == Some("xbrl")
+        && component.attribute("kind") == Some("27")
+        && component
+            .children()
+            .find(|node| node.has_tag_name("data"))
+            .is_some_and(|data| {
+                data.children()
+                    .any(|node| node.has_tag_name("xbrl") && node.attribute("sps").is_none())
+            })
+}
+
 fn protobuf_connected_inputs_match_message_boundary(
     component: &roxmltree::Node<'_, '_>,
     edge_from: &BTreeMap<u32, u32>,
@@ -1101,6 +1125,7 @@ fn strict_serial_stage_order(
                     || is_flextext_terminal_component(component)
                     || is_json_terminal_component(component)
                     || is_protobuf_terminal_component(component)
+                    || is_xbrl_terminal_component(component)
                     || is_xlsx_terminal_component(component)))
         {
             continue;
