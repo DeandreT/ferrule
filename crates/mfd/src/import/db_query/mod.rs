@@ -5,7 +5,6 @@ use ir::{ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{FormatOptions, Node, NodeId, SequenceWindow};
 
 use super::GraphBuilder;
-use super::function::{FnComponent, is_input, parse_constant};
 use super::schema::{ComponentFormat, SchemaComponent, entry_key_sets, parse_u32};
 use super::source::SourcePath;
 
@@ -14,9 +13,11 @@ const MAX_QUERY_IN_ITEMS: usize = 256;
 mod catalog;
 mod correlated;
 mod joined;
+mod parameters;
 mod sql;
 
 pub(super) use catalog::read_embedded_catalog;
+use parameters::coerce_value;
 use sql::{Parser, valid_identifier};
 
 #[derive(Clone)]
@@ -1076,8 +1077,11 @@ impl GraphBuilder<'_> {
         operator: QueryOperator,
         operand: QueryOperand,
     ) -> Result<NodeId, String> {
-        let value = match operand {
-            QueryOperand::Literal(value) => coerce_value(value, column_type)?,
+        let operand = match operand {
+            QueryOperand::Literal(value) => {
+                let value = coerce_value(value, column_type)?;
+                self.alloc(Node::Const { value })
+            }
             QueryOperand::Parameter {
                 name,
                 input_key,
@@ -1089,11 +1093,23 @@ impl GraphBuilder<'_> {
                     .iter()
                     .find(|query| query.collection == source_path.path)
                     .map_or("unknown", |query| query.name.as_str());
-                coerce_value(value, column_type).map_err(|reason| {
+                let value = coerce_value(value, column_type).map_err(|reason| {
                     format!(
                         "query `{query_name}` parameter `:{name}` declared as {ty:?} cannot be converted: {reason}"
                     )
-                })?
+                })?;
+                if let Some(feed) = self.optional_query_parameter_feed(input_key, column_type, 0)? {
+                    if ty != column_type {
+                        return Err(format!(
+                            "optional query parameter `:{name}` must declare the column's scalar type"
+                        ));
+                    }
+                    self.value_node(feed).ok_or_else(|| {
+                        format!("optional query parameter `:{name}` has no scalar value")
+                    })?
+                } else {
+                    self.alloc(Node::Const { value })
+                }
             }
             QueryOperand::Correlated => {
                 return Err(
@@ -1115,7 +1131,6 @@ impl GraphBuilder<'_> {
                     .to_string(),
             );
         }
-        let operand = self.alloc(Node::Const { value });
         let comparison = self.alloc(Node::Call {
             function: match operator {
                 QueryOperator::Equal => "equal",
@@ -1156,46 +1171,6 @@ impl GraphBuilder<'_> {
             else_: false_value,
         }))
     }
-
-    fn static_query_parameter(&self, input_key: u32, depth: usize) -> Result<Value, String> {
-        if depth >= 12 {
-            return Err("query parameter feed contains a cycle".to_string());
-        }
-        let feed = self
-            .edge_from
-            .get(&input_key)
-            .copied()
-            .ok_or_else(|| "query parameter input is not connected".to_string())?;
-        let index = self
-            .fn_by_output
-            .get(&feed)
-            .copied()
-            .ok_or_else(|| "query parameter is not a compile-time constant".to_string())?;
-        let component: &FnComponent = &self.fn_components[index];
-        if component.name == "constant" {
-            let (value, datatype) = component
-                .constant
-                .as_ref()
-                .ok_or_else(|| "constant query parameter has no value".to_string())?;
-            return Ok(parse_constant(value, datatype));
-        }
-        if is_input(component) {
-            let transparent_input = component.inputs.first().copied().flatten();
-            return match transparent_input {
-                Some(input) if self.edge_from.contains_key(&input) => {
-                    self.static_query_parameter(input, depth + 1)
-                }
-                _ => component.input_preview.clone().ok_or_else(|| {
-                    "query parameter input has neither an upstream value nor an enabled preview value"
-                        .to_string()
-                }),
-            };
-        }
-        Err(format!(
-            "query parameter uses dynamic function `{}`; only literal constants are supported",
-            component.name
-        ))
-    }
 }
 
 pub(super) fn source_query_is_at_most_one(source: &SchemaComponent, path: &[String]) -> bool {
@@ -1234,43 +1209,6 @@ fn db_query_owns_output(component: &SchemaComponent, key: u32) -> bool {
             .db_queries
             .iter()
             .any(|query| query.computed_ports.contains_key(&key))
-}
-
-fn coerce_value(value: Value, ty: ScalarType) -> Result<Value, String> {
-    match (value, ty) {
-        (Value::String(value), ScalarType::String) => Ok(Value::String(value)),
-        (Value::Bool(value), ScalarType::Bool) => Ok(Value::Bool(value)),
-        (Value::Int(value), ScalarType::Int) => Ok(Value::Int(value)),
-        (Value::Float(value), ScalarType::Int)
-            if value.is_finite()
-                && value.fract() == 0.0
-                && value >= i64::MIN as f64
-                && value < -(i64::MIN as f64) =>
-        {
-            Ok(Value::Int(value as i64))
-        }
-        (Value::Int(value), ScalarType::Float)
-            if (-9_007_199_254_740_992..=9_007_199_254_740_992).contains(&value) =>
-        {
-            Ok(Value::Float(value as f64))
-        }
-        (Value::Float(value), ScalarType::Float) if value.is_finite() => Ok(Value::Float(value)),
-        (Value::String(value), ScalarType::Int) => value
-            .parse::<i64>()
-            .map(Value::Int)
-            .map_err(|_| "query operand is not an integer".to_string()),
-        (Value::String(value), ScalarType::Float) => value
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .map(Value::Float)
-            .ok_or_else(|| "query operand is not a finite number".to_string()),
-        (Value::Null | Value::JsonNull(_), _) => Err("query parameters cannot be null".to_string()),
-        (value, expected) => Err(format!(
-            "query operand has type {}, expected {expected:?}",
-            value.type_name()
-        )),
-    }
 }
 
 #[cfg(test)]

@@ -639,7 +639,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         )?;
     }
     if let Some(plan) = &native_database_select {
-        plan.render_catalog(&mut uid, &mut components, &mut edges);
+        plan.render_catalog(&mut uid, &mut components, &mut edges, &node_out_key)?;
     }
     exception_branches.render(exception::RenderArgs {
         graph: &project.graph,
