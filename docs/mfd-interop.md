@@ -185,9 +185,36 @@ produces the same output after strict export.
 An isolated canonical decimal string feeding the second input of a supported
 numeric comparison or addition can export through a native decimal input
 component. The local price and temperature samples reimport with identical
-XML. The imported graph does not retain the original input parameter names,
-so export assigns deterministic names; external overrides by the original
-names are not yet covered.
+XML. The imported component names `Markup`, `lower`, and `upper` survive
+project serialization and strict export. Ferrule still evaluates their
+connected defaults. Connected optional native inputs across the corpus do not
+yet retain host override semantics; the strict scan measures static export,
+not that workflow.
+For the exact order-pricing graph, strict export restores the native decimal
+source rules on two XML price leaves. Anchored repeated-row reads apply those
+rules on reimport, preserving all three local CSV rows and the original typed
+conversion error for nonfinite hand-built inputs. Changed arithmetic, shared
+conversions, string leaves, and non-XML sources remain explicit blockers.
+Four local employee and manager mappings also reconstruct one native database
+`where` control for a guarded `%Word%` title predicate. Nested relation
+selection and an independent department or office filter stay connected;
+strict reimport reproduces 8, 8, 2, and 5 XML rows respectively. Other
+patterns, shared predicate nodes, row controls, and changed field types reject.
+One joined SQLite order query reconstructs a native `SELECT` with its declared
+foreign key, `Quantity > 2` filter, and computed `Quantity * UnitPrice` column.
+Local strict export/reimport reproduces the two CSV rows and SQLite integer
+overflow behavior. The imported project retains the threshold as a literal,
+so the original host parameter name and override workflow remain outside this
+claim. If the database cannot be resolved for the read-only foreign-key check,
+the exporter leaves its internal function and reports the native limitation.
+Two temperature designs recover their original native numeric wiring. The
+annual PDF mapping retains all eight conversions inside its user function and
+reimports to the same 148 CSV rows. The grouped XML mapping restores 21
+target-side and six user-function conversions through an exact descendant
+node-function rule; its five yearly rows and typed nonfinite conversion error
+match after strict export/reimport. The recovery requires the closed source,
+target, graph, and scope shapes of these two designs; changed numeric calls,
+shared branches, or added row controls keep the explicit incompatibility.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
 endpoints, validated against the physical columns, and exported canonically. This
 keeps nested relational reads executable when the database omits foreign-key metadata.
