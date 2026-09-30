@@ -547,6 +547,121 @@ fn imports_and_runs_a_connected_protobuf_design_with_its_generated_schema()
 }
 
 #[test]
+fn imports_and_runs_a_connected_xbrl_design_with_exact_instance_bytes() -> Result<(), Box<dyn Error>>
+{
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
+    let imported = mfd::import(&fixtures.join("xbrl-final.mfd"))?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut xbrl_project = imported.project;
+    let source_schema = xbrl_project.source.clone();
+    let source_options = xbrl_project.source_options.clone();
+    xbrl_project.source_path = None;
+    xbrl_project.target_path = Some("filing.xbrl".into());
+    let copy_project = mapping::Project {
+        source: source_schema.clone(),
+        target: source_schema,
+        source_path: Some("xbrl-final-source.xml".into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: source_options.clone(),
+        target_options: source_options,
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Default::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..Default::default()
+        },
+    };
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "xbrl".into(),
+                mapping_path: None,
+                project: xbrl_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+
+    let directory = TempDir::new()?;
+    let maps = directory.0.join("maps");
+    std::fs::create_dir_all(&maps)?;
+    let source_path = fixtures.join("xbrl-final-source.xml");
+    let input = maps.join("xbrl-final-source.xml");
+    std::fs::copy(&source_path, &input)?;
+    std::fs::copy(
+        fixtures.join("xbrl-final-taxonomy.xsd"),
+        maps.join("xbrl-final-taxonomy.xsd"),
+    )?;
+    let design = maps.join("xbrl.mfd");
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
+    assert!(report.is_native_compatible(), "{report:?}");
+
+    let saved_pipeline = directory.0.join("flow.json");
+    let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&design)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&saved_pipeline)
+        .output()?;
+    assert!(import.status.success(), "{}", output_message(&import));
+    let imported_pipeline: mapping::Pipeline =
+        serde_json::from_slice(&std::fs::read(&saved_pipeline)?)?;
+    let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
+        panic!("first stage must read a host source");
+    };
+    let result = directory.0.join("result.xbrl");
+    let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&saved_pipeline)
+        .args(["--input"])
+        .arg(name)
+        .arg(&input)
+        .args(["--output", "mfd-stage-2"])
+        .arg(&result)
+        .output()?;
+    assert!(run.status.success(), "{}", output_message(&run));
+
+    let source = format_xml::read(&source_path, &pipeline.stages[0].project.source)?;
+    let direct = engine::run_pipeline(
+        &pipeline,
+        &std::collections::BTreeMap::from([("input".into(), source)]),
+    )?;
+    let final_project = &pipeline.stages[1].project;
+    let options = final_project.target_options.xbrl.as_ref().unwrap();
+    let expected = format_xbrl::to_string(
+        &final_project.target,
+        &direct.stage("xbrl").unwrap().primary,
+        options,
+    )?;
+    let published = std::fs::read_to_string(&result)?;
+    assert_eq!(published.as_bytes(), expected.as_bytes());
+    assert!(published.contains("2026-06-30"));
+    assert!(published.contains("reported"));
+    Ok(())
+}
+
+#[test]
 fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new()?;
     let mapping = write_three_stage_chain(&directory.0)?;

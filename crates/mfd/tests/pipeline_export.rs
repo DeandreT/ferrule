@@ -1578,7 +1578,7 @@ fn fixed_width_final_chain_import_rejects_malformed_ambiguous_and_disconnected()
         .expect("ambiguous fixed-width final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, XBRL, or XLSX final target"),
         "{error}"
     );
 
@@ -1786,7 +1786,7 @@ fn xlsx_final_chain_import_rejects_ambiguous_disconnected_and_update_existing() 
         .expect("ambiguous XLSX final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, XBRL, or XLSX final target"),
         "{error}"
     );
 
@@ -2035,7 +2035,7 @@ fn ambiguous_or_disconnected_json_final_import_rejects() {
         .expect("ambiguous JSON final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, XBRL, or XLSX final target"),
         "{error}"
     );
     assert!(!directory.0.join("not-created").exists());
@@ -2097,7 +2097,7 @@ fn csv_pipeline_import_rejects_non_csv_text_terminal() {
         .to_string();
     assert!(
         error.contains(
-            "XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"
+            "XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, XBRL, or XLSX final target"
         ),
         "{error}"
     );
@@ -2118,6 +2118,14 @@ fn identity_xml_to_protobuf_pipeline(
 ) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
     assert!(final_project.target_options.protobuf.is_some());
     identity_xml_to_final_pipeline(final_project, input, "converted.bin", "protobuf")
+}
+
+fn identity_xml_to_xbrl_pipeline(
+    final_project: mapping::Project,
+    input: &Path,
+) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
+    assert!(final_project.target_options.xbrl.is_some());
+    identity_xml_to_final_pipeline(final_project, input, "filing.xbrl", "xbrl")
 }
 
 fn identity_xml_to_final_pipeline(
@@ -2410,6 +2418,184 @@ fn local_xml_to_protobuf_mapping_runs_after_an_identity_xml_stage() {
 }
 
 #[test]
+fn xbrl_final_chain_roundtrips_exact_instance_document() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("xbrl-final.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let input = fixtures.join("xbrl-final-source.xml");
+    let (pipeline, hosts) = identity_xml_to_xbrl_pipeline(imported.project, &input);
+    let before = engine::run_pipeline(&pipeline, &hosts).unwrap();
+    assert_eq!(before.stage("copy").unwrap().primary, hosts["input"]);
+    let final_project = &pipeline.stages[1].project;
+    let options = final_project.target_options.xbrl.as_ref().unwrap();
+    let before_xml = format_xbrl::to_string(
+        &final_project.target,
+        &before.stage("xbrl").unwrap().primary,
+        options,
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(&before_xml).unwrap();
+    let facts = document
+        .descendants()
+        .filter(|node| node.has_tag_name(("urn:ferrule:test:facts", "Label")))
+        .collect::<Vec<_>>();
+    assert_eq!(facts.len(), 1, "{before_xml}");
+    assert_eq!(facts[0].text(), Some("reported"));
+    assert!(before_xml.contains("2026-06-30"));
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name(("http://www.xbrl.org/2003/instance", "context")))
+            .count(),
+        1
+    );
+
+    let directory = TempDir::new();
+    for file in ["xbrl-final-source.xml", "xbrl-final-taxonomy.xsd"] {
+        std::fs::copy(fixtures.join(file), directory.0.join(file)).unwrap();
+    }
+    let exported = directory.0.join("xbrl-chain.mfd");
+    let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported.exists());
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let design = std::fs::read_to_string(&exported).unwrap();
+    assert_eq!(design.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(design.matches("library=\"xbrl\"").count(), 1);
+    assert!(design.contains("schema=\"xbrl-final-taxonomy.xsd\""));
+
+    let reimported = mfd::import_pipeline(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let PipelineInput::Host { name } = &reimported.pipeline.stages[0].source else {
+        panic!("reimported first stage must read a host source");
+    };
+    let after = engine::run_pipeline(
+        &reimported.pipeline,
+        &BTreeMap::from([(name.clone(), hosts["input"].clone())]),
+    )
+    .unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            before.stage(&pipeline.stages[index].id).unwrap().primary,
+            after
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            "stage {}",
+            index + 1
+        );
+    }
+    let final_project = &reimported.pipeline.stages[1].project;
+    let options = final_project.target_options.xbrl.as_ref().unwrap();
+    let after_xml = format_xbrl::to_string(
+        &final_project.target,
+        &after
+            .stage(&reimported.pipeline.stages[1].id)
+            .unwrap()
+            .primary,
+        options,
+    )
+    .unwrap();
+    assert_eq!(after_xml.as_bytes(), before_xml.as_bytes());
+    let after_document = roxmltree::Document::parse(&after_xml).unwrap();
+    assert_eq!(
+        after_document
+            .descendants()
+            .find(|node| node.has_tag_name(("urn:ferrule:test:facts", "Label")))
+            .and_then(|node| node.text()),
+        Some("reported")
+    );
+}
+
+#[test]
+fn xbrl_final_chain_rejects_unsupported_boundaries_before_artifacts() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("xbrl-final.mfd")).unwrap();
+    let (pipeline, _) =
+        identity_xml_to_xbrl_pipeline(imported.project, &fixtures.join("xbrl-final-source.xml"));
+    let directory = TempDir::new();
+
+    let mut intermediate = pipeline.clone();
+    intermediate.stages[0].project.target_path = Some("buffer.xbrl".into());
+    intermediate.stages[0].project.target_options =
+        pipeline.stages[1].project.target_options.clone();
+    let destination = directory.0.join("not-created/intermediate.mfd");
+    assert!(
+        mfd::export_pipeline_with_profile(
+            &intermediate,
+            &destination,
+            mfd::ExportProfile::NativeMfd,
+        )
+        .is_err()
+    );
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut named = pipeline.clone();
+    let final_project = &mut named.stages[1].project;
+    final_project.extra_targets.push(mapping::NamedTarget {
+        name: "secondary".into(),
+        path: Some("secondary.xbrl".into()),
+        schema: final_project.target.clone(),
+        options: final_project.target_options.clone(),
+        root: mapping::Scope::default(),
+    });
+    let destination = directory.0.join("not-created/named.mfd");
+    assert!(
+        mfd::export_pipeline_with_profile(&named, &destination, mfd::ExportProfile::NativeMfd)
+            .is_err()
+    );
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut presentation = pipeline.clone();
+    let options = presentation.stages[1]
+        .project
+        .target_options
+        .xbrl
+        .as_ref()
+        .unwrap()
+        .clone();
+    presentation.stages[1].project.target_options.xbrl = Some(
+        mapping::XbrlBoundaryOptions::external_target(
+            options.taxonomy(),
+            Some("presentation/table.sps"),
+        )
+        .unwrap()
+        .with_namespace_bindings(options.namespace_bindings().to_vec())
+        .unwrap(),
+    );
+    let destination = directory.0.join("not-created/presentation.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &presentation,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("without presentation or numeric fact metadata"),
+        "{error}"
+    );
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut disconnected = pipeline;
+    disconnected.stages[1].project.root = mapping::Scope::default();
+    disconnected.stages[1].project.prune_unreachable_nodes();
+    let destination = directory.0.join("not-created/disconnected.mfd");
+    assert!(
+        mfd::export_pipeline_with_profile(
+            &disconnected,
+            &destination,
+            mfd::ExportProfile::NativeMfd,
+        )
+        .is_err()
+    );
+    assert!(!destination.parent().unwrap().exists());
+}
+
+#[test]
 fn protobuf_final_chain_rejects_unsupported_boundaries_before_artifacts() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let imported = mfd::import(&fixtures.join("protobuf-target.mfd")).unwrap();
@@ -2523,6 +2709,50 @@ fn add_connected_protobuf_target(xml: &str, schemafile: &str, default_output: bo
     };
     let component = format!(
         "<component name=\"other\" library=\"binary\" kind=\"33\"><properties{output_property}/><data><root><entry name=\"FileInstance\" inpkey=\"{EXTRA_KEY}\"><entry name=\"document\" type=\"doc-protobuf\"><document schemafile=\"{schemafile}\" root=\"{{ferrule.fixture}}Directory\"/><entry name=\"Directory\"/></entry></entry></root><binary outputinstance=\"other.bin\"/></data></component>"
+    );
+    let children_end = with_edge.rfind("</children>").unwrap();
+    with_edge.insert_str(children_end, &component);
+    with_edge
+}
+
+fn add_connected_xbrl_target(xml: &str, default_output: bool) -> String {
+    const EXTRA_KEY: &str = "4294967289";
+    let document = roxmltree::Document::parse(xml).unwrap();
+    let pass_through = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.children().any(|child| {
+                    child.has_tag_name("properties") && child.attribute("PassThrough") == Some("1")
+                })
+        })
+        .unwrap();
+    let vertex = document
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex"))
+        .find(|node| {
+            pass_through.descendants().any(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("outkey") == node.attribute("vertexkey")
+            })
+        })
+        .unwrap();
+    let edges = vertex
+        .children()
+        .find(|node| node.has_tag_name("edges"))
+        .unwrap();
+    let mut with_edge = xml.to_owned();
+    with_edge.insert_str(
+        edges.range().end - "</edges>".len(),
+        &format!("<edge vertexkey=\"{EXTRA_KEY}\"/>"),
+    );
+    let output_property = if default_output {
+        " XSLTDefaultOutput=\"1\""
+    } else {
+        ""
+    };
+    let component = format!(
+        "<component name=\"other\" library=\"xbrl\" kind=\"27\"><properties{output_property}/><data><root><entry name=\"FileInstance\"><entry name=\"document\"><entry name=\"xbrl\" inpkey=\"{EXTRA_KEY}\"/></entry></entry></root><xbrl schema=\"xbrl-final-taxonomy.xsd\" outputinstance=\"other.xbrl\"/></data></component>"
     );
     let children_end = with_edge.rfind("</children>").unwrap();
     with_edge.insert_str(children_end, &component);
@@ -2852,6 +3082,98 @@ fn protobuf_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
 }
 
 #[test]
+fn xbrl_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("xbrl-final.mfd")).unwrap();
+    let (pipeline, _) =
+        identity_xml_to_xbrl_pipeline(imported.project, &fixtures.join("xbrl-final-source.xml"));
+    let directory = TempDir::new();
+    std::fs::copy(
+        fixtures.join("xbrl-final-taxonomy.xsd"),
+        directory.0.join("xbrl-final-taxonomy.xsd"),
+    )
+    .unwrap();
+    let design = directory.0.join("source-xbrl-chain.mfd");
+    mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
+    let original = std::fs::read_to_string(&design).unwrap();
+    assert!(mfd::import_pipeline(&design).is_ok());
+
+    let ambiguous = add_connected_xbrl_target(&original, true);
+    std::fs::write(&design, ambiguous).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("ambiguous XBRL final must reject")
+        .to_string();
+    assert!(error.contains("one connected XML"), "{error}");
+
+    let named = add_connected_xbrl_target(&original, false);
+    std::fs::write(&design, named).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("named XBRL final must reject")
+        .to_string();
+    assert!(
+        error.contains("XBRL components only as the final primary target"),
+        "{error}"
+    );
+
+    let document = roxmltree::Document::parse(&original).unwrap();
+    let target = document
+        .descendants()
+        .find(|node| node.has_tag_name("component") && node.attribute("library") == Some("xbrl"))
+        .unwrap();
+    let mut disconnected = original.clone();
+    for key in target
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|entry| entry.attribute("inpkey"))
+    {
+        disconnected = disconnected.replace(&format!("<edge vertexkey=\"{key}\"/>"), "");
+    }
+    assert_ne!(disconnected, original);
+    std::fs::write(&design, disconnected).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("disconnected XBRL final must reject")
+        .to_string();
+    assert!(error.contains("connected"), "{error}");
+
+    let wrong_kind = original.replacen("kind=\"27\"", "kind=\"26\"", 1);
+    assert_ne!(wrong_kind, original);
+    std::fs::write(&design, wrong_kind).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("wrong XBRL kind must reject")
+        .to_string();
+    assert!(error.contains("does not yet support"), "{error}");
+
+    let presentation = original.replacen(
+        "<xbrl schema=\"xbrl-final-taxonomy.xsd\"",
+        "<xbrl schema=\"xbrl-final-taxonomy.xsd\" sps=\"presentation/table.sps\"",
+        1,
+    );
+    assert_ne!(presentation, original);
+    std::fs::write(&design, presentation).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("presentation-backed XBRL final must reject")
+        .to_string();
+    assert!(error.contains("does not yet support"), "{error}");
+
+    let extra_input = add_connected_input_outside_target_payload(&original, "xbrl");
+    std::fs::write(&design, extra_input).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("connected XBRL input outside the payload must reject")
+        .to_string();
+    assert!(
+        error.contains("unrepresented connected input port"),
+        "{error}"
+    );
+    assert!(!directory.0.join("not-created").exists());
+}
+
+#[test]
 fn flextext_final_chain_rejects_unsupported_boundaries_before_artifacts() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let imported = mfd::import(&fixtures.join("flextext-target.mfd")).unwrap();
@@ -3002,7 +3324,7 @@ fn flextext_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
         .expect("ambiguous FlexText final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, XBRL, or XLSX final target"),
         "{error}"
     );
 

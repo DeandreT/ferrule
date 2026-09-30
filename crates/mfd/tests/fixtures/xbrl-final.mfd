@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="26"><resources/>
+  <component name="map"><structure><children>
+    <component name="Source" library="xml" kind="14"><data>
+      <root><entry name="FileInstance"><entry name="document"><entry name="Source">
+        <entry name="Record" outkey="10">
+          <entry name="Entity" outkey="11"/><entry name="Scheme" outkey="12"/>
+          <entry name="Instant" outkey="13"/><entry name="Label" outkey="14"/>
+        </entry>
+      </entry></entry></entry></root>
+      <document schema="xbrl-final-source.xsd" inputinstance="xbrl-final-source.xml" instanceroot="{}Source"/>
+    </data></component>
+    <component name="Filing" library="xbrl" kind="27">
+      <properties XSLTDefaultOutput="1"/><data>
+        <root><header><namespaces>
+          <namespace uid=""/>
+          <namespace uid="http://www.xbrl.org/2003/instance"/>
+          <namespace uid="urn:ferrule:test:facts"/>
+        </namespaces></header><entry name="FileInstance"><entry name="document"><entry name="xbrl">
+          <entry name="Report"><entry name="row" inpkey="30">
+            <entry name="identifier" ns="1" inpkey="31"><entry name="scheme" type="attribute" inpkey="32"/></entry>
+            <entry name="period" ns="1"><entry name="instant" inpkey="33"/></entry>
+            <entry name="Label" ns="2" inpkey="34"/>
+          </entry></entry>
+        </entry></entry></entry></root>
+        <xbrl schema="xbrl-final-taxonomy.xsd" outputinstance="filing.xbrl"/>
+      </data>
+    </component>
+  </children><graph><vertices>
+    <vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex>
+    <vertex vertexkey="11"><edges><edge vertexkey="31"/></edges></vertex>
+    <vertex vertexkey="12"><edges><edge vertexkey="32"/></edges></vertex>
+    <vertex vertexkey="13"><edges><edge vertexkey="33"/></edges></vertex>
+    <vertex vertexkey="14"><edges><edge vertexkey="34"/></edges></vertex>
+  </vertices></graph></structure></component>
+</mapping>
