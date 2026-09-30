@@ -1427,6 +1427,32 @@ fn failed_open_preserves_the_current_document_and_dirty_state() {
 }
 
 #[test]
+fn project_run_values_survive_failed_open_and_clear_after_successful_open() {
+    let valid_path = temporary_project_path("host-values-project-open");
+    let invalid_path = valid_path.with_file_name("invalid.json");
+    std::fs::write(
+        &valid_path,
+        serde_json::to_vec(&run_value_project()).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(&invalid_path, "not json").unwrap();
+    let mut app = FerruleApp::default();
+    app.host_parameters
+        .entries
+        .push(host_parameters::HostParameterEntry {
+            name: "choice".into(),
+            value: "current session".into(),
+        });
+
+    app.load_project_from(&invalid_path);
+    assert_eq!(app.host_parameters.entries[0].value, "current session");
+    app.load_project_from(&valid_path);
+    assert!(app.host_parameters.entries.is_empty());
+
+    std::fs::remove_dir_all(valid_path.parent().unwrap()).unwrap();
+}
+
+#[test]
 fn failed_save_does_not_change_the_document_association() {
     let old_path = temporary_project_path("failed-save-current");
     let directory = old_path.parent().expect("project has parent").to_path_buf();
@@ -1710,18 +1736,68 @@ fn pipeline_run_supplies_host_values_to_its_stages() -> anyhow::Result<()> {
     assert!(draft.issues.is_empty(), "{:?}", draft.issues);
     draft.inputs[0].path = input_path.display().to_string();
     draft.outputs[0].path = output_path.display().to_string();
-    app.host_parameters
+    draft
+        .host_parameters
         .entries
         .push(host_parameters::HostParameterEntry {
             name: "choice".into(),
             value: "pipeline override".into(),
+        });
+    app.host_parameters
+        .entries
+        .push(host_parameters::HostParameterEntry {
+            name: "choice".into(),
+            value: "project-only value".into(),
         });
 
     app.start_pipeline_run();
     wait_for_pipeline_completion(&mut app);
     assert!(app.diagnostics.is_empty(), "{}", app.status);
     assert_eq!(selected_run_value(&output_path)?, "pipeline override");
+    assert_eq!(app.host_parameters.entries[0].value, "project-only value");
     std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn pipeline_run_values_survive_failed_load_and_reset_on_reopen() -> anyhow::Result<()> {
+    let pipeline_path = temporary_project_path("host-values-pipeline-open");
+    let invalid_path = pipeline_path.with_file_name("invalid.json");
+    pipeline_fixture(&pipeline_path)?;
+    std::fs::write(&invalid_path, "not json")?;
+    let mut app = FerruleApp::default();
+    app.load_pipeline_for_run(&pipeline_path);
+    app.pipeline_run_draft
+        .as_mut()
+        .unwrap()
+        .host_parameters
+        .entries
+        .push(host_parameters::HostParameterEntry {
+            name: "choice".into(),
+            value: "first pipeline session".into(),
+        });
+
+    app.load_pipeline_for_run(&invalid_path);
+    assert_eq!(
+        app.pipeline_run_draft
+            .as_ref()
+            .unwrap()
+            .host_parameters
+            .entries[0]
+            .value,
+        "first pipeline session"
+    );
+    app.load_pipeline_for_run(&pipeline_path);
+    assert!(
+        app.pipeline_run_draft
+            .as_ref()
+            .unwrap()
+            .host_parameters
+            .entries
+            .is_empty()
+    );
+
+    std::fs::remove_dir_all(pipeline_path.parent().unwrap())?;
     Ok(())
 }
 
@@ -1874,6 +1950,41 @@ fn run_value_project() -> Project {
         node: 1,
     });
     project
+}
+
+#[test]
+fn optional_host_input_default_roundtrips_through_undo_and_project_save() -> anyhow::Result<()> {
+    let project_path = temporary_project_path("host-input-authoring-roundtrip");
+    let mut app = FerruleApp::default();
+    app.project = run_value_project();
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.observe_editor_history(std::time::Instant::now(), false);
+    assert!(app.is_dirty());
+    assert!(matches!(
+        app.project.graph.nodes.get(&1),
+        Some(Node::RuntimeParameterDefault { name, default: 0, .. }) if name == "choice"
+    ));
+
+    app.undo_project();
+    assert!(app.project.graph.nodes.is_empty());
+    app.redo_project();
+    assert!(matches!(
+        app.project.graph.nodes.get(&1),
+        Some(Node::RuntimeParameterDefault { default: 0, .. })
+    ));
+    assert!(app.main_canvas.snarl.wires().count() >= 2);
+
+    app.save_document_to(&project_path)?;
+    let mut reopened = FerruleApp::default();
+    reopened.load_project_from(&project_path);
+    assert!(matches!(
+        reopened.project.graph.nodes.get(&1),
+        Some(Node::RuntimeParameterDefault { name, default: 0, .. }) if name == "choice"
+    ));
+    assert!(reopened.main_canvas.snarl.wires().count() >= 2);
+    assert!(!reopened.is_dirty());
+    std::fs::remove_dir_all(project_path.parent().unwrap())?;
+    Ok(())
 }
 
 fn selected_run_value(path: &Path) -> anyhow::Result<String> {

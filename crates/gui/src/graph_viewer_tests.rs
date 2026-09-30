@@ -1033,6 +1033,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
         match template {
             NodeTemplate::If => 3,
             NodeTemplate::ValueMap | NodeTemplate::Lookup => 1,
+            NodeTemplate::HostInputDefault => 1,
             NodeTemplate::CollectionFind => 2,
             NodeTemplate::Aggregate(AggregateOp::Join | AggregateOp::ItemAt) => 1,
             NodeTemplate::Builtin(name) => functions::builtin(name)
@@ -1041,6 +1042,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             NodeTemplate::Constant
             | NodeTemplate::SourceField
             | NodeTemplate::Position
+            | NodeTemplate::HostInput
             | NodeTemplate::Aggregate(_) => 0,
         }
     }
@@ -1050,6 +1052,8 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             (NodeTemplate::Constant, Node::Const { value: Value::Null })
             | (NodeTemplate::SourceField, Node::SourceField { .. })
             | (NodeTemplate::Position, Node::Position { .. })
+            | (NodeTemplate::HostInput, Node::RuntimeParameter { .. })
+            | (NodeTemplate::HostInputDefault, Node::RuntimeParameterDefault { .. })
             | (NodeTemplate::If, Node::If { .. })
             | (NodeTemplate::ValueMap, Node::ValueMap { .. })
             | (NodeTemplate::Lookup, Node::Lookup { .. })
@@ -1096,6 +1100,63 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             unconnected
         );
     }
+}
+
+#[test]
+fn host_input_palette_requires_a_name_and_keeps_optional_default_hidden() {
+    let mut fx = fixture();
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let (required, required_snarl) = fx.viewer().insert_palette_node(
+        &mut snarl,
+        egui::pos2(240.0, 160.0),
+        NodeTemplate::HostInput,
+    );
+    let (optional, optional_snarl) = fx.viewer().insert_palette_node(
+        &mut snarl,
+        egui::pos2(340.0, 160.0),
+        NodeTemplate::HostInputDefault,
+    );
+
+    assert!(matches!(
+        &fx.graph.nodes[&required],
+        Node::RuntimeParameter { name, ty: ScalarType::String } if name.is_empty()
+    ));
+    let Node::RuntimeParameterDefault { name, ty, default } = &fx.graph.nodes[&optional] else {
+        panic!("optional host input was not created");
+    };
+    assert!(name.is_empty());
+    assert_eq!(*ty, ScalarType::String);
+    assert!(matches!(
+        fx.graph.nodes.get(default),
+        Some(Node::Unconnected)
+    ));
+    assert_eq!(snarl.wires().count(), 0);
+    assert_eq!(snarl.nodes().count(), 5, "the default has no canvas node");
+    assert!(
+        fx.viewer()
+            .title(&CanvasNode::Graph(required))
+            .contains("<name required>")
+    );
+    assert!(
+        fx.viewer()
+            .title(&CanvasNode::Graph(optional))
+            .contains("<name required>")
+    );
+
+    let from = snarl.out_pin(OutPinId {
+        node: required_snarl,
+        output: 0,
+    });
+    let to = snarl.in_pin(InPinId {
+        node: optional_snarl,
+        input: 0,
+    });
+    fx.viewer().connect(&from, &to, &mut snarl);
+    assert!(matches!(
+        fx.graph.nodes.get(&optional),
+        Some(Node::RuntimeParameterDefault { default, .. }) if *default == required
+    ));
+    assert_eq!(snarl.wires().count(), 1);
 }
 
 #[test]

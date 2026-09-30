@@ -52,7 +52,7 @@ mod extra_target_ui;
 #[path = "../workspace/functions.rs"]
 mod function_workspace;
 #[path = "host_parameters.rs"]
-mod host_parameters;
+pub(crate) mod host_parameters;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
 #[path = "pipeline_editor.rs"]
@@ -948,6 +948,7 @@ impl FerruleApp {
             DestructiveAction::NewProject => {
                 self.clear_run_report();
                 self.project = blank_project();
+                self.host_parameters = host_parameters::HostParameterEditor::default();
                 self.mapping_workspace.reset();
                 self.main_canvas = CanvasDocumentState::main(&self.project);
                 self.reset_canvas_view();
@@ -1026,6 +1027,7 @@ impl FerruleApp {
                 self.reset_canvas_view();
                 self.clear_run_report();
                 self.project = project;
+                self.host_parameters = host_parameters::HostParameterEditor::default();
                 self.mapping_workspace = mapping_workspace;
                 self.document = DocumentLocation::saved(path);
                 self.selected_scope.clear();
@@ -1273,6 +1275,7 @@ impl FerruleApp {
                     self.main_canvas = CanvasDocumentState::main(&imported.project);
                     self.reset_canvas_view();
                     self.project = imported.project;
+                    self.host_parameters = host_parameters::HostParameterEditor::default();
                     self.mapping_workspace.reset();
                     self.history.mark_unsaved();
                     self.selected_scope.clear();
