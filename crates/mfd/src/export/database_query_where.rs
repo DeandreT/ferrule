@@ -1,4 +1,4 @@
-//! Rebuild a literal SQLite title predicate as a native database where control.
+//! Rebuild a guarded SQLite title predicate as a native database where control.
 //!
 //! A few imported database select statements become a relational table plus a
 //! guarded `sql_like` graph predicate. Keeping that predicate as a Ferrule
@@ -194,7 +194,7 @@ impl NativeQueryWhere {
             ));
         }
         let parameter = node_out_key.get(&self.parameter).copied().ok_or_else(|| {
-            MfdError::Unsupported("native database title where lost its literal pattern".into())
+            MfdError::Unsupported("native database title where lost its pattern value".into())
         })?;
         let collection_input = keys.next();
         let parameter_input = keys.next();
@@ -268,9 +268,18 @@ fn guarded_like(
     if !title_field(nodes.get(title)?, collection) {
         return None;
     }
+    let pattern_node = match nodes.get(parameter)? {
+        Node::Const { .. } => nodes.get(parameter)?,
+        Node::RuntimeParameterDefault {
+            ty: ScalarType::String,
+            default,
+            ..
+        } => nodes.get(default)?,
+        _ => return None,
+    };
     let Node::Const {
         value: Value::String(pattern),
-    } = nodes.get(parameter)?
+    } = pattern_node
     else {
         return None;
     };
@@ -352,12 +361,7 @@ fn guarded_equal_one(project: &Project, filter: NodeId, collection: &[String]) -
                     }
                 )
         })
-        || !matches!(
-            nodes.get(one),
-            Some(Node::Const {
-                value: Value::Int(1)
-            })
-        )
+        || !one_operand(nodes, *one)
     {
         return None;
     }
@@ -379,6 +383,23 @@ fn guarded_equal_one(project: &Project, filter: NodeId, collection: &[String]) -
             })
         ))
     .then_some(())
+}
+
+fn one_operand(nodes: &BTreeMap<NodeId, Node>, id: NodeId) -> bool {
+    let node = match nodes.get(&id) {
+        Some(Node::RuntimeParameterDefault {
+            ty: ScalarType::Int,
+            default,
+            ..
+        }) => nodes.get(default),
+        node => node,
+    };
+    matches!(
+        node,
+        Some(Node::Const {
+            value: Value::Int(1)
+        })
+    ) || matches!(node, Some(Node::Const { value: Value::Float(value) }) if *value == 1.0)
 }
 
 fn title_field(node: &Node, collection: &[String]) -> bool {
