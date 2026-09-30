@@ -86,9 +86,14 @@ enum PipelineRunEvent {
     PausedFunctionFailure(String, Box<engine::PendingFunctionNodeFailure>),
     ReadyToPublish,
     Finished(
-        Result<cli::PipelineRunOutcome, PipelineRunError>,
+        Result<PipelineCompletion, PipelineRunError>,
         crate::run_report::TraceReport,
     ),
+}
+
+enum PipelineCompletion {
+    Run(cli::PipelineRunOutcome),
+    Preview(cli::PipelinePreviewOutcome),
 }
 
 enum PipelineRunError {
@@ -117,6 +122,7 @@ pub(super) struct PendingPipelineRun {
     started: Instant,
     path: PathBuf,
     debug: bool,
+    preview: bool,
     pub(super) phase: PipelineRunPhase,
 }
 
@@ -668,6 +674,15 @@ impl FerruleApp {
             .pending_pipeline_run
             .as_ref()
             .is_some_and(|run| run.debug);
+        let previewing = self
+            .pending_pipeline_run
+            .as_ref()
+            .is_some_and(|run| run.preview);
+        let cancel_label = if previewing {
+            "Cancel preview"
+        } else {
+            "Cancel pipeline"
+        };
         let running = phase.is_some();
         let candidates = breakpoint_candidates(&draft.pipeline);
         if self
@@ -682,7 +697,7 @@ impl FerruleApp {
         let mut command = None;
         let mut condition_valid = true;
         let mut host_parameters_valid = true;
-        egui::Window::new("Run pipeline")
+        egui::Window::new("Run or preview pipeline")
             .default_width(650.0)
             .min_width(480.0)
             .resizable(true)
@@ -740,8 +755,32 @@ impl FerruleApp {
                     host_parameters_valid = draft.host_parameters.show(ui);
                 });
                 ui.separator();
-                ui.strong("Publish outputs");
-                ui.small("Leave an output blank to skip saving it. Dynamic document targets use a base directory.");
+                ui.strong("Preview formats");
+                ui.small("These paths identify output formats for Preview. Preview does not write files. Dynamic document targets use a base directory.");
+                egui::ScrollArea::vertical()
+                    .max_height(160.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new("pipeline_preview_paths")
+                            .num_columns(2)
+                            .show(ui, |ui| {
+                                for output in &mut draft.outputs {
+                                    let label = match &output.target {
+                                        None => format!("{} / Primary", output.stage),
+                                        Some(name) => format!("{} / {name}", output.stage),
+                                    };
+                                    ui.label(label);
+                                    ui.add_enabled(
+                                        !running,
+                                        egui::TextEdit::singleline(&mut output.preview_path)
+                                            .hint_text("Format path or base directory"),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                ui.separator();
+                ui.strong("Publish outputs on Run");
+                ui.small("Choose files to publish after every stage succeeds. Blank outputs are not saved. Dynamic document targets use a base directory.");
                 egui::ScrollArea::vertical()
                     .max_height(210.0)
                     .show(ui, |ui| {
@@ -918,10 +957,11 @@ impl FerruleApp {
                     Some(PipelineRunPhase::Running) => {
                         ui.horizontal(|ui| {
                             ui.spinner();
-                            ui.strong(if debug {
-                                "Debug pipeline is running"
-                            } else {
-                                "Pipeline is running"
+                            ui.strong(match (previewing, debug) {
+                                (true, true) => "Debug pipeline preview is running",
+                                (true, false) => "Pipeline preview is running",
+                                (false, true) => "Debug pipeline is running",
+                                (false, false) => "Pipeline is running",
                             });
                         });
                     }
@@ -966,7 +1006,11 @@ impl FerruleApp {
                     Some(PipelineRunPhase::Stopping) => {
                         ui.horizontal(|ui| {
                             ui.spinner();
-                            ui.strong("Stopping pipeline");
+                            ui.strong(if previewing {
+                                "Stopping pipeline preview"
+                            } else {
+                                "Stopping pipeline"
+                            });
                         });
                     }
                     None => {}
@@ -979,18 +1023,31 @@ impl FerruleApp {
                                 && draft.inputs.iter().all(|input| !input.path.trim().is_empty())
                                 && draft.outputs.iter().any(|output| !output.path.trim().is_empty())
                                 && host_parameters_valid;
+                            let can_preview = draft.issues.is_empty()
+                                && draft.inputs.iter().all(|input| !input.path.trim().is_empty())
+                                && draft
+                                    .outputs
+                                    .iter()
+                                    .all(|output| !output.preview_path.trim().is_empty())
+                                && host_parameters_valid;
                             if ui.add_enabled(can_run, egui::Button::new("Run pipeline")).clicked() {
-                                run = Some(false);
+                                run = Some((false, false));
                             }
                             if ui.add_enabled(can_run && condition_valid, egui::Button::new("Debug pipeline")).clicked() {
-                                run = Some(true);
+                                run = Some((false, true));
+                            }
+                            if ui.add_enabled(can_preview, egui::Button::new("Preview pipeline")).clicked() {
+                                run = Some((true, false));
+                            }
+                            if ui.add_enabled(can_preview && condition_valid, egui::Button::new("Debug Preview")).clicked() {
+                                run = Some((true, true));
                             }
                         }
                         Some(PipelineRunPhase::Running) => {
                             if debug && ui.button("Pause at next write").clicked() {
                                 command = Some(PipelineRunCommand::Pause);
                             }
-                            if ui.button("Cancel pipeline").clicked() {
+                            if ui.button(cancel_label).clicked() {
                                 command = Some(PipelineRunCommand::Cancel);
                             }
                         }
@@ -1007,7 +1064,7 @@ impl FerruleApp {
                             if ui.button("Continue").clicked() {
                                 command = Some(PipelineRunCommand::Continue);
                             }
-                            if ui.button("Cancel pipeline").clicked() {
+                            if ui.button(cancel_label).clicked() {
                                 command = Some(PipelineRunCommand::Cancel);
                             }
                         }
@@ -1018,7 +1075,7 @@ impl FerruleApp {
                             if ui.button("Continue to error").clicked() {
                                 command = Some(PipelineRunCommand::Continue);
                             }
-                            if ui.button("Cancel pipeline").clicked() {
+                            if ui.button(cancel_label).clicked() {
                                 command = Some(PipelineRunCommand::Cancel);
                             }
                         }
@@ -1031,8 +1088,8 @@ impl FerruleApp {
             });
         if close {
             self.pipeline_run_draft = None;
-        } else if let Some(debug) = run {
-            self.start_pipeline_run_mode(debug);
+        } else if let Some((preview, debug)) = run {
+            self.start_pipeline_execution_mode(preview, debug);
         } else if let Some(command) = command {
             self.pipeline_run_command(command);
         }
@@ -1040,16 +1097,29 @@ impl FerruleApp {
 
     #[cfg(test)]
     pub(super) fn start_pipeline_run(&mut self) {
-        self.start_pipeline_run_mode(false);
+        self.start_pipeline_execution_mode(false, false);
     }
 
     #[cfg(test)]
     pub(super) fn start_pipeline_debug_run(&mut self) {
-        self.start_pipeline_run_mode(true);
+        self.start_pipeline_execution_mode(false, true);
     }
 
-    fn start_pipeline_run_mode(&mut self, debug: bool) {
-        if self.pending_pipeline_run.is_some() || self.pending_file_run.is_some() {
+    #[cfg(test)]
+    pub(super) fn start_pipeline_preview(&mut self) {
+        self.start_pipeline_execution_mode(true, false);
+    }
+
+    #[cfg(test)]
+    pub(super) fn start_pipeline_debug_preview(&mut self) {
+        self.start_pipeline_execution_mode(true, true);
+    }
+
+    fn start_pipeline_execution_mode(&mut self, preview: bool, debug: bool) {
+        if self.pending_pipeline_run.is_some()
+            || self.pending_file_run.is_some()
+            || self.pending_preview.is_some()
+        {
             return;
         }
         let Some(draft) = self.pipeline_run_draft.as_ref() else {
@@ -1058,8 +1128,13 @@ impl FerruleApp {
         let runtime_parameters = match draft.host_parameters.compile() {
             Ok(parameters) => parameters,
             Err(error) => {
-                self.status = "pipeline run blocked".into();
-                self.diagnostics.error("Pipeline run blocked", error);
+                let title = if preview {
+                    "Pipeline preview blocked"
+                } else {
+                    "Pipeline run blocked"
+                };
+                self.status = title.to_lowercase();
+                self.diagnostics.error(title, error);
                 return;
             }
         };
@@ -1138,18 +1213,40 @@ impl FerruleApp {
         let Some(draft) = self.pipeline_run_draft.as_ref() else {
             return;
         };
-        let prepared = draft.ensure_unchanged().and_then(|()| draft.requests());
-        let (inputs, outputs) = match prepared {
+        let prepared = draft.ensure_unchanged().and_then(|()| {
+            if preview {
+                let inputs = draft.input_requests()?;
+                let identities = draft
+                    .preview_paths()?
+                    .into_iter()
+                    .map(|(stage, target, path)| cli::PipelinePreviewOutputIdentity {
+                        stage,
+                        target,
+                        path,
+                    })
+                    .collect();
+                Ok((inputs, Vec::new(), identities))
+            } else {
+                let (inputs, outputs) = draft.requests()?;
+                Ok((inputs, outputs, Vec::new()))
+            }
+        });
+        let (inputs, outputs, preview_identities) = match prepared {
             Ok(requests) => requests,
             Err(error) => {
-                self.status = "pipeline run blocked".into();
-                self.diagnostics
-                    .error("Pipeline run blocked", format!("{error:#}"));
+                let title = if preview {
+                    "Pipeline preview blocked"
+                } else {
+                    "Pipeline run blocked"
+                };
+                self.status = title.to_lowercase();
+                self.diagnostics.error(title, format!("{error:#}"));
                 return;
             }
         };
         let path = draft.path.clone();
         let worker_path = path.clone();
+        let worker_pipeline = preview.then(|| Arc::clone(&draft.pipeline));
         let breakpoint = if debug {
             self.pipeline_run_breakpoint
                 .clone()
@@ -1263,20 +1360,82 @@ impl FerruleApp {
                     .with_stage_node_failure_debug_hook(&stage_node_failure_hook)
                     .with_stage_function_failure_debug_hook(&stage_function_failure_hook);
             }
-            let result =
+            let result: anyhow::Result<PipelineCompletion> = if preview {
+                (|| {
+                    let empty_hosts = inputs
+                        .iter()
+                        .map(|input| {
+                            let document = cli::PayloadDocument::new(&input.path, &[])?;
+                            cli::PipelineHostPayload::new(&input.name, document)
+                        })
+                        .collect::<anyhow::Result<Vec<_>>>()?;
+                    let preflight_options = cli::PipelinePreviewOptions::new(&empty_hosts)
+                        .with_output_identities(&preview_identities)
+                        .with_runtime_parameters(&runtime_parameters)
+                        .with_cancellation(hook.cancelled.as_ref());
+                    cli::validate_pipeline_preview(
+                        worker_pipeline.as_ref().expect("preview pipeline snapshot"),
+                        &worker_path,
+                        &preflight_options,
+                    )?;
+                    let loaded = crate::pipeline_run::load_preview_hosts(&inputs, || {
+                        hook.cancelled.load(Ordering::Acquire)
+                    })?;
+                    let hosts = loaded
+                        .iter()
+                        .map(|host| {
+                            let document = cli::PayloadDocument::new(&host.path, &host.bytes)?;
+                            cli::PipelineHostPayload::new(&host.name, document)
+                        })
+                        .collect::<anyhow::Result<Vec<_>>>()?;
+                    let mut preview_options = cli::PipelinePreviewOptions::new(&hosts)
+                        .with_output_identities(&preview_identities)
+                        .with_runtime_parameters(&runtime_parameters)
+                        .with_stage_debug_hook(&stage_hook)
+                        .with_stage_source_field_probe(&source_probe)
+                        .with_stage_trace_sink(&stage_trace)
+                        .with_cancellation(hook.cancelled.as_ref());
+                    if hook.expression_condition.is_some() {
+                        preview_options = preview_options
+                            .with_stage_node_debug_hook(&stage_node_hook)
+                            .with_stage_function_node_debug_hook(&stage_function_node_hook);
+                    }
+                    if hook.input_condition.is_some() {
+                        preview_options = preview_options
+                            .with_stage_input_debug_hook(&stage_input_hook)
+                            .with_stage_function_input_debug_hook(&stage_function_input_hook);
+                    }
+                    if hook.pause_on_failure {
+                        preview_options = preview_options
+                            .with_stage_node_failure_debug_hook(&stage_node_failure_hook)
+                            .with_stage_function_failure_debug_hook(&stage_function_failure_hook);
+                    }
+                    let outcome = cli::preview_pipeline_value_payloads(
+                        worker_pipeline.as_ref().expect("preview pipeline snapshot"),
+                        &worker_path,
+                        &preview_options,
+                    )?;
+                    if hook.cancelled.load(Ordering::Acquire) {
+                        return Err(engine::EngineError::DebugCancelled.into());
+                    }
+                    Ok(PipelineCompletion::Preview(outcome))
+                })()
+            } else {
                 cli::run_pipeline_file_with_options(&worker_path, &inputs, &outputs, &options)
-                    .map_err(|error| {
-                        if error.chain().any(|cause| {
-                            matches!(
-                                cause.downcast_ref::<engine::EngineError>(),
-                                Some(engine::EngineError::DebugCancelled)
-                            )
-                        }) {
-                            PipelineRunError::Cancelled
-                        } else {
-                            PipelineRunError::Failed(format!("{error:#}"))
-                        }
-                    });
+                    .map(PipelineCompletion::Run)
+            };
+            let result = result.map_err(|error| {
+                if error.chain().any(|cause| {
+                    matches!(
+                        cause.downcast_ref::<engine::EngineError>(),
+                        Some(engine::EngineError::DebugCancelled)
+                    )
+                }) {
+                    PipelineRunError::Cancelled
+                } else {
+                    PipelineRunError::Failed(format!("{error:#}"))
+                }
+            });
             let _ = events.send(PipelineRunEvent::Finished(result, trace.finish()));
         });
         self.pending_pipeline_run = Some(PendingPipelineRun {
@@ -1286,26 +1445,33 @@ impl FerruleApp {
             started: Instant::now(),
             path,
             debug,
+            preview,
             phase: PipelineRunPhase::Running,
         });
+        self.run_report = None;
         self.show_run_report = false;
-        self.status = if debug {
-            "debug pipeline running".into()
-        } else {
-            "running pipeline".into()
-        };
+        self.status = match (preview, debug) {
+            (true, true) => "debug pipeline preview running",
+            (true, false) => "previewing pipeline",
+            (false, true) => "debug pipeline running",
+            (false, false) => "running pipeline",
+        }
+        .into();
         self.diagnostics.clear();
     }
 
     pub(super) fn pipeline_run_command(&mut self, command: PipelineRunCommand) {
         if let Some(pending) = &mut self.pending_pipeline_run {
             pending.command(command);
-            self.status = match command {
-                PipelineRunCommand::Cancel => "stopping pipeline",
-                PipelineRunCommand::Pause => "pausing pipeline at next target write",
-                PipelineRunCommand::Step
-                | PipelineRunCommand::Continue
-                | PipelineRunCommand::Publish => "debug pipeline running",
+            self.status = match (pending.preview, command) {
+                (true, PipelineRunCommand::Cancel) => "stopping pipeline preview",
+                (false, PipelineRunCommand::Cancel) => "stopping pipeline",
+                (true, PipelineRunCommand::Pause) => {
+                    "pausing pipeline preview at next target write"
+                }
+                (false, PipelineRunCommand::Pause) => "pausing pipeline at next target write",
+                (true, _) => "debug pipeline preview running",
+                (false, _) => "debug pipeline running",
             }
             .into();
         }
@@ -1428,6 +1594,7 @@ impl FerruleApp {
                 ctx.request_repaint();
             }
             PipelineRunEvent::ReadyToPublish => {
+                debug_assert!(!pending.preview, "preview cannot publish outputs");
                 if matches!(pending.phase, PipelineRunPhase::Stopping) {
                     let _ = pending.commands.send(PipelineRunCommand::Cancel);
                 } else {
@@ -1445,13 +1612,18 @@ impl FerruleApp {
                 if matches!(pending.phase, PipelineRunPhase::Stopping)
                     || matches!(result, Err(PipelineRunError::Cancelled))
                 {
-                    self.status = "pipeline cancelled".into();
+                    self.status = if pending.preview {
+                        "pipeline preview cancelled"
+                    } else {
+                        "pipeline cancelled"
+                    }
+                    .into();
                     self.diagnostics.clear();
                     self.finish_deferred_pipeline_close(ctx);
                     return;
                 }
                 match result {
-                    Ok(outcome) => {
+                    Ok(PipelineCompletion::Run(outcome)) => {
                         self.status = format!(
                             "pipeline completed {} stage(s) and wrote {} file(s)",
                             outcome.stages_executed.len(),
@@ -1467,9 +1639,30 @@ impl FerruleApp {
                         self.show_run_report = true;
                         self.pipeline_run_draft = None;
                     }
+                    Ok(PipelineCompletion::Preview(outcome)) => {
+                        self.status = format!(
+                            "pipeline preview completed {} stage(s) and {} artifact(s)",
+                            outcome.stages_executed.len(),
+                            outcome.artifacts.len()
+                        );
+                        let report = crate::run_report::RunReport::from_pipeline_preview_outcome(
+                            outcome,
+                            pending.path.clone(),
+                            pending.started.elapsed(),
+                            trace,
+                        );
+                        self.run_report = Some(crate::run_report::RunReportView::new(report));
+                        self.show_run_report = true;
+                        self.pipeline_run_draft = None;
+                    }
                     Err(PipelineRunError::Failed(error)) => {
-                        self.status = "pipeline run failed".into();
-                        self.diagnostics.error("Pipeline run failed", error);
+                        let title = if pending.preview {
+                            "Pipeline preview failed"
+                        } else {
+                            "Pipeline run failed"
+                        };
+                        self.status = title.to_lowercase();
+                        self.diagnostics.error(title, error);
                     }
                     Err(PipelineRunError::Cancelled) => unreachable!("handled above"),
                 }
@@ -1511,6 +1704,7 @@ mod tests {
                 started: Instant::now(),
                 path: PathBuf::from("pipeline.json"),
                 debug: false,
+                preview: false,
                 phase: PipelineRunPhase::Publishing,
             }),
             ..FerruleApp::default()
