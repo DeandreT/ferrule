@@ -134,6 +134,7 @@ fn dynamic_output_project() -> Project {
                     Node::RuntimeParameter {
                         name: "correlation_id".into(),
                         ty: ScalarType::String,
+                        preview: None,
                     },
                 ),
             ]),

@@ -848,6 +848,7 @@ fn failed_aggregate_expression_emits_no_input_or_parent_argument() {
                     Node::RuntimeParameter {
                         name: "missing".into(),
                         ty: ScalarType::String,
+                        preview: None,
                     },
                 ),
                 (
@@ -958,6 +959,7 @@ fn input_trace_records_only_the_taken_conditional_branch() -> Result<(), Box<dyn
                     Node::RuntimeParameter {
                         name: "unused".into(),
                         ty: ScalarType::String,
+                        preview: None,
                     },
                 ),
                 (

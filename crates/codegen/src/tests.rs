@@ -754,6 +754,7 @@ fn lowers_typed_runtime_parameters_as_dependency_free_expressions() {
         Node::RuntimeParameter {
             name: "control_number".into(),
             ty: ScalarType::Int,
+            preview: None,
         },
     );
     project.graph.nodes.insert(
@@ -761,6 +762,7 @@ fn lowers_typed_runtime_parameters_as_dependency_free_expressions() {
         Node::RuntimeParameter {
             name: "correlation_id".into(),
             ty: ScalarType::String,
+            preview: None,
         },
     );
 
@@ -811,6 +813,7 @@ fn optional_runtime_parameter_default_is_a_validated_graph_dependency() {
             name: "control".into(),
             ty: ScalarType::Int,
             default: 40,
+            preview: None,
         },
     );
     project.root.bindings[0].node = 41;
@@ -834,6 +837,41 @@ fn optional_runtime_parameter_default_is_a_validated_graph_dependency() {
             dependency: 40,
         })
     );
+}
+
+#[test]
+fn lowering_ignores_raw_preview_metadata_for_required_and_default_inputs() {
+    let mut project = supported_project();
+    project.graph.nodes.insert(
+        40,
+        Node::RuntimeParameter {
+            name: "default_input".into(),
+            ty: ScalarType::String,
+            preview: None,
+        },
+    );
+    project.graph.nodes.insert(
+        41,
+        Node::RuntimeParameterDefault {
+            name: "control".into(),
+            ty: ScalarType::String,
+            default: 40,
+            preview: None,
+        },
+    );
+    project.root.bindings[0].node = 41;
+    let normal = lower(&project).unwrap();
+    for (node, lexical) in [
+        (40, ""),
+        (41, "a preview cannot become a generated default"),
+    ] {
+        match project.graph.nodes.get_mut(&node).unwrap() {
+            Node::RuntimeParameter { preview, .. }
+            | Node::RuntimeParameterDefault { preview, .. } => *preview = Some(lexical.into()),
+            _ => panic!("host input"),
+        }
+    }
+    assert_eq!(lower(&project).unwrap(), normal);
 }
 
 #[test]

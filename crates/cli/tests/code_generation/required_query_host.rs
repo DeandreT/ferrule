@@ -96,7 +96,7 @@ fn imported_required_query_host_matches_generated_rust_and_csharp() -> TestResul
             .nodes
             .values()
             .filter(|node| matches!(node,
-                Node::RuntimeParameter { name, ty: ScalarType::Int } if name == "Minimum"
+                Node::RuntimeParameter { name, ty: ScalarType::Int, .. } if name == "Minimum"
             ))
             .count(),
         1

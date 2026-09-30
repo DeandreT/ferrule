@@ -602,6 +602,7 @@ fn pin_hook_skips_untaken_if_branch() {
             Node::RuntimeParameter {
                 name: "missing".into(),
                 ty: ScalarType::String,
+                preview: None,
             },
         ),
         (
@@ -1102,6 +1103,7 @@ fn xml_mixed_content_skips_unseen_replacements_and_does_not_deliver_failed_value
         Node::RuntimeParameter {
             name: "missing".into(),
             ty: ScalarType::String,
+            preview: None,
         },
     );
     let only_bold = format_xml::from_str(
@@ -1572,6 +1574,7 @@ fn add_missing_sequence_aggregate_arg(project: &mut Project) {
         Node::RuntimeParameter {
             name: "missing-argument".into(),
             ty: ScalarType::Int,
+            preview: None,
         },
     );
     let Some(Node::SequenceAggregate { arg, .. }) = project.graph.nodes.get_mut(&7) else {
@@ -1852,6 +1855,7 @@ fn sequence_aggregate_failed_expression_delivers_no_pin_or_parent_arg() {
         Node::RuntimeParameter {
             name: "missing-expression".into(),
             ty: ScalarType::Int,
+            preview: None,
         },
     );
     let source = Instance::Group(vec![]);
@@ -1934,6 +1938,7 @@ fn generate_arguments_follow_optional_from_pin_order_and_null_short_circuit() {
         Node::RuntimeParameter {
             name: "unreached-to".into(),
             ty: ScalarType::Int,
+            preview: None,
         },
     );
     let trace = Collector::default();
@@ -1976,6 +1981,7 @@ fn generator_input_cancel_skips_later_argument_and_predicate() {
         Node::RuntimeParameter {
             name: "unreached-to".into(),
             ty: ScalarType::Int,
+            preview: None,
         },
     );
     let Some(Node::SequenceExists { sequence, .. }) = project.graph.nodes.get_mut(&5) else {
@@ -2236,6 +2242,7 @@ fn sequence_item_at_failed_index_has_no_delivery() {
         Node::RuntimeParameter {
             name: "missing-index".into(),
             ty: ScalarType::Int,
+            preview: None,
         },
     );
     let source = Instance::Group(vec![]);
