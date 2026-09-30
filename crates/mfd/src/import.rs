@@ -414,9 +414,15 @@ pub fn import_pipeline_with_options(
             "pipeline source boundaries do not match imported stages".into(),
         ));
     }
-    let final_named_output_key = chain
-        .final_named_source_key
-        .map(|_| lowered[1].source_components[0].key);
+    let final_named_producer_index = chain.final_named_source_key.map(|key| {
+        chain
+            .intermediates
+            .iter()
+            .position(|intermediate| intermediate.key == key)
+            .expect("branching intermediate belongs to the chain")
+    });
+    let final_named_output_key = final_named_producer_index
+        .map(|producer_index| lowered[producer_index + 1].source_components[0].key);
     let mapping_path = resources.mapping_path().to_path_buf();
     let mapping_identity = mapping_path.to_string_lossy().into_owned();
     let mut stages = Vec::with_capacity(lowered.len());
@@ -450,9 +456,11 @@ pub fn import_pipeline_with_options(
                 PipelineInput::Host {
                     name: host_name.clone(),
                 }
-            } else if index == 2 && Some(identity.key) == final_named_output_key {
+            } else if index + 1 == chain.intermediates.len() + 1
+                && Some(identity.key) == final_named_output_key
+            {
                 PipelineInput::StageTarget {
-                    stage: "mfd-stage-1".into(),
+                    stage: format!("mfd-stage-{}", final_named_producer_index.unwrap() + 1),
                     target: None,
                 }
             } else {
@@ -467,7 +475,7 @@ pub fn import_pipeline_with_options(
                 from,
             });
         }
-        if index == 2
+        if index + 1 == chain.intermediates.len() + 1
             && final_named_output_key.is_some()
             && extra_sources
                 .iter()
@@ -1165,7 +1173,7 @@ fn is_xlsx_terminal_component(component: &roxmltree::Node<'_, '_>) -> bool {
 }
 
 /// Keep imported stages to one linear chain of XML intermediates. One bounded
-/// three-stage branch may also feed the final target from the first intermediate;
+/// branch may also feed the final target from a nonadjacent earlier intermediate;
 /// that earlier result becomes a separate named source of the final stage.
 /// Original host sources may supplement any stage.
 fn strict_serial_stage_order(
@@ -1275,7 +1283,7 @@ fn strict_serial_stage_order(
         let sinks = sinks_by_component.get(&index).ok_or_else(invalid_chain)?;
         let next = if sinks == &terminal_indices {
             None
-        } else if intermediates.len() == 2
+        } else if intermediates.len() >= 2
             && terminal_indices.len() == 1
             && terminal_indices
                 .iter()
@@ -1326,9 +1334,7 @@ fn strict_serial_stage_order(
         );
         let next = successors[&current];
         let Some(next) = next else {
-            if ordered.len() != intermediate_indices.len()
-                || final_named_source.is_some_and(|source| source != *head)
-            {
+            if ordered.len() != intermediate_indices.len() {
                 return Err(invalid_chain());
             }
             if final_named_source.is_some_and(|source| {

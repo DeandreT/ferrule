@@ -85,7 +85,9 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
         })?;
         combined = Some(match combined {
             None => stage_xml,
-            Some(previous) => append_stage(&previous, &stage_xml, &pipeline.stages[0], stage)?,
+            Some(previous) => {
+                append_stage(&previous, &stage_xml, &pipeline.stages[..index], stage)?
+            }
         });
     }
     let xml = combined.expect("validated pipeline has at least two stages");
@@ -226,11 +228,12 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
                 PipelineInput::StageTarget {
                     stage: producer,
                     target: None,
-                } if pipeline.stages.len() == 3
-                    && index == 2
-                    && producer == &pipeline.stages[0].id
+                } if index + 1 == pipeline.stages.len()
                     && primary_is_xml
-                    && stage.project.extra_targets.is_empty() =>
+                    && stage.project.extra_targets.is_empty()
+                    && pipeline.stages[..index.saturating_sub(1)]
+                        .iter()
+                        .any(|earlier| &earlier.id == producer) =>
                 {
                     earlier_named_outputs += 1;
                     if earlier_named_outputs > 1 {
@@ -238,8 +241,12 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
                             "final stage has multiple earlier-stage named inputs".into(),
                         ));
                     }
-                    let earlier = &pipeline.stages[0].project;
-                    let preview = &pipeline.stages[1].project;
+                    let producer_index = pipeline.stages[..index - 1]
+                        .iter()
+                        .position(|earlier| &earlier.id == producer)
+                        .expect("guarded earlier stage exists");
+                    let earlier = &pipeline.stages[producer_index].project;
+                    let preview = &pipeline.stages[producer_index + 1].project;
                     let named = stage
                         .project
                         .extra_sources
@@ -433,7 +440,7 @@ fn remap_identifiers(
 fn append_stage(
     previous: &str,
     next: &str,
-    first_stage: &PipelineStage,
+    prior_stages: &[PipelineStage],
     stage: &PipelineStage,
 ) -> Result<String, MfdError> {
     let previous_doc = Document::parse(previous)?;
@@ -463,7 +470,7 @@ fn append_stage(
         .filter_map(|node| node.attribute("vertexkey"))
         .collect::<std::collections::BTreeSet<_>>();
     let source_keys = late_named_source_key_remap(
-        first_stage,
+        prior_stages,
         stage,
         previous_children,
         &source_components,
@@ -545,16 +552,17 @@ fn append_stage(
     apply_edits(previous.to_string(), edits)
 }
 
-/// Reuse the retained output ports of an original host or the first XML
+/// Reuse the retained output ports of an original host or an earlier XML
 /// intermediate for a connected late named source. A later connection to an
 /// already used port is merged into its existing vertex.
 fn late_named_source_key_remap(
-    first_stage: &PipelineStage,
+    prior_stages: &[PipelineStage],
     stage: &PipelineStage,
     previous_children: Node<'_, '_>,
     source_components: &[Node<'_, '_>],
     connected: &BTreeSet<&str>,
 ) -> Result<BTreeMap<u32, u32>, MfdError> {
+    let first_stage = &prior_stages[0];
     let first_sources = previous_children
         .children()
         .filter(|node| node.has_tag_name("component"))
@@ -637,7 +645,15 @@ fn late_named_source_key_remap(
             PipelineInput::StageTarget {
                 stage: from,
                 target: None,
-            } if from == &first_stage.id => {
+            } => {
+                let producer_index = prior_stages[..prior_stages.len().saturating_sub(1)]
+                    .iter()
+                    .position(|producer| &producer.id == from)
+                    .ok_or_else(|| {
+                        MfdError::Unsupported(
+                            "stage named source has an unsupported producer".into(),
+                        )
+                    })?;
                 let intermediates = previous_children
                     .children()
                     .filter(|component| {
@@ -649,11 +665,14 @@ fn late_named_source_key_remap(
                             })
                     })
                     .collect::<Vec<_>>();
-                let [earlier] = intermediates.as_slice() else {
+                if intermediates.len() != prior_stages.len() - 1 {
                     return Err(MfdError::Unsupported(
-                        "earlier XML intermediate is not unique".into(),
+                        "earlier XML intermediate order changed".into(),
                     ));
-                };
+                }
+                let earlier = intermediates.get(producer_index).ok_or_else(|| {
+                    MfdError::Unsupported("earlier XML intermediate is unavailable".into())
+                })?;
                 let earlier_preview =
                     child(child(*earlier, "data")?, "document")?.attribute("inputinstance");
                 let late_preview =

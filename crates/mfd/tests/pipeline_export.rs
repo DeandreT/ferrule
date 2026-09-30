@@ -265,6 +265,42 @@ fn make_four_stage_chain(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_four_stage_earlier_result_chain(directory: &Path, producer: usize) -> PathBuf {
+    assert!((1..=2).contains(&producer));
+    let path = make_four_stage_chain(directory);
+    std::fs::write(
+        directory.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string"/><xs:element name="Lookup" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+    let original = std::fs::read_to_string(&path).unwrap();
+    let producer_output = producer * 20 + 10;
+    let successor_input = (producer + 1) * 20;
+    let with_preview = original.replace(
+        &format!(
+            "<document schema=\"buffer{producer}.xsd\" instanceroot=\"{{}}Buffer{producer}\"/>"
+        ),
+        &format!(
+            "<document schema=\"buffer{producer}.xsd\" inputinstance=\"buffer{producer}-preview.xml\" outputinstance=\"buffer{producer}-out.xml\" instanceroot=\"{{}}Buffer{producer}\"/>"
+        ),
+    );
+    let with_lookup = with_preview.replace(
+        "<entry name=\"Result\" inpkey=\"80\"/>",
+        "<entry name=\"Result\" inpkey=\"80\"/><entry name=\"Lookup\" inpkey=\"90\"/>",
+    );
+    let branch = with_lookup.replace(
+        &format!(
+            "<vertex vertexkey=\"{producer_output}\"><edges><edge vertexkey=\"{successor_input}\"/></edges></vertex>"
+        ),
+        &format!(
+            "<vertex vertexkey=\"{producer_output}\"><edges><edge vertexkey=\"{successor_input}\"/><edge vertexkey=\"90\"/></edges></vertex>"
+        ),
+    );
+    assert_ne!(branch, original);
+    std::fs::write(&path, branch).unwrap();
+    path
+}
+
 fn make_late_named_source_chain(directory: &Path) -> PathBuf {
     let path = make_chain(directory);
     write_schema(&directory.join("catalog.xsd"), "Catalog", "Item");
@@ -4257,6 +4293,202 @@ fn earlier_xml_result_feeds_final_named_input_and_round_trips_natively() {
     )
     .unwrap();
     assert_eq!(before_xml.as_bytes(), after_xml.as_bytes());
+}
+
+#[test]
+fn nonadjacent_xml_result_feeds_final_named_input_in_four_stage_chain() {
+    for producer in 1..=2 {
+        let directory = TempDir::new();
+        let source_path = make_four_stage_earlier_result_chain(&directory.0, producer);
+        let imported = mfd::import_pipeline(&source_path).unwrap();
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+        assert_eq!(imported.pipeline.stages.len(), 4);
+        let final_stage = &imported.pipeline.stages[3];
+        let earlier_bindings = final_stage
+            .extra_sources
+            .iter()
+            .filter(|binding| matches!(&binding.from, PipelineInput::StageTarget { .. }))
+            .collect::<Vec<_>>();
+        let [earlier] = earlier_bindings.as_slice() else {
+            panic!("final stage must read exactly one earlier result");
+        };
+        assert_eq!(
+            earlier.from,
+            PipelineInput::StageTarget {
+                stage: format!("mfd-stage-{producer}"),
+                target: None,
+            }
+        );
+        let named = final_stage
+            .project
+            .extra_sources
+            .iter()
+            .find(|source| source.name == earlier.name)
+            .unwrap();
+        assert_eq!(named.path, format!("buffer{producer}-preview.xml"));
+        let PipelineInput::Host { name } = &imported.pipeline.stages[0].source else {
+            panic!("first stage must read a host");
+        };
+        let hosts = BTreeMap::from([(
+            name.clone(),
+            Instance::Group(vec![(
+                "Start".into(),
+                Instance::Scalar(Value::String("four-stage value".into())),
+            )]),
+        )]);
+        let before = engine::run_pipeline(&imported.pipeline, &hosts).unwrap();
+        let final_before = &before.stage("mfd-stage-4").unwrap().primary;
+        for field in ["Result", "Lookup"] {
+            assert_eq!(
+                final_before.field(field).and_then(Instance::as_scalar),
+                Some(&Value::String("four-stage value".into()))
+            );
+        }
+        let before_xml = format_xml::to_string(&final_stage.project.target, final_before).unwrap();
+
+        let exported_path = directory
+            .0
+            .join(format!("four-stage-branch-{producer}.mfd"));
+        let preflight = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
+        assert!(preflight.is_native_compatible(), "{preflight:?}");
+        assert!(!exported_path.exists());
+        mfd::export_pipeline_with_profile(
+            &imported.pipeline,
+            &exported_path,
+            mfd::ExportProfile::NativeMfd,
+        )
+        .unwrap();
+        let exported = std::fs::read_to_string(&exported_path).unwrap();
+        assert_eq!(exported.matches("PassThrough=\"1\"").count(), 3);
+        let document = roxmltree::Document::parse(&exported).unwrap();
+        let intermediate = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("component")
+                    && node.attribute("name") == Some(format!("Buffer{producer}").as_str())
+            })
+            .unwrap();
+        let output_key = intermediate
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("entry")
+                    && node.attribute("name") == Some(format!("Step{producer}").as_str())
+            })
+            .and_then(|node| node.attribute("outkey"))
+            .unwrap();
+        let vertices = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("vertex") && node.attribute("vertexkey") == Some(output_key)
+            })
+            .collect::<Vec<_>>();
+        let [vertex] = vertices.as_slice() else {
+            panic!("earlier output must retain one graph vertex");
+        };
+        assert_eq!(
+            vertex
+                .descendants()
+                .filter(|node| node.has_tag_name("edge"))
+                .count(),
+            2
+        );
+
+        let reimported = mfd::import_pipeline(&exported_path).unwrap();
+        assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+        assert!(reimported.pipeline.stages[3].extra_sources.iter().any(|binding| {
+            matches!(&binding.from, PipelineInput::StageTarget { stage, target: None } if stage == &format!("mfd-stage-{producer}"))
+        }));
+        let PipelineInput::Host {
+            name: reimported_host,
+        } = &reimported.pipeline.stages[0].source
+        else {
+            panic!("reimported first stage must read a host");
+        };
+        let after = engine::run_pipeline(
+            &reimported.pipeline,
+            &BTreeMap::from([(reimported_host.clone(), hosts[name].clone())]),
+        )
+        .unwrap();
+        for index in 1..=4 {
+            assert_eq!(
+                before.stage(&format!("mfd-stage-{index}")).unwrap().primary,
+                after.stage(&format!("mfd-stage-{index}")).unwrap().primary
+            );
+        }
+        let after_xml = format_xml::to_string(
+            &reimported.pipeline.stages[3].project.target,
+            &after.stage("mfd-stage-4").unwrap().primary,
+        )
+        .unwrap();
+        assert_eq!(before_xml.as_bytes(), after_xml.as_bytes());
+    }
+}
+
+#[test]
+fn four_stage_earlier_named_source_rejects_changed_preview_before_export() {
+    let directory = TempDir::new();
+    let source_path = make_four_stage_earlier_result_chain(&directory.0, 2);
+    let mut pipeline = mfd::import_pipeline(&source_path).unwrap().pipeline;
+    let binding_name = pipeline.stages[3]
+        .extra_sources
+        .iter()
+        .find(|binding| matches!(binding.from, PipelineInput::StageTarget { .. }))
+        .unwrap()
+        .name
+        .clone();
+    let named = pipeline.stages[3]
+        .project
+        .extra_sources
+        .iter_mut()
+        .find(|source| source.name == binding_name)
+        .unwrap();
+    named.path = "different-preview.xml".into();
+    let exported = directory.0.join("changed-four-stage-preview.mfd");
+    let error =
+        mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)
+            .err()
+            .unwrap()
+            .to_string();
+    assert!(error.contains("shared source preview path"), "{error}");
+    assert!(!exported.exists());
+}
+
+#[test]
+fn four_stage_chain_rejects_two_earlier_branches() {
+    let directory = TempDir::new();
+    let source_path = make_four_stage_earlier_result_chain(&directory.0, 2);
+    std::fs::write(
+        directory.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string"/><xs:element name="Lookup" type="xs:string"/><xs:element name="Lookup2" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+    let original = std::fs::read_to_string(&source_path).unwrap();
+    let branched = original
+        .replace(
+            "<document schema=\"buffer1.xsd\" instanceroot=\"{}Buffer1\"/>",
+            "<document schema=\"buffer1.xsd\" inputinstance=\"buffer1-preview.xml\" instanceroot=\"{}Buffer1\"/>",
+        )
+        .replace(
+            "<entry name=\"Lookup\" inpkey=\"90\"/>",
+            "<entry name=\"Lookup\" inpkey=\"90\"/><entry name=\"Lookup2\" inpkey=\"91\"/>",
+        )
+        .replace(
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"91\"/></edges></vertex>",
+        );
+    assert_ne!(branched, original);
+    assert!(branched.contains("buffer1-preview.xml"));
+    assert!(branched.contains("<entry name=\"Lookup2\" inpkey=\"91\"/>"));
+    assert!(branched.contains("<edge vertexkey=\"91\"/>"));
+    std::fs::write(&source_path, branched).unwrap();
+    let error = mfd::import_pipeline(&source_path)
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(
+        error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
 }
 
 #[test]
