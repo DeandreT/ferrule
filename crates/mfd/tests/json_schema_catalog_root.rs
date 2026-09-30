@@ -300,13 +300,14 @@ fn local_mf940_survey_retains_both_missing_schema_references() -> Result<(), Box
     let directory = TempDir::new("mf940-provenance")?;
     let export_path = directory.path().join("roundtrip.mfd");
     let report = mfd::preflight_export(&imported.project, &export_path)?;
+    // Both parser field calls coalesce into one JSON component beside the target.
     assert_eq!(
         report
             .issues
             .iter()
             .filter(|issue| issue.feature == ExportCompatibilityFeature::UnresolvedJsonSchema)
             .count(),
-        3
+        2
     );
     assert_eq!(
         report
@@ -314,9 +315,9 @@ fn local_mf940_survey_retains_both_missing_schema_references() -> Result<(), Box
             .iter()
             .filter(|warning| warning.contains("original schema"))
             .count(),
-        3
+        2
     );
-    assert_eq!(mfd::export(&imported.project, &export_path)?.len(), 3);
+    assert_eq!(mfd::export(&imported.project, &export_path)?.len(), 2);
     let encoded = std::fs::read_to_string(&export_path)?;
     let document = roxmltree::Document::parse(&encoded)?;
     let generated = document
@@ -330,7 +331,14 @@ fn local_mf940_survey_retains_both_missing_schema_references() -> Result<(), Box
             )
         })
         .collect::<Vec<_>>();
-    assert_eq!(generated.len(), 3);
+    assert_eq!(generated.len(), 2);
+    for field in ["x12ControlNumInput", "x12IsaUsageIndicator"] {
+        assert!(
+            document.descendants().any(|node| {
+                node.has_tag_name("entry") && node.attribute("name") == Some(field)
+            })
+        );
+    }
     assert!(
         generated
             .iter()
