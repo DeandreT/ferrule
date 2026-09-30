@@ -83,12 +83,14 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
         uid_offset = uid_offset.checked_add(max_uid).ok_or_else(|| {
             MfdError::Unsupported("pipeline component IDs exceed the .mfd integer range".into())
         })?;
-        combined = Some(match combined {
+        let merged = match combined {
             None => stage_xml,
             Some(previous) => {
                 append_stage(&previous, &stage_xml, &pipeline.stages[..index], stage)?
             }
-        });
+        };
+        crate::design::validate_export(&merged)?;
+        combined = Some(merged);
     }
     let xml = combined.expect("validated pipeline has at least two stages");
     if pipeline.stages.last().is_some_and(|stage| {

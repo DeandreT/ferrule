@@ -1017,6 +1017,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     }
     out.push_str(user_functions.declarations());
     out.push_str("</mapping>\n");
+    crate::design::validate_export(&out)?;
 
     let mut artifacts = Vec::new();
     artifacts.extend(
