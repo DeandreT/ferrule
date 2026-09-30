@@ -222,16 +222,9 @@ fn survey_roundtrip_file(
             return outcome;
         }
     };
-    let unsupported_preview_contract = imported
-        .warnings
-        .iter()
-        .find(|warning| {
-            warning.contains("with design-time preview")
-                || warning.contains("has only a design-time preview value")
-                || (warning.contains("design-time preview value")
-                    && warning.contains("dependent value skipped"))
-        })
-        .cloned();
+    let unsupported_input_contract =
+        super::input_contract::unsupported_input_contract_warning(&imported.warnings)
+            .map(str::to_owned);
     outcome.import = passed_with_warnings(imported.warnings);
     outcome.runtime_dependencies = imported
         .project
@@ -353,9 +346,9 @@ fn survey_roundtrip_file(
             return outcome;
         }
     };
-    outcome.output_match = if let Some(warning) = unsupported_preview_contract {
+    outcome.output_match = if let Some(warning) = unsupported_input_contract {
         StageOutcome::skipped(format!(
-            "design-preview contract unsupported, so semantic parity is not claimed: {warning}"
+            "input contract unsupported, so semantic parity is not claimed: {warning}"
         ))
     } else {
         match compare_semantic_executions(&original_execution, &roundtrip_execution) {

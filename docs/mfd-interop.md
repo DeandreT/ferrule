@@ -218,9 +218,12 @@ defaults stay lazy. The GUI preview and debugger use that explicit purpose;
 normal file and pipeline runs keep the runtime contract. Native export restores
 the preview settings, and the node editor can enable and edit them. Invalid
 preview text reports a typed error instead of becoming null or silently using
-the default. Optional preview-only inputs without a connected default and
-unnamed preview-only inputs remain unsupported; dependent bindings and
-iterations are skipped with diagnostics. Old serialized graphs that already
+the default. Optional inputs without a connected default remain unsupported,
+whether or not they have preview text: the documented settings do not define
+their omitted-value result. Import skips dependent bindings and iterations with
+diagnostics, and the executable import profile rejects them. Unnamed preview-only
+inputs also remain unsupported. Execution surveys withhold reference and semantic
+matches for these unknown input contracts. Old serialized graphs that already
 lost preview provenance cannot reconstruct it.
 For the exact order-pricing graph, strict export restores the native decimal
 source rules on two XML price leaves. Anchored repeated-row reads apply those
