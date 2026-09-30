@@ -38,6 +38,10 @@ pub type PipelineStageDebugCallback<'a> =
 pub type PipelineStageNodeDebugCallback<'a> =
     dyn Fn(&str, &engine::PendingNodeValue) -> engine::DebugDecision + 'a;
 
+/// A host callback after a reusable-function body node succeeds in a stage.
+pub type PipelineStageFunctionNodeDebugCallback<'a> =
+    dyn Fn(&str, &engine::PendingFunctionNodeValue) -> engine::DebugDecision + 'a;
+
 /// A host callback after a value reaches one recorded consumer input.
 pub type PipelineStageInputDebugCallback<'a> =
     dyn Fn(&str, &engine::PendingNodeInput) -> engine::DebugDecision + 'a;
@@ -55,6 +59,7 @@ pub struct PipelineRunOptions<'a> {
     /// A live write hook receives the ID of the stage being evaluated.
     pub stage_debug_hook: Option<&'a PipelineStageDebugCallback<'a>>,
     pub stage_node_debug_hook: Option<&'a PipelineStageNodeDebugCallback<'a>>,
+    pub stage_function_node_debug_hook: Option<&'a PipelineStageFunctionNodeDebugCallback<'a>>,
     pub stage_input_debug_hook: Option<&'a PipelineStageInputDebugCallback<'a>>,
     pub stage_source_field_probe: Option<&'a PipelineSourceFieldProbeCallback<'a>>,
     pub stage_trace_sink: Option<&'a PipelineStageTraceCallback<'a>>,
@@ -73,6 +78,14 @@ impl<'a> PipelineRunOptions<'a> {
         hook: &'a PipelineStageNodeDebugCallback<'a>,
     ) -> Self {
         self.stage_node_debug_hook = Some(hook);
+        self
+    }
+
+    pub fn with_stage_function_node_debug_hook(
+        mut self,
+        hook: &'a PipelineStageFunctionNodeDebugCallback<'a>,
+    ) -> Self {
+        self.stage_function_node_debug_hook = Some(hook);
         self
     }
 
@@ -107,6 +120,7 @@ struct StageDebugHook<'a> {
     stage: RefCell<String>,
     hook: Option<&'a PipelineStageDebugCallback<'a>>,
     node_hook: Option<&'a PipelineStageNodeDebugCallback<'a>>,
+    function_node_hook: Option<&'a PipelineStageFunctionNodeDebugCallback<'a>>,
     input_hook: Option<&'a PipelineStageInputDebugCallback<'a>>,
     probe: Option<&'a PipelineSourceFieldProbeCallback<'a>>,
 }
@@ -114,6 +128,10 @@ struct StageDebugHook<'a> {
 impl engine::DebugHook for StageDebugHook<'_> {
     fn wants_node_values(&self) -> bool {
         self.node_hook.is_some()
+    }
+
+    fn wants_function_node_values(&self) -> bool {
+        self.function_node_hook.is_some()
     }
 
     fn wants_node_inputs(&self) -> bool {
@@ -132,6 +150,16 @@ impl engine::DebugHook for StageDebugHook<'_> {
 
     fn after_node_value(&self, node: &engine::PendingNodeValue) -> engine::DebugDecision {
         self.node_hook
+            .map_or(engine::DebugDecision::Resume, |hook| {
+                hook(&self.stage.borrow(), node)
+            })
+    }
+
+    fn after_function_node_value(
+        &self,
+        node: &engine::PendingFunctionNodeValue,
+    ) -> engine::DebugDecision {
+        self.function_node_hook
             .map_or(engine::DebugDecision::Resume, |hook| {
                 hook(&self.stage.borrow(), node)
             })
@@ -284,11 +312,13 @@ fn run_pipeline_value_with_options(
         .collect::<BTreeMap<_, _>>();
     let stage_debug_hook = (options.stage_debug_hook.is_some()
         || options.stage_node_debug_hook.is_some()
+        || options.stage_function_node_debug_hook.is_some()
         || options.stage_input_debug_hook.is_some())
     .then(|| StageDebugHook {
         stage: RefCell::new(String::new()),
         hook: options.stage_debug_hook,
         node_hook: options.stage_node_debug_hook,
+        function_node_hook: options.stage_function_node_debug_hook,
         input_hook: options.stage_input_debug_hook,
         probe: options.stage_source_field_probe,
     });

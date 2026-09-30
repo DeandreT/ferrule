@@ -115,11 +115,14 @@ pub(super) struct BreakpointNodeConditionDraft {
 pub(super) struct BreakpointExpressionConditionDraft {
     pub(super) enabled: bool,
     pub(super) node_text: String,
+    /// Blank selects the main graph; otherwise this is a reusable function ID.
+    pub(super) function_text: String,
     pub(super) value: BreakpointValueConditionDraft,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct DebugExpressionCondition {
+    function: Option<mapping::FunctionId>,
     node: mapping::NodeId,
     value: Option<DebugScalarCondition>,
 }
@@ -213,7 +216,21 @@ impl BreakpointExpressionConditionDraft {
         let node = text
             .parse::<mapping::NodeId>()
             .map_err(|_| "Expression node ID exceeds the supported range.")?;
+        let function = self.function_text.trim();
+        let function = if function.is_empty() {
+            None
+        } else {
+            if function.len() > 20 || !function.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err("Enter a nonnegative numeric function ID, or leave it blank.");
+            }
+            Some(mapping::FunctionId::new(
+                function
+                    .parse::<u64>()
+                    .map_err(|_| "Function ID exceeds the supported range.")?,
+            ))
+        };
         Ok(Some(DebugExpressionCondition {
+            function,
             node,
             value: self.value.compile()?,
         }))
@@ -222,11 +239,25 @@ impl BreakpointExpressionConditionDraft {
 
 impl DebugExpressionCondition {
     pub(super) fn matches(&self, value: &engine::PendingNodeValue) -> bool {
-        self.node == value.node
+        self.function.is_none()
+            && self.node == value.node
             && self
                 .value
                 .as_ref()
                 .is_none_or(|condition| condition.matches_trace_value(&value.value))
+    }
+
+    pub(super) fn matches_function(&self, value: &engine::PendingFunctionNodeValue) -> bool {
+        self.function == Some(value.function)
+            && self.node == value.node
+            && self
+                .value
+                .as_ref()
+                .is_none_or(|condition| condition.matches_trace_value(&value.value))
+    }
+
+    pub(super) fn targets_function(&self) -> bool {
+        self.function.is_some()
     }
 }
 

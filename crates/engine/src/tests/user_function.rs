@@ -9,7 +9,8 @@ use mapping::{
 };
 
 use crate::{
-    EngineError, ExecutionContext, TraceEvent, TraceSink, run, run_with_context, validate,
+    DebugDecision, DebugHook, EngineError, ExecutionContext, PendingFunctionNodeValue,
+    PendingNodeValue, PendingTargetWrite, TraceEvent, TraceSink, run, run_with_context, validate,
 };
 
 #[derive(Default)]
@@ -380,6 +381,151 @@ fn function_body_trace_qualifies_overlapping_nodes_and_preserves_lazy_order() {
         event,
         TraceEvent::FunctionNodeValue { function, node: 0, .. } if *function == outer
     )));
+}
+
+#[derive(Default)]
+struct FunctionBreakpointHook {
+    opt_in: bool,
+    cancel_inner: bool,
+    function_values: RefCell<Vec<(FunctionId, u32, String)>>,
+    main_nodes: RefCell<Vec<u32>>,
+    writes: RefCell<usize>,
+}
+
+impl DebugHook for FunctionBreakpointHook {
+    fn before_target_write(&self, _write: &PendingTargetWrite) -> DebugDecision {
+        *self.writes.borrow_mut() += 1;
+        DebugDecision::Resume
+    }
+
+    fn wants_function_node_values(&self) -> bool {
+        self.opt_in
+    }
+
+    fn after_node_value(&self, node: &PendingNodeValue) -> DebugDecision {
+        self.main_nodes.borrow_mut().push(node.node);
+        DebugDecision::Resume
+    }
+
+    fn after_function_node_value(&self, node: &PendingFunctionNodeValue) -> DebugDecision {
+        assert!(
+            node.source.frames.is_empty(),
+            "function bodies have no source frames"
+        );
+        self.function_values.borrow_mut().push((
+            node.function,
+            node.node,
+            format!("{}:{}", node.value.value_type, node.value.preview),
+        ));
+        if self.cancel_inner && node.function == FunctionId::new(2) && node.node == 0 {
+            DebugDecision::Cancel
+        } else {
+            DebugDecision::Resume
+        }
+    }
+}
+
+#[test]
+fn function_node_breakpoint_is_opt_in_qualified_and_cancels_before_target_write() {
+    let outer = FunctionId::new(1);
+    let inner = FunctionId::new(2);
+    let functions = BTreeMap::from([
+        (
+            inner,
+            function(
+                "inner",
+                Vec::new(),
+                ScalarType::String,
+                [(
+                    0,
+                    Node::Const {
+                        value: Value::String("chosen".into()),
+                    },
+                )],
+                0,
+            ),
+        ),
+        (
+            outer,
+            function(
+                "outer",
+                Vec::new(),
+                ScalarType::String,
+                [
+                    (
+                        0,
+                        Node::Const {
+                            value: Value::Bool(false),
+                        },
+                    ),
+                    (
+                        1,
+                        Node::Const {
+                            value: Value::String("untaken".into()),
+                        },
+                    ),
+                    (
+                        2,
+                        Node::UserFunctionCall {
+                            function: inner,
+                            args: Vec::new(),
+                        },
+                    ),
+                    (
+                        3,
+                        Node::If {
+                            condition: 0,
+                            then: 1,
+                            else_: 2,
+                        },
+                    ),
+                ],
+                3,
+            ),
+        ),
+    ]);
+    let project = project(
+        Graph {
+            nodes: BTreeMap::from([(
+                0,
+                Node::UserFunctionCall {
+                    function: outer,
+                    args: Vec::new(),
+                },
+            )]),
+        },
+        functions,
+        0,
+    );
+    let ordinary_hook = FunctionBreakpointHook::default();
+    let execution =
+        ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&ordinary_hook);
+    let output = run_with_context(&project, &source("A"), &execution).unwrap();
+    assert_eq!(output_value(&output), Some(&Value::String("chosen".into())));
+    assert!(ordinary_hook.function_values.borrow().is_empty());
+    assert_eq!(*ordinary_hook.main_nodes.borrow(), [0]);
+    assert_eq!(*ordinary_hook.writes.borrow(), 1);
+
+    let breakpoint_hook = FunctionBreakpointHook {
+        opt_in: true,
+        cancel_inner: true,
+        ..Default::default()
+    };
+    let execution =
+        ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&breakpoint_hook);
+    assert!(matches!(
+        run_with_context(&project, &source("A"), &execution),
+        Err(EngineError::DebugCancelled)
+    ));
+    assert_eq!(
+        *breakpoint_hook.function_values.borrow(),
+        [
+            (outer, 0, "bool:false".into()),
+            (inner, 0, "string:chosen".into()),
+        ]
+    );
+    assert!(breakpoint_hook.main_nodes.borrow().is_empty());
+    assert_eq!(*breakpoint_hook.writes.borrow(), 0);
 }
 
 #[test]

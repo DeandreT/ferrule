@@ -5,6 +5,7 @@ use mapping::{FunctionId, FunctionParameterId, Node, NodeId, UserFunction};
 
 use crate::EngineError;
 use crate::context::{runtime_field, runtime_parameter_field};
+use crate::debug::{DebugHook, after_function_node_value};
 use crate::source_iteration::PositionFrame;
 use crate::trace::{TraceSink, record_function_node_input_value, record_function_node_value};
 
@@ -13,6 +14,7 @@ pub(super) const MAX_USER_FUNCTION_DEPTH: usize = 64;
 #[derive(Clone, Copy)]
 struct FunctionTrace<'a> {
     sink: Option<&'a dyn TraceSink>,
+    debug_hook: Option<&'a dyn DebugHook>,
     positions: &'a [PositionFrame],
 }
 
@@ -23,6 +25,7 @@ pub(super) fn evaluate(
     arguments: Vec<Value>,
     runtime: Option<&Instance>,
     trace_sink: Option<&dyn TraceSink>,
+    debug_hook: Option<&dyn DebugHook>,
     positions: &[PositionFrame],
 ) -> Result<Value, EngineError> {
     evaluate_nested(
@@ -32,6 +35,7 @@ pub(super) fn evaluate(
         runtime,
         FunctionTrace {
             sink: trace_sink,
+            debug_hook,
             positions,
         },
         &mut Vec::new(),
@@ -295,6 +299,13 @@ fn evaluate_body_node(
     in_progress.remove(&node_id);
     if let Ok(value) = &result {
         record_function_node_value(trace.sink, function_id, node_id, trace.positions, value);
+        after_function_node_value(
+            trace.debug_hook,
+            function_id,
+            node_id,
+            value,
+            trace.positions,
+        )?;
     }
     result
 }
