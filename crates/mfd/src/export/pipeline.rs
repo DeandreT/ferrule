@@ -1,6 +1,6 @@
 //! Canonical export for a bounded serial chain of XML mapping stages with
-//! an XML, CSV, fixed-width, FlexText, JSON, or XLSX final primary target and
-//! optional independent final XML targets.
+//! an XML, CSV, fixed-width, FlexText, JSON, Protocol Buffer, or XLSX final
+//! primary target and optional independent final XML targets.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -34,7 +34,7 @@ pub fn preflight_pipeline_export(
 /// already used by another stage. Other connected later named inputs,
 /// independent intermediate targets, and non-XML intermediate boundaries
 /// reject explicitly. The final primary target may be CSV, fixed-width text,
-/// FlexText, JSON, or new-workbook XLSX;
+/// FlexText, JSON, Protocol Buffers, or new-workbook XLSX;
 /// independent final targets remain XML.
 pub fn export_pipeline(pipeline: &Pipeline, path: &Path) -> Result<Vec<String>, MfdError> {
     export_pipeline_with_profile(pipeline, path, ExportProfile::default())
@@ -89,6 +89,7 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
     let xml = combined.expect("validated pipeline has at least two stages");
     if pipeline.stages.last().is_some_and(|stage| {
         !stage.project.extra_targets.is_empty()
+            || stage.project.target_options.protobuf.is_some()
             || matches!(
                 side_format(&stage.project.target_path, &stage.project.target_options),
                 SideFormat::Csv
@@ -152,6 +153,7 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
         }
         if stage.project.extra_targets.iter().any(|target| {
             side_format(&target.path, &target.options) != SideFormat::Xml
+                || target.options.protobuf.is_some()
                 || target.options.wsdl.is_some()
         }) {
             return Err(MfdError::Unsupported(format!(
@@ -177,6 +179,7 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
         if stage.project.extra_sources.iter().any(|source| {
             source.dynamic_path.is_some()
                 || side_format(&Some(source.path.clone()), &source.options) != SideFormat::Xml
+                || source.options.protobuf.is_some()
                 || source.options.http_get.is_some()
                 || source.options.external_source.is_some()
                 || source.options.wsdl.is_some()
@@ -187,6 +190,7 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
             )));
         }
         let target_format = side_format(&stage.project.target_path, &stage.project.target_options);
+        let protobuf_target = stage.project.target_options.protobuf.is_some();
         if stage.project.target_options.xlsx_update_existing {
             return Err(MfdError::Unsupported(format!(
                 "pipeline stage `{}` requires a new-workbook XLSX final target",
@@ -194,16 +198,18 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
             )));
         }
         if side_format(&stage.project.source_path, &stage.project.source_options) != SideFormat::Xml
-            || target_format != SideFormat::Xml
-                && !(index + 1 == pipeline.stages.len()
-                    && matches!(
-                        target_format,
-                        SideFormat::Csv
-                            | SideFormat::FixedWidth
-                            | SideFormat::FlexText
-                            | SideFormat::Json
-                            | SideFormat::Xlsx
-                    ))
+            || stage.project.source_options.protobuf.is_some()
+            || !(target_format == SideFormat::Xml && !protobuf_target
+                || index + 1 == pipeline.stages.len()
+                    && (protobuf_target
+                        || matches!(
+                            target_format,
+                            SideFormat::Csv
+                                | SideFormat::FixedWidth
+                                | SideFormat::FlexText
+                                | SideFormat::Json
+                                | SideFormat::Xlsx
+                        )))
             || stage.project.source_options.external_source.is_some()
             || stage.project.source_options.http_get.is_some()
             || stage.project.source_options.local_xml_file_set

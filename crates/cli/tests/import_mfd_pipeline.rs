@@ -409,6 +409,144 @@ fn imports_and_runs_a_connected_flextext_design_with_its_generated_layout()
 }
 
 #[test]
+fn imports_and_runs_a_connected_protobuf_design_with_its_generated_schema()
+-> Result<(), Box<dyn Error>> {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
+    let imported = mfd::import(&fixtures.join("protobuf-target.mfd"))?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut protobuf_project = imported.project;
+    let source_schema = protobuf_project.source.clone();
+    let source_options = protobuf_project.source_options.clone();
+    protobuf_project.source_path = None;
+    protobuf_project.target_path = Some("directory.bin".into());
+    let copy_project = mapping::Project {
+        source: source_schema.clone(),
+        target: source_schema,
+        source_path: Some("protobuf-target-source.xml".into()),
+        target_path: Some("buffer.xml".into()),
+        source_options: source_options.clone(),
+        target_options: source_options,
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Default::default(),
+        root: mapping::Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..Default::default()
+        },
+    };
+    let pipeline = mapping::Pipeline {
+        main_mapping_path: None,
+        stages: vec![
+            mapping::PipelineStage {
+                id: "copy".into(),
+                mapping_path: None,
+                project: copy_project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: Vec::new(),
+            },
+            mapping::PipelineStage {
+                id: "protobuf".into(),
+                mapping_path: None,
+                project: protobuf_project,
+                source: PipelineInput::StageTarget {
+                    stage: "copy".into(),
+                    target: None,
+                },
+                extra_sources: Vec::new(),
+            },
+        ],
+    };
+    assert!(engine::validate_pipeline(&pipeline).is_empty());
+
+    let directory = TempDir::new()?;
+    let maps = directory.0.join("maps");
+    std::fs::create_dir_all(&maps)?;
+    let source_path = fixtures.join("protobuf-target-source.xml");
+    let input = maps.join("protobuf-target-source.xml");
+    std::fs::copy(&source_path, &input)?;
+    let design = maps.join("protobuf.mfd");
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
+    assert!(report.is_native_compatible(), "{report:?}");
+    let schema_path = maps.join("protobuf-stage-2-target.proto");
+    assert!(schema_path.is_file());
+    assert!(
+        std::fs::read_to_string(&design)?.contains("schemafile=\"protobuf-stage-2-target.proto\"")
+    );
+
+    let saved_pipeline = directory.0.join("flow.json");
+    let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["import-mfd", "--pipeline", "--mfd"])
+        .arg(&design)
+        .args(["--package-root"])
+        .arg(&directory.0)
+        .args(["--out"])
+        .arg(&saved_pipeline)
+        .output()?;
+    assert!(import.status.success(), "{}", output_message(&import));
+    let imported_pipeline: mapping::Pipeline =
+        serde_json::from_slice(&std::fs::read(&saved_pipeline)?)?;
+    let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
+        panic!("first stage must read a host source");
+    };
+    let result = directory.0.join("result.bin");
+    let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args(["run-pipeline", "--pipeline"])
+        .arg(&saved_pipeline)
+        .args(["--input"])
+        .arg(name)
+        .arg(&input)
+        .args(["--output", "mfd-stage-2"])
+        .arg(&result)
+        .output()?;
+    assert!(run.status.success(), "{}", output_message(&run));
+
+    let source = format_xml::read(&source_path, &pipeline.stages[0].project.source)?;
+    let direct = engine::run_pipeline(
+        &pipeline,
+        &std::collections::BTreeMap::from([("input".into(), source)]),
+    )?;
+    let options = pipeline.stages[1]
+        .project
+        .target_options
+        .protobuf
+        .as_ref()
+        .unwrap();
+    let layout = format_protobuf::Layout::parse_files(
+        options.schema_path.as_deref().unwrap_or("root.proto"),
+        &options.schema,
+        options
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )?;
+    let expected = format_protobuf::to_vec(
+        &layout,
+        &options.root_message,
+        &direct.stage("protobuf").unwrap().primary,
+    )?;
+    assert_eq!(
+        expected,
+        [
+            0x0a, 0x04, b'D', b'e', b'm', b'o', 0x12, 0x0e, 0x08, 0x07, 0x12, 0x03, b'O', b'n',
+            b'e', 0x18, 0x01, 0x22, 0x03, 0x0a, 0x01, b'A', 0x12, 0x0e, 0x08, 0x09, 0x12, 0x03,
+            b'T', b'w', b'o', 0x18, 0x00, 0x22, 0x03, 0x0a, 0x01, b'B',
+        ]
+    );
+    let published = std::fs::read(&result)?;
+    assert_eq!(published, expected);
+    assert_eq!(
+        format_protobuf::from_slice(&layout, &options.root_message, &published)?,
+        direct.stage("protobuf").unwrap().primary
+    );
+    Ok(())
+}
+
+#[test]
 fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new()?;
     let mapping = write_three_stage_chain(&directory.0)?;

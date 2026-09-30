@@ -1578,7 +1578,7 @@ fn fixed_width_final_chain_import_rejects_malformed_ambiguous_and_disconnected()
         .expect("ambiguous fixed-width final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"),
         "{error}"
     );
 
@@ -1786,7 +1786,7 @@ fn xlsx_final_chain_import_rejects_ambiguous_disconnected_and_update_existing() 
         .expect("ambiguous XLSX final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"),
         "{error}"
     );
 
@@ -2035,7 +2035,7 @@ fn ambiguous_or_disconnected_json_final_import_rejects() {
         .expect("ambiguous JSON final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"),
         "{error}"
     );
     assert!(!directory.0.join("not-created").exists());
@@ -2096,22 +2096,41 @@ fn csv_pipeline_import_rejects_non_csv_text_terminal() {
         .expect("non-CSV text terminal must reject")
         .to_string();
     assert!(
-        error.contains("XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
+        error.contains(
+            "XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"
+        ),
         "{error}"
     );
     assert!(!directory.0.join("not-created").exists());
 }
 
 fn identity_xml_to_flextext_pipeline(
-    mut final_project: mapping::Project,
+    final_project: mapping::Project,
     input: &Path,
 ) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
     assert!(final_project.target_options.flextext.is_some());
+    identity_xml_to_final_pipeline(final_project, input, "converted.txt", "flextext")
+}
+
+fn identity_xml_to_protobuf_pipeline(
+    final_project: mapping::Project,
+    input: &Path,
+) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
+    assert!(final_project.target_options.protobuf.is_some());
+    identity_xml_to_final_pipeline(final_project, input, "converted.bin", "protobuf")
+}
+
+fn identity_xml_to_final_pipeline(
+    mut final_project: mapping::Project,
+    input: &Path,
+    target_path: &str,
+    final_id: &str,
+) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
     let source = format_xml::read(input, &final_project.source).unwrap();
     let source_schema = final_project.source.clone();
     let source_options = final_project.source_options.clone();
     final_project.source_path = None;
-    final_project.target_path = Some("converted.txt".into());
+    final_project.target_path = Some(target_path.into());
     let copy_project = mapping::Project {
         source: source_schema.clone(),
         target: source_schema,
@@ -2142,7 +2161,7 @@ fn identity_xml_to_flextext_pipeline(
                 extra_sources: Vec::new(),
             },
             mapping::PipelineStage {
-                id: "flextext".into(),
+                id: final_id.into(),
                 mapping_path: None,
                 project: final_project,
                 source: PipelineInput::StageTarget {
@@ -2260,6 +2279,576 @@ fn local_xml_to_flextext_mapping_runs_after_an_identity_xml_stage() {
         return;
     }
     assert_identity_xml_to_flextext_roundtrip(&design, &input, Some(&expected));
+}
+
+fn protobuf_layout(options: &mapping::ProtobufOptions) -> format_protobuf::Layout {
+    format_protobuf::Layout::parse_files(
+        options.schema_path.as_deref().unwrap_or("root.proto"),
+        &options.schema,
+        options
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )
+    .unwrap()
+}
+
+fn assert_identity_xml_to_protobuf_roundtrip(design: &Path, input: &Path, expected: Option<&[u8]>) {
+    let imported = mfd::import(design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let (pipeline, hosts) = identity_xml_to_protobuf_pipeline(imported.project, input);
+    let before = engine::run_pipeline(&pipeline, &hosts).unwrap();
+    assert_eq!(before.stage("copy").unwrap().primary, hosts["input"]);
+    let final_project = &pipeline.stages[1].project;
+    let options = final_project.target_options.protobuf.as_ref().unwrap();
+    let layout = protobuf_layout(options);
+    let before_bytes = format_protobuf::to_vec(
+        &layout,
+        &options.root_message,
+        &before.stage("protobuf").unwrap().primary,
+    )
+    .unwrap();
+    assert!(!before_bytes.is_empty());
+    if let Some(expected) = expected {
+        assert_eq!(before_bytes, expected);
+    }
+    let before_decoded =
+        format_protobuf::from_slice(&layout, &options.root_message, &before_bytes).unwrap();
+
+    let directory = TempDir::new();
+    std::fs::copy(input, directory.0.join(input.file_name().unwrap())).unwrap();
+    let exported = directory.0.join("protobuf-chain.mfd");
+    let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported.exists());
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let xml = std::fs::read_to_string(&exported).unwrap();
+    assert_eq!(xml.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(xml.matches("library=\"binary\"").count(), 1);
+    assert_eq!(xml.matches("type=\"doc-protobuf\"").count(), 1);
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let schemafile = document
+        .descendants()
+        .find(|node| node.has_tag_name("entry") && node.attribute("type") == Some("doc-protobuf"))
+        .and_then(|node| node.children().find(|child| child.has_tag_name("document")))
+        .and_then(|node| node.attribute("schemafile"))
+        .unwrap();
+    assert!(schemafile.starts_with("protobuf-chain-stage-2-target"));
+    let schema_path = directory.0.join(schemafile);
+    assert!(schema_path.is_file());
+    assert_eq!(
+        std::fs::read_to_string(&schema_path).unwrap(),
+        options.schema
+    );
+
+    let reimported = mfd::import_pipeline(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let PipelineInput::Host { name } = &reimported.pipeline.stages[0].source else {
+        panic!("reimported first stage must read a host source");
+    };
+    let after = engine::run_pipeline(
+        &reimported.pipeline,
+        &BTreeMap::from([(name.clone(), hosts["input"].clone())]),
+    )
+    .unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            before.stage(&pipeline.stages[index].id).unwrap().primary,
+            after
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            "stage {}",
+            index + 1
+        );
+    }
+    let final_project = &reimported.pipeline.stages[1].project;
+    let options = final_project.target_options.protobuf.as_ref().unwrap();
+    let layout = protobuf_layout(options);
+    let after_bytes = format_protobuf::to_vec(
+        &layout,
+        &options.root_message,
+        &after
+            .stage(&reimported.pipeline.stages[1].id)
+            .unwrap()
+            .primary,
+    )
+    .unwrap();
+    assert_eq!(after_bytes, before_bytes);
+    let after_decoded =
+        format_protobuf::from_slice(&layout, &options.root_message, &after_bytes).unwrap();
+    assert_eq!(after_decoded, before_decoded);
+}
+
+#[test]
+fn protobuf_final_chain_roundtrips_exact_binary_and_generated_schema() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let expected = [
+        0x0a, 0x04, b'D', b'e', b'm', b'o', 0x12, 0x0e, 0x08, 0x07, 0x12, 0x03, b'O', b'n', b'e',
+        0x18, 0x01, 0x22, 0x03, 0x0a, 0x01, b'A', 0x12, 0x0e, 0x08, 0x09, 0x12, 0x03, b'T', b'w',
+        b'o', 0x18, 0x00, 0x22, 0x03, 0x0a, 0x01, b'B',
+    ];
+    assert_identity_xml_to_protobuf_roundtrip(
+        &fixtures.join("protobuf-target.mfd"),
+        &fixtures.join("protobuf-target-source.xml"),
+        Some(&expected),
+    );
+}
+
+#[test]
+fn local_xml_to_protobuf_mapping_runs_after_an_identity_xml_stage() {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let design = samples.join("PersonsToProtobuf.mfd");
+    let input = samples.join("Altova_Hierarchical.xml");
+    if !design.is_file() || !input.is_file() {
+        return;
+    }
+    assert_identity_xml_to_protobuf_roundtrip(&design, &input, None);
+}
+
+#[test]
+fn protobuf_final_chain_rejects_unsupported_boundaries_before_artifacts() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("protobuf-target.mfd")).unwrap();
+    let (pipeline, _) = identity_xml_to_protobuf_pipeline(
+        imported.project,
+        &fixtures.join("protobuf-target-source.xml"),
+    );
+    let directory = TempDir::new();
+
+    let mut intermediate = pipeline.clone();
+    intermediate.stages[0].project.target_path = Some("buffer.bin".into());
+    intermediate.stages[0].project.target_options =
+        pipeline.stages[1].project.target_options.clone();
+    let destination = directory.0.join("not-created/intermediate.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &intermediate,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("unsupported file boundary"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut named = pipeline.clone();
+    let final_project = &mut named.stages[1].project;
+    final_project.extra_targets.push(mapping::NamedTarget {
+        name: "secondary".into(),
+        path: Some("secondary.bin".into()),
+        schema: final_project.target.clone(),
+        options: final_project.target_options.clone(),
+        root: mapping::Scope::default(),
+    });
+    let destination = directory.0.join("not-created/named.mfd");
+    let error =
+        mfd::export_pipeline_with_profile(&named, &destination, mfd::ExportProfile::NativeMfd)
+            .unwrap_err()
+            .to_string();
+    assert!(error.contains("non-file-XML named target"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut malformed = pipeline.clone();
+    malformed.stages[1]
+        .project
+        .target_options
+        .protobuf
+        .as_mut()
+        .unwrap()
+        .schema = "not a proto schema".into();
+    let destination = directory.0.join("not-created/malformed.mfd");
+    let error =
+        mfd::export_pipeline_with_profile(&malformed, &destination, mfd::ExportProfile::NativeMfd)
+            .unwrap_err()
+            .to_string();
+    assert!(
+        error.contains("embedded protobuf schema is invalid"),
+        "{error}"
+    );
+    assert!(!destination.parent().unwrap().exists());
+
+    let mut disconnected = pipeline;
+    disconnected.stages[1].project.root = mapping::Scope::default();
+    disconnected.stages[1].project.prune_unreachable_nodes();
+    let destination = directory.0.join("not-created/disconnected.mfd");
+    let error = mfd::export_pipeline_with_profile(
+        &disconnected,
+        &destination,
+        mfd::ExportProfile::NativeMfd,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("pipeline export graph"), "{error}");
+    assert!(!destination.parent().unwrap().exists());
+}
+
+fn add_connected_protobuf_target(xml: &str, schemafile: &str, default_output: bool) -> String {
+    const EXTRA_KEY: &str = "4294967289";
+    let document = roxmltree::Document::parse(xml).unwrap();
+    let pass_through = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.children().any(|child| {
+                    child.has_tag_name("properties") && child.attribute("PassThrough") == Some("1")
+                })
+        })
+        .unwrap();
+    let vertex = document
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex"))
+        .find(|node| {
+            pass_through.descendants().any(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("outkey") == node.attribute("vertexkey")
+            })
+        })
+        .unwrap();
+    let edges = vertex
+        .children()
+        .find(|node| node.has_tag_name("edges"))
+        .unwrap();
+    let mut with_edge = xml.to_owned();
+    with_edge.insert_str(
+        edges.range().end - "</edges>".len(),
+        &format!("<edge vertexkey=\"{EXTRA_KEY}\"/>"),
+    );
+    let output_property = if default_output {
+        " XSLTDefaultOutput=\"1\""
+    } else {
+        ""
+    };
+    let component = format!(
+        "<component name=\"other\" library=\"binary\" kind=\"33\"><properties{output_property}/><data><root><entry name=\"FileInstance\" inpkey=\"{EXTRA_KEY}\"><entry name=\"document\" type=\"doc-protobuf\"><document schemafile=\"{schemafile}\" root=\"{{ferrule.fixture}}Directory\"/><entry name=\"Directory\"/></entry></entry></root><binary outputinstance=\"other.bin\"/></data></component>"
+    );
+    let children_end = with_edge.rfind("</children>").unwrap();
+    with_edge.insert_str(children_end, &component);
+    with_edge
+}
+
+fn add_connected_input_outside_target_payload(xml: &str, library: &str) -> String {
+    const EXTRA_KEY: &str = "4294967289";
+    let document = roxmltree::Document::parse(xml).unwrap();
+    let pass_through = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.children().any(|child| {
+                    child.has_tag_name("properties") && child.attribute("PassThrough") == Some("1")
+                })
+        })
+        .unwrap();
+    let vertex = document
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex"))
+        .find(|node| {
+            pass_through.descendants().any(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("outkey") == node.attribute("vertexkey")
+            })
+        })
+        .unwrap();
+    let edges = vertex
+        .children()
+        .find(|node| node.has_tag_name("edges"))
+        .unwrap();
+    let target = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.attribute("library") == Some(library)
+                && node.children().any(|child| {
+                    child.has_tag_name("properties")
+                        && child.attribute("XSLTDefaultOutput") == Some("1")
+                })
+        })
+        .unwrap();
+    let root = target
+        .children()
+        .find(|node| node.has_tag_name("data"))
+        .and_then(|data| data.children().find(|node| node.has_tag_name("root")))
+        .unwrap();
+    let mut insertions = [
+        (
+            edges.range().end - "</edges>".len(),
+            format!("<edge vertexkey=\"{EXTRA_KEY}\"/>"),
+        ),
+        (
+            root.range().end - "</root>".len(),
+            format!("<entry name=\"bogus\" inpkey=\"{EXTRA_KEY}\"/>"),
+        ),
+    ];
+    insertions.sort_by_key(|(position, _)| std::cmp::Reverse(*position));
+    let mut mutated = xml.to_owned();
+    for (position, insertion) in insertions {
+        mutated.insert_str(position, &insertion);
+    }
+    mutated
+}
+
+fn add_connected_input_outside_xml_payload(
+    xml: &str,
+    component_name: &str,
+    upstream_key: &str,
+) -> String {
+    const EXTRA_KEY: &str = "4294967288";
+    let document = roxmltree::Document::parse(xml).unwrap();
+    let component = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component") && node.attribute("name") == Some(component_name)
+        })
+        .unwrap();
+    let root = component
+        .children()
+        .find(|node| node.has_tag_name("data"))
+        .and_then(|data| data.children().find(|node| node.has_tag_name("root")))
+        .unwrap();
+    let vertex = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("vertex") && node.attribute("vertexkey") == Some(upstream_key)
+        })
+        .unwrap();
+    let edges = vertex
+        .children()
+        .find(|node| node.has_tag_name("edges"))
+        .unwrap();
+    let mut insertions = [
+        (
+            edges.range().end - "</edges>".len(),
+            format!("<edge vertexkey=\"{EXTRA_KEY}\"/>"),
+        ),
+        (
+            root.range().end - "</root>".len(),
+            format!("<entry name=\"bogus\" inpkey=\"{EXTRA_KEY}\"/>"),
+        ),
+    ];
+    insertions.sort_by_key(|(position, _)| std::cmp::Reverse(*position));
+    let mut mutated = xml.to_owned();
+    for (position, insertion) in insertions {
+        mutated.insert_str(position, &insertion);
+    }
+    mutated
+}
+
+#[test]
+fn pipeline_import_rejects_unrepresented_intermediate_and_named_xml_inputs() {
+    for case in ["first", "middle", "named"] {
+        let directory = TempDir::new();
+        let (path, component_name, upstream_key) = match case {
+            "first" => (make_chain(&directory.0), "buffer", "10"),
+            "middle" => (make_four_stage_chain(&directory.0), "buffer-2", "30"),
+            "named" => (make_terminal_fanout(&directory.0), "secondary", "30"),
+            _ => unreachable!(),
+        };
+        let original = std::fs::read_to_string(&path).unwrap();
+        assert!(mfd::import_pipeline(&path).is_ok(), "{component_name}");
+        let malformed =
+            add_connected_input_outside_xml_payload(&original, component_name, upstream_key);
+        std::fs::write(&path, malformed).unwrap();
+        let error = mfd::import_pipeline(&path)
+            .err()
+            .expect("connected XML input outside the selected payload must reject")
+            .to_string();
+        assert!(
+            error.contains("unrepresented connected input port 4294967288"),
+            "{component_name}: {error}"
+        );
+    }
+}
+
+#[test]
+fn pipeline_import_rejects_connected_inputs_outside_csv_and_json_payloads() {
+    for library in ["text", "json"] {
+        let directory = TempDir::new();
+        let path = match library {
+            "text" => make_csv_final_chain(&directory.0),
+            "json" => make_json_final_chain(&directory.0),
+            _ => unreachable!(),
+        };
+        let original = std::fs::read_to_string(&path).unwrap();
+        assert!(mfd::import_pipeline(&path).is_ok(), "{library}");
+        let malformed = add_connected_input_outside_target_payload(&original, library);
+        std::fs::write(&path, malformed).unwrap();
+        let error = mfd::import_pipeline(&path)
+            .err()
+            .expect("connected input outside the selected payload must reject")
+            .to_string();
+        assert!(
+            error.contains("unrepresented connected input port 4294967289"),
+            "{library}: {error}"
+        );
+    }
+}
+
+#[test]
+fn json_null_alternative_only_skips_a_connected_typed_sibling_in_selected_payload() {
+    let directory = TempDir::new();
+    let path = make_json_final_chain(&directory.0);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let original_pipeline = mfd::import_pipeline(&path).unwrap().pipeline;
+    let with_null = original.replace(
+        "<entry name=\"string\" inpkey=\"40\"/>",
+        "<entry name=\"string\" inpkey=\"40\"/><entry name=\"null\" inpkey=\"41\"/>",
+    );
+    assert_ne!(with_null, original);
+    let with_null = with_null.replace(
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"41\"/></edges></vertex>",
+    );
+    assert!(with_null.contains("<edge vertexkey=\"41\"/>"));
+    std::fs::write(&path, &with_null).unwrap();
+    let with_null_pipeline = mfd::import_pipeline(&path).unwrap().pipeline;
+    let before = execute(&original_pipeline);
+    let after = execute(&with_null_pipeline);
+    for index in 0..2 {
+        assert_eq!(
+            before.stages[index].outputs.primary,
+            after.stages[index].outputs.primary
+        );
+    }
+
+    let mut outside_payload = with_null.replace(
+        "<entry name=\"root\">",
+        "<entry name=\"root\" inpkey=\"40\">",
+    );
+    assert_ne!(outside_payload, with_null);
+    let insertion = {
+        let document = roxmltree::Document::parse(&outside_payload).unwrap();
+        document
+            .descendants()
+            .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("root"))
+            .unwrap()
+            .range()
+            .end
+    };
+    outside_payload.insert_str(insertion, "<entry name=\"null\" inpkey=\"42\"/>");
+    let outside_payload = outside_payload.replace(
+        "<edge vertexkey=\"41\"/></edges></vertex>",
+        "<edge vertexkey=\"41\"/><edge vertexkey=\"42\"/></edges></vertex>",
+    );
+    assert!(outside_payload.contains("<edge vertexkey=\"42\"/>"));
+    std::fs::write(&path, outside_payload).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("connected null outside the selected JSON payload must reject")
+        .to_string();
+    assert!(
+        error.contains("unrepresented connected input port 42"),
+        "{error}"
+    );
+}
+
+#[test]
+fn protobuf_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("protobuf-target.mfd")).unwrap();
+    let (pipeline, _) = identity_xml_to_protobuf_pipeline(
+        imported.project,
+        &fixtures.join("protobuf-target-source.xml"),
+    );
+    let directory = TempDir::new();
+    let design = directory.0.join("source-protobuf-chain.mfd");
+    mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
+    let original = std::fs::read_to_string(&design).unwrap();
+    assert!(mfd::import_pipeline(&design).is_ok());
+    let schemafile = "source-protobuf-chain-stage-2-target.proto";
+
+    let ambiguous = add_connected_protobuf_target(&original, schemafile, true);
+    std::fs::write(&design, ambiguous).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("ambiguous protobuf final must reject")
+        .to_string();
+    assert!(error.contains("one connected XML"), "{error}");
+
+    let named = add_connected_protobuf_target(&original, schemafile, false);
+    std::fs::write(&design, named).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("named protobuf final must reject")
+        .to_string();
+    assert!(
+        error.contains("Protocol Buffer components only as the final primary target"),
+        "{error}"
+    );
+
+    let document = roxmltree::Document::parse(&original).unwrap();
+    let protobuf = document
+        .descendants()
+        .find(|node| node.has_tag_name("component") && node.attribute("library") == Some("binary"))
+        .unwrap();
+    let mut disconnected = original.clone();
+    for key in protobuf
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|entry| entry.attribute("inpkey"))
+    {
+        disconnected = disconnected.replace(&format!("<edge vertexkey=\"{key}\"/>"), "");
+    }
+    assert_ne!(disconnected, original);
+    std::fs::write(&design, disconnected).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("disconnected protobuf final must reject")
+        .to_string();
+    assert!(error.contains("connected"), "{error}");
+
+    let wrong_kind = original.replacen("library=\"binary\"", "library=\"other-binary\"", 1);
+    assert_ne!(wrong_kind, original);
+    std::fs::write(&design, wrong_kind).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("other binary kind must reject")
+        .to_string();
+    assert!(error.contains("does not yet support"), "{error}");
+
+    let wrong_binary_kind = original.replacen("kind=\"33\"", "kind=\"32\"", 1);
+    assert_ne!(wrong_binary_kind, original);
+    std::fs::write(&design, wrong_binary_kind).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("wrong binary kind must reject")
+        .to_string();
+    assert!(error.contains("does not yet support"), "{error}");
+
+    let input_only = original.replacen(
+        "outputinstance=\"converted.bin\"",
+        "inputinstance=\"converted.bin\"",
+        1,
+    );
+    assert_ne!(input_only, original);
+    std::fs::write(&design, input_only).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("input-only binary final must reject")
+        .to_string();
+    assert!(error.contains("no importable target component"), "{error}");
+
+    let extra_input = add_connected_input_outside_target_payload(&original, "binary");
+    std::fs::write(&design, extra_input).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("connected input outside the protobuf message must reject")
+        .to_string();
+    assert!(error.contains("outside its message boundary"), "{error}");
+
+    let missing_schema = original.replace(
+        &format!("schemafile=\"{schemafile}\""),
+        "schemafile=\"missing.proto\"",
+    );
+    assert_ne!(missing_schema, original);
+    std::fs::write(&design, missing_schema).unwrap();
+    let error = mfd::import_pipeline(&design)
+        .err()
+        .expect("missing protobuf schema must reject")
+        .to_string();
+    assert!(error.contains("protobuf"), "{error}");
+    assert!(!directory.0.join("not-created").exists());
 }
 
 #[test]
@@ -2413,7 +3002,7 @@ fn flextext_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
         .expect("ambiguous FlexText final must reject")
         .to_string();
     assert!(
-        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, or XLSX final target"),
+        error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, or XLSX final target"),
         "{error}"
     );
 
