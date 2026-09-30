@@ -29,6 +29,7 @@ fn project() -> Project {
                     Node::RuntimeParameter {
                         name: "correlation_id".into(),
                         ty: ScalarType::String,
+                        preview: None,
                     },
                 ),
                 (
@@ -36,6 +37,7 @@ fn project() -> Project {
                     Node::RuntimeParameter {
                         name: "control_number".into(),
                         ty: ScalarType::Int,
+                        preview: None,
                     },
                 ),
                 (
@@ -43,6 +45,7 @@ fn project() -> Project {
                     Node::RuntimeParameter {
                         name: "test_mode".into(),
                         ty: ScalarType::Bool,
+                        preview: None,
                     },
                 ),
                 (
@@ -50,6 +53,7 @@ fn project() -> Project {
                     Node::RuntimeParameter {
                         name: "amount".into(),
                         ty: ScalarType::Float,
+                        preview: None,
                     },
                 ),
             ]
@@ -202,6 +206,7 @@ fn invalid_runtime_parameter_declarations_fail_validation() {
             Node::RuntimeParameter {
                 name,
                 ty: ScalarType::String,
+                preview: None,
             },
         );
         assert_eq!(validate(&project).len(), 1);
@@ -222,6 +227,7 @@ fn optional_project(default: Node) -> Project {
                 name: "control_number".into(),
                 ty: ScalarType::Int,
                 default: 1,
+                preview: None,
             },
         ),
     ]
@@ -283,6 +289,7 @@ fn optional_runtime_parameter_skips_failing_default_for_supplied_value() {
     let project = optional_project(Node::RuntimeParameter {
         name: "missing_default".into(),
         ty: ScalarType::Int,
+        preview: None,
     });
     assert!(validate(&project).is_empty());
 
@@ -299,5 +306,240 @@ fn optional_runtime_parameter_skips_failing_default_for_supplied_value() {
             node: 1,
             name: "missing_default".into(),
         })
+    );
+}
+
+fn preview_context() -> ExecutionContext<'static> {
+    ExecutionContext::new(Path::new("mapping.ferrule")).with_purpose(ExecutionPurpose::Preview)
+}
+
+#[test]
+fn preview_purpose_coerces_raw_values_and_normal_run_still_requires_host_inputs() {
+    let mut project = project();
+    for (id, lexical) in [(1, ""), (2, " 17 "), (3, "1"), (4, "5.5")] {
+        let Node::RuntimeParameter { preview, .. } = project.graph.nodes.get_mut(&id).unwrap()
+        else {
+            panic!("host node");
+        };
+        *preview = Some(lexical.into());
+    }
+    assert!(validate(&project).is_empty());
+    assert_eq!(
+        ExecutionContext::new(Path::new("mapping.ferrule")).purpose(),
+        ExecutionPurpose::Run
+    );
+    assert_eq!(
+        ExecutionContext::with_main_mapping_file_path(Path::new("child"), Path::new("main"))
+            .purpose(),
+        ExecutionPurpose::Run
+    );
+    assert_eq!(preview_context().purpose(), ExecutionPurpose::Preview);
+    assert!(matches!(
+        run(&project, &source()),
+        Err(EngineError::MissingRuntimeParameter { node: 1, .. })
+    ));
+    assert_eq!(
+        run_with_context(&project, &source(), &preview_context()).unwrap(),
+        Instance::Group(vec![
+            (
+                "Correlation".into(),
+                Instance::Scalar(Value::String("".into()))
+            ),
+            ("Control".into(), Instance::Scalar(Value::Int(17))),
+            ("Test".into(), Instance::Scalar(Value::Bool(true))),
+            ("Amount".into(), Instance::Scalar(Value::Float(5.5))),
+        ])
+    );
+}
+
+#[test]
+fn preview_skips_connected_default_but_supplied_host_null_and_errors_win() {
+    let mut project = optional_project(Node::RuntimeParameter {
+        name: "missing_default".into(),
+        ty: ScalarType::Int,
+        preview: None,
+    });
+    let Node::RuntimeParameterDefault { preview, .. } = project.graph.nodes.get_mut(&2).unwrap()
+    else {
+        panic!("optional node");
+    };
+    *preview = Some("17".into());
+    assert!(matches!(
+        run(&project, &source()),
+        Err(EngineError::MissingRuntimeParameter { node: 1, .. })
+    ));
+    assert_eq!(
+        run_with_context(&project, &source(), &preview_context())
+            .unwrap()
+            .field("Control")
+            .unwrap()
+            .as_scalar(),
+        Some(&Value::Int(17))
+    );
+    for (supplied, expected) in [(Value::Int(9), Value::Int(9)), (Value::Null, Value::Null)] {
+        let mut parameters = RuntimeParameters::new();
+        parameters.insert("control_number", supplied).unwrap();
+        let execution = preview_context().with_parameters(&parameters);
+        assert_eq!(
+            run_with_context(&project, &source(), &execution)
+                .unwrap()
+                .field("Control")
+                .unwrap()
+                .as_scalar(),
+            Some(&expected)
+        );
+    }
+    let mut parameters = RuntimeParameters::new();
+    parameters
+        .insert("control_number", Value::Bool(false))
+        .unwrap();
+    assert!(matches!(
+        run_with_context(
+            &project,
+            &source(),
+            &preview_context().with_parameters(&parameters)
+        ),
+        Err(EngineError::RuntimeParameterType {
+            node: 2,
+            found: "bool",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn malformed_or_empty_numeric_preview_is_a_typed_error_without_default_fallback() {
+    let mut project = optional_project(Node::Const {
+        value: Value::Int(7),
+    });
+    for lexical in ["not an integer", "", "999999999999999999999"] {
+        let Node::RuntimeParameterDefault { preview, .. } =
+            project.graph.nodes.get_mut(&2).unwrap()
+        else {
+            panic!("optional node");
+        };
+        *preview = Some(lexical.into());
+        assert_eq!(
+            run(&project, &source())
+                .unwrap()
+                .field("Control")
+                .unwrap()
+                .as_scalar(),
+            Some(&Value::Int(7))
+        );
+        assert!(matches!(
+            run_with_context(&project, &source(), &preview_context()),
+            Err(EngineError::RuntimeParameterType {
+                node: 2,
+                found: "string",
+                ..
+            })
+        ));
+    }
+    let Node::RuntimeParameterDefault { preview, .. } = project.graph.nodes.get_mut(&2).unwrap()
+    else {
+        panic!("optional node");
+    };
+    *preview = None;
+    assert_eq!(
+        run_with_context(&project, &source(), &preview_context())
+            .unwrap()
+            .field("Control")
+            .unwrap()
+            .as_scalar(),
+        Some(&Value::Int(7))
+    );
+}
+
+#[test]
+fn previews_are_local_to_same_named_nodes_until_a_host_value_is_supplied() {
+    let mut project = project();
+    project.target = SchemaNode::group(
+        "Output",
+        vec![
+            SchemaNode::scalar("First", ScalarType::Int),
+            SchemaNode::scalar("Second", ScalarType::Int),
+        ],
+    );
+    project.graph.nodes = [
+        (
+            1,
+            Node::RuntimeParameter {
+                name: "same".into(),
+                ty: ScalarType::Int,
+                preview: Some("1".into()),
+            },
+        ),
+        (
+            2,
+            Node::RuntimeParameter {
+                name: "same".into(),
+                ty: ScalarType::Int,
+                preview: Some("2".into()),
+            },
+        ),
+    ]
+    .into_iter()
+    .collect();
+    project.root.bindings = vec![
+        Binding {
+            target_field: "First".into(),
+            node: 1,
+        },
+        Binding {
+            target_field: "Second".into(),
+            node: 2,
+        },
+    ];
+    let output = run_with_context(&project, &source(), &preview_context()).unwrap();
+    assert_eq!(
+        output.field("First").unwrap().as_scalar(),
+        Some(&Value::Int(1))
+    );
+    assert_eq!(
+        output.field("Second").unwrap().as_scalar(),
+        Some(&Value::Int(2))
+    );
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("same", Value::Int(9)).unwrap();
+    let output = run_with_context(
+        &project,
+        &source(),
+        &preview_context().with_parameters(&parameters),
+    )
+    .unwrap();
+    for field in ["First", "Second"] {
+        assert_eq!(
+            output.field(field).unwrap().as_scalar(),
+            Some(&Value::Int(9))
+        );
+    }
+}
+
+#[test]
+fn oversized_preview_fails_only_when_preview_execution_uses_it() {
+    let mut project = optional_project(Node::Const {
+        value: Value::Int(7),
+    });
+    let Node::RuntimeParameterDefault { preview, .. } = project.graph.nodes.get_mut(&2).unwrap()
+    else {
+        panic!("optional node");
+    };
+    *preview = Some("X".repeat(MAX_RUNTIME_PARAMETER_STRING_BYTES + 1));
+    assert!(validate(&project).is_empty());
+    assert!(run(&project, &source()).is_ok());
+    assert!(matches!(
+        run_with_context(&project, &source(), &preview_context()),
+        Err(EngineError::RuntimeParameterPreviewTooLong { node: 2, .. })
+    ));
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("control_number", Value::Null).unwrap();
+    assert!(
+        run_with_context(
+            &project,
+            &source(),
+            &preview_context().with_parameters(&parameters)
+        )
+        .is_ok()
     );
 }

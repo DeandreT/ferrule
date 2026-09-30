@@ -41,6 +41,7 @@ fn optional_project() -> Project {
                                 name: "nested".into(),
                                 ty: ScalarType::String,
                                 default: 1,
+                                preview: Some("preview-inner".into()),
                             },
                         ),
                     ]),
@@ -78,6 +79,7 @@ fn optional_project() -> Project {
                         name: "control".into(),
                         ty: ScalarType::Int,
                         default: 1,
+                        preview: Some("not-an-integer".into()),
                     },
                 ),
                 (
@@ -105,6 +107,7 @@ fn optional_project() -> Project {
                         name: "explode_default".into(),
                         ty: ScalarType::Bool,
                         default: 5,
+                        preview: Some("true".into()),
                     },
                 ),
                 (
@@ -112,6 +115,7 @@ fn optional_project() -> Project {
                     Node::RuntimeParameter {
                         name: "missing_default".into(),
                         ty: ScalarType::Int,
+                        preview: Some("99".into()),
                     },
                 ),
             ]),

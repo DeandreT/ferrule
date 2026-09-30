@@ -8,6 +8,41 @@ use crate::{FunctionId, FunctionParameterId, JoinId, JoinPlan, Scope};
 pub type NodeId = u32;
 
 pub const MAX_RUNTIME_PARAMETER_NAME_BYTES: usize = 256;
+const MAX_RUNTIME_PARAMETER_PREVIEW_BYTES: usize = 8 * 1024 * 1024;
+
+fn deserialize_parameter_preview<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let preview = Option::<String>::deserialize(deserializer)?;
+    if preview
+        .as_ref()
+        .is_some_and(|value| value.len() > MAX_RUNTIME_PARAMETER_PREVIEW_BYTES)
+    {
+        return Err(serde::de::Error::custom(
+            "runtime parameter preview exceeds 8388608 UTF-8 bytes",
+        ));
+    }
+    Ok(preview)
+}
+
+fn serialize_parameter_preview<S>(
+    preview: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if preview
+        .as_ref()
+        .is_some_and(|value| value.len() > MAX_RUNTIME_PARAMETER_PREVIEW_BYTES)
+    {
+        return Err(serde::ser::Error::custom(
+            "runtime parameter preview exceeds 8388608 UTF-8 bytes",
+        ));
+    }
+    preview.serialize(serializer)
+}
 
 const fn default_xml_indent() -> bool {
     true
@@ -72,13 +107,34 @@ pub enum Node {
     RuntimeValue { value: RuntimeValue },
     /// Reads one named, typed scalar supplied explicitly by the execution
     /// host. The name is host-contract data rather than a source field path.
-    RuntimeParameter { name: String, ty: ScalarType },
-    /// Reads a named, typed host scalar, evaluating `default` only when the
-    /// host has not supplied that name. A supplied `Null` is still supplied.
+    RuntimeParameter {
+        name: String,
+        ty: ScalarType,
+        /// Raw lexical value available only when the interpreter host requests
+        /// preview execution. Normal runs still require a supplied host value.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_parameter_preview",
+            serialize_with = "serialize_parameter_preview"
+        )]
+        preview: Option<String>,
+    },
+    /// Reads a named, typed host scalar. Normal runs evaluate `default` only
+    /// when the host name is absent; explicit preview runs first use retained
+    /// preview text, when available. A supplied `Null` is still supplied.
     RuntimeParameterDefault {
         name: String,
         ty: ScalarType,
         default: NodeId,
+        /// Raw preview lexical metadata, independent of the connected default.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_parameter_preview",
+            serialize_with = "serialize_parameter_preview"
+        )]
+        preview: Option<String>,
     },
     /// Calls a built-in function (see the `functions` crate) with the
     /// evaluated outputs of the given argument nodes.

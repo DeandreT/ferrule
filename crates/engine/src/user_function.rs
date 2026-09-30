@@ -4,13 +4,13 @@ use std::collections::{BTreeMap, HashSet};
 use ir::{Instance, ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, Node, NodeId, UserFunction};
 
-use crate::EngineError;
-use crate::context::{runtime_field, runtime_parameter_field};
+use crate::context::{parameter_value, runtime_field};
 use crate::debug::{
     DebugHook, after_function_node_failure, after_function_node_input, after_function_node_value,
 };
 use crate::source_iteration::PositionFrame;
 use crate::trace::{TraceSink, record_function_node_input_value, record_function_node_value};
+use crate::{EngineError, ExecutionPurpose};
 
 pub(super) const MAX_USER_FUNCTION_DEPTH: usize = 64;
 
@@ -20,6 +20,7 @@ struct FunctionTrace<'a> {
     debug_hook: Option<&'a dyn DebugHook>,
     first_failure_reported: &'a Cell<bool>,
     positions: &'a [PositionFrame],
+    purpose: ExecutionPurpose,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -32,6 +33,7 @@ pub(super) fn evaluate(
     debug_hook: Option<&dyn DebugHook>,
     first_failure_reported: &Cell<bool>,
     positions: &[PositionFrame],
+    purpose: ExecutionPurpose,
 ) -> Result<Value, EngineError> {
     evaluate_nested(
         functions,
@@ -43,6 +45,7 @@ pub(super) fn evaluate(
             debug_hook,
             first_failure_reported,
             positions,
+            purpose,
         },
         &mut Vec::new(),
     )
@@ -192,46 +195,49 @@ fn evaluate_body_node_inner(
             .and_then(Instance::as_scalar)
             .cloned()
             .ok_or(EngineError::MissingRuntimeValue(*value)),
-        Node::RuntimeParameter { name, ty } => {
-            let value = runtime
-                .and_then(|frame| frame.field(&runtime_parameter_field(name)))
-                .and_then(Instance::as_scalar)
+        Node::RuntimeParameter { name, ty, preview } => {
+            let value = parameter_value(runtime, name, preview.as_deref(), trace.purpose, node_id)?
                 .ok_or_else(|| EngineError::MissingRuntimeParameter {
                     node: node_id,
                     name: name.clone(),
                 })?;
-            adapt_scalar(value.clone(), *ty).ok_or_else(|| EngineError::RuntimeParameterType {
+            let found = value.type_name();
+            adapt_scalar(value.into_owned(), *ty).ok_or_else(|| EngineError::RuntimeParameterType {
                 node: node_id,
                 name: name.clone(),
                 expected: *ty,
-                found: value.type_name(),
+                found,
             })
         }
-        Node::RuntimeParameterDefault { name, ty, default } => {
-            let value = match runtime
-                .and_then(|frame| frame.field(&runtime_parameter_field(name)))
-                .and_then(Instance::as_scalar)
-            {
-                Some(value) => value.clone(),
-                None => evaluate_body_input(
-                    functions,
-                    function_id,
-                    function,
-                    node_id,
-                    *default,
-                    0,
-                    parameters,
-                    runtime,
-                    trace,
-                    call_stack,
-                    in_progress,
-                )?,
-            };
-            adapt_scalar(value.clone(), *ty).ok_or_else(|| EngineError::RuntimeParameterType {
+        Node::RuntimeParameterDefault {
+            name,
+            ty,
+            default,
+            preview,
+        } => {
+            let value =
+                match parameter_value(runtime, name, preview.as_deref(), trace.purpose, node_id)? {
+                    Some(value) => value.into_owned(),
+                    None => evaluate_body_input(
+                        functions,
+                        function_id,
+                        function,
+                        node_id,
+                        *default,
+                        0,
+                        parameters,
+                        runtime,
+                        trace,
+                        call_stack,
+                        in_progress,
+                    )?,
+                };
+            let found = value.type_name();
+            adapt_scalar(value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
                 node: node_id,
                 name: name.clone(),
                 expected: *ty,
-                found: value.type_name(),
+                found,
             })
         }
         Node::Call {

@@ -49,6 +49,7 @@ fn runtime_project() -> Project {
                         Node::RuntimeParameter {
                             name: "correlation_id".into(),
                             ty: ScalarType::String,
+                            preview: Some("preview lexical metadata".into()),
                         },
                     )]),
                 },
@@ -128,6 +129,7 @@ fn runtime_project() -> Project {
                     Node::RuntimeParameter {
                         name: "control_number".into(),
                         ty: ScalarType::Int,
+                        preview: Some("preview lexical metadata".into()),
                     },
                 ),
                 (
@@ -135,6 +137,7 @@ fn runtime_project() -> Project {
                     Node::RuntimeParameter {
                         name: "test_mode".into(),
                         ty: ScalarType::Bool,
+                        preview: Some("preview lexical metadata".into()),
                     },
                 ),
                 (
@@ -142,6 +145,7 @@ fn runtime_project() -> Project {
                     Node::RuntimeParameter {
                         name: "amount".into(),
                         ty: ScalarType::Float,
+                        preview: Some("preview lexical metadata".into()),
                     },
                 ),
             ]),

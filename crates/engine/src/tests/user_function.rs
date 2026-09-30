@@ -937,6 +937,7 @@ fn user_functions_can_read_typed_host_runtime_parameters() -> Result<(), Box<dyn
                 Node::RuntimeParameter {
                     name: "control_number".into(),
                     ty: ScalarType::Int,
+                    preview: Some("17".into()),
                 },
             )],
             7,
@@ -962,6 +963,17 @@ fn user_functions_can_read_typed_host_runtime_parameters() -> Result<(), Box<dyn
         ExecutionContext::new(Path::new("/maps/test.json")).with_parameters(&parameters);
     let output = run_with_context(&project, &source("unused"), &execution)?;
     assert_eq!(output_value(&output), Some(&Value::Int(42)));
+    let preview = execution.with_purpose(crate::ExecutionPurpose::Preview);
+    assert_eq!(
+        output_value(&run_with_context(&project, &source("unused"), &preview)?),
+        Some(&Value::Int(42))
+    );
+    let preview = ExecutionContext::new(Path::new("/maps/test.json"))
+        .with_purpose(crate::ExecutionPurpose::Preview);
+    assert_eq!(
+        output_value(&run_with_context(&project, &source("unused"), &preview)?),
+        Some(&Value::Int(17))
+    );
 
     let empty = crate::RuntimeParameters::new();
     let execution = ExecutionContext::new(Path::new("/maps/test.json")).with_parameters(&empty);
@@ -1015,6 +1027,7 @@ fn validates_runtime_parameter_names_inside_user_functions() {
                         Node::RuntimeParameter {
                             name: String::new(),
                             ty: ScalarType::String,
+                            preview: None,
                         },
                     ),
                     (
@@ -1022,6 +1035,7 @@ fn validates_runtime_parameter_names_inside_user_functions() {
                         Node::RuntimeParameter {
                             name: "bad\0name".into(),
                             ty: ScalarType::String,
+                            preview: None,
                         },
                     ),
                     (
@@ -1029,6 +1043,7 @@ fn validates_runtime_parameter_names_inside_user_functions() {
                         Node::RuntimeParameter {
                             name: "x".repeat(mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES + 1),
                             ty: ScalarType::String,
+                            preview: None,
                         },
                     ),
                     (
@@ -1434,6 +1449,7 @@ fn nested_user_function_reads_optional_host_input_lazily() -> Result<(), Box<dyn
                             name: "override".into(),
                             ty: ScalarType::String,
                             default: 1,
+                            preview: Some("nested-preview".into()),
                         },
                     ),
                 ],
@@ -1474,6 +1490,12 @@ fn nested_user_function_reads_optional_host_input_lazily() -> Result<(), Box<dyn
         output_value(&run(&project, &source("unused"))?),
         Some(&Value::String("fallback".into()))
     );
+    let preview = ExecutionContext::new(Path::new("/maps/test.json"))
+        .with_purpose(crate::ExecutionPurpose::Preview);
+    assert_eq!(
+        output_value(&run_with_context(&project, &source("unused"), &preview)?),
+        Some(&Value::String("nested-preview".into()))
+    );
 
     let mut parameters = crate::RuntimeParameters::new();
     parameters.insert("override", Value::String("supplied".into()))?;
@@ -1483,5 +1505,110 @@ fn nested_user_function_reads_optional_host_input_lazily() -> Result<(), Box<dyn
         output_value(&run_with_context(&project, &source("unused"), &execution)?),
         Some(&Value::String("supplied".into()))
     );
+    assert_eq!(
+        output_value(&run_with_context(
+            &project,
+            &source("unused"),
+            &execution.with_purpose(crate::ExecutionPurpose::Preview)
+        )?),
+        Some(&Value::String("supplied".into()))
+    );
     Ok(())
+}
+
+#[test]
+fn nested_functions_keep_same_named_previews_local_to_each_node() {
+    let inner = FunctionId::new(1);
+    let outer = FunctionId::new(2);
+    let input = |lexical: &str| Node::RuntimeParameter {
+        name: "shared".into(),
+        ty: ScalarType::String,
+        preview: Some(lexical.into()),
+    };
+    let definitions = BTreeMap::from([
+        (
+            inner,
+            function(
+                "inner_preview",
+                Vec::new(),
+                ScalarType::String,
+                [(1, input("inner"))],
+                1,
+            ),
+        ),
+        (
+            outer,
+            function(
+                "outer_preview",
+                Vec::new(),
+                ScalarType::String,
+                [
+                    (1, input("outer")),
+                    (
+                        2,
+                        Node::UserFunctionCall {
+                            function: inner,
+                            args: vec![],
+                        },
+                    ),
+                    (
+                        3,
+                        Node::Call {
+                            function: "concat".into(),
+                            args: vec![1, 2],
+                        },
+                    ),
+                ],
+                3,
+            ),
+        ),
+    ]);
+    let graph = Graph {
+        nodes: [
+            (1, input("main")),
+            (
+                2,
+                Node::UserFunctionCall {
+                    function: outer,
+                    args: vec![],
+                },
+            ),
+            (
+                3,
+                Node::Call {
+                    function: "concat".into(),
+                    args: vec![1, 2],
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    };
+    let project = project(graph, definitions, 3);
+    assert!(validate(&project).is_empty());
+    let preview = ExecutionContext::new(Path::new("mapping.ferrule"))
+        .with_purpose(crate::ExecutionPurpose::Preview);
+    assert_eq!(
+        output_value(&run_with_context(&project, &source("unused"), &preview).unwrap()),
+        Some(&Value::String("mainouterinner".into()))
+    );
+    assert!(matches!(
+        run(&project, &source("unused")),
+        Err(EngineError::MissingRuntimeParameter { node: 1, .. })
+    ));
+    let mut parameters = crate::RuntimeParameters::new();
+    parameters
+        .insert("shared", Value::String("host".into()))
+        .unwrap();
+    assert_eq!(
+        output_value(
+            &run_with_context(
+                &project,
+                &source("unused"),
+                &preview.with_parameters(&parameters)
+            )
+            .unwrap()
+        ),
+        Some(&Value::String("hosthosthost".into()))
+    );
 }
