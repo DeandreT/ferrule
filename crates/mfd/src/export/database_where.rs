@@ -141,9 +141,9 @@ impl NativeWhere {
             return None;
         }
 
-        // Retain the connected expression on the native parameter pin, including
-        // a named optional host input. Its literal default keeps this inverse
-        // bounded to the same prefix family as ordinary constant patterns.
+        // Retain the connected expression on the native parameter pin. A named
+        // optional input needs an ordinary literal prefix as its default;
+        // a required String input has no default and keeps its host value.
         if !prefix_pattern(&project.graph.nodes, *parameter) {
             return None;
         }
@@ -309,14 +309,18 @@ fn prefix_pattern(nodes: &BTreeMap<NodeId, Node>, id: NodeId) -> bool {
     };
     function == "concat"
         && literal_string(nodes, *suffix).as_deref() == Some("%")
-        && optional_prefix(nodes, *prefix)
+        && parameter_prefix(nodes, *prefix)
 }
 
-fn optional_prefix(nodes: &BTreeMap<NodeId, Node>, id: NodeId) -> bool {
+fn parameter_prefix(nodes: &BTreeMap<NodeId, Node>, id: NodeId) -> bool {
     match nodes.get(&id) {
         Some(Node::Call { function, args }) if function == "string" => {
-            matches!(args.as_slice(), [input] if optional_prefix(nodes, *input))
+            matches!(args.as_slice(), [input] if parameter_prefix(nodes, *input))
         }
+        Some(Node::RuntimeParameter {
+            ty: ScalarType::String,
+            ..
+        }) => true,
         Some(Node::RuntimeParameterDefault {
             ty: ScalarType::String,
             default,

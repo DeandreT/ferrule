@@ -287,6 +287,106 @@ fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
 }
 
 #[test]
+fn required_host_prefix_keeps_preview_and_run_contract_through_two_native_cycles()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new();
+    let original = fixture(&directory.0);
+    let imported = mfd::import(&original)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut project = imported.project;
+    let prefix = project
+        .graph
+        .nodes
+        .iter()
+        .find_map(|(id, node)| {
+            matches!(node, mapping::Node::Const { value: Value::String(value) } if value == "B")
+                .then_some(*id)
+        })
+        .unwrap();
+    project.graph.nodes.insert(
+        prefix,
+        mapping::Node::RuntimeParameter {
+            name: "NamePrefix".into(),
+            ty: ir::ScalarType::String,
+            preview: Some("B".into()),
+        },
+    );
+    assert!(engine::validate(&project).is_empty());
+    let source = format_db::read_instance(&directory.0.join("people.sqlite"), &project.source)?;
+
+    let mut variants = vec![(original, project)];
+    for cycle in 1..=2 {
+        let native = directory.0.join(format!("required-{cycle}.mfd"));
+        let report = mfd::preflight_export(&variants.last().unwrap().1, &native)?;
+        assert!(report.is_native_compatible(), "cycle {cycle}: {report}");
+        mfd::export_with_profile(
+            &variants.last().unwrap().1,
+            &native,
+            mfd::ExportProfile::NativeMfd,
+        )?;
+        let xml = std::fs::read_to_string(&native)?;
+        assert!(xml.contains("library=\"db\"") && xml.contains("kind=\"21\""));
+        assert!(xml.contains("condition=\"Name LIKE :sqlparam\""));
+        assert!(xml.contains("previewvalue=\"B\" usepreviewvalue=\"1\""));
+        assert!(!xml.contains("library=\"ferrule\""));
+        let restored = mfd::import(&native)?;
+        assert!(
+            restored.warnings.is_empty(),
+            "cycle {cycle}: {:?}",
+            restored.warnings
+        );
+        assert!(engine::validate(&restored.project).is_empty());
+        assert!(restored.project.graph.nodes.values().any(|node| matches!(
+            node,
+            mapping::Node::RuntimeParameter {
+                name,
+                ty: ir::ScalarType::String,
+                preview: Some(value),
+            } if name == "NamePrefix" && value == "B"
+        )));
+        variants.push((native, restored.project));
+    }
+
+    for (path, project) in &variants {
+        let preview =
+            engine::ExecutionContext::new(path).with_purpose(engine::ExecutionPurpose::Preview);
+        assert_eq!(
+            names(&engine::run_with_context(project, &source, &preview)?),
+            ["Bob", "Bex", "Bea"]
+        );
+        assert!(matches!(
+            engine::run_with_context(project, &source, &engine::ExecutionContext::new(path)),
+            Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "NamePrefix"
+        ));
+        for (value, expected) in [
+            (Value::String("G".into()), vec!["Grace"]),
+            (
+                Value::String("%".into()),
+                vec!["Grace", "Bob", "Bex", "Bea", "Ada"],
+            ),
+            // Supplied Null overrides the preview; concat then leaves "%".
+            (Value::Null, vec!["Grace", "Bob", "Bex", "Bea", "Ada"]),
+        ] {
+            let mut parameters = engine::RuntimeParameters::new();
+            parameters.insert("NamePrefix", value)?;
+            for purpose in [
+                engine::ExecutionPurpose::Run,
+                engine::ExecutionPurpose::Preview,
+            ] {
+                let context = engine::ExecutionContext::new(path)
+                    .with_purpose(purpose)
+                    .with_parameters(&parameters);
+                assert_eq!(
+                    names(&engine::run_with_context(project, &source, &context)?),
+                    expected
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn local_phone_list_native_roundtrip_keeps_optional_prefix_and_related_fields()
 -> Result<(), Box<dyn std::error::Error>> {
