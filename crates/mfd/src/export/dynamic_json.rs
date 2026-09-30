@@ -893,6 +893,7 @@ fn node_consumers(graph: &Graph) -> BTreeMap<NodeId, Vec<NodeId>> {
 
 fn node_dependencies(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::Position { .. }

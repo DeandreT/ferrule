@@ -940,6 +940,24 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                      \t\t\t\t</component>\n"
                 );
             }
+            Node::RuntimeParameterDefault { name, ty, .. } => {
+                let input = keys.next();
+                let out = keys.next();
+                node_out_key.insert(id, out);
+                fn_inputs.insert(id, vec![input]);
+                *uid += 1;
+                let datatype = scalar_type_name(*ty);
+                let escaped_name = xml_escape(name);
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"{escaped_name}\" library=\"core\" uid=\"{uid}\" kind=\"6\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{input}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t\t<data><input datatype=\"{datatype}\"/><parameter usageKind=\"input\" name=\"{escaped_name}\" optional=\"1\"/></data>\n\
+                     \t\t\t\t</component>\n"
+                );
+            }
             Node::Call { function, args } => {
                 if json_parsers.handles(id) || flextext_parsers.handles(id) {
                     continue;
@@ -1284,6 +1302,7 @@ fn connect_inputs(
         };
         let args: Vec<NodeId> = match node {
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
+            Node::RuntimeParameterDefault { default, .. } => vec![*default],
             Node::If {
                 condition,
                 then,

@@ -137,3 +137,248 @@ fn unconnected_input_parameters_become_typed_host_inputs_and_roundtrip()
     assert_output(&execute(&roundtrip.project)?);
     Ok(())
 }
+
+fn write_optional_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
+    std::fs::write(
+        directory.join("optional-source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Input"><xs:complexType><xs:sequence>
+    <xs:element name="Dummy" type="xs:string"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )?;
+    std::fs::write(
+        directory.join("optional-target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Output"><xs:complexType><xs:sequence>
+    <xs:element name="Prefix" type="xs:string"/>
+    <xs:element name="Count" type="xs:int"/>
+    <xs:element name="Ratio" type="xs:decimal"/>
+    <xs:element name="Required" type="xs:string"/>
+    <xs:element name="Lazy" type="xs:string"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )?;
+    let path = directory.join("optional.mfd");
+    std::fs::write(
+        &path,
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="xml" kind="14"><data>
+    <root><entry name="Input"><entry name="Dummy" outkey="9"/></entry></root>
+    <document schema="optional-source.xsd" inputinstance="source.xml" instanceroot="{}Input"/>
+  </data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="100"/></targets><data><constant value="B" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="101"/></targets><data><constant value="7" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="102"/></targets><data><constant value="8.5" datatype="string"/></data></component>
+  <component name="Prefix" library="core" kind="6"><sources><datapoint pos="0" key="110"/></sources><targets><datapoint pos="0" key="111"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Prefix" optional="1"/></data></component>
+  <component name="Count" library="core" kind="6"><sources><datapoint pos="0" key="112"/></sources><targets><datapoint pos="0" key="113"/></targets><data><input datatype="integer"/><parameter usageKind="input" name="Count" optional="1"/></data></component>
+  <component name="Ratio" library="core" kind="6"><sources><datapoint pos="0" key="114"/></sources><targets><datapoint pos="0" key="115"/></targets><data><input datatype="decimal"/><parameter usageKind="input" name="Ratio" optional="1"/></data></component>
+  <component name="Required" library="core" kind="6"><targets><datapoint pos="0" key="116"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Required"/></data></component>
+  <component name="Missing" library="core" kind="6"><targets><datapoint pos="0" key="117"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Missing"/></data></component>
+  <component name="Lazy" library="core" kind="6"><sources><datapoint pos="0" key="118"/></sources><targets><datapoint pos="0" key="119"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Lazy" optional="1"/></data></component>
+  <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="Output"><entry name="Prefix" inpkey="201"/><entry name="Count" inpkey="202"/><entry name="Ratio" inpkey="203"/><entry name="Required" inpkey="204"/><entry name="Lazy" inpkey="205"/></entry></root>
+    <document schema="optional-target.xsd" outputinstance="target.xml" instanceroot="{}Output"/>
+  </data></component>
+</children><graph><vertices>
+  <vertex vertexkey="100"><edges><edge vertexkey="110"/></edges></vertex>
+  <vertex vertexkey="101"><edges><edge vertexkey="112"/></edges></vertex>
+  <vertex vertexkey="102"><edges><edge vertexkey="114"/></edges></vertex>
+  <vertex vertexkey="117"><edges><edge vertexkey="118"/></edges></vertex>
+  <vertex vertexkey="111"><edges><edge vertexkey="201"/></edges></vertex>
+  <vertex vertexkey="113"><edges><edge vertexkey="202"/></edges></vertex>
+  <vertex vertexkey="115"><edges><edge vertexkey="203"/></edges></vertex>
+  <vertex vertexkey="116"><edges><edge vertexkey="204"/></edges></vertex>
+  <vertex vertexkey="119"><edges><edge vertexkey="205"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )?;
+    Ok(path)
+}
+
+fn assert_optional_declarations(project: &mapping::Project) {
+    let mut declarations = project
+        .graph
+        .nodes
+        .values()
+        .filter_map(|node| match node {
+            Node::RuntimeParameterDefault { name, ty, default } => {
+                Some((name.as_str(), *ty, *default))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    declarations.sort_unstable_by_key(|(name, _, _)| *name);
+    assert_eq!(
+        declarations
+            .iter()
+            .map(|(name, ty, _)| (*name, *ty))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Count", ScalarType::Int),
+            ("Lazy", ScalarType::String),
+            ("Prefix", ScalarType::String),
+            ("Ratio", ScalarType::Float),
+        ]
+    );
+    for (name, _, default) in declarations {
+        match name {
+            "Count" => assert!(matches!(
+                project.graph.nodes.get(&default),
+                Some(Node::Const {
+                    value: Value::String(value)
+                }) if value == "7"
+            )),
+            "Prefix" => assert!(matches!(
+                project.graph.nodes.get(&default),
+                Some(Node::Const {
+                    value: Value::String(value)
+                }) if value == "B"
+            )),
+            "Ratio" => assert!(matches!(
+                project.graph.nodes.get(&default),
+                Some(Node::Const {
+                    value: Value::String(value)
+                }) if value == "8.5"
+            )),
+            "Lazy" => {
+                let mut input = default;
+                let mut found = false;
+                for _ in 0..8 {
+                    match project.graph.nodes.get(&input) {
+                        Some(Node::Call { function, args })
+                            if function == "string" && args.len() == 1 =>
+                        {
+                            input = args[0];
+                        }
+                        Some(Node::RuntimeParameter { name, .. }) if name == "Missing" => {
+                            found = true;
+                            break;
+                        }
+                        other => panic!("unexpected lazy default dependency: {other:?}"),
+                    }
+                }
+                assert!(found, "lazy default must depend on the Missing host input");
+            }
+            _ => unreachable!(),
+        }
+    }
+    assert_eq!(
+        project
+            .graph
+            .nodes
+            .values()
+            .filter(|node| matches!(node, Node::RuntimeParameter { .. }))
+            .count(),
+        2
+    );
+}
+
+fn run_optional(
+    project: &mapping::Project,
+    parameters: &RuntimeParameters,
+) -> Result<Instance, engine::EngineError> {
+    let source = Instance::Group(vec![(
+        "Dummy".into(),
+        Instance::Scalar(Value::String("source".into())),
+    )]);
+    let context = ExecutionContext::new(Path::new("optional.mfd")).with_parameters(parameters);
+    engine::run_with_context(project, &source, &context)
+}
+
+#[test]
+fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_roundtrip()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = TempDir::new()?;
+    let imported = mfd::import(&write_optional_design(&directory.0)?)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    assert_optional_declarations(&imported.project);
+
+    let serialized = serde_json::to_string(&imported.project)?;
+    let serialized: mapping::Project = serde_json::from_str(&serialized)?;
+    assert_optional_declarations(&serialized);
+
+    let exported_path = directory.0.join("optional-roundtrip.mfd");
+    assert!(mfd::export(&serialized, &exported_path)?.is_empty());
+    let exported = std::fs::read_to_string(&exported_path)?;
+    assert_eq!(exported.matches("optional=\"1\"").count(), 4);
+    let roundtrip = mfd::import(&exported_path)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_optional_declarations(&roundtrip.project);
+
+    for project in [&imported.project, &serialized, &roundtrip.project] {
+        let mut parameters = RuntimeParameters::new();
+        parameters.insert("Required", Value::String("required".into()))?;
+        parameters.insert("Lazy", Value::String("host-lazy".into()))?;
+        let output = run_optional(project, &parameters)?;
+        for (name, expected) in [
+            ("Prefix", Value::String("B".into())),
+            ("Count", Value::Int(7)),
+            ("Ratio", Value::Float(8.5)),
+            ("Required", Value::String("required".into())),
+            ("Lazy", Value::String("host-lazy".into())),
+        ] {
+            assert_eq!(
+                output.field(name).and_then(Instance::as_scalar),
+                Some(&expected)
+            );
+        }
+
+        let mut overrides = RuntimeParameters::new();
+        overrides.insert("Required", Value::String("required".into()))?;
+        overrides.insert("Lazy", Value::String("host-lazy".into()))?;
+        overrides.insert("Prefix", Value::String("F".into()))?;
+        overrides.insert("Count", Value::String(" 42 ".into()))?;
+        overrides.insert("Ratio", Value::String("3.25".into()))?;
+        let output = run_optional(project, &overrides)?;
+        assert_eq!(
+            output.field("Prefix").and_then(Instance::as_scalar),
+            Some(&Value::String("F".into()))
+        );
+        assert_eq!(
+            output.field("Count").and_then(Instance::as_scalar),
+            Some(&Value::Int(42))
+        );
+        assert_eq!(
+            output.field("Ratio").and_then(Instance::as_scalar),
+            Some(&Value::Float(3.25))
+        );
+
+        let mut supplied_null = RuntimeParameters::new();
+        supplied_null.insert("Required", Value::String("required".into()))?;
+        supplied_null.insert("Lazy", Value::String("host-lazy".into()))?;
+        supplied_null.insert("Prefix", Value::Null)?;
+        supplied_null.insert("Count", Value::Null)?;
+        let output = run_optional(project, &supplied_null)?;
+        assert_eq!(
+            output.field("Prefix").and_then(Instance::as_scalar),
+            Some(&Value::Null)
+        );
+        assert_eq!(
+            output.field("Count").and_then(Instance::as_scalar),
+            Some(&Value::Null)
+        );
+
+        let mut wrong = RuntimeParameters::new();
+        wrong.insert("Required", Value::String("required".into()))?;
+        wrong.insert("Lazy", Value::String("host-lazy".into()))?;
+        wrong.insert("Count", Value::Bool(false))?;
+        assert!(matches!(
+            run_optional(project, &wrong),
+            Err(engine::EngineError::RuntimeParameterType { name, expected: ScalarType::Int, found: "bool", .. }) if name == "Count"
+        ));
+
+        let mut missing_lazy = RuntimeParameters::new();
+        missing_lazy.insert("Required", Value::String("required".into()))?;
+        assert!(matches!(
+            run_optional(project, &missing_lazy),
+            Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "Missing"
+        ));
+        assert!(matches!(
+            run_optional(project, &RuntimeParameters::new()),
+            Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "Required"
+        ));
+    }
+    Ok(())
+}
