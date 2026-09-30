@@ -10,6 +10,25 @@ const VALUE_MAP_CONTENT_WIDTH: f32 = 640.0;
 const VALUE_MAP_MAX_HEIGHT: f32 = 170.0;
 const CONST_TITLE_CHAR_LIMIT: usize = 28;
 
+fn parse_finite_float(text: &str) -> Option<f64> {
+    let normalized = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .map(|ch| if ch == '−' { '-' } else { ch })
+        .collect::<String>();
+    normalized
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+}
+
+fn accept_finite_float(value: &mut f64, proposed: Option<f64>) -> f64 {
+    if let Some(proposed) = proposed.filter(|number| number.is_finite()) {
+        *value = proposed;
+    }
+    *value
+}
+
 pub fn display_string(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
@@ -92,7 +111,12 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
             ui.add(egui::DragValue::new(i));
         }
         Value::Float(f) => {
-            ui.add(egui::DragValue::new(f));
+            ui.add(
+                egui::DragValue::from_get_set(move |proposed| accept_finite_float(f, proposed))
+                    .range(f64::MIN..=f64::MAX)
+                    .clamp_existing_to_range(false)
+                    .custom_parser(parse_finite_float),
+            );
         }
         Value::String(s) => {
             ui.add_sized(
@@ -268,6 +292,25 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn float_editor_rejects_nonfinite_text_and_retains_normalized_finite_input() {
+        for text in ["NaN", "inf", "-inf", "Infinity", "1e999"] {
+            assert_eq!(parse_finite_float(text), None, "{text}");
+        }
+        assert_eq!(parse_finite_float(" \u{2009}−1 234.5 \t"), Some(-1234.5));
+        assert_eq!(
+            parse_finite_float(" -0 ").map(f64::to_bits),
+            Some((-0.0_f64).to_bits())
+        );
+        let mut current = 3.0;
+        assert_eq!(accept_finite_float(&mut current, Some(f64::INFINITY)), 3.0);
+        assert_eq!(accept_finite_float(&mut current, Some(f64::NAN)), 3.0);
+        assert_eq!(
+            accept_finite_float(&mut current, Some(-0.0)).to_bits(),
+            (-0.0_f64).to_bits()
+        );
+    }
 
     #[test]
     fn const_title_preview_is_bounded_and_unicode_safe() {

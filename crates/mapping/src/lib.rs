@@ -6,6 +6,7 @@
 mod adjacency;
 mod edi;
 mod external_source;
+mod file_codec;
 mod fixed_width;
 mod flextext;
 mod http;
@@ -17,6 +18,8 @@ mod model;
 mod path_hierarchy;
 mod pdf;
 mod pipeline;
+pub mod pipeline_file;
+pub mod project_file;
 mod protobuf;
 mod reachable;
 mod recursive;
@@ -37,6 +40,7 @@ pub use external_source::{
     ExternalHttpHeader, ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOptions,
     ExternalSourceOptionsError, ExternalSourceOrigin,
 };
+pub use file_codec::FileCodecError;
 pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
 pub use flextext::{
     DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,

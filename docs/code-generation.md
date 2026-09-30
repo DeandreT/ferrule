@@ -217,8 +217,9 @@ size and unsupported descriptor failures remain typed and name the schema.
 Generated Rust JSON/XML adapters decode these descriptors directly. Generated
 C# uses the dedicated `ParseEmbedded`, `ParseEmbeddedBytes`,
 `SerializeEmbedded`, and `SerializeEmbeddedBytes` JSON methods and
-`FerruleXml.SerializeEmbedded`. Ordinary C# JSON/XML methods and saved-project
-parsing retain their existing plain JSON contract.
+`FerruleXml.SerializeEmbedded`. Ordinary C# JSON/XML methods retain their
+existing plain JSON contract. [Project file loading](project-files.md) separately
+preserves exact floating-point values before generation.
 
 The `json_parse_field` graph function parses its raw schema descriptor and
 input string using the interpreter's function contract. It does not inherit

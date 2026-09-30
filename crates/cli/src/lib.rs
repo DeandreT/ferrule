@@ -745,7 +745,7 @@ pub fn validate_project(project_path: &Path) -> anyhow::Result<Vec<engine::Valid
 fn load_project(project_path: &Path) -> anyhow::Result<mapping::Project> {
     let project_json = std::fs::read_to_string(project_path)
         .with_context(|| format!("reading project file {}", project_path.display()))?;
-    serde_json::from_str(&project_json)
+    mapping::project_file::decode_str(&project_json)
         .with_context(|| format!("parsing project file {}", project_path.display()))
 }
 
@@ -801,7 +801,7 @@ pub fn import_mfd(
     let mut imported = mfd::import_with_options(mfd_path, &options)
         .with_context(|| format!("importing {}", mfd_path.display()))?;
     rebase_project_paths(&mut imported.project, &imported.mapping_path, out_path)?;
-    let json = serde_json::to_string_pretty(&imported.project)?;
+    let json = mapping::project_file::encode_pretty(&imported.project)?;
     std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
     Ok(imported.warnings)
 }
@@ -842,7 +842,7 @@ pub fn import_mfd_pipeline(
                 .join("; ")
         );
     }
-    let json = serde_json::to_string_pretty(&imported.pipeline)?;
+    let json = mapping::pipeline_file::encode_pretty(&imported.pipeline)?;
     std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
     Ok(imported.warnings)
 }
@@ -893,7 +893,7 @@ pub fn preflight_mfd_pipeline_export(
 ) -> anyhow::Result<mfd::ExportReport> {
     let encoded = std::fs::read_to_string(pipeline_path)
         .with_context(|| format!("reading {}", pipeline_path.display()))?;
-    let pipeline: mapping::Pipeline = serde_json::from_str(&encoded)
+    let pipeline = mapping::pipeline_file::decode_str(&encoded)
         .with_context(|| format!("parsing {}", pipeline_path.display()))?;
     mfd::preflight_pipeline_export(&pipeline, out_path)
         .with_context(|| format!("checking pipeline export to {}", out_path.display()))
@@ -907,7 +907,7 @@ pub fn export_mfd_pipeline_with_profile(
 ) -> anyhow::Result<mfd::ExportReport> {
     let encoded = std::fs::read_to_string(pipeline_path)
         .with_context(|| format!("reading {}", pipeline_path.display()))?;
-    let pipeline: mapping::Pipeline = serde_json::from_str(&encoded)
+    let pipeline = mapping::pipeline_file::decode_str(&encoded)
         .with_context(|| format!("parsing {}", pipeline_path.display()))?;
     mfd::export_pipeline_with_profile(&pipeline, out_path, profile)
         .with_context(|| format!("writing {}", out_path.display()))

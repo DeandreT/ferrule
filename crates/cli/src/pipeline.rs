@@ -308,7 +308,7 @@ pub fn run_pipeline_file_with_options(
 ) -> anyhow::Result<PipelineRunOutcome> {
     let json = std::fs::read_to_string(pipeline_path)
         .with_context(|| format!("reading pipeline file {}", pipeline_path.display()))?;
-    let pipeline: Pipeline = serde_json::from_str(&json)
+    let pipeline = mapping::pipeline_file::decode_str(&json)
         .with_context(|| format!("parsing pipeline file {}", pipeline_path.display()))?;
     run_pipeline_value_with_options(&pipeline, pipeline_path, inputs, outputs, options)
 }
