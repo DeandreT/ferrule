@@ -310,8 +310,9 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
 ///
 /// This profile accepts a bounded serial XML pass-through chain whose final
 /// primary target may be XML, CSV, fixed-width text, FlexText, JSON, Protocol
-/// Buffers, XBRL without presentation metadata, or a new XLSX workbook, with
-/// any connected named targets remaining XML. Other stage graph shapes reject.
+/// Buffers, XBRL without presentation metadata, or a new XLSX workbook. Connected
+/// final named targets may be XML, or one CSV target when the primary is XML.
+/// Other stage graph shapes reject.
 pub fn import_pipeline(path: &Path) -> Result<ImportedPipeline, MfdError> {
     import_pipeline_with_options(path, &ImportOptions::default())
 }
@@ -695,6 +696,25 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
                 .into(),
         ));
     };
+    let named_csv_targets = components
+        .iter()
+        .filter(|component| {
+            final_target.attribute("library") == Some("xml")
+                && component.id() != final_target.id()
+                && is_csv_terminal_component(component)
+                && connected_inputs(component)
+                && !connected_component_outputs(component)
+                && !component.children().any(|node| {
+                    node.has_tag_name("properties")
+                        && node.attribute("XSLTDefaultOutput") == Some("1")
+                })
+        })
+        .collect::<Vec<_>>();
+    if named_csv_targets.len() > 1 {
+        return Err(MfdError::UnsupportedImport(
+            "pipeline import supports at most one connected named CSV final target".into(),
+        ));
+    }
     if is_protobuf_terminal_component(final_target)
         && !protobuf_connected_inputs_match_message_boundary(final_target, &edge_from)
     {
@@ -714,10 +734,11 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
     }
     if components.iter().any(|component| {
         component.attribute("library") == Some("text")
-            && (component.id() != final_target.id() || connected_component_outputs(component))
+            && (component.id() != final_target.id() && !named_csv_targets.contains(&component)
+                || connected_component_outputs(component))
     }) {
         return Err(MfdError::UnsupportedImport(
-            "pipeline import supports CSV, fixed-width text, and FlexText components only as the final primary target".into(),
+            "pipeline import supports CSV, fixed-width text, and FlexText components only as the final primary target, except one named CSV target beside a primary XML target".into(),
         ));
     }
     if components.iter().any(|component| {
@@ -757,6 +778,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         .iter()
         .filter(|component| {
             (component.attribute("library") == Some("xml")
+                || named_csv_targets.contains(component)
                 || component.id() == final_target.id()
                     && (is_csv_terminal_component(component)
                         || is_fixed_width_terminal_component(component)

@@ -244,8 +244,8 @@ Pipeline export writes one connected design for a validated serial XML
 pass-through chain of 2–65 stages. Each intermediate primary target becomes
 the next stage's pass-through source. The final primary target may be XML,
 delimited CSV, fixed-width text, configured FlexText, JSON, Protocol Buffers,
-XBRL without presentation metadata, or a new XLSX workbook; connected named
-final targets remain XML. An original static XML
+XBRL without presentation metadata, or a new XLSX workbook. Connected named
+final targets may be XML, or one CSV target beside an XML primary target. An original static XML
 host source may connect to named inputs in multiple stages, including the
 first and later intermediate stages, when its boundary and output ports still
 match. Connections from a
@@ -259,8 +259,8 @@ artifacts are written. Preflight and native-profile checks run before any
 design or schema sibling is published.
 Independent intermediate targets, disconnected final targets, other connected
 later-stage named sources, and other non-XML intermediate boundaries reject
-explicitly. Non-XML targets remain final-primary only; updating an existing
-workbook is outside this profile.
+explicitly. Other non-XML targets remain final-primary only; updating an
+existing workbook is outside this profile.
 Synthetic two- and four-stage export/re-import runs preserve stage results;
 terminal fan-out, repeated named-host connections, and CSV, fixed-width,
 FlexText, JSON, Protocol Buffers, bounded XBRL, or XLSX final targets preserve
@@ -268,7 +268,9 @@ their connected outputs. CSV and
 fixed-width results pass local write/read checks; fixed-width text, FlexText,
 and JSON retain exact serialized bytes after re-import, Protocol Buffers retains
 exact encoded bytes and decoded messages, bounded XBRL retains exact instance
-XML bytes and parsed fact/context elements, and XLSX retains decoded worksheet cells. FlexText
+XML bytes and parsed fact/context elements, and XLSX retains decoded worksheet cells.
+An XML-primary chain with a named CSV target retains both exact serialized
+outputs through strict export, reimport, and CLI publication. FlexText
 export writes a new `.mft` beside the combined design
 and refers to that sibling by name; unsupported layouts reject before either
 artifact is published. Protocol Buffers export likewise writes a `.proto`

@@ -133,6 +133,23 @@ fn make_csv_final_with_xml_named_target(directory: &Path) -> PathBuf {
     path
 }
 
+fn make_xml_final_with_csv_named_target(directory: &Path) -> PathBuf {
+    let path = make_csv_final_with_xml_named_target(directory);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let changed = original
+        .replace(
+            "<component name=\"target\" library=\"text\" kind=\"16\"><properties XSLTDefaultOutput=\"1\"/>",
+            "<component name=\"target\" library=\"text\" kind=\"16\">",
+        )
+        .replace(
+            "<component name=\"secondary\" library=\"xml\" kind=\"14\"><data>",
+            "<component name=\"secondary\" library=\"xml\" kind=\"14\"><properties XSLTDefaultOutput=\"1\"/><data>",
+        );
+    assert_ne!(changed, original);
+    std::fs::write(&path, changed).unwrap();
+    path
+}
+
 fn make_terminal_fanout(directory: &Path) -> PathBuf {
     let path = make_chain(directory);
     write_schema(&directory.join("secondary.xsd"), "Secondary", "Copy");
@@ -1011,6 +1028,194 @@ fn csv_primary_may_keep_a_connected_xml_named_target() {
     let reimported_final = reimported_outputs.stage("mfd-stage-2").unwrap();
     assert_eq!(original_final.primary, reimported_final.primary);
     assert_eq!(original_final.extras, reimported_final.extras);
+}
+
+#[test]
+fn xml_primary_may_keep_one_connected_csv_named_target_with_exact_output() {
+    let (pipeline, hosts) = local_xml_with_named_csv_pipeline();
+    let before = engine::run_pipeline(&pipeline, &hosts).unwrap();
+    assert_eq!(before.stage("copy").unwrap().primary, hosts["input"]);
+    let final_stage = &pipeline.stages[1];
+    let final_before = before.stage(&final_stage.id).unwrap();
+    assert_eq!(final_before.primary, hosts["input"]);
+    let [csv] = final_stage.project.extra_targets.as_slice() else {
+        panic!("final stage must keep one named CSV target");
+    };
+    let [named_before] = final_before.extras.as_slice() else {
+        panic!("final stage must produce one named CSV output");
+    };
+    assert_eq!(named_before.name, csv.name);
+    let xml_before =
+        format_xml::to_string(&final_stage.project.target, &final_before.primary).unwrap();
+    let directory = TempDir::new();
+    let csv_before_path = directory.0.join("before.csv");
+    format_csv::write_with_dialect(
+        &csv_before_path,
+        &csv.schema,
+        named_before.instance.as_repeated().unwrap(),
+        csv.options.delimiter,
+        csv.options.csv_quote,
+        csv.options.csv_quote_disabled,
+        csv.options.has_header_row.unwrap_or(true),
+    )
+    .unwrap();
+    let csv_before = std::fs::read(&csv_before_path).unwrap();
+    assert_eq!(csv_before, b"Alice Carter;34\nBo Diaz;41\n");
+
+    let exported = directory.0.join("xml-with-named-csv.mfd");
+    let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
+    assert!(preflight.is_native_compatible(), "{preflight:?}");
+    assert!(!exported.exists());
+    let report =
+        mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)
+            .unwrap();
+    assert!(report.is_native_compatible(), "{report:?}");
+    let design = std::fs::read_to_string(&exported).unwrap();
+    assert_eq!(design.matches("PassThrough=\"1\"").count(), 1);
+    assert_eq!(design.matches("library=\"text\"").count(), 1);
+    assert_eq!(design.matches("XSLTDefaultOutput=\"1\"").count(), 1);
+    let reimported = mfd::import_pipeline(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let PipelineInput::Host { name } = &reimported.pipeline.stages[0].source else {
+        panic!("reimported first stage must read a host source");
+    };
+    let after = engine::run_pipeline(
+        &reimported.pipeline,
+        &BTreeMap::from([(name.clone(), hosts["input"].clone())]),
+    )
+    .unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            before.stage(&pipeline.stages[index].id).unwrap().primary,
+            after
+                .stage(&reimported.pipeline.stages[index].id)
+                .unwrap()
+                .primary,
+            "stage {}",
+            index + 1
+        );
+    }
+    let final_after = after.stage(&reimported.pipeline.stages[1].id).unwrap();
+    assert_eq!(final_before.extras, final_after.extras);
+    let xml_after = format_xml::to_string(
+        &reimported.pipeline.stages[1].project.target,
+        &final_after.primary,
+    )
+    .unwrap();
+    assert_eq!(xml_after.as_bytes(), xml_before.as_bytes());
+    let csv = &reimported.pipeline.stages[1].project.extra_targets[0];
+    let csv_after_path = directory.0.join("after.csv");
+    format_csv::write_with_dialect(
+        &csv_after_path,
+        &csv.schema,
+        final_after.extras[0].instance.as_repeated().unwrap(),
+        csv.options.delimiter,
+        csv.options.csv_quote,
+        csv.options.csv_quote_disabled,
+        csv.options.has_header_row.unwrap_or(true),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(csv_after_path).unwrap(), csv_before);
+}
+
+#[test]
+fn xml_primary_named_csv_export_rejects_nonfinal_and_multiple_targets_without_artifacts() {
+    let (pipeline, _) = local_xml_with_named_csv_pipeline();
+    let directory = TempDir::new();
+
+    let mut nonfinal = pipeline.clone();
+    let named = nonfinal.stages[1].project.extra_targets.remove(0);
+    nonfinal.stages[0].project.graph = nonfinal.stages[1].project.graph.clone();
+    nonfinal.stages[0].project.extra_targets.push(named);
+    assert!(engine::validate_pipeline(&nonfinal).is_empty());
+    let path = directory.0.join("not-created/nonfinal.mfd");
+    let error = mfd::export_pipeline_with_profile(&nonfinal, &path, mfd::ExportProfile::NativeMfd)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("independent targets before the final stage"),
+        "{error}"
+    );
+    assert!(!path.parent().unwrap().exists());
+
+    let mut multiple = pipeline;
+    let mut other = multiple.stages[1].project.extra_targets[0].clone();
+    other.name = "other rows".into();
+    other.path = Some("other.csv".into());
+    multiple.stages[1].project.extra_targets.push(other);
+    assert!(engine::validate_pipeline(&multiple).is_empty());
+    let path = directory.0.join("not-created/multiple.mfd");
+    let error = mfd::export_pipeline_with_profile(&multiple, &path, mfd::ExportProfile::NativeMfd)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("more than one named CSV target"), "{error}");
+    assert!(!path.parent().unwrap().exists());
+}
+
+#[test]
+fn xml_primary_named_csv_import_rejects_ambiguous_malformed_and_bypassed_targets() {
+    let directory = TempDir::new();
+    let path = make_xml_final_with_csv_named_target(&directory.0);
+    let original = std::fs::read_to_string(&path).unwrap();
+    let imported = mfd::import_pipeline(&path).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.pipeline.stages[1].project.extra_targets.len(), 1);
+
+    let ambiguous = original.replace(
+        "<component name=\"target\" library=\"text\" kind=\"16\"><data>",
+        "<component name=\"target\" library=\"text\" kind=\"16\"><properties XSLTDefaultOutput=\"1\"/><data>",
+    );
+    assert_ne!(ambiguous, original);
+    std::fs::write(&path, ambiguous).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("ambiguous final target must reject")
+        .to_string();
+    assert!(error.contains("one connected XML"), "{error}");
+
+    let malformed = original.replace(
+        "<component name=\"target\" library=\"text\" kind=\"16\">",
+        "<component name=\"target\" library=\"text\" kind=\"15\">",
+    );
+    assert_ne!(malformed, original);
+    std::fs::write(&path, malformed).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("malformed named CSV target must reject")
+        .to_string();
+    assert!(
+        error.contains("components only as the final primary target"),
+        "{error}"
+    );
+
+    let bypassed = original
+        .replace(
+            "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/></edges></vertex>",
+            "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/><edge vertexkey=\"40\"/></edges></vertex>",
+        )
+        .replace(
+            "<vertex vertexkey=\"11\"><edges><edge vertexkey=\"21\"/></edges></vertex>",
+            "<vertex vertexkey=\"11\"><edges><edge vertexkey=\"21\"/><edge vertexkey=\"41\"/></edges></vertex>",
+        )
+        .replace(
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"50\"/></edges></vertex>",
+            "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"50\"/></edges></vertex>",
+        )
+        .replace(
+            "<vertex vertexkey=\"31\"><edges><edge vertexkey=\"41\"/></edges></vertex>",
+            "<vertex vertexkey=\"31\"><edges/></vertex>",
+        );
+    assert_ne!(bypassed, original);
+    std::fs::write(&path, bypassed).unwrap();
+    let error = mfd::import_pipeline(&path)
+        .err()
+        .expect("bypassed named CSV target must reject")
+        .to_string();
+    assert!(
+        error.contains("without branches, cycles, or bypasses"),
+        "{error}"
+    );
+    assert!(!directory.0.join("not-created").exists());
 }
 
 #[test]
@@ -2126,6 +2331,33 @@ fn identity_xml_to_xbrl_pipeline(
 ) -> (mapping::Pipeline, BTreeMap<String, Instance>) {
     assert!(final_project.target_options.xbrl.is_some());
     identity_xml_to_final_pipeline(final_project, input, "filing.xbrl", "xbrl")
+}
+
+fn local_xml_with_named_csv_pipeline() -> (mapping::Pipeline, BTreeMap<String, Instance>) {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("people-to-csv.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut final_project = imported.project;
+    let csv = mapping::NamedTarget {
+        name: "rows".into(),
+        path: final_project.target_path.take(),
+        schema: final_project.target.clone(),
+        options: std::mem::take(&mut final_project.target_options),
+        root: std::mem::take(&mut final_project.root),
+    };
+    final_project.target = final_project.source.clone();
+    final_project.target_options = final_project.source_options.clone();
+    final_project.root = mapping::Scope {
+        construction: mapping::ScopeConstruction::CopyCurrentSource,
+        ..mapping::Scope::default()
+    };
+    final_project.extra_targets.push(csv);
+    identity_xml_to_final_pipeline(
+        final_project,
+        &fixtures.join("people.xml"),
+        "people-copy.xml",
+        "xml-and-csv",
+    )
 }
 
 fn identity_xml_to_final_pipeline(
