@@ -161,8 +161,10 @@ nested calls; the ordinary `node_value` and `node_input_value` events continue
 to identify nodes in the project graph. Only successfully evaluated nodes and
 delivered inputs are recorded, so untaken conditional branches and failed
 expressions have no value event. Saved GUI History and Replay show these
-function-qualified events. Live breakpoints do not yet pause inside function
-bodies.
+function-qualified events. Live expression breakpoints can select one function
+ID and node ID and pause after that body node succeeds, with the caller's
+positions and no function-local source frames. Function-body input-pin
+breakpoints are not yet supported.
 
 Library hosts can opt into a synchronous pre-insertion control point with
 `ExecutionContext::with_debug_hook`. For ordinary static and dynamic target

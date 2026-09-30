@@ -99,6 +99,15 @@ pub(super) fn show_breakpoint_expression_condition(
     });
     if condition.enabled {
         ui.horizontal_wrapped(|ui| {
+            ui.label("Function # (blank = main graph)");
+            ui.add(
+                egui::TextEdit::singleline(&mut condition.function_text)
+                    .char_limit(20)
+                    .desired_width(110.0)
+                    .hint_text("Optional function ID"),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
             ui.checkbox(&mut condition.value.enabled, "Only when result equals");
             if condition.value.enabled {
                 egui::ComboBox::from_id_salt(id)
@@ -121,7 +130,7 @@ pub(super) fn show_breakpoint_expression_condition(
                 }
             }
         });
-        ui.weak("Pauses after a successful graph evaluation, including filters that write nothing. Step advances to the next evaluated node. Expression pauses do not carry a target identity because the same node can run outside target construction.");
+        ui.weak("Pauses after a successful graph evaluation, including filters that write nothing. Enter a function ID to select a node inside that reusable function. Step advances to the next evaluated node. Expression pauses do not carry a target identity because the same node can run outside target construction.");
     }
     match condition.compile() {
         Ok(_) => true,
@@ -296,6 +305,7 @@ pub(super) enum PreviewCommand {
 enum PreviewWorkerEvent {
     Paused(Box<engine::PendingTargetWrite>),
     PausedNode(Box<engine::PendingNodeValue>),
+    PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
     Finished(
         Result<cli::PayloadRunOutcome, PreviewRunError>,
@@ -313,6 +323,7 @@ pub(super) enum PreviewPhase {
     Running,
     Paused(Box<engine::PendingTargetWrite>),
     PausedNode(Box<engine::PendingNodeValue>),
+    PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
     Stopping,
 }
@@ -370,6 +381,14 @@ struct PreviewDebugHook {
 impl engine::DebugHook for PreviewDebugHook {
     fn wants_node_values(&self) -> bool {
         self.expression_condition.is_some()
+            || self.pause_next_node.get()
+            || self.cancelled.load(Ordering::Acquire)
+    }
+
+    fn wants_function_node_values(&self) -> bool {
+        self.expression_condition
+            .as_ref()
+            .is_some_and(DebugExpressionCondition::targets_function)
             || self.pause_next_node.get()
             || self.cancelled.load(Ordering::Acquire)
     }
@@ -501,6 +520,68 @@ impl engine::DebugHook for PreviewDebugHook {
         if self
             .events
             .send(PreviewWorkerEvent::PausedNode(Box::new(value.clone())))
+            .is_err()
+        {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            if self.cancelled.load(Ordering::Acquire) {
+                return engine::DebugDecision::Cancel;
+            }
+            match self.commands.recv_timeout(Duration::from_millis(100)) {
+                Ok(PreviewCommand::Step) => {
+                    self.pause_next_node.set(true);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(PreviewCommand::Continue) => {
+                    self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
+                    self.pause_each_write.set(false);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+            }
+        }
+    }
+
+    fn after_function_node_value(
+        &self,
+        value: &engine::PendingFunctionNodeValue,
+    ) -> engine::DebugDecision {
+        if self.cancelled.load(Ordering::Acquire) {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            match self.commands.try_recv() {
+                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
+                    self.pause_each_write.set(true);
+                }
+                Ok(PreviewCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
+                }
+                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Err(TryRecvError::Empty) => break,
+            }
+        }
+        let matches_expression = self
+            .expression_condition
+            .as_ref()
+            .is_some_and(|condition| condition.matches_function(value));
+        if !self.pause_next_node.replace(false) && !matches_expression {
+            return engine::DebugDecision::Resume;
+        }
+        if self
+            .events
+            .send(PreviewWorkerEvent::PausedFunctionNode(Box::new(
+                value.clone(),
+            )))
             .is_err()
         {
             return engine::DebugDecision::Cancel;
@@ -811,6 +892,7 @@ impl FerruleApp {
                     Some(
                         PreviewPhase::Paused(_)
                         | PreviewPhase::PausedNode(_)
+                        | PreviewPhase::PausedFunctionNode(_)
                         | PreviewPhase::PausedInput(_),
                     ) => {
                         if ui.button("Step").clicked() {
@@ -1055,6 +1137,7 @@ impl FerruleApp {
                     pending.phase,
                     PreviewPhase::Paused(_)
                         | PreviewPhase::PausedNode(_)
+                        | PreviewPhase::PausedFunctionNode(_)
                         | PreviewPhase::PausedInput(_)
                 ) {
                     ctx.request_repaint_after(Duration::from_millis(100));
@@ -1084,6 +1167,19 @@ impl FerruleApp {
                 } else {
                     self.status = format!("paused after graph node #{}", value.node);
                     pending.phase = PreviewPhase::PausedNode(value);
+                }
+                ctx.request_repaint();
+            }
+            PreviewWorkerEvent::PausedFunctionNode(value) => {
+                if matches!(pending.phase, PreviewPhase::Stopping) {
+                    pending.command(PreviewCommand::Cancel);
+                } else {
+                    self.status = format!(
+                        "paused after function #{} node #{}",
+                        value.function.get(),
+                        value.node
+                    );
+                    pending.phase = PreviewPhase::PausedFunctionNode(value);
                 }
                 ctx.request_repaint();
             }
@@ -1379,6 +1475,7 @@ pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, deb
             ui.weak("The pending value has been computed but is not yet in the target. Step inserts it and pauses before the next write.");
         }
         PreviewPhase::PausedNode(value) => show_live_node_debug_state(ui, value),
+        PreviewPhase::PausedFunctionNode(value) => show_live_function_node_debug_state(ui, value),
         PreviewPhase::PausedInput(input) => show_live_input_debug_state(ui, input),
     }
 }
@@ -1398,6 +1495,30 @@ pub(super) fn show_live_node_debug_state(ui: &mut egui::Ui, value: &engine::Pend
         &value.source,
     );
     ui.weak("Step continues to the next graph evaluation. Cancel stops before output publication.");
+}
+
+pub(super) fn show_live_function_node_debug_state(
+    ui: &mut egui::Ui,
+    value: &engine::PendingFunctionNodeValue,
+) {
+    ui.strong(format!(
+        "Paused after function #{} node #{} evaluated",
+        value.function.get(),
+        value.node
+    ));
+    let suffix = if value.value.truncated { "…" } else { "" };
+    ui.monospace(format!(
+        "Result: {}: {}{suffix}",
+        value.value.value_type, value.value.preview
+    ));
+    show_live_expression_context(
+        ui,
+        &value.positions,
+        value.omitted_outer_positions,
+        value.position_paths_truncated,
+        &value.source,
+    );
+    ui.weak("Positions identify the caller. Reusable function bodies have no source frames. Step continues to the next graph or function evaluation; Cancel stops before output publication.");
 }
 
 pub(super) fn show_live_input_debug_state(ui: &mut egui::Ui, input: &engine::PendingNodeInput) {

@@ -1,7 +1,7 @@
 //! Opt-in control point for a host-driven live debugger.
 
 use ir::{Instance, Value};
-use mapping::NodeId;
+use mapping::{FunctionId, NodeId};
 
 use crate::EngineError;
 use crate::source_iteration::PositionFrame;
@@ -187,6 +187,20 @@ pub struct PendingNodeValue {
     pub source: DebugSourceContext,
 }
 
+/// One successful node in an isolated reusable function body. Its node ID is
+/// local to `function`; positions identify the caller, while source frames are
+/// deliberately empty because function bodies cannot read caller source data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingFunctionNodeValue {
+    pub function: FunctionId,
+    pub node: NodeId,
+    pub value: TraceValue,
+    pub positions: Vec<TracePosition>,
+    pub omitted_outer_positions: usize,
+    pub position_paths_truncated: bool,
+    pub source: DebugSourceContext,
+}
+
 /// A bounded value delivered to one recorded input of a consumer graph node.
 /// Input indexes are zero-based, as in `TraceEvent::NodeInputValue`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,6 +240,13 @@ pub trait DebugHook {
         true
     }
 
+    /// Return true to inspect successful reusable-function body node values.
+    /// The separate opt-in prevents existing graph-node hooks from observing
+    /// function-local node IDs with overlapping numbers.
+    fn wants_function_node_values(&self) -> bool {
+        false
+    }
+
     /// Return false when this hook will not inspect delivered graph inputs.
     fn wants_node_inputs(&self) -> bool {
         true
@@ -234,6 +255,12 @@ pub trait DebugHook {
     /// Called after a successful graph evaluation, including filters and
     /// pre-target rules. The host may block here or cancel the run.
     fn after_node_value(&self, _node: &PendingNodeValue) -> DebugDecision {
+        DebugDecision::Resume
+    }
+
+    /// Called after a successful function-body node and before its caller
+    /// continues. The host may block here or cancel the run.
+    fn after_function_node_value(&self, _node: &PendingFunctionNodeValue) -> DebugDecision {
         DebugDecision::Resume
     }
 
@@ -256,6 +283,32 @@ pub(crate) fn after_node_value(
     };
     let snapshot = node_value_snapshot(node, value, positions, context);
     match hook.after_node_value(&snapshot) {
+        DebugDecision::Resume => Ok(()),
+        DebugDecision::Cancel => Err(EngineError::DebugCancelled),
+    }
+}
+
+pub(crate) fn after_function_node_value(
+    hook: Option<&dyn DebugHook>,
+    function: FunctionId,
+    node: NodeId,
+    value: &Value,
+    caller_positions: &[PositionFrame],
+) -> Result<(), EngineError> {
+    let Some(hook) = hook.filter(|hook| hook.wants_function_node_values()) else {
+        return Ok(());
+    };
+    let evaluated = node_value_snapshot(node, value, caller_positions, &[]);
+    let snapshot = PendingFunctionNodeValue {
+        function,
+        node: evaluated.node,
+        value: evaluated.value,
+        positions: evaluated.positions,
+        omitted_outer_positions: evaluated.omitted_outer_positions,
+        position_paths_truncated: evaluated.position_paths_truncated,
+        source: evaluated.source,
+    };
+    match hook.after_function_node_value(&snapshot) {
         DebugDecision::Resume => Ok(()),
         DebugDecision::Cancel => Err(EngineError::DebugCancelled),
     }

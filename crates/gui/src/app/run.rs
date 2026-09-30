@@ -70,6 +70,7 @@ pub(super) enum FileRunCommand {
 enum FileRunEvent {
     Paused(Box<engine::PendingTargetWrite>),
     PausedNode(Box<engine::PendingNodeValue>),
+    PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
     ReadyToPublish,
     Finished(
@@ -88,6 +89,7 @@ pub(super) enum FileRunPhase {
     Running,
     Paused(Box<engine::PendingTargetWrite>),
     PausedNode(Box<engine::PendingNodeValue>),
+    PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
     PausedInput(Box<engine::PendingNodeInput>),
     Publishing,
     Stopping,
@@ -178,6 +180,14 @@ impl FileRunDebugHook {
 impl engine::DebugHook for FileRunDebugHook {
     fn wants_node_values(&self) -> bool {
         self.expression_condition.is_some()
+            || self.pause_next_node.get()
+            || self.cancelled.load(Ordering::Acquire)
+    }
+
+    fn wants_function_node_values(&self) -> bool {
+        self.expression_condition
+            .as_ref()
+            .is_some_and(DebugExpressionCondition::targets_function)
             || self.pause_next_node.get()
             || self.cancelled.load(Ordering::Acquire)
     }
@@ -310,6 +320,67 @@ impl engine::DebugHook for FileRunDebugHook {
         if self
             .events
             .send(FileRunEvent::PausedNode(Box::new(value.clone())))
+            .is_err()
+        {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            if self.cancelled.load(Ordering::Acquire) {
+                return engine::DebugDecision::Cancel;
+            }
+            match self.commands.recv_timeout(Duration::from_millis(100)) {
+                Ok(FileRunCommand::Step) => {
+                    self.pause_next_node.set(true);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(FileRunCommand::Continue) => {
+                    self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
+                    self.pause_each_write.set(false);
+                    return engine::DebugDecision::Resume;
+                }
+                Ok(FileRunCommand::Pause | FileRunCommand::Publish)
+                | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+            }
+        }
+    }
+
+    fn after_function_node_value(
+        &self,
+        value: &engine::PendingFunctionNodeValue,
+    ) -> engine::DebugDecision {
+        if self.cancelled.load(Ordering::Acquire) {
+            return engine::DebugDecision::Cancel;
+        }
+        loop {
+            match self.commands.try_recv() {
+                Ok(FileRunCommand::Pause | FileRunCommand::Step) => {
+                    self.pause_each_write.set(true);
+                }
+                Ok(FileRunCommand::Continue) => {
+                    self.pause_each_write.set(false);
+                    self.pause_next_node.set(false);
+                    self.pause_next_input.set(false);
+                }
+                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
+                    return engine::DebugDecision::Cancel;
+                }
+                Ok(FileRunCommand::Publish) | Err(TryRecvError::Empty) => break,
+            }
+        }
+        let matches_expression = self
+            .expression_condition
+            .as_ref()
+            .is_some_and(|condition| condition.matches_function(value));
+        if !self.pause_next_node.replace(false) && !matches_expression {
+            return engine::DebugDecision::Resume;
+        }
+        if self
+            .events
+            .send(FileRunEvent::PausedFunctionNode(Box::new(value.clone())))
             .is_err()
         {
             return engine::DebugDecision::Cancel;
@@ -644,6 +715,7 @@ impl FerruleApp {
                     pending.phase,
                     FileRunPhase::Paused(_)
                         | FileRunPhase::PausedNode(_)
+                        | FileRunPhase::PausedFunctionNode(_)
                         | FileRunPhase::PausedInput(_)
                 ) {
                     ctx.request_repaint_after(Duration::from_millis(100));
@@ -673,6 +745,19 @@ impl FerruleApp {
                 } else {
                     self.status = format!("paused after graph node #{}", value.node);
                     pending.phase = FileRunPhase::PausedNode(value);
+                }
+                ctx.request_repaint();
+            }
+            FileRunEvent::PausedFunctionNode(value) => {
+                if matches!(pending.phase, FileRunPhase::Stopping) {
+                    let _ = pending.commands.send(FileRunCommand::Cancel);
+                } else {
+                    self.status = format!(
+                        "paused after function #{} node #{}",
+                        value.function.get(),
+                        value.node
+                    );
+                    pending.phase = FileRunPhase::PausedFunctionNode(value);
                 }
                 ctx.request_repaint();
             }
@@ -775,6 +860,9 @@ impl FerruleApp {
                     FileRunPhase::PausedNode(value) => {
                         preview_ui::show_live_node_debug_state(ui, value);
                     }
+                    FileRunPhase::PausedFunctionNode(value) => {
+                        preview_ui::show_live_function_node_debug_state(ui, value);
+                    }
                     FileRunPhase::PausedInput(input) => {
                         preview_ui::show_live_input_debug_state(ui, input);
                     }
@@ -795,6 +883,7 @@ impl FerruleApp {
                 ui.horizontal(|ui| match &phase {
                     FileRunPhase::Paused(_)
                     | FileRunPhase::PausedNode(_)
+                    | FileRunPhase::PausedFunctionNode(_)
                     | FileRunPhase::PausedInput(_) => {
                         if ui.button("Step").clicked() {
                             action = Some(FileRunCommand::Step);
