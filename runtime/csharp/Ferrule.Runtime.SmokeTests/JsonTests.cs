@@ -315,6 +315,8 @@ internal static partial class Program
                 "{}"));
 
         JsonObjectOpennessBoundaries();
+        JsonScalarSyntaxBoundaries();
+        JsonAnyMalformedTextFallback();
         JsonConstantBoundaries();
         JsonAllowedValuesBoundaries();
         JsonRangeBoundaries();
@@ -371,6 +373,136 @@ internal static partial class Program
             FerruleRuntimeError.JsonBoundary,
             () => FerruleJson.Parse(constrained, "\"6.000\""));
         Equal("1.0\n", FerruleJson.Serialize(IntOrFloatJsonSchema, Scalar(Text("1.000"))));
+    }
+
+    private static void JsonScalarSyntaxBoundaries()
+    {
+        const string scalar =
+            "{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        var group =
+            "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[" + scalar + "]}}";
+        const string any =
+            "{\"name\":\"Any\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+
+        foreach (var invalid in new[] { "\uD800", "\uDC00", "\uDC00\uD800" })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(scalar, "\"" + invalid + "\""));
+            var invalidSchema = scalar.Replace("Value", invalid, StringComparison.Ordinal);
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(invalidSchema, "\"valid\""));
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Serialize(invalidSchema, Scalar(Text("valid"))));
+        }
+
+        foreach (var invalidScalar in new[]
+                 {
+                     "\"\\uD800\"", "\"\\uDC00\"", "\"\\uDC00\\uD800\"",
+                     "1e400", "-1e400", "1.7976931348623159e308",
+                     "{\"nested\":[\"\\uD800\"]}", "{\"nested\":[1e400]}",
+                     "{\"\\uD800\":\"valid\"}",
+                 })
+        {
+            var overwritten = "{\"Value\":" + invalidScalar + ",\"Value\":\"valid\"}";
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(group, overwritten));
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.ParseBytes(group, System.Text.Encoding.UTF8.GetBytes(overwritten)));
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(any, "{\"nested\":[" + invalidScalar + "]}"));
+        }
+
+        // Preserve ordinary last-value-wins behavior. Only syntax-tree scalar
+        // validity is checked before schema projection, not overwritten shapes.
+        foreach (var validScalar in new[]
+                 {
+                     "\"\\uD83D\\uDE00\"", "1e-400", "18446744073709551616",
+                     "1.7976931348623157e308", "{\"nested\":[true,null]}",
+                 })
+        {
+            Equal(
+                Text("valid"),
+                ((FerruleScalar)((FerruleGroup)FerruleJson.Parse(
+                    group,
+                    "{\"Value\":" + validScalar + ",\"Value\":\"valid\"}"))
+                    .Fields[0].Value).Value);
+            _ = FerruleJson.Parse(any, "{\"nested\":[" + validScalar + "]}");
+        }
+
+        // Schema deserialization ignores unknown metadata without decoding its
+        // scalar values, unlike the instance JSON value boundary.
+        foreach (var ignored in new[]
+                 {
+                     "\"\\uD800\"", "1e400", "{\"nested\":[1e400]}",
+                     "{\"nested\":[\"\\uD800\"]}",
+                 })
+        {
+            var ignoredSchema = scalar[..^1] + ",\"ignored\":" + ignored + "}";
+            Equal(Text("valid"), ((FerruleScalar)FerruleJson.Parse(
+                ignoredSchema, "\"valid\"")).Value);
+        }
+        foreach (var firstName in new[] { "\\uD800", "First" })
+        {
+            var overwrittenSchema =
+                "{\"name\":\"" + firstName + "\",\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(overwrittenSchema, "\"valid\""));
+        }
+
+        foreach (var invalidUtf8 in new[]
+                 {
+                     new byte[] { 0x22, 0xff, 0x22 },
+                     new byte[] { 0x22, 0xc0, 0xaf, 0x22 },
+                     new byte[] { 0x22, 0xed, 0xa0, 0x80, 0x22 },
+                     new byte[] { 0x22, 0xf0, 0x9f, 0x22 },
+                 })
+        {
+            Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.ParseBytes(scalar, invalidUtf8));
+        }
+    }
+
+    private static void JsonAnyMalformedTextFallback()
+    {
+        const string any =
+            "{\"name\":\"Any\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        foreach (var original in new[]
+                 {
+                     "broken", "\"\\uD800\"", "{\"value\":\"\\uDC00\"}",
+                     "{\"\\uD800\":true}", "{\"value\":1e400}", "[true,-1e400]",
+                     "{\"value\":\"\\uD800\",\"value\":\"valid\"}",
+                     "{\"value\":1e400,\"value\":\"valid\"}",
+                 })
+        {
+            var serialized = FerruleJson.Serialize(any, Scalar(Text(original)));
+            using var parsed = System.Text.Json.JsonDocument.Parse(serialized);
+            Equal(System.Text.Json.JsonValueKind.String, parsed.RootElement.ValueKind);
+            Equal(original, parsed.RootElement.GetString());
+            Equal(
+                serialized,
+                System.Text.Encoding.UTF8.GetString(FerruleJson.SerializeBytes(any, Scalar(Text(original)))));
+        }
+
+        const string valid = "{\"value\":[\"\\uD83D\\uDE00\",3.5,true,null]}";
+        using (var parsed = System.Text.Json.JsonDocument.Parse(FerruleJson.Serialize(any, Scalar(Text(valid)))))
+        {
+            Equal(System.Text.Json.JsonValueKind.Object, parsed.RootElement.ValueKind);
+            Equal("\U0001F600", parsed.RootElement.GetProperty("value")[0].GetString());
+        }
+        foreach (var nonfinite in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity })
+        {
+            var value = FerruleValue.FromDouble(nonfinite);
+            Equal(FerruleValueKind.Double, value.Kind);
+            Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Serialize(any, Scalar(value)));
+        }
     }
 
     private static void JsonObjectOpennessBoundaries()
@@ -1192,6 +1324,31 @@ internal static partial class Program
         Equal(
             true,
             maximumExponent.Message.Contains("uniqueItems", StringComparison.Ordinal));
+        var nestedNumbers =
+            "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[" + numbers + "]}}";
+        foreach (var document in new[]
+                 {
+                     "{\"Numbers\":[1e400,10e399]}",
+                     "[{\"Numbers\":[1e400,10e399]}]",
+                 })
+        {
+            var duplicateOverflow = Error(
+                FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.Parse(nestedNumbers, document));
+            Equal(true, duplicateOverflow.Message.Contains("uniqueItems", StringComparison.Ordinal));
+        }
+        var distinctOverflow = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(numbers, "[1e400,2e400]"));
+        Equal(false, distinctOverflow.Message.Contains("uniqueItems", StringComparison.Ordinal));
+        var dynamicNumbers =
+            "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[],\"dynamic\":" + numbers + "}}";
+        var dynamicOverflow = Error(
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(
+                dynamicNumbers,
+                "{\"z\":[1e400,2e400,10e399],\"a\":[1e400,10e399]}"));
+        Equal(true, dynamicOverflow.Message.Contains("uniqueItems at item 2", StringComparison.Ordinal));
 
         const string records =
             "{\"name\":\"Records\",\"repeating\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Code\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}},{\"name\":\"Text\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
@@ -1527,9 +1684,7 @@ internal static partial class Program
                 Scalar(FerruleValue.FromBoolean(false))));
         Error(
             FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Serialize(
-                oneOrTwo,
-                Scalar(Text(new string('\uD800', 1)))));
+            () => FerruleJson.Parse(oneOrTwo, "\"" + new string('\uD800', 1) + "\""));
 
         const string nullable =
             "{\"name\":\"Value\",\"nullable\":true,\"string_length_range\":{\"minimum\":1},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";

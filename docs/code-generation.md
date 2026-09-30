@@ -163,7 +163,18 @@ correct embedded dynamic-source schema, and then invoke the same typed mapping.
 Each JSON input and output document is limited to 64 MiB, and each trusted
 embedded schema is limited to 1 MiB. Invalid JSON shape, non-exact numeric
 conversion, output serialization, and size failures remain typed boundary
-errors. Embedded scalar constants, bounded exact scalar allowed-value sets, and
+errors.
+
+JSON text and property names must contain valid Unicode scalar values. Both
+backends reject malformed UTF-8, unpaired escaped surrogates, and numbers
+outside the finite JSON number domain throughout the input document, including
+values later overwritten by a duplicate property. C# text entry points report
+raw unpaired UTF-16 as a typed JSON boundary error; its public scalar and field
+constructors reject such text before it enters a mapping. Invalid encoded JSON
+held in an ordinary graph string remains a JSON string when written through an
+arbitrary-JSON target, preserving the interpreter's fallback behavior.
+
+Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated
 output in Rust and C#, including after supported output coercion. Embedded
 array `uniqueItems` assertions compare complete raw input values and normalized
