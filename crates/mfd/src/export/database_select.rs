@@ -502,6 +502,10 @@ fn match_query_filter(
         } if matches!(nodes.get(default), Some(Node::Const { value: Value::Int(value) }) if *value >= 0) => {
             Threshold::Host(*constant)
         }
+        Node::RuntimeParameter {
+            ty: ScalarType::Int,
+            ..
+        } => Threshold::Host(*constant),
         _ => return None,
     };
     if !safe_identifier(predicate) {

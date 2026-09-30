@@ -396,6 +396,100 @@ fn optional_title_pattern_preserves_default_override_and_null_in_native_where()
 }
 
 #[test]
+fn required_host_title_pattern_survives_two_native_where_cycles() -> Result<(), Box<dyn Error>> {
+    let dir = TempDir::new()?;
+    let database_path = dir.0.join("people.sqlite");
+    database(&database_path)?;
+    let mut project = project();
+    project.graph.nodes.insert(
+        1,
+        Node::RuntimeParameter {
+            name: "pattern".into(),
+            ty: ScalarType::String,
+        },
+    );
+    assert!(engine::validate(&project).is_empty());
+    let mut projects = vec![project];
+    for cycle in 0..2 {
+        let design = dir.0.join(format!("required-pattern-{cycle}.mfd"));
+        let report = mfd::export_with_profile(
+            projects.last().unwrap(),
+            &design,
+            mfd::ExportProfile::NativeMfd,
+        )?;
+        assert!(report.is_native_compatible(), "{report}");
+        let native = std::fs::read_to_string(&design)?;
+        assert!(native.contains("condition=\"Title LIKE :sqlparam\""));
+        assert!(native.contains("<component name=\"pattern\" library=\"core\""));
+        assert!(!native.contains("name=\"pattern\" optional=\"1\""));
+        assert!(!native.contains("library=\"ferrule\""));
+        let restored = mfd::import(&design)?;
+        assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
+        projects.push(restored.project);
+    }
+    for project in &projects {
+        assert!(engine::validate(project).is_empty());
+        assert_eq!(
+            project
+                .graph
+                .nodes
+                .values()
+                .filter(|node| matches!(
+                    node,
+                    Node::RuntimeParameter {
+                        name,
+                        ty: ScalarType::String
+                    } if name == "pattern"
+                ))
+                .count(),
+            1
+        );
+        let source = format_db::read_instance(&database_path, &project.source)?;
+        assert!(matches!(
+            engine::run(project, &source),
+            Err(engine::EngineError::MissingRuntimeParameter { name, .. })
+                if name == "pattern"
+        ));
+        assert!(engine::run(project, &ir::Instance::Repeated(Vec::new())).is_ok());
+        let mut wrong = engine::RuntimeParameters::new();
+        wrong.insert("pattern", Value::Float(f64::INFINITY))?;
+        let context = engine::ExecutionContext::new(&database_path).with_parameters(&wrong);
+        assert!(matches!(
+            engine::run_with_context(project, &source, &context),
+            Err(engine::EngineError::RuntimeParameterType {
+                expected: ScalarType::String,
+                ..
+            })
+        ));
+    }
+    for (value, count) in [
+        (Value::String("%".into()), 3),
+        (Value::String("%Engineer%".into()), 1),
+        (Value::Null, 0),
+    ] {
+        let mut expected = None;
+        for (index, project) in projects.iter().enumerate() {
+            let source = format_db::read_instance(&database_path, &project.source)?;
+            let mut parameters = engine::RuntimeParameters::new();
+            parameters.insert("pattern", value.clone())?;
+            let context =
+                engine::ExecutionContext::new(&database_path).with_parameters(&parameters);
+            let output = engine::run_with_context(project, &source, &context)?;
+            let path = dir.0.join(format!("required-{index}.xml"));
+            format_xml::write(&path, &project.target, &output)?;
+            let actual = std::fs::read_to_string(path)?;
+            assert_eq!(actual.matches("<Employee>").count(), count);
+            if let Some(expected) = &expected {
+                assert_eq!(&actual, expected);
+            } else {
+                expected = Some(actual);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn title_where_keeps_nonmatching_graphs_strictly_rejected() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
     let mut changed = project();

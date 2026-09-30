@@ -6,6 +6,47 @@ use super::super::function::{FnComponent, is_input, parse_constant};
 use super::GraphBuilder;
 
 impl GraphBuilder<'_> {
+    /// A required named input with no connected value or enabled preview must
+    /// come from the host. Keep this separate from optional inputs, whose
+    /// absent-value behavior is not established by a defaultless declaration.
+    pub(super) fn required_host_query_parameter_feed(
+        &self,
+        input_key: u32,
+        column_type: ScalarType,
+        declared_type: ScalarType,
+    ) -> Result<Option<u32>, String> {
+        let Some(feed) = self.edge_from.get(&input_key).copied() else {
+            return Ok(None);
+        };
+        let Some(index) = self.fn_by_output.get(&feed).copied() else {
+            return Ok(None);
+        };
+        let component = &self.fn_components[index];
+        if !is_input(component)
+            || component
+                .input_parameter_name
+                .as_ref()
+                .is_none_or(|parameter| parameter.optional)
+            || component.input_preview.is_some()
+            || component.outputs.as_slice() != [feed]
+            || component.inputs.len() > 1
+            || component
+                .inputs
+                .iter()
+                .flatten()
+                .any(|input| self.edge_from.contains_key(input))
+        {
+            return Ok(None);
+        }
+        if declared_type != column_type || component.input_type != Some(column_type) {
+            return Err(
+                "required host query parameter, SQL declaration, and compared column must have the same scalar type"
+                    .to_string(),
+            );
+        }
+        Ok(Some(feed))
+    }
+
     /// Keep exact typed optional inputs in the graph instead of freezing their
     /// literal default into the query. The legacy constant path still handles
     /// required preview inputs; cross-type dynamic coercion is not inferred.

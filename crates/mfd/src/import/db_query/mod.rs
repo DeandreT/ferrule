@@ -1087,28 +1087,38 @@ impl GraphBuilder<'_> {
                 input_key,
                 ty,
             } => {
-                let value = self.static_query_parameter(input_key, 0)?;
-                let query_name = self.sources[source_path.source]
-                    .db_queries
-                    .iter()
-                    .find(|query| query.collection == source_path.path)
-                    .map_or("unknown", |query| query.name.as_str());
-                let value = coerce_value(value, column_type).map_err(|reason| {
-                    format!(
-                        "query `{query_name}` parameter `:{name}` declared as {ty:?} cannot be converted: {reason}"
-                    )
-                })?;
-                if let Some(feed) = self.optional_query_parameter_feed(input_key, column_type, 0)? {
-                    if ty != column_type {
-                        return Err(format!(
-                            "optional query parameter `:{name}` must declare the column's scalar type"
-                        ));
-                    }
+                if let Some(feed) =
+                    self.required_host_query_parameter_feed(input_key, column_type, ty)?
+                {
                     self.value_node(feed).ok_or_else(|| {
-                        format!("optional query parameter `:{name}` has no scalar value")
+                        format!("required host query parameter `:{name}` has no scalar value")
                     })?
                 } else {
-                    self.alloc(Node::Const { value })
+                    let value = self.static_query_parameter(input_key, 0)?;
+                    let query_name = self.sources[source_path.source]
+                        .db_queries
+                        .iter()
+                        .find(|query| query.collection == source_path.path)
+                        .map_or("unknown", |query| query.name.as_str());
+                    let value = coerce_value(value, column_type).map_err(|reason| {
+                        format!(
+                            "query `{query_name}` parameter `:{name}` declared as {ty:?} cannot be converted: {reason}"
+                        )
+                    })?;
+                    if let Some(feed) =
+                        self.optional_query_parameter_feed(input_key, column_type, 0)?
+                    {
+                        if ty != column_type {
+                            return Err(format!(
+                                "optional query parameter `:{name}` must declare the column's scalar type"
+                            ));
+                        }
+                        self.value_node(feed).ok_or_else(|| {
+                            format!("optional query parameter `:{name}` has no scalar value")
+                        })?
+                    } else {
+                        self.alloc(Node::Const { value })
+                    }
                 }
             }
             QueryOperand::Correlated => {
