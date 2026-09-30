@@ -31,6 +31,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) structural_edges: &'a mut BTreeSet<(u32, u32)>,
     pub(super) warnings: &'a mut Vec<String>,
     pub(super) blocked_nodes: &'a BTreeSet<NodeId>,
+    pub(super) native_recursive_collect_item: Option<NodeId>,
     pub(super) native_database_xml: &'a DirectColumns,
     pub(super) native_datetime_casts: &'a BTreeMap<NodeId, NodeId>,
     pub(super) mfd_path: &'a Path,
@@ -57,6 +58,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         structural_edges,
         warnings,
         blocked_nodes,
+        native_recursive_collect_item,
         native_database_xml,
         native_datetime_casts,
         mfd_path,
@@ -75,6 +77,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         }
     }
     for sequence in sequences {
+        if native_recursive_collect_item == Some(sequence.item()) {
+            continue;
+        }
         match sequence {
             SequenceExpr::Tokenize {
                 input, delimiter, ..
