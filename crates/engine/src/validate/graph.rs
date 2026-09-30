@@ -122,7 +122,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                     ));
                 }
             }
-            Node::RuntimeParameter { name, .. } => {
+            Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. } => {
                 validate_runtime_parameter_name(&location, name, issues);
             }
             Node::Position { collection } if !collection.is_empty() => {
@@ -643,6 +643,7 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
         | Node::RuntimeParameter { .. }
+        | Node::RuntimeParameterDefault { .. }
         | Node::Call { .. }
         | Node::UserFunctionCall { .. }
         | Node::If { .. }
@@ -1145,6 +1146,9 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         | Node::RuntimeValue { .. }
         | Node::RuntimeParameter { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
+        Node::RuntimeParameterDefault { default, .. } => {
+            vec![("default".into(), *default)]
+        }
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args
             .iter()
             .enumerate()

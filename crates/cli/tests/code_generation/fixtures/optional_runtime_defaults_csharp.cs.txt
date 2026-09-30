@@ -1,0 +1,64 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var source = new FerruleGroup(Array.Empty<FerruleField>());
+AssertOutput(GeneratedMapping.Execute(source), FerruleValue.FromInt64(7), "inner-default");
+var fallbackJson = GeneratedMapping.ExecuteJson("{}");
+Assert(fallbackJson.Contains("\"Direct\":7", StringComparison.Ordinal));
+Assert(fallbackJson.Contains("\"Nested\":\"inner-default\"", StringComparison.Ordinal));
+
+var supplied = new FerruleRuntimeParameters(new[]
+{
+    KeyValuePair.Create("control", FerruleValue.FromString(" 42 ")),
+    KeyValuePair.Create("nested", FerruleValue.FromString("host")),
+});
+var context = FerruleExecutionContext.WithParameters("mapping.ferrule", supplied);
+AssertOutput(GeneratedMapping.Execute(source, context), FerruleValue.FromInt64(42), "host");
+var suppliedJson = GeneratedMapping.ExecuteJson("{}", context);
+Assert(suppliedJson.Contains("\"Direct\":42", StringComparison.Ordinal));
+Assert(suppliedJson.Contains("\"Nested\":\"host\"", StringComparison.Ordinal));
+
+var suppliedNull = new FerruleRuntimeParameters(new[]
+{
+    KeyValuePair.Create("control", FerruleValue.Null),
+});
+context = FerruleExecutionContext.WithParameters("mapping.ferrule", suppliedNull);
+AssertOutput(GeneratedMapping.Execute(source, context), FerruleValue.Null, "inner-default");
+Assert(!GeneratedMapping.ExecuteJson("{}", context).Contains("\"Direct\"", StringComparison.Ordinal));
+
+var wrong = new FerruleRuntimeParameters(new[]
+{
+    KeyValuePair.Create("control", FerruleValue.FromBoolean(false)),
+});
+context = FerruleExecutionContext.WithParameters("mapping.ferrule", wrong);
+try
+{
+    GeneratedMapping.Execute(source, context);
+    throw new InvalidOperationException("Expected a typed runtime parameter error.");
+}
+catch (FerruleRuntimeException error) when (
+    error.Error == FerruleRuntimeError.RuntimeParameterType &&
+    error.Node == 2U &&
+    error.RuntimeParameter == "control" &&
+    error.ExpectedScalarType == FerruleScalarType.Int64 &&
+    error.FoundKind == FerruleValueKind.Bool)
+{
+}
+
+static void AssertOutput(FerruleInstance result, FerruleValue direct, string nested)
+{
+    var output = (FerruleGroup)result;
+    var directField = output.Fields.Single(field => field.Name == "Direct");
+    var nestedField = output.Fields.Single(field => field.Name == "Nested");
+    Assert(directField.Value is FerruleScalar directScalar && directScalar.Value == direct);
+    Assert(nestedField.Value is FerruleScalar nestedScalar &&
+        nestedScalar.Value == FerruleValue.FromString(nested));
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("Generated optional runtime input differs from the interpreter.");
+    }
+}
