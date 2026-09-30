@@ -423,6 +423,15 @@ fn sql_like_matches_percent_and_single_character_wildcards() {
         ("", "%", true),
         ("", "_", false),
         ("é", "_", true),
+        ("🙂", "_", true),
+        ("É", "é", false),
+        ("\\", "\\", true),
+        ("abc\\def", "abc\\%", true),
+        ("ab\0cd", "ab", true),
+        ("a\0b", "a_b", false),
+        ("ab", "ab\0%", true),
+        ("abX", "ab\0%", false),
+        ("ab\0xyz", "ab\0%", true),
     ] {
         assert_eq!(
             call(
@@ -437,6 +446,60 @@ fn sql_like_matches_percent_and_single_character_wildcards() {
             "{value:?} LIKE {pattern:?}"
         );
     }
+}
+
+#[test]
+fn sql_like_limits_full_pattern_bytes_and_matching_work() {
+    let call_like = |value: &str, pattern: String| {
+        call(
+            "sql_like",
+            &[Value::String(value.into()), Value::String(pattern)],
+        )
+    };
+    assert_eq!(
+        call_like("a", format!("a\0{}", "x".repeat(49_998))),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        call_like("a", format!("a\0{}", "x".repeat(49_999))),
+        Err(FunctionError::InvalidArgument {
+            function: "sql_like",
+            message: "pattern exceeds 50000 UTF-8 bytes",
+        })
+    );
+    assert_eq!(call_like("", "é".repeat(25_000)), Ok(Value::Bool(false)));
+    assert_eq!(
+        call_like("", format!("{}a", "é".repeat(25_000))),
+        Err(FunctionError::InvalidArgument {
+            function: "sql_like",
+            message: "pattern exceeds 50000 UTF-8 bytes",
+        })
+    );
+    assert_eq!(
+        call_like(&"a".repeat(100_000), "a%".into()),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        call_like(&"a".repeat(2_001), "%".repeat(50_000)),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        call_like(&"a".repeat(25_001), "a%".repeat(2_000)),
+        Err(FunctionError::InvalidArgument {
+            function: "sql_like",
+            message: "matching work exceeds 100000000 cell updates",
+        })
+    );
+    assert_eq!(
+        call(
+            "sql_like",
+            &[Value::Null, Value::String("x".repeat(50_001))],
+        ),
+        Err(FunctionError::TypeMismatch {
+            function: "sql_like",
+            got: "null",
+        })
+    );
 }
 
 #[test]
