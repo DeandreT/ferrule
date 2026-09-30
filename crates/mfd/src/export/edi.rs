@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
+use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{EdiAutocomplete, EdiBoundaryKind, EdiConfigDependency, FormatOptions};
@@ -7,7 +8,7 @@ use mapping::{EdiAutocomplete, EdiBoundaryKind, EdiConfigDependency, FormatOptio
 use crate::MfdError;
 
 use super::concatenation::TargetBranches;
-use super::schema::{PortTree, RenderedSchemaComponent, Side, xml_escape};
+use super::schema::{GeneratedSibling, PortTree, RenderedSchemaComponent, Side, xml_escape};
 
 pub(super) struct RenderArgs<'a> {
     pub(super) schema: &'a SchemaNode,
@@ -15,9 +16,11 @@ pub(super) struct RenderArgs<'a> {
     pub(super) side: Side,
     pub(super) instance_path: Option<&'a str>,
     pub(super) options: &'a FormatOptions,
+    pub(super) mfd_path: &'a Path,
     pub(super) target_branches: Option<&'a TargetBranches>,
     pub(super) component_name: &'a str,
     pub(super) component_uid: u32,
+    pub(super) sibling_suffix: &'a str,
     pub(super) force_root_port: bool,
     pub(super) default_output: bool,
 }
@@ -206,17 +209,50 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     )?;
     let retained_layout = retained_layout_xml(kind, args.options)?;
     let retained_settings = retained_settings_xml(kind, args.options);
-    let retained_config = match args.options.edi_config_reference.as_ref() {
-        Some(EdiConfigDependency::ExternalReference(config)) => {
+    let generated_config = args
+        .options
+        .idoc_native_config
+        .as_ref()
+        .map(|descriptor| {
+            let contents =
+                format_edi::config::idoc::render_native_config(descriptor).map_err(|error| {
+                    MfdError::Unsupported(format!(
+                        "the IDoc native configuration descriptor cannot be rendered: {error}"
+                    ))
+                })?;
+            let stem = args
+                .mfd_path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("mapping");
+            let name = format!(
+                "{stem}-{}-idoc-{}.idoc-config.txt",
+                args.sibling_suffix, args.component_uid
+            );
+            let path = args.mfd_path.with_file_name(&name);
+            Ok::<_, MfdError>((name, GeneratedSibling { path, contents }))
+        })
+        .transpose()?;
+    let retained_config = match (
+        &generated_config,
+        args.options.edi_config_reference.as_ref(),
+    ) {
+        (Some((name, _)), None) => format!(" config=\"{}\"", xml_escape(name)),
+        (None, Some(EdiConfigDependency::ExternalReference(config))) => {
             format!(
                 " config=\"{}\" ferrule-unresolved-config=\"1\"",
                 xml_escape(config)
             )
         }
-        Some(EdiConfigDependency::MissingConfiguration) => {
+        (None, Some(EdiConfigDependency::MissingConfiguration)) => {
             " ferrule-missing-config=\"1\"".to_string()
         }
-        None => String::new(),
+        (None, None) => String::new(),
+        (Some(_), Some(_)) => {
+            return Err(MfdError::Unsupported(
+                "an IDoc native configuration descriptor conflicts with an unresolved external configuration".to_string(),
+            ));
+        }
     };
     let mut out = String::new();
     let _ = write!(
@@ -242,7 +278,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     );
     Ok(RenderedSchemaComponent {
         xml: out,
-        siblings: Vec::new(),
+        siblings: generated_config
+            .into_iter()
+            .map(|(_, sibling)| sibling)
+            .collect(),
     })
 }
 
