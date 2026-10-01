@@ -1,0 +1,23 @@
+using Ferrule.Generated;
+using System.Text;
+
+var input = File.ReadAllText(args[0]);
+if ((args.Length - 1) % 2 != 0)
+{
+    throw new ArgumentException("Named input arguments are pairs.");
+}
+var namedInputs = new List<NamedJsonInput>();
+for (var index = 1; index < args.Length; index += 2)
+{
+    namedInputs.Add(new NamedJsonInput(args[index], File.ReadAllText(args[index + 1])));
+}
+var json = GeneratedMapping.ExecuteJsonWithSources(input, namedInputs);
+var namedBytes = namedInputs.Select(named => new NamedJsonBytesInput(
+    named.Name, Encoding.UTF8.GetBytes(named.Document))).ToArray();
+var bytes = GeneratedMapping.ExecuteJsonBytesWithSources(
+    Encoding.UTF8.GetBytes(input), namedBytes);
+if (!bytes.AsSpan().SequenceEqual(Encoding.UTF8.GetBytes(json)))
+{
+    throw new InvalidOperationException("JSON byte and string APIs disagree.");
+}
+Console.Out.Write(json);

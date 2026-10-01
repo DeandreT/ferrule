@@ -137,7 +137,7 @@ are preserved.
   remains unverified and the executable import profile rejects them. Cross-type
   dynamic SQL coercion remains unsupported. Missing imported filter predicates skip the dependent
   iteration with a diagnostic instead of producing unfiltered rows.
-- Generated Rust and C# hosts have compiled and executed forty-one supported warning-free
+- Generated Rust and C# hosts have compiled and executed forty-two supported warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -227,9 +227,18 @@ are preserved.
   results agree with the interpreter, including exact nested JSON text that
   retains `25.0` as a floating value; decoded SQLite rows receive IDs 1–15.
   Case forty-one maps 24 XML sales rows through frame-pinned scaling and numeric
-  picture formatting. Both generated JSON string hosts match the interpreter;
-  decoding their output and using the native CSV adapter also preserves exact
+  picture formatting. Generated JSON string and UTF-8 byte hosts in both
+  languages match the interpreter. Decoding their output with the native CSV
+  adapter also preserves exact
   CSV bytes. The source JSON bridge retains enclosing and current-item fields.
+  Case forty-two maps three offices and two addresses through indexed line
+  selection and composed substring functions. Generated JSON string and byte
+  hosts preserve current and parent fields, numeric adaptation, and omitted
+  Location values when Address is absent. Native XML readback matches every
+  mapped field; declared but unmapped fields remain outside that comparison.
+  Ordinary corpus JSON hosts compare exact string and byte API output using
+  identical primary and named input content. Specialized hosts retain their
+  separately stated coverage.
   The book-catalog case reads a two-page PDF with 52 books. The native
   PDF reader supplies schema-shaped JSON to both generated hosts; typed XML
   and JSON string/byte results match the interpreter. The generated hosts do
@@ -951,7 +960,7 @@ Update these numbers with each parity increment:
   and execute; 166 match semantically with zero drift. One unsupported SQL
   text-to-numeric preview contract is explicitly excluded from the match claim.
 - Code generation: 174/174 dependency-complete designs lower and emit for Rust
-  and C#. Forty-one supported opt-in local cases have compiled and executed in both
+  and C#. Forty-two supported opt-in local cases have compiled and executed in both
   backends, with the book-catalog case rechecked at this checkpoint. The earlier
   stock-PDF extraction case is withdrawn and retained as a rejection test.
   Other survey designs still require generated execution checks.
