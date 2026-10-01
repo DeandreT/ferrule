@@ -46,4 +46,6 @@ ureq = { workspace = true }
 rustix = { workspace = true }
 
 [dev-dependencies]
+codegen-runtime = { workspace = true }
+sha2 = { workspace = true }
 rust_xlsxwriter = { workspace = true }

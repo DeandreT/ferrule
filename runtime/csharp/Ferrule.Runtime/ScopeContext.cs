@@ -613,7 +613,7 @@ public sealed partial class ScopeContext
     private static FerruleInstance CloneInstance(FerruleInstance instance) => instance switch
     {
         FerruleScalar scalar => new FerruleScalar(scalar.Value),
-        FerruleGroup group => new FerruleGroup(group.Fields.Select(field =>
+        FerruleGroup group => group.RebuildFields(group.Fields.Select(field =>
             new FerruleField(field.Name, CloneInstance(field.Value)))),
         FerruleRepeated repeated => new FerruleRepeated(repeated.Items.Select(CloneInstance)),
         FerruleMappedSequence mapped => new FerruleMappedSequence(mapped.Items.Select(CloneInstance)),

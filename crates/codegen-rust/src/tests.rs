@@ -20,6 +20,7 @@ mod correlated_joins;
 mod dynamic_documents;
 mod dynamic_source;
 mod dynamic_targets;
+mod embedded_projection_reachability;
 mod embedded_schema;
 mod extra_sources;
 mod extra_targets;

@@ -81,7 +81,7 @@ public static class FerruleRecursiveFilter
         {
             RebuildOrderedXml(current, output, items, children, keptItems ?? []);
         }
-        return new FerruleGroup(output);
+        return current.RebuildFields(output);
     }
 
     // The XML choice reader keeps a private ordered stream of typed children.
@@ -146,7 +146,7 @@ public static class FerruleRecursiveFilter
             {
                 continue;
             }
-            rebuilt.Add(new FerruleGroup(group.Fields.Select(field =>
+            rebuilt.Add(group.RebuildFields(group.Fields.Select(field =>
                 new FerruleField(
                     field.Name,
                     field.Name == OrderedXmlValueField && replacement is not null
@@ -249,7 +249,7 @@ public static class FerruleRecursiveFilter
     private static FerruleInstance CloneInstance(FerruleInstance instance) => instance switch
     {
         FerruleScalar scalar => new FerruleScalar(scalar.Value),
-        FerruleGroup group => new FerruleGroup(group.Fields.Select(field =>
+        FerruleGroup group => group.RebuildFields(group.Fields.Select(field =>
             new FerruleField(field.Name, CloneInstance(field.Value)))),
         FerruleRepeated repeated => new FerruleRepeated(repeated.Items.Select(CloneInstance)),
         FerruleMappedSequence mapped => new FerruleMappedSequence(mapped.Items.Select(CloneInstance)),

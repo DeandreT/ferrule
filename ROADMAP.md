@@ -109,8 +109,13 @@ are preserved.
   failure. Seven network or captured-service inputs are unavailable. The
   round-trip profile records 166 semantic matches, zero drifts, and one explicit
   unsupported SQL preview-contract skip. An earlier manifest recorded 79 exact
-  deterministic reference matches; this machine has no pinned native oracle,
-  and those matches have not been rechecked after preview corrections.
+  deterministic reference matches. The supplied native test application is
+  activated in an isolated environment. Three fresh original-design runs match
+  exact typed outputs; strict XML annotations differ. The document-wrapper
+  namespace correction lets one exported string-join design validate, execute
+  and re-save without warnings; its reimported mapping retains the exact typed
+  result. Recursive-schema and filtered-position export gates remain open. The earlier
+  79 matches have not been rechecked after preview corrections.
   The single-project counts do not establish faithful behavior for warned
   connected chains; the typed pipeline path is measured separately.
 - Named optional host inputs retain connected defaults and overrides through project
@@ -339,7 +344,9 @@ classifies known Ferrule extension dependencies and blocks a selected native
 profile before publication. Strict executable import now rejects warnings,
 unresolved runtime dependencies, and invalid mappings while the default import
 remains repair-oriented. Selected private survey counts are enforceable in a
-qualification environment; native reference-application execution evidence remains absent.
+qualification environment. Three fresh native executions match typed outputs;
+one corrected exported design also executes and re-saves cleanly. Broader
+strict XML annotations and native export acceptance still require corrections.
 
 - Maintain a checked-in, machine-readable Enterprise 2026r2 `.mfd`
   capability ledger.
@@ -975,13 +982,22 @@ Update these numbers with each parity increment:
   and execute; 166 match semantically with zero drift. One unsupported SQL
   text-to-numeric preview contract is explicitly excluded from the match claim.
 - Code generation: 174/174 dependency-complete designs lower and emit for Rust
-  and C#. Forty-two supported opt-in local cases have compiled and executed in both
-  backends, with the book-catalog case rechecked at this checkpoint. The earlier
-  stock-PDF extraction case is withdrawn and retained as a rejection test.
-  Other survey designs still require generated execution checks.
+  and C#. Forty-three supported opt-in local cases have compiled and executed
+  in both backends in one complete staged run. The earlier stock-PDF extraction case is withdrawn and retained as a rejection test.
+  A separate generic host has compiled and executed sixty additional designs
+  in both languages through string and UTF-8 JSON APIs, retaining all static
+  named inputs and ordered normalized outputs. Complete packages are staged
+  before import or database introspection, and original bytes and modification
+  times are checked. Closed-schema duplicate fields retain matching C# boundary
+  semantics, and embedded string-parser configuration no longer emits unused
+  runtime constants. These two runs cover 103 distinct designs; other survey
+  designs still require generated execution checks.
 - Behavioral references: an earlier isolated manifest recorded 79 exact
-  deterministic outputs. That reference gate is not available on this machine
-  and has not been rechecked after correcting preview semantics; these results
+  deterministic outputs. The supplied native test application is activated. Three fresh original-design
+  runs match exact typed outputs, with differing XML schema/type annotations.
+  The corrected document wrapper permits one exported string-join design to
+  validate, execute and re-save without warnings, with an exact typed reimported
+  result. Broader schema, annotation and export execution coverage remain open. Earlier output counts
   are not inferred from structural success.
 - Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample
   compatibility report and `FERRULE_SURVEY_DETAILS=1` for text diagnostics.

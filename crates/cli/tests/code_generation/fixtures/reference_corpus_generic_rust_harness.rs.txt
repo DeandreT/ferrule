@@ -1,0 +1,68 @@
+use std::io::Write;
+use ferrule_generated_mapping::{NamedJsonBytesInput, NamedJsonInput, execute_json_outputs_with_sources, execute_json_bytes_outputs_with_sources};
+
+const MAGIC: &[u8] = b"FERRULE-CORPUS-JSON-OUTPUTS/1\n";
+const MAX_BYTES: usize = 256 * 1024 * 1024;
+fn number(bytes: &mut Vec<u8>, value: usize) -> Result<(), Box<dyn std::error::Error>> {
+    bytes.extend_from_slice(&u32::try_from(value)?.to_be_bytes());
+    Ok(())
+}
+fn named_error(error: codegen_runtime::JsonBoundaryError, category: &str, expected: &str) {
+    use codegen_runtime::{JsonBoundaryError, RuntimeError};
+    match (category, error) {
+        ("missing", JsonBoundaryError::Execution(RuntimeError::MissingNamedSource { name })) => assert_eq!(name, expected),
+        ("duplicate", JsonBoundaryError::Execution(RuntimeError::DuplicateNamedSource { name })) => assert_eq!(name, expected),
+        ("unexpected", JsonBoundaryError::Execution(RuntimeError::UnexpectedNamedSource { name })) => assert_eq!(name, expected),
+        (_, error) => panic!("wrong named-input failure category: {error:?}"),
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let input = std::fs::read_to_string(args.next().expect("input path"))?;
+    let pairs: Vec<_> = args.collect();
+    assert_eq!(pairs.len() % 2, 0, "named inputs are name/path pairs");
+    let named = pairs.chunks_exact(2).map(|pair| Ok((pair[0].to_str().ok_or("non-UTF-8 source name")?.to_owned(), std::fs::read_to_string(&pair[1])?))).collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+    let strings = named.iter().map(|(name, document)| NamedJsonInput { name, document }).collect::<Vec<_>>();
+    let bytes = named.iter().map(|(name, document)| NamedJsonBytesInput { name, document: document.as_bytes() }).collect::<Vec<_>>();
+    if let Some(first) = strings.first() {
+        named_error(execute_json_outputs_with_sources("!", &strings[1..]).unwrap_err(), "missing", first.name);
+        named_error(execute_json_bytes_outputs_with_sources(&[0xff], &bytes[1..]).unwrap_err(), "missing", first.name);
+        let mut duplicate = strings.clone(); duplicate.push(*first);
+        let mut duplicate_bytes = bytes.clone(); duplicate_bytes.push(bytes[0]);
+        named_error(execute_json_outputs_with_sources("!", &duplicate).unwrap_err(), "duplicate", first.name);
+        named_error(execute_json_bytes_outputs_with_sources(&[0xff], &duplicate_bytes).unwrap_err(), "duplicate", first.name);
+    }
+    let mut unknown = "__unknown_generic_source".to_owned();
+    while strings.iter().any(|source| source.name == unknown) { unknown.push('_'); }
+    let mut unexpected = strings.clone(); unexpected.push(NamedJsonInput { name: &unknown, document: "!" });
+    let mut unexpected_bytes = bytes.clone(); unexpected_bytes.push(NamedJsonBytesInput { name: &unknown, document: &[0xff] });
+    named_error(execute_json_outputs_with_sources("!", &unexpected).unwrap_err(), "unexpected", &unknown);
+    named_error(execute_json_bytes_outputs_with_sources(&[0xff], &unexpected_bytes).unwrap_err(), "unexpected", &unknown);
+    let output = execute_json_outputs_with_sources(&input, &strings)?;
+    let byte_output = execute_json_bytes_outputs_with_sources(input.as_bytes(), &bytes)?;
+    assert_eq!(output.primary.as_bytes(), byte_output.primary);
+    assert_eq!(output.extras.len(), byte_output.extras.len());
+    for (text, bytes) in output.extras.iter().zip(&byte_output.extras) {
+        assert_eq!(text.name, bytes.name);
+        assert_eq!(text.document.as_bytes(), bytes.document);
+    }
+    let documents = std::iter::once(("", output.primary.as_str())).chain(output.extras.iter().map(|extra| (extra.name, extra.document.as_str()))).collect::<Vec<_>>();
+    assert!((1..=4097).contains(&documents.len()));
+    let mut size = MAGIC.len() + 4;
+    for (name, document) in &documents {
+        assert!(name.len() <= 256 && document.len() <= 64 * 1024 * 1024);
+        size = size.checked_add(8 + name.len() + document.len()).ok_or("envelope size overflow")?;
+    }
+    assert!(size <= MAX_BYTES, "output envelope exceeds limit");
+    let mut envelope = Vec::with_capacity(size);
+    envelope.extend_from_slice(MAGIC);
+    number(&mut envelope, documents.len())?;
+    for (name, document) in documents {
+        number(&mut envelope, name.len())?;
+        envelope.extend_from_slice(name.as_bytes());
+        number(&mut envelope, document.len())?;
+        envelope.extend_from_slice(document.as_bytes());
+    }
+    std::io::stdout().lock().write_all(&envelope)?;
+    Ok(())
+}

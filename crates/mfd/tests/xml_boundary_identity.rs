@@ -76,6 +76,51 @@ fn pathless_xml_boundaries_roundtrip_without_format_inference() -> Result<(), Bo
     let design = temp.0.join("pathless.mfd");
 
     assert!(mfd::export(&project, &design)?.is_empty());
+    let exported_text = std::fs::read_to_string(&design)?;
+    let exported = roxmltree::Document::parse(&exported_text)?;
+    let components = exported
+        .descendants()
+        .filter(|node| node.has_tag_name("component") && node.attribute("library") == Some("xml"))
+        .collect::<Vec<_>>();
+    assert_eq!(components.len(), 2);
+    for component in components {
+        let root = component
+            .children()
+            .find(|node| node.has_tag_name("data"))
+            .and_then(|data| data.children().find(|node| node.has_tag_name("root")))
+            .ok_or("XML component must have a root")?;
+        let namespaces = root
+            .descendants()
+            .filter(|node| node.has_tag_name("namespace"))
+            .collect::<Vec<_>>();
+        let file = root
+            .children()
+            .find(|node| node.has_tag_name("entry"))
+            .ok_or("XML component must have a file wrapper")?;
+        let document = file
+            .children()
+            .find(|node| node.has_tag_name("entry"))
+            .ok_or("XML file must have a document wrapper")?;
+        assert_eq!(file.attribute("name"), Some("FileInstance"));
+        assert_eq!(document.attribute("name"), Some("document"));
+        // Reserved wrappers belong to their protocol namespace, independently
+        // of the user document's unqualified element names.
+        for wrapper in [file, document] {
+            let slot: usize = wrapper
+                .attribute("ns")
+                .ok_or("wrapper namespace")?
+                .parse()?;
+            assert_eq!(
+                namespaces.get(slot).and_then(|node| node.attribute("uid")),
+                Some("http://www.altova.com/mapforce")
+            );
+        }
+        let element = document
+            .children()
+            .find(|node| node.has_tag_name("entry"))
+            .ok_or("document element")?;
+        assert!(element.attribute("ns").is_none());
+    }
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.source, source);
