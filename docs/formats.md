@@ -357,3 +357,13 @@ payload, and browser output share `CsvWriteOptions` and the
 omit the BOM. Readers accept UTF-8 with or without a BOM. CSV target setup
 exposes “UTF-8 byte order mark.” Selecting another format with this option
 rejects before output publication.
+
+### Creating Protocol Buffers mappings
+
+In the native editor's new mapping form, choose a `.proto` schema for either
+side and select its root message. Source and target roots are independent;
+each Protocol Buffers boundary requires a supported selection. Optional input/output
+paths provide run-time defaults. Saved projects embed the schema and its
+confined local imports, so execution does not reopen the original `.proto`
+files. Unsupported recursive roots and imports outside the selected schema
+folder show an error without replacing the open mapping.

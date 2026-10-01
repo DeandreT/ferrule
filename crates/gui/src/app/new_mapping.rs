@@ -1,12 +1,23 @@
 use super::*;
 use crate::new_mapping::{CsvBoundaryDraft, CsvColumnDraft, MappingBoundary, SqliteBoundaryDraft};
 
+#[path = "new_mapping/protobuf.rs"]
+mod protobuf;
+
 impl FerruleApp {
     pub(super) fn begin_new_mapping(&mut self) {
         self.new_mapping_setup = Some(NewMappingSetup::default());
     }
 
     pub(super) fn stage_mapping_schema(&mut self, side: SchemaSide, path: PathBuf) {
+        if path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("proto"))
+        {
+            self.stage_mapping_protobuf(side, path);
+            return;
+        }
         match crate::new_mapping::import_schema(&path) {
             Ok(schema) => {
                 let imported = crate::new_mapping::MappingBoundary::Schema(Box::new(
@@ -135,7 +146,7 @@ impl FerruleApp {
         let Some(setup) = self.new_mapping_setup.as_mut() else {
             return;
         };
-        let can_create = setup.build_project().is_ok();
+        let can_create = setup.can_create();
         let dialog_idle = self.pending_dialog.is_none();
         let mut action = None;
         let mut refresh_source = false;
@@ -175,6 +186,9 @@ impl FerruleApp {
                     show_csv_columns(ui, draft, true);
                     show_csv_preview(ui, draft);
                     show_csv_validation(ui, draft);
+                }
+                if let Some(MappingBoundary::Protobuf(draft)) = setup.source.as_mut() {
+                    protobuf::show_options(ui, draft, "source", false);
                 }
                 if let Some(MappingBoundary::Sqlite(draft)) = setup.source.as_mut()
                     && show_sqlite_table(ui, draft, "source", false)
@@ -239,6 +253,9 @@ impl FerruleApp {
                         });
                     }
                     show_csv_validation(ui, draft);
+                }
+                if let Some(MappingBoundary::Protobuf(draft)) = setup.target.as_mut() {
+                    protobuf::show_options(ui, draft, "target", true);
                 }
                 if let Some(MappingBoundary::Sqlite(draft)) = setup.target.as_mut() {
                     if show_sqlite_table(ui, draft, "target", true) {
@@ -305,7 +322,7 @@ impl FerruleApp {
                     SchemaSide::Source => DialogKind::BrowseSourceSchema,
                     SchemaSide::Target => DialogKind::BrowseTargetSchema,
                 };
-                self.pending_dialog = Some((kind, pick_file("schema", &["xsd", "json"])));
+                self.pending_dialog = Some((kind, pick_file("schema", &["xsd", "json", "proto"])));
             }
             Some(NewMappingAction::ChooseCsvSource) => {
                 self.pending_dialog = Some((
@@ -338,7 +355,9 @@ impl FerruleApp {
                     .and_then(|setup| setup.target.as_ref())
                     .and_then(|boundary| match boundary {
                         MappingBoundary::Csv(draft) => Some(draft.path.as_str()),
-                        MappingBoundary::Schema(_) | MappingBoundary::Sqlite(_) => None,
+                        MappingBoundary::Schema(_)
+                        | MappingBoundary::Sqlite(_)
+                        | MappingBoundary::Protobuf(_) => None,
                     })
                     .filter(|path| !path.is_empty())
                     .unwrap_or("output.csv");
@@ -414,6 +433,9 @@ fn boundary_label(boundary: Option<&MappingBoundary>) -> String {
         }
         Some(MappingBoundary::Sqlite(draft)) => {
             format!("SQLite: {} / {}", draft.schema_path, draft.table)
+        }
+        Some(MappingBoundary::Protobuf(draft)) => {
+            format!("Protocol Buffers: {}", draft.schema_path.display())
         }
     }
 }
