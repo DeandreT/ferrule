@@ -1,5 +1,11 @@
 use super::*;
 
+#[path = "functions/calls.rs"]
+mod calls;
+
+#[cfg(test)]
+use calls::reserve_call_ids;
+
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{FunctionParameter, FunctionParameterId, Node, UserFunction};
 
@@ -895,81 +901,11 @@ impl FerruleApp {
     }
 
     fn insert_function_call(&mut self, function: FunctionId) {
-        let Some(argument_count) = self
-            .project
-            .user_functions
-            .get(&function)
-            .map(|definition| definition.parameters.len())
-        else {
-            return;
-        };
-        match self.mapping_workspace.active {
-            MappingDocument::Main => insert_call(
-                &mut self.project.graph,
-                &mut self.main_canvas.snarl,
-                function,
-                argument_count,
-            ),
-            MappingDocument::Target(target) => {
-                if !self.ensure_target_canvas(target) {
-                    return;
-                }
-                if let Some(canvas) = self.mapping_workspace.target_canvases.get_mut(&target) {
-                    insert_call(
-                        &mut self.project.graph,
-                        &mut canvas.snarl,
-                        function,
-                        argument_count,
-                    );
-                }
-            }
-            MappingDocument::Function(owner) => {
-                if !self.ensure_function_canvas(owner) {
-                    return;
-                }
-                let (functions, canvases) = (
-                    &mut self.project.user_functions,
-                    &mut self.mapping_workspace.function_canvases,
-                );
-                if let (Some(definition), Some(canvas)) =
-                    (functions.get_mut(&owner), canvases.get_mut(&owner))
-                {
-                    insert_call(
-                        &mut definition.body,
-                        &mut canvas.snarl,
-                        function,
-                        argument_count,
-                    );
-                }
-            }
+        if let Err(error) = self.try_insert_function_call(function) {
+            self.status = "function call edit failed".to_string();
+            self.diagnostics.error("Add function call failed", error);
         }
     }
-}
-
-fn insert_call(
-    graph: &mut Graph,
-    snarl: &mut Snarl<CanvasNode>,
-    function: FunctionId,
-    argument_count: usize,
-) {
-    let mut next = graph
-        .nodes
-        .keys()
-        .next_back()
-        .map_or(0, |id| id.saturating_add(1));
-    let position = egui::pos2(80.0, graph.nodes.len() as f32 * 24.0);
-    let mut args = Vec::with_capacity(argument_count);
-    for _ in 0..argument_count {
-        let id = next;
-        next = next.saturating_add(1);
-        graph.nodes.insert(id, Node::Unconnected);
-        args.push(id);
-    }
-    let call = next;
-    graph
-        .nodes
-        .insert(call, Node::UserFunctionCall { function, args });
-    snarl.insert_node(position, CanvasNode::Graph(call));
 }
 
 fn function_label(function: &UserFunction) -> String {
@@ -1243,3 +1179,7 @@ mod output_tests;
 #[cfg(test)]
 #[path = "functions/lock_tests.rs"]
 mod lock_tests;
+
+#[cfg(test)]
+#[path = "functions/allocation_tests.rs"]
+mod allocation_tests;
