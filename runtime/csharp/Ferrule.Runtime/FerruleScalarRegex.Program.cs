@@ -41,9 +41,38 @@ internal static partial class FerruleScalarRegex
         internal bool UsesBoundaryMachine => _instructions is not null;
 
         internal static ScalarRegexProgram Host(Regex host, int[] groups) => new(host, groups);
-        internal static ScalarRegexProgram Boundary(string source, RegexOptions options)
+        internal static ScalarRegexProgram Boundary(string source, RegexOptions options, bool strictUnicodeProfile = false)
         {
-            var (root, captures) = new Translator(source, options).ParseBoundary();
+            var (root, captures) = new Translator(source, options, strictUnicodeProfile).ParseBoundary();
+            return FromBoundary(root, captures);
+        }
+
+        internal static ScalarRegexProgram? TryNullableCaptures(string source, RegexOptions options)
+        {
+            BoundaryNode root;
+            int captures;
+            try
+            {
+                // This fresh, bounded parser has no state in common with the
+                // completed host translation. Unsupported/deep ordinary host
+                // patterns retain their existing host constructor and errors.
+                (root, captures) = new Translator(source, options).ParseBoundary();
+            }
+            catch (Exception error) when (error is ArgumentException or NotSupportedException)
+            {
+                return null;
+            }
+            // Ordinary host patterns outside the selected Rust syntax depth
+            // keep their legacy acceptance and capture behavior.
+            if (!root.HasNullableCaptureLoop || root.SyntaxHeight > 250) { return null; }
+            // The eligible trigger is now established. VM capacity failures
+            // must stay typed; compiling outside the speculative catch keeps
+            // those limits from being bypassed through the host path.
+            return FromBoundary(root, captures);
+        }
+
+        private static ScalarRegexProgram FromBoundary(BoundaryNode root, int captures)
+        {
             var (instructions, start) = new BoundaryCompiler().Compile(root);
             return new(instructions, start, captures);
         }
@@ -125,14 +154,21 @@ internal static partial class FerruleScalarRegex
 
     internal static ScalarRegexProgram CompileProgram(string source, RegexOptions options)
     {
+        if (new Translator(source, options).ContainsExplicitUnicode())
+        { return ScalarRegexProgram.Boundary(source, options, true); }
         var translator = new Translator(source, options);
         var translated = translator.Translate();
-        if (!translator.HasWordBoundary && !translator.HasConsecutiveRepetition)
+        if (translator.HasWordBoundary || translator.HasConsecutiveRepetition || translator.HasExplicitUnicode)
         {
-            var host = new Regex("(?m:^|)(?:" + translated + ")", options);
-            return ScalarRegexProgram.Host(host, translator.CaptureGroups(host));
+            return ScalarRegexProgram.Boundary(source, options, translator.HasExplicitUnicode);
         }
-        return ScalarRegexProgram.Boundary(source, options);
+        if (translator.CanProbeNullableCaptures)
+        {
+            var captures = ScalarRegexProgram.TryNullableCaptures(source, options);
+            if (captures is not null) { return captures; }
+        }
+        var host = new Regex("(?m:^|)(?:" + translated + ")", options);
+        return ScalarRegexProgram.Host(host, translator.CaptureGroups(host));
     }
 
     private static void RequireExecutionCapacity(int instructions, int slots)
@@ -292,18 +328,24 @@ internal static partial class FerruleScalarRegex
                 BoundaryAssertion.WordEnd => WordBefore(input, position) && !WordAfter(input, position),
                 BoundaryAssertion.WordStartHalf => !WordBefore(input, position),
                 BoundaryAssertion.WordEndHalf => !WordAfter(input, position),
+                BoundaryAssertion.AsciiWord => WordBefore(input, position, true) != WordAfter(input, position, true),
+                BoundaryAssertion.AsciiNotWord => WordBefore(input, position, true) == WordAfter(input, position, true),
+                BoundaryAssertion.AsciiWordStart => !WordBefore(input, position, true) && WordAfter(input, position, true),
+                BoundaryAssertion.AsciiWordEnd => WordBefore(input, position, true) && !WordAfter(input, position, true),
+                BoundaryAssertion.AsciiWordStartHalf => !WordBefore(input, position, true),
+                BoundaryAssertion.AsciiWordEndHalf => !WordAfter(input, position, true),
                 _ => throw Invalid("invalid scalar word assertion"),
             };
         }
 
-        private static bool WordBefore(string input, int position)
+        private static bool WordBefore(string input, int position, bool ascii = false)
         {
             if (position == 0) { return false; }
             var start = position - 1;
             if (char.IsLowSurrogate(input[start])) { start--; }
-            return Shorthand('w').Contains(Rune.GetRuneAt(input, start).Value);
+            return (ascii ? AsciiClasses["word"] : Shorthand('w')).Contains(Rune.GetRuneAt(input, start).Value);
         }
-        private static bool WordAfter(string input, int position) => position < input.Length
-            && Shorthand('w').Contains(Rune.GetRuneAt(input, position).Value);
+        private static bool WordAfter(string input, int position, bool ascii = false) => position < input.Length
+            && (ascii ? AsciiClasses["word"] : Shorthand('w')).Contains(Rune.GetRuneAt(input, position).Value);
     }
 }

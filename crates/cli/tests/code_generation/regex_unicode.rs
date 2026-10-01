@@ -505,7 +505,358 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
         ("́!", "^(́)\\b{end}(!)$", "", "$1/$2", true),
         ("!‍", "^(!)\\b{start}(‍)$", "", "$1/$2", true),
     ];
-    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).chain(&boundary_alias_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
+    let mut ascii_mode_cases = vec![
+        ("Aé_9🙂", r"(?-u:\w+)", "", "[$0:$1:$2:$3]", true),
+        ("1٢３9", r"(?-u:\d+)", "", "[$0:$1:$2:$3]", true),
+        (
+            "a\t\u{b}\n\ré\u{a0} ",
+            r"(?-u:\s+)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+        ),
+        ("KkK", "(?i-u:K)", "", "[$0:$1:$2:$3]", true),
+        ("Ssſ", "(?i-u:S)", "", "[$0:$1:$2:$3]", true),
+        ("é", "(?i-u:é)", "", "x", true),
+        ("É", "(?i-u:é)", "", "x", false),
+        ("𐐨", "(?i-u:𐐀)", "", "x", false),
+        ("🙂", r"(?-u:\U0001F642)", "", "x", true),
+        ("é", r"(?-u:\x{E9})", "", "x", true),
+        ("é", r"(?-u:\u00E9)", "", "x", true),
+        ("ab-c", "(?-u:[a-z-[b]c])", "", "[$0]", true),
+        ("ab-c", "[a-z-[b]c](?u)", "", "[$0]", true),
+        ("ab-c", "(?-u:[a-z--[b]])", "", "[$0]", true),
+        (
+            "aéB",
+            r"(?-u:(\w+)(?u:(\w+))(\w+))",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+        ),
+        ("éAé", r"(?-u:\b(\w+)\b)", "", "[$0:$1:$2:$3]", true),
+        (
+            "aaaaaab",
+            r"(?-u:^((?:a{1,2}?)?)+(b)$)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+        ),
+        ("kK", "(?i)(?-u:K)(K)", "", "[$0]", true),
+        ("é", r"(?-u:a|(?u)\w)", "", "x", true),
+        ("a", "(?x-u:a # (?u)\n)", "", "x", true),
+        ("a", "(?x-u:\\x{6 # hex\n 1})", "", "x", true),
+        ("a", "(?u)^[[:alpha:]]$", "", "x", true),
+        ("A", "(?i-u:^[a&&A]$)", "", "x", true),
+        ("A", "(?i-u:^[a--A]$)", "", "x", false),
+        ("K", "(?i-u:^[[:alpha:]]$)", "", "x", false),
+        ("é🙂", r"(?-u:é\B🙂)", "", "$0", true),
+        ("éA", r"(?-u:é\b{start}A)", "", "$0", true),
+        ("Aé", r"(?-u:A\b{end}é)", "", "$0", true),
+        ("🙂A", r"(?-u:🙂\<A)", "", "$0", true),
+        ("A🙂", r"(?-u:A\>🙂)", "", "$0", true),
+        ("éA", r"(?-u:é\b{start-half}A)", "", "$0", true),
+        ("Aé", r"(?-u:A\b{end-half}é)", "", "$0", true),
+        ("é", r"(?-u:\B){2}{3}é", "", "$0", true),
+        ("éé", r"(?-u:\w+)", "", "x", false),
+    ];
+    for (pattern, included, excluded) in [
+        ("(?-u:^[[:alnum:]]$)", "9", "_"),
+        ("(?-u:^[[:alpha:]]$)", "z", "é"),
+        ("(?-u:^[[:ascii:]]$)", "\u{7f}", "\u{80}"),
+        ("(?-u:^[[:blank:]]$)", "\t", "\n"),
+        ("(?-u:^[[:cntrl:]]$)", "\0", " "),
+        ("(?-u:^[[:digit:]]$)", "9", "٢"),
+        ("(?-u:^[[:graph:]]$)", "~", " "),
+        ("(?-u:^[[:lower:]]$)", "a", "A"),
+        ("(?-u:^[[:print:]]$)", " ", "\t"),
+        ("(?-u:^[[:punct:]]$)", "[", "z"),
+        ("(?-u:^[[:space:]]$)", "\u{b}", "\u{a0}"),
+        ("(?-u:^[[:upper:]]$)", "A", "a"),
+        ("(?-u:^[[:word:]]$)", "_", "é"),
+        ("(?-u:^[[:xdigit:]]$)", "F", "G"),
+    ] {
+        ascii_mode_cases.push((included, pattern, "", "x", true));
+        ascii_mode_cases.push((excluded, pattern, "", "x", false));
+    }
+    let nullable_capture_cases = [
+        (
+            "aaaaaab",
+            "^(a?)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(a*)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:aaaaaa:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(a?)*(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(a*)*(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:aaaaaa:b]",
+        ),
+        (
+            "aaaaaab",
+            "^((?:a{1,2}?)?)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        (
+            "aaaaaab",
+            "^((a)?)+(b)$",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[aaaaaab:a:a:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(?:(a)?)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        (
+            "aaaaaab",
+            "^((?:a|)?)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        ("aac", "^(a|b?)+(c)$", "", "[$0:$1:$2]", true, "[aac:a:c]"),
+        (
+            "aaaaaab",
+            "^(?<keep>a?)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(?P<keep>a?)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        (
+            "🙂🙂🙂b",
+            "^(🙂?)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[🙂🙂🙂b:🙂:b]",
+        ),
+        (
+            "AAAAAAb",
+            "^(a?)+(b)$",
+            "i",
+            "[$0:$1:$2]",
+            true,
+            "[AAAAAAb:A:b]",
+        ),
+        (
+            "aaaaaab",
+            " ^ ( a ? ) + ( b ) $ # eof",
+            "x",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(\\p{gc=Letter}*)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:aaaaaa:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(a?)+?(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:a:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(a*){1,2}(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab::b]",
+        ),
+        (
+            "aaaaaab",
+            "^(a+)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:aaaaaa:b]",
+        ),
+        (
+            "aaaaaab",
+            "^(?:a?)+(b)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab:b:]",
+        ),
+        (
+            "aaaaaab",
+            "^((a?)+){0}(aaaaaab)$",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "[aaaaaab::]",
+        ),
+        (
+            "xaaaaaabyabz",
+            "(a?)+(b)",
+            "",
+            "[$0:$1:$2]",
+            true,
+            "x[aaaaaab:a:b]y[ab:a:b]z",
+        ),
+        ("cccc", "^(a?)+(b)$", "", "[$1]", false, "cccc"),
+    ];
+    let group_header_cases = [
+        ("a", "(?x)( ?-u: a )", "", "[$0:$1:$2:$3]", true, "[a:::]"),
+        (
+            "a",
+            "(?x)( # header comment\n ?-u: a )",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[a:::]",
+        ),
+        ("a", "(?x)( ?u: a )", "", "[$0:$1:$2:$3]", true, "[a:::]"),
+        (
+            "ab",
+            "(?x)( ?<first> a )(b)(?u)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[ab:a:b:]",
+        ),
+        (
+            "ab",
+            "(?x)( # name comment\n ?P<first> a )(b)(?u)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[ab:a:b:]",
+        ),
+        ("a", "(?x)( ?: a )(?u)", "", "[$0:$1:$2:$3]", true, "[a:::]"),
+        ("k", "(?ix)( ?-u)K", "", "[$0:$1:$2:$3]", true, "[k:::]"),
+        ("K", "(?ix)( ?-u)K", "", "[$0:$1:$2:$3]", false, "K"),
+        ("K", "(?ix)( ?u)K", "", "[$0:$1:$2:$3]", true, "[K:::]"),
+        (
+            "kK",
+            "(?ix)( ?-u: K )(K)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[kK:K::]",
+        ),
+        (
+            "KK",
+            "(?ix)( ?-u: ( ?u: K ) )(K)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[KK:K::]",
+        ),
+        (
+            " a ",
+            "(?x)( ?-x: a )(?u)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[ a :::]",
+        ),
+        ("a", "(?x)( ?-x: a )(?u)", "", "[$0:$1:$2:$3]", false, "a"),
+        (
+            "a",
+            "(?x)( ?-x:(?-u:a))",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[a:::]",
+        ),
+        (
+            "a",
+            "(?x)(\u{a0}?-u: a )",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[a:::]",
+        ),
+        (
+            "a",
+            "( # header comment\n ?-u: a )",
+            "x",
+            "[$0:$1:$2:$3]",
+            true,
+            "[a:::]",
+        ),
+        (
+            "a",
+            "(?x)( # (?u) is ignored\n a )",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[a:a::]",
+        ),
+        (
+            "(?u)",
+            r"(?x)\( \?u \)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[(?u):::]",
+        ),
+        ("u", "(?x)[ (?u) ]", "", "[$0:$1:$2:$3]", true, "[u:::]"),
+        (
+            "a",
+            "(?x)( ?-x:( ?-u:a))(?u)",
+            "",
+            "[$0:$1:$2:$3]",
+            false,
+            "a",
+        ),
+        (
+            "-u:a",
+            "(?x)( ?-x:( ?-u:a))(?u)",
+            "",
+            "[$0:$1:$2:$3]",
+            true,
+            "[-u:a:-u:a::]",
+        ),
+    ];
+    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).chain(&boundary_alias_cases).chain(&ascii_mode_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).chain(nullable_capture_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(group_header_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
     }).collect::<Vec<_>>()}).to_string();
     let source = format_json::from_str(&input, &project.source)?;
@@ -550,6 +901,9 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
             + property_cases.len()
             + repetition_cases.len()
             + boundary_alias_cases.len()
+            + ascii_mode_cases.len()
+            + nullable_capture_cases.len()
+            + group_header_cases.len()
     );
     for (index, (row, &(_, pattern, _, _, matches))) in
         rows.iter().skip(cases.len()).zip(&class_cases).enumerate()
@@ -648,6 +1002,77 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
         assert_eq!(
             alias_rows[index]["Tokens"],
             serde_json::json!([{"Value": " "}, {"Value": " "}, {"Value": " "}])
+        );
+    }
+    let ascii_rows = &alias_rows[boundary_alias_cases.len()..];
+    for (index, (row, &(_, pattern, _, _, matches))) in
+        ascii_rows.iter().zip(&ascii_mode_cases).enumerate()
+    {
+        assert_eq!(row["Match"], matches, "ASCII mode case {index}: {pattern}");
+    }
+    assert_eq!(ascii_rows[0]["Replaced"], "[A:::]é[_9:::]🙂");
+    assert_eq!(
+        ascii_rows[0]["Tokens"],
+        serde_json::json!([{"Value":""},{"Value":"é"},{"Value":"🙂"}])
+    );
+    assert_eq!(ascii_rows[1]["Replaced"], "[1:::]٢３[9:::]");
+    assert_eq!(ascii_rows[3]["Replaced"], "[K:::][k:::]K");
+    assert_eq!(ascii_rows[4]["Replaced"], "[S:::][s:::]ſ");
+    assert_eq!(ascii_rows[11]["Replaced"], "[a][b][-][c]");
+    assert_eq!(ascii_rows[12]["Replaced"], "[a][b][-][c]");
+    assert_eq!(ascii_rows[13]["Replaced"], "[a]b-[c]");
+    assert_eq!(ascii_rows[14]["Replaced"], "[aéB:a:é:B]");
+    assert_eq!(ascii_rows[15]["Replaced"], "é[A:A::]é");
+    assert_eq!(ascii_rows[16]["Replaced"], "[aaaaaab:a:b:]");
+    assert_eq!(ascii_rows[17]["Replaced"], "[kK]");
+    let nullable_begin = ascii_mode_cases.len();
+    let nullable_rows = &ascii_rows[nullable_begin..nullable_begin + nullable_capture_cases.len()];
+    for (index, (row, &(_, pattern, _, _, matched, replaced))) in nullable_rows
+        .iter()
+        .zip(&nullable_capture_cases)
+        .enumerate()
+    {
+        assert_eq!(
+            row["Match"], matched,
+            "nullable capture case {index}: {pattern}"
+        );
+        assert_eq!(
+            row["Replaced"], replaced,
+            "nullable capture case {index}: {pattern}"
+        );
+    }
+    assert_eq!(
+        nullable_rows[20]["Tokens"],
+        serde_json::json!([{"Value": "x"}, {"Value": "y"}, {"Value": "z"}])
+    );
+    assert_eq!(
+        nullable_rows[21]["Tokens"],
+        serde_json::json!([{"Value": "cccc"}])
+    );
+    let group_header_begin = nullable_begin + nullable_capture_cases.len();
+    let group_header_rows =
+        &ascii_rows[group_header_begin..group_header_begin + group_header_cases.len()];
+    for (index, (row, &(text, pattern, _, _, matched, replaced))) in group_header_rows
+        .iter()
+        .zip(&group_header_cases)
+        .enumerate()
+    {
+        assert_eq!(
+            row["Match"], matched,
+            "group header case {index}: {pattern}"
+        );
+        assert_eq!(
+            row["Replaced"], replaced,
+            "group header case {index}: {pattern}"
+        );
+        let tokens = if matched {
+            serde_json::json!([{"Value": ""}, {"Value": ""}])
+        } else {
+            serde_json::json!([{"Value": text}])
+        };
+        assert_eq!(
+            row["Tokens"], tokens,
+            "group header case {index}: {pattern}"
         );
     }
     super::json_text_boundaries::run_generated_boundary_cases(

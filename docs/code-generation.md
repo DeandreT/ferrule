@@ -545,16 +545,34 @@ C# `\b`, `\B`, `\b{start}` / `\<`, `\b{end}` / `\>`,
 as `\w`, preserving
 supplementary letters, combining marks, join controls, source-order captures,
 greedy/lazy choices, and global match spans. A prioritized non-backtracking
-matcher handles patterns containing these assertions or consecutive repetitions.
+matcher handles patterns containing these assertions or consecutive repetitions,
+explicit inline Unicode modes, and eligible captured unbounded nullable loops.
 Start/end assertions require the corresponding word transition; half assertions
 check only the non-word side and can match an empty input. Special boundary braces
 must immediately follow `\b`; `x` whitespace/comments are accepted inside the
 brace and between its name characters. Numeric braces still repeat the assertion.
 Consecutive operators such as `a{2}{3}` and `a++` create nested repeats, with one
 lazy suffix per operator. Source-order capture values, nullable repeated bodies,
-and outer zero counts retain the same behavior as Rust. Patterns without these
-constructs retain the existing host engine. The scalar matcher rejects unsupported
-host groups and escapes. It caps its AST at 8,192 nodes and structural height at
+and outer zero counts retain the same behavior as Rust. Ordinary captured nullable
+loops such as `(a?)+` retain the last consumed capture. A bounded speculative
+parser selects this route only for supported ordinary syntax; host-only forms
+and source syntax height above 250 retain their previous host behavior. Once the
+route is selected, compilation limits cannot fall back to the host engine.
+Patterns without these constructs retain the existing host engine.
+
+Inline `u` / `-u` selects a strict scalar profile. Disabled Unicode mode supports
+positive ASCII classes, ranges, POSIX terms, `\\d`, `\\s`, `\\w`, and ASCII case
+folding; all word assertions use ASCII word membership in that mode. Exact
+non-ASCII literals remain supported outside classes without Unicode folding.
+Scoped flags restore the enclosing mode, and `u` restores Unicode sets/folding.
+Disabled-mode dot, complements, properties, non-ASCII classes, and high-byte
+escapes reject because they can match invalid UTF-8. The entire selected profile
+uses Rust class-union grammar and a source syntax-height limit of 250; host-only
+groups/escapes reject even before a later `u` directive or a zero-count repeat.
+Public flags remain `imsx`.
+
+The scalar matcher rejects unsupported host groups and escapes. It caps its AST
+at 8,192 nodes and structural height at
 256 before recursive compilation, expanded instructions at 163,840,
 VM allocations at 64 MiB, and actual
 execution work at 100 million units shared across one operation's searches.
@@ -563,13 +581,13 @@ body's structural height. Deferred host lowering adds at most 256 consecutive
 wrappers per operand and counts them toward its translated-size limit.
 These local caps preserve typed failures without claiming identical backend
 compilation or execution budgets.
-Rust and .NET still expose different regex dialects. ASCII `-u` boundary scopes,
-word-assertion escapes inside host character classes, single-dash host subtraction,
-property vocabularies, and some
+Rust and .NET still expose different regex dialects. Inline `U` / `R`,
+word-assertion escapes inside ordinary host character classes, ordinary
+single-dash host subtraction, property vocabularies, and some
 host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
-Ordinary host-path nullable loops can still select different final capture values
-when the source uses explicit grouping instead of consecutive operators.
+Nullable loops retained on the host path can still select different final capture
+values for host-only or over-depth source syntax.
 Existing host block spellings outside the category profile can differ from Rust
 script membership; script and binary property sets are not approximated here.
 This applies to mapping-language regex operations only;
