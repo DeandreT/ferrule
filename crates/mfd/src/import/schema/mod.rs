@@ -1148,37 +1148,7 @@ pub(super) fn read_csv_component(
         ..FormatOptions::default()
     };
     if let Some(settings) = settings {
-        options.csv_preserve_empty_strings = csv::empty_text_policy(&settings, &name, warnings);
-        if let Some(separator) = settings.attribute("separator") {
-            let mut chars = separator.chars();
-            options.delimiter = chars.next();
-            if chars.next().is_some() {
-                warnings.push(format!(
-                    "csv component `{name}`: multi-character separator \
-                     `{separator}` truncated to its first character"
-                ));
-            }
-        }
-        options.has_header_row = Some(settings.attribute("firstrownames") == Some("true"));
-        if let Some(raw_quote) = settings.attribute("quote") {
-            if raw_quote.is_empty() {
-                options.csv_quote_disabled = true;
-            } else {
-                let mut characters = raw_quote.chars();
-                match (characters.next(), characters.next()) {
-                    (Some(quote), None)
-                        if quote.is_ascii_graphic()
-                            && quote != options.delimiter.unwrap_or(',') =>
-                    {
-                        options.csv_quote = (quote != '"').then_some(quote);
-                    }
-                    _ => warnings.push(format!(
-                        "csv component `{name}`: quote setting `{raw_quote}` must be one \
-                         printable ASCII character distinct from the separator"
-                    )),
-                }
-            }
-        }
+        csv::read_settings(&settings, &name, &mut options, warnings);
     }
 
     let mut ports = BTreeMap::new();
@@ -1229,7 +1199,7 @@ pub(super) fn read_csv_component(
     }
     let is_source = out_count >= in_count;
     if is_source && options.csv_preserve_empty_strings {
-        csv::warn_typed_empty_cells(&schema, &name, warnings);
+        csv::warn_typed_empty_cells(&schema, &name, &mut options, warnings);
     }
     Some(SchemaComponent {
         name,
