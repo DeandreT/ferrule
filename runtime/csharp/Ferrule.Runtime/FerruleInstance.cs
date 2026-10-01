@@ -36,21 +36,36 @@ public sealed class FerruleField
     public FerruleInstance Value { get; }
 }
 
-/// <summary>An insertion-ordered collection of uniquely named fields.</summary>
+/// <summary>An insertion-ordered group whose public construction requires unique field names.</summary>
 public sealed class FerruleGroup : FerruleInstance
 {
     private readonly IReadOnlyList<FerruleField> _fields;
     private readonly Dictionary<string, FerruleInstance> _fieldsByName;
+    private readonly bool _schemaDeclarations;
 
     public FerruleGroup(IEnumerable<FerruleField> fields)
+        : this(fields, schemaDeclarations: false)
+    {
+    }
+
+    // Closed native schemas may declare the same field more than once. Their
+    // ordered typed slots remain distinct; path lookup resolves the first slot.
+    internal static FerruleGroup FromSchemaFields(IEnumerable<FerruleField> fields) =>
+        new(fields, schemaDeclarations: true);
+
+    internal FerruleGroup RebuildFields(IEnumerable<FerruleField> fields) =>
+        new(fields, _schemaDeclarations);
+
+    private FerruleGroup(IEnumerable<FerruleField> fields, bool schemaDeclarations)
     {
         ArgumentNullException.ThrowIfNull(fields);
         var ordered = new List<FerruleField>();
+        _schemaDeclarations = schemaDeclarations;
         _fieldsByName = new Dictionary<string, FerruleInstance>(StringComparer.Ordinal);
         foreach (var field in fields)
         {
             ArgumentNullException.ThrowIfNull(field);
-            if (!_fieldsByName.TryAdd(field.Name, field.Value))
+            if (!_fieldsByName.TryAdd(field.Name, field.Value) && !schemaDeclarations)
             {
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.DuplicateField,

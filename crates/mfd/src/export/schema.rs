@@ -314,9 +314,9 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t{header}{view}\n\
                  \t\t\t\t\t<data>\n\
                  \t\t\t\t\t\t<root>\n\
-                 \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
-                 \t\t\t\t\t\t\t<entry name=\"FileInstance\"{file_instance_output} expanded=\"1\">\n\
-                 \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t<header><namespaces><namespace/><namespace uid=\"http://www.altova.com/mapforce\"/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t<entry name=\"FileInstance\" ns=\"1\"{file_instance_output} expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t<entry name=\"document\" ns=\"1\" expanded=\"1\">\n\
                  {}\
                  \t\t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t\t</entry>\n\

@@ -581,7 +581,17 @@ fn reachable_nodes(graph: &Graph, roots: impl IntoIterator<Item = NodeId>) -> BT
             continue;
         }
         if let Some(node) = graph.nodes.get(&id) {
-            pending.extend(node.dependencies());
+            if let Node::Call { function, args } = node
+                && function == "flextext_parse_field"
+                && let [input, _, _] = args.as_slice()
+            {
+                // Literal layout/path metadata is embedded by lowering, so only
+                // the input remains a runtime expression dependency. A constant
+                // shared with another expression is still visited from that edge.
+                pending.insert(*input);
+            } else {
+                pending.extend(node.dependencies());
+            }
         }
     }
     reachable

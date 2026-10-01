@@ -17,6 +17,7 @@ mod collection_find;
 mod concatenate;
 mod dynamic_documents;
 mod dynamic_targets;
+mod embedded_projection_reachability;
 mod extra_sources;
 mod failures;
 mod grouping;
