@@ -598,6 +598,14 @@ complement and case-folding order. Unknown/Zzzz and Hrkt retain typed errors
 because the pinned catalog has no corresponding table. Ordinary host blocks
 outside this selected profile keep their existing behavior.
 
+The same profile supports 64 publicly reachable Unicode 16 binary properties
+and 121 normalized aliases. `Alphabetic`, `Lowercase` and `Uppercase` retain
+their exact scalar sets rather than substituting general categories. Aliases
+share a canonical binary cache identity; case folding still precedes complement,
+and class operations retain their existing work limits. `InCB` and Boolean-valued
+binary queries remain unsupported in the pinned Rust vocabulary. Ordinary
+no-profile host property behavior remains unchanged.
+
 The scalar matcher rejects unsupported host groups and escapes. It caps its AST
 at 8,192 nodes and structural height at
 256 before recursive compilation, expanded instructions at 163,840,
@@ -628,7 +636,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports forty-two warning-free designs: JSON to
+An opt-in local-corpus smoke test imports forty-three warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -810,6 +818,12 @@ current and enclosing XML fields. The forty-second selects address lines and
 composes substring functions, preserving office order and omitting the parent
 location when an address is absent. Its native XML readback comparison covers
 every mapped field; declared but unmapped fields remain outside that comparison.
+The forty-third combines nested office/department grouping, sentinel-to-Null
+conditionals, numeric defaults and a generated zero-or-one optional name group.
+An independent row evaluator constructs the full expected typed output and
+checks four valid graph mutations. Generated JSON string and byte hosts preserve
+group order, numeric adaptation and scalar/optional-group omission. This case
+adds no physical or generated XML codec comparison.
 Ordinary corpus JSON hosts call both string and UTF-8 byte entry points with
 identical primary and named input content, then require exact output bytes before
 the existing interpreter comparison. Specialized typed, XML and dynamic-input
