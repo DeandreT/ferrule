@@ -207,6 +207,7 @@ fn build_boundary_snarl(
 ) -> Snarl<CanvasNode> {
     let source_blocks = source_blocks(&project.source);
     let target_blocks = target_blocks(target_schema);
+    let owned_items = crate::graph_viewer::project_sequence_item_ids(project);
 
     let mut snarl = Snarl::new();
     for block in 0..source_blocks.len() {
@@ -219,7 +220,7 @@ fn build_boundary_snarl(
         .nodes
         .iter()
         .filter_map(|(&id, node)| match node {
-            Node::SourceField { path, frame } => {
+            Node::SourceField { path, frame } if !owned_items.contains(&id) => {
                 source_pin_for_field(&source_blocks, frame, path).map(|pin| (id, pin))
             }
             _ => None,
@@ -281,13 +282,14 @@ fn build_boundary_snarl(
         }
     }
 
-    sync_endpoint_wires(
+    sync_endpoint_wires_with_owned_items(
         &project.graph,
         root_scope,
         &source_blocks,
         &target_blocks,
         &EndpointScrollState::default(),
         &mut snarl,
+        &owned_items,
     );
 
     let mut initial_sizes = std::collections::BTreeMap::new();
@@ -343,6 +345,30 @@ pub(crate) fn sync_endpoint_wires(
     scroll: &EndpointScrollState,
     snarl: &mut Snarl<CanvasNode>,
 ) {
+    let owned_items =
+        crate::graph_viewer::sequence_item_ids(graph, root_scope, &[], &[], Default::default());
+    sync_endpoint_wires_with_owned_items(
+        graph,
+        root_scope,
+        source_blocks,
+        target_blocks,
+        scroll,
+        snarl,
+        &owned_items,
+    );
+}
+
+/// Project-aware synchronization retains generated item identity even when
+/// malformed imported source paths happen to match physical source leaves.
+pub(crate) fn sync_endpoint_wires_with_owned_items(
+    graph: &mapping::Graph,
+    root_scope: &Scope,
+    source_blocks: &[SourceBlock],
+    target_blocks: &[TargetBlock],
+    scroll: &EndpointScrollState,
+    snarl: &mut Snarl<CanvasNode>,
+    owned_items: &std::collections::BTreeSet<NodeId>,
+) {
     let mut source_nodes = std::collections::BTreeMap::new();
     let mut target_nodes = std::collections::BTreeMap::new();
     let mut graph_nodes = std::collections::BTreeMap::new();
@@ -364,7 +390,7 @@ pub(crate) fn sync_endpoint_wires(
         .nodes
         .iter()
         .filter_map(|(&id, node)| match node {
-            Node::SourceField { path, frame } => {
+            Node::SourceField { path, frame } if !owned_items.contains(&id) => {
                 source_pin_for_field(source_blocks, frame, path).map(|pin| (id, pin))
             }
             _ => None,
@@ -451,3 +477,7 @@ pub(crate) fn sync_endpoint_wires(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "canvas/sequence_item_tests.rs"]
+mod sequence_item_tests;

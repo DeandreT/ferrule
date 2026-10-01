@@ -908,6 +908,13 @@ impl FerruleApp {
                                 scope_target_chain(&target.root, &self.selected_scope);
                             let target_fields =
                                 binding_target_fields(&target.schema, &target_chain);
+                            let output_profile = crate::scope_editor::output_profile(
+                                &target.root,
+                                &target.schema,
+                                &self.selected_scope,
+                                &target.options,
+                                target.path.as_deref(),
+                            );
                             let scope = scope_at_mut(&mut target.root, &self.selected_scope);
                             show_scope_editor(
                                 ui,
@@ -916,6 +923,7 @@ impl FerruleApp {
                                 &source_paths,
                                 &target_fields,
                                 nested,
+                                output_profile,
                             );
                         }
                         None => {
@@ -923,6 +931,13 @@ impl FerruleApp {
                                 scope_target_chain(&self.project.root, &self.selected_scope);
                             let target_fields =
                                 binding_target_fields(&self.project.target, &target_chain);
+                            let output_profile = crate::scope_editor::output_profile(
+                                &self.project.root,
+                                &self.project.target,
+                                &self.selected_scope,
+                                &self.project.target_options,
+                                self.project.target_path.as_deref(),
+                            );
                             let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
                             show_scope_editor(
                                 ui,
@@ -931,6 +946,7 @@ impl FerruleApp {
                                 &source_paths,
                                 &target_fields,
                                 nested,
+                                output_profile,
                             );
                         }
                     }
@@ -1034,13 +1050,15 @@ impl FerruleApp {
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = source_blocks(&self.project.source);
             let target_blocks = target_blocks(&self.project.target);
-            crate::app::sync_endpoint_wires(
+            let owned_items = crate::graph_viewer::project_sequence_item_ids(&self.project);
+            crate::app::sync_endpoint_wires_with_owned_items(
                 &self.project.graph,
                 &self.project.root,
                 &source_blocks,
                 &target_blocks,
                 &self.main_canvas.endpoint_scroll,
                 &mut self.main_canvas.snarl,
+                &owned_items,
             );
             let mut viewer = GraphViewer {
                 graph: &mut self.project.graph,

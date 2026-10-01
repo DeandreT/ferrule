@@ -116,13 +116,14 @@ impl FerruleApp {
         let Some(pending) = self.pending_auto_connect.take() else {
             return;
         };
+        let owned_items = crate::graph_viewer::project_sequence_item_ids(&self.project);
         let result = match pending.target {
             AutoConnectTarget::Primary => {
                 let Some(scope) = scope_at_mut(&mut self.project.root, &pending.scope_path) else {
                     self.status = "auto-connect selection no longer exists".to_owned();
                     return;
                 };
-                apply_auto_connect(&mut self.project.graph, scope, &pending.plan)
+                apply_auto_connect(&mut self.project.graph, scope, &pending.plan, &owned_items)
             }
             AutoConnectTarget::Named(index) => {
                 let Some(target) = self.project.extra_targets.get_mut(index) else {
@@ -133,7 +134,7 @@ impl FerruleApp {
                     self.status = "auto-connect selection no longer exists".to_owned();
                     return;
                 };
-                apply_auto_connect(&mut self.project.graph, scope, &pending.plan)
+                apply_auto_connect(&mut self.project.graph, scope, &pending.plan, &owned_items)
             }
         };
         let applied = match result {
