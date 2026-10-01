@@ -5,7 +5,7 @@ use crate::JsonFormatError;
 
 const MAX_DOCUMENTS: usize = 256;
 const MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
-const MAX_REFERENCE_DEPTH: usize = 64;
+pub(super) const MAX_REFERENCE_DEPTH: usize = 64;
 const MAX_JSON_DEPTH: usize = 128;
 const MAX_REFERENCES: usize = 100_000;
 const EXTERNAL_DEFS_KEY: &str = "__ferrule_external_documents";
@@ -96,6 +96,7 @@ struct Document {
 
 struct Loader {
     package_root: PathBuf,
+    allow_external_files: bool,
     indexes: BTreeMap<PathBuf, usize>,
     documents: Vec<Document>,
     total_bytes: usize,
@@ -154,6 +155,7 @@ pub(super) fn load(path: &Path, package_root: &Path) -> Result<serde_json::Value
 
     let mut loader = Loader {
         package_root,
+        allow_external_files: true,
         indexes: BTreeMap::new(),
         documents: Vec::new(),
         total_bytes: 0,
@@ -161,6 +163,44 @@ pub(super) fn load(path: &Path, package_root: &Path) -> Result<serde_json::Value
     };
     let root_index = loader.load_document(&root_path, 0)?;
     debug_assert_eq!(root_index, 0);
+    loader.finish()
+}
+
+pub(super) fn load_inline(text: &str) -> Result<serde_json::Value, JsonFormatError> {
+    if text.len() > MAX_TOTAL_BYTES {
+        return Err(JsonFormatError::SchemaResourceLimit {
+            kind: "total bytes",
+            limit: MAX_TOTAL_BYTES,
+        });
+    }
+    let mut value = serde_json::from_str(text)?;
+    let dialect = validation_dialect_for_document(&value);
+    let mut loader = Loader {
+        package_root: PathBuf::new(),
+        allow_external_files: false,
+        indexes: BTreeMap::new(),
+        documents: vec![Document {
+            path: PathBuf::from("<memory>"),
+            value: serde_json::Value::Null,
+        }],
+        total_bytes: text.len(),
+        references: 0,
+    };
+    loader.rewrite_references(
+        &mut value,
+        RewriteContext {
+            document_index: 0,
+            reference_depth: 0,
+            json_depth: 0,
+            ignore_ref_siblings: matches!(
+                dialect,
+                ValidationDialect::Draft4 | ValidationDialect::Draft6 | ValidationDialect::Draft7
+            ),
+            dialect,
+        },
+        JsonPosition::Schema,
+    )?;
+    loader.documents[0].value = value;
     loader.finish()
 }
 
@@ -440,6 +480,13 @@ impl Loader {
         let target_index = if resource.is_empty() {
             document_index
         } else {
+            if !self.allow_external_files {
+                return self.resource_error(
+                    document_index,
+                    reference,
+                    "in-memory schemas cannot load external resources",
+                );
+            }
             let decoded = decode_uri_component(resource).ok_or_else(|| {
                 self.make_resource_error(
                     document_index,

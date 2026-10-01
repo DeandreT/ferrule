@@ -7,9 +7,10 @@ use std::path::Path;
 use ir::{SchemaKind, SchemaNode, Value};
 use mapping::{Graph, Node, NodeId};
 
+use crate::MfdError;
+
 use super::json_serializer::entries_xml;
 use super::schema::{GeneratedSibling, KeyAlloc, unresolved_json_schema_attribute, xml_escape};
-use crate::MfdError;
 
 const MAX_COMPONENTS: usize = 1_024;
 const MAX_OUTPUTS: usize = 4_096;
@@ -115,7 +116,7 @@ pub(super) fn render(
     uid: &mut u32,
     mfd_path: &Path,
     warnings: &mut Vec<String>,
-) -> Exports {
+) -> Result<Exports, MfdError> {
     let mut exports = Exports::default();
     let mut groups = BTreeMap::<(NodeId, String), Group>::new();
     for (&node, value) in &graph.nodes {
@@ -171,19 +172,25 @@ pub(super) fn render(
         let nodes = group.fields.values().flatten().copied().collect::<Vec<_>>();
         let provenance = group.unresolved_schema_reference.clone();
         let first_node = group.first_node;
-        if let Err(reason) = render_group(group, keys, uid, mfd_path, &mut exports) {
-            for node in nodes {
-                warnings.push(format!(
-                    "JSON string parser node {node} is unsupported: {reason}; skipped"
-                ));
+        match render_group(group, keys, uid, mfd_path, &mut exports) {
+            Ok(()) => {
+                if let Some(reference) = provenance {
+                    warnings.push(format!(
+                        "JSON string parser node {first_node} uses a generated entry-tree schema because original schema `{reference}` was unavailable at import"
+                    ));
+                }
             }
-        } else if let Some(reference) = provenance {
-            warnings.push(format!(
-                "JSON string parser node {first_node} uses a generated entry-tree schema because original schema `{reference}` was unavailable at import"
-            ));
+            Err(error @ MfdError::SchemaFidelity(_)) => return Err(error),
+            Err(reason) => {
+                for node in nodes {
+                    warnings.push(format!(
+                        "JSON string parser node {node} is unsupported: {reason}; skipped"
+                    ));
+                }
+            }
         }
     }
-    exports
+    Ok(exports)
 }
 
 fn read_candidate(args: &[NodeId], graph: &Graph) -> Result<Candidate, String> {
@@ -242,9 +249,11 @@ fn render_group(
     uid: &mut u32,
     mfd_path: &Path,
     exports: &mut Exports,
-) -> Result<(), String> {
-    let schema_contents =
-        format_json::json_schema::export(&group.schema).map_err(|error| error.to_string())?;
+) -> Result<(), MfdError> {
+    let schema_contents = super::json_schema_fidelity::render(
+        &group.schema,
+        &format!("JSON string parser node {}", group.first_node),
+    )?;
     let input = keys.next();
     exports.inputs.push((group.input, input));
     let mut ports = BTreeMap::new();

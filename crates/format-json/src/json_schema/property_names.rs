@@ -5,7 +5,10 @@ use ir::{
     JsonPropertyNameSetError,
 };
 
-use super::{files, formats, patterns, resolve_ref, string_lengths, unsupported_union};
+use super::{
+    files, formats, import_budget, patterns, push_active_ref, resolve_ref, string_lengths,
+    unsupported_union,
+};
 use crate::JsonFormatError;
 
 pub(super) fn has_keyword(schema: &serde_json::Value) -> bool {
@@ -217,9 +220,13 @@ fn parse_constraint(
                 "propertyNames references must resolve to a supported local schema",
             )
         })?;
-        active_refs.push(reference.to_string());
-        let resolved = parse_constraint(name, resolved, doc, active_refs);
-        active_refs.pop();
+        let resolved = {
+            let _scope = import_budget::SchemaMaterializationScope::enter()?;
+            push_active_ref(active_refs, reference)?;
+            let resolved = parse_constraint(name, resolved, doc, active_refs);
+            active_refs.pop();
+            resolved
+        };
         let resolved = resolved?;
         if !files::ref_siblings_apply(schema) {
             return Ok(resolved);
@@ -229,7 +236,10 @@ fn parse_constraint(
             return Ok(resolved);
         };
         object.remove("$ref");
-        let siblings = parse_constraint(name, &siblings, doc, active_refs)?;
+        let siblings = {
+            let _scope = import_budget::SchemaMaterializationScope::enter()?;
+            parse_constraint(name, &siblings, doc, active_refs)?
+        };
         return intersect(name, resolved, siblings);
     }
 
@@ -249,7 +259,10 @@ fn parse_constraint(
             })?;
         let parsed = branches
             .iter()
-            .map(|branch| parse_constraint(name, branch, doc, active_refs))
+            .map(|branch| {
+                let _scope = import_budget::SchemaMaterializationScope::enter()?;
+                parse_constraint(name, branch, doc, active_refs)
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let composed = match keyword {
             "allOf" => {
@@ -271,7 +284,10 @@ fn parse_constraint(
         direct = intersect(name, direct, composed)?;
     }
     if let Some(negated) = schema.get("not") {
-        let negated = parse_constraint(name, negated, doc, active_refs)?;
+        let negated = {
+            let _scope = import_budget::SchemaMaterializationScope::enter()?;
+            parse_constraint(name, negated, doc, active_refs)?
+        };
         direct = intersect(name, direct, complement(name, negated)?)?;
     }
     if schema.get("if").is_some() || schema.get("then").is_some() || schema.get("else").is_some() {

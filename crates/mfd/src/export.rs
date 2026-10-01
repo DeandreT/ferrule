@@ -31,6 +31,7 @@ mod flextext_parser;
 mod function;
 mod join;
 mod json_parser;
+mod json_schema_fidelity;
 mod json_serializer;
 mod mapped_sequence;
 mod native_adjacency_tree;
@@ -443,7 +444,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         native_datetime_casts: native_datetime_casts.calls(),
         mfd_path: path,
         user_functions: &user_functions,
-    });
+    })?;
     json_parser::ensure_provenance_emitted(&project.graph, &json_parser_outputs)?;
     if let Some(plan) = &native_group_fahrenheit {
         plan.seed_aliases(&mut node_out_key)?;
@@ -1032,7 +1033,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     {
         artifacts.push((sibling.path, sibling.contents));
     }
-    let report = compatibility::profile(&out, warnings)?;
+    let report = compatibility::profile(&out, warnings, path, &artifacts)?;
     // Publish the design after its schema siblings reach their final paths.
     artifacts.push((path.to_path_buf(), out));
     Ok(PreparedExport { artifacts, report })

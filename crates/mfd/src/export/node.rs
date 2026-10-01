@@ -5,6 +5,8 @@ use std::path::Path;
 use ir::{Value, XML_TEXT_FIELD};
 use mapping::{Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
 
+use crate::MfdError;
+
 use super::auto_number::{self, AutoNumbers};
 use super::database_xml::DirectColumns;
 use super::decimal_input::{self, DecimalInputs};
@@ -45,7 +47,7 @@ pub(super) struct RenderedNodes {
     pub(super) json_parser_outputs: BTreeSet<NodeId>,
 }
 
-pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
+pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
     let RenderArgs {
         project,
         sources,
@@ -231,7 +233,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         uid,
         mfd_path,
         warnings,
-    );
+    )?;
     let flextext_parsers = super::flextext_parser::render(
         &project.graph,
         &excluded_native_parsers,
@@ -939,7 +941,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 let preview_attr = preview.as_ref().map_or_else(String::new, |value| {
                     format!(
                         " previewvalue=\"{}\" usepreviewvalue=\"1\"",
-                        xml_escape_preview_attribute(value)
+                        xml_escape(value)
                     )
                 });
                 let _ = write!(
@@ -964,7 +966,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 let preview_attr = preview.as_ref().map_or_else(String::new, |value| {
                     format!(
                         " previewvalue=\"{}\" usepreviewvalue=\"1\"",
-                        xml_escape_preview_attribute(value)
+                        xml_escape(value)
                     )
                 });
                 let _ = write!(
@@ -996,7 +998,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                             json_serializer_inputs.extend(rendered.inputs);
                             siblings.push(rendered.sibling);
                         }
-                        Err(reason) => warnings.push(format!(
+                        Err(super::json_serializer::RenderError::SchemaFidelity(error)) => {
+                            return Err(error);
+                        }
+                        Err(super::json_serializer::RenderError::Unsupported(reason)) => warnings.push(format!(
                             "JSON string serializer node {id} is unsupported: {reason}; skipped"
                         )),
                     }
@@ -1206,19 +1211,12 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         }
     }
 
-    RenderedNodes {
+    Ok(RenderedNodes {
         position_inputs,
         sequence_context_pins,
         siblings,
         json_parser_outputs: json_parsers.outputs.keys().copied().collect(),
-    }
-}
-
-fn xml_escape_preview_attribute(value: &str) -> String {
-    xml_escape(value)
-        .replace('\r', "&#xD;")
-        .replace('\n', "&#xA;")
-        .replace('\t', "&#x9;")
+    })
 }
 
 fn connect_deferred_inputs(

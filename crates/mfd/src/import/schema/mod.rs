@@ -153,6 +153,13 @@ pub(super) fn read_pdf_component(
     pdf::read(component, resources, warnings)
 }
 
+pub(super) fn parse_native_pdf_template_text(
+    source: &str,
+    expected_root: &str,
+) -> Result<mapping::PdfLayout, String> {
+    pdf::parse_native_template_text(source, expected_root)
+}
+
 pub(super) fn read_xbrl_component(
     component: &roxmltree::Node<'_, '_>,
     resources: &ResourceResolver,

@@ -1,4 +1,5 @@
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 use roxmltree::{Document, Node};
 use serde::Serialize;
@@ -45,6 +46,7 @@ pub enum ExportCompatibilityFeature {
     UnresolvedJsonSchema,
     CapturedUserFunction,
     CapturedHttpPost,
+    PdfLayout,
     XmlSerializationIndent,
     /// Newly emitted metadata is conservative until its native behavior is known.
     UnknownExtension,
@@ -102,10 +104,51 @@ impl fmt::Display for ExportReport {
 
 /// Inspect emitted components rather than only the input graph: lowering can
 /// introduce extension components, and unreachable nodes may not be exported.
-pub(super) fn profile(xml: &str, warnings: Vec<String>) -> Result<ExportReport, MfdError> {
+pub(super) fn profile(
+    xml: &str,
+    warnings: Vec<String>,
+    mfd_path: &Path,
+    siblings: &[(PathBuf, String)],
+) -> Result<ExportReport, MfdError> {
     let document = Document::parse(xml)?;
     let mut issues = Vec::new();
     for node in document.descendants().filter(Node::is_element) {
+        if node.has_tag_name("component")
+            && node.attribute("library") == Some("pdf")
+            && node.attribute("kind") == Some("34")
+        {
+            let template = node
+                .descendants()
+                .find(|child| child.has_tag_name("document"));
+            let native = template
+                .and_then(|template| {
+                    Some((
+                        template.attribute("schemafile")?,
+                        template.attribute("root")?,
+                    ))
+                })
+                .and_then(|(name, root)| {
+                    let expected = mfd_path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .join(name);
+                    siblings
+                        .iter()
+                        .find(|(path, _)| path == &expected)
+                        .map(|(_, contents)| (contents, root))
+                })
+                .is_some_and(|(contents, root)| {
+                    crate::import::parse_native_pdf_template_text(contents, root).is_ok()
+                });
+            if !native {
+                push_issue(
+                    &mut issues,
+                    node,
+                    ExportCompatibilityFeature::PdfLayout,
+                    "the PDF extraction template requires Ferrule's layout format or has no validated native template",
+                );
+            }
+        }
         if node.has_tag_name("component") && node.attribute("library") == Some("ferrule") {
             let recursive = node
                 .descendants()

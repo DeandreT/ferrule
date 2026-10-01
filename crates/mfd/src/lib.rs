@@ -97,4 +97,6 @@ pub enum MfdError {
     IncompatibleExport(Box<ExportReport>),
     #[error("executable import rejected: {0}")]
     IncompatibleImport(Box<ImportReport>),
+    #[error("JSON Schema fidelity failure: {0}")]
+    SchemaFidelity(String),
 }

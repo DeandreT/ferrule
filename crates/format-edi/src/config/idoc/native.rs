@@ -68,7 +68,102 @@ pub fn render_native_config(config: &IdocNativeConfig) -> Result<String, IdocNat
     if output.len() > MAX_IDOC_NATIVE_BYTES {
         return Err(IdocNativeConfigError::Limit("file size"));
     }
+    let reparsed = parse_native_config(&output).map_err(|error| {
+        IdocNativeConfigError::Invalid(format!(
+            "rendered IDoc configuration cannot be parsed back: {error}"
+        ))
+    })?;
+    if reparsed != *config {
+        return Err(IdocNativeConfigError::Invalid(format!(
+            "rendered IDoc configuration changes descriptor metadata at {}",
+            if reparsed.name() != config.name() {
+                "BEGIN_IDOC".to_string()
+            } else {
+                first_changed_path(config.nodes(), reparsed.nodes())
+                    .unwrap_or_else(|| "IDoc structure".to_string())
+            }
+        )));
+    }
     Ok(output)
+}
+
+fn first_changed_path(original: &[IdocNativeNode], reparsed: &[IdocNativeNode]) -> Option<String> {
+    if original.len() != reparsed.len() {
+        return Some("node count".to_string());
+    }
+    for (original, reparsed) in original.iter().zip(reparsed) {
+        match (original, reparsed) {
+            (IdocNativeNode::Group(original), IdocNativeNode::Group(reparsed)) => {
+                let prefix = format!("group {}", original.number());
+                if original.number() != reparsed.number()
+                    || original.level() != reparsed.level()
+                    || original.status() != reparsed.status()
+                    || original.loop_min() != reparsed.loop_min()
+                    || original.loop_max() != reparsed.loop_max()
+                {
+                    return Some(format!("{prefix} / header"));
+                }
+                if let Some(path) = first_changed_path(original.children(), reparsed.children()) {
+                    return Some(format!("group {} / {path}", original.number()));
+                }
+            }
+            (IdocNativeNode::Segment(original), IdocNativeNode::Segment(reparsed)) => {
+                let segment = format!("segment {}", original.record_name());
+                if original.record_name() != reparsed.record_name()
+                    || original.segment_type() != reparsed.segment_type()
+                    || original.qualified() != reparsed.qualified()
+                    || original.level() != reparsed.level()
+                    || original.status() != reparsed.status()
+                    || original.loop_min() != reparsed.loop_min()
+                    || original.loop_max() != reparsed.loop_max()
+                {
+                    return Some(format!("{segment} / header"));
+                }
+                if original.fields().len() != reparsed.fields().len() {
+                    return Some(format!("{segment} / field count"));
+                }
+                for (original_field, reparsed_field) in
+                    original.fields().iter().zip(reparsed.fields())
+                {
+                    let prefix = format!(
+                        "segment {} / field {}",
+                        original.record_name(),
+                        original_field.name()
+                    );
+                    if original_field.name() != reparsed_field.name()
+                        || original_field.field_type() != reparsed_field.field_type()
+                        || original_field.length() != reparsed_field.length()
+                        || original_field.position() != reparsed_field.position()
+                        || original_field.first_byte() != reparsed_field.first_byte()
+                        || original_field.last_byte() != reparsed_field.last_byte()
+                    {
+                        return Some(format!("{prefix} / metadata"));
+                    }
+                    if original_field.text() != reparsed_field.text() {
+                        return Some(format!("{prefix} / TEXT"));
+                    }
+                    if original_field.codes().len() != reparsed_field.codes().len() {
+                        return Some(format!("{prefix} / code count"));
+                    }
+                    for (original_code, reparsed_code) in
+                        original_field.codes().iter().zip(reparsed_field.codes())
+                    {
+                        if original_code.value() != reparsed_code.value() {
+                            return Some(format!("{prefix} / VALUE"));
+                        }
+                        if original_code.text() != reparsed_code.text() {
+                            return Some(format!(
+                                "{prefix} / VALUE_TEXT for code {:?}",
+                                original_code.value()
+                            ));
+                        }
+                    }
+                }
+            }
+            _ => return Some("node kind".to_string()),
+        }
+    }
+    None
 }
 
 fn render_node(
@@ -473,6 +568,42 @@ fn invalid_line(line: Line<'_>, reason: impl Into<String>) -> IdocNativeConfigEr
 mod tests {
     use super::*;
 
+    fn descriptor_with_text(field_text: &str, code_text: &str) -> IdocNativeConfig {
+        let nonzero = |value| NonZeroU32::new(value).unwrap();
+        let field = IdocNativeField::new(
+            "CODE",
+            field_text,
+            IdocNativeFieldType::Character,
+            nonzero(3),
+            nonzero(1),
+            nonzero(64),
+            nonzero(66),
+            vec![IdocNativeCode::new(" A ", code_text).unwrap()],
+        )
+        .unwrap();
+        let segment = IdocNativeSegment::new(
+            "E2ITEM",
+            "E1ITEM",
+            false,
+            nonzero(2),
+            IdocNativeStatus::Optional,
+            0,
+            1,
+            vec![field],
+        )
+        .unwrap();
+        let group = IdocNativeGroup::new(
+            nonzero(1),
+            nonzero(1),
+            IdocNativeStatus::Mandatory,
+            1,
+            1,
+            vec![IdocNativeNode::Segment(segment)],
+        )
+        .unwrap();
+        IdocNativeConfig::new("TEST01", vec![IdocNativeNode::Group(group)]).unwrap()
+    }
+
     fn synthetic() -> &'static str {
         "BEGIN_SEGMENT_SECTION\nBEGIN_IDOC TEST01\nBEGIN_GROUP 1\nLEVEL 01\nSTATUS MANDATORY\nLOOPMIN 0000000001\nLOOPMAX 0000000001\nBEGIN_SEGMENT E2ITEM\nSEGMENTTYPE E1ITEM\nQUALIFIED\nLEVEL 02\nSTATUS OPTIONAL\nLOOPMIN 0000000000\nLOOPMAX 9999999999\nBEGIN_FIELDS\nNAME CODE\nTEXT Code description\nTYPE CHARACTER\nLENGTH 000003\nFIELD_POS 0001\nBYTE_FIRST 000064\nBYTE_LAST 000066\nVALUE ''\nVALUE_TEXT Unset\nVALUE 'A'\nVALUE_TEXT Active\nEND_FIELDS\nEND_SEGMENT\nEND_GROUP\nEND_IDOC\nEND_SEGMENT_SECTION\n"
     }
@@ -520,6 +651,27 @@ mod tests {
         std::fs::remove_file(path).unwrap();
         assert_eq!((schema, layout), (imported.schema, imported.layout));
         assert_eq!(imported.native, Some(descriptor));
+    }
+
+    #[test]
+    fn renderer_rejects_field_and_code_labels_that_lose_leading_space() {
+        let field = descriptor_with_text("  Leading field", "Active");
+        let error = render_native_config(&field).unwrap_err();
+        assert!(matches!(error, IdocNativeConfigError::Invalid(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("group 1 / segment E2ITEM / field CODE / TEXT")
+        );
+
+        let code = descriptor_with_text("Field", "  Leading code");
+        let error = render_native_config(&code).unwrap_err();
+        assert!(matches!(error, IdocNativeConfigError::Invalid(_)));
+        assert!(error.to_string().contains("VALUE_TEXT for code \" A \""));
+
+        let representable = descriptor_with_text("Field  ", "Active  ");
+        let rendered = render_native_config(&representable).unwrap();
+        assert_eq!(parse_native_config(&rendered).unwrap(), representable);
     }
 
     #[test]

@@ -1045,6 +1045,7 @@ public static class FerruleXml
                     '>' => "&gt;",
                     '\'' => "&apos;",
                     '"' => "&quot;",
+                    '\r' => "&#xD;",
                     _ => character.ToString(),
                 });
             }

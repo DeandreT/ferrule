@@ -136,26 +136,41 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<Stri
     }
     let source = String::from_utf8(bytes)
         .map_err(|_| format!("PDF template `{}` is not valid UTF-8", path.display()))?;
-    if source.contains("<!DOCTYPE") {
+    parse_layout_text(&source, expected_root, true)
+}
+
+/// Parse a generated native-shaped template without permitting Ferrule's
+/// private layout payload. Export uses the same bounded parser as import to
+/// check every emitted command and coordinate before publishing artifacts.
+pub(super) fn parse_native_template_text(
+    source: &str,
+    expected_root: &str,
+) -> Result<PdfLayout, String> {
+    parse_layout_text(source, expected_root, false).map(|(layout, _)| layout)
+}
+
+fn parse_layout_text(
+    source: &str,
+    expected_root: &str,
+    allow_ferrule_layout: bool,
+) -> Result<(PdfLayout, Vec<String>), String> {
+    if source.len() > MAX_PXT_BYTES {
         return Err(format!(
-            "PDF template `{}` uses a document type declaration",
-            path.display()
+            "PDF template exceeds the {MAX_PXT_BYTES}-byte limit"
         ));
     }
-    let document = roxmltree::Document::parse(&source).map_err(|error| {
-        format!(
-            "could not parse PDF template `{}` ({error})",
-            path.display()
-        )
-    })?;
+    if source.contains("<!DOCTYPE") {
+        return Err("PDF template uses a document type declaration".to_string());
+    }
+    let document = roxmltree::Document::parse(source)
+        .map_err(|error| format!("could not parse PDF template ({error})"))?;
     let elements = document
         .descendants()
         .filter(roxmltree::Node::is_element)
         .collect::<Vec<_>>();
     if elements.len() > MAX_PXT_ELEMENTS {
         return Err(format!(
-            "PDF template `{}` exceeds the {MAX_PXT_ELEMENTS}-element limit",
-            path.display()
+            "PDF template exceeds the {MAX_PXT_ELEMENTS}-element limit"
         ));
     }
     if elements.iter().any(|element| {
@@ -166,8 +181,7 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<Stri
             > MAX_PXT_DEPTH
     }) {
         return Err(format!(
-            "PDF template `{}` exceeds the {MAX_PXT_DEPTH}-level depth limit",
-            path.display()
+            "PDF template exceeds the {MAX_PXT_DEPTH}-level depth limit"
         ));
     }
 
@@ -176,6 +190,9 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<Stri
         return Err("PDF template root is not <Document>".to_string());
     }
     if let Some(layout) = child(&root, "FerruleLayout") {
+        if !allow_ferrule_layout {
+            return Err("PDF native template cannot contain FerruleLayout".to_string());
+        }
         return parse_canonical_layout(&layout, expected_root);
     }
     let model_root = child(&root, "Template")
@@ -211,16 +228,25 @@ fn parse_canonical_layout(
     node: &roxmltree::Node<'_, '_>,
     expected_root: &str,
 ) -> Result<(PdfLayout, Vec<String>), String> {
-    if node.attribute("version") != Some("1") {
-        return Err("PDF FerruleLayout has an unsupported version".to_string());
-    }
     let encoded = node
         .text()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "PDF FerruleLayout is empty".to_string())?;
-    let layout = serde_json::from_str::<PdfLayout>(encoded)
-        .map_err(|error| format!("invalid PDF FerruleLayout ({error})"))?;
+    let layout = match node.attribute("version") {
+        Some("1") => serde_json::from_str::<PdfLayout>(encoded)
+            .map_err(|error| format!("invalid PDF FerruleLayout ({error})"))?,
+        Some("2") => {
+            let payload: serde_json::Value = serde_json::from_str(encoded)
+                .map_err(|error| format!("invalid PDF FerruleLayout ({error})"))?;
+            if payload.get("__ferrule_file").is_none() {
+                return Err("PDF FerruleLayout version 2 requires a versioned payload".to_string());
+            }
+            mapping::pdf_layout_file::decode_str(encoded)
+                .map_err(|error| format!("invalid PDF FerruleLayout ({error})"))?
+        }
+        _ => return Err("PDF FerruleLayout has an unsupported version".to_string()),
+    };
     if layout.root_name() != expected_root {
         return Err(format!(
             "PDF template root `{}` does not match document root `{expected_root}`",
@@ -956,9 +982,37 @@ mod tests {
 
     use super::{
         collect_merge_sources, last_capture_region, parse_coordinate, parse_groups_from_list,
-        parse_page_filter, parse_region,
+        parse_native_template_text, parse_page_filter, parse_region,
     };
     use mapping::{PdfCapture, PdfCommand, PdfCoordinate, PdfGroup, PdfReference, PdfRegion};
+
+    #[test]
+    fn native_template_self_check_enforces_byte_element_and_depth_limits() {
+        let oversized = format!("<Document>{}</Document>", "x".repeat(1024 * 1024));
+        assert!(
+            parse_native_template_text(&oversized, "Document")
+                .unwrap_err()
+                .contains("1048576-byte limit")
+        );
+
+        let many_elements = format!("<Document>{}</Document>", "<Extra/>".repeat(4096));
+        assert!(
+            parse_native_template_text(&many_elements, "Document")
+                .unwrap_err()
+                .contains("4096-element limit")
+        );
+
+        let deeply_nested = format!(
+            "<Document>{}{}</Document>",
+            "<Extra>".repeat(64),
+            "</Extra>".repeat(64)
+        );
+        assert!(
+            parse_native_template_text(&deeply_nested, "Document")
+                .unwrap_err()
+                .contains("64-level depth limit")
+        );
+    }
 
     #[test]
     fn parses_absolute_and_anchor_coordinates() {

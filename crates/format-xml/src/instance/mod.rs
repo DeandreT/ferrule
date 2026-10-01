@@ -932,7 +932,7 @@ fn write_single_node<W: std::io::Write>(
             push_element_namespace(&mut start, default_namespace, namespace_changed);
             writer.write_event(Event::Start(start))?;
             let text = format_schema_scalar(schema, *ty, value)?;
-            writer.write_event(Event::Text(BytesText::new(&text)))?;
+            writer.write_event(Event::Text(xml_text(&text)))?;
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
             Ok(())
         }
@@ -1047,7 +1047,7 @@ fn write_single_node<W: std::io::Write>(
                             return Err(shape_error(child_schema, "a text scalar", child_instance));
                         };
                         let text = format_schema_scalar(child_schema, ty, value)?;
-                        writer.write_event(Event::Text(BytesText::new(&text)))?;
+                        writer.write_event(Event::Text(xml_text(&text)))?;
                     }
                 }
             }
@@ -1431,7 +1431,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                         format!("text item {index} has no string text value"),
                     )
                 })?;
-            writer.write_event(Event::Text(BytesText::new(text)))?;
+            writer.write_event(Event::Text(xml_text(text)))?;
             ends_with_element = false;
             continue;
         }
@@ -1609,6 +1609,15 @@ fn group_has_serialized_content(children: &[SchemaNode], fields: &[(String, Inst
                 _ => true,
             }
         })
+}
+
+fn xml_text(value: &str) -> BytesText<'_> {
+    if value.contains('\r') {
+        // Literal carriage returns are normalized to line feeds by XML readers.
+        BytesText::from_escaped(quick_xml::escape::escape(value).replace('\r', "&#xD;"))
+    } else {
+        BytesText::new(value)
+    }
 }
 
 fn push_attribute(start: &mut BytesStart<'_>, name: &str, value: &str) {

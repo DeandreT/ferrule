@@ -29,7 +29,10 @@ pub(super) struct JsonComponentArgs<'a> {
 pub(super) fn render_json_component(
     args: JsonComponentArgs<'_>,
 ) -> Result<RenderedSchemaComponent, MfdError> {
-    let schema_contents = format_json::json_schema::export(args.schema)?;
+    let schema_contents = super::super::json_schema_fidelity::render(
+        args.schema,
+        &format!("dynamic JSON boundary `{}`", args.component_name),
+    )?;
     let stem = args
         .mfd_path
         .file_stem()

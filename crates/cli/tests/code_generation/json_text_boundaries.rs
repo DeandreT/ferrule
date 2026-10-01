@@ -569,7 +569,7 @@ fn interpreter_cases(project: &Project, inputs: &[String]) -> TestResult<Vec<ser
         .collect()
 }
 
-fn run_generated_boundary_cases(
+pub(super) fn run_generated_boundary_cases(
     project: &Project,
     cases: &[serde_json::Value],
     name: &str,

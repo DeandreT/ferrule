@@ -30,6 +30,9 @@ let reopened_pipeline = mapping::pipeline_file::decode_str(&pipeline_text)?;
 Both modules also expose `decode_bytes` for UTF-8 input. Ordinary `Project`
 and `Pipeline` Serde serialization remains available as a separate legacy
 wire contract; it does not provide the file codec's exact-value guarantee.
+`mapping::pdf_layout_file` exposes the same three file APIs for standalone PDF
+layout payloads. An enclosing format can impose a smaller byte limit; `.pxt`
+templates exported by ferrule are limited to 1 MiB after XML escaping.
 
 New saves and versioned reads are limited to 64 MiB, including the envelope
 and bit table. JSON syntax depth remains bounded, so the versioned envelope

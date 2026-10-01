@@ -112,7 +112,7 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
     }) {
         crate::import::validate_pipeline_export_graph(&xml)?;
     }
-    let report = compatibility::profile(&xml, warnings)?;
+    let report = compatibility::profile(&xml, warnings, path, &artifacts)?;
     artifacts.push((path.to_path_buf(), xml));
     Ok(PreparedExport { artifacts, report })
 }
