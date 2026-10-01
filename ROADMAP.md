@@ -137,7 +137,7 @@ are preserved.
   remains unverified and the executable import profile rejects them. Cross-type
   dynamic SQL coercion remains unsupported. Missing imported filter predicates skip the dependent
   iteration with a diagnostic instead of producing unfiltered rows.
-- Generated Rust and C# hosts have compiled and executed forty-two supported warning-free
+- Generated Rust and C# hosts have compiled and executed forty-three supported warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -236,6 +236,10 @@ are preserved.
   hosts preserve current and parent fields, numeric adaptation, and omitted
   Location values when Address is absent. Native XML readback matches every
   mapped field; declared but unmapped fields remain outside that comparison.
+  Case forty-three retains nested office/department grouping, sentinel-based
+  scalar omissions, numeric defaults and a generated optional name group.
+  An independent row evaluator checks complete typed output and four valid
+  graph mutations; JSON string and byte hosts preserve the same behavior.
   Ordinary corpus JSON hosts compare exact string and byte API output using
   identical primary and named input content. Specialized hosts retain their
   separately stated coverage.
@@ -265,8 +269,12 @@ are preserved.
   retains the pinned Unicode 16 Script and Script_Extensions catalogs in the
   selected scalar profile, with exact aliases, category precedence, scoped
   Unicode controls and separate host/script cache identities. All 170 sets in
-  each domain use copied scalar ranges with their source notices. The mapping
-  compares matching, replacement, and tokenization through Rust/C# JSON string
+  each domain use copied scalar ranges with their source notices. The selected
+  profile also retains 64 reachable binary-property sets and 121 canonical aliases,
+  including exact Alphabetic/Lowercase/Uppercase distinctions from categories.
+  Binary aliases share bounded cache identities and existing class-work limits;
+  unreachable InCB and Boolean-valued binary queries still reject.
+  The mapping compares matching, replacement, and tokenization through Rust/C# JSON string
   and UTF-8 byte hosts against the interpreter. Broader property vocabularies,
   host-only syntax, and compilation budgets
   remain separate backend differences.
