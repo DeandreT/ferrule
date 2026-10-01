@@ -2193,6 +2193,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         .target_leaf(target_block, to.id.input)
                         .cloned()
                         .ok_or_else(|| format!("target pin {} does not exist", to.id.input))?;
+                    crate::scope_editor::check_static_binding(
+                        self.root_scope,
+                        &target_leaf.chain,
+                        &target_leaf.field,
+                    )?;
                     let displaced = self.binding_node(&target_leaf);
                     let field =
                         self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone());
@@ -2213,6 +2218,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         .target_leaf(target_block, to.id.input)
                         .cloned()
                         .ok_or_else(|| format!("target pin {} does not exist", to.id.input))?;
+                    crate::scope_editor::check_static_binding(
+                        self.root_scope,
+                        &target_leaf.chain,
+                        &target_leaf.field,
+                    )?;
                     let displaced = self.binding_node(&target_leaf);
                     self.set_binding(&target_leaf, from_id);
                     Ok(displaced)
@@ -2364,3 +2374,7 @@ mod endpoint_tests;
 #[cfg(test)]
 #[path = "graph_viewer_shared_target_tests.rs"]
 mod shared_target_tests;
+
+#[cfg(test)]
+#[path = "graph_viewer_copy_target_tests.rs"]
+mod copy_target_tests;
