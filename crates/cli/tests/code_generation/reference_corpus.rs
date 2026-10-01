@@ -1,9 +1,12 @@
-//! Opt-in generated-backend execution against forty supported local, gitignored mappings.
+//! Opt-in generated-backend execution against forty-one supported local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
 
 use super::*;
+
+#[path = "reference_corpus/numeric_picture.rs"]
+mod numeric_picture;
 
 #[derive(Clone, Copy)]
 enum SourceKind {
@@ -43,7 +46,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 40] = [
+const CASES: [CorpusCase; 41] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -284,6 +287,12 @@ const CASES: [CorpusCase; 40] = [
         source_kind: SourceKind::Pdf,
         target_kind: TargetKind::Xml,
     },
+    CorpusCase {
+        sample: numeric_picture::SAMPLE,
+        input: numeric_picture::INPUT,
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Csv,
+    },
 ];
 
 #[test]
@@ -466,8 +475,7 @@ fn run_case(
         project
             .source_path
             .as_deref()
-            .and_then(|path| Path::new(path).file_name())
-            .and_then(OsStr::to_str),
+            .and_then(|path| path.rsplit(['/', '\\']).next()),
         Path::new(case.input).file_name().and_then(OsStr::to_str),
         "{sample}: unexpected source instance"
     );
@@ -1472,7 +1480,15 @@ fn run_case(
         assert_eq!(years[0]["MaximumTemp"], 24.0);
         assert_eq!(years[0]["AverageTemp"], 11.6);
     }
-    let expected_csv = if sample == "Tutorial/ExtractCustomEDIFACT.mfd" {
+    let expected_csv = if sample == numeric_picture::SAMPLE {
+        Some(numeric_picture::assert_case(
+            &project,
+            &source,
+            &source_json,
+            &expected,
+            &expected_json,
+        )?)
+    } else if sample == "Tutorial/ExtractCustomEDIFACT.mfd" {
         assert_eq!(
             project.target_options.delimiter,
             Some(','),
