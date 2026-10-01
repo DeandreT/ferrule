@@ -1516,3 +1516,6 @@ impl eframe::App for FerruleApp {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod sort_controls_tests;

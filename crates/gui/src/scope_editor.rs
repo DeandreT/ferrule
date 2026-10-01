@@ -9,6 +9,8 @@ use mapping::{Binding, Graph, NodeId, Scope, ScopeConstruction, ScopeIteration, 
 
 use crate::path_picker::SourcePathCatalog;
 
+mod sort_controls;
+
 /// Path of child-indices from the project root to the scope being edited.
 pub type ScopePath = Vec<usize>;
 
@@ -709,24 +711,7 @@ pub fn show_scope_editor(
             }
         }
 
-        ui.horizontal(|ui| {
-            ui.label("  sort key:");
-            let mut has_sort = scope.sort_by.is_some();
-            if ui
-                .add_enabled(
-                    scope.sort_by.is_some() || first_node.is_some(),
-                    egui::Checkbox::new(&mut has_sort, "sorted"),
-                )
-                .on_disabled_hover_text("Add a graph node before enabling sorting")
-                .changed()
-            {
-                scope.sort_by = if has_sort { first_node } else { None };
-            }
-            if let Some(sort_by) = &mut scope.sort_by {
-                node_picker(ui, "sort_by_node", sort_by, graph);
-                ui.checkbox(&mut scope.sort_descending, "descending");
-            }
-        });
+        sort_controls::show(ui, scope, graph);
 
         ui.label("  sequence windows:");
         let mut remove_window = None;
