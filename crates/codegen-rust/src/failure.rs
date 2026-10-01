@@ -39,7 +39,11 @@ fn render_rule(index: usize, rule: &FailureRule) -> String {
             );
         }
     }
-    output.push_str("    for item_context in candidates {\n");
+    if rule.selection.predicate().is_none() && rule.message.is_none() {
+        output.push_str("    for _ in candidates {\n");
+    } else {
+        output.push_str("    for item_context in candidates {\n");
+    }
     render_selection(rule.selection, &mut output);
     output.push_str("        if !selected {\n            continue;\n        }\n");
     match rule.message {
