@@ -19,6 +19,7 @@ pub struct ExtraTargetDraft {
     pub(crate) protobuf_draft: Option<Box<crate::new_mapping::ProtobufBoundaryDraft>>,
     pub(crate) flextext_draft: Option<Box<crate::new_mapping::FlexTextBoundaryDraft>>,
     pub(crate) fixed_width_draft: Option<FixedWidthTargetDraft>,
+    pub(crate) csv_dialect_draft: Option<crate::new_mapping::CsvDialectDraft>,
     pub root: Option<Scope>,
 }
 
@@ -31,6 +32,7 @@ pub enum ExtraTargetDraftError {
     InvalidProtobuf(String),
     InvalidFlexText(String),
     InvalidFixedWidth(String),
+    InvalidCsv(String),
 }
 
 impl fmt::Display for ExtraTargetDraftError {
@@ -46,6 +48,7 @@ impl fmt::Display for ExtraTargetDraftError {
                 formatter.write_str(message)
             }
             Self::InvalidFixedWidth(message) => formatter.write_str(message),
+            Self::InvalidCsv(message) => formatter.write_str(message),
         }
     }
 }
@@ -63,6 +66,7 @@ impl ExtraTargetDraft {
             protobuf_draft: None,
             flextext_draft: None,
             fixed_width_draft: None,
+            csv_dialect_draft: None,
             root: Some(target.root.clone()),
         }
     }
@@ -71,13 +75,17 @@ impl ExtraTargetDraft {
         self.protobuf_draft = None;
         self.flextext_draft = None;
         self.fixed_width_draft = None;
+        self.csv_dialect_draft = None;
         self.options = FormatOptions::default();
     }
 
     /// Begin an explicit format change. The existing options remain untouched
     /// until the complete target draft is saved.
     pub(crate) fn begin_fixed_width(&mut self) -> Result<(), String> {
-        if self.protobuf_draft.is_some() || self.flextext_draft.is_some() {
+        if self.protobuf_draft.is_some()
+            || self.flextext_draft.is_some()
+            || self.csv_dialect_draft.is_some()
+        {
             return Err(
                 "choose Use path format before replacing a pending embedded schema or layout"
                     .into(),
@@ -95,6 +103,36 @@ impl ExtraTargetDraft {
         self.fixed_width_draft = None;
     }
 
+    pub(crate) fn begin_csv_dialect(&mut self) -> Result<(), String> {
+        if self.protobuf_draft.is_some()
+            || self.flextext_draft.is_some()
+            || self.fixed_width_draft.is_some()
+        {
+            return Err("finish or abandon the pending format change first".into());
+        }
+        let schema = self.schema.as_ref().ok_or("choose a target schema first")?;
+        flat_scalar_fields(schema)?;
+        if !crate::new_mapping::uses_path_format(&self.options, &self.output_path)
+            && self.options.csv_text_repair_dependency.is_none()
+        {
+            return Err("choose From path before changing the configured output".into());
+        }
+        if !crate::new_mapping::csv_path_compatible(&self.output_path) {
+            return Err(
+                "this path selects a different output format; choose a CSV-compatible path".into(),
+            );
+        }
+        self.csv_dialect_draft = Some(crate::new_mapping::CsvDialectDraft::from_options(
+            &self.options,
+            &self.output_path,
+        ));
+        Ok(())
+    }
+
+    pub(crate) fn abandon_csv_dialect(&mut self) {
+        self.csv_dialect_draft = None;
+    }
+
     pub(crate) fn schema_is_ready(&self) -> bool {
         if let Some(draft) = &self.protobuf_draft {
             return draft.has_valid_selection();
@@ -108,10 +146,21 @@ impl ExtraTargetDraft {
         if let Some(draft) = &self.fixed_width_draft {
             return draft.layout_for_schema(schema).is_ok();
         }
+        if let Some(draft) = &self.csv_dialect_draft {
+            return flat_scalar_fields(schema).is_ok()
+                && draft.validated_options(&self.output_path, false).is_ok();
+        }
         self.options
             .fixed_width
             .as_ref()
             .is_none_or(|layout| validate_layout_for_schema(schema, layout).is_ok())
+            && (!crate::new_mapping::uses_csv_format(&self.options, &self.output_path)
+                || (flat_scalar_fields(schema).is_ok()
+                    && crate::new_mapping::validate_existing_csv_options(
+                        &self.options,
+                        &self.output_path,
+                    )
+                    .is_ok()))
     }
 
     pub fn build(
@@ -162,11 +211,23 @@ impl ExtraTargetDraft {
                     ..FormatOptions::default()
                 },
             )
+        } else if let Some(draft) = self.csv_dialect_draft {
+            let schema = self.schema.ok_or(ExtraTargetDraftError::MissingSchema)?;
+            flat_scalar_fields(&schema).map_err(ExtraTargetDraftError::InvalidCsv)?;
+            let options = draft
+                .validated_options(&self.output_path, false)
+                .map_err(ExtraTargetDraftError::InvalidCsv)?;
+            (schema, options)
         } else {
             let schema = self.schema.ok_or(ExtraTargetDraftError::MissingSchema)?;
             if let Some(layout) = &self.options.fixed_width {
                 validate_layout_for_schema(&schema, layout)
                     .map_err(ExtraTargetDraftError::InvalidFixedWidth)?;
+            }
+            if crate::new_mapping::uses_csv_format(&self.options, &self.output_path) {
+                flat_scalar_fields(&schema).map_err(ExtraTargetDraftError::InvalidCsv)?;
+                crate::new_mapping::validate_existing_csv_options(&self.options, &self.output_path)
+                    .map_err(ExtraTargetDraftError::InvalidCsv)?;
             }
             (schema, self.options)
         };

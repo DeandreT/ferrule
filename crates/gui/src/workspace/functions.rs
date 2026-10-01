@@ -377,9 +377,15 @@ impl FerruleApp {
                 &mut self.project.extra_targets,
                 &mut self.mapping_workspace.target_canvases,
             );
-            let Some(target) = targets.get_mut(target_index) else {
+            if target_index >= targets.len() {
+                return;
+            }
+            let (before, active_and_after) = targets.split_at_mut(target_index);
+            let Some((target, after)) = active_and_after.split_first_mut() else {
                 return;
             };
+            let inactive_target_scopes =
+                crate::graph_viewer::inactive_target_scopes(&self.project.root, before, after);
             let Some(canvas) = canvases.get_mut(&target_index) else {
                 return;
             };
@@ -401,6 +407,11 @@ impl FerruleApp {
                 graph: &mut self.project.graph,
                 root_scope: &mut target.root,
                 extra_targets: &[],
+                inactive_target_scopes: &inactive_target_scopes,
+                project_references: crate::graph_viewer::ProjectGraphReferences::new(
+                    &self.project.failure_rules,
+                    &self.project.extra_sources,
+                ),
                 source_blocks: &source_blocks,
                 target_blocks: &target_blocks,
                 source_x12,
@@ -410,6 +421,7 @@ impl FerruleApp {
                 function_inputs,
                 parameter_names: std::collections::BTreeMap::new(),
                 protected_output: None,
+                function_output: None,
                 requested_function_open: None,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
@@ -521,6 +533,8 @@ impl FerruleApp {
                 graph: &mut function.body,
                 root_scope: &mut root,
                 extra_targets: &[],
+                inactive_target_scopes: &[],
+                project_references: Default::default(),
                 source_blocks: &source_blocks,
                 target_blocks: &target_blocks,
                 source_x12: false,
@@ -530,6 +544,7 @@ impl FerruleApp {
                 function_inputs: function_inputs.clone(),
                 parameter_names: parameter_names.clone(),
                 protected_output: Some(output),
+                function_output: Some(&mut function.output),
                 requested_function_open: None,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
@@ -683,7 +698,10 @@ impl FerruleApp {
                             if ui.small_button("Float").clicked() {
                                 action = Some(TabAction::Float(*id));
                             }
-                            if ui.small_button("Add call").clicked() {
+                            if ui
+                                .add_enabled(editing_enabled, egui::Button::new("Add call").small())
+                                .clicked()
+                            {
                                 self.insert_function_call(*id);
                             }
                         });
@@ -704,7 +722,7 @@ impl FerruleApp {
         }
     }
 
-    pub(super) fn show_new_function_dialog(&mut self, ctx: &egui::Context) {
+    pub(super) fn show_new_function_dialog(&mut self, ctx: &egui::Context, editing_enabled: bool) {
         let Some(mut draft) = self.new_function_draft.take() else {
             return;
         };
@@ -772,7 +790,10 @@ impl FerruleApp {
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.button("Create").clicked() {
+                    if ui
+                        .add_enabled(editing_enabled, egui::Button::new("Create"))
+                        .clicked()
+                    {
                         create = true;
                     }
                     if ui.button("Cancel").clicked() {
@@ -1212,3 +1233,11 @@ mod tests {
         assert_eq!(actual, expected);
     }
 }
+
+#[cfg(test)]
+#[path = "functions/output_tests.rs"]
+mod output_tests;
+
+#[cfg(test)]
+#[path = "functions/lock_tests.rs"]
+mod lock_tests;

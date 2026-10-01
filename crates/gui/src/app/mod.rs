@@ -43,6 +43,8 @@ use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVis
 mod auto_connect_ui;
 #[path = "canvas.rs"]
 mod canvas_build;
+#[path = "csv_dialect.rs"]
+mod csv_dialect_ui;
 #[path = "diagnostic_navigation.rs"]
 mod diagnostic_navigation;
 #[path = "extra_sources.rs"]
@@ -1494,7 +1496,7 @@ impl eframe::App for FerruleApp {
         self.show_pipeline_run_setup(ui.ctx());
         self.show_pipeline_editor(ui.ctx());
         self.show_pipeline_editor_guard(ui.ctx());
-        self.show_new_function_dialog(ui.ctx());
+        self.show_new_function_dialog(ui.ctx(), project_editing_enabled);
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
         self.show_floating_function_windows(ui.ctx(), project_editing_enabled);
         if let Some(repaint_after) =

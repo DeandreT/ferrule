@@ -33,6 +33,9 @@ mod graph_sequence;
 mod node_palette;
 
 use graph_references::node_inputs;
+pub(crate) use graph_references::{
+    InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes,
+};
 use node_palette::NodeTemplate;
 
 #[cfg(test)]
@@ -219,6 +222,8 @@ pub struct GraphViewer<'a> {
     pub graph: &'a mut Graph,
     pub root_scope: &'a mut Scope,
     pub extra_targets: &'a [NamedTarget],
+    pub(crate) inactive_target_scopes: &'a [InactiveTargetScope<'a>],
+    pub(crate) project_references: ProjectGraphReferences<'a>,
     pub source_blocks: &'a [SourceBlock],
     pub target_blocks: &'a [TargetBlock],
     pub source_x12: bool,
@@ -228,6 +233,8 @@ pub struct GraphViewer<'a> {
     pub function_inputs: std::collections::BTreeMap<FunctionId, Vec<String>>,
     pub parameter_names: std::collections::BTreeMap<FunctionParameterId, String>,
     pub protected_output: Option<NodeId>,
+    /// Writable only on an isolated user-function canvas.
+    pub(crate) function_output: Option<&'a mut NodeId>,
     pub requested_function_open: Option<FunctionId>,
     pub colors: SemanticThemeColors,
     pub wire_color_mode: WireColorMode,
@@ -844,26 +851,44 @@ impl GraphViewer<'_> {
             .map(|binding| binding.node)
     }
 
-    fn references_to(&self, needle: NodeId) -> Vec<String> {
+    /// The same action backs the function node menu and result selection.
+    /// Protection moves immediately so further edits in this frame cannot
+    /// remove the newly selected expression.
+    pub(crate) fn select_function_output(&mut self, node: NodeId) -> bool {
+        let Some(output) = self.function_output.as_mut() else {
+            return false;
+        };
+        if !self.graph.nodes.contains_key(&node) {
+            self.error = Some(format!("function output node {node} no longer exists"));
+            return false;
+        }
+        **output = node;
+        self.protected_output = Some(node);
+        true
+    }
+
+    fn node_references(&self, needle: NodeId) -> graph_references::NodeReferences {
         let mut references = graph_references::references_to(
             self.graph,
             self.root_scope,
             self.extra_targets,
+            self.inactive_target_scopes,
+            self.project_references,
             needle,
         );
         if self.protected_output == Some(needle) {
-            references.push("function output".to_string());
+            references.all.push("function output".to_string());
+            references.blocking.push("function output".to_string());
         }
         references
     }
 
+    fn references_to(&self, needle: NodeId) -> Vec<String> {
+        self.node_references(needle).all
+    }
+
     fn blocking_references_to(&self, needle: NodeId) -> Vec<String> {
-        let removable =
-            graph_references::removable_wire_references(self.graph, self.root_scope, needle);
-        self.references_to(needle)
-            .into_iter()
-            .filter(|reference| !removable.contains(reference))
-            .collect()
+        self.node_references(needle).blocking
     }
 
     fn disconnect_graph_consumers(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
@@ -2307,6 +2332,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let Some(mapping_id) = Self::mapping_id(snarl[node]) else {
             return;
         };
+        if self.function_output.is_some() {
+            let select = ui.add_enabled(
+                self.protected_output != Some(mapping_id),
+                egui::Button::new("Use as function output"),
+            );
+            if select.clicked() {
+                self.select_function_output(mapping_id);
+                ui.close();
+            }
+        }
         let references = self.blocking_references_to(mapping_id);
         let remove = ui
             .add_enabled(references.is_empty(), egui::Button::new("Remove"))
@@ -2325,3 +2360,7 @@ mod tests;
 #[cfg(test)]
 #[path = "graph_viewer_endpoint_tests.rs"]
 mod endpoint_tests;
+
+#[cfg(test)]
+#[path = "graph_viewer_shared_target_tests.rs"]
+mod shared_target_tests;
