@@ -61,7 +61,7 @@ fn native_roundtrip(project: &Project, path: &Path) -> Result<Project, Box<dyn E
 
 #[test]
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
-fn annual_pdf_extension_roundtrip_keeps_148_csv_rows() -> Result<(), Box<dyn Error>> {
+fn annual_pdf_native_roundtrip_keeps_148_csv_rows() -> Result<(), Box<dyn Error>> {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let imported = mfd::import(&samples.join("Annual Average Temperature.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -73,36 +73,17 @@ fn annual_pdf_extension_roundtrip_keeps_148_csv_rows() -> Result<(), Box<dyn Err
     let before = engine::run(&imported.project, &source)?;
     let dir = TempDir::new()?;
     let design = dir.0.join("annual.mfd");
-    let report = mfd::preflight_export(&imported.project, &design)?;
-    assert_eq!(
-        report.compatibility,
-        mfd::ExportCompatibility::FerruleExtensions
-    );
-    assert!(
-        report
-            .issues
-            .iter()
-            .any(|issue| { issue.feature == mfd::ExportCompatibilityFeature::PdfLayout })
-    );
-    assert!(
-        mfd::export_with_profile(&imported.project, &design, mfd::ExportProfile::NativeMfd)
-            .is_err()
-    );
-    assert!(!design.exists());
-    mfd::export_with_profile(
-        &imported.project,
-        &design,
-        mfd::ExportProfile::FerruleExtensions,
+    let restored = native_roundtrip(&imported.project, &design)?;
+    let template = std::fs::read_to_string(dir.0.join("annual-source.pxt"))?;
+    assert!(template.contains("<BoundaryFindVertical id=\"2\">"));
+    assert!(template.contains("<Splitter id=\"3\">"));
+    assert!(!template.contains("FerruleLayout"));
+    let restored_source = format_pdf::read(
+        &samples.join("Annual Average Temperature By Year.pdf"),
+        restored.source_options.pdf.as_ref().unwrap(),
     )?;
-    let reimported = mfd::import(&design)?;
-    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
-    assert!(engine::validate(&reimported.project).is_empty());
-    assert_eq!(
-        conversion_count(&imported.project),
-        conversion_count(&reimported.project)
-    );
-    let restored = reimported.project;
-    let after = engine::run(&restored, &source)?;
+    assert_eq!(source, restored_source);
+    let after = engine::run(&restored, &restored_source)?;
     let before_csv = dir.0.join("before.csv");
     let after_csv = dir.0.join("after.csv");
     format_csv::write(
