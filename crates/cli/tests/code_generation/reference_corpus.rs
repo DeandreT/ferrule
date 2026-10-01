@@ -1904,31 +1904,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         TYPED_JSON_RUST_HARNESS
     } else {
-        r#"use ferrule_generated_mapping::{NamedJsonInput, execute_json_with_sources};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args_os().skip(1);
-    let input_path = args.next().expect("input path");
-    let input = std::fs::read_to_string(input_path)?;
-    let named_args: Vec<_> = args.collect();
-    assert_eq!(named_args.len() % 2, 0, "named input arguments are pairs");
-    let named_documents = named_args
-        .chunks_exact(2)
-        .map(|pair| {
-            Ok((
-                pair[0].to_string_lossy().into_owned(),
-                std::fs::read_to_string(&pair[1])?,
-            ))
-        })
-        .collect::<Result<Vec<_>, std::io::Error>>()?;
-    let named_inputs = named_documents
-        .iter()
-        .map(|(name, document)| NamedJsonInput { name, document })
-        .collect::<Vec<_>>();
-    print!("{}", execute_json_with_sources(&input, &named_inputs)?);
-    Ok(())
-}
-"#
+        include_str!("fixtures/reference_corpus_json_rust_harness.rs.txt")
     };
     std::fs::write(rust_output.join("src/main.rs"), rust_harness)?;
     let rust_build = Command::new("cargo")
@@ -2072,20 +2048,7 @@ Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, nu
     {
         TYPED_JSON_CSHARP_HARNESS
     } else {
-        r#"using Ferrule.Generated;
-
-var input = File.ReadAllText(args[0]);
-if ((args.Length - 1) % 2 != 0)
-{
-    throw new ArgumentException("Named input arguments are pairs.");
-}
-var namedInputs = new List<NamedJsonInput>();
-for (var index = 1; index < args.Length; index += 2)
-{
-    namedInputs.Add(new NamedJsonInput(args[index], File.ReadAllText(args[index + 1])));
-}
-Console.Out.Write(GeneratedMapping.ExecuteJsonWithSources(input, namedInputs));
-"#
+        include_str!("fixtures/reference_corpus_json_csharp_harness.cs.txt")
     };
     std::fs::write(harness.join("Program.cs"), csharp_harness)?;
     let csharp_build = dotnet_command(&csharp_output)
