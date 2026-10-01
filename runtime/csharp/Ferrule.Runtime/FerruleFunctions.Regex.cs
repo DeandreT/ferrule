@@ -102,7 +102,7 @@ public static partial class FerruleFunctions
         }
         try
         {
-            return new Regex(pattern, options);
+            return FerruleScalarRegex.Compile(pattern, options);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException)
         {
