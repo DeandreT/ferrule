@@ -155,9 +155,19 @@ fn validate_sqlite_path(path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum CsvQuoteMode {
+    #[default]
+    Standard,
+    Custom,
+    Disabled,
+}
+
 pub(super) struct CsvBoundaryDraft {
     pub(super) path: String,
     pub(super) delimiter: char,
+    pub(super) quote_mode: CsvQuoteMode,
+    pub(super) custom_quote: String,
     pub(super) has_header_row: bool,
     pub(super) preserve_empty_strings: bool,
     pub(super) utf8_bom: bool,
@@ -189,6 +199,8 @@ impl CsvBoundaryDraft {
         let mut draft = Self {
             path,
             delimiter,
+            quote_mode: CsvQuoteMode::Standard,
+            custom_quote: "'".to_owned(),
             has_header_row: true,
             preserve_empty_strings: false,
             utf8_bom: false,
@@ -196,7 +208,14 @@ impl CsvBoundaryDraft {
             preview_rows: Vec::new(),
             sample_error: None,
         };
-        draft.refresh_sample()?;
+        if let Err(error) = draft.refresh_sample()
+            && !matches!(
+                error.downcast_ref::<cli::CsvFormatError>(),
+                Some(cli::CsvFormatError::SampleTooWide | cli::CsvFormatError::SampleTooLarge)
+            )
+        {
+            return Err(error);
+        }
         Ok(draft)
     }
 
@@ -204,6 +223,8 @@ impl CsvBoundaryDraft {
         Self {
             path: String::new(),
             delimiter: ',',
+            quote_mode: CsvQuoteMode::Standard,
+            custom_quote: "'".to_owned(),
             has_header_row: true,
             preserve_empty_strings: false,
             utf8_bom: false,
@@ -217,15 +238,20 @@ impl CsvBoundaryDraft {
     }
 
     pub(super) fn refresh_sample(&mut self) -> anyhow::Result<()> {
-        let sample = match cli::sample_csv(
-            std::path::Path::new(&self.path),
-            Some(self.delimiter),
-            self.has_header_row,
-        ) {
+        let sample = match self.quote_settings().and_then(|(quote, quote_disabled)| {
+            cli::sample_csv_with_dialect(
+                std::path::Path::new(&self.path),
+                Some(self.delimiter),
+                quote,
+                quote_disabled,
+                self.has_header_row,
+            )
+            .map_err(anyhow::Error::from)
+        }) {
             Ok(sample) => sample,
             Err(error) => {
                 self.sample_error = Some(error.to_string());
-                return Err(error.into());
+                return Err(error);
             }
         };
         let previous_types = self
@@ -267,11 +293,7 @@ impl CsvBoundaryDraft {
         {
             bail!("CSV path must have a .csv, .txt, or .tsv extension");
         }
-        if !self.delimiter.is_ascii() || matches!(self.delimiter, '\0' | '\r' | '\n' | '"') {
-            bail!(
-                "CSV delimiter must be a single ASCII character other than a quote or line break"
-            );
-        }
+        self.quote_settings()?;
         if self.columns.is_empty() {
             bail!("CSV must have at least one column");
         }
@@ -298,17 +320,51 @@ impl CsvBoundaryDraft {
         ))
     }
 
-    fn options(&self) -> FormatOptions {
-        FormatOptions {
+    fn quote_settings(&self) -> anyhow::Result<(Option<char>, bool)> {
+        if !self.delimiter.is_ascii() || matches!(self.delimiter, '\0' | '\r' | '\n') {
+            bail!("CSV delimiter must be a single ASCII character other than NUL or a line break");
+        }
+        let quote = match self.quote_mode {
+            CsvQuoteMode::Standard => '"',
+            CsvQuoteMode::Custom => {
+                let mut characters = self.custom_quote.chars();
+                let Some(quote) = characters.next() else {
+                    bail!("CSV quote must be exactly one printable ASCII character");
+                };
+                if characters.next().is_some() || !quote.is_ascii_graphic() {
+                    bail!("CSV quote must be exactly one printable ASCII character");
+                }
+                quote
+            }
+            CsvQuoteMode::Disabled => return Ok((None, true)),
+        };
+        if quote == self.delimiter {
+            bail!("CSV quote and delimiter must be different characters");
+        }
+        Ok((
+            (self.quote_mode == CsvQuoteMode::Custom).then_some(quote),
+            false,
+        ))
+    }
+
+    fn options(&self) -> anyhow::Result<FormatOptions> {
+        let (quote, quote_disabled) = self.quote_settings()?;
+        Ok(FormatOptions {
             tabular_kind: Some(TabularBoundaryKind::Csv),
             delimiter: Some(self.delimiter),
+            csv_quote: quote,
+            csv_quote_disabled: quote_disabled,
             has_header_row: Some(self.has_header_row),
             csv_preserve_empty_strings: self.preserve_empty_strings,
             csv_utf8_bom: self.utf8_bom,
             ..FormatOptions::default()
-        }
+        })
     }
 }
+
+#[cfg(test)]
+#[path = "new_mapping/csv_quote_tests.rs"]
+mod csv_quote_tests;
 
 impl NewMappingSetup {
     pub(super) fn can_create(&self) -> bool {
@@ -336,7 +392,7 @@ impl NewMappingSetup {
             MappingBoundary::Schema(imported) => project.source = imported.schema.clone(),
             MappingBoundary::Csv(draft) => {
                 project.source = draft.schema()?;
-                project.source_options = draft.options();
+                project.source_options = draft.options()?;
                 project.source_path = Some(draft.path.clone());
             }
             MappingBoundary::Sqlite(draft) => {
@@ -358,7 +414,7 @@ impl NewMappingSetup {
             MappingBoundary::Schema(imported) => project.target = imported.schema.clone(),
             MappingBoundary::Csv(draft) => {
                 project.target = draft.schema()?;
-                project.target_options = draft.options();
+                project.target_options = draft.options()?;
                 project.target_path = Some(draft.path.clone());
             }
             MappingBoundary::Sqlite(draft) => {
