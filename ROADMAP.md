@@ -85,6 +85,11 @@ are preserved.
   preserve the graph, bindings, inputs, and existing wires.
   Function calls reserve all inputs and the call before changing a canvas;
   exhausted additions preserve output, layout, dirty state, and undo history.
+  Palette insertion, Call/Aggregate input edits, disconnection, and selected-node
+  deletion reserve complete checked ID batches. Exhaustion preserves the whole
+  action, including earlier selected deletions and existing wires. Palette search
+  handles Enter to add the selected node. Mixed-content replacement wires update
+  their exact expression slots while preserving source order and metadata.
   XML child scopes on ordinary singular target groups can select the first
   surviving element or every surviving element; unavailable formats and complex
   schemas retain their saved mode without passive changes.
