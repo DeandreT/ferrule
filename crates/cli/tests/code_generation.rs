@@ -18,6 +18,8 @@ mod aggregates;
 mod collection_find;
 #[path = "code_generation/copy_current_source.rs"]
 mod copy_current_source;
+#[path = "code_generation/disconnected_inputs.rs"]
+mod disconnected_inputs;
 #[path = "code_generation/extra_targets.rs"]
 mod extra_targets;
 #[path = "code_generation/failure_rules.rs"]

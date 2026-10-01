@@ -1,0 +1,41 @@
+use codegen_runtime::{
+    Instance, JsonBoundaryError, RuntimeError, Value, field, group, parse_json, scalar,
+};
+use ferrule_generated_mapping::{execute, execute_json, execute_json_bytes};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let expected = group([
+        field("Present", scalar(Value::Bool(false))),
+        field("Label", scalar(Value::String("fallback".into()))),
+    ]);
+    assert_eq!(execute(&source(false))?, expected);
+    let schema = include_str!("../target-schema.json");
+    assert_eq!(
+        parse_json(schema, &execute_json(r#"{"CheckDirect":false}"#)?)?,
+        expected
+    );
+    let bytes = execute_json_bytes(br#"{"CheckDirect":false}"#)?;
+    assert_eq!(parse_json(schema, std::str::from_utf8(&bytes)?)?, expected);
+
+    assert_eq!(execute(&source(true)), Err(not_bool()));
+    assert_eq!(
+        execute_json(r#"{"CheckDirect":true}"#),
+        Err(JsonBoundaryError::Execution(not_bool())),
+    );
+    assert_eq!(
+        execute_json_bytes(br#"{"CheckDirect":true}"#),
+        Err(JsonBoundaryError::Execution(not_bool())),
+    );
+    Ok(())
+}
+
+fn source(check_direct: bool) -> Instance {
+    group([field("CheckDirect", scalar(Value::Bool(check_direct)))])
+}
+
+fn not_bool() -> RuntimeError {
+    RuntimeError::NotABool {
+        node: 0,
+        found: "null",
+    }
+}

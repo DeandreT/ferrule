@@ -1,0 +1,55 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var output = (FerruleGroup)GeneratedMapping.Execute(Source(false));
+Assert(output.Fields.Count == 2);
+Assert(output.Fields[0].Name == "Present");
+Assert(((FerruleScalar)output.Fields[0].Value).Value == FerruleValue.FromBoolean(false));
+Assert(output.Fields[1].Name == "Label");
+Assert(((FerruleScalar)output.Fields[1].Value).Value == FerruleValue.FromString("fallback"));
+
+foreach (var json in new[]
+{
+    GeneratedMapping.ExecuteJson("{\"CheckDirect\":false}"),
+    Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes("{\"CheckDirect\":false}"u8.ToArray())),
+})
+{
+    using var parsed = JsonDocument.Parse(json);
+    Assert(!parsed.RootElement.GetProperty("Present").GetBoolean());
+    Assert(parsed.RootElement.GetProperty("Label").GetString() == "fallback");
+}
+
+AssertNotBool(() => GeneratedMapping.Execute(Source(true)));
+AssertNotBool(() => GeneratedMapping.ExecuteJson("{\"CheckDirect\":true}"));
+AssertNotBool(() => GeneratedMapping.ExecuteJsonBytes("{\"CheckDirect\":true}"u8.ToArray()));
+
+static FerruleGroup Source(bool checkDirect) => new(new FerruleField[]
+{
+    new("CheckDirect", new FerruleScalar(FerruleValue.FromBoolean(checkDirect))),
+});
+
+static void AssertNotBool(Action run)
+{
+    try
+    {
+        run();
+    }
+    catch (FerruleRuntimeException error) when (
+        error.Error == FerruleRuntimeError.NotABool &&
+        error.Node == 0U &&
+        error.FoundKind == FerruleValueKind.Null)
+    {
+        return;
+    }
+    throw new InvalidOperationException("Disconnected condition did not produce typed NotABool.");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("Generated disconnected input differs from interpreter.");
+    }
+}
