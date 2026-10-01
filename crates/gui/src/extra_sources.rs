@@ -10,6 +10,7 @@ pub struct ExtraSourceDraft {
     pub instance_path: String,
     pub schema: Option<SchemaNode>,
     pub options: FormatOptions,
+    pub(crate) protobuf_draft: Option<Box<crate::new_mapping::ProtobufBoundaryDraft>>,
     pub sqlite_table: String,
     sqlite_loaded_from: Option<(String, String)>,
 }
@@ -21,6 +22,7 @@ pub enum ExtraSourceDraftError {
     EmptyInstancePath,
     MissingSchema,
     StaleSqliteSchema,
+    InvalidProtobuf(String),
 }
 
 impl fmt::Display for ExtraSourceDraftError {
@@ -32,6 +34,7 @@ impl fmt::Display for ExtraSourceDraftError {
             }
             Self::EmptyInstancePath => formatter.write_str("instance path cannot be empty"),
             Self::MissingSchema => formatter.write_str("a source schema is required"),
+            Self::InvalidProtobuf(message) => formatter.write_str(message),
             Self::StaleSqliteSchema => {
                 formatter.write_str("reload the SQLite table after changing its path or name")
             }
@@ -59,11 +62,13 @@ impl ExtraSourceDraft {
     }
 
     pub fn set_schema(&mut self, schema: SchemaNode) {
+        self.protobuf_draft = None;
         self.schema = Some(schema);
         self.sqlite_loaded_from = None;
     }
 
     pub fn set_sqlite_schema(&mut self, schema: SchemaNode) {
+        self.protobuf_draft = None;
         self.sqlite_loaded_from = Some((
             self.instance_path.trim().to_owned(),
             self.sqlite_table.trim().to_owned(),
@@ -72,8 +77,24 @@ impl ExtraSourceDraft {
     }
 
     pub fn clear_schema(&mut self) {
+        self.protobuf_draft = None;
         self.schema = None;
         self.sqlite_loaded_from = None;
+    }
+
+    pub(crate) fn stage_protobuf(&mut self, draft: crate::new_mapping::ProtobufBoundaryDraft) {
+        self.protobuf_draft = Some(Box::new(draft));
+    }
+
+    pub(crate) fn use_path_format(&mut self) {
+        self.protobuf_draft = None;
+        self.options = FormatOptions::default();
+    }
+
+    pub(crate) fn schema_is_ready(&self) -> bool {
+        self.protobuf_draft
+            .as_ref()
+            .map_or(self.schema.is_some(), |draft| draft.has_valid_selection())
     }
 
     /// Converts complete staged input into a project source.
@@ -93,22 +114,37 @@ impl ExtraSourceDraft {
         if path.is_empty() {
             return Err(ExtraSourceDraftError::EmptyInstancePath);
         }
-        if self
-            .sqlite_loaded_from
-            .as_ref()
-            .is_some_and(|(loaded_path, table)| {
-                loaded_path != path || table != self.sqlite_table.trim()
-            })
+        if self.protobuf_draft.is_none()
+            && self
+                .sqlite_loaded_from
+                .as_ref()
+                .is_some_and(|(loaded_path, table)| {
+                    loaded_path != path || table != self.sqlite_table.trim()
+                })
         {
             return Err(ExtraSourceDraftError::StaleSqliteSchema);
         }
-        let schema = self.schema.ok_or(ExtraSourceDraftError::MissingSchema)?;
+        let (schema, options) = if let Some(draft) = self.protobuf_draft {
+            (
+                draft.schema().map_err(|error| {
+                    ExtraSourceDraftError::InvalidProtobuf(format!("{error:#}"))
+                })?,
+                draft.options().map_err(|error| {
+                    ExtraSourceDraftError::InvalidProtobuf(format!("{error:#}"))
+                })?,
+            )
+        } else {
+            (
+                self.schema.ok_or(ExtraSourceDraftError::MissingSchema)?,
+                self.options,
+            )
+        };
 
         Ok(NamedSource {
             name: name.to_owned(),
             path: path.to_owned(),
             schema,
-            options: self.options,
+            options,
             dynamic_path: None,
         })
     }
@@ -137,6 +173,7 @@ mod tests {
             instance_path: "catalog.json".to_owned(),
             schema: Some(schema("catalog")),
             options: FormatOptions::default(),
+            protobuf_draft: None,
             sqlite_table: String::new(),
             sqlite_loaded_from: None,
         }

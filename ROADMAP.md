@@ -627,6 +627,12 @@ rendering preserves CSV defaults, while deliberate format changes clear stale
 settings. Synthetic save/reopen checks retain exact named binary bytes and
 explicit XML/JSON/JSON Lines outputs through file and payload hosts.
 
+Named Protocol Buffers input/output setup now requires independent supported
+roots and retains its embedded schema graph through undo/redo, save/reopen,
+and exact file/payload output checks after original schemas are removed.
+Abandoning a pending binary schema after changing a previously introspected
+SQLite path or table requires loading a new table schema.
+
 Exit criteria:
 
 - XML-to-JSON and CSV-plus-SQLite lookup mappings can be created from a blank

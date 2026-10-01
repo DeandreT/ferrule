@@ -11,7 +11,9 @@ pub(crate) use format_options::{
     uses_path_format,
 };
 pub(super) use protobuf::ProtobufBoundaryDraft;
-pub(crate) use protobuf::validate_schema_replacement;
+pub(crate) use protobuf::{
+    is_protobuf_schema, show_protobuf_root_message, validate_schema_replacement,
+};
 
 #[derive(Default)]
 pub(super) struct NewMappingSetup {

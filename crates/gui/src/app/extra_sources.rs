@@ -7,14 +7,44 @@ impl FerruleApp {
     }
 
     pub(super) fn stage_extra_source_schema(&mut self, path: PathBuf) {
-        let loaded = crate::new_mapping::import_schema(&path).and_then(|schema| {
-            if let Some(draft) = self.extra_source_draft.as_ref() {
-                crate::new_mapping::validate_schema_replacement(&draft.options, &schema)?;
+        if crate::new_mapping::is_protobuf_schema(&path) {
+            match crate::new_mapping::ProtobufBoundaryDraft::from_schema(path) {
+                Ok(protobuf) => {
+                    let Some(draft) = self.extra_source_draft.as_mut() else {
+                        return;
+                    };
+                    draft.stage_protobuf(protobuf);
+                    self.status =
+                        "loaded source Protocol Buffers schema; choose a root message".to_owned();
+                    self.diagnostics.clear();
+                }
+                Err(error) => {
+                    self.status = "failed to load extra source schema".to_owned();
+                    self.diagnostics.error(
+                        "Protocol Buffers schema import failed",
+                        format!("{error:#}"),
+                    );
+                }
             }
-            Ok(schema)
+            return;
+        }
+        let loaded = crate::new_mapping::import_schema(&path).and_then(|schema| {
+            let pending_options = self
+                .extra_source_draft
+                .as_ref()
+                .and_then(|draft| draft.protobuf_draft.as_ref())
+                .map(|protobuf| protobuf.options())
+                .transpose()?;
+            if let Some(draft) = self.extra_source_draft.as_ref() {
+                crate::new_mapping::validate_schema_replacement(
+                    pending_options.as_ref().unwrap_or(&draft.options),
+                    &schema,
+                )?;
+            }
+            Ok((schema, pending_options))
         });
         match loaded {
-            Ok(schema) => {
+            Ok((schema, pending_options)) => {
                 let Some(draft) = self.extra_source_draft.as_mut() else {
                     return;
                 };
@@ -22,6 +52,9 @@ impl FerruleApp {
                     draft.name.clone_from(&schema.name);
                 }
                 draft.set_schema(schema);
+                if let Some(options) = pending_options {
+                    draft.options = options;
+                }
                 self.status = if draft.options.protobuf.is_some() {
                     "loaded matching source schema; kept Protocol Buffers format".to_owned()
                 } else {
@@ -41,7 +74,7 @@ impl FerruleApp {
         let Some(draft) = self.extra_source_draft.as_mut() else {
             return;
         };
-        if !source_uses_sqlite(draft) {
+        if draft.protobuf_draft.is_some() || !source_uses_sqlite(draft) {
             self.status = "SQLite table import blocked".to_owned();
             self.diagnostics.error(
                 "SQLite table import blocked",
@@ -79,14 +112,26 @@ impl FerruleApp {
             return;
         };
         let dialog_idle = self.pending_dialog.is_none();
-        let schema_label = draft
-            .schema
-            .as_ref()
-            .map_or_else(|| "Not selected".to_owned(), |schema| schema.name.clone());
+        let schema_label = draft.protobuf_draft.as_ref().map_or_else(
+            || {
+                draft
+                    .schema
+                    .as_ref()
+                    .map_or_else(|| "Not selected".to_owned(), |schema| schema.name.clone())
+            },
+            |protobuf| {
+                protobuf
+                    .schema_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+            },
+        );
         let can_add = !draft.name.trim().is_empty()
             && !draft.instance_path.trim().is_empty()
-            && draft.schema.is_some();
-        let sqlite_instance = source_uses_sqlite(draft);
+            && draft.schema_is_ready();
+        let sqlite_instance = draft.protobuf_draft.is_none() && source_uses_sqlite(draft);
         let mut action = None;
         egui::Window::new("Add Extra Source")
             .collapsible(false)
@@ -156,7 +201,13 @@ impl FerruleApp {
                         }
                         ui.end_row();
                     });
-                if !crate::new_mapping::uses_path_format(&draft.options, &draft.instance_path) {
+                if draft.protobuf_draft.is_some() {
+                    ui.separator();
+                    show_named_source_protobuf(ui, draft);
+                } else if !crate::new_mapping::uses_path_format(
+                    &draft.options,
+                    &draft.instance_path,
+                ) {
                     ui.separator();
                     show_configured_source_format(ui, draft);
                 }
@@ -185,7 +236,7 @@ impl FerruleApp {
                         "input data",
                         &[
                             "csv", "xml", "json", "db", "sqlite", "sqlite3", "edi", "x12",
-                            "edifact",
+                            "edifact", "bin", "dat",
                         ],
                     ),
                 ));
@@ -193,7 +244,7 @@ impl FerruleApp {
             Some(ExtraSourceAction::ChooseSchema) => {
                 self.pending_dialog = Some((
                     DialogKind::BrowseExtraSourceSchema,
-                    pick_file("schema", &["xsd", "json"]),
+                    pick_file("schema", &["xsd", "json", "proto"]),
                 ));
             }
             Some(ExtraSourceAction::LoadSqliteTable) => {
@@ -278,6 +329,26 @@ enum ExtraSourceAction {
     LoadSqliteTable,
     Cancel,
     Add,
+}
+
+fn show_named_source_protobuf(ui: &mut egui::Ui, draft: &mut ExtraSourceDraft) {
+    let Some(protobuf) = draft.protobuf_draft.as_mut() else {
+        return;
+    };
+    ui.strong("Protocol Buffers input");
+    if crate::new_mapping::show_protobuf_root_message(ui, protobuf, "named_source")
+        && draft.name.trim().is_empty()
+        && let Ok(schema) = protobuf.schema()
+    {
+        draft.name = schema.name;
+    }
+    ui.weak("The project keeps the selected schema and its local imports for any data filename.");
+    if let Err(error) = protobuf.validate() {
+        ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
+    }
+    if ui.button("Use path format").clicked() {
+        draft.use_path_format();
+    }
 }
 
 fn source_uses_sqlite(draft: &ExtraSourceDraft) -> bool {
@@ -446,3 +517,7 @@ mod tests {
 #[cfg(test)]
 #[path = "extra_sources/protobuf_format_tests.rs"]
 mod protobuf_format_tests;
+
+#[cfg(test)]
+#[path = "extra_sources/named_protobuf_tests.rs"]
+mod named_protobuf_tests;
