@@ -51,6 +51,7 @@ pub enum RuntimeError {
     Execute(String),
     Serialize { format: DataFormat, message: String },
     CsvTargetNotRepeated,
+    CsvFormatRequired { side: DataSide },
 }
 
 impl fmt::Display for RuntimeError {
@@ -84,6 +85,12 @@ impl fmt::Display for RuntimeError {
             Self::Serialize { format, message } => {
                 write!(formatter, "could not serialize {format} target: {message}")
             }
+            Self::CsvFormatRequired { side } => {
+                write!(
+                    formatter,
+                    "the project {side} keeps empty CSV text fields; select the CSV format"
+                )
+            }
             Self::CsvTargetNotRepeated => {
                 formatter.write_str("mapping did not produce a repeating row set for a CSV target")
             }
@@ -100,6 +107,11 @@ pub fn parse_source(
     text: &str,
     format: DataFormat,
 ) -> Result<Instance, RuntimeError> {
+    if project.source_options.csv_preserve_empty_strings && format != DataFormat::Csv {
+        return Err(RuntimeError::CsvFormatRequired {
+            side: DataSide::Source,
+        });
+    }
     validate_xbrl_format(
         project.source_options.xbrl.is_some(),
         format,
@@ -131,11 +143,10 @@ pub fn parse_source(
                 message: error.to_string(),
             })
         }
-        DataFormat::Csv => format_csv::from_str(
+        DataFormat::Csv => format_csv::from_str_with_options(
             text,
             &project.source,
-            project.source_options.delimiter,
-            project.source_options.has_header_row.unwrap_or(true),
+            &format_csv::CsvReadOptions::from(&project.source_options),
         )
         .map(Instance::Repeated)
         .map_err(|error| RuntimeError::Parse {
@@ -168,6 +179,11 @@ pub fn serialize_target(
     target: &Instance,
     format: DataFormat,
 ) -> Result<String, RuntimeError> {
+    if project.target_options.csv_preserve_empty_strings && format != DataFormat::Csv {
+        return Err(RuntimeError::CsvFormatRequired {
+            side: DataSide::Target,
+        });
+    }
     validate_xbrl_format(
         project.target_options.xbrl.is_some(),
         format,
@@ -197,10 +213,12 @@ pub fn serialize_target(
             let rows = target
                 .as_repeated()
                 .ok_or(RuntimeError::CsvTargetNotRepeated)?;
-            format_csv::to_string(
+            format_csv::to_string_with_dialect(
                 &project.target,
                 rows,
                 project.target_options.delimiter,
+                project.target_options.csv_quote,
+                project.target_options.csv_quote_disabled,
                 project.target_options.has_header_row.unwrap_or(true),
             )
             .map_err(|error| RuntimeError::Serialize {
@@ -622,6 +640,51 @@ mod tests {
         .unwrap();
 
         assert_eq!(output, "Ada|37\nGrace|42\n");
+    }
+
+    #[test]
+    fn browser_csv_retains_empty_text_and_complete_quote_dialect() {
+        let mut project = scalar_project(true);
+        project.source_options.csv_preserve_empty_strings = true;
+        project.source_options.csv_quote = Some('\'');
+        project.target_options.csv_quote = Some('\'');
+        let text = "name,age\n'',37\n'O''Neil, Jr.',42\n";
+        assert_eq!(
+            run(&project, text, DataFormat::Csv, DataFormat::Csv).unwrap(),
+            "name,age\n,37\n'O''Neil, Jr.',42\n"
+        );
+        let source = parse_source(&project, text, DataFormat::Csv).unwrap();
+        assert_eq!(
+            source.as_repeated().unwrap()[0]
+                .field("name")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String(String::new()))
+        );
+        assert_eq!(
+            parse_source(&project, "{}", DataFormat::Json),
+            Err(RuntimeError::CsvFormatRequired {
+                side: DataSide::Source
+            })
+        );
+        project.source_options.csv_quote = None;
+        project.target_options.csv_quote = None;
+        project.source_options.csv_quote_disabled = true;
+        project.target_options.csv_quote_disabled = true;
+        let text = "name,age\n\"Ada\",37\n";
+        assert_eq!(
+            run(&project, text, DataFormat::Csv, DataFormat::Csv).unwrap(),
+            text
+        );
+        // Writers retain the same typed quoting failures as filesystem hosts.
+        let source = parse_source(&project, text, DataFormat::Csv).unwrap();
+        let ir::Instance::Repeated(mut rows) = source else {
+            panic!("expected rows")
+        };
+        let ir::Instance::Group(fields) = &mut rows[0] else {
+            panic!("expected row")
+        };
+        fields[0].1 = Instance::Scalar(Value::String("a,b".into()));
+        assert!(serialize_target(&project, &Instance::Repeated(rows), DataFormat::Csv).is_err());
     }
 
     #[test]

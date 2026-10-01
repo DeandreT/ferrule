@@ -1146,6 +1146,7 @@ pub(super) fn read_csv_component(
         ..FormatOptions::default()
     };
     if let Some(settings) = settings {
+        options.csv_preserve_empty_strings = csv::empty_text_policy(&settings, &name, warnings);
         if let Some(separator) = settings.attribute("separator") {
             let mut chars = separator.chars();
             options.delimiter = chars.next();
@@ -1225,6 +1226,9 @@ pub(super) fn read_csv_component(
         warnings.push(format!("component `{name}` has no connected ports"));
     }
     let is_source = out_count >= in_count;
+    if is_source && options.csv_preserve_empty_strings {
+        csv::warn_typed_empty_cells(&schema, &name, warnings);
+    }
     Some(SchemaComponent {
         name,
         format: ComponentFormat::Csv,

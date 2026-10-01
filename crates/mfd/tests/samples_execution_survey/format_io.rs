@@ -161,16 +161,11 @@ pub(super) fn read_instance(
     }
 
     match extension_for_dispatch(path, options)?.as_str() {
-        "csv" | "txt" => format_csv::read_with_dialect(
-            path,
-            schema,
-            options.delimiter,
-            options.csv_quote,
-            options.csv_quote_disabled,
-            options.has_header_row.unwrap_or(true),
-        )
-        .map(Instance::Repeated)
-        .map_err(|error| error.to_string()),
+        "csv" | "txt" => {
+            format_csv::read_with_options(path, schema, &format_csv::CsvReadOptions::from(options))
+                .map(Instance::Repeated)
+                .map_err(|error| error.to_string())
+        }
         "xlsx" => read_xlsx(path, schema, options),
         "xml" => format_xml::read(path, schema).map_err(|error| error.to_string()),
         "json" | "jsonl" | "ndjson" if options.json_lines => {
@@ -544,6 +539,7 @@ pub(super) fn inferred_extension(options: &FormatOptions) -> Option<&'static str
     } else if options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
     {
         Some("csv")

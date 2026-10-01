@@ -143,6 +143,7 @@ pub(super) struct CsvBoundaryDraft {
     pub(super) path: String,
     pub(super) delimiter: char,
     pub(super) has_header_row: bool,
+    pub(super) preserve_empty_strings: bool,
     pub(super) columns: Vec<CsvColumnDraft>,
     pub(super) preview_rows: Vec<Vec<String>>,
     pub(super) sample_error: Option<String>,
@@ -172,6 +173,7 @@ impl CsvBoundaryDraft {
             path,
             delimiter,
             has_header_row: true,
+            preserve_empty_strings: false,
             columns: Vec::new(),
             preview_rows: Vec::new(),
             sample_error: None,
@@ -185,6 +187,7 @@ impl CsvBoundaryDraft {
             path: String::new(),
             delimiter: ',',
             has_header_row: true,
+            preserve_empty_strings: false,
             columns: vec![CsvColumnDraft {
                 name: String::new(),
                 ty: ScalarType::String,
@@ -281,6 +284,7 @@ impl CsvBoundaryDraft {
             tabular_kind: Some(TabularBoundaryKind::Csv),
             delimiter: Some(self.delimiter),
             has_header_row: Some(self.has_header_row),
+            csv_preserve_empty_strings: self.preserve_empty_strings,
             ..FormatOptions::default()
         }
     }
@@ -404,6 +408,39 @@ mod tests {
                 ]
             )
         );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn csv_source_empty_text_choice_survives_project_save() {
+        let path = source_file("empty-text", "csv", "A,B\n,beta\n");
+        let mut source = CsvBoundaryDraft::source(path.clone()).unwrap();
+        assert!(!source.preserve_empty_strings);
+        source.preserve_empty_strings = true;
+        let mut target = CsvBoundaryDraft::target();
+        target.path = "output.csv".into();
+        target.columns = vec![
+            CsvColumnDraft {
+                name: "A".into(),
+                ty: ScalarType::String,
+            },
+            CsvColumnDraft {
+                name: "B".into(),
+                ty: ScalarType::String,
+            },
+        ];
+        let project = NewMappingSetup {
+            source: Some(MappingBoundary::Csv(source)),
+            target: Some(MappingBoundary::Csv(target)),
+        }
+        .build_project()
+        .unwrap();
+        let reopened = mapping::project_file::decode_str(
+            &mapping::project_file::encode_pretty(&project).unwrap(),
+        )
+        .unwrap();
+        assert!(reopened.source_options.csv_preserve_empty_strings);
+        assert!(!reopened.target_options.csv_preserve_empty_strings);
         std::fs::remove_file(path).unwrap();
     }
 

@@ -5,8 +5,8 @@
 //! scalar fields; the file's row-repetition itself is a format convention,
 //! not something declared in the schema (unlike XML, where `repeating` is a
 //! per-element schema property).
-//! Empty cells represent [`Value::Null`] for every scalar type; CSV therefore
-//! cannot distinguish a null string from an intentionally empty string.
+//! Empty cells default to [`Value::Null`]. [`CsvReadOptions`] can preserve
+//! present empty text cells as empty strings while missing columns remain null.
 
 use std::io::Read as _;
 use std::path::Path;
@@ -15,6 +15,12 @@ use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use thiserror::Error;
 
 mod fixed_width;
+mod read;
+
+pub use read::{
+    CsvReadOptions, from_str, from_str_with_dialect, from_str_with_options, from_str_with_quote,
+    read, read_with_dialect, read_with_options, read_with_quote,
+};
 
 pub use fixed_width::{
     from_str_fixed_width, read_fixed_width, to_string_fixed_width, write_fixed_width,
@@ -255,135 +261,6 @@ fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatE
             Err(CsvFormatError::UnsupportedSchema)
         }
     }
-}
-
-/// Reads a CSV file into one [`Instance::Group`] per row, parsing each
-/// column according to its declared scalar type (columns are positional;
-/// when `has_headers` the first row is skipped). Missing trailing columns
-/// are represented as [`Value::Null`]. `delimiter` defaults to `,`.
-pub fn read(
-    path: &Path,
-    schema: &SchemaNode,
-    delimiter: Option<char>,
-    has_headers: bool,
-) -> Result<Vec<Instance>, CsvFormatError> {
-    read_with_quote(path, schema, delimiter, None, has_headers)
-}
-
-/// Read CSV rows with an explicit single-byte quote character.
-pub fn read_with_quote(
-    path: &Path,
-    schema: &SchemaNode,
-    delimiter: Option<char>,
-    quote: Option<char>,
-    has_headers: bool,
-) -> Result<Vec<Instance>, CsvFormatError> {
-    read_with_dialect(path, schema, delimiter, quote, false, has_headers)
-}
-
-/// Read CSV rows with optional quote recognition disabled.
-pub fn read_with_dialect(
-    path: &Path,
-    schema: &SchemaNode,
-    delimiter: Option<char>,
-    quote: Option<char>,
-    quote_disabled: bool,
-    has_headers: bool,
-) -> Result<Vec<Instance>, CsvFormatError> {
-    let fields = row_fields(schema)?;
-    let (delimiter, quote) = dialect_bytes(delimiter, quote, quote_disabled)?;
-    let reader = csv::ReaderBuilder::new()
-        .has_headers(has_headers)
-        .flexible(true)
-        .delimiter(delimiter)
-        .quote(quote.unwrap_or(b'"'))
-        .quoting(quote.is_some())
-        .from_path(path)?;
-    read_records(reader, &fields)
-}
-
-/// Reads CSV text into one [`Instance::Group`] per row.
-///
-/// This is the in-memory equivalent of [`read`], suitable for hosts without
-/// filesystem access such as WebAssembly applications.
-pub fn from_str(
-    text: &str,
-    schema: &SchemaNode,
-    delimiter: Option<char>,
-    has_headers: bool,
-) -> Result<Vec<Instance>, CsvFormatError> {
-    from_str_with_quote(text, schema, delimiter, None, has_headers)
-}
-
-/// Parse CSV text with an explicit single-byte quote character.
-pub fn from_str_with_quote(
-    text: &str,
-    schema: &SchemaNode,
-    delimiter: Option<char>,
-    quote: Option<char>,
-    has_headers: bool,
-) -> Result<Vec<Instance>, CsvFormatError> {
-    from_str_with_dialect(text, schema, delimiter, quote, false, has_headers)
-}
-
-/// Parse CSV text with optional quote recognition disabled.
-pub fn from_str_with_dialect(
-    text: &str,
-    schema: &SchemaNode,
-    delimiter: Option<char>,
-    quote: Option<char>,
-    quote_disabled: bool,
-    has_headers: bool,
-) -> Result<Vec<Instance>, CsvFormatError> {
-    let fields = row_fields(schema)?;
-    let (delimiter, quote) = dialect_bytes(delimiter, quote, quote_disabled)?;
-    let reader = csv::ReaderBuilder::new()
-        .has_headers(has_headers)
-        .flexible(true)
-        .delimiter(delimiter)
-        .quote(quote.unwrap_or(b'"'))
-        .quoting(quote.is_some())
-        .from_reader(text.as_bytes());
-    read_records(reader, &fields)
-}
-
-fn read_records<R: std::io::Read>(
-    mut reader: csv::Reader<R>,
-    fields: &[(&str, ScalarType)],
-) -> Result<Vec<Instance>, CsvFormatError> {
-    let mut out = Vec::new();
-    for (row_idx, result) in reader.records().enumerate() {
-        let raw = result?;
-        if raw.len() > fields.len() {
-            return Err(CsvFormatError::ColumnCount {
-                row: row_idx,
-                expected: fields.len(),
-                got: raw.len(),
-            });
-        }
-        let mut row = Vec::with_capacity(fields.len());
-        for (column, (name, ty)) in fields.iter().enumerate() {
-            let cell = raw.get(column).unwrap_or_default();
-            row.push((
-                name.to_string(),
-                Instance::Scalar(parse_value(name, *ty, cell, row_idx)?),
-            ));
-        }
-        out.push(Instance::Group(row));
-    }
-    Ok(out)
-}
-
-fn parse_value(
-    name: &str,
-    ty: ScalarType,
-    cell: &str,
-    row: usize,
-) -> Result<Value, CsvFormatError> {
-    if cell.is_empty() {
-        return Ok(Value::Null);
-    }
-    parse_present_value(name, ty, cell, row)
 }
 
 fn parse_present_value(

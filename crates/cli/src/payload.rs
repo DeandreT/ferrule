@@ -710,6 +710,7 @@ pub(crate) fn read_payload(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    super::validate_csv_empty_identity(document.path, options, "input")?;
     if options.local_xml_file_set {
         bail!(
             "`local_xml_file_set` requires multiple filesystem documents and is unavailable for a single payload"
@@ -825,13 +826,10 @@ pub(crate) fn read_payload(
 
     validate_tabular_fallback(document.path, options, "input")?;
     match extension_for_dispatch(document.path, options)?.as_str() {
-        "csv" | "txt" => format_csv::from_str_with_dialect(
+        "csv" | "txt" => format_csv::from_str_with_options(
             utf8(document, "CSV")?,
             schema,
-            options.delimiter,
-            options.csv_quote,
-            options.csv_quote_disabled,
-            options.has_header_row.unwrap_or(true),
+            &format_csv::CsvReadOptions::from(options),
         )
         .map(Instance::Repeated)
         .context("parsing CSV input payload"),
@@ -954,6 +952,7 @@ pub(crate) fn render_payload(
     options: &FormatOptions,
     current_datetime: &str,
 ) -> anyhow::Result<(Vec<u8>, usize)> {
+    super::validate_csv_empty_identity(path, options, "output")?;
     if options.local_xml_file_set {
         bail!("`local_xml_file_set` is input-only");
     }
