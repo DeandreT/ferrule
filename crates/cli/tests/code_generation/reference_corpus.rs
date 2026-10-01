@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against forty-one local, gitignored mappings.
+//! Opt-in generated-backend execution against forty supported local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -43,7 +43,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 41] = [
+const CASES: [CorpusCase; 40] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -169,12 +169,6 @@ const CASES: [CorpusCase; 41] = [
         input: "Tutorial/mf-ExpReport.xml",
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Xml,
-    },
-    CorpusCase {
-        sample: "ArticlesInStock.mfd",
-        input: "ClothingStockData2024.pdf",
-        source_kind: SourceKind::Pdf,
-        target_kind: TargetKind::Json,
     },
     CorpusCase {
         sample: "HandlingXsiNil.mfd",
@@ -322,6 +316,39 @@ fn generated_rust_and_csharp_execute_local_samples_like_engine() -> TestResult<(
     Ok(())
 }
 
+#[test]
+#[ignore = "requires the local ignored ReferenceSamples corpus"]
+fn native_object_find_stock_design_is_retained_as_a_blocked_repair() -> TestResult<()> {
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples")
+        .canonicalize()?;
+    let imported = mfd::import_with_options(
+        &samples.join("ArticlesInStock.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&samples),
+    )?;
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("ObjectFind"))
+    );
+    assert_eq!(imported.project.pdf_runtime_dependencies().len(), 1);
+    assert!(!mfd::assess_import(&imported).executable);
+    let layout = imported
+        .project
+        .source_options
+        .pdf
+        .as_ref()
+        .expect("editable PDF draft");
+    assert!(matches!(
+        format_pdf::read(&samples.join("ClothingStockData2024.pdf"), layout),
+        Err(format_pdf::PdfError::RepairDependency(
+            mapping::PdfRepairDependency::ObjectFind
+        ))
+    ));
+    Ok(())
+}
+
 fn run_case(
     samples: &Path,
     case_dir: &Path,
@@ -345,6 +372,11 @@ fn run_case(
         project.runtime_dependencies().is_empty(),
         "{sample}: host dependencies prevent deterministic execution: {:?}",
         project.runtime_dependencies()
+    );
+    assert!(
+        project.pdf_runtime_dependencies().is_empty(),
+        "{sample}: PDF repair dependencies prevent physical extraction: {:?}",
+        project.pdf_runtime_dependencies()
     );
     let named_input = (sample == "Tutorial/JoinPeopleInfo.mfd")
         .then_some(("Addresses", "Tutorial/Addresses.xml"));
@@ -520,11 +552,10 @@ fn run_case(
             &project.source,
             project.source_options.flextext.as_ref().unwrap(),
         )?,
-        SourceKind::Csv => Instance::Repeated(format_csv::read(
+        SourceKind::Csv => Instance::Repeated(format_csv::read_with_options(
             &input_path,
             &project.source,
-            project.source_options.delimiter,
-            project.source_options.has_header_row.unwrap_or(true),
+            &format_csv::CsvReadOptions::from(&project.source_options),
         )?),
         SourceKind::Pdf => format_pdf::read(
             &input_path,
@@ -637,7 +668,6 @@ fn run_case(
         sample,
         "FlattenHierarchy.mfd"
             | "EmployeesToKeyValueList.mfd"
-            | "ArticlesInStock.mfd"
             | "BookCatalogPDFToXML.mfd"
             | "ParseStringWithFlexText.mfd"
             | "InputIsSequence.mfd"
@@ -1370,38 +1400,6 @@ fn run_case(
             4,
             "{sample}: four distinct runtime field names"
         );
-    }
-    if sample == "ArticlesInStock.mfd" {
-        let articles = expected_json.as_array().expect("PDF stock articles");
-        assert_eq!(
-            articles.len(),
-            11,
-            "{sample}: all PDF articles are extracted"
-        );
-        assert_eq!(articles[0]["Number"], 123456.0);
-        assert_eq!(articles[0]["Name"], "Flowing Silk Maxi Dress");
-        let numbers = articles
-            .iter()
-            .map(|article| {
-                article["Number"]
-                    .as_f64()
-                    .expect("article number")
-                    .to_bits()
-            })
-            .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(numbers.len(), articles.len(), "{sample}: distinct articles");
-        for article in articles {
-            let stores = article["StoreDetails"].as_array().expect("article stores");
-            assert_eq!(stores.len(), 2, "{sample}: both stores are retained");
-            assert!(stores.iter().all(|store| {
-                store["Store"].as_str().is_some_and(|name| !name.is_empty())
-                    && store["Available"]
-                        .as_object()
-                        .is_some_and(|sizes| !sizes.is_empty())
-            }));
-        }
-        assert_eq!(articles[0]["StoreDetails"][0]["Available"]["XS"], 1.0);
-        assert_eq!(articles[0]["StoreDetails"][1]["Available"]["XL"], 6.0);
     }
     if sample == "BookCatalogPDFToXML.mfd" {
         let books = expected_json["Book"].as_array().expect("mapped PDF books");

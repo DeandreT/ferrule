@@ -255,6 +255,7 @@ fn text_group_validation_rejects_empty_matchers_and_nonrepeating_rows() {
     ));
 
     let whitespace_matcher = PdfLayout {
+        repair_dependency: None,
         root_name: "Document".into(),
         page_selection: PdfPageSelection::First,
         commands: vec![PdfCommand::TextGroups(PdfTextGroups {

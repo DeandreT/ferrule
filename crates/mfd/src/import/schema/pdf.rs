@@ -146,7 +146,11 @@ pub(super) fn parse_native_template_text(
     source: &str,
     expected_root: &str,
 ) -> Result<PdfLayout, String> {
-    parse_layout_text(source, expected_root, false).map(|(layout, _)| layout)
+    let (layout, _) = parse_layout_text(source, expected_root, false)?;
+    match layout.repair_dependency() {
+        Some(dependency) => Err(dependency.to_string()),
+        None => Ok(layout),
+    }
 }
 
 fn parse_layout_text(
@@ -212,6 +216,7 @@ fn parse_layout_text(
     let mut context = ParseContext {
         merge_sources,
         merge_targets: BTreeSet::new(),
+        object_find_repair: false,
     };
     let commands = parse_commands(&children, true, &mut context)?;
     if let Some(name) = context.merge_sources.keys().next() {
@@ -221,7 +226,15 @@ fn parse_layout_text(
     }
     let layout = PdfLayout::new(root_name, PdfPageSelection::All, commands)
         .map_err(|error| format!("invalid PDF extraction layout ({error})"))?;
-    Ok((layout, Vec::new()))
+    if context.object_find_repair {
+        let dependency = mapping::PdfRepairDependency::ObjectFind;
+        Ok((
+            layout.with_repair_dependency(dependency),
+            vec![dependency.to_string()],
+        ))
+    } else {
+        Ok((layout, Vec::new()))
+    }
 }
 
 fn parse_canonical_layout(
@@ -253,12 +266,18 @@ fn parse_canonical_layout(
             layout.root_name()
         ));
     }
-    Ok((layout, Vec::new()))
+    let warnings = layout
+        .repair_dependency()
+        .map(|dependency| dependency.to_string())
+        .into_iter()
+        .collect();
+    Ok((layout, warnings))
 }
 
 struct ParseContext {
     merge_sources: BTreeMap<String, Vec<PdfMergeSource>>,
     merge_targets: BTreeSet<String>,
+    object_find_repair: bool,
 }
 
 fn parse_commands(

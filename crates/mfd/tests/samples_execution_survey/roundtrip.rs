@@ -6,7 +6,7 @@ use super::output_support::compare_execution_outputs;
 use super::{
     FIXED_CURRENT_DATETIME, SAMPLES_DIR, StageOutcome, Status, SurveyDynamicSourceLoader,
     SurveyResourceProvenance, SurveyResourceSelection, SurveyWorkspace, discover_sample_paths,
-    load_sources,
+    load_sources, runtime_dependency_messages,
 };
 
 const JSON_REPORT_ENV: &str = "FERRULE_ROUNDTRIP_EXECUTION_SURVEY_JSON";
@@ -140,6 +140,10 @@ fn passed_with_warnings(warnings: Vec<String>) -> StageOutcome {
 }
 
 fn validation_outcome(project: &mapping::Project) -> StageOutcome {
+    let dependencies = runtime_dependency_messages(project);
+    if !dependencies.is_empty() {
+        return StageOutcome::dependency_blocked(dependencies.join(" | "));
+    }
     let issues = engine::validate(project);
     if issues.is_empty() {
         StageOutcome::passed()
@@ -226,12 +230,7 @@ fn survey_roundtrip_file(
         super::input_contract::unsupported_input_contract_warning(&imported.warnings)
             .map(str::to_owned);
     outcome.import = passed_with_warnings(imported.warnings);
-    outcome.runtime_dependencies = imported
-        .project
-        .runtime_dependencies()
-        .into_iter()
-        .map(|dependency| dependency.to_string())
-        .collect();
+    outcome.runtime_dependencies = runtime_dependency_messages(&imported.project);
     if !outcome.runtime_dependencies.is_empty() {
         let message = outcome.runtime_dependencies.join(" | ");
         outcome.validation = StageOutcome::dependency_blocked(message.clone());
@@ -533,6 +532,28 @@ fn controlled_mapping_failures_are_compared_as_semantic_outcomes() {
 
     assert!(compare_semantic_executions(&original, &same).is_ok());
     assert!(compare_semantic_executions(&original, &changed).is_err());
+}
+
+#[test]
+fn self_authored_pdf_repair_blocks_roundtrip_and_reload_validation() -> Result<(), Box<dyn Error>> {
+    let samples = TestDir::new("pdf-repair");
+    let design = super::write_self_authored_pdf_repair_case(&samples.0)?;
+    let workspace = SurveyWorkspace::new()?;
+    let options = mfd::ImportOptions::default().with_package_root(&samples.0);
+    let outcome = survey_roundtrip_file(0, &design, &samples.0, &workspace, &options);
+    assert_eq!(outcome.validation.status, Status::DependencyBlocked);
+    assert_eq!(outcome.original_execution.status, Status::DependencyBlocked);
+    assert_eq!(outcome.source_load.status, Status::Skipped);
+    assert_eq!(outcome.runtime_dependencies.len(), 1);
+    let project = mfd::import_with_options(&design, &options)?.project;
+    let reopened =
+        mapping::project_file::decode_str(&mapping::project_file::encode_pretty(&project)?)?;
+    assert_eq!(
+        validation_outcome(&reopened).status,
+        Status::DependencyBlocked
+    );
+    assert!(!workspace.0.join("sample-0").exists());
+    Ok(())
 }
 
 #[test]

@@ -14,6 +14,8 @@ pub struct PdfLayout {
     root_name: String,
     page_selection: PdfPageSelection,
     commands: Vec<PdfCommand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repair_dependency: Option<crate::PdfRepairDependency>,
 }
 
 impl PdfLayout {
@@ -35,6 +37,7 @@ impl PdfLayout {
             root_name,
             page_selection,
             commands,
+            repair_dependency: None,
         })
     }
 
@@ -48,6 +51,17 @@ impl PdfLayout {
 
     pub fn commands(&self) -> &[PdfCommand] {
         &self.commands
+    }
+
+    /// Marks an imported approximation as a repair draft. PDF byte readers and
+    /// faithful exporters must reject it; its schema remains available to editors.
+    pub fn with_repair_dependency(mut self, dependency: crate::PdfRepairDependency) -> Self {
+        self.repair_dependency = Some(dependency);
+        self
+    }
+
+    pub const fn repair_dependency(&self) -> Option<crate::PdfRepairDependency> {
+        self.repair_dependency
     }
 
     pub fn schema(&self) -> SchemaNode {
@@ -71,10 +85,16 @@ impl<'de> Deserialize<'de> for PdfLayout {
             root_name: String,
             page_selection: PdfPageSelection,
             commands: Vec<PdfCommand>,
+            #[serde(default)]
+            repair_dependency: Option<crate::PdfRepairDependency>,
         }
 
         let value = Repr::deserialize(deserializer)?;
         Self::new(value.root_name, value.page_selection, value.commands)
+            .map(|mut layout| {
+                layout.repair_dependency = value.repair_dependency;
+                layout
+            })
             .map_err(serde::de::Error::custom)
     }
 }

@@ -565,12 +565,7 @@ fn survey_file(
             )
         }),
     };
-    outcome.runtime_dependencies = imported
-        .project
-        .runtime_dependencies()
-        .into_iter()
-        .map(|dependency| dependency.to_string())
-        .collect();
+    outcome.runtime_dependencies = runtime_dependency_messages(&imported.project);
     if !outcome.runtime_dependencies.is_empty() {
         let message = outcome.runtime_dependencies.join(" | ");
         outcome.validation = StageOutcome::dependency_blocked(message.clone());
@@ -932,6 +927,61 @@ fn summary_counts_attempts_separately_from_skips() {
             references_mismatched: 1,
         }
     );
+}
+
+fn runtime_dependency_messages(project: &Project) -> Vec<String> {
+    project
+        .runtime_dependencies()
+        .into_iter()
+        .map(|dependency| dependency.to_string())
+        .chain(
+            project
+                .pdf_runtime_dependencies()
+                .into_iter()
+                .map(|dependency| dependency.to_string()),
+        )
+        .collect()
+}
+
+fn write_self_authored_pdf_repair_case(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let design = directory.join("mapping.mfd");
+    std::fs::copy(fixtures.join("pdf-text-groups.mfd"), &design)?;
+    std::fs::copy(
+        fixtures.join("pdf-text-groups.pxt"),
+        directory.join("warehouse.pxt"),
+    )?;
+    Ok(design)
+}
+
+#[test]
+fn self_authored_pdf_repair_blocks_execution_before_loading_inputs() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let inputs = workspace.0.join("inputs");
+    std::fs::create_dir(&inputs)?;
+    let design = write_self_authored_pdf_repair_case(&inputs)?;
+    let outcome = survey_file(
+        0,
+        &design,
+        &inputs,
+        &workspace,
+        None,
+        &mfd::ImportOptions::default().with_package_root(&inputs),
+    );
+    assert_eq!(outcome.validation.status, Status::DependencyBlocked);
+    assert_eq!(outcome.execution.status, Status::DependencyBlocked);
+    assert_eq!(outcome.runtime_dependencies.len(), 1);
+    assert!(outcome.runtime_dependencies[0].contains("ObjectFind"));
+    assert_eq!(outcome.output_write.status, Status::Skipped);
+    assert_eq!(
+        outcome.to_json()["runtime_dependencies"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(!workspace.0.join("sample-0").exists());
+    Ok(())
 }
 
 #[test]

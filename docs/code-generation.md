@@ -560,12 +560,11 @@ transport; full original XSD-derived schemas remain in the XML comparisons.
 The C# XML serializer receives the imported root namespace through its explicit
 `defaultNamespace` option; general per-node XML namespace metadata parity
 remains separate. The full recursive mixed-description JSON boundary remains
-unsupported. The twenty-second reads a bounded PDF stock report with the
-imported visual-extraction layout, then maps eleven articles and each store's
-runtime-named size quantities to JSON. Both generated hosts consume the same
-schema-shaped, host-extracted PDF instance through their JSON input APIs; the
-test compares typed JSON output and verifies transport preserves the interpreter
-result. The twenty-third maps an XML source containing four explicit `xsi:nil`
+unsupported. The earlier PDF stock execution case is withdrawn: its imported ObjectFind
+layout is a repair draft because visual candidate detection is not implemented.
+Physical PDF reads now reject before decoding; generated hosts may still accept
+intentional host-preparsed schema-shaped JSON, without asserting native PDF
+extraction. The twenty-third maps an XML source containing four explicit `xsi:nil`
 values to an XML target using nil-sensitive functions. Its test carries the
 non-nil fields through schema-shaped JSON, restores the four known nil values in
 the generated Rust and C# typed `Instance` hosts, verifies that this transport

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::{fs::File, io::Read};
 
 use ir::Instance;
-use mapping::PdfLayout;
+use mapping::{PdfLayout, PdfRepairDependency};
 use thiserror::Error;
 
 pub const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024;
@@ -19,6 +19,8 @@ pub const MAX_INSTANCE_DEPTH: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum PdfError {
+    #[error("PDF extraction blocked: {0}")]
+    RepairDependency(PdfRepairDependency),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("PDF input exceeds the {MAX_INPUT_BYTES}-byte limit")]
@@ -44,6 +46,7 @@ pub enum PdfError {
 }
 
 pub fn read(path: &Path, layout: &PdfLayout) -> Result<Instance, PdfError> {
+    require_executable_layout(layout)?;
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     if metadata.len() > MAX_INPUT_BYTES as u64 {
@@ -59,11 +62,19 @@ pub fn read(path: &Path, layout: &PdfLayout) -> Result<Instance, PdfError> {
 }
 
 pub fn from_bytes(bytes: &[u8], layout: &PdfLayout) -> Result<Instance, PdfError> {
+    require_executable_layout(layout)?;
     if bytes.len() > MAX_INPUT_BYTES {
         return Err(PdfError::InputTooLarge);
     }
     let pages = extract::extract_pages(bytes)?;
     layout::evaluate(&pages, layout)
+}
+
+fn require_executable_layout(layout: &PdfLayout) -> Result<(), PdfError> {
+    match layout.repair_dependency() {
+        Some(dependency) => Err(PdfError::RepairDependency(dependency)),
+        None => Ok(()),
+    }
 }
 
 #[cfg(test)]

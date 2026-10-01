@@ -11,6 +11,8 @@ use crate::MfdError;
 
 use super::schema::{GeneratedSibling, PortTree, RenderedSchemaComponent, Side, xml_escape};
 
+mod native_anchor_body;
+mod native_anchor_rows;
 mod native_merge;
 mod native_rows;
 
@@ -35,6 +37,11 @@ pub(super) fn validate_side(
     side: Side,
     side_name: &str,
 ) -> Result<(), MfdError> {
+    if let Some(dependency) = options.pdf.as_ref().and_then(PdfLayout::repair_dependency) {
+        return Err(unsupported(format!(
+            "the {side_name} PDF boundary requires {dependency}"
+        )));
+    }
     let Some(layout) = options.pdf.as_ref() else {
         return Ok(());
     };
@@ -78,6 +85,8 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     let template = match native_capture_template(layout)
         .or_else(|| native_rows::template(layout))
         .or_else(|| native_merge::template(layout))
+        .or_else(|| native_anchor_rows::template(layout))
+        .or_else(|| native_anchor_body::template(layout))
     {
         Some(template) => template,
         None => canonical_template(layout)?,
@@ -341,6 +350,7 @@ fn has_conflicting_options(options: &FormatOptions) -> bool {
         || options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()

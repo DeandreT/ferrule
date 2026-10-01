@@ -56,6 +56,7 @@ pub(super) fn parse_object_find_splitter(
 ) -> Result<Vec<PdfCommand>, String> {
     validate_splitter_controls(node)?;
     let minimum_extent = validate_object_find(object_find)?;
+    context.object_find_repair = true;
     let children = child(node, "Children")
         .ok_or_else(|| "PDF ObjectFind Splitter has no Children block".to_string())?;
     let groups = children
@@ -323,6 +324,7 @@ mod tests {
         ParseContext {
             merge_sources: BTreeMap::new(),
             merge_targets: BTreeSet::new(),
+            object_find_repair: false,
         }
     }
 
