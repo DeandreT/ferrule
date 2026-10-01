@@ -15,21 +15,55 @@ impl FerruleApp {
     }
 
     pub(super) fn stage_extra_target_schema(&mut self, path: PathBuf) {
-        let loaded = crate::new_mapping::import_schema(&path).and_then(|schema| {
-            if let Some(draft) = self.extra_target_draft.as_ref() {
-                crate::new_mapping::validate_schema_replacement(&draft.options, &schema)?;
+        if crate::new_mapping::is_protobuf_schema(&path) {
+            match crate::new_mapping::ProtobufBoundaryDraft::from_schema(path) {
+                Ok(protobuf) => {
+                    let Some(draft) = self.extra_target_draft.as_mut() else {
+                        return;
+                    };
+                    draft.protobuf_draft = Some(Box::new(protobuf));
+                    self.status =
+                        "loaded target Protocol Buffers schema; choose a root message".to_owned();
+                    self.diagnostics.clear();
+                }
+                Err(error) => {
+                    self.status = "failed to load target schema".to_owned();
+                    self.diagnostics.error(
+                        "Protocol Buffers schema import failed",
+                        format!("{error:#}"),
+                    );
+                }
             }
-            Ok(schema)
+            return;
+        }
+        let loaded = crate::new_mapping::import_schema(&path).and_then(|schema| {
+            let pending_options = self
+                .extra_target_draft
+                .as_ref()
+                .and_then(|draft| draft.protobuf_draft.as_ref())
+                .map(|protobuf| protobuf.options())
+                .transpose()?;
+            if let Some(draft) = self.extra_target_draft.as_ref() {
+                crate::new_mapping::validate_schema_replacement(
+                    pending_options.as_ref().unwrap_or(&draft.options),
+                    &schema,
+                )?;
+            }
+            Ok((schema, pending_options))
         });
         match loaded {
-            Ok(schema) => {
+            Ok((schema, pending_options)) => {
                 let Some(draft) = self.extra_target_draft.as_mut() else {
                     return;
                 };
                 if draft.name.trim().is_empty() {
                     draft.name.clone_from(&schema.name);
                 }
+                draft.protobuf_draft = None;
                 draft.schema = Some(schema);
+                if let Some(options) = pending_options {
+                    draft.options = options;
+                }
                 self.status = if draft.options.protobuf.is_some() {
                     "loaded matching target schema; kept Protocol Buffers format".to_owned()
                 } else {
@@ -51,11 +85,23 @@ impl FerruleApp {
         };
         let editing = draft.editing.is_some();
         let dialog_idle = self.pending_dialog.is_none();
-        let schema_label = draft
-            .schema
-            .as_ref()
-            .map_or("Not selected", |schema| schema.name.as_str());
-        let can_save = !draft.name.trim().is_empty() && draft.schema.is_some();
+        let schema_label = draft.protobuf_draft.as_ref().map_or_else(
+            || {
+                draft
+                    .schema
+                    .as_ref()
+                    .map_or_else(|| "Not selected".to_owned(), |schema| schema.name.clone())
+            },
+            |protobuf| {
+                protobuf
+                    .schema_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+            },
+        );
+        let can_save = !draft.name.trim().is_empty() && draft.schema_is_ready();
         let mut action = None;
         egui::Window::new(if editing { "Edit Target" } else { "Add Target" })
             .collapsible(false)
@@ -97,7 +143,11 @@ impl FerruleApp {
                     });
                 ui.separator();
                 ui.strong("Output format");
-                show_target_format_options(ui, &draft.output_path, &mut draft.options);
+                if draft.protobuf_draft.is_some() {
+                    show_named_target_protobuf(ui, draft);
+                } else {
+                    show_target_format_options(ui, &draft.output_path, &mut draft.options);
+                }
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui
@@ -120,7 +170,7 @@ impl FerruleApp {
             Some(ExtraTargetAction::ChooseSchema) => {
                 self.pending_dialog = Some((
                     DialogKind::BrowseExtraTargetSchema,
-                    pick_file("schema", &["xsd", "json"]),
+                    pick_file("schema", &["xsd", "json", "proto"]),
                 ));
             }
             Some(ExtraTargetAction::ChooseOutput) => {
@@ -128,7 +178,9 @@ impl FerruleApp {
                     DialogKind::BrowseExtraTargetOutput,
                     save_file(
                         "output data",
-                        &["xml", "json", "jsonl", "csv", "xlsx", "edi", "txt"],
+                        &[
+                            "xml", "json", "jsonl", "csv", "xlsx", "edi", "txt", "bin", "dat",
+                        ],
                         &draft.output_path,
                     ),
                 ));
@@ -231,6 +283,26 @@ impl FerruleApp {
         } else {
             self.diagnostics.validation(&self.project, issues);
         }
+    }
+}
+
+fn show_named_target_protobuf(ui: &mut egui::Ui, draft: &mut ExtraTargetDraft) {
+    let Some(protobuf) = draft.protobuf_draft.as_mut() else {
+        return;
+    };
+    ui.strong("Protocol Buffers output");
+    if crate::new_mapping::show_protobuf_root_message(ui, protobuf, "named_target")
+        && draft.name.trim().is_empty()
+        && let Ok(schema) = protobuf.schema()
+    {
+        draft.name = schema.name;
+    }
+    ui.weak("The project keeps the selected schema and its local imports for any data filename.");
+    if let Err(error) = protobuf.validate() {
+        ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
+    }
+    if ui.button("Use path format").clicked() {
+        draft.use_path_format();
     }
 }
 
@@ -378,3 +450,7 @@ mod tests {
 #[cfg(test)]
 #[path = "extra_targets/protobuf_format_tests.rs"]
 mod protobuf_format_tests;
+
+#[cfg(test)]
+#[path = "extra_targets/named_protobuf_tests.rs"]
+mod named_protobuf_tests;

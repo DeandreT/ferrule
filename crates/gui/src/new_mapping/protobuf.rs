@@ -4,6 +4,7 @@ use anyhow::{Context as _, bail};
 use mapping::{FormatOptions, ProtobufOptions, ProtobufSchemaFile};
 
 /// A schema graph is loaded once; choosing a root changes only its projection.
+#[derive(Debug, Clone)]
 pub(crate) struct ProtobufBoundaryDraft {
     pub(crate) schema_path: PathBuf,
     pub(crate) instance_path: String,
@@ -17,11 +18,7 @@ pub(crate) struct ProtobufBoundaryDraft {
 
 impl ProtobufBoundaryDraft {
     pub(crate) fn from_schema(path: PathBuf) -> anyhow::Result<Self> {
-        if !path
-            .extension()
-            .and_then(|value| value.to_str())
-            .is_some_and(|value| value.eq_ignore_ascii_case("proto"))
-        {
+        if !is_protobuf_schema(&path) {
             bail!("Protocol Buffers schema must have a .proto extension");
         }
         let root_path = path
@@ -73,6 +70,10 @@ impl ProtobufBoundaryDraft {
         }
     }
 
+    pub(crate) fn has_valid_selection(&self) -> bool {
+        !self.root_message.is_empty() && self.selection_error.is_none() && self.schema.is_some()
+    }
+
     pub(crate) fn validate(&self) -> anyhow::Result<()> {
         if self.root_message.is_empty() {
             bail!("choose a Protocol Buffers root message");
@@ -121,6 +122,41 @@ impl ProtobufBoundaryDraft {
     pub(crate) fn instance_path(&self) -> Option<String> {
         let path = self.instance_path.trim();
         (!path.is_empty()).then(|| path.to_owned())
+    }
+}
+
+pub(crate) fn is_protobuf_schema(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("proto"))
+}
+
+/// Shared required root selector for primary and named boundary authoring.
+pub(crate) fn show_protobuf_root_message(
+    ui: &mut egui::Ui,
+    draft: &mut ProtobufBoundaryDraft,
+    id: impl std::hash::Hash + std::fmt::Debug,
+) -> bool {
+    let mut root = draft.root_message.clone();
+    ui.horizontal(|ui| {
+        ui.label("Root message");
+        egui::ComboBox::from_id_salt(("protobuf_root", id))
+            .selected_text(if root.is_empty() {
+                "Choose a root message".to_owned()
+            } else {
+                root.clone()
+            })
+            .show_ui(ui, |ui| {
+                for message in &draft.root_messages {
+                    ui.selectable_value(&mut root, message.clone(), message);
+                }
+            });
+    });
+    if root == draft.root_message {
+        false
+    } else {
+        draft.set_root_message(root);
+        true
     }
 }
 
