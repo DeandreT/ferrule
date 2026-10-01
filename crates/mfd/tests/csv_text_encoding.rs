@@ -179,7 +179,11 @@ fn unsupported_source_and_target_encodings_warn_for_repair_and_reject_executable
             assert!(warning.contains("unsupported text encoding"));
             assert!(warning.contains("UTF-8 encoding code 1000"));
             assert!(warning.len() < 200);
-            assert_eq!(execute(&repaired.imported.project)?, "café,7\n");
+            assert_eq!(
+                repaired.imported.project.csv_runtime_dependencies().len(),
+                1
+            );
+            assert!(execute(&repaired.imported.project).is_err());
             assert!(matches!(
                 mfd::import_with_profile(&path, &ImportOptions::default(), ImportProfile::Executable),
                 Err(MfdError::IncompatibleImport(report))

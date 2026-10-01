@@ -135,6 +135,7 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
         };
         if !imported.project.runtime_dependencies().is_empty()
             || !imported.project.pdf_runtime_dependencies().is_empty()
+            || !imported.project.csv_runtime_dependencies().is_empty()
         {
             dependency_blocked += 1;
             continue;

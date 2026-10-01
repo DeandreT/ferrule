@@ -51,6 +51,12 @@ fn explicit_input_formats_override_sqlite_controls_and_render_without_mutation()
     let variants = [
         protobuf,
         FormatOptions {
+            csv_text_repair_dependency: Some(mapping::CsvTextRepairDependency::new(
+                mapping::CsvTextRepairCause::Encoding,
+            )),
+            ..FormatOptions::default()
+        },
+        FormatOptions {
             xml_document: true,
             ..FormatOptions::default()
         },

@@ -137,6 +137,7 @@ pub(super) fn target_format_is_implicit(options: &FormatOptions) -> bool {
         && !options.csv_quote_disabled
         && !options.csv_utf8_bom
         && !options.csv_preserve_empty_strings
+        && options.csv_text_repair_dependency.is_none()
         && options.has_header_row.is_none()
         && options.fixed_width.is_none()
         && options.flextext.is_none()
