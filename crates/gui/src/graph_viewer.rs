@@ -34,7 +34,7 @@ mod node_palette;
 
 use graph_references::node_inputs;
 pub(crate) use graph_references::{
-    InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes,
+    InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, references_outside_scope,
 };
 use node_palette::NodeTemplate;
 

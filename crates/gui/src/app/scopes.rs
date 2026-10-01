@@ -95,6 +95,11 @@ impl FerruleApp {
             return;
         }
 
+        if matches!(action, Some(ScopeAction::Remove)) {
+            self.remove_selected_target_scope();
+            return;
+        }
+
         let result = match (target_index, action) {
             (Some(index), Some(ScopeAction::Add(target_field))) => {
                 let Some(target) = self.project.extra_targets.get_mut(index) else {
@@ -107,22 +112,15 @@ impl FerruleApp {
                     &target_field,
                 )
             }
-            (Some(index), Some(ScopeAction::Remove)) => {
-                let Some(target) = self.project.extra_targets.get_mut(index) else {
-                    return;
-                };
-                remove_child_scope(&mut target.root, &self.selected_scope)
-            }
             (None, Some(ScopeAction::Add(target_field))) => create_static_child_scope(
                 &mut self.project.root,
                 &self.project.target,
                 &self.selected_scope,
                 &target_field,
             ),
-            (None, Some(ScopeAction::Remove)) => {
-                remove_child_scope(&mut self.project.root, &self.selected_scope)
+            (_, Some(ScopeAction::Expand | ScopeAction::Remove)) => {
+                unreachable!("structural actions handled above")
             }
-            (_, Some(ScopeAction::Expand)) => unreachable!("expansion handled above"),
             (_, None) => return,
         };
         match result {

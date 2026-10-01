@@ -67,6 +67,7 @@ mod pipeline_ui;
 mod preview_ui;
 #[path = "run.rs"]
 mod run_ui;
+mod scope_retirement;
 #[path = "scopes.rs"]
 mod scope_ui;
 #[path = "workspace.rs"]
@@ -1525,3 +1526,6 @@ mod window_controls_tests;
 
 #[cfg(test)]
 mod copy_scope_tests;
+
+#[cfg(test)]
+mod scope_retirement_tests;
