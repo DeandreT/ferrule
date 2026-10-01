@@ -150,6 +150,30 @@ pub(super) fn validate_project(
     if items.is_empty() {
         return;
     }
+    // Dynamic paths run in a source driver frame, never in a target's
+    // generated-item context. Reducers may still introduce their own private
+    // item permission inside predicate/value expressions.
+    for (index, source) in project.extra_sources.iter().enumerate() {
+        let Some(dynamic) = &source.dynamic_path else {
+            continue;
+        };
+        let location = format!("extra source `{}`", source.name.trim());
+        let owner = ValidationOwner::Endpoint(ValidationEndpoint::NamedSource {
+            index,
+            name: source.name.clone(),
+        });
+        validate_root(
+            &project.graph,
+            items,
+            dynamic.node,
+            ItemContext::Empty,
+            Origin::Site {
+                location: &location,
+                owner: &owner,
+            },
+            issues,
+        );
+    }
     let mut pending = Vec::new();
     for (index, target) in project.extra_targets.iter().enumerate().rev() {
         pending.push(ScopeSite {

@@ -64,6 +64,20 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     targets::collect_sequence_items(program, &expressions, &mut sequence_items)?;
     failures::collect_sequence_items(program, &expressions, &mut sequence_items)?;
     let sequence_items = sequence_items.keys().copied().collect::<BTreeSet<_>>();
+    // Path/driver validation above keeps its existing diagnostic precedence.
+    // Generated-item permissions require the complete expression/scope/failure
+    // inventory, and a source driver grants no outer generated-item permission.
+    for source in &program.extra_sources {
+        if let Some(dynamic) = &source.dynamic {
+            sequences::validate_context(
+                dynamic.path,
+                &expressions,
+                &sequence_items,
+                &[],
+                &SequenceOwner::DynamicSource(source.name.clone()),
+            )?;
+        }
+    }
     validate_expression_sequence_paths(sources, &expressions)?;
     failures::validate(program, &expressions, &sequence_items)?;
     targets::validate(program, &expressions, &sequence_items)
@@ -141,8 +155,6 @@ fn validate_dynamic_sources(
                 driver: dynamic.driver.path().to_vec(),
             });
         };
-        let owner = SequenceOwner::DynamicSource(source.name.clone());
-        sequences::validate_context(dynamic.path, expressions, &BTreeSet::new(), &[], &owner)?;
         joins::validate_expression(dynamic.path, expressions, sources, Some(driver), &[], false)?;
     }
     Ok(())

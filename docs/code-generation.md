@@ -460,6 +460,8 @@ Primary and named targets and concatenated segments keep independent contexts.
 Exists and aggregate predicates and computed values use only their private item;
 aggregate generator inputs and optional scalar arguments can read an active
 parent item. Scalar item-at keeps its existing isolated input/index policy.
+Dynamic named-source paths have no outer generated item permission. They can
+still read ordinary source driver fields and introduce private reducer contexts.
 An ancestor item ID grants permission without pinning a runtime frame: its value
 still resolves from the innermost active scalar frame. CLI and editor execution
 hosts validate before running; the low-level interpreter APIs keep their existing
