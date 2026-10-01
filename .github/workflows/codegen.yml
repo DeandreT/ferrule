@@ -26,8 +26,13 @@ env:
 
 jobs:
   generated-backends:
+    name: generated-backends (${{ matrix.suite }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [crates, mappings]
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@nightly
@@ -38,12 +43,13 @@ jobs:
           dotnet-version: 10.0.x
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: codegen-bounded-builds
+          shared-key: codegen-${{ matrix.suite }}-bounded-builds
       - name: clippy
         run: >-
           cargo clippy -p cli --test code_generation
           --features codegen-tests -- -D warnings
       - name: codegen crate tests
+        if: matrix.suite == 'crates'
         run: >-
           cargo test
           -p codegen
@@ -52,6 +58,7 @@ jobs:
           -p codegen-csharp
           -- --test-threads=2
       - name: generated Rust and C# parity tests
+        if: matrix.suite == 'mappings'
         run: >-
           cargo test -p cli --test code_generation
           --features codegen-tests -- --test-threads=2
