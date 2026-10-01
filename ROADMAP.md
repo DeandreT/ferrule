@@ -205,9 +205,11 @@ are preserved.
   designs execute equivalently.
 - Generated regex operations retain complete Unicode scalars, source-order
   captures, nested character classes, intersection/difference/symmetric
-  difference, and all 14 ASCII POSIX class terms. A compiled 117-case mapping
+  difference, and all 14 ASCII POSIX class terms. Unicode word/nonword assertions
+  share scalar word membership and retain ordered alternatives, greedy/lazy
+  captures, and global spans within explicit execution limits. A compiled 149-case mapping
   compares matching, replacement, and tokenization through Rust/C# JSON string
-  and UTF-8 byte hosts against the interpreter. Word-boundary assertions,
+  and UTF-8 byte hosts against the interpreter. Additional boundary spellings,
   broader property vocabularies, host-only syntax, and compilation budgets
   remain separate backend differences.
 - File and export fidelity: project, pipeline, generated-schema, and PDF-layout

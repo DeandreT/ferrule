@@ -520,7 +520,17 @@ scalar complements, active case folding, and all 14 ASCII POSIX class terms.
 C# class compilation has a 100-million interval-work bound in addition to its
 source, depth, and translated-size limits; exact backend compilation budgets
 still differ.
-Rust and .NET still expose different regex dialects. Word-boundary assertions,
+C# `\b` and `\B` compare the same Unicode scalar word set as `\w`, preserving
+supplementary letters, combining marks, join controls, source-order captures,
+greedy/lazy choices, and global match spans. A prioritized non-backtracking
+matcher handles patterns containing these assertions; ordinary patterns retain
+the existing host engine. Unsupported host groups and escapes combined with
+word assertions reject explicitly. The assertion matcher caps its AST at 8,192
+nodes, expanded instructions at 163,840, VM allocations at 64 MiB, and actual
+execution work at 100 million units shared across one operation's searches.
+These local caps preserve typed failures without claiming identical backend
+compilation or execution budgets.
+Rust and .NET still expose different regex dialects. Additional boundary spellings,
 single-dash host subtraction, property vocabularies, repeated quantifiers, and some
 host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
