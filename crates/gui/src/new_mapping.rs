@@ -4,8 +4,11 @@ use anyhow::{Context as _, bail};
 use ir::{ScalarType, SchemaNode};
 use mapping::{FormatOptions, Graph, Project, Scope, TabularBoundaryKind};
 
+mod flextext;
 mod format_options;
 mod protobuf;
+pub(super) use flextext::FlexTextBoundaryDraft;
+pub(crate) use flextext::is_flextext_configuration;
 pub(crate) use format_options::{
     can_update_existing_workbook, configured_layout_label_for_path, uses_csv_format,
     uses_path_format,
@@ -31,6 +34,7 @@ pub(super) enum MappingBoundary {
     Csv(CsvBoundaryDraft),
     Sqlite(Box<SqliteBoundaryDraft>),
     Protobuf(Box<ProtobufBoundaryDraft>),
+    FlexText(Box<FlexTextBoundaryDraft>),
 }
 
 pub(super) struct SqliteBoundaryDraft {
@@ -313,6 +317,7 @@ impl NewMappingSetup {
             MappingBoundary::Csv(draft) => draft.validate().is_ok(),
             MappingBoundary::Sqlite(draft) => draft.schema(target).is_ok(),
             MappingBoundary::Protobuf(draft) => draft.validate().is_ok(),
+            MappingBoundary::FlexText(draft) => draft.validate().is_ok(),
         };
         self.source
             .as_ref()
@@ -343,6 +348,11 @@ impl NewMappingSetup {
                 project.source_options = draft.options()?;
                 project.source_path = draft.instance_path();
             }
+            MappingBoundary::FlexText(draft) => {
+                project.source = draft.schema()?;
+                project.source_options = draft.options()?;
+                project.source_path = draft.instance_path();
+            }
         }
         match target {
             MappingBoundary::Schema(imported) => project.target = imported.schema.clone(),
@@ -356,6 +366,11 @@ impl NewMappingSetup {
                 project.target_path = Some(draft.output_path.trim().to_owned());
             }
             MappingBoundary::Protobuf(draft) => {
+                project.target = draft.schema()?;
+                project.target_options = draft.options()?;
+                project.target_path = draft.instance_path();
+            }
+            MappingBoundary::FlexText(draft) => {
                 project.target = draft.schema()?;
                 project.target_options = draft.options()?;
                 project.target_path = draft.instance_path();

@@ -54,6 +54,9 @@ are preserved.
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, persisted primary/function/named-target canvases, and deterministic
   JSON Lines execution traces; plus a WASM XML/JSON/CSV/XBRL playground.
+  The native new-mapping form creates primary FlexText sources and targets
+  from independently embedded `.mft` layouts; data paths remain optional and
+  original configurations are unnecessary after saving.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as

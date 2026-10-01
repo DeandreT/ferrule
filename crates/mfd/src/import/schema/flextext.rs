@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::io::Read as _;
 use std::num::NonZeroU32;
 use std::path::{Component, Path, PathBuf};
 
@@ -15,7 +16,8 @@ use super::{
     ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32, schema_node_at,
 };
 
-const MAX_MFT_BYTES: usize = 4 * 1024 * 1024;
+/// Maximum size of one imported UTF-8 FlexText configuration.
+pub const MAX_FLEXTEXT_CONFIGURATION_BYTES: usize = 4 * 1024 * 1024;
 const MAX_MFT_ELEMENTS: usize = 16_384;
 
 pub(super) fn read(
@@ -33,33 +35,7 @@ pub(super) fn read(
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "component has no external configuration path".to_string())?;
     let config_path = resources.resolve_file(config, "FlexText configuration")?;
-    let bytes = std::fs::read(&config_path)
-        .map_err(|error| format!("could not read configuration `{config}` ({error})"))?;
-    if bytes.len() > MAX_MFT_BYTES {
-        return Err(format!(
-            "configuration `{config}` exceeds the {MAX_MFT_BYTES}-byte limit"
-        ));
-    }
-    let source = String::from_utf8(bytes)
-        .map_err(|_| format!("configuration `{config}` is not valid UTF-8"))?;
-    if source.contains("<!DOCTYPE") {
-        return Err(format!(
-            "configuration `{config}` uses a document type declaration"
-        ));
-    }
-    let document = roxmltree::Document::parse(&source)
-        .map_err(|error| format!("could not parse configuration `{config}` ({error})"))?;
-    if document
-        .descendants()
-        .filter(|node| node.is_element())
-        .count()
-        > MAX_MFT_ELEMENTS
-    {
-        return Err(format!(
-            "configuration `{config}` exceeds the {MAX_MFT_ELEMENTS}-element limit"
-        ));
-    }
-    let parsed = parse_project(&document)?;
+    let parsed = read_configuration(&config_path, config)?;
     let schema = parsed.layout.schema();
     let root =
         child(&data, "root").ok_or_else(|| "component has no visible entry tree".to_string())?;
@@ -124,6 +100,50 @@ pub(super) fn read(
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
+}
+
+/// Imports one FlexText configuration as a validated, embeddable runtime layout.
+///
+/// The configuration's `FileName` metadata is never opened or used as an input
+/// or output location. Callers choose their own data paths separately.
+pub fn import_flextext_configuration(path: &Path) -> Result<FlexTextLayout, crate::MfdError> {
+    read_configuration(path, &path.to_string_lossy())
+        .map(|parsed| parsed.layout)
+        .map_err(crate::MfdError::UnsupportedImport)
+}
+
+fn read_configuration(path: &Path, config: &str) -> Result<ParsedProject, String> {
+    let file = std::fs::File::open(path)
+        .map_err(|error| format!("could not read configuration `{config}` ({error})"))?;
+    let mut bytes = Vec::new();
+    file.take((MAX_FLEXTEXT_CONFIGURATION_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("could not read configuration `{config}` ({error})"))?;
+    if bytes.len() > MAX_FLEXTEXT_CONFIGURATION_BYTES {
+        return Err(format!(
+            "configuration `{config}` exceeds the {MAX_FLEXTEXT_CONFIGURATION_BYTES}-byte limit"
+        ));
+    }
+    let source = String::from_utf8(bytes)
+        .map_err(|_| format!("configuration `{config}` is not valid UTF-8"))?;
+    if source.contains("<!DOCTYPE") {
+        return Err(format!(
+            "configuration `{config}` uses a document type declaration"
+        ));
+    }
+    let document = roxmltree::Document::parse(&source)
+        .map_err(|error| format!("could not parse configuration `{config}` ({error})"))?;
+    if document
+        .descendants()
+        .filter(|node| node.is_element())
+        .count()
+        > MAX_MFT_ELEMENTS
+    {
+        return Err(format!(
+            "configuration `{config}` exceeds the {MAX_MFT_ELEMENTS}-element limit"
+        ));
+    }
+    parse_project(&document)
 }
 
 struct ParsedProject {
@@ -872,3 +892,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "flextext_configuration_tests.rs"]
+mod configuration_tests;

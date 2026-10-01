@@ -23,6 +23,8 @@ mod xbrl;
 mod xlsx;
 mod xml_ports;
 
+pub use flextext::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
+
 pub(super) use shared::{
     XmlSchemaReadError, entry_key_sets, is_default_output, parse_u32, read_xml_schema_file,
     read_xsd_metadata_text, resolve_xml_schema_reference,
