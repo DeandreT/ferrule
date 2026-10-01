@@ -1,5 +1,5 @@
 use mapping::{
-    FailureIteration, FailureRule, Graph, NamedSource, NamedTarget, Node, NodeId, Scope,
+    FailureIteration, FailureRule, Graph, NamedSource, NamedTarget, Node, NodeId, Project, Scope,
     ScopeConstruction,
 };
 
@@ -154,13 +154,56 @@ pub(super) fn references_to(
     project: ProjectGraphReferences<'_>,
     needle: NodeId,
 ) -> NodeReferences {
+    references_to_inner(
+        graph,
+        root_scope,
+        extra_targets,
+        inactive_targets,
+        project,
+        needle,
+        None,
+    )
+}
+
+/// References that survive removing one exact borrowed scope subtree.
+/// Identity uses the selected scope, so duplicate printable names cannot hide an owner.
+pub(crate) fn references_outside_scope(
+    project: &Project,
+    removed: &Scope,
+    needle: NodeId,
+) -> Vec<String> {
+    references_to_inner(
+        &project.graph,
+        &project.root,
+        &project.extra_targets,
+        &[],
+        ProjectGraphReferences::new(&project.failure_rules, &project.extra_sources),
+        needle,
+        Some(removed),
+    )
+    .all
+}
+
+fn references_to_inner(
+    graph: &Graph,
+    root_scope: &Scope,
+    extra_targets: &[NamedTarget],
+    inactive_targets: &[InactiveTargetScope<'_>],
+    project: ProjectGraphReferences<'_>,
+    needle: NodeId,
+    removed: Option<&Scope>,
+) -> NodeReferences {
     fn scope_references(
         scope: &Scope,
         path: &mut Vec<String>,
         needle: NodeId,
         inactive: bool,
         found: &mut ReferenceCollector,
+        removed: Option<&Scope>,
     ) {
+        if removed.is_some_and(|removed| std::ptr::eq(scope, removed)) {
+            return;
+        }
         let label = if path.is_empty() {
             "root scope".to_string()
         } else {
@@ -204,6 +247,11 @@ pub(super) fn references_to(
         {
             found.add(format!("{label} scalar value"), true);
         }
+        if let ScopeConstruction::RecursiveFilter { plan } = &scope.construction
+            && plan.predicate() == needle
+        {
+            found.add(format!("{label} recursive filter predicate"), true);
+        }
         if let ScopeConstruction::AdjacencyTree { plan } = &scope.construction
             && plan.root() == Some(needle)
         {
@@ -231,13 +279,13 @@ pub(super) fn references_to(
         if let Some(segments) = scope.concatenated() {
             for (index, segment) in segments.iter().enumerate() {
                 path.push(format!("<segment {}>", index + 1));
-                scope_references(segment, path, needle, inactive, found);
+                scope_references(segment, path, needle, inactive, found, removed);
                 path.pop();
             }
         }
         for child in &scope.children {
             path.push(child.target_field.clone());
-            scope_references(child, path, needle, inactive, found);
+            scope_references(child, path, needle, inactive, found, removed);
             path.pop();
         }
         for (index, child) in scope.dynamic_children.iter().enumerate() {
@@ -247,7 +295,7 @@ pub(super) fn references_to(
             path.push(format!("<dynamic child {}>", index + 1));
             // Deletion only disconnects bindings in ordinary/concatenated
             // active scopes. Computed child content retains its owner guard.
-            scope_references(&child.scope, path, needle, true, found);
+            scope_references(&child.scope, path, needle, true, found, removed);
             path.pop();
         }
     }
@@ -269,17 +317,31 @@ pub(super) fn references_to(
             found.add(format!("graph node {owner} sequence item"), true);
         }
     }
-    scope_references(root_scope, &mut Vec::new(), needle, false, &mut found);
+    scope_references(
+        root_scope,
+        &mut Vec::new(),
+        needle,
+        false,
+        &mut found,
+        removed,
+    );
     for target in extra_targets {
         let mut path = vec![format!("<target {}>", target.name)];
-        scope_references(&target.root, &mut path, needle, true, &mut found);
+        scope_references(&target.root, &mut path, needle, true, &mut found, removed);
     }
     for target in inactive_targets {
         let label = match target.name {
             Some(name) => format!("<target {name}>"),
             None => "<primary target>".to_string(),
         };
-        scope_references(target.root, &mut vec![label], needle, true, &mut found);
+        scope_references(
+            target.root,
+            &mut vec![label],
+            needle,
+            true,
+            &mut found,
+            removed,
+        );
     }
     for (index, rule) in project.failure_rules.iter().enumerate() {
         let label = format!("failure rule {}", index + 1);
