@@ -433,7 +433,8 @@ internal static partial class FerruleScalarRegex
     {
         private readonly string _source;
         private readonly StringBuilder _output = new();
-        private readonly Stack<RegexOptions> _groups = new();
+        private readonly Stack<(RegexOptions Options, int Start)> _groups = new();
+        private readonly Dictionary<int, int> _repeatPrefixes = new();
         private readonly Dictionary<(string Source, bool IgnoreCase, bool IgnoreWhitespace), string> _classes = new();
         private readonly Dictionary<(int Scalar, bool IgnoreCase), string> _literals = new();
         private readonly List<(int AnonymousIndex, string? Name)> _captures = new();
@@ -441,10 +442,17 @@ internal static partial class FerruleScalarRegex
         private readonly HashSet<string> _pythonCaptureNames = new(StringComparer.Ordinal);
         private int _anonymousCaptures;
         private bool _hasOperand;
+        private int _operandStart;
+        private bool _hasRepetition;
+        private int _repeatWrappers;
+        private int _deferredCharacters;
+        private const int MaximumRepeatWrappers = 256;
         private RegexOptions _options;
         private int _index;
         private bool _hasWordBoundary;
         internal bool HasWordBoundary => _hasWordBoundary;
+        private bool _hasConsecutiveRepetition;
+        internal bool HasConsecutiveRepetition => _hasConsecutiveRepetition;
         private long _classWork;
 
         internal Translator(string source, RegexOptions options) { _source = source; _options = options; }
@@ -508,46 +516,80 @@ internal static partial class FerruleScalarRegex
                     case '(':
                         Group(); break;
                     case ')':
+                        var closingStart = _output.Length;
                         _index++; Append(")");
-                        if (_groups.TryPop(out var previous)) { _options = previous; }
-                        _hasOperand = true; break;
+                        if (_groups.TryPop(out var previous))
+                        {
+                            _options = previous.Options; closingStart = previous.Start;
+                        }
+                        Operand(closingStart); break;
                     case '[':
                         var start = _index;
                         var set = Class(0);
                         var key = (_source[start.._index], IgnoreCase,
                             (_options & RegexOptions.IgnorePatternWhitespace) != 0);
                         if (!_classes.TryGetValue(key, out var atom)) { atom = Atom(set); _classes.Add(key, atom); }
-                        Append(atom); _hasOperand = true; break;
+                        Operand(_output.Length); Append(atom); break;
                     case '.':
+                        Operand(_output.Length);
                         _index++; Append(Atom((_options & RegexOptions.Singleline) != 0
-                            ? ScalarSet.All : ScalarSet.All.Except(ScalarSet.Between('\n', '\n')))); _hasOperand = true; break;
+                            ? ScalarSet.All : ScalarSet.All.Except(ScalarSet.Between('\n', '\n')))); break;
                     case '$':
-                        _index++; Append((_options & RegexOptions.Multiline) != 0 ? "$" : @"\z"); _hasOperand = true; break;
+                        Operand(_output.Length);
+                        _index++; Append((_options & RegexOptions.Multiline) != 0 ? "$" : @"\z"); break;
                     case '\\':
-                        EscapeOutside(); _hasOperand = true; break;
-                    case '{':
+                        Operand(_output.Length); EscapeOutside(); break;
+                    case '*': case '+': case '?': case '{':
                         Quantifier(); break;
                     case '|':
-                        _index++; Append("|"); _hasOperand = false; break;
-                    case '*': case '+': case '?':
-                        _index++; Append(current.ToString()); break;
+                        _index++; Append("|"); NoOperand(); break;
                     case '^': case '}':
-                        _index++; Append(current.ToString()); _hasOperand = true; break;
+                        Operand(_output.Length); _index++; Append(current.ToString()); break;
                     default:
                         if ((_options & RegexOptions.IgnorePatternWhitespace) != 0 && char.IsWhiteSpace(current))
                         {
                             _index++;
                         }
-                        else { Append(Literal(ReadScalar())); _hasOperand = true; }
+                        else { Operand(_output.Length); Append(Literal(ReadScalar())); }
                         break;
                 }
             }
-            return _output.ToString();
+            return Render();
+        }
+
+        private void Operand(int start)
+        {
+            _hasOperand = true; _operandStart = start; _hasRepetition = false; _repeatWrappers = 0;
+        }
+
+        private void NoOperand()
+        {
+            _hasOperand = false; _hasRepetition = false; _repeatWrappers = 0;
+        }
+
+        private string Render()
+        {
+            var raw = _output.ToString();
+            if (_repeatPrefixes.Count == 0) { return raw; }
+            // Keep operand offsets stable during parsing. Emit the deferred
+            // noncapturing prefixes once, instead of inserting/copying each
+            // already-lowered operand for every consecutive repetition.
+            var rendered = new StringBuilder(raw.Length + _deferredCharacters);
+            var previous = 0;
+            for (var offset = 0; offset < raw.Length; offset++)
+            {
+                if (!_repeatPrefixes.TryGetValue(offset, out var count)) { continue; }
+                rendered.Append(raw, previous, offset - previous);
+                for (var index = 0; index < count; index++) { rendered.Append("(?:"); }
+                previous = offset;
+            }
+            rendered.Append(raw, previous, raw.Length - previous);
+            return rendered.ToString();
         }
 
         private void Append(string value)
         {
-            if (value.Length > MaximumTranslatedCharacters - _output.Length)
+            if (value.Length > MaximumTranslatedCharacters - _output.Length - _deferredCharacters)
             {
                 throw Invalid("pattern exceeds the compiled-size limit after scalar lowering");
             }
@@ -572,11 +614,12 @@ internal static partial class FerruleScalarRegex
         private void Group()
         {
             var start = _index++;
+            var outputStart = _output.Length;
             if (_index == _source.Length || _source[_index] != '?')
             {
-                _groups.Push(_options);
+                _groups.Push((_options, outputStart));
                 if ((_options & RegexOptions.ExplicitCapture) == 0) { Capture(); }
-                Append("("); _hasOperand = false; return;
+                Append("("); NoOperand(); return;
             }
             _index++;
             if (_index < _source.Length && _source[_index] == '#')
@@ -602,21 +645,21 @@ internal static partial class FerruleScalarRegex
             }
             if (hasFlag && _index < _source.Length && _source[_index] is ':' or ')')
             {
-                if (_source[_index] == ':') { _groups.Push(_options); }
-                _options = updated; _index++; Append(_source[start.._index]); _hasOperand = false; return;
+                if (_source[_index] == ':') { _groups.Push((_options, outputStart)); }
+                _options = updated; _index++; Append(_source[start.._index]); NoOperand(); return;
             }
             _index = start + 2;
             // Rust/Python named captures share the host angle-bracket header.
             if (_index + 1 < _source.Length && _source[_index] == 'P' && _source[_index + 1] == '<')
             {
-                _groups.Push(_options); _index += 2;
+                _groups.Push((_options, outputStart)); _index += 2;
                 var nameStart = _index;
                 while (_index < _source.Length && _source[_index] != '>') { _index++; }
                 if (_index == _source.Length) { throw Invalid("unterminated capture name"); }
                 var name = HostCaptureName(_source[nameStart.._index++], true);
-                Append("(?<" + name + ">"); _hasOperand = false; return;
+                Append("(?<" + name + ">"); NoOperand(); return;
             }
-            _groups.Push(_options);
+            _groups.Push((_options, outputStart));
             if (_index < _source.Length && _source[_index] is ':' or '=' or '!' or '>') { _index++; }
             else if (_index < _source.Length && _source[_index] is '<' or '\'')
             {
@@ -629,10 +672,10 @@ internal static partial class FerruleScalarRegex
                     var name = HostCaptureName(_source[nameStart.._index], false);
                     if (_index == _source.Length) { throw Invalid("unterminated capture name"); }
                     _index++;
-                    Append("(?<" + name + ">"); _hasOperand = false; return;
+                    Append("(?<" + name + ">"); NoOperand(); return;
                 }
             }
-            Append(_source[start.._index]); _hasOperand = false;
+            Append(_source[start.._index]); NoOperand();
         }
 
         private void SkipIgnored()
@@ -649,25 +692,67 @@ internal static partial class FerruleScalarRegex
             }
         }
 
+        private readonly record struct Repetition(uint Minimum, uint? Maximum, bool Lazy, string Token);
+
         private void Quantifier()
         {
             if (!_hasOperand) { throw Invalid("repetition quantifier has no operand"); }
-            _index++; SkipIgnored();
-            var minimum = Decimal();
-            uint? maximum = minimum;
-            var comma = _index < _source.Length && _source[_index] == ',';
-            if (comma)
+            var repetition = ReadRepetition();
+            if (_hasRepetition)
             {
-                _index++; SkipIgnored();
-                maximum = _index < _source.Length && _source[_index] == '}' ? null : Decimal();
+                _hasConsecutiveRepetition = true;
+                if (++_repeatWrappers > MaximumRepeatWrappers)
+                {
+                    throw Invalid("consecutive repetitions exceed their bounded nesting limit");
+                }
+                if (4 > MaximumTranslatedCharacters - _output.Length - _deferredCharacters)
+                {
+                    throw Invalid("pattern exceeds the compiled-size limit after scalar lowering");
+                }
+                _repeatPrefixes.TryGetValue(_operandStart, out var count);
+                _repeatPrefixes[_operandStart] = count + 1;
+                _deferredCharacters += 3;
+                Append(")");
             }
-            if (_index == _source.Length || _source[_index] != '}' || maximum.HasValue && minimum > maximum)
+            Append(repetition.Token);
+            _hasRepetition = true;
+        }
+
+        private Repetition ReadRepetition()
+        {
+            var quantifier = _source[_index++];
+            uint minimum;
+            uint? maximum;
+            string token;
+            switch (quantifier)
             {
-                throw Invalid("malformed repetition quantifier");
+                case '*': minimum = 0; maximum = null; token = "*"; break;
+                case '+': minimum = 1; maximum = null; token = "+"; break;
+                case '?': minimum = 0; maximum = 1; token = "?"; break;
+                default:
+                    SkipIgnored();
+                    minimum = Decimal(); maximum = minimum;
+                    var comma = _index < _source.Length && _source[_index] == ',';
+                    if (comma)
+                    {
+                        _index++; SkipIgnored();
+                        maximum = _index < _source.Length && _source[_index] == '}' ? null : Decimal();
+                    }
+                    if (_index == _source.Length || _source[_index] != '}' || maximum.HasValue && minimum > maximum)
+                    {
+                        throw Invalid("malformed repetition quantifier");
+                    }
+                    _index++;
+                    token = "{" + minimum.ToString(CultureInfo.InvariantCulture)
+                        + (comma ? "," + maximum?.ToString(CultureInfo.InvariantCulture) : string.Empty) + "}";
+                    break;
             }
-            _index++;
-            Append("{" + minimum.ToString(CultureInfo.InvariantCulture)
-                + (comma ? "," + maximum?.ToString(CultureInfo.InvariantCulture) : string.Empty) + "}");
+            SkipIgnored();
+            // One question mark is this repetition's lazy suffix. A later
+            // quantifier repeats the entire resulting expression, including it.
+            var lazy = _index < _source.Length && _source[_index] == '?';
+            if (lazy) { _index++; token += "?"; }
+            return new(minimum, maximum, lazy, token);
         }
 
         private uint Decimal()

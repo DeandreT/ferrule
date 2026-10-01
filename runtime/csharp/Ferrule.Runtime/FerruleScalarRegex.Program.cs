@@ -127,7 +127,7 @@ internal static partial class FerruleScalarRegex
     {
         var translator = new Translator(source, options);
         var translated = translator.Translate();
-        if (!translator.HasWordBoundary)
+        if (!translator.HasWordBoundary && !translator.HasConsecutiveRepetition)
         {
             var host = new Regex("(?m:^|)(?:" + translated + ")", options);
             return ScalarRegexProgram.Host(host, translator.CaptureGroups(host));
