@@ -74,6 +74,10 @@ are preserved.
   expressions. Whole-group copies retain complete nested content: Inspector
   grouping/binding/child edits and canvas connections into copied ancestors
   reject before changing the mapping; supported filter/sort/window controls remain editable.
+  Removing a generated scope retires its private item nodes from every open
+  mapping canvas. Remaining graph consumers or owners outside the removed
+  subtree block removal with a reference explanation; arguments and unrelated
+  graph nodes survive, and undo restores exact item identities and wires.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as
