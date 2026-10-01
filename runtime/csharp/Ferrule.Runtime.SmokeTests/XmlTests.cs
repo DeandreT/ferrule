@@ -4,6 +4,29 @@ namespace Ferrule.Runtime.SmokeTests;
 
 internal static partial class Program
 {
+    private static void XmlTextWhitespace()
+    {
+        const string text = "a\r\nb\rc\nd\te&<>\"' &#xD;";
+        const string plain = """{"name":"Root","kind":{"kind":"group","children":[{"name":"id","attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"Value","kind":{"kind":"scalar","ty":"string"}}]}}""";
+        const string simple = """{"name":"Root","kind":{"kind":"group","children":[{"name":"id","attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"#text","text":true,"kind":{"kind":"scalar","ty":"string"}}]}}""";
+        foreach (var (schema, field) in new[] { (plain, "Value"), (simple, "#text") })
+        {
+            var serialized = FerruleXml.Serialize(
+                19,
+                schema,
+                Group(Field("id", Scalar(Text(text))), Field(field, Scalar(Text(text)))),
+                false,
+                false,
+                null).StringValue!;
+            var parsed = System.Xml.Linq.XElement.Parse(
+                serialized, System.Xml.Linq.LoadOptions.PreserveWhitespace);
+            Equal(text, parsed.Attribute("id")!.Value);
+            Equal(text, field == "#text" ? parsed.Value : parsed.Element("Value")!.Value);
+            Equal(false, serialized.Contains('\r'));
+            Equal(true, serialized.Contains("&amp;#xD;", StringComparison.Ordinal));
+        }
+    }
+
     private const string XmlTypeSchema =
         "{\"name\":\"Address\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Name\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"State\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},{\"name\":\"Zip\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"Postcode\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}],\"alternatives\":[{\"name\":\"{urn:ferrule:types}Domestic\",\"members\":[\"Name\",\"State\",\"Zip\"],\"required\":[\"State\",\"Zip\"]},{\"name\":\"{urn:ferrule:types}International\",\"members\":[\"Name\",\"Postcode\"],\"required\":[\"Postcode\"]}]}}";
 

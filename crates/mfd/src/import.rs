@@ -76,6 +76,13 @@ use schema::{
     refine_copied_fallback_source_shapes, refine_copied_fallback_target_groups,
     refine_wsdl_target_schemas, schema_node_at,
 };
+
+pub(crate) fn parse_native_pdf_template_text(
+    source: &str,
+    expected_root: &str,
+) -> Result<mapping::PdfLayout, String> {
+    schema::parse_native_pdf_template_text(source, expected_root)
+}
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
 use udf::{Call as UdfCall, Registry as UdfRegistry};

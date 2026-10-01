@@ -5,7 +5,7 @@ use ir::{
 
 use super::{
     allowed_values, contains, dependent_schemas, files, formats, item_counts, multiples, parse,
-    patterns, property_counts, property_dependencies, property_names, ranges,
+    patterns, property_counts, property_dependencies, property_names, push_active_ref, ranges,
     reject_unsupported_ref_siblings, resolve_ref, unsupported_union,
 };
 use crate::JsonFormatError;
@@ -68,7 +68,7 @@ pub(super) fn parse_finite_scalar_composition(
             branches.push(vec![JsonAllowedValue::JsonNull]);
             continue;
         }
-        if resolves_to_structured_alternative(alternative, doc, active_refs) {
+        if resolves_to_structured_alternative(alternative, doc, active_refs)? {
             saw_unbounded_or_structured = true;
             continue;
         }
@@ -136,24 +136,30 @@ fn resolves_to_structured_alternative(
     schema: &serde_json::Value,
     doc: &serde_json::Value,
     active_refs: &[String],
-) -> bool {
+) -> Result<bool, JsonFormatError> {
     let mut schema = schema;
     let mut visited = Vec::new();
     while let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
         if active_refs.iter().any(|active| active == reference) || visited.contains(&reference) {
-            return false;
+            return Ok(false);
         }
         let Some(resolved) = resolve_ref(doc, reference) else {
-            return false;
+            return Ok(false);
         };
+        if active_refs.len() + visited.len() >= files::MAX_REFERENCE_DEPTH {
+            return Err(JsonFormatError::SchemaResourceLimit {
+                kind: "reference depth",
+                limit: files::MAX_REFERENCE_DEPTH,
+            });
+        }
         visited.push(reference);
         schema = resolved;
     }
-    matches!(
+    Ok(matches!(
         schema.get("type").and_then(serde_json::Value::as_str),
         Some("object" | "array")
     ) || schema.get("properties").is_some()
-        || schema.get("items").is_some()
+        || schema.get("items").is_some())
 }
 
 /// Imports an inclusive union made entirely from exact scalar type branches.
@@ -827,7 +833,7 @@ fn is_null_alternative(
         let Some(resolved) = resolve_ref(doc, reference) else {
             return Ok(false);
         };
-        active_refs.push(reference.to_string());
+        push_active_ref(active_refs, reference)?;
         let is_null = is_null_alternative(union_name, resolved, doc, active_refs);
         active_refs.pop();
         return is_null;
@@ -877,7 +883,7 @@ fn classify_scalar_alternative(
                 "nullable scalar alternatives require document-local references",
             ));
         };
-        active_refs.push(reference.to_string());
+        push_active_ref(active_refs, reference)?;
         let classified = classify_scalar_alternative(union_name, resolved, doc, active_refs);
         active_refs.pop();
         return classified;
@@ -927,7 +933,7 @@ fn classify_exact_scalar_alternative(
                 "homogeneous scalar alternatives require document-local references",
             ));
         };
-        active_refs.push(reference.to_string());
+        push_active_ref(active_refs, reference)?;
         let classified = classify_exact_scalar_alternative(union_name, resolved, doc, active_refs);
         active_refs.pop();
         let classified = classified?;
@@ -996,7 +1002,7 @@ fn classify_exact_array_alternative(
                 "array anyOf alternatives require document-local references",
             ));
         };
-        active_refs.push(reference.to_string());
+        push_active_ref(active_refs, reference)?;
         let classified = classify_exact_array_alternative(union_name, resolved, doc, active_refs);
         active_refs.pop();
         let classified = classified?;

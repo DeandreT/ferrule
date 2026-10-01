@@ -350,7 +350,10 @@ pub(super) fn render_schema_component(
                     });
             sibling = Some(GeneratedSibling {
                 path: dir.join(&schema_file),
-                contents: format_json::json_schema::export(schema)?,
+                contents: super::json_schema_fidelity::render(
+                    schema,
+                    &format!("JSON boundary `{component_name}`"),
+                )?,
             });
             let _ = write!(
                 out,
@@ -1883,4 +1886,10 @@ pub(super) fn xml_escape(text: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+        // Literal whitespace in XML attributes is normalized to spaces. A
+        // character reference preserves field names and paths in attributes
+        // as well as labels in element text.
+        .replace('\t', "&#x9;")
+        .replace('\n', "&#xA;")
+        .replace('\r', "&#xD;")
 }

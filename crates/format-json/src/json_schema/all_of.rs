@@ -12,12 +12,19 @@ enum FormatEvent {
     Direct(String),
 }
 
+struct ParsedBranches {
+    pending_constraints: Vec<serde_json::Value>,
+    format_events: Vec<FormatEvent>,
+    structural: Vec<SchemaNode>,
+}
+
 /// Flattens representable intersections into one structural projection.
 ///
 /// Ferrule's JSON schema is structural rather than validating, so required and
 /// shape-neutral validation keywords retain the same behavior as an ordinary
 /// import. Conflicting shapes and alternative-bearing branches reject instead
 /// of widening the intersection.
+#[inline(never)]
 pub(super) fn parse_all_of(
     name: &str,
     schema: &serde_json::Value,
@@ -25,6 +32,20 @@ pub(super) fn parse_all_of(
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
+    let parsed = parse_branches(name, schema, composition, doc, active_refs)?;
+    finish_intersection(name, parsed, doc, active_refs)
+}
+
+// Keep intersection temporaries out of the frame held while parsing nested
+// compositions. SchemaNode carries substantial validation metadata.
+#[inline(never)]
+fn parse_branches(
+    name: &str,
+    schema: &serde_json::Value,
+    composition: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<ParsedBranches, JsonFormatError> {
     let branches = composition
         .as_array()
         .filter(|branches| !branches.is_empty())
@@ -36,17 +57,17 @@ pub(super) fn parse_all_of(
         ));
     }
 
-    let mut pending_constraints = Vec::new();
-    let mut format_events = Vec::new();
-    let mut structural = Vec::new();
+    let mut parsed = ParsedBranches {
+        pending_constraints: Vec::new(),
+        format_events: Vec::new(),
+        structural: Vec::new(),
+    };
     if let Some(base) = composition_base(schema) {
         if is_constraint_only_branch(&base) && !allowed_values::has_keyword(&base) {
-            collect_direct_format(name, &base, &mut format_events)?;
-            pending_constraints.push(base);
+            collect_direct_format(name, &base, &mut parsed.format_events)?;
+            parsed.pending_constraints.push(base);
         } else {
-            let mut base = parse(name, &base, doc, active_refs)?;
-            collect_retained_formats(&mut base, &mut format_events);
-            structural.push(base);
+            parse_structural_branch(name, &base, doc, active_refs, &mut parsed)?;
         }
     }
 
@@ -61,14 +82,41 @@ pub(super) fn parse_all_of(
             ));
         }
         if is_constraint_only_branch(branch) && !allowed_values::has_keyword(branch) {
-            collect_direct_format(name, branch, &mut format_events)?;
-            pending_constraints.push(branch.clone());
+            collect_direct_format(name, branch, &mut parsed.format_events)?;
+            parsed.pending_constraints.push(branch.clone());
             continue;
         }
-        let mut branch = parse(name, branch, doc, active_refs)?;
-        collect_retained_formats(&mut branch, &mut format_events);
-        structural.push(branch);
+        parse_structural_branch(name, branch, doc, active_refs, &mut parsed)?;
     }
+    Ok(parsed)
+}
+
+#[inline(never)]
+fn parse_structural_branch(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+    parsed: &mut ParsedBranches,
+) -> Result<(), JsonFormatError> {
+    let mut branch = parse(name, schema, doc, active_refs)?;
+    collect_retained_formats(&mut branch, &mut parsed.format_events);
+    parsed.structural.push(branch);
+    Ok(())
+}
+
+#[inline(never)]
+fn finish_intersection(
+    name: &str,
+    parsed: ParsedBranches,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<SchemaNode, JsonFormatError> {
+    let ParsedBranches {
+        pending_constraints,
+        format_events,
+        structural,
+    } = parsed;
     for branch in &structural {
         pattern_properties::reject_composed_node(name, branch, "allOf")?;
     }
@@ -77,6 +125,9 @@ pub(super) fn parse_all_of(
         merged.is_none() && pending_constraints.iter().any(formats::has_keyword);
     let mut no_op_constraint_fallback = merged.is_none() && !pending_constraints.is_empty();
     for constraints in &pending_constraints {
+        if merged.is_some() {
+            break;
+        }
         no_op_constraint_fallback &= (patterns::has_keyword(constraints)
             || unique_items::has_keyword(constraints)
             || property_counts::has_keywords(constraints)

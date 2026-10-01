@@ -5,7 +5,10 @@ use ir::{
     JsonSchemaPredicate, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS, SchemaKind, SchemaNode,
 };
 
-use super::{files, parse, pattern_properties, property_dependencies, render, resolve_ref};
+use super::{
+    files, import_budget, parse, pattern_properties, property_dependencies, push_active_ref,
+    render, resolve_ref,
+};
 use crate::JsonFormatError;
 
 pub(super) fn has_keywords(schema: &serde_json::Value) -> bool {
@@ -475,9 +478,13 @@ fn reduce_required_only(
                 "dependent schema references must resolve inside the loaded schema package",
             )
         })?;
-        active_refs.push(reference.to_string());
-        let resolved = reduce_required_only(name, resolved, doc, active_refs);
-        active_refs.pop();
+        let resolved = {
+            let _scope = import_budget::SchemaMaterializationScope::enter()?;
+            push_active_ref(active_refs, reference)?;
+            let resolved = reduce_required_only(name, resolved, doc, active_refs);
+            active_refs.pop();
+            resolved
+        };
         let mut required = match resolved? {
             Some(required) => required,
             None => return Ok(None),
@@ -487,6 +494,7 @@ fn reduce_required_only(
             if let Some(object) = siblings.as_object_mut() {
                 object.remove("$ref");
             }
+            let _scope = import_budget::SchemaMaterializationScope::enter()?;
             let Some(sibling_required) = reduce_required_only(name, &siblings, doc, active_refs)?
             else {
                 return Ok(None);
@@ -539,6 +547,7 @@ fn reduce_required_only(
             ));
         };
         for branch in branches {
+            let _scope = import_budget::SchemaMaterializationScope::enter()?;
             let Some(branch_required) = reduce_required_only(name, branch, doc, active_refs)?
             else {
                 return Ok(None);
@@ -603,9 +612,13 @@ fn predicate_is_never(
                 "dependent schema references must resolve inside the loaded schema package",
             )
         })?;
-        active_refs.push(reference.to_string());
-        let resolved_is_never = predicate_is_never(resolved, doc, active_refs);
-        active_refs.pop();
+        let resolved_is_never = {
+            let _scope = import_budget::SchemaMaterializationScope::enter()?;
+            push_active_ref(active_refs, reference)?;
+            let result = predicate_is_never(resolved, doc, active_refs);
+            active_refs.pop();
+            result
+        };
         if resolved_is_never? {
             return Ok(true);
         }
@@ -614,6 +627,7 @@ fn predicate_is_never(
         return Ok(false);
     };
     for branch in all_of {
+        let _scope = import_budget::SchemaMaterializationScope::enter()?;
         if predicate_is_never(branch, doc, active_refs)? {
             return Ok(true);
         }

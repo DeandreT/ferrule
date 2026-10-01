@@ -2,11 +2,16 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use ir::SchemaNode;
-use mapping::{FormatOptions, PdfLayout};
+use mapping::{
+    FormatOptions, PdfCapture, PdfCaptureAlgorithm, PdfCommand, PdfCoordinate, PdfLayout,
+    PdfPageSelection, PdfReference, PdfRegion, PdfWhitespaceMode, PdfWordSeparation,
+};
 
 use crate::MfdError;
 
 use super::schema::{GeneratedSibling, PortTree, RenderedSchemaComponent, Side, xml_escape};
+
+const MAX_PXT_BYTES: usize = 1024 * 1024;
 
 pub(super) struct RenderArgs<'a> {
     pub(super) schema: &'a SchemaNode,
@@ -67,7 +72,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(&template_file);
-    let template = canonical_template(layout)?;
+    let template = match native_capture_template(layout) {
+        Some(template) => template,
+        None => canonical_template(layout)?,
+    };
     let entries =
         args.ports
             .entries_xml(args.schema, "outkey", 10, args.force_root_port, None, None);
@@ -105,19 +113,184 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     })
 }
 
-fn canonical_template(layout: &PdfLayout) -> Result<String, MfdError> {
-    let encoded = serde_json::to_string(layout).map_err(|error| {
-        unsupported(format!(
-            "could not serialize the retained PDF layout ({error})"
-        ))
-    })?;
-    Ok(format!(
+/// The one PDF template family whose native-shaped inverse is known locally:
+/// all pages, with only direct text captures. Complex extraction commands keep
+/// Ferrule's lossless layout payload instead of guessing native semantics.
+fn native_capture_template(layout: &PdfLayout) -> Option<String> {
+    if layout.page_selection() != PdfPageSelection::All
+        || layout.commands().is_empty()
+        || !native_label(layout.root_name())
+    {
+        return None;
+    }
+    let mut template = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <Document>\n\
-         \t<FerruleLayout version=\"1\">{}</FerruleLayout>\n\
+         \t<Template version=\"1\">\n\
+         \t\t<Model>\n\
+         \t\t\t<Root id=\"1\">\n\
+         \t\t\t\t<Children>\n\
+         \t\t\t\t\t<Grouping id=\"2\">\n\
+         \t\t\t\t\t\t<Children>\n",
+    );
+    for (index, command) in layout.commands().iter().enumerate() {
+        let PdfCommand::Capture(capture) = command else {
+            return None;
+        };
+        if !native_label(&capture.name)
+            || !matches!(
+                capture.algorithm,
+                PdfCaptureAlgorithm::BasicVisual {
+                    separate_words: PdfWordSeparation::InsertSpace,
+                    whitespace: PdfWhitespaceMode::Default
+                }
+            )
+        {
+            return None;
+        }
+        let region = native_region(&capture.region)?;
+        let _ = write!(
+            template,
+            "\t\t\t\t\t\t\t<Capture id=\"{}\">\n\
+             \t\t\t\t\t\t\t\t<Label>{}</Label>\n\
+             \t\t\t\t\t\t\t\t<Region>{}</Region>\n\
+             \t\t\t\t\t\t\t\t<Algorithm><BasicVisual><BaselineCapture/><ParagraphSpacing/><BaselineAngle/><AngleDeviation/><SeparateWords><InsertSpace/></SeparateWords><WhitespaceMode><Default/></WhitespaceMode></BasicVisual></Algorithm>\n\
+             \t\t\t\t\t\t\t</Capture>\n",
+            index + 3,
+            xml_escape(&capture.name),
+            xml_escape(&region),
+        );
+        if template.len() > MAX_PXT_BYTES {
+            return None;
+        }
+    }
+    let _ = write!(
+        template,
+        "\t\t\t\t\t\t</Children>\n\
+         \t\t\t\t\t\t<Label/>\n\
+         \t\t\t\t\t\t<Kind><OneGroupPerPage/></Kind>\n\
+         \t\t\t\t\t\t<Filter/>\n\
+         \t\t\t\t\t</Grouping>\n\
+         \t\t\t\t</Children>\n\
+         \t\t\t\t<Label>{}</Label>\n\
+         \t\t\t</Root>\n\
+         \t\t</Model>\n\
+         \t</Template>\n\
+         </Document>\n",
+        xml_escape(layout.root_name()),
+    );
+    if template.len() > MAX_PXT_BYTES {
+        return None;
+    }
+    let parsed =
+        crate::import::parse_native_pdf_template_text(&template, layout.root_name()).ok()?;
+    same_capture_layout(layout, &parsed).then_some(template)
+}
+
+fn native_label(name: &str) -> bool {
+    !name.is_empty() && name.trim() == name
+}
+
+fn native_region(region: &PdfRegion) -> Option<String> {
+    Some(format!(
+        "{{ Left: {}, Top: {}, Right: {}, Bottom: {} }}",
+        native_coordinate(&region.left)?,
+        native_coordinate(&region.top)?,
+        native_coordinate(&region.right)?,
+        native_coordinate(&region.bottom)?,
+    ))
+}
+
+fn native_coordinate(coordinate: &PdfCoordinate) -> Option<String> {
+    let reference = match coordinate.reference {
+        PdfReference::Left => "Left",
+        PdfReference::Top => "Top",
+        PdfReference::Right => "Right",
+        PdfReference::Bottom => "Bottom",
+        PdfReference::Anchor(_) => return None,
+    };
+    if !coordinate.offset.is_finite() {
+        return None;
+    }
+    let sign = if coordinate.offset.is_sign_negative() {
+        '-'
+    } else {
+        '+'
+    };
+    Some(format!("{reference} {sign} {}pt", coordinate.offset.abs()))
+}
+
+fn same_capture_layout(expected: &PdfLayout, actual: &PdfLayout) -> bool {
+    expected.root_name() == actual.root_name()
+        && expected.page_selection() == actual.page_selection()
+        && expected.commands().len() == actual.commands().len()
+        && expected
+            .commands()
+            .iter()
+            .zip(actual.commands())
+            .all(|(expected, actual)| match (expected, actual) {
+                (PdfCommand::Capture(expected), PdfCommand::Capture(actual)) => {
+                    same_capture(expected, actual)
+                }
+                _ => false,
+            })
+}
+
+fn same_capture(expected: &PdfCapture, actual: &PdfCapture) -> bool {
+    expected.name == actual.name
+        && expected.algorithm == actual.algorithm
+        && [
+            (&expected.region.left, &actual.region.left),
+            (&expected.region.top, &actual.region.top),
+            (&expected.region.right, &actual.region.right),
+            (&expected.region.bottom, &actual.region.bottom),
+        ]
+        .into_iter()
+        .all(|(expected, actual)| {
+            expected.reference == actual.reference
+                && expected.offset.to_bits() == actual.offset.to_bits()
+        })
+}
+
+fn canonical_template(layout: &PdfLayout) -> Result<String, MfdError> {
+    let encoded = mapping::pdf_layout_file::encode_pretty(layout).map_err(|error| {
+        unsupported(format!(
+            "could not encode the retained PDF layout ({error})"
+        ))
+    })?;
+    if encoded.len() > MAX_PXT_BYTES {
+        return Err(unsupported(format!(
+            "PDF template exceeds the {MAX_PXT_BYTES}-byte limit"
+        )));
+    }
+    let document: serde_json::Value = serde_json::from_str(&encoded).map_err(|error| {
+        unsupported(format!(
+            "could not inspect the retained PDF layout ({error})"
+        ))
+    })?;
+    let version = if document.get("__ferrule_file").is_some() {
+        2
+    } else {
+        1
+    };
+    let template = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <Document>\n\
+         \t<FerruleLayout version=\"{version}\">{}</FerruleLayout>\n\
          </Document>\n",
         xml_escape(&encoded)
-    ))
+    );
+    if template.len() > MAX_PXT_BYTES {
+        return Err(unsupported(format!(
+            "PDF template exceeds the {MAX_PXT_BYTES}-byte limit"
+        )));
+    }
+    roxmltree::Document::parse(&template).map_err(|error| {
+        unsupported(format!(
+            "could not render the retained PDF layout ({error})"
+        ))
+    })?;
+    Ok(template)
 }
 
 fn has_conflicting_options(options: &FormatOptions) -> bool {
@@ -153,4 +326,29 @@ fn has_conflicting_options(options: &FormatOptions) -> bool {
 
 fn unsupported(message: impl Into<String>) -> MfdError {
     MfdError::Unsupported(message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use mapping::{PdfCapture, PdfCommand, PdfLayout, PdfPageSelection, PdfRegion};
+
+    use super::{canonical_template, native_capture_template};
+
+    #[test]
+    fn oversized_capture_template_cannot_bypass_the_pxt_file_limit() {
+        let label = "x".repeat(3_300);
+        let commands = (0..300)
+            .map(|index| {
+                PdfCommand::Capture(PdfCapture {
+                    name: format!("Field{index}{label}"),
+                    region: PdfRegion::full(),
+                    algorithm: Default::default(),
+                })
+            })
+            .collect();
+        let layout = PdfLayout::new("Document", PdfPageSelection::All, commands).unwrap();
+        assert!(native_capture_template(&layout).is_none());
+        let error = canonical_template(&layout).unwrap_err();
+        assert!(error.to_string().contains("1048576-byte limit"), "{error}");
+    }
 }

@@ -42,6 +42,7 @@ pub(crate) mod contains;
 pub(crate) mod dependent_schemas;
 mod files;
 mod formats;
+mod import_budget;
 pub(crate) mod item_counts;
 pub(crate) mod multiples;
 mod pattern_properties;
@@ -84,8 +85,20 @@ pub fn import_with_root(
     package_root: &std::path::Path,
 ) -> Result<SchemaNode, JsonFormatError> {
     let value = files::load(path, package_root)?;
-    let name = schema_title(&value, &value, &mut Vec::new()).unwrap_or("root");
-    let schema = parse(name, &value, &value, &mut Vec::new())?;
+    import_value(&value)
+}
+
+/// Imports UTF-8 JSON Schema text without opening files. Document-local `$ref`
+/// pointers and the declared dialect have the same behavior as file imports;
+/// external resources reject. Input retains the file loader's 64 MiB limit.
+pub fn import_str(text: &str) -> Result<SchemaNode, JsonFormatError> {
+    let value = files::load_inline(text)?;
+    import_value(&value)
+}
+
+fn import_value(value: &serde_json::Value) -> Result<SchemaNode, JsonFormatError> {
+    let name = schema_title(value, value)?.unwrap_or("root");
+    let schema = parse(name, value, value, &mut Vec::new())?;
     predicate::validate_private_unique_items(&schema)?;
     if !schema.json_pattern_budget_is_valid() {
         return Err(unsupported_union(
@@ -97,24 +110,34 @@ pub fn import_with_root(
 }
 
 fn schema_title<'a>(
-    schema: &'a serde_json::Value,
+    mut schema: &'a serde_json::Value,
     doc: &'a serde_json::Value,
-    active_refs: &mut Vec<String>,
-) -> Option<&'a str> {
-    if files::ref_siblings_apply(schema)
-        && let Some(title) = schema.get("title").and_then(serde_json::Value::as_str)
-    {
-        return Some(title);
+) -> Result<Option<&'a str>, JsonFormatError> {
+    let mut active_refs = Vec::new();
+    loop {
+        if files::ref_siblings_apply(schema)
+            && let Some(title) = schema.get("title").and_then(serde_json::Value::as_str)
+        {
+            return Ok(Some(title));
+        }
+        let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) else {
+            return Ok(None);
+        };
+        if active_refs.contains(&reference) {
+            return Ok(None);
+        }
+        let Some(resolved) = resolve_ref(doc, reference) else {
+            return Ok(None);
+        };
+        if active_refs.len() >= files::MAX_REFERENCE_DEPTH {
+            return Err(JsonFormatError::SchemaResourceLimit {
+                kind: "reference depth",
+                limit: files::MAX_REFERENCE_DEPTH,
+            });
+        }
+        active_refs.push(reference);
+        schema = resolved;
     }
-    let reference = schema.get("$ref").and_then(serde_json::Value::as_str)?;
-    if active_refs.iter().any(|active| active == reference) {
-        return None;
-    }
-    let resolved = resolve_ref(doc, reference)?;
-    active_refs.push(reference.to_string());
-    let title = schema_title(resolved, doc, active_refs);
-    active_refs.pop();
-    title
 }
 
 /// Resolves a document-local JSON pointer ref (`#/definitions/office`).
@@ -123,13 +146,79 @@ fn resolve_ref<'a>(doc: &'a serde_json::Value, r: &str) -> Option<&'a serde_json
     doc.pointer(pointer)
 }
 
+fn push_active_ref(active_refs: &mut Vec<String>, reference: &str) -> Result<(), JsonFormatError> {
+    if active_refs.len() >= files::MAX_REFERENCE_DEPTH {
+        return Err(JsonFormatError::SchemaResourceLimit {
+            kind: "reference depth",
+            limit: files::MAX_REFERENCE_DEPTH,
+        });
+    }
+    active_refs.push(reference.to_string());
+    Ok(())
+}
+
 fn parse(
     name: &str,
     schema: &serde_json::Value,
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
+    let _materialization_scope = import_budget::SchemaMaterializationScope::enter()?;
     let _pattern_match_scope = pattern_properties::ImportPatternMatchScope::enter();
+    let mut schema = schema;
+    let mut frames = Vec::new();
+    let parsed = (|| {
+        loop {
+            let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) else {
+                return parse_non_ref(name, schema, doc, active_refs);
+            };
+            reject_unsupported_dynamic_references(name, schema)?;
+            let apply_siblings = files::ref_siblings_apply(schema);
+            if apply_siblings {
+                reject_unsupported_ref_siblings(name, schema)?;
+            }
+            // Cyclic and unresolved refs retain the legacy string fallback.
+            let resolved = (!active_refs.iter().any(|active| active == reference))
+                .then(|| resolve_ref(doc, reference))
+                .flatten();
+            let Some(resolved) = resolved else {
+                if apply_siblings {
+                    reject_unresolved_ref_constraints(name, schema)?;
+                }
+                let mut node = SchemaNode::scalar(name, ScalarType::String);
+                if apply_siblings {
+                    formats::apply(name, schema, &mut node)?;
+                    string_lengths::apply(name, schema, &mut node, false)?;
+                }
+                return Ok(node);
+            };
+            push_active_ref(active_refs, reference)?;
+            frames.push((schema, apply_siblings));
+            schema = resolved;
+        }
+    })();
+    // Each sibling is evaluated after the referenced schema, with the same
+    // active-reference set that the recursive resolver used to provide.
+    let mut result = parsed;
+    for (schema, apply_siblings) in frames.into_iter().rev() {
+        active_refs.pop();
+        if apply_siblings {
+            result = result.and_then(|mut node| {
+                apply_known_shape_constraints(name, schema, &mut node, doc, active_refs)?;
+                formats::apply(name, schema, &mut node)?;
+                Ok(node)
+            });
+        }
+    }
+    result
+}
+
+fn parse_non_ref(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<SchemaNode, JsonFormatError> {
     if schema == &serde_json::Value::Bool(true)
         || schema.as_object().is_some_and(serde_json::Map::is_empty)
     {
@@ -142,44 +231,6 @@ fn parse(
         ));
     }
     reject_unsupported_dynamic_references(name, schema)?;
-    if let Some(r) = schema.get("$ref").and_then(|r| r.as_str()) {
-        let apply_siblings = files::ref_siblings_apply(schema);
-        if apply_siblings {
-            reject_unsupported_ref_siblings(name, schema)?;
-        }
-        // Cyclic and external (non-`#/...`) refs degrade to string scalars.
-        if active_refs.iter().any(|a| a == r) {
-            if apply_siblings {
-                reject_unresolved_ref_constraints(name, schema)?;
-            }
-            let mut node = SchemaNode::scalar(name, ScalarType::String);
-            if apply_siblings {
-                formats::apply(name, schema, &mut node)?;
-                string_lengths::apply(name, schema, &mut node, false)?;
-            }
-            return Ok(node);
-        }
-        let Some(resolved) = resolve_ref(doc, r) else {
-            if apply_siblings {
-                reject_unresolved_ref_constraints(name, schema)?;
-            }
-            let mut node = SchemaNode::scalar(name, ScalarType::String);
-            if apply_siblings {
-                formats::apply(name, schema, &mut node)?;
-                string_lengths::apply(name, schema, &mut node, false)?;
-            }
-            return Ok(node);
-        };
-        active_refs.push(r.to_string());
-        let parsed = parse(name, resolved, doc, active_refs);
-        active_refs.pop();
-        let mut node = parsed?;
-        if apply_siblings {
-            apply_known_shape_constraints(name, schema, &mut node, doc, active_refs)?;
-            formats::apply(name, schema, &mut node)?;
-        }
-        return Ok(node);
-    }
     reject_unsupported_object_keywords(name, schema)?;
     contains::validate_ignored(name, schema, doc, active_refs)?;
     property_names::validate_ignored(name, schema, doc, active_refs)?;
@@ -187,162 +238,183 @@ fn parse(
         return parse_all_of(name, schema, composition, doc, active_refs);
     }
     if let Some(alternatives) = schema.get("oneOf") {
-        if let Some(mut finite) =
-            parse_finite_scalar_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
-        {
-            apply_known_shape_constraints(name, schema, &mut finite, doc, active_refs)?;
-            formats::apply(name, schema, &mut finite)?;
-            return Ok(finite);
-        }
-        if let Some(mut nullable) = parse_nullable_scalar_alternatives(
-            name,
-            schema,
-            alternatives,
-            "oneOf",
-            doc,
-            active_refs,
-        )? {
-            ranges::apply(name, schema, &mut nullable, false)?;
-            multiples::apply(name, schema, &mut nullable, false)?;
-            item_counts::validate_ignored(name, schema)?;
-            property_counts::validate_ignored(name, schema)?;
-            property_dependencies::validate_ignored(name, schema)?;
-            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
-            conditionals::apply(name, schema, &mut nullable, doc, active_refs, false)?;
-            unique_items::validate_ignored(name, schema)?;
-            string_lengths::apply(name, schema, &mut nullable, false)?;
-            patterns::apply(name, schema, &mut nullable, false)?;
-            formats::apply_first(name, schema, &mut nullable)?;
-            return Ok(nullable);
-        }
-        if let Some(mut nullable) =
-            parse_nullable_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
-        {
-            apply_nullable_composition_ranges(name, schema, &mut nullable, doc, active_refs)?;
-            formats::apply_first(name, schema, &mut nullable)?;
-            return Ok(nullable);
-        }
-        if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
-            let mut scalar = scalar;
-            multiples::apply(name, schema, &mut scalar, false)?;
-            property_counts::validate_ignored(name, schema)?;
-            property_dependencies::validate_ignored(name, schema)?;
-            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
-            conditionals::apply(name, schema, &mut scalar, doc, active_refs, false)?;
-            unique_items::validate_ignored(name, schema)?;
-            string_lengths::apply(name, schema, &mut scalar, false)?;
-            patterns::apply(name, schema, &mut scalar, false)?;
-            formats::apply(name, schema, &mut scalar)?;
-            return Ok(scalar);
-        }
-        let mut node = parse_object_alternatives(
-            name,
-            schema,
-            alternatives,
-            GroupAlternativeMode::Exclusive,
-            doc,
-            active_refs,
-        )?;
-        string_lengths::validate_ignored(name, schema)?;
-        multiples::validate_ignored(name, schema)?;
-        patterns::validate_ignored(name, schema)?;
-        property_counts::apply(name, schema, &mut node, false)?;
-        property_dependencies::apply(name, schema, &mut node, false)?;
-        dependent_schemas::apply(name, schema, &mut node, doc, active_refs, false)?;
-        conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
-        unique_items::validate_ignored(name, schema)?;
-        formats::apply(name, schema, &mut node)?;
-        return Ok(node);
+        return parse_one_of_branch(name, schema, alternatives, doc, active_refs);
     }
     if let Some(alternatives) = schema.get("anyOf") {
-        if let Some(mut finite) =
-            parse_finite_scalar_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
-        {
-            apply_known_shape_constraints(name, schema, &mut finite, doc, active_refs)?;
-            formats::apply(name, schema, &mut finite)?;
-            return Ok(finite);
-        }
-        if let Some(mut nullable) = parse_nullable_scalar_alternatives(
-            name,
-            schema,
-            alternatives,
-            "anyOf",
-            doc,
-            active_refs,
-        )? {
-            ranges::apply(name, schema, &mut nullable, false)?;
-            multiples::apply(name, schema, &mut nullable, false)?;
-            item_counts::validate_ignored(name, schema)?;
-            property_counts::validate_ignored(name, schema)?;
-            property_dependencies::validate_ignored(name, schema)?;
-            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
-            conditionals::apply(name, schema, &mut nullable, doc, active_refs, false)?;
-            unique_items::validate_ignored(name, schema)?;
-            string_lengths::apply(name, schema, &mut nullable, false)?;
-            patterns::apply(name, schema, &mut nullable, false)?;
-            formats::apply_first(name, schema, &mut nullable)?;
-            return Ok(nullable);
-        }
-        if let Some(mut nullable) =
-            parse_nullable_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
-        {
-            apply_nullable_composition_ranges(name, schema, &mut nullable, doc, active_refs)?;
-            formats::apply_first(name, schema, &mut nullable)?;
-            return Ok(nullable);
-        }
-        if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
-            let mut scalar = scalar;
-            multiples::apply(name, schema, &mut scalar, false)?;
-            property_counts::validate_ignored(name, schema)?;
-            property_dependencies::validate_ignored(name, schema)?;
-            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
-            conditionals::apply(name, schema, &mut scalar, doc, active_refs, false)?;
-            unique_items::validate_ignored(name, schema)?;
-            string_lengths::apply(name, schema, &mut scalar, false)?;
-            patterns::apply(name, schema, &mut scalar, false)?;
-            formats::apply(name, schema, &mut scalar)?;
-            return Ok(scalar);
-        }
-        if let Some(array) =
-            parse_scalar_domain_array_any_of(name, schema, alternatives, doc, active_refs)?
-        {
-            let mut array = array;
-            string_lengths::validate_ignored(name, schema)?;
-            multiples::validate_ignored(name, schema)?;
-            patterns::validate_ignored(name, schema)?;
-            property_counts::validate_ignored(name, schema)?;
-            property_dependencies::validate_ignored(name, schema)?;
-            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
-            conditionals::apply(name, schema, &mut array, doc, active_refs, false)?;
-            unique_items::apply(name, schema, &mut array, false)?;
-            formats::apply(name, schema, &mut array)?;
-            return Ok(array);
-        }
-        let mut node = parse_object_alternatives(
-            name,
-            schema,
-            alternatives,
-            GroupAlternativeMode::Inclusive,
-            doc,
-            active_refs,
-        )?;
+        return parse_any_of_branch(name, schema, alternatives, doc, active_refs);
+    }
+    parse_typed_schema(name, schema, doc, active_refs)
+}
+
+#[inline(never)]
+fn parse_one_of_branch(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<SchemaNode, JsonFormatError> {
+    if let Some(mut finite) =
+        parse_finite_scalar_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
+    {
+        apply_known_shape_constraints(name, schema, &mut finite, doc, active_refs)?;
+        formats::apply(name, schema, &mut finite)?;
+        return Ok(finite);
+    }
+    if let Some(mut nullable) =
+        parse_nullable_scalar_alternatives(name, schema, alternatives, "oneOf", doc, active_refs)?
+    {
+        ranges::apply(name, schema, &mut nullable, false)?;
+        multiples::apply(name, schema, &mut nullable, false)?;
+        item_counts::validate_ignored(name, schema)?;
+        property_counts::validate_ignored(name, schema)?;
+        property_dependencies::validate_ignored(name, schema)?;
+        dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+        conditionals::apply(name, schema, &mut nullable, doc, active_refs, false)?;
+        unique_items::validate_ignored(name, schema)?;
+        string_lengths::apply(name, schema, &mut nullable, false)?;
+        patterns::apply(name, schema, &mut nullable, false)?;
+        formats::apply_first(name, schema, &mut nullable)?;
+        return Ok(nullable);
+    }
+    if let Some(mut nullable) =
+        parse_nullable_composition(name, schema, alternatives, "oneOf", doc, active_refs)?
+    {
+        apply_nullable_composition_ranges(name, schema, &mut nullable, doc, active_refs)?;
+        formats::apply_first(name, schema, &mut nullable)?;
+        return Ok(nullable);
+    }
+    if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
+        let mut scalar = scalar;
+        multiples::apply(name, schema, &mut scalar, false)?;
+        property_counts::validate_ignored(name, schema)?;
+        property_dependencies::validate_ignored(name, schema)?;
+        dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+        conditionals::apply(name, schema, &mut scalar, doc, active_refs, false)?;
+        unique_items::validate_ignored(name, schema)?;
+        string_lengths::apply(name, schema, &mut scalar, false)?;
+        patterns::apply(name, schema, &mut scalar, false)?;
+        formats::apply(name, schema, &mut scalar)?;
+        return Ok(scalar);
+    }
+    let mut node = parse_object_alternatives(
+        name,
+        schema,
+        alternatives,
+        GroupAlternativeMode::Exclusive,
+        doc,
+        active_refs,
+    )?;
+    string_lengths::validate_ignored(name, schema)?;
+    multiples::validate_ignored(name, schema)?;
+    patterns::validate_ignored(name, schema)?;
+    property_counts::apply(name, schema, &mut node, false)?;
+    property_dependencies::apply(name, schema, &mut node, false)?;
+    dependent_schemas::apply(name, schema, &mut node, doc, active_refs, false)?;
+    conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
+    unique_items::validate_ignored(name, schema)?;
+    formats::apply(name, schema, &mut node)?;
+    Ok(node)
+}
+
+#[inline(never)]
+fn parse_any_of_branch(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<SchemaNode, JsonFormatError> {
+    if let Some(mut finite) =
+        parse_finite_scalar_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
+    {
+        apply_known_shape_constraints(name, schema, &mut finite, doc, active_refs)?;
+        formats::apply(name, schema, &mut finite)?;
+        return Ok(finite);
+    }
+    if let Some(mut nullable) =
+        parse_nullable_scalar_alternatives(name, schema, alternatives, "anyOf", doc, active_refs)?
+    {
+        ranges::apply(name, schema, &mut nullable, false)?;
+        multiples::apply(name, schema, &mut nullable, false)?;
+        item_counts::validate_ignored(name, schema)?;
+        property_counts::validate_ignored(name, schema)?;
+        property_dependencies::validate_ignored(name, schema)?;
+        dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+        conditionals::apply(name, schema, &mut nullable, doc, active_refs, false)?;
+        unique_items::validate_ignored(name, schema)?;
+        string_lengths::apply(name, schema, &mut nullable, false)?;
+        patterns::apply(name, schema, &mut nullable, false)?;
+        formats::apply_first(name, schema, &mut nullable)?;
+        return Ok(nullable);
+    }
+    if let Some(mut nullable) =
+        parse_nullable_composition(name, schema, alternatives, "anyOf", doc, active_refs)?
+    {
+        apply_nullable_composition_ranges(name, schema, &mut nullable, doc, active_refs)?;
+        formats::apply_first(name, schema, &mut nullable)?;
+        return Ok(nullable);
+    }
+    if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
+        let mut scalar = scalar;
+        multiples::apply(name, schema, &mut scalar, false)?;
+        property_counts::validate_ignored(name, schema)?;
+        property_dependencies::validate_ignored(name, schema)?;
+        dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+        conditionals::apply(name, schema, &mut scalar, doc, active_refs, false)?;
+        unique_items::validate_ignored(name, schema)?;
+        string_lengths::apply(name, schema, &mut scalar, false)?;
+        patterns::apply(name, schema, &mut scalar, false)?;
+        formats::apply(name, schema, &mut scalar)?;
+        return Ok(scalar);
+    }
+    if let Some(array) =
+        parse_scalar_domain_array_any_of(name, schema, alternatives, doc, active_refs)?
+    {
+        let mut array = array;
         string_lengths::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         patterns::validate_ignored(name, schema)?;
-        property_counts::apply(name, schema, &mut node, false)?;
-        property_dependencies::apply(name, schema, &mut node, false)?;
-        dependent_schemas::apply(name, schema, &mut node, doc, active_refs, false)?;
-        conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
-        unique_items::validate_ignored(name, schema)?;
-        formats::apply(name, schema, &mut node)?;
-        return Ok(node);
+        property_counts::validate_ignored(name, schema)?;
+        property_dependencies::validate_ignored(name, schema)?;
+        dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
+        conditionals::apply(name, schema, &mut array, doc, active_refs, false)?;
+        unique_items::apply(name, schema, &mut array, false)?;
+        formats::apply(name, schema, &mut array)?;
+        return Ok(array);
     }
+    let mut node = parse_object_alternatives(
+        name,
+        schema,
+        alternatives,
+        GroupAlternativeMode::Inclusive,
+        doc,
+        active_refs,
+    )?;
+    string_lengths::validate_ignored(name, schema)?;
+    multiples::validate_ignored(name, schema)?;
+    patterns::validate_ignored(name, schema)?;
+    property_counts::apply(name, schema, &mut node, false)?;
+    property_dependencies::apply(name, schema, &mut node, false)?;
+    dependent_schemas::apply(name, schema, &mut node, doc, active_refs, false)?;
+    conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
+    unique_items::validate_ignored(name, schema)?;
+    formats::apply(name, schema, &mut node)?;
+    Ok(node)
+}
+
+#[inline(never)]
+fn parse_typed_schema(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<SchemaNode, JsonFormatError> {
     patterns::validate_ignored(name, schema)?;
     multiples::validate_ignored(name, schema)?;
     let (ty, nullable) = schema_type(name, schema)?;
     let type_was_absent = matches!(&ty, ImportedSchemaType::Absent);
     let allowed = allowed_values::selected(name, schema)?;
-    let narrowed_by_allowed_values = allowed.is_some();
     if type_was_absent
         && allowed.is_none()
         && schema.get("required").is_some()
@@ -353,222 +425,238 @@ fn parse(
             "required without an object type or properties conditionally constrains objects while admitting non-object values",
         ));
     }
-    let mut node = if let Some(selection) = allowed {
-        let mut node = match &ty {
-            ImportedSchemaType::Absent => allowed_values::inferred_schema(name, &selection)?,
-            ImportedSchemaType::Single("string") => {
-                scalar_schema(name, ScalarType::String, nullable)
-            }
-            ImportedSchemaType::Single("integer") => scalar_schema(name, ScalarType::Int, nullable),
-            ImportedSchemaType::Single("number") => {
-                scalar_schema(name, ScalarType::Float, nullable)
-            }
-            ImportedSchemaType::Single("boolean") => {
-                scalar_schema(name, ScalarType::Bool, nullable)
-            }
-            ImportedSchemaType::ScalarUnion(types) => {
-                let mut node = SchemaNode::scalar_union(name, *types);
-                node.nullable = nullable;
-                node
-            }
-            ImportedSchemaType::Single(_) => {
-                return Err(unsupported_union(
-                    name,
-                    "const and enum are supported only for scalar schemas",
-                ));
-            }
-        };
-        allowed_values::apply_selection(name, &mut node, selection)?;
-        node
-    } else {
-        match ty {
-            ImportedSchemaType::Single("object") => {
-                let children = parse_properties(schema, doc, active_refs)?;
-                let mut node = attach_object_metadata(
-                    SchemaNode::group(name, children),
-                    schema,
-                    doc,
-                    active_refs,
-                )?;
-                node.container_nullable = nullable;
-                node
-            }
-            ImportedSchemaType::Single("array") => {
-                if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)?
-                {
-                    node.container_nullable = nullable;
-                    ranges::validate_ignored(name, schema)?;
-                    multiples::validate_ignored(name, schema)?;
-                    contains::apply(name, schema, &mut node, doc, active_refs, false)?;
-                    conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
-                    unique_items::apply(name, schema, &mut node, false)?;
-                    string_lengths::validate_ignored(name, schema)?;
-                    patterns::validate_ignored(name, schema)?;
-                    formats::validate(name, schema)?;
-                    return Ok(node);
-                }
-                let Some(items) = schema.get("items") else {
-                    let mut node = arbitrary_json_schema(name)?.repeating();
-                    node.container_nullable = nullable;
-                    ranges::validate_ignored(name, schema)?;
-                    multiples::validate_ignored(name, schema)?;
-                    item_counts::apply(name, schema, &mut node, false)?;
-                    contains::apply(name, schema, &mut node, doc, active_refs, false)?;
-                    conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
-                    unique_items::apply(name, schema, &mut node, false)?;
-                    string_lengths::validate_ignored(name, schema)?;
-                    patterns::validate_ignored(name, schema)?;
-                    formats::validate(name, schema)?;
-                    return Ok(node);
-                };
-                let item = parse(name, items, doc, active_refs)?;
-                if item.repeating
-                    && (item.item_count_range.is_some()
-                        || item.json_multiple_of.is_some()
-                        || item.json_allowed_values.is_some()
-                        || item.string_length_range.is_some()
-                        || item.json_patterns.is_some()
-                        || item.json_contains.is_some()
-                        || item.json_unique_items
-                        || item_counts::has_keywords(schema)
-                        || contains::has_keyword(schema)
-                        || unique_items::selected(name, schema)?)
-                {
-                    return Err(unsupported_union(
-                        name,
-                        "nested arrays with item-count, contains, unique-items, allowed-value, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
-                    ));
-                }
-                let mut node = item.repeating();
-                node.container_nullable = nullable;
-                ranges::validate_ignored(name, schema)?;
-                multiples::validate_ignored(name, schema)?;
-                item_counts::apply(name, schema, &mut node, false)?;
-                contains::apply(name, schema, &mut node, doc, active_refs, false)?;
-                conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
-                unique_items::apply(name, schema, &mut node, false)?;
-                string_lengths::validate_ignored(name, schema)?;
-                patterns::validate_ignored(name, schema)?;
-                formats::validate(name, schema)?;
-                return Ok(node);
-            }
-            ImportedSchemaType::Single("string") => {
-                scalar_schema(name, ScalarType::String, nullable)
-            }
-            ImportedSchemaType::Single("integer") => scalar_schema(name, ScalarType::Int, nullable),
-            ImportedSchemaType::Single("number") => {
-                scalar_schema(name, ScalarType::Float, nullable)
-            }
-            ImportedSchemaType::Single("boolean") => {
-                scalar_schema(name, ScalarType::Bool, nullable)
-            }
-            ImportedSchemaType::ScalarUnion(types) => {
-                let mut node = SchemaNode::scalar_union(name, types);
-                node.nullable = nullable;
-                node
-            }
-            ImportedSchemaType::Single("null") => {
-                return Err(unsupported_union(
-                    name,
-                    "a null-only schema has no distinct ferrule scalar value type",
-                ));
-            }
-            _ if schema.get("properties").is_some() => {
-                let children = parse_properties(schema, doc, active_refs)?;
-                attach_object_metadata(SchemaNode::group(name, children), schema, doc, active_refs)?
-            }
-            ImportedSchemaType::Absent
-                if patterns::has_keyword(schema)
-                    && !patterns::is_effectively_constrained(name, schema)? =>
-            {
-                arbitrary_json_schema(name)?
-            }
-            ImportedSchemaType::Absent | ImportedSchemaType::Single(_) => {
-                SchemaNode::scalar(name, ScalarType::String)
-            }
+    if let Some(selection) = allowed {
+        return parse_allowed_typed_schema(
+            name,
+            schema,
+            doc,
+            active_refs,
+            &ty,
+            nullable,
+            selection,
+        );
+    }
+    match ty {
+        ImportedSchemaType::Single("object") => {
+            parse_object_typed_schema(name, schema, doc, active_refs, nullable)
+        }
+        ImportedSchemaType::Single("array") => {
+            parse_array_schema(name, schema, doc, active_refs, nullable)
+        }
+        ImportedSchemaType::Single("string" | "integer" | "number" | "boolean")
+        | ImportedSchemaType::ScalarUnion(_) => {
+            parse_scalar_typed_schema(name, schema, doc, active_refs, ty, nullable, false)
+        }
+        ImportedSchemaType::Single("null") => Err(unsupported_union(
+            name,
+            "a null-only schema has no distinct ferrule scalar value type",
+        )),
+        _ if schema.get("properties").is_some() => {
+            parse_object_typed_schema(name, schema, doc, active_refs, false)
+        }
+        ImportedSchemaType::Absent | ImportedSchemaType::Single(_) => parse_scalar_typed_schema(
+            name,
+            schema,
+            doc,
+            active_refs,
+            ty,
+            nullable,
+            type_was_absent && schema.get("properties").is_none(),
+        ),
+    }
+}
+
+#[inline(never)]
+fn parse_allowed_typed_schema(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+    ty: &ImportedSchemaType<'_>,
+    nullable: bool,
+    selection: allowed_values::Selection,
+) -> Result<SchemaNode, JsonFormatError> {
+    let node = parse_allowed_schema(name, ty, nullable, selection)?;
+    apply_typed_schema_constraints(name, schema, doc, active_refs, node, false)
+}
+
+#[inline(never)]
+fn parse_object_typed_schema(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+    nullable: bool,
+) -> Result<SchemaNode, JsonFormatError> {
+    let children = parse_properties(schema, doc, active_refs)?;
+    finish_object_typed_schema(name, schema, doc, active_refs, nullable, children)
+}
+
+#[inline(never)]
+fn finish_object_typed_schema(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+    nullable: bool,
+    children: Vec<SchemaNode>,
+) -> Result<SchemaNode, JsonFormatError> {
+    let mut node =
+        attach_object_metadata(SchemaNode::group(name, children), schema, doc, active_refs)?;
+    node.container_nullable = nullable;
+    apply_typed_schema_constraints(name, schema, doc, active_refs, node, false)
+}
+
+#[inline(never)]
+fn parse_scalar_typed_schema(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+    ty: ImportedSchemaType<'_>,
+    nullable: bool,
+    untyped: bool,
+) -> Result<SchemaNode, JsonFormatError> {
+    let node = match ty {
+        ImportedSchemaType::Single("string") => scalar_schema(name, ScalarType::String, nullable),
+        ImportedSchemaType::Single("integer") => scalar_schema(name, ScalarType::Int, nullable),
+        ImportedSchemaType::Single("number") => scalar_schema(name, ScalarType::Float, nullable),
+        ImportedSchemaType::Single("boolean") => scalar_schema(name, ScalarType::Bool, nullable),
+        ImportedSchemaType::ScalarUnion(types) => {
+            let mut node = SchemaNode::scalar_union(name, types);
+            node.nullable = nullable;
+            node
+        }
+        ImportedSchemaType::Absent
+            if patterns::has_keyword(schema)
+                && !patterns::is_effectively_constrained(name, schema)? =>
+        {
+            arbitrary_json_schema(name)?
+        }
+        ImportedSchemaType::Absent | ImportedSchemaType::Single(_) => {
+            SchemaNode::scalar(name, ScalarType::String)
         }
     };
-    ranges::apply(
-        name,
-        schema,
-        &mut node,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    multiples::apply(
-        name,
-        schema,
-        &mut node,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    item_counts::apply(
-        name,
-        schema,
-        &mut node,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    contains::apply(
-        name,
-        schema,
-        &mut node,
-        doc,
-        active_refs,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    property_counts::apply(
-        name,
-        schema,
-        &mut node,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    property_dependencies::apply(
-        name,
-        schema,
-        &mut node,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    dependent_schemas::apply(
-        name,
-        schema,
-        &mut node,
-        doc,
-        active_refs,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    conditionals::apply(
-        name,
-        schema,
-        &mut node,
-        doc,
-        active_refs,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    property_names::apply(
-        name,
-        schema,
-        &mut node,
-        doc,
-        active_refs,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    unique_items::apply(
-        name,
-        schema,
-        &mut node,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    string_lengths::apply(
-        name,
-        schema,
-        &mut node,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
-    patterns::apply(
-        name,
-        schema,
-        &mut node,
-        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
-    )?;
+    apply_typed_schema_constraints(name, schema, doc, active_refs, node, untyped)
+}
+
+#[inline(never)]
+fn apply_typed_schema_constraints(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+    mut node: SchemaNode,
+    untyped: bool,
+) -> Result<SchemaNode, JsonFormatError> {
+    ranges::apply(name, schema, &mut node, untyped)?;
+    multiples::apply(name, schema, &mut node, untyped)?;
+    item_counts::apply(name, schema, &mut node, untyped)?;
+    contains::apply(name, schema, &mut node, doc, active_refs, untyped)?;
+    property_counts::apply(name, schema, &mut node, untyped)?;
+    property_dependencies::apply(name, schema, &mut node, untyped)?;
+    dependent_schemas::apply(name, schema, &mut node, doc, active_refs, untyped)?;
+    conditionals::apply(name, schema, &mut node, doc, active_refs, untyped)?;
+    property_names::apply(name, schema, &mut node, doc, active_refs, untyped)?;
+    unique_items::apply(name, schema, &mut node, untyped)?;
+    string_lengths::apply(name, schema, &mut node, untyped)?;
+    patterns::apply(name, schema, &mut node, untyped)?;
     formats::apply(name, schema, &mut node)?;
+    Ok(node)
+}
+
+#[inline(never)]
+fn parse_allowed_schema(
+    name: &str,
+    ty: &ImportedSchemaType<'_>,
+    nullable: bool,
+    selection: allowed_values::Selection,
+) -> Result<SchemaNode, JsonFormatError> {
+    let mut node = match ty {
+        ImportedSchemaType::Absent => allowed_values::inferred_schema(name, &selection)?,
+        ImportedSchemaType::Single("string") => scalar_schema(name, ScalarType::String, nullable),
+        ImportedSchemaType::Single("integer") => scalar_schema(name, ScalarType::Int, nullable),
+        ImportedSchemaType::Single("number") => scalar_schema(name, ScalarType::Float, nullable),
+        ImportedSchemaType::Single("boolean") => scalar_schema(name, ScalarType::Bool, nullable),
+        ImportedSchemaType::ScalarUnion(types) => {
+            let mut node = SchemaNode::scalar_union(name, *types);
+            node.nullable = nullable;
+            node
+        }
+        ImportedSchemaType::Single(_) => {
+            return Err(unsupported_union(
+                name,
+                "const and enum are supported only for scalar schemas",
+            ));
+        }
+    };
+    allowed_values::apply_selection(name, &mut node, selection)?;
+    Ok(node)
+}
+
+#[inline(never)]
+fn parse_array_schema(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+    nullable: bool,
+) -> Result<SchemaNode, JsonFormatError> {
+    if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)? {
+        node.container_nullable = nullable;
+        ranges::validate_ignored(name, schema)?;
+        multiples::validate_ignored(name, schema)?;
+        contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+        conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
+        unique_items::apply(name, schema, &mut node, false)?;
+        string_lengths::validate_ignored(name, schema)?;
+        patterns::validate_ignored(name, schema)?;
+        formats::validate(name, schema)?;
+        return Ok(node);
+    }
+    let Some(items) = schema.get("items") else {
+        let mut node = arbitrary_json_schema(name)?.repeating();
+        node.container_nullable = nullable;
+        ranges::validate_ignored(name, schema)?;
+        multiples::validate_ignored(name, schema)?;
+        item_counts::apply(name, schema, &mut node, false)?;
+        contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+        conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
+        unique_items::apply(name, schema, &mut node, false)?;
+        string_lengths::validate_ignored(name, schema)?;
+        patterns::validate_ignored(name, schema)?;
+        formats::validate(name, schema)?;
+        return Ok(node);
+    };
+    let item = parse(name, items, doc, active_refs)?;
+    if item.repeating
+        && (item.item_count_range.is_some()
+            || item.json_multiple_of.is_some()
+            || item.json_allowed_values.is_some()
+            || item.string_length_range.is_some()
+            || item.json_patterns.is_some()
+            || item.json_contains.is_some()
+            || item.json_unique_items
+            || item_counts::has_keywords(schema)
+            || contains::has_keyword(schema)
+            || unique_items::selected(name, schema)?)
+    {
+        return Err(unsupported_union(
+            name,
+            "nested arrays with item-count, contains, unique-items, allowed-value, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
+        ));
+    }
+    let mut node = item.repeating();
+    node.container_nullable = nullable;
+    ranges::validate_ignored(name, schema)?;
+    multiples::validate_ignored(name, schema)?;
+    item_counts::apply(name, schema, &mut node, false)?;
+    contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+    conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
+    unique_items::apply(name, schema, &mut node, false)?;
+    string_lengths::validate_ignored(name, schema)?;
+    patterns::validate_ignored(name, schema)?;
+    formats::validate(name, schema)?;
     Ok(node)
 }
 

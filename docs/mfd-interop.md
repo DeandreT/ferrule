@@ -268,7 +268,9 @@ excludes the row, preserving SQL WHERE behavior when equality results are
 negated. Literal NULL list entries and empty lists remain explicitly unsupported.
 Two temperature designs recover their original native numeric wiring. The
 annual PDF mapping retains all eight conversions inside its user function and
-reimports to the same 148 CSV rows. The grouped XML mapping restores 21
+reimports to the same 148 CSV rows through Ferrule's PDF layout extension.
+Its grouped extraction template is outside the native PDF export subset.
+The grouped XML mapping restores 21
 target-side and six user-function conversions through an exact descendant
 node-function rule; its five yearly rows and typed nonfinite conversion error
 match after strict export/reimport. The recovery requires the closed source,
@@ -302,7 +304,10 @@ and layout exactly match the executable boundary. External configurations stay
 authoritative. Unknown versions, duplicate metadata, altered schema/layout, and
 missing layouts discard certification with a warning. Export also renders a
 certified configuration as an adjacent, uniquely named file with a relative
-reference. Self-authored relocation tests reimport it without the original
+reference. Rendering reparses and compares the entire descriptor before
+returning text; labels that would lose leading whitespace reject with the
+affected group, segment, field, or code path. MFD export propagates this error
+before publishing any file. Self-authored relocation tests reimport it without the original
 configuration. A closed native text-settings model also retains the observed
 encoding/order codes, BOM and termination flags, fixed syntax/separators,
 auto-completion flag, and all 16 ordered validation actions. These codes are
@@ -399,6 +404,9 @@ checks file size before reading and bounds the actual read; export checks the
 complete XML, including escaping and embedded metadata, before publishing any
 design or schema sibling. Each connected stage and the combined design must
 fit the same limit.
+MFD entries and generated XSD attributes preserve tabs and line breaks through
+XML character references, including field names, paths, fixed values, and
+defaults.
 
 ```sh
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
@@ -409,6 +417,29 @@ cargo +nightly run -p cli -- export-mfd --project flow.json --pipeline --out cha
 
 Export writes the representable project subset plus generated schema or layout
 siblings. Component kinds are selected from endpoint format metadata and paths.
+JSON Schema siblings are reimported from their exact generated text before
+publication. Export rejects a schema whose finite numeric metadata changes,
+including a range endpoint, enum value, alternative discriminator, or nested
+predicate. The error identifies the owning boundary or function and the
+affected metadata path. This check applies to both export profiles. Some
+float-valued integral endpoints also reject because the JSON Schema importer
+cannot establish their exact integer meaning. Captured HTTP POST responses
+have only an inline entry tree; assertions that this tree cannot retain reject
+instead of being discarded.
+
+PDF sources with all-page selection and direct BasicVisual text captures can
+write a native-shaped `.pxt` template. This subset requires InsertSpace word
+separation, Default whitespace, and page-edge coordinates without anchors.
+Export checks the generated template with the bounded native-template parser
+and compares every retained coordinate by its binary64 bits. Other supported
+PDF layouts use Ferrule's lossless layout payload. Ordinary payloads retain
+version 1; version 2 preserves floating-point values that ordinary JSON cannot
+round-trip exactly. The complete template, including XML escaping, is limited
+to 1 MiB. The export report inspects the actual generated sibling and reports
+`pdf_layout` when that sibling requires Ferrule's extension; strict native
+export then rejects before publication. Local parser checks do not establish
+that the reference application accepts or executes the template.
+
 Pipeline export writes one connected design for a validated serial XML
 pass-through chain of 2–65 stages. Each intermediate primary target becomes
 the next stage's pass-through source. The final primary target may be XML,
