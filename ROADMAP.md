@@ -114,8 +114,15 @@ are preserved.
   exact typed outputs; strict XML annotations differ. The document-wrapper
   namespace correction lets one exported string-join design validate, execute
   and re-save without warnings; its reimported mapping retains the exact typed
-  result. Recursive-schema and filtered-position export gates remain open. The earlier
-  79 matches have not been rechecked after preview corrections.
+  result. File-backed XML entries now retain qualified element and attribute
+  identities without confusing reserved wrapper names with user payloads.
+  Two authored namespace and reserved-name exports validate, execute and
+  re-save without warnings; the saved designs replay through the current CLI
+  with exact typed outputs. Recursive XSD exports use collision-safe named
+  references, and foreign declarations share one complete artifact per namespace.
+  Optional-field, derived-type annotation and filtered-position native export
+  gates remain open. The earlier 79 matches have not been rechecked after
+  preview corrections.
   The single-project counts do not establish faithful behavior for warned
   connected chains; the typed pipeline path is measured separately.
 - Named optional host inputs retain connected defaults and overrides through project

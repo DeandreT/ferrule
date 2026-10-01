@@ -163,6 +163,31 @@ impl<'a> SubstitutionExportPlan<'a> {
     }
 }
 
+/// Reserve types emitted outside the ordinary alternative definitions before
+/// assigning names to recursive complex types in the same schema document.
+pub(super) fn partitioned_type_names(
+    node: &SchemaNode,
+    partition: bool,
+) -> Result<BTreeSet<String>, XmlFormatError> {
+    let mut names = BTreeSet::new();
+    if !partition {
+        return Ok(names);
+    }
+    if requires_partition(node) {
+        names.insert(PartitionedShape::new(node)?.head_type);
+        for alternative in node.alternatives() {
+            let (_, local) = parsed_member(node, alternative)?;
+            names.insert(format!("{local}FerruleSubstitutionType"));
+        }
+    }
+    if let SchemaKind::Group { children, .. } = &node.kind {
+        for child in children {
+            names.extend(partitioned_type_names(child, true)?);
+        }
+    }
+    Ok(names)
+}
+
 pub(super) fn requires_partition(node: &SchemaNode) -> bool {
     node.xml_alternative_kind == XmlAlternativeKind::SubstitutionGroup
         && node.alternatives().iter().any(|alternative| {

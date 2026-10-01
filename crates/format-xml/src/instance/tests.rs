@@ -855,7 +855,7 @@ fn legacy_xml_names_remain_local_name_matches() {
 }
 
 #[test]
-fn recursive_groups_round_trip_and_export_as_root_references() {
+fn recursive_groups_round_trip_and_export_as_named_types() {
     let schema = SchemaNode::group(
         "directory",
         vec![
@@ -871,7 +871,7 @@ fn recursive_groups_round_trip_and_export_as_root_references() {
 
     let xsd = xsd::export(&schema).unwrap();
     assert!(
-        xsd.contains("<xs:element ref=\"directory\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>"),
+        xsd.contains("<xs:element name=\"directory\" type=\"directoryType\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>"),
         "{xsd}"
     );
 }
