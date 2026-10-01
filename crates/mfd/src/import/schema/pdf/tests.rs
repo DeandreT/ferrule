@@ -208,6 +208,28 @@ fn native_template_self_check_enforces_byte_element_and_depth_limits() {
     );
 }
 
+#[test]
+fn native_template_self_check_refuses_object_find_repair_drafts() {
+    let commands = format!(
+        "<Splitter><Region/><Search/><FeatureFind><ObjectFind><Background>#fff</Background>\
+         <Tolerance>10</Tolerance><MinimumExtent>10pt</MinimumExtent><Fill>0pt</Fill>\
+         <Edge><start/></Edge><Displace>0pt</Displace></ObjectFind></FeatureFind>\
+         <Children>{}</Children></Splitter>",
+        grouping("Row", "", "", &capture())
+    );
+    let source = template(&commands);
+    let (draft, warnings) = super::parse_layout_text(&source, "Document", true).unwrap();
+    assert_eq!(
+        draft.repair_dependency(),
+        Some(mapping::PdfRepairDependency::ObjectFind)
+    );
+    assert_eq!(warnings.len(), 1);
+    assert!(draft.schema().child("Row").unwrap().repeating);
+    let error = parse_native_template_text(&source, "Document").unwrap_err();
+    assert!(error.contains("ObjectFind"));
+    assert!(error.len() < 200);
+}
+
 fn edge_splitter_template(controls: &str) -> String {
     format!(
         "<Document><Template version=\"1\"><Model><Root><Label>Document</Label><Children>\

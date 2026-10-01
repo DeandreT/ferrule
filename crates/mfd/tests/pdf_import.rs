@@ -211,8 +211,12 @@ fn imports_case_insensitive_pdf_references_and_table_layout() {
     assert!(exported.contains("kind=\"34\""));
     assert!(temp.0.join("export-source.pxt").is_file());
     let exported_template = std::fs::read_to_string(temp.0.join("export-source.pxt")).unwrap();
-    assert!(exported_template.contains("basic_visual"));
-    assert!(exported_template.contains("insert_space"));
+    assert!(
+        exported_template.contains("basic_visual") || exported_template.contains("<BasicVisual>")
+    );
+    assert!(
+        exported_template.contains("insert_space") || exported_template.contains("<InsertSpace/>")
+    );
     std::fs::remove_file(temp.0.join("Garden-Input.PDF")).unwrap();
 
     let reimported = mfd::import(&design).unwrap();
@@ -287,7 +291,8 @@ fn imports_open_page_collage_and_marker_delimited_groups() {
     let Ok(imported) = mfd::import(&temp.0.join("mapping.mfd")) else {
         panic!("self-authored PDF text-group fixture must import");
     };
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(imported.warnings[0].contains("ObjectFind"));
     let Some(layout) = imported.project.source_options.pdf.as_ref() else {
         panic!("PDF text-group import must retain its source layout");
     };
@@ -380,96 +385,26 @@ fn imports_and_executes_the_local_multiline_book_catalog() {
 
 #[test]
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
-fn imports_and_executes_the_local_article_stock_pdf() {
+fn imports_the_local_article_stock_as_a_blocked_pdf_repair() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("ArticlesInStock.mfd");
-    let pdf = samples.join("ClothingStockData2024.pdf");
-    if !design.is_file() || !pdf.is_file() {
+    if !design.is_file() {
         return;
     }
-
-    let Ok(imported) = mfd::import(&design) else {
-        panic!("local article-stock PDF mapping must import");
-    };
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let imported = mfd::import(&design).unwrap();
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(imported.warnings[0].contains("ObjectFind"));
     assert!(engine::validate(&imported.project).is_empty());
-    let Some(layout) = imported.project.source_options.pdf.as_ref() else {
-        panic!("local article-stock PDF mapping must retain its layout");
-    };
-    let Ok(source) = format_pdf::read(&pdf, layout) else {
-        panic!("local article-stock PDF must extract");
-    };
-    let Ok(output) = engine::run(&imported.project, &source) else {
-        panic!("local article-stock PDF mapping must execute");
-    };
-    let Some(articles) = output.as_repeated() else {
-        panic!("local article-stock output must contain repeated articles");
-    };
-    assert_eq!(articles.len(), 11);
-
-    let mut store_count = 0;
-    let mut availability_count = 0;
-    for article in articles {
-        assert!(
-            article
-                .field("Number")
-                .and_then(Instance::as_scalar)
-                .is_some()
-        );
-        assert!(
-            article
-                .field("Name")
-                .and_then(Instance::as_scalar)
-                .is_some()
-        );
-        assert!(
-            article
-                .field("Description")
-                .and_then(Instance::as_scalar)
-                .is_some()
-        );
-        let Some(stores) = article
-            .field("StoreDetails")
-            .and_then(Instance::as_repeated)
-        else {
-            panic!("each local article must contain repeated store details");
-        };
-        assert_eq!(stores.len(), 2);
-        store_count += stores.len();
-        for store in stores {
-            assert!(store.field("Store").and_then(Instance::as_scalar).is_some());
-            let Some(Instance::Group(availability)) = store.field("Available") else {
-                panic!("each local store must contain computed availability properties");
-            };
-            assert!(!availability.is_empty());
-            assert!(availability.iter().all(|(name, value)| {
-                !name.is_empty() && !matches!(value.as_scalar(), None | Some(Value::Null))
-            }));
-            availability_count += availability.len();
-        }
-    }
-    assert_eq!(store_count, 22);
-    assert_eq!(availability_count, 77);
-    let Ok(serialized) = format_json::to_string(&imported.project.target, &output) else {
-        panic!("local article-stock output must serialize as JSON");
-    };
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(&serialized) else {
-        panic!("serialized local article-stock output must be valid JSON");
-    };
-    let Some(records) = json.as_array() else {
-        panic!("serialized local article-stock output must be an array");
-    };
-    assert!(records.iter().all(|article| {
-        article
-            .get("StoreDetails")
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|stores| {
-                stores.iter().all(|store| {
-                    store
-                        .get("Available")
-                        .and_then(serde_json::Value::as_object)
-                        .is_some_and(|fields| fields.values().all(serde_json::Value::is_number))
-                })
-            })
-    }));
+    let layout = imported.project.source_options.pdf.as_ref().unwrap();
+    assert_eq!(
+        layout.repair_dependency(),
+        Some(mapping::PdfRepairDependency::ObjectFind)
+    );
+    assert!(matches!(
+        format_pdf::read(&samples.join("ClothingStockData2024.pdf"), layout),
+        Err(format_pdf::PdfError::RepairDependency(
+            mapping::PdfRepairDependency::ObjectFind
+        ))
+    ));
+    assert!(!mfd::assess_import(&imported).executable);
 }
