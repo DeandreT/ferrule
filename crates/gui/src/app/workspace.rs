@@ -897,40 +897,44 @@ impl FerruleApp {
         egui::ScrollArea::both()
             .id_salt(("scope_editor_scroll", active_target))
             .show(ui, |ui| {
-                let nested = !self.selected_scope.is_empty();
-                match active_target {
-                    Some(index) => {
-                        let Some(target) = self.project.extra_targets.get_mut(index) else {
-                            return;
-                        };
-                        let target_chain = scope_target_chain(&target.root, &self.selected_scope);
-                        let target_fields = binding_target_fields(&target.schema, &target_chain);
-                        let scope = scope_at_mut(&mut target.root, &self.selected_scope);
-                        show_scope_editor(
-                            ui,
-                            scope,
-                            &self.project.graph,
-                            &source_paths,
-                            &target_fields,
-                            nested,
-                        );
+                ui.add_enabled_ui(editing_enabled, |ui| {
+                    let nested = !self.selected_scope.is_empty();
+                    match active_target {
+                        Some(index) => {
+                            let Some(target) = self.project.extra_targets.get_mut(index) else {
+                                return;
+                            };
+                            let target_chain =
+                                scope_target_chain(&target.root, &self.selected_scope);
+                            let target_fields =
+                                binding_target_fields(&target.schema, &target_chain);
+                            let scope = scope_at_mut(&mut target.root, &self.selected_scope);
+                            show_scope_editor(
+                                ui,
+                                scope,
+                                &self.project.graph,
+                                &source_paths,
+                                &target_fields,
+                                nested,
+                            );
+                        }
+                        None => {
+                            let target_chain =
+                                scope_target_chain(&self.project.root, &self.selected_scope);
+                            let target_fields =
+                                binding_target_fields(&self.project.target, &target_chain);
+                            let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
+                            show_scope_editor(
+                                ui,
+                                scope,
+                                &self.project.graph,
+                                &source_paths,
+                                &target_fields,
+                                nested,
+                            );
+                        }
                     }
-                    None => {
-                        let target_chain =
-                            scope_target_chain(&self.project.root, &self.selected_scope);
-                        let target_fields =
-                            binding_target_fields(&self.project.target, &target_chain);
-                        let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
-                        show_scope_editor(
-                            ui,
-                            scope,
-                            &self.project.graph,
-                            &source_paths,
-                            &target_fields,
-                            nested,
-                        );
-                    }
-                }
+                });
             });
     }
 
@@ -1198,3 +1202,7 @@ fn show_schema_result_count(
     };
     ui.weak(summary);
 }
+
+#[cfg(test)]
+#[path = "workspace/inspector_lock_tests.rs"]
+mod inspector_lock_tests;
