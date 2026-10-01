@@ -12,6 +12,7 @@ use std::io::Read as _;
 use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use mapping::FormatOptions;
 use thiserror::Error;
 
 mod fixed_width;
@@ -25,6 +26,41 @@ pub use read::{
 pub use fixed_width::{
     from_str_fixed_width, read_fixed_width, to_string_fixed_width, write_fixed_width,
 };
+
+/// CSV output dialect and UTF-8 byte-order-mark policy. Legacy writer entry
+/// points continue to use the same dialect without a byte order mark.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CsvWriteOptions {
+    pub delimiter: Option<char>,
+    pub quote: Option<char>,
+    pub quote_disabled: bool,
+    pub has_headers: bool,
+    pub utf8_bom: bool,
+}
+
+impl Default for CsvWriteOptions {
+    fn default() -> Self {
+        Self {
+            delimiter: None,
+            quote: None,
+            quote_disabled: false,
+            has_headers: true,
+            utf8_bom: false,
+        }
+    }
+}
+
+impl From<&FormatOptions> for CsvWriteOptions {
+    fn from(options: &FormatOptions) -> Self {
+        Self {
+            delimiter: options.delimiter,
+            quote: options.csv_quote,
+            quote_disabled: options.csv_quote_disabled,
+            has_headers: options.has_header_row.unwrap_or(true),
+            utf8_bom: options.csv_utf8_bom,
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum CsvFormatError {
@@ -323,10 +359,28 @@ pub fn write_with_dialect(
     quote_disabled: bool,
     has_headers: bool,
 ) -> Result<(), CsvFormatError> {
-    std::fs::write(
+    write_with_options(
         path,
-        to_string_with_dialect(schema, rows, delimiter, quote, quote_disabled, has_headers)?,
-    )?;
+        schema,
+        rows,
+        &CsvWriteOptions {
+            delimiter,
+            quote,
+            quote_disabled,
+            has_headers,
+            ..CsvWriteOptions::default()
+        },
+    )
+}
+
+/// Write validated CSV rows using the complete output policy.
+pub fn write_with_options(
+    path: &Path,
+    schema: &SchemaNode,
+    rows: &[Instance],
+    options: &CsvWriteOptions,
+) -> Result<(), CsvFormatError> {
+    std::fs::write(path, to_string_with_options(schema, rows, options)?)?;
     Ok(())
 }
 
@@ -364,8 +418,29 @@ pub fn to_string_with_dialect(
     quote_disabled: bool,
     has_headers: bool,
 ) -> Result<String, CsvFormatError> {
+    to_string_with_options(
+        schema,
+        rows,
+        &CsvWriteOptions {
+            delimiter,
+            quote,
+            quote_disabled,
+            has_headers,
+            ..CsvWriteOptions::default()
+        },
+    )
+}
+
+/// Render validated CSV rows with the complete output policy. A BOM, when
+/// selected, becomes the first UTF-8 scalar only after row validation succeeds.
+pub fn to_string_with_options(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    options: &CsvWriteOptions,
+) -> Result<String, CsvFormatError> {
     let fields = row_fields(schema)?;
-    let (delimiter, quote) = dialect_bytes(delimiter, quote, quote_disabled)?;
+    let (delimiter, quote) =
+        dialect_bytes(options.delimiter, options.quote, options.quote_disabled)?;
     // Validate and materialize every record before producing output. A
     // shape/type error must not truncate a previously valid output file.
     let records = rows
@@ -373,9 +448,9 @@ pub fn to_string_with_dialect(
         .enumerate()
         .map(|(row, instance)| format_row(row, instance, &fields))
         .collect::<Result<Vec<_>, _>>()?;
-    if quote_disabled {
+    if options.quote_disabled {
         for (name, _) in &fields {
-            if has_headers && requires_quoting(name, delimiter) {
+            if options.has_headers && requires_quoting(name, delimiter) {
                 return Err(CsvFormatError::UnquotedHeaderBoundary {
                     field: (*name).to_string(),
                 });
@@ -398,13 +473,13 @@ pub fn to_string_with_dialect(
     let mut writer = csv::WriterBuilder::new()
         .delimiter(delimiter)
         .quote(quote.unwrap_or(b'"'))
-        .quote_style(if quote_disabled {
+        .quote_style(if options.quote_disabled {
             csv::QuoteStyle::Never
         } else {
             csv::QuoteStyle::Necessary
         })
         .from_writer(Vec::new());
-    if has_headers {
+    if options.has_headers {
         writer.write_record(fields.iter().map(|(n, _)| *n))?;
     }
     for record in records {
@@ -412,8 +487,12 @@ pub fn to_string_with_dialect(
     }
     writer.flush()?;
     let bytes = writer.into_inner().map_err(|error| error.into_error())?;
-    String::from_utf8(bytes)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error).into())
+    let mut text = String::from_utf8(bytes)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    if options.utf8_bom {
+        text.insert(0, '\u{feff}');
+    }
+    Ok(text)
 }
 
 fn requires_quoting(value: &str, delimiter: u8) -> bool {
@@ -637,6 +716,66 @@ mod tests {
 
         assert_eq!(text, "name,age\nJane,29\n");
         assert_eq!(read_back, vec![row]);
+    }
+
+    #[test]
+    fn utf8_bom_writer_matches_file_and_memory_and_validates_before_write() {
+        let row = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("café, Inc".into())),
+            ),
+            ("age".into(), Instance::Scalar(Value::Int(29))),
+        ]);
+        let options = CsvWriteOptions {
+            utf8_bom: true,
+            ..CsvWriteOptions::default()
+        };
+        let rows = [row.clone()];
+        let text = to_string_with_options(&schema(), &rows, &options).unwrap();
+        assert_eq!(
+            text.as_bytes(),
+            b"\xef\xbb\xbfname,age\n\"caf\xc3\xa9, Inc\",29\n"
+        );
+        assert_eq!(
+            to_string(&schema(), &rows, None, true).unwrap(),
+            "name,age\n\"café, Inc\",29\n"
+        );
+        assert_eq!(
+            from_str_with_options(&text, &schema(), &CsvReadOptions::default()).unwrap(),
+            vec![row]
+        );
+        let headerless = CsvWriteOptions {
+            has_headers: false,
+            ..options
+        };
+        assert_eq!(
+            to_string_with_options(&schema(), &[], &headerless)
+                .unwrap()
+                .as_bytes(),
+            b"\xef\xbb\xbf"
+        );
+        assert!(
+            to_string_with_options(
+                &schema(),
+                &[],
+                &CsvWriteOptions {
+                    utf8_bom: false,
+                    ..headerless
+                }
+            )
+            .unwrap()
+            .is_empty()
+        );
+        let path = sample_file("bom-writer", "sentinel");
+        write_with_options(&path, &schema(), &rows, &options).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), text.as_bytes());
+        assert!(matches!(
+            write_with_options(&path, &schema(), &[Instance::Scalar(Value::Null)], &options),
+            Err(CsvFormatError::RowShape { .. })
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), text.as_bytes());
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

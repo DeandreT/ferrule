@@ -66,6 +66,7 @@ pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOption
         _ if options.delimiter.is_some()
             || options.csv_quote.is_some()
             || options.csv_quote_disabled
+            || options.csv_utf8_bom
             || options.csv_preserve_empty_strings
             || options.has_header_row.is_some() =>
         {
@@ -488,7 +489,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
-                 \t\t\t\t\t\t<text type=\"csv\"{instance}>\n\
+                 \t\t\t\t\t\t<text type=\"csv\"{instance} encoding=\"1000\" byteorder=\"1\" byteordermark=\"{}\">\n\
                  \t\t\t\t\t\t\t<settings separator=\"{}\" quote=\"{}\" firstrownames=\"{}\" removeempty=\"{}\">\n\
                  \t\t\t\t\t\t\t\t<names root=\"{}\" block=\"Rows\">\n\
                  {field_decls}\
@@ -498,6 +499,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(component_name),
+                u8::from(options.csv_utf8_bom),
                 xml_escape(&options.delimiter.unwrap_or(',').to_string()),
                 if options.csv_quote_disabled {
                     String::new()
@@ -513,6 +515,7 @@ pub(super) fn render_schema_component(
             if options.delimiter.is_some()
                 || options.csv_quote.is_some()
                 || options.csv_quote_disabled
+                || options.csv_utf8_bom
                 || options.csv_preserve_empty_strings
                 || options.has_header_row.is_some()
             {

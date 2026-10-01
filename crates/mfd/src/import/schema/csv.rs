@@ -7,11 +7,11 @@ use super::parse_u32;
 const CSV_SINGLETON_BEFORE: &str = "\u{1f}ferrule-csv-singleton-before";
 const CSV_SINGLETON_AFTER: &str = "\u{1f}ferrule-csv-singleton-after";
 
-pub(super) fn warn_text_encoding(
+pub(super) fn read_utf8_bom(
     text: &roxmltree::Node<'_, '_>,
     component_name: &str,
     warnings: &mut Vec<String>,
-) {
+) -> bool {
     if text
         .attribute("encoding")
         .is_some_and(|encoding| encoding != "1000")
@@ -20,6 +20,26 @@ pub(super) fn warn_text_encoding(
             "csv component `{component_name}` declares an unsupported text encoding; \
              only UTF-8 encoding code 1000 is supported; imported using UTF-8"
         ));
+    }
+    if text
+        .attribute("byteorder")
+        .is_some_and(|byteorder| byteorder != "1")
+    {
+        warnings.push(format!(
+            "csv component `{component_name}` declares an unsupported byte order code; \
+             only absent or code 1 is supported; imported using UTF-8"
+        ));
+    }
+    match text.attribute("byteordermark") {
+        None | Some("0") => false,
+        Some("1") => true,
+        Some(_) => {
+            warnings.push(format!(
+                "csv component `{component_name}` declares an unsupported byte order mark code; \
+                 expected absent, 0, or 1; imported without a UTF-8 BOM"
+            ));
+            false
+        }
     }
 }
 

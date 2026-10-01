@@ -1307,3 +1307,22 @@ fn xml_serializer_indent_defaults_on_and_roundtrips_when_disabled() {
     let decoded: Node = serde_json::from_value(serde_json::Value::Object(legacy)).unwrap();
     assert!(matches!(decoded, Node::XmlSerialize { indent: true, .. }));
 }
+
+#[test]
+fn csv_utf8_bom_defaults_off_and_survives_format_options_serde() {
+    let legacy: FormatOptions = serde_json::from_str("{}").unwrap();
+    assert!(!legacy.csv_utf8_bom);
+    let marked = FormatOptions {
+        csv_utf8_bom: true,
+        ..FormatOptions::default()
+    };
+    let encoded = serde_json::to_string(&marked).unwrap();
+    assert!(encoded.contains("\"csv_utf8_bom\":true"));
+    let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+    assert!(decoded.csv_utf8_bom);
+    assert!(
+        !serde_json::to_string(&legacy)
+            .unwrap()
+            .contains("csv_utf8_bom")
+    );
+}

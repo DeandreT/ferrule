@@ -10,7 +10,7 @@ layout and dialect details that an extension cannot express.
 | XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
 | JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact closed homogeneous `patternProperties`, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditionals, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | JSON5 | Yes | Yes | One schema-shaped document using JSON5 instance syntax; selected by `.json5` or `FormatOptions.json5`, with ordinary JSON schemas and the same typed mapping boundary |
-| CSV | Yes | Yes | Delimited flat rows with configurable delimiter, printable quote or disabled quoting, headers, and optional present-empty text |
+| CSV | Yes | Yes | Delimited flat rows with configurable delimiter, printable quote or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
 | SQLite | Yes | Yes | Table introspection, typed reads, imported relational query shapes, validated declared relations, structured XML text columns, and idempotent full-replace writes |
@@ -348,3 +348,12 @@ browser execution share this policy. The low-level `CsvReadOptions` and
 `read_with_options`/`from_str_with_options` APIs expose the same setting; legacy
 CSV entry points retain the default. Selecting another format with the option
 set rejects explicitly.
+
+`FormatOptions.csv_utf8_bom` defaults to false. When true, every CSV output
+starts with the UTF-8 bytes `EF BB BF`, including a headerless output with no
+rows. Primary and named targets select the setting independently. File,
+payload, and browser output share `CsvWriteOptions` and the
+`write_with_options`/`to_string_with_options` APIs; legacy writer entry points
+omit the BOM. Readers accept UTF-8 with or without a BOM. CSV target setup
+exposes “UTF-8 byte order mark.” Selecting another format with this option
+rejects before output publication.

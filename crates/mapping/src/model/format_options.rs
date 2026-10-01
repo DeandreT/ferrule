@@ -351,6 +351,11 @@ pub struct FormatOptions {
     /// `csv_quote`; old projects default to ordinary `"` quoting.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub csv_quote_disabled: bool,
+    /// CSV UTF-8 output: emit a leading byte order mark. The option also
+    /// retains the native text-component setting on imported source sides;
+    /// CSV input already accepts either UTF-8 form.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub csv_utf8_bom: bool,
     /// CSV input: retain physically present empty string cells. Missing trailing
     /// columns and empty numeric/boolean cells remain Null. Old projects keep
     /// treating empty text as absent.

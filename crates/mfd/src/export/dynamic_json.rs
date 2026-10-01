@@ -133,6 +133,10 @@ pub(super) fn target_format_is_implicit(options: &FormatOptions) -> bool {
         && options.idoc.is_none()
         && options.swift_mt.is_none()
         && options.delimiter.is_none()
+        && options.csv_quote.is_none()
+        && !options.csv_quote_disabled
+        && !options.csv_utf8_bom
+        && !options.csv_preserve_empty_strings
         && options.has_header_row.is_none()
         && options.fixed_width.is_none()
         && options.flextext.is_none()

@@ -314,14 +314,11 @@ pub(super) fn write_instance(
             let rows = instance
                 .as_repeated()
                 .ok_or_else(|| "CSV output is not a repeating row set".to_string())?;
-            format_csv::write_with_dialect(
+            format_csv::write_with_options(
                 path,
                 schema,
                 rows,
-                options.delimiter,
-                options.csv_quote,
-                options.csv_quote_disabled,
-                options.has_header_row.unwrap_or(true),
+                &format_csv::CsvWriteOptions::from(options),
             )
             .map_err(|error| error.to_string())
         }
@@ -539,6 +536,7 @@ pub(super) fn inferred_extension(options: &FormatOptions) -> Option<&'static str
     } else if options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
     {

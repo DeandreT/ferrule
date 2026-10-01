@@ -88,7 +88,7 @@ impl fmt::Display for RuntimeError {
             Self::CsvFormatRequired { side } => {
                 write!(
                     formatter,
-                    "the project {side} keeps empty CSV text fields; select the CSV format"
+                    "the project {side} has CSV settings; select the CSV format"
                 )
             }
             Self::CsvTargetNotRepeated => {
@@ -107,7 +107,9 @@ pub fn parse_source(
     text: &str,
     format: DataFormat,
 ) -> Result<Instance, RuntimeError> {
-    if project.source_options.csv_preserve_empty_strings && format != DataFormat::Csv {
+    if (project.source_options.csv_preserve_empty_strings || project.source_options.csv_utf8_bom)
+        && format != DataFormat::Csv
+    {
         return Err(RuntimeError::CsvFormatRequired {
             side: DataSide::Source,
         });
@@ -179,7 +181,9 @@ pub fn serialize_target(
     target: &Instance,
     format: DataFormat,
 ) -> Result<String, RuntimeError> {
-    if project.target_options.csv_preserve_empty_strings && format != DataFormat::Csv {
+    if (project.target_options.csv_preserve_empty_strings || project.target_options.csv_utf8_bom)
+        && format != DataFormat::Csv
+    {
         return Err(RuntimeError::CsvFormatRequired {
             side: DataSide::Target,
         });
@@ -213,13 +217,10 @@ pub fn serialize_target(
             let rows = target
                 .as_repeated()
                 .ok_or(RuntimeError::CsvTargetNotRepeated)?;
-            format_csv::to_string_with_dialect(
+            format_csv::to_string_with_options(
                 &project.target,
                 rows,
-                project.target_options.delimiter,
-                project.target_options.csv_quote,
-                project.target_options.csv_quote_disabled,
-                project.target_options.has_header_row.unwrap_or(true),
+                &format_csv::CsvWriteOptions::from(&project.target_options),
             )
             .map_err(|error| RuntimeError::Serialize {
                 format,
@@ -640,6 +641,38 @@ mod tests {
         .unwrap();
 
         assert_eq!(output, "Ada|37\nGrace|42\n");
+    }
+
+    #[test]
+    fn browser_csv_output_text_carries_exact_utf8_bom_bytes() {
+        let mut project = scalar_project(true);
+        project.target_options.csv_utf8_bom = true;
+        let output = run(
+            &project,
+            "name,age\nAda,37\n",
+            DataFormat::Csv,
+            DataFormat::Csv,
+        )
+        .unwrap();
+        assert_eq!(output.as_bytes(), b"\xef\xbb\xbfname,age\nAda,37\n");
+        project.source_options.csv_utf8_bom = true;
+        assert_eq!(
+            run(
+                &project,
+                "\u{feff}name,age\nAda,37\n",
+                DataFormat::Csv,
+                DataFormat::Csv,
+            )
+            .unwrap()
+            .as_bytes(),
+            output.as_bytes()
+        );
+        assert_eq!(
+            parse_source(&project, "{}", DataFormat::Json),
+            Err(RuntimeError::CsvFormatRequired {
+                side: DataSide::Source
+            })
+        );
     }
 
     #[test]
