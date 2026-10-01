@@ -70,6 +70,10 @@ are preserved.
   Ordered secondary sort keys expose independent expressions and directions,
   insertion, removal, and priority changes. Filtering can run before or after
   sorting; disabling sorting clears every key, and undo restores them.
+  Sequence windows can move earlier or later while retaining their bound
+  expressions. Whole-group copies retain complete nested content: Inspector
+  grouping/binding/child edits and canvas connections into copied ancestors
+  reject before changing the mapping; supported filter/sort/window controls remain editable.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as
@@ -216,7 +220,9 @@ are preserved.
   captures, and global spans within explicit execution limits. General-category
   aliases and queries preserve scalar membership, inversion, and loose names;
   supplementary private-use aliases align and unavailable surrogate properties
-  reject. A compiled 201-case mapping
+  reject. Consecutive repetitions retain nested greedy/lazy semantics and exact
+  capture values through the bounded scalar matcher, including nullable inner
+  repeats and discarded zero-count bodies. A compiled 251-case mapping
   compares matching, replacement, and tokenization through Rust/C# JSON string
   and UTF-8 byte hosts against the interpreter. Additional boundary spellings,
   broader property vocabularies, host-only syntax, and compilation budgets

@@ -529,17 +529,26 @@ private-use planes.
 C# `\b` and `\B` compare the same Unicode scalar word set as `\w`, preserving
 supplementary letters, combining marks, join controls, source-order captures,
 greedy/lazy choices, and global match spans. A prioritized non-backtracking
-matcher handles patterns containing these assertions; ordinary patterns retain
-the existing host engine. Unsupported host groups and escapes combined with
-word assertions reject explicitly. The assertion matcher caps its AST at 8,192
-nodes, expanded instructions at 163,840, VM allocations at 64 MiB, and actual
+matcher handles patterns containing these assertions or consecutive repetitions.
+Consecutive operators such as `a{2}{3}` and `a++` create nested repeats, with one
+lazy suffix per operator. Source-order capture values, nullable repeated bodies,
+and outer zero counts retain the same behavior as Rust. Patterns without these
+constructs retain the existing host engine. The scalar matcher rejects unsupported
+host groups and escapes. It caps its AST at 8,192 nodes and structural height at
+256 before recursive compilation, expanded instructions at 163,840,
+VM allocations at 64 MiB, and actual
 execution work at 100 million units shared across one operation's searches.
+Source group depth remains separately bounded; noncapturing groups retain their
+body's structural height. Deferred host lowering adds at most 256 consecutive
+wrappers per operand and counts them toward its translated-size limit.
 These local caps preserve typed failures without claiming identical backend
 compilation or execution budgets.
 Rust and .NET still expose different regex dialects. Additional boundary spellings,
-single-dash host subtraction, property vocabularies, repeated quantifiers, and some
+single-dash host subtraction, property vocabularies, and some
 host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
+Ordinary host-path nullable loops can still select different final capture values
+when the source uses explicit grouping instead of consecutive operators.
 Existing host block spellings outside the category profile can differ from Rust
 script membership; script and binary property sets are not approximated here.
 This applies to mapping-language regex operations only;

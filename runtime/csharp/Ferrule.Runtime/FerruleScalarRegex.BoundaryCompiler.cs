@@ -121,14 +121,7 @@ internal static partial class FerruleScalarRegex
             }
         }
 
-        private static bool Nullable(BoundaryNode node) => node.Kind switch {
-            BoundaryKind.Consume => false,
-            BoundaryKind.Sequence => node.Children!.All(Nullable),
-            BoundaryKind.Alternate => node.Children!.Any(Nullable),
-            BoundaryKind.Capture => Nullable(node.Children![0]),
-            BoundaryKind.Repeat => node.Minimum == 0 || Nullable(node.Children![0]),
-            _ => true,
-        };
+        private static bool Nullable(BoundaryNode node) => node.IsNullable;
 
         private BoundaryFragment Repetition(BoundaryNode node)
         {
