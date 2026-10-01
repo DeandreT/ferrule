@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use anyhow::{Context, bail};
 use engine::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
-    TraceScope, TraceSink, TraceSourceRow, TraceTarget, TraceTargetFieldBinding, TraceValue,
-    TraceWindow,
+    TraceScope, TraceSink, TraceSourceRow, TraceSourceTree, TraceTarget, TraceTargetFieldBinding,
+    TraceValue, TraceWindow,
 };
 use serde_json::{Value as JsonValue, json};
 
@@ -517,7 +517,7 @@ fn trace_value(value: &TraceValue) -> JsonValue {
 }
 
 fn source_row_value(row: &TraceSourceRow) -> JsonValue {
-    json!({
+    let mut value = json!({
         "kind": output_kind(row.kind),
         "value": row.value.as_ref().map(trace_value),
         "fields": row.fields.iter().map(|field| json!({
@@ -527,6 +527,22 @@ fn source_row_value(row: &TraceSourceRow) -> JsonValue {
             "value": field.value.as_ref().map(trace_value),
         })).collect::<Vec<_>>(),
         "omitted_fields": row.omitted_fields,
+    });
+    if let Some(tree) = &row.structure {
+        value["structure"] = source_tree_value(tree);
+    }
+    value
+}
+
+fn source_tree_value(tree: &TraceSourceTree) -> JsonValue {
+    json!({
+        "name": tree.name,
+        "name_truncated": tree.name_truncated,
+        "kind": output_kind(tree.kind),
+        "value": tree.value.as_ref().map(trace_value),
+        "children": tree.children.iter().map(source_tree_value).collect::<Vec<_>>(),
+        "omitted_children": tree.omitted_children,
+        "depth_limited": tree.depth_limited,
     })
 }
 
@@ -747,6 +763,7 @@ mod tests {
                 }),
             }],
             omitted_fields: 2,
+            structure: None,
         };
         let event = TraceEvent::IterationCandidate {
             scope: scope(),

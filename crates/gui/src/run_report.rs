@@ -91,6 +91,10 @@ impl PipelineTraceCollector {
         }
     }
 
+    pub(crate) fn can_retain_event(&self) -> bool {
+        self.state.borrow().events.len() < self.limit
+    }
+
     pub fn record(&self, stage: &str, event: cli::TraceEvent) {
         let mut state = self.state.borrow_mut();
         if state.events.len() >= self.limit {
@@ -145,6 +149,10 @@ impl cli::TraceSink for TraceCollector {
         } else {
             self.dropped.set(self.dropped.get().saturating_add(1));
         }
+    }
+
+    fn wants_source_row(&self) -> bool {
+        self.events.borrow().len() < self.limit
     }
 }
 
@@ -361,6 +369,7 @@ pub struct RunReportView {
     history_node: Option<NodeHistoryKey>,
     history_stage: Option<u16>,
     source_rows: Vec<usize>,
+    source_row_filter: RefCell<Option<source_rows::SourceRowFilter>>,
     selected_source_row: Option<usize>,
     replay_event: Option<usize>,
 }
@@ -383,6 +392,7 @@ impl RunReportView {
             history_node,
             history_stage,
             source_rows,
+            source_row_filter: RefCell::new(None),
             selected_source_row,
             replay_event,
         }

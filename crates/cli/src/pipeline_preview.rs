@@ -149,6 +149,11 @@ impl<'a> PipelinePreviewOptions<'a> {
         self.callbacks.stage_trace_sink = Some(sink);
         self
     }
+
+    pub fn with_stage_trace_source_row_capacity(mut self, capacity: &'a dyn Fn() -> bool) -> Self {
+        self.callbacks.stage_trace_source_row_capacity = Some(capacity);
+        self
+    }
 }
 
 /// One serialized document qualified by its producing stage and target.
@@ -439,6 +444,7 @@ fn execute_preview(
     let trace = callbacks.stage_trace_sink.map(|sink| StageTraceSink {
         stage: RefCell::new(String::new()),
         sink,
+        source_row_capacity: callbacks.stage_trace_source_row_capacity,
     });
     let current_datetime = jiff::Zoned::now()
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")

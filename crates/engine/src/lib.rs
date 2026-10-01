@@ -50,8 +50,8 @@ pub use pipeline::{
 };
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
-    TraceScope, TraceSink, TraceSortKey, TraceSourceField, TraceSourceRow, TraceTarget,
-    TraceTargetFieldBinding, TraceValue, TraceWindow,
+    TraceScope, TraceSink, TraceSortKey, TraceSourceField, TraceSourceRow, TraceSourceTree,
+    TraceTarget, TraceTargetFieldBinding, TraceValue, TraceWindow,
 };
 pub use validate::{
     ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationSchemaLocation,

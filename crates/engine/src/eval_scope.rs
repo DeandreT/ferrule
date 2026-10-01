@@ -261,13 +261,17 @@ pub(crate) fn eval_scope(
     for (ordinal, extension) in extensions.iter().enumerate() {
         let mut candidate_positions = positions.to_vec();
         candidate_positions.extend(extension.positions.iter().cloned());
+        let wants_source_row = scope.source().is_some()
+            && program
+                .trace_sink
+                .is_some_and(|sink| sink.wants_source_row());
         record(program.trace_sink, || TraceEvent::IterationCandidate {
             scope: trace_scope.clone(),
             ordinal: ordinal + 1,
             positions: trace_positions(&candidate_positions),
-            source_row: scope
-                .source()
-                .and_then(|_| extension.instances.last())
+            source_row: wants_source_row
+                .then(|| extension.instances.last())
+                .flatten()
                 .map(|instance| TraceSourceRow::new(instance)),
         });
     }

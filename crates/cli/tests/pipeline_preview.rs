@@ -790,6 +790,68 @@ fn dynamic_outputs_render_each_member_and_validate_options_before_execution() ->
 }
 
 #[test]
+fn stage_trace_capacity_skips_source_snapshots_but_keeps_event_order() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let pipeline = single(dynamic_project());
+    let bytes = br#"{"Rows":[{"File":"first.json","Value":"first"},{"File":"second.json","Value":"second"}]}"#;
+    let hosts = [host("input", Path::new("input.json"), bytes)?];
+    let identities = [PipelinePreviewOutputIdentity {
+        stage: "one".into(),
+        target: None,
+        path: dir.0.join("outputs"),
+    }];
+    let full_events = RefCell::new(Vec::new());
+    let full_trace = |stage: &str, event| {
+        full_events.borrow_mut().push((stage.to_owned(), event));
+    };
+    let full = preview_pipeline_value_payloads(
+        &pipeline,
+        &dir.0.join("pipeline.json"),
+        &PipelinePreviewOptions::new(&hosts)
+            .with_output_identities(&identities)
+            .with_stage_trace_sink(&full_trace),
+    )?;
+
+    let capacity = || false;
+    let bounded_events = RefCell::new(Vec::new());
+    let bounded_trace = |stage: &str, event| {
+        bounded_events.borrow_mut().push((stage.to_owned(), event));
+    };
+    let bounded = preview_pipeline_value_payloads(
+        &pipeline,
+        &dir.0.join("pipeline.json"),
+        &PipelinePreviewOptions::new(&hosts)
+            .with_output_identities(&identities)
+            .with_stage_trace_sink(&bounded_trace)
+            .with_stage_trace_source_row_capacity(&capacity),
+    )?;
+    assert_eq!(full, bounded);
+    let full_events = full_events.into_inner();
+    let bounded_events = bounded_events.into_inner();
+    assert_eq!(full_events.len(), bounded_events.len());
+    assert!(full_events.iter().any(|(_, event)| matches!(
+        event,
+        engine::TraceEvent::IterationCandidate {
+            source_row: Some(_),
+            ..
+        }
+    )));
+    for ((full_stage, full_event), (bounded_stage, bounded_event)) in
+        full_events.iter().zip(&bounded_events)
+    {
+        assert_eq!(full_stage, bounded_stage);
+        assert_eq!(
+            std::mem::discriminant(full_event),
+            std::mem::discriminant(bounded_event)
+        );
+        if let engine::TraceEvent::IterationCandidate { source_row, .. } = bounded_event {
+            assert!(source_row.is_none());
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn dynamic_named_sources_cannot_trigger_local_loading() -> anyhow::Result<()> {
     let mut project = dynamic_project();
     project.extra_sources.push(NamedSource {

@@ -119,12 +119,26 @@ captures the current source item before filters and sorting. This optional
 version-3 field is absent for once, generated, and join iterations. A scalar
 row has `kind: "scalar"` and a `value` preview. A group row has up to eight
 ordered immediate `fields`, each with a bounded `name`, `name_truncated`,
-`kind`, and an optional scalar `value`; nested groups and collections show
-their kind without copying descendants. `omitted_fields` counts additional
+`kind`, and an optional scalar `value`. `omitted_fields` counts additional
 fields. Names and value previews together use at most 512 UTF-8 bytes per row,
 so a row preview can truncate a scalar earlier than the general 160-character
-limit. The new field is additive: existing version-3 readers can ignore it.
+limit. The field is additive: existing version-3 readers can ignore it.
 Source-row previews can contain fields the mapping did not use.
+
+Structural source rows also have an optional `structure` tree in version-4
+traces. It retains ordered nested groups, repeated and mapped-sequence items,
+portable document-member paths, and the distinct scalar absence/null/nil states.
+Each tree has at most 64 nodes, a maximum depth of eight child edges, and eight children
+per container. All tree names and scalar previews share an additional 512-byte
+UTF-8 budget. `omitted_children` counts values not captured; `depth_limited`
+identifies depth truncation. Name and value truncation remain explicit. Flat
+scalar-only rows retain their existing representation. The GUI Source Rows
+details and Replay show the nested snapshot and omissions; row search includes
+retained nested values and respects the selected pipeline stage.
+Completed-report search caches each normalized query and selected stage.
+Bounded GUI collectors decline new source snapshots once their retained event
+prefix is full, including across pipeline stages; omitted-event counts still
+advance. Streaming CLI traces continue to capture every source candidate.
 
 `node_input_value` identifies the `consumer` node, its zero-based `input_index`,
 and the producing `input` node. It is emitted immediately after the producer

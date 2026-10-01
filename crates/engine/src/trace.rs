@@ -3,6 +3,9 @@ use mapping::{FunctionId, JoinId, NodeId, ScopeIteration, SequenceExpr};
 
 use crate::source_iteration::PositionFrame;
 
+mod source_tree;
+pub use source_tree::TraceSourceTree;
+
 const MAX_TRACE_PREVIEW_CHARS: usize = 160;
 const MAX_TRACE_ROW_FIELDS: usize = 8;
 const MAX_TRACE_ROW_TEXT_BYTES: usize = 512;
@@ -188,13 +191,15 @@ pub struct TraceSourceField {
 }
 
 /// Source data as it entered one scope candidate, before its controls ran.
-/// Structural children are identified by kind but are not copied recursively.
+/// Immediate fields retain the legacy preview. Structural rows also carry a
+/// separately bounded tree for inspection of nested groups and collections.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceSourceRow {
     pub kind: TraceOutputKind,
     pub value: Option<TraceValue>,
     pub fields: Vec<TraceSourceField>,
     pub omitted_fields: usize,
+    pub structure: Option<TraceSourceTree>,
 }
 
 impl TraceSourceRow {
@@ -204,6 +209,7 @@ impl TraceSourceRow {
             value: None,
             fields: Vec::new(),
             omitted_fields: 0,
+            structure: None,
         };
         match instance {
             Instance::Scalar(value) => {
@@ -237,6 +243,17 @@ impl TraceSourceRow {
                 row.omitted_fields = fields.len() - visible;
             }
             Instance::Repeated(_) | Instance::MappedSequence(_) | Instance::DocumentSet(_) => {}
+        }
+        let structural = match instance {
+            Instance::Group(fields) => fields
+                .iter()
+                .take(MAX_TRACE_ROW_FIELDS)
+                .any(|(_, value)| !matches!(value, Instance::Scalar(_))),
+            Instance::Scalar(_) => false,
+            _ => true,
+        };
+        if structural {
+            row.structure = Some(TraceSourceTree::new(instance));
         }
         row
     }
@@ -409,6 +426,13 @@ pub enum TraceEvent {
 /// interior mutability because execution only needs a shared sink reference.
 pub trait TraceSink {
     fn record(&self, event: TraceEvent);
+
+    /// Whether constructing a bounded source-row snapshot can be useful to
+    /// this sink. Streaming sinks keep the default; bounded collectors may
+    /// decline after their retained prefix is full.
+    fn wants_source_row(&self) -> bool {
+        true
+    }
 }
 
 pub(crate) fn record(sink: Option<&dyn TraceSink>, event: impl FnOnce() -> TraceEvent) {

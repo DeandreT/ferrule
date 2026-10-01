@@ -1,5 +1,12 @@
 use super::*;
 
+#[derive(Debug)]
+pub(super) struct SourceRowFilter {
+    query: String,
+    stage: Option<u16>,
+    indices: Vec<usize>,
+}
+
 pub(super) fn index_source_rows(events: &[cli::TraceEvent]) -> Vec<usize> {
     events
         .iter()
@@ -19,7 +26,14 @@ pub(super) fn index_source_rows(events: &[cli::TraceEvent]) -> Vec<usize> {
 
 pub(super) fn filtered_source_row_indices(view: &RunReportView) -> Vec<usize> {
     let filter = view.trace_filter.trim().to_lowercase();
-    view.source_rows
+    if let Some(cached) = view.source_row_filter.borrow().as_ref()
+        && cached.query == filter
+        && cached.stage == view.history_stage
+    {
+        return cached.indices.clone();
+    }
+    let indices = view
+        .source_rows
         .iter()
         .copied()
         .filter(|&index| {
@@ -33,9 +47,34 @@ pub(super) fn filtered_source_row_indices(view: &RunReportView) -> Vec<usize> {
                 filter.is_empty()
                     || source_row_summary(index, event)
                         .is_some_and(|row| row.to_lowercase().contains(&filter))
+                    || matches!(event, cli::TraceEvent::IterationCandidate {
+                        source_row: Some(row), ..
+                    } if row.structure.as_ref().is_some_and(|tree| tree_contains(tree, &filter)))
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    // Completed reports retain stable event indices. Search once per query or
+    // selected stage; only the selected row needs formatted detail lines.
+    *view.source_row_filter.borrow_mut() = Some(SourceRowFilter {
+        query: filter,
+        stage: view.history_stage,
+        indices: indices.clone(),
+    });
+    indices
+}
+
+fn tree_contains(tree: &cli::TraceSourceTree, query: &str) -> bool {
+    tree.name
+        .as_ref()
+        .is_some_and(|name| name.to_lowercase().contains(query))
+        || format_output_kind(tree.kind).contains(query)
+        || tree.value.as_ref().is_some_and(|value| {
+            value.value_type.contains(query) || value.preview.to_lowercase().contains(query)
+        })
+        || tree
+            .children
+            .iter()
+            .any(|child| tree_contains(child, query))
 }
 
 pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
@@ -68,6 +107,7 @@ pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
         }
     });
     ui.weak("Source candidates before filtering and sorting. Generated, join, and once iterations have no row preview.");
+    ui.weak("Nested values use bounded snapshots; omitted values are marked.");
     ui.separator();
 
     let rows = filtered_source_row_indices(view);
@@ -154,6 +194,10 @@ pub(super) fn source_row_details(index: usize, event: &cli::TraceEvent) -> Optio
         return None;
     };
     let mut lines = vec![source_row_summary(index, event)?];
+    if let Some(tree) = &source_row.structure {
+        append_source_tree(&mut lines, tree, 1);
+        return Some(lines);
+    }
     for field in &source_row.fields {
         lines.push(format!("  {}", format_source_field(field)));
     }
@@ -164,6 +208,39 @@ pub(super) fn source_row_details(index: usize, event: &cli::TraceEvent) -> Optio
         ));
     }
     Some(lines)
+}
+
+fn append_source_tree(lines: &mut Vec<String>, tree: &cli::TraceSourceTree, depth: usize) {
+    let indent = "  ".repeat(depth);
+    for (index, child) in tree.children.iter().enumerate() {
+        let name = child.name.as_ref().map_or_else(
+            || format!("[{}]", index + 1),
+            |name| {
+                if child.name_truncated {
+                    format!("{name}...")
+                } else {
+                    name.clone()
+                }
+            },
+        );
+        let value = child.value.as_ref().map_or_else(
+            || format_output_kind(child.kind).to_string(),
+            format_trace_value,
+        );
+        lines.push(format!("{indent}{name}={value}"));
+        append_source_tree(lines, child, depth + 1);
+    }
+    if tree.omitted_children > 0 {
+        lines.push(format!(
+            "{indent}+{} child values omitted{}",
+            tree.omitted_children,
+            if tree.depth_limited {
+                " (snapshot depth limit)"
+            } else {
+                ""
+            }
+        ));
+    }
 }
 
 pub(super) fn format_source_row(row: &cli::TraceSourceRow) -> String {
