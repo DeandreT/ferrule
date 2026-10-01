@@ -11,6 +11,7 @@ pub struct ExtraTargetDraft {
     pub output_path: String,
     pub schema: Option<SchemaNode>,
     pub options: FormatOptions,
+    pub(crate) protobuf_draft: Option<Box<crate::new_mapping::ProtobufBoundaryDraft>>,
     pub root: Option<Scope>,
 }
 
@@ -20,6 +21,7 @@ pub enum ExtraTargetDraftError {
     DuplicateName(String),
     MissingSchema,
     MissingTarget,
+    InvalidProtobuf(String),
 }
 
 impl fmt::Display for ExtraTargetDraftError {
@@ -31,6 +33,7 @@ impl fmt::Display for ExtraTargetDraftError {
             }
             Self::MissingSchema => formatter.write_str("a target schema is required"),
             Self::MissingTarget => formatter.write_str("the target no longer exists"),
+            Self::InvalidProtobuf(message) => formatter.write_str(message),
         }
     }
 }
@@ -45,8 +48,20 @@ impl ExtraTargetDraft {
             output_path: target.path.clone().unwrap_or_default(),
             schema: Some(target.schema.clone()),
             options: target.options.clone(),
+            protobuf_draft: None,
             root: Some(target.root.clone()),
         }
+    }
+
+    pub(crate) fn use_path_format(&mut self) {
+        self.protobuf_draft = None;
+        self.options = FormatOptions::default();
+    }
+
+    pub(crate) fn schema_is_ready(&self) -> bool {
+        self.protobuf_draft
+            .as_ref()
+            .map_or(self.schema.is_some(), |draft| draft.has_valid_selection())
     }
 
     pub fn build(
@@ -67,7 +82,21 @@ impl ExtraTargetDraft {
         {
             return Err(ExtraTargetDraftError::DuplicateName(name.to_owned()));
         }
-        let schema = self.schema.ok_or(ExtraTargetDraftError::MissingSchema)?;
+        let (schema, options) = if let Some(draft) = self.protobuf_draft {
+            (
+                draft.schema().map_err(|error| {
+                    ExtraTargetDraftError::InvalidProtobuf(format!("{error:#}"))
+                })?,
+                draft.options().map_err(|error| {
+                    ExtraTargetDraftError::InvalidProtobuf(format!("{error:#}"))
+                })?,
+            )
+        } else {
+            (
+                self.schema.ok_or(ExtraTargetDraftError::MissingSchema)?,
+                self.options,
+            )
+        };
         Ok((
             self.editing,
             NamedTarget {
@@ -75,7 +104,7 @@ impl ExtraTargetDraft {
                 path: (!self.output_path.trim().is_empty())
                     .then(|| self.output_path.trim().to_owned()),
                 schema,
-                options: self.options,
+                options,
                 root: self.root.unwrap_or_default(),
             },
         ))

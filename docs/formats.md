@@ -368,6 +368,11 @@ confined local imports, so execution does not reopen the original `.proto`
 files. Unsupported recursive roots and imports outside the selected schema
 folder show an error without replacing the open mapping.
 
+Named input and output schema choosers also accept `.proto` files. Select a
+supported root before adding or saving the boundary. Undo/redo and save/reopen
+retain embedded imports after the original schema files are removed. Failed
+imports and unsupported root changes leave the open mapping intact.
+
 Named input and output editors preserve embedded layouts and explicit XML/JSON
 formats when filenames change. Opening the format editor leaves saved CSV
 defaults intact; choosing another format clears the previous format's settings.

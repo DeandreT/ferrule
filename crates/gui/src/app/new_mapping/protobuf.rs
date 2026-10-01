@@ -38,24 +38,7 @@ pub(super) fn show_options(
     side: &str,
     target: bool,
 ) {
-    let mut root = draft.root_message.clone();
-    ui.horizontal(|ui| {
-        ui.label("Root message");
-        egui::ComboBox::from_id_salt(("new_mapping_protobuf_root", side))
-            .selected_text(if root.is_empty() {
-                "Choose a root message".to_owned()
-            } else {
-                root.clone()
-            })
-            .show_ui(ui, |ui| {
-                for message in &draft.root_messages {
-                    ui.selectable_value(&mut root, message.clone(), message);
-                }
-            });
-    });
-    if root != draft.root_message {
-        draft.set_root_message(root);
-    }
+    crate::new_mapping::show_protobuf_root_message(ui, draft, ("primary", side));
     ui.horizontal(|ui| {
         ui.label(if target {
             "Output file (optional)"
