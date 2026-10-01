@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against forty local, gitignored mappings.
+//! Opt-in generated-backend execution against forty-one local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -43,7 +43,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 40] = [
+const CASES: [CorpusCase; 41] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -283,6 +283,12 @@ const CASES: [CorpusCase; 40] = [
         input: "Nanonull Inc.xlsx",
         source_kind: SourceKind::XlsxFlat,
         target_kind: TargetKind::Sqlite,
+    },
+    CorpusCase {
+        sample: "BookCatalogPDFToXML.mfd",
+        input: "BookCatalog.pdf",
+        source_kind: SourceKind::Pdf,
+        target_kind: TargetKind::Xml,
     },
 ];
 
@@ -632,6 +638,7 @@ fn run_case(
         "FlattenHierarchy.mfd"
             | "EmployeesToKeyValueList.mfd"
             | "ArticlesInStock.mfd"
+            | "BookCatalogPDFToXML.mfd"
             | "ParseStringWithFlexText.mfd"
             | "InputIsSequence.mfd"
             | "SelectPropertyFromJSON.mfd"
@@ -648,6 +655,7 @@ fn run_case(
         if matches!(
             sample,
             "InputIsSequence.mfd"
+                | "BookCatalogPDFToXML.mfd"
                 | "SelectPropertyFromJSON.mfd"
                 | "JSON_To_Xml_PurchaseOrders.mfd"
                 | "IDoc_Order.mfd"
@@ -731,6 +739,7 @@ fn run_case(
     let sqlite_output = sample == "SerializeJSONToDB.mfd";
     let typed_xml_output = recursive_xml_output
         || sample == "InputIsSequence.mfd"
+        || sample == "BookCatalogPDFToXML.mfd"
         || purchase_orders_xml_output
         || idoc_xml_output;
     let expected_xml = if mapped_xml_output || typed_xml_output {
@@ -1394,6 +1403,21 @@ fn run_case(
         assert_eq!(articles[0]["StoreDetails"][0]["Available"]["XS"], 1.0);
         assert_eq!(articles[0]["StoreDetails"][1]["Available"]["XL"], 6.0);
     }
+    if sample == "BookCatalogPDFToXML.mfd" {
+        let books = expected_json["Book"].as_array().expect("mapped PDF books");
+        assert_eq!(books.len(), 52, "{sample}: all catalog books are retained");
+        assert!(books.iter().all(|book| {
+            book["ISBN13"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty())
+                && book["Title"]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty())
+                && book["Author"]
+                    .as_array()
+                    .is_some_and(|authors| authors.len() == 1)
+        }));
+    }
     if recursive_xml_output {
         assert_eq!(
             expected_json["name"], "Examples",
@@ -1790,7 +1814,10 @@ fn run_case(
     let generated_input = case_dir.join("source.json");
     std::fs::write(&generated_input, source_json)?;
     let project_path = case_dir.join("project.json");
-    std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
+    std::fs::write(
+        &project_path,
+        mapping::project_file::encode_pretty(&project)?,
+    )?;
     let typed_host_schemas = if mapped_xml_output
         || typed_xml_output
         || protobuf_output

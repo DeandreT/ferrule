@@ -413,6 +413,7 @@ fn parse_group(
         .map(str::trim)
         .unwrap_or_default();
     let commands = if name.is_empty() {
+        require_transparent_group_region(node)?;
         children
     } else {
         vec![PdfCommand::GroupPerPage(PdfGroup {
@@ -595,13 +596,39 @@ fn require_transparent_merge_group(node: &roxmltree::Node<'_, '_>) -> Result<(),
         .and_then(|label| label.text())
         .map(str::trim)
         .unwrap_or_default();
-    let region_is_scoped = child(node, "Region")
-        .and_then(|region| region.text())
-        .is_some_and(|region| !region.trim().is_empty());
-    if !name.is_empty() || region_is_scoped {
+    if !name.is_empty() {
         return Err("PDF MergeSource grouping must be transparent and page-relative".to_string());
     }
-    Ok(())
+    require_transparent_group_region(node)
+}
+
+fn require_transparent_group_region(node: &roxmltree::Node<'_, '_>) -> Result<(), String> {
+    let unsupported = || {
+        "PDF unnamed Grouping Region supports only an empty or full default region; \
+         a narrowed region cannot be retained on a transparent group"
+            .to_string()
+    };
+    let mut regions = node.children().filter(|child| child.has_tag_name("Region"));
+    let Some(region) = regions.next() else {
+        return Ok(());
+    };
+    if regions.next().is_some() || region.children().any(|child| child.is_element()) {
+        return Err(unsupported());
+    }
+    let value = region
+        .children()
+        .filter(roxmltree::Node::is_text)
+        .filter_map(|node| node.text())
+        .collect::<String>();
+    if value.trim().is_empty() {
+        return Ok(());
+    }
+    // Either sign of zero is a geometric no-op; named groups still retain
+    // their original coordinate bits through their PdfGroup representation.
+    match parse_region(&value) {
+        Ok(region) if region == current_region() => Ok(()),
+        _ => Err(unsupported()),
+    }
 }
 
 fn parse_groups_from_list(

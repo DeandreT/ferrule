@@ -11,6 +11,7 @@ use crate::MfdError;
 
 use super::schema::{GeneratedSibling, PortTree, RenderedSchemaComponent, Side, xml_escape};
 
+mod native_merge;
 mod native_rows;
 
 const MAX_PXT_BYTES: usize = 1024 * 1024;
@@ -74,7 +75,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(&template_file);
-    let template = match native_capture_template(layout).or_else(|| native_rows::template(layout)) {
+    let template = match native_capture_template(layout)
+        .or_else(|| native_rows::template(layout))
+        .or_else(|| native_merge::template(layout))
+    {
         Some(template) => template,
         None => canonical_template(layout)?,
     };
