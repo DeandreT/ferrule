@@ -231,7 +231,47 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
         class_cases.push((included, pattern, "", "x", true));
         class_cases.push((excluded, pattern, "", "x", false));
     }
-    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
+    let boundary_cases = [
+        ("𐐀", r"^\b𐐀\b$", "", "[$0]", true),
+        ("a𐐀", r"^a\b𐐀$", "", "x", false),
+        ("a𐐀", r"^a\B𐐀$", "", "x", true),
+        ("🙂", r"^\B🙂\B$", "", "x", true),
+        ("🙂", r"^\b🙂\b$", "", "x", false),
+        ("Ⓐ", r"^\bⒶ\b$", "", "x", true),
+        ("🅰", r"^\b🅰\b$", "", "x", true),
+        ("\u{301}", r"^\b\w\b$", "", "x", true),
+        ("\u{20dd}", r"^\b\w\b$", "", "x", true),
+        ("\u{200c}", r"^\b\w\b$", "", "x", true),
+        ("١", r"^\b\w\b$", "", "x", true),
+        ("𐐀", r"^\b\b(𐐀)\b\b$", "", "[$1]", true),
+        ("𐐀", r"^(?:\b)+(𐐀)\b$", "", "[$1]", true),
+        ("\n𐐀\n", r"^\b𐐀\b$", "m", "x", true),
+        ("𐐨", r"^\b𐐀\b$", "i", "x", true),
+        ("b", r"^\b[a-z&&[^aeiou]]\b$", "", "x", true),
+        ("a", r"^\b[a-z&&[^aeiou]]\b$", "", "x", false),
+        (
+            "a",
+            " ^ \\b [ [:alpha:] # comment\n ] \\b $ # eof",
+            "x",
+            "x",
+            true,
+        ),
+        ("a𐐀", r"^a\b𐐀|𐐀$", "", "[$0]", true),
+        ("a𐐀 a𐐀", r"(?:(a\b𐐀)|(a\B𐐀))", "", "$1|$2", true),
+        ("aaa", r"\b(a+)(a*)", "", "$1|$2", true),
+        ("aaa", r"\b(a+?)(a*)", "", "$1|$2", true),
+        ("ab a", r"\b(?<first>a)(b)?", "", "$1/$2", true),
+        ("abc", r"\b(?<first>a)(b)(?P<third>c)", "", "$1:$2:$3", true),
+        ("aba", r"\b(a(b)?)+", "", "$1|$2", true),
+        ("a", r"\ba*", "", "[$0]", true),
+        ("aaa", r"\b((a*)*)", "", "[$1]", true),
+        ("b", r"\b((a?)*)b\b", "", "$1-$2-$0", true),
+        ("x🙂𐐀🙂z", r"🙂\b𐐀\b🙂", "", "x", true),
+        ("left 𐐀 right", r"\b𐐀\b", "", "x", true),
+        (r"\b", r"^\\b$", "", "x", true),
+        ("a", "a # \\b", "x", "x", true),
+    ];
+    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
     }).collect::<Vec<_>>()}).to_string();
     let source = format_json::from_str(&input, &project.source)?;
@@ -268,7 +308,10 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     for (index, row) in rows.iter().enumerate().take(54).skip(46) {
         assert_eq!(row["Match"], true, "case {index}");
     }
-    assert_eq!(rows.len(), cases.len() + class_cases.len());
+    assert_eq!(
+        rows.len(),
+        cases.len() + class_cases.len() + boundary_cases.len()
+    );
     for (index, (row, &(_, pattern, _, _, matches))) in
         rows.iter().skip(cases.len()).zip(&class_cases).enumerate()
     {
@@ -279,6 +322,22 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     assert_eq!(
         rows[75]["Tokens"],
         serde_json::json!([{"Value": "a"}, {"Value": "🙃"}, {"Value": "b"}])
+    );
+    let boundary_rows = &rows[cases.len() + class_cases.len()..];
+    for (index, (row, &(_, pattern, _, _, matches))) in
+        boundary_rows.iter().zip(&boundary_cases).enumerate()
+    {
+        assert_eq!(row["Match"], matches, "boundary case {index}: {pattern}");
+    }
+    assert_eq!(boundary_rows[18]["Replaced"], "a[𐐀]");
+    assert_eq!(boundary_rows[19]["Replaced"], "|a𐐀 |a𐐀");
+    assert_eq!(boundary_rows[20]["Replaced"], "aaa|");
+    assert_eq!(boundary_rows[21]["Replaced"], "a|aa");
+    assert_eq!(boundary_rows[22]["Replaced"], "a/b a/");
+    assert_eq!(boundary_rows[27]["Replaced"], "--b");
+    assert_eq!(
+        boundary_rows[28]["Tokens"],
+        serde_json::json!([{"Value": "x"}, {"Value": "z"}])
     );
     super::json_text_boundaries::run_generated_boundary_cases(
         &project,

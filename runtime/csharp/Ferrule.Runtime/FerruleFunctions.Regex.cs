@@ -25,7 +25,11 @@ public static partial class FerruleFunctions
         var pattern = ScalarText(arguments[1]);
         var flags = arguments.Count == 3 ? ScalarText(arguments[2]) : string.Empty;
         var regex = CompileRegex("matches", pattern, flags);
-        return FerruleValue.FromBoolean(regex.IsMatch(input));
+        try { return FerruleValue.FromBoolean(regex.IsMatch(input, new FerruleScalarRegex.BoundaryWork())); }
+        catch (FerruleScalarRegex.WorkLimitException error)
+        {
+            throw InvalidArgument("matches", error.Message);
+        }
     }
 
     private static FerruleValue Replace(IReadOnlyList<FerruleValue> arguments)
@@ -43,45 +47,57 @@ public static partial class FerruleFunctions
             throw InvalidArgument("replace", "replacement exceeds 64 KiB");
         }
         var regex = CompileRegex("replace", pattern, flags, out var captureGroups);
-        if (regex.IsMatch(string.Empty))
+        var work = new FerruleScalarRegex.BoundaryWork();
+        try
         {
-            throw InvalidArgument("replace", "pattern matches a zero-length string");
+            if (regex.IsMatch(string.Empty, work))
+            {
+                throw InvalidArgument("replace", "pattern matches a zero-length string");
+            }
+            var tokens = ParseReplacement(replacement, captureGroups.Length - 1);
+            var output = new StringBuilder();
+            var outputBytes = 0;
+            var end = 0;
+            foreach (var match in regex.Matches(input, work))
+            {
+                if (match.Length == 0)
+                {
+                    throw InvalidArgument("replace", "pattern produced a zero-length match");
+                }
+                AppendBounded(output, input[end..match.Index], ref outputBytes);
+                foreach (var token in tokens)
+                {
+                    if (token.Literal is not null)
+                    {
+                        AppendBounded(output, token.Literal, ref outputBytes);
+                        continue;
+                    }
+                    if (token.Group < captureGroups.Length)
+                    {
+                        var group = match.Groups[captureGroups[token.Group]];
+                        if (group.Success) { AppendBounded(output, group.Value, ref outputBytes); }
+                    }
+                    AppendBounded(output, token.Suffix, ref outputBytes);
+                }
+                end = match.Index + match.Length;
+            }
+            AppendBounded(output, input[end..], ref outputBytes);
+            return FerruleValue.FromString(output.ToString());
         }
-        var tokens = ParseReplacement(replacement, captureGroups.Length - 1);
-        var output = new StringBuilder();
-        var outputBytes = 0;
-        var end = 0;
-        foreach (Match match in regex.Matches(input))
+        catch (FerruleScalarRegex.WorkLimitException error)
         {
-            if (match.Length == 0)
-            {
-                throw InvalidArgument("replace", "pattern produced a zero-length match");
-            }
-            AppendBounded(output, input[end..match.Index], ref outputBytes);
-            foreach (var token in tokens)
-            {
-                if (token.Literal is not null)
-                {
-                    AppendBounded(output, token.Literal, ref outputBytes);
-                    continue;
-                }
-                if (token.Group < captureGroups.Length)
-                {
-                    var group = match.Groups[captureGroups[token.Group]];
-                    if (group.Success) { AppendBounded(output, group.Value, ref outputBytes); }
-                }
-                AppendBounded(output, token.Suffix, ref outputBytes);
-            }
-            end = match.Index + match.Length;
+            throw InvalidArgument("replace", error.Message);
         }
-        AppendBounded(output, input[end..], ref outputBytes);
-        return FerruleValue.FromString(output.ToString());
     }
 
-    private static Regex CompileRegex(string function, string pattern, string flags) =>
+    private static FerruleScalarRegex.ScalarRegexProgram CompileRegex(string function, string pattern, string flags) =>
         CompileRegex(function, pattern, flags, out _);
 
-    private static Regex CompileRegex(string function, string pattern, string flags, out int[] captureGroups)
+    private static FerruleScalarRegex.ScalarRegexProgram CompileRegex(
+        string function,
+        string pattern,
+        string flags,
+        out int[] captureGroups)
     {
         if (Encoding.UTF8.GetByteCount(pattern) > MaximumRegexPatternBytes)
         {
@@ -101,7 +117,9 @@ public static partial class FerruleFunctions
         }
         try
         {
-            return FerruleScalarRegex.Compile(pattern, options, out captureGroups);
+            var program = FerruleScalarRegex.CompileProgram(pattern, options);
+            captureGroups = Enumerable.Range(0, program.CaptureCount).ToArray();
+            return program;
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException)
         {

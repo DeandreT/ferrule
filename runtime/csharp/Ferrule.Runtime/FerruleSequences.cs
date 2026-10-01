@@ -167,10 +167,10 @@ public static class FerruleSequences
             };
         }
 
-        Regex regex;
+        FerruleScalarRegex.ScalarRegexProgram regex;
         try
         {
-            regex = FerruleScalarRegex.Compile(expression, options);
+            regex = FerruleScalarRegex.CompileProgram(expression, options);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException)
         {
@@ -180,28 +180,40 @@ public static class FerruleSequences
                 error,
                 detail: error.Message);
         }
-        if (regex.IsMatch(string.Empty))
+        var work = new FerruleScalarRegex.BoundaryWork();
+        try
         {
-            throw ZeroWidthRegex();
-        }
-        if (text.Length == 0)
-        {
-            return Array.Empty<FerruleValue>();
-        }
-
-        var values = new List<FerruleValue>();
-        var start = 0;
-        foreach (var match in regex.EnumerateMatches(text))
-        {
-            if (match.Length == 0)
+            if (regex.IsMatch(string.Empty, work))
             {
                 throw ZeroWidthRegex();
             }
-            AddRegexToken(values, text[start..match.Index]);
-            start = match.Index + match.Length;
+            if (text.Length == 0)
+            {
+                return Array.Empty<FerruleValue>();
+            }
+
+            var values = new List<FerruleValue>();
+            var start = 0;
+            regex.VisitMatches(text, (index, length) =>
+            {
+                if (length == 0)
+                {
+                    throw ZeroWidthRegex();
+                }
+                AddRegexToken(values, text[start..index]);
+                start = index + length;
+            }, work);
+            AddRegexToken(values, text[start..]);
+            return new ReadOnlyCollection<FerruleValue>(values);
         }
-        AddRegexToken(values, text[start..]);
-        return new ReadOnlyCollection<FerruleValue>(values);
+        catch (FerruleScalarRegex.WorkLimitException error)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.InvalidTokenizeRegex,
+                error.Message,
+                error,
+                detail: error.Message);
+        }
     }
 
     /// <summary>Generates a bounded inclusive integer range.</summary>

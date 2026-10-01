@@ -7,10 +7,10 @@ namespace Ferrule.Runtime;
 
 /// <summary>
 /// Lowers consuming regex atoms to complete Unicode scalars while retaining
-/// the host non-backtracking engine's capture, alternation and repetition rules.
+/// a non-backtracking engine with source-order captures and scalar assertions.
 /// All added groups are noncapturing; match offsets still address the input UTF-16.
 /// </summary>
-internal static class FerruleScalarRegex
+internal static partial class FerruleScalarRegex
 {
     private const int MaximumTranslatedCharacters = 10 * 1024 * 1024;
     private const int MaximumClassDepth = 256;
@@ -333,7 +333,7 @@ internal static class FerruleScalarRegex
         if (first != last) { output.Append(@"-\u").Append(last.ToString("X4", CultureInfo.InvariantCulture)); }
     }
 
-    private sealed class Translator
+    private sealed partial class Translator
     {
         private readonly string _source;
         private readonly StringBuilder _output = new();
@@ -347,6 +347,8 @@ internal static class FerruleScalarRegex
         private bool _hasOperand;
         private RegexOptions _options;
         private int _index;
+        private bool _hasWordBoundary;
+        internal bool HasWordBoundary => _hasWordBoundary;
         private long _classWork;
 
         internal Translator(string source, RegexOptions options) { _source = source; _options = options; }
@@ -595,6 +597,7 @@ internal static class FerruleScalarRegex
             var start = _index++;
             if (_index >= _source.Length) { throw Invalid("trailing backslash"); }
             var escape = _source[_index];
+            if (escape is 'b' or 'B') { _hasWordBoundary = true; }
             if (escape is 'b' or 'B' or 'A' or 'Z' or 'z' or 'G' or 'k' or >= '1' and <= '9')
             {
                 _index++;
