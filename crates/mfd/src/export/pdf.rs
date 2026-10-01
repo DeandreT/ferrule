@@ -11,6 +11,8 @@ use crate::MfdError;
 
 use super::schema::{GeneratedSibling, PortTree, RenderedSchemaComponent, Side, xml_escape};
 
+mod native_rows;
+
 const MAX_PXT_BYTES: usize = 1024 * 1024;
 
 pub(super) struct RenderArgs<'a> {
@@ -72,7 +74,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(&template_file);
-    let template = match native_capture_template(layout) {
+    let template = match native_capture_template(layout).or_else(|| native_rows::template(layout)) {
         Some(template) => template,
         None => canonical_template(layout)?,
     };
@@ -113,10 +115,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     })
 }
 
-/// The PDF template families whose native-shaped inverses are known locally:
-/// all pages with direct text captures, or one named page group containing
-/// only direct text captures. Other extraction commands keep Ferrule's
-/// lossless layout payload instead of guessing native semantics.
+/// The simple native-shaped template families: all pages with direct text
+/// captures, or one named page group containing only direct text captures.
+/// The bounded vertical-boundary/edge-row family lives in `native_rows`.
 fn native_capture_template(layout: &PdfLayout) -> Option<String> {
     if layout.page_selection() != PdfPageSelection::All
         || layout.commands().is_empty()

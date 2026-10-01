@@ -64,7 +64,7 @@ are preserved.
   The remaining design retains missing target and embedded string-parser JSON
   Schema provenance across best-effort export/re-import. All 175
   dependency-complete round trips remain engine-valid. Strict Ferrule native
-  export preflight now accepts 162 of 187 local designs. Direct `doc-xml`
+  export preflight now accepts 163 of 187 local designs. Direct `doc-xml`
   reconstruction, guarded SQLite `LIKE` controls, finite numeric input
   identity, a bounded Protobuf numeric UDF, canonical decimal-input
   reconstruction, two XML source-leaf pricing rules, guarded same-type SQLite
@@ -73,7 +73,7 @@ are preserved.
   recover native design structures across this work. The text-to-numeric SQL
   parameter in `Tutorial/select-component.mfd` remains unsupported.
   This is a static compatibility check, not reference-application acceptance. The
-  direct CLI resource profile has 168 warning-free imports and 155 designs with
+  direct CLI resource profile has 168 warning-free imports and 156 designs with
   both warning-free import and static export acceptance. The isolated execution
   profile below resolves its own resources and has 170 warning-free imports.
   The read-only design-preview profile attempts 168 safe-input designs and all
@@ -207,9 +207,11 @@ are preserved.
   and certified IDoc configuration text are reimported before publication;
   metadata that cannot survive the emitted representation rejects explicitly.
   XML text, labels, and XSD fixed/default values preserve carriage returns,
-  tabs, and line breaks. Native-shaped direct PDF capture templates and one
-  named page group with direct captures are checked against the bounded local
-  parser; complex templates retain a lossless Ferrule
+  tabs, and line breaks. Native-shaped direct PDF captures, one named page
+  group, and a guarded vertical-boundary/painted-edge row layout are checked
+  against the bounded local parser. The annual temperature PDF retains identical
+  extraction and 148 CSV rows through strict export/reimport. Unsupported
+  splitter search and skip controls reject explicitly. Complex templates retain a lossless Ferrule
   payload and report `pdf_layout` instead of claiming native compatibility.
   JSON Schema import shares reference, expanded-depth, and cumulative work
   limits across ordinary trees and private predicates.
@@ -840,8 +842,8 @@ Update these numbers with each parity increment:
   without warnings, and the remaining design retains typed unresolved target
   and embedded string-parser JSON Schema compatibility issues. All 175
   dependency-complete round trips remain engine-valid. Strict local native
-  preflight accepts 162/187; 155 also have warning-free original imports, and
-  all 162 strict exports reimport without warnings. Five complex PDF designs
+  preflight accepts 163/187; 156 also have warning-free original imports, and
+  all 163 strict exports reimport without warnings. Four complex PDF designs
   now correctly require Ferrule's layout extension. These local measurements
   do not claim reference-application acceptance.
 - `.mfd` design-preview execution: all 168 attempted read-only executions

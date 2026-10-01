@@ -268,9 +268,8 @@ excludes the row, preserving SQL WHERE behavior when equality results are
 negated. Literal NULL list entries and empty lists remain explicitly unsupported.
 Two temperature designs recover their original native numeric wiring. The
 annual PDF mapping retains all eight conversions inside its user function and
-reimports to the same 148 CSV rows through Ferrule's PDF layout extension.
-Its grouped extraction template is outside the native PDF export subset.
-The grouped XML mapping restores 21
+strictly reimports its native-shaped PDF extraction template to the same 148
+CSV rows. The grouped XML mapping restores 21
 target-side and six user-function conversions through an exact descendant
 node-function rule; its five yearly rows and typed nonfinite conversion error
 match after strict export/reimport. The recovery requires the closed source,
@@ -431,11 +430,21 @@ PDF sources with all-page selection can write a native-shaped `.pxt` template
 when they have only direct BasicVisual text captures, or one named page group
 containing only those captures. This subset requires InsertSpace word
 separation, Default whitespace, and page-edge coordinates without anchors.
+One additional closed shape supports a vertical boundary finder followed by an
+edge-row splitter containing one named page group and direct captures. The
+splitter region may use only its boundary's begin/end anchors; its search is
+empty and its initial/final skips are zero. Its fallback region is inferred
+from the last eligible capture on native import, so export requires that
+inference to match the stored layout exactly.
+Native splitter import accepts only absent or empty search controls and absent,
+empty, or zero initial/final skips. Nondefault, malformed, or duplicate controls
+reject the template with a diagnostic instead of silently changing extraction.
 Export checks the generated template with the bounded native-template parser
-and compares group and capture identity, algorithms, and every retained
-coordinate by its binary64 bits. A self-authored two-page PDF maps two ordered
-text rows through two strict export/re-import cycles. Other supported PDF
-layouts use Ferrule's lossless layout payload. Ordinary payloads retain version
+and compares command structure, names, algorithms, and every retained numeric
+value by its binary64 bits. Self-authored two-page PDFs map ordered text rows
+through two strict export/re-import cycles, including four rows through the
+boundary and splitter shape. Other supported PDF layouts use Ferrule's lossless
+layout payload. Ordinary payloads retain version
 1; version 2 preserves floating-point values that ordinary JSON cannot
 round-trip exactly. The complete template, including XML escaping, is limited
 to 1 MiB. The export report inspects the actual generated sibling and reports
