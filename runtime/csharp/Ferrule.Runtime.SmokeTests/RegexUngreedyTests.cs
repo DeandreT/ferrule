@@ -88,7 +88,7 @@ internal static partial class Program
             "(?UU)a", "(?U-)a", "(?U--i)a", "(?UQ)a",
             "(?Un)a", "(?U)(?#comment)a", "(?U)(?'name'a)",
             @"(?U)[\<]", @"(?U)[\cA]", @"(?U)[\0]", @"(?U)\p{IsBasicLatin}",
-            @"(?U)\p{Greek}", "(?U)(?<9name>a)", @"(?U-u:.)",
+            "(?U)(?<9name>a)", @"(?U-u:.)",
             "(?xU)(? U:a)", "(?xU)(?U :a)",
             "(?U)a{2,1}", "(?U)a{4294967296}",
         })

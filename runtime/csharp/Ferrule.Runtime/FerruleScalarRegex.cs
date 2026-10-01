@@ -165,8 +165,6 @@ internal static partial class FerruleScalarRegex
     private sealed record CaseTable(int[][] Groups, IReadOnlyDictionary<int, int[]> ByScalar);
     private static readonly Lazy<CaseTable> CaseTables = new(BuildCaseTable);
     private static readonly Lazy<IReadOnlyDictionary<UnicodeCategory, ScalarSet>> Categories = new(BuildCategories);
-    private static readonly ConcurrentDictionary<string, ScalarSet> NamedProperties = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<(string Name, bool Folded, bool Complemented), ScalarSet> ModifiedProperties = new();
     private static readonly Lazy<IReadOnlyDictionary<char, ScalarSet>> Shorthands = new(BuildShorthands);
 
     private static CaseTable BuildCaseTable()
@@ -228,150 +226,6 @@ internal static partial class FerruleScalarRegex
         }
         return categories.ToDictionary(item => item.Key, item => new ScalarSet(item.Value));
     }
-
-    private static readonly IReadOnlyDictionary<string, UnicodeCategory[]> CategoryNames =
-        new Dictionary<string, UnicodeCategory[]>(StringComparer.Ordinal) {
-            ["Lu"] = new[] { UnicodeCategory.UppercaseLetter }, ["Ll"] = new[] { UnicodeCategory.LowercaseLetter },
-            ["Lt"] = new[] { UnicodeCategory.TitlecaseLetter }, ["Lm"] = new[] { UnicodeCategory.ModifierLetter },
-            ["Lo"] = new[] { UnicodeCategory.OtherLetter }, ["Mn"] = new[] { UnicodeCategory.NonSpacingMark },
-            ["Mc"] = new[] { UnicodeCategory.SpacingCombiningMark }, ["Me"] = new[] { UnicodeCategory.EnclosingMark },
-            ["Nd"] = new[] { UnicodeCategory.DecimalDigitNumber }, ["Nl"] = new[] { UnicodeCategory.LetterNumber },
-            ["No"] = new[] { UnicodeCategory.OtherNumber }, ["Pc"] = new[] { UnicodeCategory.ConnectorPunctuation },
-            ["Pd"] = new[] { UnicodeCategory.DashPunctuation }, ["Ps"] = new[] { UnicodeCategory.OpenPunctuation },
-            ["Pe"] = new[] { UnicodeCategory.ClosePunctuation }, ["Pi"] = new[] { UnicodeCategory.InitialQuotePunctuation },
-            ["Pf"] = new[] { UnicodeCategory.FinalQuotePunctuation }, ["Po"] = new[] { UnicodeCategory.OtherPunctuation },
-            ["Sm"] = new[] { UnicodeCategory.MathSymbol }, ["Sc"] = new[] { UnicodeCategory.CurrencySymbol },
-            ["Sk"] = new[] { UnicodeCategory.ModifierSymbol }, ["So"] = new[] { UnicodeCategory.OtherSymbol },
-            ["Zs"] = new[] { UnicodeCategory.SpaceSeparator }, ["Zl"] = new[] { UnicodeCategory.LineSeparator },
-            ["Zp"] = new[] { UnicodeCategory.ParagraphSeparator }, ["Cc"] = new[] { UnicodeCategory.Control },
-            ["Cf"] = new[] { UnicodeCategory.Format }, ["Cs"] = new[] { UnicodeCategory.Surrogate },
-            ["Co"] = new[] { UnicodeCategory.PrivateUse }, ["Cn"] = new[] { UnicodeCategory.OtherNotAssigned },
-            ["LC"] = new[] { UnicodeCategory.UppercaseLetter, UnicodeCategory.LowercaseLetter, UnicodeCategory.TitlecaseLetter },
-            ["L"] = new[] { UnicodeCategory.UppercaseLetter, UnicodeCategory.LowercaseLetter, UnicodeCategory.TitlecaseLetter, UnicodeCategory.ModifierLetter, UnicodeCategory.OtherLetter },
-            ["M"] = new[] { UnicodeCategory.NonSpacingMark, UnicodeCategory.SpacingCombiningMark, UnicodeCategory.EnclosingMark },
-            ["N"] = new[] { UnicodeCategory.DecimalDigitNumber, UnicodeCategory.LetterNumber, UnicodeCategory.OtherNumber },
-            ["P"] = new[] { UnicodeCategory.ConnectorPunctuation, UnicodeCategory.DashPunctuation, UnicodeCategory.OpenPunctuation, UnicodeCategory.ClosePunctuation, UnicodeCategory.InitialQuotePunctuation, UnicodeCategory.FinalQuotePunctuation, UnicodeCategory.OtherPunctuation },
-            ["S"] = new[] { UnicodeCategory.MathSymbol, UnicodeCategory.CurrencySymbol, UnicodeCategory.ModifierSymbol, UnicodeCategory.OtherSymbol },
-            ["Z"] = new[] { UnicodeCategory.SpaceSeparator, UnicodeCategory.LineSeparator, UnicodeCategory.ParagraphSeparator },
-            ["C"] = new[] { UnicodeCategory.Control, UnicodeCategory.Format, UnicodeCategory.Surrogate, UnicodeCategory.PrivateUse, UnicodeCategory.OtherNotAssigned },
-        };
-
-    private static readonly IReadOnlyDictionary<string, string> CategoryAliases = BuildCategoryAliases();
-
-    private static IReadOnlyDictionary<string, string> BuildCategoryAliases()
-    {
-        var aliases = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var (canonical, names) in new[] {
-            ("C", "c other"),
-            ("LC", "casedletter lc"),
-            ("Cc", "cc cntrl control"),
-            ("Cf", "cf format"),
-            ("Pe", "closepunctuation pe"),
-            ("Cn", "cn unassigned"),
-            ("Co", "co privateuse"),
-            ("M", "combiningmark m mark"),
-            ("Pc", "connectorpunctuation pc"),
-            ("Cs", "cs surrogate"),
-            ("Sc", "currencysymbol sc"),
-            ("Pd", "dashpunctuation pd"),
-            ("Nd", "decimalnumber digit nd"),
-            ("Me", "enclosingmark me"),
-            ("Pf", "finalpunctuation pf"),
-            ("Pi", "initialpunctuation pi"),
-            ("L", "l letter"),
-            ("Nl", "letternumber nl"),
-            ("Zl", "lineseparator zl"),
-            ("Ll", "ll lowercaseletter"),
-            ("Lm", "lm modifierletter"),
-            ("Lo", "lo otherletter"),
-            ("Lt", "lt titlecaseletter"),
-            ("Lu", "lu uppercaseletter"),
-            ("Sm", "mathsymbol sm"),
-            ("Mc", "mc spacingmark"),
-            ("Mn", "mn nonspacingmark"),
-            ("Sk", "modifiersymbol sk"),
-            ("N", "n number"),
-            ("No", "no othernumber"),
-            ("Ps", "openpunctuation ps"),
-            ("Po", "otherpunctuation po"),
-            ("So", "othersymbol so"),
-            ("P", "p punct punctuation"),
-            ("Zp", "paragraphseparator zp"),
-            ("S", "s symbol"),
-            ("Z", "separator z"),
-            ("Zs", "spaceseparator zs"),
-            ("Any", "any"), ("ASCII", "ascii"), ("Assigned", "assigned"),
-        })
-        {
-            foreach (var name in names.Split(' ')) { aliases.Add(name, canonical); }
-        }
-        return aliases;
-    }
-
-    private static string NormalizePropertyName(string name)
-    {
-        var prefixed = name.Length >= 2 && name[0] is 'i' or 'I' && name[1] is 's' or 'S';
-        var normalized = new StringBuilder(name.Length);
-        for (var index = prefixed ? 2 : 0; index < name.Length; index++)
-        {
-            var value = name[index];
-            if (value > 0x7F || value is ' ' or '_' or '-') { continue; }
-            normalized.Append(value is >= 'A' and <= 'Z' ? (char)(value + ('a' - 'A')) : value);
-        }
-        // ISO_Comment's abbreviation is not the Other category after stripping "is".
-        var result = normalized.ToString();
-        return prefixed && result == "c" ? "isc" : result;
-    }
-
-    private static (string Name, bool Complemented) PropertyQuery(string query, bool complemented)
-    {
-        var separator = query.IndexOf("!=", StringComparison.Ordinal);
-        var width = 2;
-        var inverted = separator >= 0;
-        if (separator < 0) { separator = query.IndexOf(':'); width = 1; }
-        if (separator < 0) { separator = query.IndexOf('='); }
-        var value = query;
-        if (separator >= 0)
-        {
-            var property = NormalizePropertyName(query[..separator]);
-            if (property is not ("gc" or "generalcategory")) { throw Invalid("unsupported property query"); }
-            value = query[(separator + width)..];
-            complemented ^= inverted;
-        }
-        if (CategoryAliases.TryGetValue(NormalizePropertyName(value), out var canonical))
-        {
-            if (canonical == "Cs") { throw Invalid("surrogate category has no Unicode scalar property data"); }
-            return (canonical, complemented);
-        }
-        if (separator >= 0) { throw Invalid("unrecognized general category"); }
-        // Retain raw accepted host blocks outside the selected category vocabulary.
-        return (query, complemented);
-    }
-
-    private static ScalarSet Property(string name) => NamedProperties.GetOrAdd(name, static key => {
-        if (key == "Any") { return ScalarSet.All; }
-        if (key == "ASCII") { return ScalarSet.Between(0, 0x7F); }
-        if (key == "Assigned") { return Property("Cn").Complement(); }
-        if (CategoryNames.TryGetValue(key, out var categories))
-        {
-            return new ScalarSet(categories.SelectMany(category => Categories.Value.TryGetValue(category, out var set)
-                ? set.Ranges : Array.Empty<Range>()));
-        }
-        // Retain accepted host block properties without expanding the host dialect.
-        var regex = new Regex(@"\p{" + key + "}", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
-        var bmp = new StringBuilder(0x10000 - 0x800);
-        for (var scalar = 0; scalar <= 0xFFFF; scalar++)
-        {
-            if (Rune.IsValid(scalar)) { bmp.Append((char)scalar); }
-        }
-        var text = bmp.ToString();
-        var ranges = new List<Range>();
-        foreach (var match in regex.EnumerateMatches(text))
-        {
-            var scalar = text[match.Index]; ranges.Add(new Range(scalar, scalar));
-        }
-        return new ScalarSet(ranges);
-    });
 
     private static IReadOnlyDictionary<char, ScalarSet> BuildShorthands()
     {
@@ -866,19 +720,13 @@ internal static partial class FerruleScalarRegex
             if (kind is 'p' or 'P')
             {
                 if (!_unicode) { throw Invalid("Unicode properties require Unicode mode"); }
-                var query = PropertyQuery(ReadPropertyName(), kind == 'P');
-                if (query.Name is not ("Any" or "ASCII" or "Assigned") && !CategoryNames.ContainsKey(query.Name))
+                var query = PropertyQuery(ReadPropertyName(), kind == 'P', _strictUnicodeProfile);
+                if (query.Identity.Domain == PropertyDomain.Existing
+                    && query.Identity.Name is not ("Any" or "ASCII" or "Assigned") && !CategoryNames.ContainsKey(query.Identity.Name))
                 {
                     _captureRoutingEligible = false;
                 }
-                if (_strictUnicodeProfile && !CategoryNames.ContainsKey(query.Name) && query.Name is not ("Any" or "ASCII" or "Assigned"))
-                { throw Invalid("unsupported Unicode property in the explicit Unicode profile"); }
-                var key = (query.Name, IgnoreCase, query.Complemented);
-                var set = ModifiedProperties.GetOrAdd(key, static key => {
-                    var value = Property(key.Name);
-                    if (key.Folded) { value = value.FoldCase(); }
-                    return key.Complemented ? value.Complement() : value;
-                });
+                var set = ModifiedProperty(query.Identity, IgnoreCase, query.Complemented);
                 return new Item(set, null);
             }
             if (_strictUnicodeProfile && (kind is 'e' or 'c' or >= '0' and <= '9' || kind > 0x7F

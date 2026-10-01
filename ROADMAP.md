@@ -262,6 +262,10 @@ are preserved.
   restoration and exact capture values. CRLF mode retains original line endings,
   excludes CR/LF from dot unless single-line mode applies, and keeps multiline
   anchors outside each CRLF pair. A compiled mapping
+  retains the pinned Unicode 16 Script and Script_Extensions catalogs in the
+  selected scalar profile, with exact aliases, category precedence, scoped
+  Unicode controls and separate host/script cache identities. All 170 sets in
+  each domain use copied scalar ranges with their source notices. The mapping
   compares matching, replacement, and tokenization through Rust/C# JSON string
   and UTF-8 byte hosts against the interpreter. Broader property vocabularies,
   host-only syntax, and compilation budgets

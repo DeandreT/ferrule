@@ -92,7 +92,7 @@ internal static partial class Program
         {
             "(?RR)a", "(?R-)a", "(?R--i)a", "(?RQ)a", "(?Rn)a",
             "(?R)(?#comment)a", "(?R)(?'name'a)", @"(?R)[\<]", @"(?R)[\cA]",
-            @"(?R)[\0]", @"(?R)\p{IsBasicLatin}", @"(?R)\p{Greek}", "(?R)(?<9name>a)",
+            @"(?R)[\0]", @"(?R)\p{IsBasicLatin}", "(?R)(?<9name>a)",
             @"(?R-u:.)", "(?xR)(? R:a)", "(?xR)(?R :a)", "(?R)a{2,1}",
         })
         {
