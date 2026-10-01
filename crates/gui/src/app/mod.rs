@@ -1519,3 +1519,6 @@ mod tests;
 
 #[cfg(test)]
 mod sort_controls_tests;
+
+#[cfg(test)]
+mod window_controls_tests;
