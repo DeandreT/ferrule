@@ -203,6 +203,13 @@ are preserved.
   not parse the PDF themselves.
   This small execution sample does not establish that all emitted survey
   designs execute equivalently.
+- Generated regex operations retain complete Unicode scalars, source-order
+  captures, nested character classes, intersection/difference/symmetric
+  difference, and all 14 ASCII POSIX class terms. A compiled 117-case mapping
+  compares matching, replacement, and tokenization through Rust/C# JSON string
+  and UTF-8 byte hosts against the interpreter. Word-boundary assertions,
+  broader property vocabularies, host-only syntax, and compilation budgets
+  remain separate backend differences.
 - File and export fidelity: project, pipeline, generated-schema, and PDF-layout
   codecs preserve finite floating-point tags and bits. Generated JSON Schema
   and certified IDoc configuration text are reimported before publication;
