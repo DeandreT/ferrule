@@ -53,6 +53,8 @@ mod extra_target_ui;
 mod function_workspace;
 #[path = "host_parameters.rs"]
 pub(crate) mod host_parameters;
+#[path = "mfd_export.rs"]
+mod mfd_export_ui;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
 #[path = "pipeline_editor.rs"]
@@ -489,6 +491,7 @@ enum DialogKind {
     ImportMfd,
     BrowseMfdPackageManifest,
     ExportMfd,
+    ExportNativeMfd,
     BrowseSourceSchema,
     BrowseTargetSchema,
     BrowseSourceCsv,
@@ -1315,22 +1318,12 @@ impl FerruleApp {
                         .error("MFD import failed", error.to_string());
                 }
             },
-            DialogKind::ExportMfd => {
-                match mfd::export(&self.project, std::path::Path::new(&path)) {
-                    Ok(warnings) if warnings.is_empty() => {
-                        self.status = format!("exported {path}");
-                        self.diagnostics.clear();
-                    }
-                    Ok(warnings) => {
-                        self.status = format!("exported {path} with {} warning(s)", warnings.len());
-                        self.diagnostics.warnings("MFD export", warnings);
-                    }
-                    Err(error) => {
-                        self.status = format!("failed to export {path}");
-                        self.diagnostics
-                            .error("MFD export failed", error.to_string());
-                    }
-                }
+            DialogKind::ExportMfd => self.finish_mfd_export(
+                std::path::Path::new(&path),
+                mfd::ExportProfile::FerruleExtensions,
+            ),
+            DialogKind::ExportNativeMfd => {
+                self.finish_mfd_export(std::path::Path::new(&path), mfd::ExportProfile::NativeMfd)
             }
         }
     }
