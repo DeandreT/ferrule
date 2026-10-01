@@ -240,6 +240,8 @@ enum InvalidSite {
     OtherTarget,
     SecondarySort,
     ScalarChild,
+    DynamicPathScope,
+    DynamicPathReducer,
 }
 
 fn invalid_project(site: InvalidSite, indirect: bool) -> (Project, String) {
@@ -250,6 +252,27 @@ fn invalid_project(site: InvalidSite, indirect: bool) -> (Project, String) {
             let expression = if indirect { 31 } else { 10 };
             project.extra_targets[0].root.children[0].bindings[0].node = expression;
             (expression, 10)
+        }
+        InvalidSite::DynamicPathScope => {
+            project.graph.nodes.insert(31, call("string", &[10]));
+            (if indirect { 31 } else { 10 }, 10)
+        }
+        InvalidSite::DynamicPathReducer => {
+            project.graph.nodes.extend([
+                (30, item()),
+                (35, call("string", &[30])),
+                (
+                    40,
+                    Node::SequenceAggregate {
+                        function: AggregateOp::Count,
+                        sequence: range(30, 1),
+                        predicate: None,
+                        expression: None,
+                        arg: None,
+                    },
+                ),
+            ]);
+            (if indirect { 35 } else { 30 }, 30)
         }
         InvalidSite::SecondarySort | InvalidSite::ScalarChild => {
             project.graph.nodes.extend([
@@ -305,12 +328,20 @@ fn invalid_project(site: InvalidSite, indirect: bool) -> (Project, String) {
                         ..Scope::default()
                     });
                 }
-                InvalidSite::OtherTarget => unreachable!(),
+                InvalidSite::OtherTarget
+                | InvalidSite::DynamicPathScope
+                | InvalidSite::DynamicPathReducer => unreachable!(),
             }
             (expression, 30)
         }
     };
     add_dynamic_input(&mut project);
+    if matches!(
+        site,
+        InvalidSite::DynamicPathScope | InvalidSite::DynamicPathReducer
+    ) {
+        project.extra_sources[0].dynamic_path.as_mut().unwrap().node = expression;
+    }
     (
         project,
         format!(
@@ -322,7 +353,10 @@ fn invalid_project(site: InvalidSite, indirect: bool) -> (Project, String) {
 fn save_fixture(dir: &Path, project: &Project) -> anyhow::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
     let path = dir.join("project.json");
-    std::fs::write(&path, mapping::project_file::encode_pretty(project)?)?;
+    let encoded = mapping::project_file::encode_pretty(project)?;
+    std::fs::write(&path, &encoded)?;
+    let reopened = mapping::project_file::decode_bytes(&std::fs::read(&path)?)?;
+    assert_eq!(mapping::project_file::encode_pretty(&reopened)?, encoded);
     std::fs::write(dir.join("input.json"), br#"{"File":["dynamic.json"]}"#)?;
     std::fs::write(dir.join("dynamic.json"), b"{malformed dynamic payload")?;
     std::fs::write(dir.join("primary.json"), b"keep primary")?;
@@ -354,6 +388,8 @@ fn invalid_item_contexts_precede_file_payload_decoding_and_all_execution_callbac
         InvalidSite::OtherTarget,
         InvalidSite::SecondarySort,
         InvalidSite::ScalarChild,
+        InvalidSite::DynamicPathScope,
+        InvalidSite::DynamicPathReducer,
     ] {
         for indirect in [false, true] {
             let (project, expected) = invalid_project(site, indirect);
@@ -461,6 +497,8 @@ fn invalid_item_context_generation_creates_no_artifact_or_staging_directories() 
         InvalidSite::OtherTarget,
         InvalidSite::SecondarySort,
         InvalidSite::ScalarChild,
+        InvalidSite::DynamicPathScope,
+        InvalidSite::DynamicPathReducer,
     ] {
         for indirect in [false, true] {
             let (project, expected) = invalid_project(site, indirect);
