@@ -236,6 +236,8 @@ pub(super) fn show(ui: &mut Ui) -> Option<NodeTemplate> {
     let search = ui.add(
         egui::TextEdit::singleline(&mut state.query)
             .hint_text("Search nodes")
+            // The palette handles Enter after the search field processes text.
+            .return_key(None)
             .desired_width(f32::INFINITY),
     );
     if newly_opened {

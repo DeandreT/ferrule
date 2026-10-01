@@ -601,7 +601,8 @@ fn required_inputs_stay_visually_empty() {
             condition: inputs[0],
             then: inputs[1],
             else_: inputs[2],
-        });
+        })
+        .unwrap();
 
     let inputs = node_inputs(&fx.graph.nodes[&if_id]);
     assert_eq!(inputs.len(), 3);
@@ -622,7 +623,7 @@ fn required_inputs_stay_visually_empty() {
 fn reconnect_and_disconnect_keep_the_input_pin_empty_without_visual_nodes() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
-    let unconnected = fx.viewer().fresh_unconnected();
+    let unconnected = fx.viewer().fresh_unconnected().expect("available node ID");
     let Node::Call { args, .. } = fx.graph.nodes.get_mut(&0).unwrap() else {
         panic!("fixture node should be a call");
     };
@@ -671,16 +672,16 @@ fn reconnect_and_disconnect_keep_the_input_pin_empty_without_visual_nodes() {
 fn deleting_a_node_removes_its_hidden_input_values() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
-    let (if_id, if_node) = fx.viewer().insert_with_unconnected_inputs(
-        &mut snarl,
-        egui::pos2(600.0, 300.0),
-        3,
-        |inputs| Node::If {
-            condition: inputs[0],
-            then: inputs[1],
-            else_: inputs[2],
-        },
-    );
+    let (if_id, if_node) = fx
+        .viewer()
+        .insert_with_unconnected_inputs(&mut snarl, egui::pos2(600.0, 300.0), 3, |inputs| {
+            Node::If {
+                condition: inputs[0],
+                then: inputs[1],
+                else_: inputs[2],
+            }
+        })
+        .unwrap();
     fx.viewer().remove_graph_node(if_id, if_node, &mut snarl);
 
     assert_eq!(fx.graph.nodes.len(), 1, "only the fixture call remains");
@@ -1013,7 +1014,7 @@ fn aggregate_argument_pins_match_the_operation() {
     let count = node_palette::aggregate_node(AggregateOp::Count, None);
     assert_eq!(GraphViewer::input_count(&count), 0);
 
-    let arg = fx.viewer().fresh_unconnected();
+    let arg = fx.viewer().fresh_unconnected().expect("available node ID");
     let join = node_palette::aggregate_node(AggregateOp::Join, Some(arg));
     assert_eq!(GraphViewer::input_count(&join), 1);
     let Node::Aggregate { arg: Some(arg), .. } = join else {
@@ -1094,9 +1095,10 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
         let wire_before = snarl.wires().count();
         let unconnected = expected_unconnected_inputs(template);
 
-        let (created, created_snarl) =
-            fx.viewer()
-                .insert_palette_node(&mut snarl, egui::pos2(240.0, 160.0), template);
+        let (created, created_snarl) = fx
+            .viewer()
+            .insert_palette_node(&mut snarl, egui::pos2(240.0, 160.0), template)
+            .expect("available palette IDs");
 
         assert!(matches_template(template, &fx.graph.nodes[&created]));
         assert_eq!(snarl[created_snarl], CanvasNode::Graph(created));
@@ -1118,16 +1120,22 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
 fn host_input_palette_requires_a_name_and_keeps_optional_default_hidden() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
-    let (required, required_snarl) = fx.viewer().insert_palette_node(
-        &mut snarl,
-        egui::pos2(240.0, 160.0),
-        NodeTemplate::HostInput,
-    );
-    let (optional, optional_snarl) = fx.viewer().insert_palette_node(
-        &mut snarl,
-        egui::pos2(340.0, 160.0),
-        NodeTemplate::HostInputDefault,
-    );
+    let (required, required_snarl) = fx
+        .viewer()
+        .insert_palette_node(
+            &mut snarl,
+            egui::pos2(240.0, 160.0),
+            NodeTemplate::HostInput,
+        )
+        .expect("available palette IDs");
+    let (optional, optional_snarl) = fx
+        .viewer()
+        .insert_palette_node(
+            &mut snarl,
+            egui::pos2(340.0, 160.0),
+            NodeTemplate::HostInputDefault,
+        )
+        .expect("available palette IDs");
 
     assert!(matches!(
         &fx.graph.nodes[&required],
@@ -1181,7 +1189,11 @@ fn builtin_selector_reconciliation_adds_minimum_inputs_without_removing_excess()
         *function = "matches".to_owned();
         args.clear();
     }
-    let added = fx.viewer().ensure_call_minimum_inputs(0);
+    let edited = fx.graph.nodes[&0].clone();
+    let added = fx
+        .viewer()
+        .commit_node_property_edit(0, edited, true, false)
+        .expect("available input IDs");
     assert_eq!(added, 2);
     let Some(Node::Call { args, .. }) = fx.graph.nodes.get(&0) else {
         panic!("fixture call is missing");
@@ -1214,7 +1226,13 @@ fn builtin_selector_reconciliation_adds_minimum_inputs_without_removing_excess()
         *function = "upper".to_owned();
         *args = vec![20, 21, 22];
     }
-    assert_eq!(fx.viewer().ensure_call_minimum_inputs(0), 0);
+    let edited = fx.graph.nodes[&0].clone();
+    assert_eq!(
+        fx.viewer()
+            .commit_node_property_edit(0, edited, true, false)
+            .expect("no input IDs needed"),
+        0
+    );
     let Some(Node::Call { args, .. }) = fx.graph.nodes.get(&0) else {
         panic!("fixture call is missing");
     };
@@ -1582,3 +1600,6 @@ fn adjacency_tree_root_node_is_protected_from_deletion() {
         vec!["root scope adjacency-tree root"]
     );
 }
+
+#[path = "graph_viewer_tests/allocation.rs"]
+mod allocation_tests;

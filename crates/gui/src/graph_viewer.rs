@@ -25,6 +25,8 @@ use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
 use crate::wire_colors::WireEmphasis;
 
+#[path = "graph_node_ids.rs"]
+mod graph_node_ids;
 #[path = "graph_references.rs"]
 mod graph_references;
 #[path = "graph_sequence.rs"]
@@ -34,6 +36,7 @@ mod graph_sequence_ownership;
 #[path = "node_palette.rs"]
 mod node_palette;
 
+use graph_node_ids::NodeIdReservation;
 use graph_references::node_inputs;
 pub(crate) use graph_references::{
     InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, project_sequence_item_ids,
@@ -446,37 +449,6 @@ impl GraphViewer<'_> {
         self.pin_interaction_ids.push(ui.next_auto_id());
     }
 
-    fn fresh_id(&self) -> NodeId {
-        self.graph.nodes.keys().next_back().map_or(0, |max| max + 1)
-    }
-
-    fn fresh_unconnected(&mut self) -> NodeId {
-        let id = self.fresh_id();
-        self.graph.nodes.insert(id, Node::Unconnected);
-        id
-    }
-
-    fn ensure_call_minimum_inputs(&mut self, node_id: NodeId) -> usize {
-        let missing = self
-            .graph
-            .nodes
-            .get(&node_id)
-            .and_then(|node| match node {
-                Node::Call { function, args } => {
-                    Some(call_missing_minimum_inputs(function, args.len()))
-                }
-                _ => None,
-            })
-            .unwrap_or_default();
-        let inputs = (0..missing)
-            .map(|_| self.fresh_unconnected())
-            .collect::<Vec<_>>();
-        if let Some(Node::Call { args, .. }) = self.graph.nodes.get_mut(&node_id) {
-            args.extend(inputs);
-        }
-        missing
-    }
-
     fn mapping_id(node: CanvasNode) -> Option<NodeId> {
         match node {
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => Some(id),
@@ -524,7 +496,7 @@ impl GraphViewer<'_> {
         snarl: &mut Snarl<CanvasNode>,
         pos: egui::Pos2,
         template: NodeTemplate,
-    ) -> (NodeId, SnarlNodeId) {
+    ) -> Result<(NodeId, SnarlNodeId), String> {
         match template {
             NodeTemplate::Constant => self.insert(snarl, pos, Node::Const { value: Value::Null }),
             NodeTemplate::SourceField => self.insert(
@@ -614,11 +586,11 @@ impl GraphViewer<'_> {
         snarl: &mut Snarl<CanvasNode>,
         pos: egui::Pos2,
         node: Node,
-    ) -> (NodeId, SnarlNodeId) {
-        let id = self.fresh_id();
+    ) -> Result<(NodeId, SnarlNodeId), String> {
+        let id = self.reserve_node_ids(1)?[0];
         self.graph.nodes.insert(id, node);
         let snarl_id = snarl.insert_node(pos, CanvasNode::Graph(id));
-        (id, snarl_id)
+        Ok((id, snarl_id))
     }
 
     fn insert_with_unconnected_inputs(
@@ -627,11 +599,21 @@ impl GraphViewer<'_> {
         pos: egui::Pos2,
         input_count: usize,
         build: impl FnOnce(&[NodeId]) -> Node,
-    ) -> (NodeId, SnarlNodeId) {
-        let inputs = (0..input_count)
-            .map(|_| self.fresh_unconnected())
-            .collect::<Vec<_>>();
-        self.insert(snarl, pos, build(&inputs))
+    ) -> Result<(NodeId, SnarlNodeId), String> {
+        let count = input_count
+            .checked_add(1)
+            .ok_or_else(|| "mapping node IDs are exhausted".to_string())?;
+        let ids = self.reserve_node_ids(count)?;
+        let Some((&id, inputs)) = ids.split_last() else {
+            return Err("mapping node IDs are exhausted".to_string());
+        };
+        let node = build(inputs);
+        for &input in inputs {
+            self.graph.nodes.insert(input, Node::Unconnected);
+        }
+        self.graph.nodes.insert(id, node);
+        let snarl_id = snarl.insert_node(pos, CanvasNode::Graph(id));
+        Ok((id, snarl_id))
     }
 
     /// Reuses an unowned `SourceField` with this exact frame and relative
@@ -641,17 +623,7 @@ impl GraphViewer<'_> {
         frame: Option<Vec<String>>,
         path: Vec<String>,
     ) -> Result<NodeId, String> {
-        let owned_items = if self.function_output.is_none() {
-            sequence_item_ids(
-                self.graph,
-                self.root_scope,
-                self.extra_targets,
-                self.inactive_target_scopes,
-                self.project_references,
-            )
-        } else {
-            Default::default()
-        };
+        let owned_items = self.owned_item_ids();
         let existing = self.graph.nodes.iter().find_map(|(id, node)| match node {
             Node::SourceField { path: p, frame: f }
                 if !owned_items.contains(id) && p == &path && f == &frame =>
@@ -663,16 +635,7 @@ impl GraphViewer<'_> {
         if let Some(id) = existing {
             return Ok(id);
         }
-        let exhausted = || "mapping node IDs are exhausted".to_string();
-        let mut id = match self.graph.nodes.keys().next_back() {
-            Some(maximum) => maximum.checked_add(1).ok_or_else(exhausted)?,
-            None => 0,
-        };
-        // Preserve append-only IDs and leave missing generated items untouched.
-        // At most one candidate per owned ID is skipped before success/failure.
-        while owned_items.contains(&id) {
-            id = id.checked_add(1).ok_or_else(exhausted)?;
-        }
+        let id = NodeIdReservation::new(self.graph, &owned_items).reserve(1)?[0];
         self.graph
             .nodes
             .insert(id, Node::SourceField { path, frame });
@@ -704,6 +667,12 @@ impl GraphViewer<'_> {
             Node::ValueMap { input, .. } => *input = from_id,
             Node::Lookup { matches, .. } => *matches = from_id,
             Node::DynamicSourceField { key, .. } => *key = from_id,
+            Node::XmlMixedContent { replacements, .. } => {
+                let Some(replacement) = replacements.get_mut(idx) else {
+                    return false;
+                };
+                replacement.expression = from_id;
+            }
             Node::CollectionFind {
                 predicate, value, ..
             } => match idx {
@@ -946,20 +915,30 @@ impl GraphViewer<'_> {
         self.node_references(needle).blocking
     }
 
-    fn disconnect_graph_consumers(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
-        let consumers =
-            self.graph
-                .nodes
-                .iter()
-                .filter(|(owner, _)| **owner != needle)
-                .flat_map(|(&owner, node)| {
-                    node_inputs(node).into_iter().enumerate().filter_map(
-                        move |(input, dependency)| (dependency == needle).then_some((owner, input)),
-                    )
-                })
-                .collect::<Vec<_>>();
-        for (owner, input) in consumers {
-            let unconnected = self.fresh_unconnected();
+    fn graph_consumers(&self, needle: NodeId) -> Vec<(NodeId, usize)> {
+        self.graph
+            .nodes
+            .iter()
+            .filter(|(owner, _)| **owner != needle)
+            .flat_map(|(&owner, node)| {
+                node_inputs(node)
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(move |(input, dependency)| {
+                        (dependency == needle).then_some((owner, input))
+                    })
+            })
+            .collect()
+    }
+
+    fn disconnect_graph_consumers(
+        &mut self,
+        consumers: &[(NodeId, usize)],
+        ids: &[NodeId],
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        for (&(owner, input), &unconnected) in consumers.iter().zip(ids) {
+            self.graph.nodes.insert(unconnected, Node::Unconnected);
             self.set_input(owner, input, unconnected);
             let Some(node) = snarl.node_ids().find_map(|(node, canvas)| {
                 (Self::mapping_id(*canvas) == Some(owner)).then_some(node)
@@ -1002,78 +981,6 @@ impl GraphViewer<'_> {
                 self.graph.nodes.remove(&needle);
             }
         }
-    }
-
-    fn remove_graph_node(
-        &mut self,
-        mapping_id: NodeId,
-        node: SnarlNodeId,
-        snarl: &mut Snarl<CanvasNode>,
-    ) -> bool {
-        let references = self.blocking_references_to(mapping_id);
-        if !references.is_empty() {
-            self.error = Some(format!(
-                "mapping node {mapping_id} is still used by {}",
-                references.join(", ")
-            ));
-            return false;
-        }
-        self.disconnect_graph_consumers(mapping_id, snarl);
-        graph_references::remove_bindings_to(self.root_scope, mapping_id);
-        let inputs = self
-            .graph
-            .nodes
-            .get(&mapping_id)
-            .map(node_inputs)
-            .unwrap_or_default();
-        self.graph.nodes.remove(&mapping_id);
-        snarl.remove_node(node);
-        for input in inputs {
-            self.remove_orphaned_input(input, snarl);
-        }
-        true
-    }
-
-    pub fn remove_snarl_nodes(
-        &mut self,
-        selected: &[SnarlNodeId],
-        snarl: &mut Snarl<CanvasNode>,
-    ) -> usize {
-        let mut pending = selected
-            .iter()
-            .filter_map(|&node| {
-                snarl
-                    .get_node(node)
-                    .and_then(|canvas| Self::mapping_id(*canvas))
-                    .map(|mapping| (mapping, node))
-            })
-            .collect::<std::collections::BTreeMap<_, _>>();
-        let mut removed = 0;
-        loop {
-            let removable = pending.iter().find_map(|(&mapping, &node)| {
-                self.blocking_references_to(mapping)
-                    .is_empty()
-                    .then_some((mapping, node))
-            });
-            let Some((mapping, node)) = removable else {
-                break;
-            };
-            if self.remove_graph_node(mapping, node, snarl) {
-                removed += 1;
-            }
-            pending.remove(&mapping);
-        }
-        if !pending.is_empty() {
-            let blocked = pending
-                .keys()
-                .map(|mapping| mapping.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            self.error = Some(format!(
-                "selected mapping node(s) {blocked} are still owned by a mapping control"
-            ));
-        }
-        removed
     }
 
     fn input_count(node: &Node) -> usize {
@@ -1824,9 +1731,19 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let mut new_call_arg_needed = false;
         let mut call_function_changed = false;
         let mut remove_call_wire = None;
-        let mut new_aggregate_arg_needed = false;
         let mut remove_aggregate_wire = None;
-        if let Some(node) = self.graph.nodes.get_mut(&node_id) {
+        let mut staged_node = self
+            .graph
+            .nodes
+            .get(&node_id)
+            .filter(|node| matches!(node, Node::Call { .. } | Node::Aggregate { .. }))
+            .cloned();
+        let node = if let Some(node) = staged_node.as_mut() {
+            Some(node)
+        } else {
+            self.graph.nodes.get_mut(&node_id)
+        };
+        if let Some(node) = node {
             match node {
                 Node::SourceField { path, frame } if !sequence_owners.is_empty() => {
                     graph_sequence_ownership::show(ui, &sequence_owners, path, frame.as_deref());
@@ -2157,12 +2074,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             });
                         },
                     );
-                    if previous != *function {
-                        if node_palette::aggregate_needs_arg(*function) && arg.is_none() {
-                            new_aggregate_arg_needed = true;
-                        } else if !node_palette::aggregate_needs_arg(*function) {
-                            remove_aggregate_wire = arg.take();
-                        }
+                    if previous != *function && !node_palette::aggregate_needs_arg(*function) {
+                        remove_aggregate_wire = arg.take();
                     }
                 }
                 Node::JoinAggregate {
@@ -2181,16 +2094,23 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
             }
         }
-        if call_function_changed {
-            self.ensure_call_minimum_inputs(node_id);
-        }
-        if new_call_arg_needed {
-            let new_id = self.fresh_unconnected();
-            if let Some(Node::Call { args, .. }) = self.graph.nodes.get_mut(&node_id) {
-                args.push(new_id);
+        let edit_committed = if let Some(node) = staged_node {
+            match self.commit_node_property_edit(
+                node_id,
+                node,
+                call_function_changed,
+                new_call_arg_needed,
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    self.error = Some(error);
+                    false
+                }
             }
-        }
-        if let Some((input_index, removed)) = remove_call_wire {
+        } else {
+            true
+        };
+        if edit_committed && let Some((input_index, removed)) = remove_call_wire {
             let input = InPinId {
                 node: pin.id.node,
                 input: input_index,
@@ -2201,13 +2121,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
             self.remove_orphaned_input(removed, snarl);
         }
-        if new_aggregate_arg_needed {
-            let new_id = self.fresh_unconnected();
-            if let Some(Node::Aggregate { arg, .. }) = self.graph.nodes.get_mut(&node_id) {
-                *arg = Some(new_id);
-            }
-        }
-        if let Some(removed) = remove_aggregate_wire {
+        if edit_committed && let Some(removed) = remove_aggregate_wire {
             let expression_input = self.graph.nodes.get(&node_id).is_some_and(|node| {
                 matches!(
                     node,
@@ -2388,8 +2302,21 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
             }
             (_, CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id)) => {
+                if self.input_at(to_id, to.id.input).is_none() {
+                    self.error = Some(format!(
+                        "input {} does not exist on mapping node {to_id}",
+                        to.id.input
+                    ));
+                    return;
+                }
+                let unconnected = match self.fresh_unconnected() {
+                    Ok(id) => id,
+                    Err(error) => {
+                        self.error = Some(error);
+                        return;
+                    }
+                };
                 snarl.disconnect(from.id, to.id);
-                let unconnected = self.fresh_unconnected();
                 self.set_input(to_id, to.id.input, unconnected);
                 if let Some(disconnected) = disconnected {
                     self.remove_orphaned_input(disconnected, snarl);
@@ -2410,7 +2337,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
 
     fn show_graph_menu(&mut self, pos: egui::Pos2, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) {
         if let Some(template) = node_palette::show(ui) {
-            self.insert_palette_node(snarl, pos, template);
+            self.error = self.insert_palette_node(snarl, pos, template).err();
             ui.close();
         }
     }
