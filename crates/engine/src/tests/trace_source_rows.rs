@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::path::Path;
 
@@ -14,6 +14,20 @@ struct Collector(RefCell<Vec<TraceEvent>>);
 impl TraceSink for Collector {
     fn record(&self, event: TraceEvent) {
         self.0.borrow_mut().push(event);
+    }
+}
+
+#[derive(Default)]
+struct DecliningRowCollector(RefCell<Vec<TraceEvent>>, Cell<usize>);
+
+impl TraceSink for DecliningRowCollector {
+    fn record(&self, event: TraceEvent) {
+        self.0.borrow_mut().push(event);
+    }
+
+    fn wants_source_row(&self) -> bool {
+        self.1.set(self.1.get() + 1);
+        false
     }
 }
 
@@ -91,6 +105,145 @@ fn source_row_previews_are_bounded_and_preserve_scalar_states() {
     assert!(scalar.truncated);
     assert_eq!(scalar.preview.len(), 512);
     assert_eq!(scalar.preview.chars().count(), 128);
+}
+
+#[test]
+fn structural_snapshots_preserve_nested_order_scalar_states_and_document_paths() {
+    let source = Instance::Group(vec![
+        (
+            "Nested".into(),
+            Instance::Group(vec![
+                (
+                    "Text".into(),
+                    Instance::Scalar(Value::String("café".into())),
+                ),
+                (
+                    "Items".into(),
+                    Instance::MappedSequence(vec![
+                        Instance::Scalar(Value::Null),
+                        Instance::Scalar(Value::json_null()),
+                        Instance::Scalar(Value::xml_nil()),
+                        Instance::Scalar(Value::Int(7)),
+                    ]),
+                ),
+            ]),
+        ),
+        (
+            "Documents".into(),
+            Instance::DocumentSet(vec![
+                DocumentMember::new_source(
+                    "one.xml",
+                    "/host/one.xml",
+                    Instance::Scalar(Value::Bool(true)),
+                )
+                .unwrap(),
+                DocumentMember::new("two.xml", Instance::Group(Vec::new())).unwrap(),
+            ]),
+        ),
+        (
+            "Repeated".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::Int(2))]),
+        ),
+    ]);
+    let row = TraceSourceRow::new(&source);
+    let tree = row.structure.unwrap();
+    assert_eq!(tree.kind, TraceOutputKind::Group);
+    assert_eq!(tree.children[0].name.as_deref(), Some("Nested"));
+    assert_eq!(
+        tree.children[0].children[0].value.as_ref().unwrap().preview,
+        "café"
+    );
+    let items = &tree.children[0].children[1];
+    assert_eq!(items.kind, TraceOutputKind::MappedSequence);
+    assert_eq!(
+        items
+            .children
+            .iter()
+            .map(|item| item.value.as_ref().unwrap().value_type)
+            .collect::<Vec<_>>(),
+        ["null", "json null", "xml nil", "int"]
+    );
+    assert!(items.children.iter().all(|item| item.name.is_none()));
+    let documents = &tree.children[1];
+    assert_eq!(documents.kind, TraceOutputKind::DocumentSet);
+    assert_eq!(
+        documents
+            .children
+            .iter()
+            .map(|item| item.name.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("one.xml"), Some("two.xml")]
+    );
+    assert_eq!(
+        documents.children[0].value.as_ref().unwrap().preview,
+        "true"
+    );
+    assert_eq!(tree.children[2].kind, TraceOutputKind::Repeated);
+    assert_eq!(
+        tree.children[2].children[0].value.as_ref().unwrap().preview,
+        "2"
+    );
+}
+
+#[test]
+fn structural_snapshots_bound_depth_nodes_children_and_shared_unicode_text() {
+    use crate::TraceSourceTree;
+
+    fn metrics(tree: &TraceSourceTree) -> (usize, usize, usize) {
+        let mut nodes = 1;
+        let mut bytes = tree.name.as_ref().map_or(0, String::len)
+            + tree.value.as_ref().map_or(0, |value| value.preview.len());
+        let mut depth = 0;
+        assert!(tree.children.len() <= 8);
+        for child in &tree.children {
+            let (child_nodes, child_bytes, child_depth) = metrics(child);
+            nodes += child_nodes;
+            bytes += child_bytes;
+            depth = depth.max(child_depth + 1);
+        }
+        (nodes, bytes, depth)
+    }
+    fn wide(depth: usize) -> Instance {
+        if depth == 0 {
+            return Instance::Scalar(Value::String("🦀".repeat(200)));
+        }
+        Instance::Group(
+            (0..10)
+                .map(|index| (format!("{index}{}", "é".repeat(100)), wide(depth - 1)))
+                .collect(),
+        )
+    }
+    let source = wide(3);
+    let tree = TraceSourceRow::new(&source).structure.unwrap();
+    let (nodes, bytes, depth) = metrics(&tree);
+    assert_eq!(nodes, 64);
+    assert!(bytes <= 512, "tree retained {bytes} bytes");
+    assert!(depth <= 8);
+    assert!(tree.omitted_children > 0);
+    assert!(tree.children[0].name_truncated);
+
+    let mut deep = Instance::Scalar(Value::String("unreachable".into()));
+    for _ in 0..32 {
+        deep = Instance::Group(vec![("Next".into(), deep)]);
+    }
+    let tree = TraceSourceRow::new(&deep).structure.unwrap();
+    assert_eq!(metrics(&tree).2, 8);
+    let mut last = &tree;
+    while let Some(child) = last.children.first() {
+        last = child;
+    }
+    assert!(last.depth_limited);
+    assert_eq!(last.omitted_children, 1);
+    assert!(last.value.is_none());
+
+    let flat = TraceSourceRow::new(&Instance::Group(vec![(
+        "Value".into(),
+        Instance::Scalar(Value::Int(1)),
+    )]));
+    assert!(
+        flat.structure.is_none(),
+        "flat legacy rows need no duplicate tree"
+    );
 }
 
 #[test]
@@ -203,6 +356,7 @@ fn source_candidates_include_rows_before_filters_and_sorting() -> Result<(), Box
             Some(expected_name)
         );
         assert_eq!(row.fields[2].kind, TraceOutputKind::Group);
+        assert!(row.structure.is_some(), "default sinks retain nested rows");
     }
     assert_eq!(candidates[1].1, 1);
     assert_eq!(
@@ -222,6 +376,27 @@ fn source_candidates_include_rows_before_filters_and_sorting() -> Result<(), Box
         candidates[2].0 < first_filter,
         "both raw candidates precede filtering"
     );
+
+    let declining = DecliningRowCollector::default();
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&declining);
+    assert_eq!(run_with_context(&project, &source, &execution)?, output);
+    assert_eq!(
+        declining.1.get(),
+        2,
+        "only source candidates probe capacity"
+    );
+    let cheap_events = declining.0.into_inner();
+    assert_eq!(cheap_events.len(), events.len());
+    assert!(
+        cheap_events
+            .iter()
+            .zip(&events)
+            .all(|(cheap, full)| { std::mem::discriminant(cheap) == std::mem::discriminant(full) })
+    );
+    assert!(cheap_events.iter().all(|event| match event {
+        TraceEvent::IterationCandidate { source_row, .. } => source_row.is_none(),
+        _ => true,
+    }));
     Ok(())
 }
 

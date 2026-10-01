@@ -79,6 +79,9 @@ pub struct PipelineRunOptions<'a> {
         Option<&'a PipelineStageFunctionFailureDebugCallback<'a>>,
     pub stage_source_field_probe: Option<&'a PipelineSourceFieldProbeCallback<'a>>,
     pub stage_trace_sink: Option<&'a PipelineStageTraceCallback<'a>>,
+    /// Optional capacity probe for constructing nested source-row snapshots.
+    /// Trace events still reach `stage_trace_sink` when this returns false.
+    pub stage_trace_source_row_capacity: Option<&'a dyn Fn() -> bool>,
     /// Called after every stage succeeds, before any selected output is staged.
     pub before_publish: Option<&'a dyn Fn() -> bool>,
 }
@@ -147,6 +150,11 @@ impl<'a> PipelineRunOptions<'a> {
 
     pub fn with_stage_trace_sink(mut self, sink: &'a PipelineStageTraceCallback<'a>) -> Self {
         self.stage_trace_sink = Some(sink);
+        self
+    }
+
+    pub fn with_stage_trace_source_row_capacity(mut self, capacity: &'a dyn Fn() -> bool) -> Self {
+        self.stage_trace_source_row_capacity = Some(capacity);
         self
     }
 
@@ -258,11 +266,16 @@ impl engine::DebugHook for StageDebugHook<'_> {
 pub(crate) struct StageTraceSink<'a> {
     pub(crate) stage: RefCell<String>,
     pub(crate) sink: &'a PipelineStageTraceCallback<'a>,
+    pub(crate) source_row_capacity: Option<&'a dyn Fn() -> bool>,
 }
 
 impl engine::TraceSink for StageTraceSink<'_> {
     fn record(&self, event: engine::TraceEvent) {
         (self.sink)(&self.stage.borrow(), event);
+    }
+
+    fn wants_source_row(&self) -> bool {
+        self.source_row_capacity.is_none_or(|capacity| capacity())
     }
 }
 
@@ -413,6 +426,7 @@ fn run_pipeline_value_with_options(
     let stage_trace_sink = options.stage_trace_sink.map(|sink| StageTraceSink {
         stage: RefCell::new(String::new()),
         sink,
+        source_row_capacity: options.stage_trace_source_row_capacity,
     });
     let results = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
         let mut execution = engine::ExecutionContext::with_main_mapping_file_path(

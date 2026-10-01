@@ -64,7 +64,7 @@ are preserved.
   The remaining design retains missing target and embedded string-parser JSON
   Schema provenance across best-effort export/re-import. All 175
   dependency-complete round trips remain engine-valid. Strict Ferrule native
-  export preflight now accepts 163 of 187 local designs. Direct `doc-xml`
+  export preflight now accepts 164 of 187 local designs. Direct `doc-xml`
   reconstruction, guarded SQLite `LIKE` controls, finite numeric input
   identity, a bounded Protobuf numeric UDF, canonical decimal-input
   reconstruction, two XML source-leaf pricing rules, guarded same-type SQLite
@@ -73,7 +73,7 @@ are preserved.
   recover native design structures across this work. The text-to-numeric SQL
   parameter in `Tutorial/select-component.mfd` remains unsupported.
   This is a static compatibility check, not reference-application acceptance. The
-  direct CLI resource profile has 168 warning-free imports and 156 designs with
+  direct CLI resource profile has 168 warning-free imports and 157 designs with
   both warning-free import and static export acceptance. The isolated execution
   profile below resolves its own resources and has 170 warning-free imports.
   The read-only design-preview profile attempts 168 safe-input designs and all
@@ -111,7 +111,7 @@ are preserved.
   remains unverified and the executable import profile rejects them. Cross-type
   dynamic SQL coercion remains unsupported. Missing imported filter predicates skip the dependent
   iteration with a diagnostic instead of producing unfiltered rows.
-- Generated Rust and C# hosts have compiled and executed forty warning-free
+- Generated Rust and C# hosts have compiled and executed forty-one warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -200,6 +200,10 @@ are preserved.
   XLSX sheet into a SQLite People table. Generated Rust and C# typed and JSON
   results agree with the interpreter, including exact nested JSON text that
   retains `25.0` as a floating value; decoded SQLite rows receive IDs 1–15.
+  Case forty-one reads a two-page PDF book catalog with 52 books. The native
+  PDF reader supplies schema-shaped JSON to both generated hosts; typed XML
+  and JSON string/byte results match the interpreter. The generated hosts do
+  not parse the PDF themselves.
   This small execution sample does not establish that all emitted survey
   designs execute equivalently.
 - File and export fidelity: project, pipeline, generated-schema, and PDF-layout
@@ -210,8 +214,10 @@ are preserved.
   tabs, and line breaks. Native-shaped direct PDF captures, one named page
   group, and a guarded vertical-boundary/painted-edge row layout are checked
   against the bounded local parser. The annual temperature PDF retains identical
-  extraction and 148 CSV rows through strict export/reimport. Unsupported
-  splitter search and skip controls reject explicitly. Complex templates retain a lossless Ferrule
+  extraction and 148 CSV rows through strict export/reimport. A two-page
+  independent merge also retains extraction and XML for 52 books through two
+  strict cycles. Unsupported splitter search/skip controls and narrowed unnamed
+  group regions reject explicitly. Complex templates retain a lossless Ferrule
   payload and report `pdf_layout` instead of claiming native compatibility.
   JSON Schema import shares reference, expanded-depth, and cumulative work
   limits across ordinary trees and private predicates.
@@ -696,8 +702,12 @@ those events with node outputs and shows bounded
 source-row previews before filters and sorting. Retained trace rows,
 node-history occurrences, and selected source-row details
 can jump directly to the same event in Replay, even after report filtering.
-Remaining connector classes, full context/row inspection, navigable validation
-focus, and richer expression/context breakpoint predicates remain.
+Source-row details and Replay also inspect bounded nested records, ordered
+collection items, and portable document paths, with explicit omissions and
+stage-aware nested-value search. Validation diagnostics can focus their typed
+graph, function, schema, scope, endpoint, or failure-rule owner; stale snapshots
+require revalidation. Remaining connector classes, full active-context
+inspection, and richer expression/context breakpoint predicates remain.
 
 #### B4. Shared Native and Browser Editor
 

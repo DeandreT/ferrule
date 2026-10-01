@@ -41,8 +41,8 @@ pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
 pub use engine::{
     RequiredTargetSources, TargetSelection, TraceEvent, TraceFilterPhase, TraceGrouping,
     TraceIteration, TraceOutputKind, TracePosition, TraceScope, TraceSink, TraceSortKey,
-    TraceSourceField, TraceSourceRow, TraceTarget, TraceTargetFieldBinding, TraceValue,
-    TraceWindow, required_sources_for_target,
+    TraceSourceField, TraceSourceRow, TraceSourceTree, TraceTarget, TraceTargetFieldBinding,
+    TraceValue, TraceWindow, required_sources_for_target,
 };
 use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 pub use payload::{
