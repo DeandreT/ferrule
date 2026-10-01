@@ -20,13 +20,15 @@ internal static partial class FerruleScalarRegex
 
     internal static Regex Compile(string source, RegexOptions options, out int[] captureGroups)
     {
+        if (new Translator(source, options).ContainsExplicitUnicode())
+        { throw Invalid("explicit Unicode mode requires the scalar matcher"); }
         var translator = new Translator(source, options);
         // A neutral line-anchor alternative establishes the host's newline context.
         // Without it, NonBacktracking loses a final LF for large scalar sets.
         var translated = translator.Translate();
-        if (translator.HasSpecialWordAssertion)
+        if (translator.HasSpecialWordAssertion || translator.HasExplicitUnicode)
         {
-            throw Invalid("special word assertions require the scalar matcher");
+            throw Invalid("special word assertions and explicit Unicode mode require the scalar matcher");
         }
         var regex = new Regex("(?m:^|)(?:" + translated + ")", options);
         captureGroups = translator.CaptureGroups(regex);
@@ -131,6 +133,18 @@ internal static partial class FerruleScalarRegex
         }
 
         internal ScalarSet Complement() => All.Except(this);
+
+        internal ScalarSet FoldAsciiCase()
+        {
+            var ranges = new List<Range>(Ranges);
+            for (var upper = (int)'A'; upper <= 'Z'; upper++)
+            {
+                var lower = upper + ('a' - 'A');
+                if (Contains(upper)) { ranges.Add(new Range(lower, lower)); }
+                if (Contains(lower)) { ranges.Add(new Range(upper, upper)); }
+            }
+            return new ScalarSet(ranges);
+        }
 
         internal ScalarSet FoldCase()
         {
@@ -394,7 +408,7 @@ internal static partial class FerruleScalarRegex
             ["word"] = new(new[] { new Range('0', '9'), new Range('A', 'Z'), new Range('_', '_'), new Range('a', 'z') }),
             ["xdigit"] = new(new[] { new Range('0', '9'), new Range('A', 'F'), new Range('a', 'f') }),
         };
-    private static readonly ConcurrentDictionary<(string Name, bool Folded, bool Complemented), ScalarSet> ModifiedAsciiClasses = new();
+    private static readonly ConcurrentDictionary<(string Name, bool Folded, bool Complemented, bool Unicode), ScalarSet> ModifiedAsciiClasses = new();
 
     private static string Atom(ScalarSet set)
     {
@@ -438,10 +452,10 @@ internal static partial class FerruleScalarRegex
     {
         private readonly string _source;
         private readonly StringBuilder _output = new();
-        private readonly Stack<(RegexOptions Options, int Start)> _groups = new();
+        private readonly Stack<(RegexOptions Options, bool Unicode, int Start)> _groups = new();
         private readonly Dictionary<int, int> _repeatPrefixes = new();
-        private readonly Dictionary<(string Source, bool IgnoreCase, bool IgnoreWhitespace), string> _classes = new();
-        private readonly Dictionary<(int Scalar, bool IgnoreCase), string> _literals = new();
+        private readonly Dictionary<(string Source, bool IgnoreCase, bool IgnoreWhitespace, bool Unicode), string> _classes = new();
+        private readonly Dictionary<(int Scalar, bool IgnoreCase, bool Unicode), string> _literals = new();
         private readonly List<(int AnonymousIndex, string? Name)> _captures = new();
         private readonly HashSet<string> _captureNames = new(StringComparer.Ordinal);
         private readonly HashSet<string> _pythonCaptureNames = new(StringComparer.Ordinal);
@@ -453,6 +467,12 @@ internal static partial class FerruleScalarRegex
         private int _deferredCharacters;
         private const int MaximumRepeatWrappers = 256;
         private RegexOptions _options;
+        private bool _unicode = true;
+        private bool _hasExplicitUnicode;
+        private readonly bool _strictUnicodeProfile;
+        internal bool HasExplicitUnicode => _hasExplicitUnicode;
+        private int _lastClassSyntaxHeight;
+        private int _lastUnionSyntaxHeight;
         private int _index;
         private bool _hasWordBoundary;
         internal bool HasWordBoundary => _hasWordBoundary;
@@ -461,8 +481,13 @@ internal static partial class FerruleScalarRegex
         private bool _hasConsecutiveRepetition;
         internal bool HasConsecutiveRepetition => _hasConsecutiveRepetition;
         private long _classWork;
+        private bool _hasUnboundedRepetition;
+        private bool _captureRoutingEligible = true;
+        internal bool CanProbeNullableCaptures => _captureRoutingEligible
+            && _captures.Count != 0 && _hasUnboundedRepetition;
 
-        internal Translator(string source, RegexOptions options) { _source = source; _options = options; }
+        internal Translator(string source, RegexOptions options, bool strictUnicodeProfile = false)
+        { _source = source; _options = options; _strictUnicodeProfile = strictUnicodeProfile; }
         private bool IgnoreCase => (_options & RegexOptions.IgnoreCase) != 0;
 
         internal int[] CaptureGroups(Regex regex) => new[] { 0 }.Concat(_captures.Select(capture =>
@@ -476,6 +501,7 @@ internal static partial class FerruleScalarRegex
         private string HostCaptureName(string name, bool python)
         {
             var portable = PortableCaptureName(name);
+            if (!portable) { _captureRoutingEligible = false; }
             if (python && !portable) { throw Invalid("invalid Python capture name"); }
             if (!_captureNames.Add(name) && (python || _pythonCaptureNames.Contains(name)))
             {
@@ -527,17 +553,18 @@ internal static partial class FerruleScalarRegex
                         _index++; Append(")");
                         if (_groups.TryPop(out var previous))
                         {
-                            _options = previous.Options; closingStart = previous.Start;
+                            _options = previous.Options; _unicode = previous.Unicode; closingStart = previous.Start;
                         }
                         Operand(closingStart); break;
                     case '[':
                         var start = _index;
                         var set = Class(0);
                         var key = (_source[start.._index], IgnoreCase,
-                            (_options & RegexOptions.IgnorePatternWhitespace) != 0);
+                            (_options & RegexOptions.IgnorePatternWhitespace) != 0, _unicode);
                         if (!_classes.TryGetValue(key, out var atom)) { atom = Atom(set); _classes.Add(key, atom); }
                         Operand(_output.Length); Append(atom); break;
                     case '.':
+                        if (!_unicode) { throw Invalid("Unicode-disabled dot can match invalid UTF-8"); }
                         Operand(_output.Length);
                         _index++; Append(Atom((_options & RegexOptions.Singleline) != 0
                             ? ScalarSet.All : ScalarSet.All.Except(ScalarSet.Between('\n', '\n')))); break;
@@ -605,11 +632,12 @@ internal static partial class FerruleScalarRegex
 
         private string Literal(int scalar)
         {
-            var key = (scalar, IgnoreCase);
+            var key = (scalar, IgnoreCase, _unicode);
             if (!_literals.TryGetValue(key, out var atom))
             {
                 var set = ScalarSet.Between(scalar, scalar);
-                if (IgnoreCase && CaseTables.Value.ByScalar.TryGetValue(scalar, out var group))
+                if (IgnoreCase && !_unicode) { set = set.FoldAsciiCase(); }
+                else if (IgnoreCase && CaseTables.Value.ByScalar.TryGetValue(scalar, out var group))
                 {
                     set = new ScalarSet(group.Select(value => new Range(value, value)));
                 }
@@ -624,53 +652,43 @@ internal static partial class FerruleScalarRegex
             var outputStart = _output.Length;
             if (_index == _source.Length || _source[_index] != '?')
             {
-                _groups.Push((_options, outputStart));
+                _groups.Push((_options, _unicode, outputStart));
                 if ((_options & RegexOptions.ExplicitCapture) == 0) { Capture(); }
                 Append("("); NoOperand(); return;
             }
             _index++;
             if (_index < _source.Length && _source[_index] == '#')
             {
+                _captureRoutingEligible = false;
                 while (_index < _source.Length && _source[_index] != ')') { _index++; }
                 if (_index < _source.Length) { _index++; }
                 Append(_source[start.._index]); return;
             }
-            var updated = _options;
-            var enabled = true;
-            var hasFlag = false;
-            while (_index < _source.Length)
+            if (ReadFlags(out var updated, out var unicode, out var scoped, out var hostFlags))
             {
-                var flag = _source[_index];
-                if (flag == '-') { enabled = false; _index++; continue; }
-                var option = flag switch {
-                    'i' => RegexOptions.IgnoreCase, 'm' => RegexOptions.Multiline, 's' => RegexOptions.Singleline,
-                    'x' => RegexOptions.IgnorePatternWhitespace, 'n' => RegexOptions.ExplicitCapture,
-                    _ => RegexOptions.None,
-                };
-                if (option == RegexOptions.None) { break; }
-                hasFlag = true; updated = enabled ? updated | option : updated & ~option; _index++;
-            }
-            if (hasFlag && _index < _source.Length && _source[_index] is ':' or ')')
-            {
-                if (_source[_index] == ':') { _groups.Push((_options, outputStart)); }
-                _options = updated; _index++; Append(_source[start.._index]); NoOperand(); return;
+                if (hostFlags.Contains('n')) { _captureRoutingEligible = false; }
+                if (scoped) { _groups.Push((_options, _unicode, outputStart)); }
+                _options = updated; _unicode = unicode;
+                Append(scoped ? "(?" + hostFlags + ":" : hostFlags.Length == 0 ? string.Empty : "(?" + hostFlags + ")");
+                NoOperand(); return;
             }
             _index = start + 2;
             // Rust/Python named captures share the host angle-bracket header.
             if (_index + 1 < _source.Length && _source[_index] == 'P' && _source[_index + 1] == '<')
             {
-                _groups.Push((_options, outputStart)); _index += 2;
+                _groups.Push((_options, _unicode, outputStart)); _index += 2;
                 var nameStart = _index;
                 while (_index < _source.Length && _source[_index] != '>') { _index++; }
                 if (_index == _source.Length) { throw Invalid("unterminated capture name"); }
                 var name = HostCaptureName(_source[nameStart.._index++], true);
                 Append("(?<" + name + ">"); NoOperand(); return;
             }
-            _groups.Push((_options, outputStart));
+            _groups.Push((_options, _unicode, outputStart));
             if (_index < _source.Length && _source[_index] is ':' or '=' or '!' or '>') { _index++; }
             else if (_index < _source.Length && _source[_index] is '<' or '\'')
             {
                 var closer = _source[_index++] == '<' ? '>' : '\'';
+                if (closer == '\'') { _captureRoutingEligible = false; }
                 if (_index < _source.Length && _source[_index] is '=' or '!') { _index++; }
                 else
                 {
@@ -705,6 +723,7 @@ internal static partial class FerruleScalarRegex
         {
             if (!_hasOperand) { throw Invalid("repetition quantifier has no operand"); }
             var repetition = ReadRepetition();
+            _hasUnboundedRepetition |= !repetition.Maximum.HasValue;
             if (_hasRepetition)
             {
                 _hasConsecutiveRepetition = true;
@@ -780,68 +799,23 @@ internal static partial class FerruleScalarRegex
             return value;
         }
 
-        private bool TryReadWordAssertion(out BoundaryAssertion assertion)
-        {
-            assertion = default;
-            if (_index + 1 >= _source.Length || _source[_index] != '\\') { return false; }
-            var escape = _source[_index + 1];
-            switch (escape)
-            {
-                case 'b': assertion = BoundaryAssertion.Word; break;
-                case 'B': assertion = BoundaryAssertion.NotWord; break;
-                case '<': assertion = BoundaryAssertion.WordStart; break;
-                case '>': assertion = BoundaryAssertion.WordEnd; break;
-                default: return false;
-            }
-            _index += 2;
-            // Only an immediately adjacent brace can name a special assertion.
-            // Ignored x whitespace/comments are allowed inside that brace.
-            if (escape != 'b' || _index == _source.Length || _source[_index] != '{') { return true; }
-            var brace = _index++;
-            SkipIgnored();
-            if (_index == _source.Length) { throw Invalid("unterminated special word assertion"); }
-            static bool NameCharacter(char value) => value is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '-';
-            if (!NameCharacter(_source[_index]))
-            {
-                // Numeric braces belong to the ordinary repetition reader.
-                _index = brace; return true;
-            }
-            var name = new StringBuilder(10);
-            while (_index < _source.Length && NameCharacter(_source[_index]))
-            {
-                if (name.Length == 10) { throw Invalid("unrecognized special word assertion"); }
-                name.Append(_source[_index++]); SkipIgnored();
-            }
-            if (_index == _source.Length || _source[_index++] != '}')
-            {
-                throw Invalid("unterminated special word assertion");
-            }
-            assertion = name.ToString() switch {
-                "start" => BoundaryAssertion.WordStart,
-                "end" => BoundaryAssertion.WordEnd,
-                "start-half" => BoundaryAssertion.WordStartHalf,
-                "end-half" => BoundaryAssertion.WordEndHalf,
-                _ => throw Invalid("unrecognized special word assertion"),
-            };
-            return true;
-        }
-
         private void EscapeOutside()
         {
             if (TryReadWordAssertion(out var assertion))
             {
                 _hasWordBoundary = true;
-                _hasSpecialWordAssertion |= assertion is not (BoundaryAssertion.Word or BoundaryAssertion.NotWord);
+                _hasSpecialWordAssertion |= assertion is not (BoundaryAssertion.Word or BoundaryAssertion.NotWord or BoundaryAssertion.AsciiWord or BoundaryAssertion.AsciiNotWord);
                 // Public execution uses the original source in the scalar VM.
                 // This bounded marker retains operand/capture offsets during
                 // lowering; Compile rejects special markers before host use.
-                Append(assertion == BoundaryAssertion.NotWord ? @"\B" : @"\b"); return;
+                Append(assertion is BoundaryAssertion.NotWord or BoundaryAssertion.AsciiNotWord ? @"\B" : @"\b"); return;
             }
             var start = _index++;
             if (_index >= _source.Length) { throw Invalid("trailing backslash"); }
             var escape = _source[_index];
             if (escape is 'A' or 'Z' or 'z' or 'G' or 'k' or >= '1' and <= '9')
             {
+                if (escape is not ('A' or 'z')) { _captureRoutingEligible = false; }
                 _index++;
                 if (escape is >= '1' and <= '9')
                 {
@@ -850,26 +824,41 @@ internal static partial class FerruleScalarRegex
                 Append(_source[start.._index]); return;
             }
             _index = start;
-            var item = ClassItem();
+            var item = ClassItem(false);
             Append(item.Scalar.HasValue ? Literal(item.Scalar.Value) : Atom(item.Set));
         }
 
         private readonly record struct Item(ScalarSet Set, int? Scalar);
 
-        private Item ClassItem()
+        private Item ClassItem(bool inClass = true)
         {
             if (_index >= _source.Length) { throw Invalid("missing class item"); }
             if (_source[_index] != '\\')
             {
-                var scalar = ReadScalar(); return new Item(ScalarSet.Between(scalar, scalar), scalar);
+                var scalar = ReadScalar();
+                if (!_unicode && inClass && scalar > 0x7F) { throw Invalid("Unicode-disabled class contains a non-ASCII scalar"); }
+                return new Item(ScalarSet.Between(scalar, scalar), scalar);
             }
             _index++;
             if (_index >= _source.Length) { throw Invalid("trailing backslash"); }
             var kind = _source[_index++];
-            if (kind is 'd' or 'D' or 's' or 'S' or 'w' or 'W') { return new Item(Shorthand(kind), null); }
+            if (kind is 'd' or 'D' or 's' or 'S' or 'w' or 'W')
+            {
+                if (_unicode) { return new Item(Shorthand(kind), null); }
+                var name = kind switch { 'd' => "digit", 's' => "space", 'w' => "word", _ => null };
+                if (name is null) { throw Invalid("Unicode-disabled complement can match invalid UTF-8"); }
+                return new Item(AsciiClasses[name], null);
+            }
             if (kind is 'p' or 'P')
             {
+                if (!_unicode) { throw Invalid("Unicode properties require Unicode mode"); }
                 var query = PropertyQuery(ReadPropertyName(), kind == 'P');
+                if (query.Name is not ("Any" or "ASCII" or "Assigned") && !CategoryNames.ContainsKey(query.Name))
+                {
+                    _captureRoutingEligible = false;
+                }
+                if (_strictUnicodeProfile && !CategoryNames.ContainsKey(query.Name) && query.Name is not ("Any" or "ASCII" or "Assigned"))
+                { throw Invalid("unsupported Unicode property in the explicit Unicode profile"); }
                 var key = (query.Name, IgnoreCase, query.Complemented);
                 var set = ModifiedProperties.GetOrAdd(key, static key => {
                     var value = Property(key.Name);
@@ -878,6 +867,11 @@ internal static partial class FerruleScalarRegex
                 });
                 return new Item(set, null);
             }
+            if (_strictUnicodeProfile && (kind is 'e' or 'c' or >= '0' and <= '9' || kind > 0x7F
+                || inClass && kind is 'b' or '<' or '>'))
+            { throw Invalid("host-only class or scalar escape in the explicit Unicode profile"); }
+            if (kind is 'b' or 'c' or 'e' or >= '0' and <= '7' || inClass && kind is '<' or '>')
+            { _captureRoutingEligible = false; }
             var scalarValue = kind switch {
                 'a' => 7, 'b' => 8, 'e' => 27, 'f' => 12, 'n' => 10, 'r' => 13, 't' => 9, 'v' => 11,
                 'x' or 'u' or 'U' => EscapedHex(kind), 'c' => Control(),
@@ -886,6 +880,7 @@ internal static partial class FerruleScalarRegex
                 _ => throw Invalid("unrecognized escape"),
             };
             if (!Rune.IsValid(scalarValue)) { throw Invalid("escape is not a Unicode scalar"); }
+            if (!_unicode && inClass && scalarValue > 0x7F) { throw Invalid("Unicode-disabled class contains a non-ASCII scalar"); }
             return new Item(ScalarSet.Between(scalarValue, scalarValue), scalarValue);
         }
 
@@ -924,10 +919,11 @@ internal static partial class FerruleScalarRegex
             var name = _source[start..next];
             if (!AsciiClasses.ContainsKey(name)) { return null; }
             _index = next + 2;
+            if (!_unicode && complemented) { throw Invalid("Unicode-disabled POSIX complement can match invalid UTF-8"); }
             ClassWork(1);
-            return ModifiedAsciiClasses.GetOrAdd((name, IgnoreCase, complemented), static key => {
+            return ModifiedAsciiClasses.GetOrAdd((name, IgnoreCase, complemented, _unicode), static key => {
                 var set = AsciiClasses[key.Name];
-                if (key.Folded) { set = set.FoldCase(); }
+                if (key.Folded) { set = key.Unicode ? set.FoldCase() : set.FoldAsciiCase(); }
                 return key.Complemented ? set.Complement() : set;
             });
         }
@@ -947,11 +943,26 @@ internal static partial class FerruleScalarRegex
             ClassWork(1);
             _index++; SkipIgnored();
             var complemented = _index < _source.Length && _source[_index] == '^';
-            if (complemented) { _index++; SkipIgnored(); }
+            if (complemented)
+            {
+                if (!_unicode) { throw Invalid("Unicode-disabled class complement can match invalid UTF-8"); }
+                _index++; SkipIgnored();
+            }
             var scalarRanges = new List<Range>();
             var composites = new HashSet<ScalarSet>();
+            var unionItems = 0;
+            var unionHeight = 0;
+            var accumulatedHeight = 0;
+            void SyntaxItem(int height = 0) { unionItems++; unionHeight = Math.Max(unionHeight, height); }
+            void SyntaxCheck(int height)
+            {
+                if (_strictUnicodeProfile && height > 250) { throw Invalid("explicit Unicode regex exceeds the Rust syntax nesting limit"); }
+            }
             ScalarSet TakeUnion()
             {
+                _lastUnionSyntaxHeight = unionHeight + (unionItems > 1 ? 1 : 0);
+                SyntaxCheck(_lastUnionSyntaxHeight);
+                unionItems = 0; unionHeight = 0;
                 var count = scalarRanges.Count + composites.Sum(item => item.Ranges.Length);
                 // Charge the normalization sort and scalar-fold membership work
                 // before allocating the combined interval set.
@@ -959,9 +970,13 @@ internal static partial class FerruleScalarRegex
                 var scalars = new ScalarSet(scalarRanges);
                 if (IgnoreCase && scalars.Ranges.Length != 0)
                 {
-                    ClassWork(CaseTables.Value.Groups.Sum(group => (long)group.Length)
-                        * (1 + (int)Math.Log2(Math.Max(scalars.Ranges.Length, 1))));
-                    scalars = scalars.FoldCase();
+                    if (_unicode)
+                    {
+                        ClassWork(CaseTables.Value.Groups.Sum(group => (long)group.Length)
+                            * (1 + (int)Math.Log2(Math.Max(scalars.Ranges.Length, 1))));
+                        scalars = scalars.FoldCase();
+                    }
+                    else { ClassWork(26); scalars = scalars.FoldAsciiCase(); }
                 }
                 var combined = new ScalarSet(scalars.Ranges.Concat(composites.SelectMany(item => item.Ranges)));
                 scalarRanges.Clear(); composites.Clear();
@@ -979,11 +994,11 @@ internal static partial class FerruleScalarRegex
             // Rust treats opening dashes and the first closing bracket literally.
             while (_index < _source.Length && _source[_index] == '-')
             {
-                scalarRanges.Add(new Range('-', '-')); _index++; SkipIgnored(); ClassWork(1);
+                scalarRanges.Add(new Range('-', '-')); SyntaxItem(); _index++; SkipIgnored(); ClassWork(1);
             }
             if (scalarRanges.Count == 0 && _index < _source.Length && _source[_index] == ']')
             {
-                scalarRanges.Add(new Range(']', ']')); _index++; SkipIgnored();
+                scalarRanges.Add(new Range(']', ']')); SyntaxItem(); _index++; SkipIgnored();
             }
             ScalarSet? accumulated = null;
             var operation = '\0';
@@ -997,6 +1012,8 @@ internal static partial class FerruleScalarRegex
                     _index++;
                     var finalUnion = TakeUnion();
                     var result = accumulated is null ? finalUnion : Apply(accumulated, finalUnion, operation);
+                    _lastClassSyntaxHeight = 1 + (accumulated is null ? _lastUnionSyntaxHeight : 1 + Math.Max(accumulatedHeight, _lastUnionSyntaxHeight));
+                    SyntaxCheck(_lastClassSyntaxHeight);
                     return complemented ? result.Complement() : result;
                 }
                 if (_index + 1 < _source.Length && _source[_index] is '&' or '-' or '~'
@@ -1004,16 +1021,19 @@ internal static partial class FerruleScalarRegex
                 {
                     var next = _source[_index]; _index += 2;
                     var union = TakeUnion();
+                    accumulatedHeight = accumulated is null ? _lastUnionSyntaxHeight : 1 + Math.Max(accumulatedHeight, _lastUnionSyntaxHeight);
+                    SyntaxCheck(accumulatedHeight);
                     accumulated = accumulated is null ? union : Apply(accumulated, union, operation);
                     operation = next; continue;
                 }
                 // Retain the previously accepted single-dash host subtraction.
-                if (_source[_index] == '-' && (accumulated is not null || scalarRanges.Count != 0 || composites.Count != 0))
+                if (!_strictUnicodeProfile && _source[_index] == '-' && (accumulated is not null || scalarRanges.Count != 0 || composites.Count != 0))
                 {
                     var dash = _index++;
                     SkipIgnored();
                     if (_index < _source.Length && _source[_index] == '[')
                     {
+                        _captureRoutingEligible = false;
                         var excluded = Class(depth + 1);
                         SkipIgnored();
                         if (_index == _source.Length || _source[_index++] != ']') { throw Invalid("subtraction must end the class"); }
@@ -1026,7 +1046,10 @@ internal static partial class FerruleScalarRegex
                 }
                 if (_source[_index] == '[')
                 {
-                    composites.Add(AsciiClass() ?? Class(depth + 1)); continue;
+                    var ascii = AsciiClass();
+                    var nested = ascii ?? Class(depth + 1);
+                    SyntaxItem(ascii is null ? _lastClassSyntaxHeight : 0);
+                    composites.Add(nested); continue;
                 }
                 var item = ClassItem();
                 SkipIgnored();
@@ -1034,15 +1057,18 @@ internal static partial class FerruleScalarRegex
                 {
                     var dash = _index++;
                     SkipIgnored();
+                    if (_strictUnicodeProfile && _index < _source.Length && _source[_index] == '[')
+                    { throw Invalid("class range endpoint cannot be a nested class"); }
                     if (_index < _source.Length && _source[_index] is not (']' or '[' or '-'))
                     {
                         var last = ClassItem();
                         if (!item.Scalar.HasValue || !last.Scalar.HasValue) { throw Invalid("range endpoints must be scalars"); }
                         scalarRanges.AddRange(ScalarSet.Between(item.Scalar.Value, last.Scalar.Value).Ranges);
-                        continue;
+                        SyntaxItem(); continue;
                     }
                     _index = dash;
                 }
+                SyntaxItem();
                 if (item.Scalar.HasValue) { scalarRanges.AddRange(item.Set.Ranges); }
                 else { composites.Add(item.Set); }
             }
@@ -1059,7 +1085,9 @@ internal static partial class FerruleScalarRegex
         {
             SkipIgnored();
             if (_index < _source.Length && _source[_index] == '{') { return BracedScalar(); }
-            return kind switch { 'x' => Hex(2), 'u' => HexScalar(), _ => Hex(8) };
+            var value = kind switch { 'x' => Hex(2), 'u' => HexScalar(), _ => Hex(8) };
+            if (!_unicode && kind == 'x' && value > 0x7F) { throw Invalid("Unicode-disabled byte escape can match invalid UTF-8"); }
+            return value;
         }
 
         private int BracedScalar()
@@ -1088,8 +1116,10 @@ internal static partial class FerruleScalarRegex
         private int HexScalar()
         {
             var value = Hex(4);
+            if (_strictUnicodeProfile && !Rune.IsValid(value)) { throw Invalid("escape is not a Unicode scalar"); }
             if (value is >= 0xD800 and <= 0xDBFF)
             {
+                _captureRoutingEligible = false;
                 if (_index + 2 > _source.Length || _source[_index] != '\\' || _source[_index + 1] != 'u')
                 {
                     throw Invalid("isolated surrogate escape");
