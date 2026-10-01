@@ -20,13 +20,17 @@ internal static partial class FerruleScalarRegex
 
     internal static Regex Compile(string source, RegexOptions options, out int[] captureGroups)
     {
-        if (new Translator(source, options).ContainsExplicitUnicode())
-        { throw Invalid("explicit Unicode mode requires the scalar matcher"); }
+        var detector = new Translator(source, options);
+        if (detector.ContainsExplicitScalarFlags())
+        { throw Invalid(detector.HasExplicitCrlf
+            ? "explicit CRLF mode requires the scalar matcher"
+            : detector.HasExplicitUngreedy ? "explicit ungreedy mode requires the scalar matcher"
+            : "explicit Unicode mode requires the scalar matcher"); }
         var translator = new Translator(source, options);
         // A neutral line-anchor alternative establishes the host's newline context.
         // Without it, NonBacktracking loses a final LF for large scalar sets.
         var translated = translator.Translate();
-        if (translator.HasSpecialWordAssertion || translator.HasExplicitUnicode)
+        if (translator.HasSpecialWordAssertion || translator.HasExplicitUnicode || translator.HasExplicitUngreedy || translator.HasExplicitCrlf)
         {
             throw Invalid("special word assertions and explicit Unicode mode require the scalar matcher");
         }
@@ -452,7 +456,7 @@ internal static partial class FerruleScalarRegex
     {
         private readonly string _source;
         private readonly StringBuilder _output = new();
-        private readonly Stack<(RegexOptions Options, bool Unicode, int Start)> _groups = new();
+        private readonly Stack<(RegexOptions Options, bool Unicode, bool Ungreedy, bool Crlf, int Start)> _groups = new();
         private readonly Dictionary<int, int> _repeatPrefixes = new();
         private readonly Dictionary<(string Source, bool IgnoreCase, bool IgnoreWhitespace, bool Unicode), string> _classes = new();
         private readonly Dictionary<(int Scalar, bool IgnoreCase, bool Unicode), string> _literals = new();
@@ -468,6 +472,12 @@ internal static partial class FerruleScalarRegex
         private const int MaximumRepeatWrappers = 256;
         private RegexOptions _options;
         private bool _unicode = true;
+        private bool _ungreedy;
+        private bool _crlf;
+        private bool _hasExplicitCrlf;
+        internal bool HasExplicitCrlf => _hasExplicitCrlf;
+        private bool _hasExplicitUngreedy;
+        internal bool HasExplicitUngreedy => _hasExplicitUngreedy;
         private bool _hasExplicitUnicode;
         private readonly bool _strictUnicodeProfile;
         internal bool HasExplicitUnicode => _hasExplicitUnicode;
@@ -553,7 +563,8 @@ internal static partial class FerruleScalarRegex
                         _index++; Append(")");
                         if (_groups.TryPop(out var previous))
                         {
-                            _options = previous.Options; _unicode = previous.Unicode; closingStart = previous.Start;
+                            _options = previous.Options; _unicode = previous.Unicode; _ungreedy = previous.Ungreedy; _crlf = previous.Crlf;
+                            closingStart = previous.Start;
                         }
                         Operand(closingStart); break;
                     case '[':
@@ -566,8 +577,7 @@ internal static partial class FerruleScalarRegex
                     case '.':
                         if (!_unicode) { throw Invalid("Unicode-disabled dot can match invalid UTF-8"); }
                         Operand(_output.Length);
-                        _index++; Append(Atom((_options & RegexOptions.Singleline) != 0
-                            ? ScalarSet.All : ScalarSet.All.Except(ScalarSet.Between('\n', '\n')))); break;
+                        _index++; Append(Atom(DotSet())); break;
                     case '$':
                         Operand(_output.Length);
                         _index++; Append((_options & RegexOptions.Multiline) != 0 ? "$" : @"\z"); break;
@@ -652,7 +662,7 @@ internal static partial class FerruleScalarRegex
             var outputStart = _output.Length;
             if (_index == _source.Length || _source[_index] != '?')
             {
-                _groups.Push((_options, _unicode, outputStart));
+                _groups.Push((_options, _unicode, _ungreedy, _crlf, outputStart));
                 if ((_options & RegexOptions.ExplicitCapture) == 0) { Capture(); }
                 Append("("); NoOperand(); return;
             }
@@ -664,11 +674,11 @@ internal static partial class FerruleScalarRegex
                 if (_index < _source.Length) { _index++; }
                 Append(_source[start.._index]); return;
             }
-            if (ReadFlags(out var updated, out var unicode, out var scoped, out var hostFlags))
+            if (ReadFlags(out var updated, out var unicode, out var ungreedy, out var crlf, out var scoped, out var hostFlags))
             {
                 if (hostFlags.Contains('n')) { _captureRoutingEligible = false; }
-                if (scoped) { _groups.Push((_options, _unicode, outputStart)); }
-                _options = updated; _unicode = unicode;
+                if (scoped) { _groups.Push((_options, _unicode, _ungreedy, _crlf, outputStart)); }
+                _options = updated; _unicode = unicode; _ungreedy = ungreedy; _crlf = crlf;
                 Append(scoped ? "(?" + hostFlags + ":" : hostFlags.Length == 0 ? string.Empty : "(?" + hostFlags + ")");
                 NoOperand(); return;
             }
@@ -676,14 +686,14 @@ internal static partial class FerruleScalarRegex
             // Rust/Python named captures share the host angle-bracket header.
             if (_index + 1 < _source.Length && _source[_index] == 'P' && _source[_index + 1] == '<')
             {
-                _groups.Push((_options, _unicode, outputStart)); _index += 2;
+                _groups.Push((_options, _unicode, _ungreedy, _crlf, outputStart)); _index += 2;
                 var nameStart = _index;
                 while (_index < _source.Length && _source[_index] != '>') { _index++; }
                 if (_index == _source.Length) { throw Invalid("unterminated capture name"); }
                 var name = HostCaptureName(_source[nameStart.._index++], true);
                 Append("(?<" + name + ">"); NoOperand(); return;
             }
-            _groups.Push((_options, _unicode, outputStart));
+            _groups.Push((_options, _unicode, _ungreedy, _crlf, outputStart));
             if (_index < _source.Length && _source[_index] is ':' or '=' or '!' or '>') { _index++; }
             else if (_index < _source.Length && _source[_index] is '<' or '\'')
             {
@@ -776,8 +786,12 @@ internal static partial class FerruleScalarRegex
             SkipIgnored();
             // One question mark is this repetition's lazy suffix. A later
             // quantifier repeats the entire resulting expression, including it.
-            var lazy = _index < _source.Length && _source[_index] == '?';
-            if (lazy) { _index++; token += "?"; }
+            var suffix = _index < _source.Length && _source[_index] == '?';
+            if (suffix) { _index++; }
+            // U reverses each repetition's priority, including every wrapper
+            // in a consecutive chain. The source suffix is still consumed once.
+            var lazy = suffix != _ungreedy;
+            if (lazy) { token += "?"; }
             return new(minimum, maximum, lazy, token);
         }
 

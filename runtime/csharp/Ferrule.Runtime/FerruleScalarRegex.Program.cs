@@ -154,13 +154,13 @@ internal static partial class FerruleScalarRegex
 
     internal static ScalarRegexProgram CompileProgram(string source, RegexOptions options)
     {
-        if (new Translator(source, options).ContainsExplicitUnicode())
+        if (new Translator(source, options).ContainsExplicitScalarFlags())
         { return ScalarRegexProgram.Boundary(source, options, true); }
         var translator = new Translator(source, options);
         var translated = translator.Translate();
-        if (translator.HasWordBoundary || translator.HasConsecutiveRepetition || translator.HasExplicitUnicode)
+        if (translator.HasWordBoundary || translator.HasConsecutiveRepetition || translator.HasExplicitUnicode || translator.HasExplicitUngreedy || translator.HasExplicitCrlf)
         {
-            return ScalarRegexProgram.Boundary(source, options, translator.HasExplicitUnicode);
+            return ScalarRegexProgram.Boundary(source, options, translator.HasExplicitUnicode || translator.HasExplicitUngreedy || translator.HasExplicitCrlf);
         }
         if (translator.CanProbeNullableCaptures)
         {
@@ -322,6 +322,12 @@ internal static partial class FerruleScalarRegex
                 BoundaryAssertion.End => position == input.Length,
                 BoundaryAssertion.LineStart => position == 0 || input[position - 1] == '\n',
                 BoundaryAssertion.LineEnd => position == input.Length || input[position] == '\n',
+                // CRLF is one terminator: neither assertion can select its
+                // interior, while isolated CR and LF each delimit a line.
+                BoundaryAssertion.CrlfLineStart => position == 0 || input[position - 1] == '\n'
+                    || input[position - 1] == '\r' && (position == input.Length || input[position] != '\n'),
+                BoundaryAssertion.CrlfLineEnd => position == input.Length || input[position] == '\r'
+                    || input[position] == '\n' && (position == 0 || input[position - 1] != '\r'),
                 BoundaryAssertion.Word => WordBefore(input, position) != WordAfter(input, position),
                 BoundaryAssertion.NotWord => WordBefore(input, position) == WordAfter(input, position),
                 BoundaryAssertion.WordStart => !WordBefore(input, position) && WordAfter(input, position),

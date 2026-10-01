@@ -244,10 +244,14 @@ are preserved.
   repeats and discarded zero-count bodies. Eligible ordinary captured nullable
   loops retain the last consumed capture. Inline Unicode modes support bounded
   ASCII classes, word assertions, and folding, with exact scoped restoration;
-  unsafe byte-matching forms reject. A compiled mapping
+  unsafe byte-matching forms reject. Inline ungreedy mode reverses each repetition's
+  default priority, including bounded and consecutive operators, with scoped
+  restoration and exact capture values. CRLF mode retains original line endings,
+  excludes CR/LF from dot unless single-line mode applies, and keeps multiline
+  anchors outside each CRLF pair. A compiled mapping
   compares matching, replacement, and tokenization through Rust/C# JSON string
-  and UTF-8 byte hosts against the interpreter. Broader inline flags,
-  property vocabularies, host-only syntax, and compilation budgets
+  and UTF-8 byte hosts against the interpreter. Broader property vocabularies,
+  host-only syntax, and compilation budgets
   remain separate backend differences.
 - File and export fidelity: project, pipeline, generated-schema, and PDF-layout
   codecs preserve finite floating-point tags and bits. Generated JSON Schema
