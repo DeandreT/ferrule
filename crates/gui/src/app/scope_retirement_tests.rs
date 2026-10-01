@@ -485,3 +485,43 @@ fn scope_retirement_retires_nested_dynamic_and_concatenated_items_without_removi
         assert_eq!(encoded(&app), before);
     }
 }
+
+#[test]
+fn scope_retirement_invalid_item_node_kind_is_not_treated_as_an_orphan() {
+    for document in [MappingDocument::Main, MappingDocument::Target(0)] {
+        let mut app = app_for(document);
+        let item = if document == MappingDocument::Main {
+            10
+        } else {
+            20
+        };
+        app.project.graph.nodes.insert(
+            item,
+            Node::SequenceExists {
+                sequence: SequenceExpr::Generate {
+                    from: None,
+                    to: 1,
+                    item,
+                },
+                predicate: 1,
+            },
+        );
+        app.main_canvas = CanvasDocumentState::main(&app.project);
+        app.mark_clean();
+        app.rebase_history();
+        let before = encoded(&app);
+        let before_layout = layout(&app);
+        app.remove_selected_target_scope();
+        app.observe_editor_history(std::time::Instant::now(), false);
+        assert_eq!(encoded(&app), before);
+        assert_eq!(layout(&app), before_layout);
+        assert!(!app.can_undo());
+        assert!(!app.is_dirty());
+        assert!(
+            app.diagnostics
+                .items()
+                .iter()
+                .any(|issue| issue.message.contains("invalid node kind"))
+        );
+    }
+}

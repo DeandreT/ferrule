@@ -370,6 +370,7 @@ impl FerruleApp {
             &self.project.source_options,
         );
         let source_blocks = source_blocks(&self.project.source);
+        let owned_items = crate::graph_viewer::project_sequence_item_ids(&self.project);
         let mut requested_function = None;
         let mut error = None;
         ui.add_enabled_ui(editing_enabled, |ui| {
@@ -395,13 +396,14 @@ impl FerruleApp {
                 target.path.as_deref(),
                 &target.options,
             );
-            crate::app::sync_endpoint_wires(
+            crate::app::sync_endpoint_wires_with_owned_items(
                 &self.project.graph,
                 &target.root,
                 &source_blocks,
                 &target_blocks,
                 &canvas.endpoint_scroll,
                 &mut canvas.snarl,
+                &owned_items,
             );
             let mut viewer = GraphViewer {
                 graph: &mut self.project.graph,

@@ -3,12 +3,18 @@ use mapping::{
     ScopeConstruction,
 };
 
-/// A different output sharing the active canvas's graph. Only its name and
-/// scope are borrowed; boundary schemas and format settings are not copied.
+/// A different output sharing the active canvas's graph. Only its identity
+/// and scope are borrowed; boundary schemas and format settings are not copied.
 #[derive(Clone, Copy)]
 pub(crate) struct InactiveTargetScope<'a> {
-    name: Option<&'a str>,
+    identity: InactiveTargetIdentity<'a>,
     root: &'a Scope,
+}
+
+#[derive(Clone, Copy)]
+enum InactiveTargetIdentity<'a> {
+    Primary,
+    Named { index: usize, name: &'a str },
 }
 
 pub(crate) fn inactive_target_scopes<'a>(
@@ -16,18 +22,28 @@ pub(crate) fn inactive_target_scopes<'a>(
     before: &'a [NamedTarget],
     after: &'a [NamedTarget],
 ) -> Vec<InactiveTargetScope<'a>> {
+    let named = |index, target: &'a NamedTarget| InactiveTargetScope {
+        identity: InactiveTargetIdentity::Named {
+            index,
+            name: &target.name,
+        },
+        root: &target.root,
+    };
     std::iter::once(InactiveTargetScope {
-        name: None,
+        identity: InactiveTargetIdentity::Primary,
         root: primary,
     })
     .chain(
         before
             .iter()
-            .chain(after)
-            .map(|target| InactiveTargetScope {
-                name: Some(&target.name),
-                root: &target.root,
-            }),
+            .enumerate()
+            .map(|(index, target)| named(index, target)),
+    )
+    .chain(
+        after
+            .iter()
+            .enumerate()
+            .map(|(index, target)| named(index + before.len() + 1, target)),
     )
     .collect()
 }
@@ -330,9 +346,9 @@ fn references_to_inner(
         scope_references(&target.root, &mut path, needle, true, &mut found, removed);
     }
     for target in inactive_targets {
-        let label = match target.name {
-            Some(name) => format!("<target {name}>"),
-            None => "<primary target>".to_string(),
+        let label = match target.identity {
+            InactiveTargetIdentity::Named { name, .. } => format!("<target {name}>"),
+            InactiveTargetIdentity::Primary => "<primary target>".to_string(),
         };
         scope_references(
             target.root,
@@ -370,4 +386,112 @@ fn references_to_inner(
         }
     }
     found.finish()
+}
+
+/// Reports the lexical owners of one item without borrowing graph expressions.
+/// The borrowed path/name metadata can also support future lifecycle checks.
+pub(super) fn sequence_item_owners<'a>(
+    graph: &Graph,
+    root_scope: &'a Scope,
+    extra_targets: &'a [NamedTarget],
+    inactive_targets: &[InactiveTargetScope<'a>],
+    project: ProjectGraphReferences<'_>,
+    item: NodeId,
+) -> Vec<super::graph_sequence_ownership::SequenceItemOwner<'a>> {
+    use super::graph_sequence_ownership::{
+        ReducerKind, SequenceItemOwner, TargetOwner, collect_scope_owners,
+    };
+
+    let mut owners = Vec::new();
+    let current = if inactive_targets
+        .iter()
+        .any(|target| matches!(target.identity, InactiveTargetIdentity::Primary))
+    {
+        TargetOwner::CurrentNamed
+    } else {
+        TargetOwner::CurrentPrimary
+    };
+    collect_scope_owners(root_scope, current, item, &mut owners);
+    for (index, target) in extra_targets.iter().enumerate() {
+        collect_scope_owners(
+            &target.root,
+            TargetOwner::Named {
+                index,
+                name: &target.name,
+            },
+            item,
+            &mut owners,
+        );
+    }
+    for target in inactive_targets {
+        let target_owner = match target.identity {
+            InactiveTargetIdentity::Named { index, name } => {
+                TargetOwner::InactiveNamed { index, name }
+            }
+            InactiveTargetIdentity::Primary => TargetOwner::InactivePrimary,
+        };
+        collect_scope_owners(target.root, target_owner, item, &mut owners);
+    }
+    for (&node, expression) in &graph.nodes {
+        let (sequence, kind) = match expression {
+            Node::SequenceExists { sequence, .. } => (sequence, ReducerKind::Exists),
+            Node::SequenceItemAt { sequence, .. } => (sequence, ReducerKind::ItemAt),
+            Node::SequenceAggregate { sequence, .. } => (sequence, ReducerKind::Aggregate),
+            _ => continue,
+        };
+        if sequence.item() == item {
+            owners.push(SequenceItemOwner::Graph { node, kind });
+        }
+    }
+    for (index, rule) in project.failure_rules.iter().enumerate() {
+        if let FailureIteration::Sequence { sequence } = &rule.iteration
+            && sequence.item() == item
+        {
+            owners.push(SequenceItemOwner::FailureRule { index });
+        }
+    }
+    owners
+}
+
+pub(crate) fn sequence_item_ids(
+    graph: &Graph,
+    root: &Scope,
+    extra_targets: &[NamedTarget],
+    inactive_targets: &[InactiveTargetScope<'_>],
+    project: ProjectGraphReferences<'_>,
+) -> std::collections::BTreeSet<NodeId> {
+    use super::graph_sequence_ownership::collect_scope_item_ids;
+
+    let mut items = std::collections::BTreeSet::new();
+    collect_scope_item_ids(root, &mut items);
+    for target in extra_targets {
+        collect_scope_item_ids(&target.root, &mut items);
+    }
+    for target in inactive_targets {
+        collect_scope_item_ids(target.root, &mut items);
+    }
+    for expression in graph.nodes.values() {
+        if let Node::SequenceExists { sequence, .. }
+        | Node::SequenceItemAt { sequence, .. }
+        | Node::SequenceAggregate { sequence, .. } = expression
+        {
+            items.insert(sequence.item());
+        }
+    }
+    for rule in project.failure_rules {
+        if let FailureIteration::Sequence { sequence } = &rule.iteration {
+            items.insert(sequence.item());
+        }
+    }
+    items
+}
+
+pub(crate) fn project_sequence_item_ids(project: &Project) -> std::collections::BTreeSet<NodeId> {
+    sequence_item_ids(
+        &project.graph,
+        &project.root,
+        &project.extra_targets,
+        &[],
+        ProjectGraphReferences::new(&project.failure_rules, &project.extra_sources),
+    )
 }

@@ -29,12 +29,15 @@ use crate::wire_colors::WireEmphasis;
 mod graph_references;
 #[path = "graph_sequence.rs"]
 mod graph_sequence;
+#[path = "graph_sequence_ownership.rs"]
+mod graph_sequence_ownership;
 #[path = "node_palette.rs"]
 mod node_palette;
 
 use graph_references::node_inputs;
 pub(crate) use graph_references::{
-    InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, references_outside_scope,
+    InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, project_sequence_item_ids,
+    references_outside_scope, sequence_item_ids,
 };
 use node_palette::NodeTemplate;
 
@@ -373,14 +376,37 @@ impl GraphViewer<'_> {
         }
 
         if self.endpoint_scroll.scroll_rows(node, total, rows) {
-            crate::app::sync_endpoint_wires(
-                self.graph,
-                self.root_scope,
-                self.source_blocks,
-                self.target_blocks,
-                self.endpoint_scroll,
-                snarl,
-            );
+            let owned_items = if self.function_output.is_none() {
+                graph_references::sequence_item_ids(
+                    self.graph,
+                    self.root_scope,
+                    self.extra_targets,
+                    self.inactive_target_scopes,
+                    self.project_references,
+                )
+            } else {
+                Default::default()
+            };
+            if owned_items.is_empty() {
+                crate::app::sync_endpoint_wires(
+                    self.graph,
+                    self.root_scope,
+                    self.source_blocks,
+                    self.target_blocks,
+                    self.endpoint_scroll,
+                    snarl,
+                );
+            } else {
+                crate::app::sync_endpoint_wires_with_owned_items(
+                    self.graph,
+                    self.root_scope,
+                    self.source_blocks,
+                    self.target_blocks,
+                    self.endpoint_scroll,
+                    snarl,
+                    &owned_items,
+                );
+            }
             true
         } else {
             false
@@ -608,11 +634,26 @@ impl GraphViewer<'_> {
         self.insert(snarl, pos, build(&inputs))
     }
 
-    /// Reuses an existing `SourceField` with this exact frame and relative
-    /// path, or creates one. These nodes back Source-pin wires.
+    /// Reuses an unowned `SourceField` with this exact frame and relative
+    /// path, or creates one. Generated items never back ordinary Source-pin wires.
     fn source_field_for(&mut self, frame: Option<Vec<String>>, path: Vec<String>) -> NodeId {
+        let owned_items = if self.function_output.is_none() {
+            sequence_item_ids(
+                self.graph,
+                self.root_scope,
+                self.extra_targets,
+                self.inactive_target_scopes,
+                self.project_references,
+            )
+        } else {
+            Default::default()
+        };
         let existing = self.graph.nodes.iter().find_map(|(id, node)| match node {
-            Node::SourceField { path: p, frame: f } if p == &path && f == &frame => Some(*id),
+            Node::SourceField { path: p, frame: f }
+                if !owned_items.contains(id) && p == &path && f == &frame =>
+            {
+                Some(*id)
+            }
             _ => None,
         });
         existing.unwrap_or_else(|| {
@@ -1112,6 +1153,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .map_or_else(|| "Target".to_string(), |section| section.title.clone()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 let title = match self.graph.nodes.get(id) {
+                    Some(Node::SourceField { .. })
+                        if self.function_output.is_none()
+                            && !graph_references::sequence_item_owners(
+                                self.graph,
+                                self.root_scope,
+                                self.extra_targets,
+                                self.inactive_target_scopes,
+                                self.project_references,
+                                *id,
+                            )
+                            .is_empty() =>
+                    {
+                        format!("Generated item #{id}")
+                    }
                     Some(Node::SourceField { path, frame }) => {
                         let owner = frame
                             .as_ref()
@@ -1736,6 +1791,22 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .with_fill(fill.to_egui())
                 .with_wire_color(self.output_wire_color(pin));
         };
+        let sequence_owners = if self.function_output.is_none()
+            && matches!(
+                self.graph.nodes.get(&node_id),
+                Some(Node::SourceField { .. })
+            ) {
+            graph_references::sequence_item_owners(
+                self.graph,
+                self.root_scope,
+                self.extra_targets,
+                self.inactive_target_scopes,
+                self.project_references,
+                node_id,
+            )
+        } else {
+            Vec::new()
+        };
         let mut new_call_arg_needed = false;
         let mut call_function_changed = false;
         let mut remove_call_wire = None;
@@ -1743,6 +1814,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let mut remove_aggregate_wire = None;
         if let Some(node) = self.graph.nodes.get_mut(&node_id) {
             match node {
+                Node::SourceField { path, frame } if !sequence_owners.is_empty() => {
+                    graph_sequence_ownership::show(ui, &sequence_owners, path, frame.as_deref());
+                }
                 Node::SourceField { path, frame } => {
                     let mut joined = path.join("/");
                     if ui
@@ -2378,3 +2452,7 @@ mod shared_target_tests;
 #[cfg(test)]
 #[path = "graph_viewer_copy_target_tests.rs"]
 mod copy_target_tests;
+
+#[cfg(test)]
+#[path = "graph_viewer_sequence_item_tests.rs"]
+mod sequence_item_tests;

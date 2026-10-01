@@ -21,6 +21,16 @@ fn retirement_items(project: &Project, removed: &Scope) -> Result<Vec<NodeId>, S
     let mut items = std::collections::BTreeSet::new();
     owned_items(removed, &mut items);
     for &item in &items {
+        if project
+            .graph
+            .nodes
+            .get(&item)
+            .is_some_and(|node| !matches!(node, mapping::Node::SourceField { .. }))
+        {
+            return Err(format!(
+                "Generated item #{item} has an invalid node kind; repair its ownership before removing the scope"
+            ));
+        }
         let references = crate::graph_viewer::references_outside_scope(project, removed, item);
         if !references.is_empty() {
             return Err(format!(

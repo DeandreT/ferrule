@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use mapping::{Binding, Graph, Node, Scope, ScopeConstruction};
+use mapping::{Binding, Graph, Node, NodeId, Scope, ScopeConstruction};
 
 use crate::canvas::{SourceLeaf, TargetLeaf, source_leaves, target_leaves};
 use crate::schema_scalar::ScalarDomain;
@@ -120,11 +120,13 @@ pub fn scope_at_mut<'a>(root: &'a mut Scope, path: &[usize]) -> Option<&'a mut S
 
 /// Applies a previously confirmed plan without replacing bindings that may
 /// have appeared since planning. Node identifiers are reserved before any
-/// mutation, keeping identifier exhaustion atomic.
+/// mutation, keeping identifier exhaustion atomic. Owned generated items are
+/// never reused as ordinary physical source fields.
 pub fn apply_auto_connect(
     graph: &mut Graph,
     selected_scope: &mut Scope,
     plan: &AutoConnectPlan,
+    owned_items: &BTreeSet<NodeId>,
 ) -> Result<usize, &'static str> {
     let accepted = plan
         .connections
@@ -141,7 +143,9 @@ pub fn apply_auto_connect(
         .nodes
         .iter()
         .filter_map(|(&id, node)| match node {
-            Node::SourceField { frame, path } => Some(((frame.clone(), path.clone()), id)),
+            Node::SourceField { frame, path } if !owned_items.contains(&id) => {
+                Some(((frame.clone(), path.clone()), id))
+            }
             _ => None,
         })
         .collect::<BTreeMap<_, _>>();
@@ -155,7 +159,8 @@ pub fn apply_auto_connect(
         })
         .filter(|source| !existing_fields.contains_key(source))
         .collect::<BTreeSet<_>>();
-    let ids = reserve_node_ids(graph, required.len()).ok_or("mapping node IDs are exhausted")?;
+    let ids = reserve_node_ids(graph, owned_items, required.len())
+        .ok_or("mapping node IDs are exhausted")?;
     let mut fields = existing_fields;
     for (source, id) in required.into_iter().zip(ids) {
         graph.nodes.insert(
@@ -350,11 +355,15 @@ fn ensure_scope<'a>(scope: &'a mut Scope, chain: &[String]) -> &'a mut Scope {
     ensure_scope(&mut scope.children[index], rest)
 }
 
-fn reserve_node_ids(graph: &Graph, count: usize) -> Option<Vec<mapping::NodeId>> {
+fn reserve_node_ids(
+    graph: &Graph,
+    owned_items: &BTreeSet<NodeId>,
+    count: usize,
+) -> Option<Vec<NodeId>> {
     let mut ids = Vec::with_capacity(count);
     let mut candidate = 0_u32;
     while ids.len() < count {
-        if !graph.nodes.contains_key(&candidate) {
+        if !graph.nodes.contains_key(&candidate) && !owned_items.contains(&candidate) {
             ids.push(candidate);
         }
         if ids.len() == count {
@@ -556,7 +565,10 @@ mod tests {
         let mut scope = Scope::default();
         let plan = plan_auto_connect(&source, &target, &scope, &[], None);
 
-        assert_eq!(apply_auto_connect(&mut graph, &mut scope, &plan), Ok(2));
+        assert_eq!(
+            apply_auto_connect(&mut graph, &mut scope, &plan, &BTreeSet::new()),
+            Ok(2)
+        );
         assert_eq!(graph.nodes.len(), 1);
         assert!(
             graph
@@ -566,5 +578,44 @@ mod tests {
         );
         assert_eq!(scope.bindings.len(), 1);
         assert_eq!(scope.children[0].bindings.len(), 1);
+    }
+    #[test]
+    fn apply_keeps_exact_unowned_frame_and_path_reuse() {
+        let field = |frame: Option<Vec<String>>| Node::SourceField {
+            path: vec!["Input".into()],
+            frame,
+        };
+        let graph = Graph {
+            nodes: [
+                (10, field(None)),
+                (11, field(Some(vec!["Records".into()]))),
+                (12, field(Some(vec!["Other".into()]))),
+                (13, field(Some(vec!["Records".into()]))),
+                (14, field(None)),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        let owned_items = BTreeSet::from([13, 14]);
+        let before = serde_json::to_vec(&graph).expect("graph snapshot");
+        for (frame, expected) in [(None, 10), (Some(vec!["Records".into()]), 11)] {
+            let mut graph = graph.clone();
+            let mut scope = Scope::default();
+            let plan = AutoConnectPlan {
+                connections: vec![PlannedConnection {
+                    source_frame: frame,
+                    source_path: vec!["Input".into()],
+                    target_chain: Vec::new(),
+                    target_field: "Output".into(),
+                }],
+                ..AutoConnectPlan::default()
+            };
+            assert_eq!(
+                apply_auto_connect(&mut graph, &mut scope, &plan, &owned_items),
+                Ok(1)
+            );
+            assert_eq!(scope.bindings[0].node, expected);
+            assert_eq!(serde_json::to_vec(&graph).expect("graph snapshot"), before);
+        }
     }
 }

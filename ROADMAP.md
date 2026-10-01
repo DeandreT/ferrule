@@ -78,6 +78,13 @@ are preserved.
   mapping canvas. Remaining graph consumers or owners outside the removed
   subtree block removal with a reference explanation; arguments and unrelated
   graph nodes survive, and undo restores exact item identities and wires.
+  Generated item nodes show their indexed scope, reducer, or failure-rule owners
+  and remain read-only, including malformed saved paths that match source fields.
+  Source wires and Auto-connect reuse only ordinary source fields; Auto-connect
+  also reserves absent node IDs retained by generated owners.
+  XML child scopes on ordinary singular target groups can select the first
+  surviving element or every surviving element; unavailable formats and complex
+  schemas retain their saved mode without passive changes.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as

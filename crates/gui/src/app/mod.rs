@@ -74,7 +74,9 @@ mod scope_ui;
 mod workspace_ui;
 
 use canvas_build::{build_function_snarl, build_snarl, build_snarl_with_layout};
-pub(crate) use canvas_build::{endpoint_block_size, sync_endpoint_wires};
+pub(crate) use canvas_build::{
+    endpoint_block_size, sync_endpoint_wires, sync_endpoint_wires_with_owned_items,
+};
 
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 pub(super) const LAYOUT_VERSION: u32 = 3;
@@ -1529,3 +1531,6 @@ mod copy_scope_tests;
 
 #[cfg(test)]
 mod scope_retirement_tests;
+
+#[cfg(test)]
+mod xml_output_controls_tests;
