@@ -427,13 +427,16 @@ cannot establish their exact integer meaning. Captured HTTP POST responses
 have only an inline entry tree; assertions that this tree cannot retain reject
 instead of being discarded.
 
-PDF sources with all-page selection and direct BasicVisual text captures can
-write a native-shaped `.pxt` template. This subset requires InsertSpace word
+PDF sources with all-page selection can write a native-shaped `.pxt` template
+when they have only direct BasicVisual text captures, or one named page group
+containing only those captures. This subset requires InsertSpace word
 separation, Default whitespace, and page-edge coordinates without anchors.
 Export checks the generated template with the bounded native-template parser
-and compares every retained coordinate by its binary64 bits. Other supported
-PDF layouts use Ferrule's lossless layout payload. Ordinary payloads retain
-version 1; version 2 preserves floating-point values that ordinary JSON cannot
+and compares group and capture identity, algorithms, and every retained
+coordinate by its binary64 bits. A self-authored two-page PDF maps two ordered
+text rows through two strict export/re-import cycles. Other supported PDF
+layouts use Ferrule's lossless layout payload. Ordinary payloads retain version
+1; version 2 preserves floating-point values that ordinary JSON cannot
 round-trip exactly. The complete template, including XML escaping, is limited
 to 1 MiB. The export report inspects the actual generated sibling and reports
 `pdf_layout` when that sibling requires Ferrule's extension; strict native

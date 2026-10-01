@@ -113,9 +113,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     })
 }
 
-/// The one PDF template family whose native-shaped inverse is known locally:
-/// all pages, with only direct text captures. Complex extraction commands keep
-/// Ferrule's lossless layout payload instead of guessing native semantics.
+/// The PDF template families whose native-shaped inverses are known locally:
+/// all pages with direct text captures, or one named page group containing
+/// only direct text captures. Other extraction commands keep Ferrule's
+/// lossless layout payload instead of guessing native semantics.
 fn native_capture_template(layout: &PdfLayout) -> Option<String> {
     if layout.page_selection() != PdfPageSelection::All
         || layout.commands().is_empty()
@@ -123,6 +124,16 @@ fn native_capture_template(layout: &PdfLayout) -> Option<String> {
     {
         return None;
     }
+    let (captures, group) = match layout.commands() {
+        [PdfCommand::GroupPerPage(group)] if native_label(&group.name) => {
+            (group.children.as_slice(), Some(group))
+        }
+        commands => (commands, None),
+    };
+    let group_region = match group {
+        Some(group) => Some(native_region(&group.region)?),
+        None => None,
+    };
     let mut template = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <Document>\n\
@@ -133,7 +144,7 @@ fn native_capture_template(layout: &PdfLayout) -> Option<String> {
          \t\t\t\t\t<Grouping id=\"2\">\n\
          \t\t\t\t\t\t<Children>\n",
     );
-    for (index, command) in layout.commands().iter().enumerate() {
+    for (index, command) in captures.iter().enumerate() {
         let PdfCommand::Capture(capture) = command else {
             return None;
         };
@@ -164,11 +175,21 @@ fn native_capture_template(layout: &PdfLayout) -> Option<String> {
             return None;
         }
     }
+    template.push_str("\t\t\t\t\t\t</Children>\n");
+    if let Some(group) = group {
+        let _ = write!(
+            template,
+            "\t\t\t\t\t\t<Label>{}</Label>\n\
+             \t\t\t\t\t\t<Region>{}</Region>\n",
+            xml_escape(&group.name),
+            xml_escape(group_region.as_deref()?),
+        );
+    } else {
+        template.push_str("\t\t\t\t\t\t<Label/>\n");
+    }
     let _ = write!(
         template,
-        "\t\t\t\t\t\t</Children>\n\
-         \t\t\t\t\t\t<Label/>\n\
-         \t\t\t\t\t\t<Kind><OneGroupPerPage/></Kind>\n\
+        "\t\t\t\t\t\t<Kind><OneGroupPerPage/></Kind>\n\
          \t\t\t\t\t\t<Filter/>\n\
          \t\t\t\t\t</Grouping>\n\
          \t\t\t\t</Children>\n\
@@ -223,11 +244,21 @@ fn native_coordinate(coordinate: &PdfCoordinate) -> Option<String> {
 fn same_capture_layout(expected: &PdfLayout, actual: &PdfLayout) -> bool {
     expected.root_name() == actual.root_name()
         && expected.page_selection() == actual.page_selection()
-        && expected.commands().len() == actual.commands().len()
+        && match (expected.commands(), actual.commands()) {
+            ([PdfCommand::GroupPerPage(expected)], [PdfCommand::GroupPerPage(actual)]) => {
+                expected.name == actual.name
+                    && same_region(&expected.region, &actual.region)
+                    && same_capture_commands(&expected.children, &actual.children)
+            }
+            (expected, actual) => same_capture_commands(expected, actual),
+        }
+}
+
+fn same_capture_commands(expected: &[PdfCommand], actual: &[PdfCommand]) -> bool {
+    expected.len() == actual.len()
         && expected
-            .commands()
             .iter()
-            .zip(actual.commands())
+            .zip(actual)
             .all(|(expected, actual)| match (expected, actual) {
                 (PdfCommand::Capture(expected), PdfCommand::Capture(actual)) => {
                     same_capture(expected, actual)
@@ -239,17 +270,21 @@ fn same_capture_layout(expected: &PdfLayout, actual: &PdfLayout) -> bool {
 fn same_capture(expected: &PdfCapture, actual: &PdfCapture) -> bool {
     expected.name == actual.name
         && expected.algorithm == actual.algorithm
-        && [
-            (&expected.region.left, &actual.region.left),
-            (&expected.region.top, &actual.region.top),
-            (&expected.region.right, &actual.region.right),
-            (&expected.region.bottom, &actual.region.bottom),
-        ]
-        .into_iter()
-        .all(|(expected, actual)| {
-            expected.reference == actual.reference
-                && expected.offset.to_bits() == actual.offset.to_bits()
-        })
+        && same_region(&expected.region, &actual.region)
+}
+
+fn same_region(expected: &PdfRegion, actual: &PdfRegion) -> bool {
+    [
+        (&expected.left, &actual.left),
+        (&expected.top, &actual.top),
+        (&expected.right, &actual.right),
+        (&expected.bottom, &actual.bottom),
+    ]
+    .into_iter()
+    .all(|(expected, actual)| {
+        expected.reference == actual.reference
+            && expected.offset.to_bits() == actual.offset.to_bits()
+    })
 }
 
 fn canonical_template(layout: &PdfLayout) -> Result<String, MfdError> {
