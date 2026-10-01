@@ -4,6 +4,9 @@ use crate::layout_store::layout_path;
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, FunctionId, NamedTarget, Scope, UserFunction};
 
+#[path = "auto_connect_item_reuse_tests.rs"]
+mod auto_connect_item_reuse;
+
 #[path = "pipeline_preview_tests.rs"]
 mod pipeline_preview;
 #[path = "preview_inputs_tests.rs"]

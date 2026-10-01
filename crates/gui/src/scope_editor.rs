@@ -10,10 +10,12 @@ use mapping::{Binding, Graph, NodeId, Scope, ScopeConstruction, ScopeIteration};
 use crate::path_picker::SourcePathCatalog;
 
 mod copy_controls;
+mod output_controls;
 mod sort_controls;
 mod window_controls;
 
 pub(crate) use copy_controls::{check_static_binding, copied_ancestor_at_path};
+pub(crate) use output_controls::{ScopeOutputProfile, output_profile};
 
 /// Path of child-indices from the project root to the scope being edited.
 pub type ScopePath = Vec<usize>;
@@ -551,13 +553,14 @@ fn show_scope_node(
 }
 
 /// Edits `scope`'s sequence controls and bindings.
-pub fn show_scope_editor(
+pub(crate) fn show_scope_editor(
     ui: &mut Ui,
     scope: &mut Scope,
     graph: &Graph,
     source_paths: &SourcePathCatalog,
     target_fields: &[String],
     nested: bool,
+    output_profile: ScopeOutputProfile,
 ) {
     let first_node = first_node_id(graph);
     ui.strong(if scope.target_field.is_empty() {
@@ -570,6 +573,8 @@ pub fn show_scope_editor(
     if whole_group_copy {
         copy_controls::show_reason(ui);
     }
+
+    output_controls::show(ui, scope, output_profile);
 
     match &scope.iteration {
         ScopeIteration::Sequence(sequence) => {
