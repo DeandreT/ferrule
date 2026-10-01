@@ -10,7 +10,7 @@ internal static partial class FerruleScalarRegex
 
     private enum BoundaryKind { Empty, Consume, Assertion, Sequence, Alternate, Repeat, Capture }
     private enum BoundaryAssertion {
-        Start, End, LineStart, LineEnd, Word, NotWord,
+        Start, End, LineStart, LineEnd, CrlfLineStart, CrlfLineEnd, Word, NotWord,
         WordStart, WordEnd, WordStartHalf, WordEndHalf,
         AsciiWord, AsciiNotWord, AsciiWordStart, AsciiWordEnd, AsciiWordStartHalf, AsciiWordEndHalf,
     }
@@ -34,7 +34,7 @@ internal static partial class FerruleScalarRegex
     {
         // Identify actual flag headers before choosing a grammar. Escaped text,
         // bracket classes and retained host comments cannot select the profile.
-        internal bool ContainsExplicitUnicode()
+        internal bool ContainsExplicitScalarFlags()
         {
             var saved = new Stack<RegexOptions>();
             while (_index < _source.Length)
@@ -73,21 +73,21 @@ internal static partial class FerruleScalarRegex
                     if (_index < _source.Length) { _index++; }
                     continue;
                 }
-                if (ReadFlags(out var updated, out _, out var scoped, out _))
+                if (ReadFlags(out var updated, out _, out _, out _, out var scoped, out _))
                 {
-                    if (_hasExplicitUnicode) { return true; }
+                    if (_hasExplicitUnicode || _hasExplicitUngreedy || _hasExplicitCrlf) { return true; }
                     if (scoped) { saved.Push(_options); }
                     _options = updated;
                 }
                 else { saved.Push(_options); }
             }
-            return _hasExplicitUnicode;
+            return _hasExplicitUnicode || _hasExplicitUngreedy || _hasExplicitCrlf;
         }
 
 
-        private bool ReadFlags(out RegexOptions options, out bool unicode, out bool scoped, out string hostFlags)
+        private bool ReadFlags(out RegexOptions options, out bool unicode, out bool ungreedy, out bool crlf, out bool scoped, out string hostFlags)
         {
-            options = _options; unicode = _unicode; scoped = false; hostFlags = string.Empty;
+            options = _options; unicode = _unicode; ungreedy = _ungreedy; crlf = _crlf; scoped = false; hostFlags = string.Empty;
             var start = _index;
             var enabled = true;
             var seen = new HashSet<char>();
@@ -97,6 +97,8 @@ internal static partial class FerruleScalarRegex
             var afterDash = false;
             var hasFlag = false;
             var hasUnicode = false;
+            var hasUngreedy = false;
+            var hasCrlf = false;
             var hasHostCapture = false;
             var host = new StringBuilder(6);
             while (_index < _source.Length)
@@ -112,9 +114,11 @@ internal static partial class FerruleScalarRegex
                     's' => RegexOptions.Singleline, 'x' => RegexOptions.IgnorePatternWhitespace,
                     'n' => RegexOptions.ExplicitCapture, _ => RegexOptions.None,
                 };
-                if (flag != 'u' && option == RegexOptions.None) { break; }
+                if (flag is not ('u' or 'U' or 'R') && option == RegexOptions.None) { break; }
                 hasFlag = true; afterDash |= dashed; duplicate |= !seen.Add(flag);
                 if (flag == 'u') { hasUnicode = true; unicode = enabled; }
+                else if (flag == 'U') { hasUngreedy = true; ungreedy = enabled; }
+                else if (flag == 'R') { hasCrlf = true; crlf = enabled; }
                 else
                 {
                     hasHostCapture |= flag == 'n'; host.Append(flag);
@@ -123,11 +127,13 @@ internal static partial class FerruleScalarRegex
                 _index++;
             }
             _hasExplicitUnicode |= hasUnicode;
+            _hasExplicitUngreedy |= hasUngreedy;
+            _hasExplicitCrlf |= hasCrlf;
             if (!hasFlag || _index == _source.Length || _source[_index] is not (':' or ')'))
             { _index = start; return false; }
             if (duplicate || malformedDash || dashed && !afterDash || hasHostCapture)
             { _captureRoutingEligible = false; }
-            if ((_strictUnicodeProfile || hasUnicode) && (duplicate || malformedDash || dashed && !afterDash || hasHostCapture))
+            if ((_strictUnicodeProfile || hasUnicode || hasUngreedy || hasCrlf) && (duplicate || malformedDash || dashed && !afterDash || hasHostCapture))
             { throw Invalid("invalid explicit Unicode flag header"); }
             scoped = _source[_index++] == ':';
             hostFlags = host.ToString().TrimEnd('-');
@@ -313,15 +319,13 @@ internal static partial class FerruleScalarRegex
                 case '.':
                     if (!_unicode) { throw Invalid("Unicode-disabled dot can match invalid UTF-8"); }
                     _index++;
-                    return BoundaryNew(new(BoundaryKind.Consume, Set:
-                        (_options & RegexOptions.Singleline) != 0 ? ScalarSet.All
-                            : ScalarSet.All.Except(ScalarSet.Between('\n', '\n'))));
+                    return BoundaryNew(new(BoundaryKind.Consume, Set: DotSet()));
                 case '^': case '$':
                     _index++;
                     var multiline = (_options & RegexOptions.Multiline) != 0;
                     return BoundaryNew(new(BoundaryKind.Assertion, Assertion: kind == '^'
-                        ? (multiline ? BoundaryAssertion.LineStart : BoundaryAssertion.Start)
-                        : (multiline ? BoundaryAssertion.LineEnd : BoundaryAssertion.End)));
+                        ? (multiline ? _crlf ? BoundaryAssertion.CrlfLineStart : BoundaryAssertion.LineStart : BoundaryAssertion.Start)
+                        : (multiline ? _crlf ? BoundaryAssertion.CrlfLineEnd : BoundaryAssertion.LineEnd : BoundaryAssertion.End)));
                 case '\\':
                     if (_index + 1 == _source.Length) { throw Invalid("trailing backslash"); }
                     if (TryReadWordAssertion(out var wordAssertion))
@@ -350,6 +354,11 @@ internal static partial class FerruleScalarRegex
             }
         }
 
+        private ScalarSet DotSet() => (_options & RegexOptions.Singleline) != 0 ? ScalarSet.All
+            : ScalarSet.All.Except(_crlf
+                ? new ScalarSet(new[] { new Range('\n', '\n'), new Range('\r', '\r') })
+                : ScalarSet.Between('\n', '\n'));
+
         private ScalarSet BoundaryLiteral(int scalar)
         {
             var set = ScalarSet.Between(scalar, scalar);
@@ -366,6 +375,8 @@ internal static partial class FerruleScalarRegex
             if (_strictUnicodeProfile) { SkipIgnored(); }
             var saved = _options;
             var savedUnicode = _unicode;
+            var savedUngreedy = _ungreedy;
+            var savedCrlf = _crlf;
             var capture = 0;
             if (_index < _source.Length && _source[_index] == '?')
             {
@@ -394,9 +405,9 @@ internal static partial class FerruleScalarRegex
                 }
                 else
                 {
-                    if (!ReadFlags(out var updated, out var unicode, out var scoped, out _))
+                    if (!ReadFlags(out var updated, out var unicode, out var ungreedy, out var crlf, out var scoped, out _))
                     { throw Invalid("host-only group is unsupported with word assertions"); }
-                    _options = updated; _unicode = unicode;
+                    _options = updated; _unicode = unicode; _ungreedy = ungreedy; _crlf = crlf;
                     if (!scoped) { return null; }
                 }
             }
@@ -404,7 +415,7 @@ internal static partial class FerruleScalarRegex
             var body = BoundaryExpression();
             SkipIgnored();
             if (_index == _source.Length || _source[_index++] != ')') { throw Invalid("unterminated regex group"); }
-            _options = saved; _unicode = savedUnicode;
+            _options = saved; _unicode = savedUnicode; _ungreedy = savedUngreedy; _crlf = savedCrlf;
             if (capture != 0) { return BoundaryNew(new(BoundaryKind.Capture, Children: new[] { body }, Capture: capture)); }
             var syntaxHeight = 1 + body.SyntaxHeight;
             if (_strictUnicodeProfile && syntaxHeight > 250)

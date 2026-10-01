@@ -1,3 +1,8 @@
+#[path = "regex_unicode/crlf_cases.rs"]
+mod crlf_cases;
+#[path = "regex_unicode/ungreedy_cases.rs"]
+mod ungreedy_cases;
+
 use super::*;
 use mapping::SequenceExpr;
 
@@ -856,7 +861,9 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
             "[-u:a:-u:a::]",
         ),
     ];
-    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).chain(&boundary_alias_cases).chain(&ascii_mode_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).chain(nullable_capture_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(group_header_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
+    let ungreedy_cases = ungreedy_cases::CASES;
+    let crlf_cases = crlf_cases::CASES;
+    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).chain(&boundary_alias_cases).chain(&ascii_mode_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).chain(nullable_capture_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(group_header_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(ungreedy_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(crlf_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
     }).collect::<Vec<_>>()}).to_string();
     let source = format_json::from_str(&input, &project.source)?;
@@ -904,6 +911,8 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
             + ascii_mode_cases.len()
             + nullable_capture_cases.len()
             + group_header_cases.len()
+            + ungreedy_cases.len()
+            + crlf_cases.len()
     );
     for (index, (row, &(_, pattern, _, _, matches))) in
         rows.iter().skip(cases.len()).zip(&class_cases).enumerate()
@@ -1075,6 +1084,42 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
             "group header case {index}: {pattern}"
         );
     }
+    let ungreedy_begin = group_header_begin + group_header_cases.len();
+    let ungreedy_rows = &ascii_rows[ungreedy_begin..ungreedy_begin + ungreedy_cases.len()];
+    for (index, (row, &(_, pattern, _, _, matched, replaced))) in
+        ungreedy_rows.iter().zip(ungreedy_cases).enumerate()
+    {
+        assert_eq!(row["Match"], matched, "ungreedy case {index}: {pattern}");
+        assert_eq!(
+            row["Replaced"], replaced,
+            "ungreedy case {index}: {pattern}"
+        );
+    }
+    assert_eq!(
+        ungreedy_rows[25]["Tokens"],
+        serde_json::json!([{"Value": "x"}, {"Value": ""}, {"Value": ""},
+            {"Value": "y"}, {"Value": ""}, {"Value": ""}, {"Value": "Z"}])
+    );
+    assert_eq!(
+        ungreedy_rows[26]["Tokens"],
+        serde_json::json!([{"Value": "x"}, {"Value": "y"}, {"Value": "Z"}])
+    );
+    let crlf_begin = ungreedy_begin + ungreedy_cases.len();
+    let crlf_rows = &ascii_rows[crlf_begin..crlf_begin + crlf_cases.len()];
+    for (index, (row, &(_, pattern, _, _, matched, replaced))) in
+        crlf_rows.iter().zip(crlf_cases).enumerate()
+    {
+        assert_eq!(row["Match"], matched, "CRLF case {index}: {pattern}");
+        assert_eq!(row["Replaced"], replaced, "CRLF case {index}: {pattern}");
+    }
+    assert_eq!(
+        crlf_rows[33]["Tokens"],
+        serde_json::json!([{"Value": ""}, {"Value": "\r\n"}, {"Value": "\r"}, {"Value": "\n"}, {"Value": ""}])
+    );
+    assert_eq!(
+        crlf_rows[34]["Tokens"],
+        serde_json::json!([{"Value": "left"}, {"Value": "middle"}, {"Value": "right"}, {"Value": "end"}])
+    );
     super::json_text_boundaries::run_generated_boundary_cases(
         &project,
         &[serde_json::json!({"input": input, "expected": expected})],

@@ -546,7 +546,7 @@ as `\w`, preserving
 supplementary letters, combining marks, join controls, source-order captures,
 greedy/lazy choices, and global match spans. A prioritized non-backtracking
 matcher handles patterns containing these assertions or consecutive repetitions,
-explicit inline Unicode modes, and eligible captured unbounded nullable loops.
+explicit inline Unicode, ungreedy or CRLF modes, and eligible captured unbounded nullable loops.
 Start/end assertions require the corresponding word transition; half assertions
 check only the non-word side and can match an empty input. Special boundary braces
 must immediately follow `\b`; `x` whitespace/comments are accepted inside the
@@ -571,6 +571,22 @@ uses Rust class-union grammar and a source syntax-height limit of 250; host-only
 groups/escapes reject even before a later `u` directive or a zero-count repeat.
 Public flags remain `imsx`.
 
+Inline `U` / `-U` also selects the strict scalar profile. `U` makes each
+repetition ungreedy by default; a `?` suffix reverses that priority. Numeric and
+consecutive repetitions apply this independently to each operator. Scoped flags
+restore the enclosing mode, while bare directives remain active until their
+surrounding group ends. For example, `(?U)(a+)(a*b)` captures `a` then `aaaab`
+from `aaaaab`; adding `?` to the first repetition captures `aaaaa` then `b`.
+Escaped flag-like text, classes and comments retain their existing route.
+
+Inline `R` / `-R` selects the same strict scalar profile. In `R` mode, dot
+excludes CR and LF unless `s` is enabled. Multiline anchors recognize isolated
+CR, isolated LF and a complete CRLF pair; neither anchor matches the middle of
+that pair. Non-multiline anchors remain strict document anchors. Scoped flags
+restore the enclosing mode, including combinations with `u`, `U` and `s`.
+Captures, replacements and token separators retain the original line endings;
+input text is never normalized.
+
 The scalar matcher rejects unsupported host groups and escapes. It caps its AST
 at 8,192 nodes and structural height at
 256 before recursive compilation, expanded instructions at 163,840,
@@ -581,8 +597,8 @@ body's structural height. Deferred host lowering adds at most 256 consecutive
 wrappers per operand and counts them toward its translated-size limit.
 These local caps preserve typed failures without claiming identical backend
 compilation or execution budgets.
-Rust and .NET still expose different regex dialects. Inline `U` / `R`,
-word-assertion escapes inside ordinary host character classes, ordinary
+Rust and .NET still expose different regex dialects. Word-assertion escapes
+inside ordinary host character classes, ordinary
 single-dash host subtraction, property vocabularies, and some
 host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
