@@ -303,6 +303,59 @@ pub(super) struct XmlSchemaComponentRead {
     pub(super) entry_tree_fallback: bool,
 }
 
+/// Finds a protocol document wrapper without traversing user payload entries.
+/// File wrappers and variable-control wrappers may lead to the document level;
+/// names below that level are always user data, regardless of their namespace.
+fn xml_document_wrapper<'a, 'input>(
+    root: roxmltree::Node<'a, 'input>,
+) -> Option<roxmltree::Node<'a, 'input>> {
+    fn protocol_namespace(entry: roxmltree::Node<'_, '_>, root: roxmltree::Node<'_, '_>) -> bool {
+        let Some(slot) = entry.attribute("ns") else {
+            return true;
+        };
+        let Some(slot) = slot.parse::<usize>().ok() else {
+            return false;
+        };
+        root.children()
+            .find(|node| node.has_tag_name("header"))
+            .and_then(|header| {
+                header
+                    .children()
+                    .find(|node| node.has_tag_name("namespaces"))
+            })
+            .and_then(|namespaces| {
+                namespaces
+                    .children()
+                    .filter(|node| node.has_tag_name("namespace"))
+                    .nth(slot)
+            })
+            .is_some_and(|namespace| {
+                namespace
+                    .attribute("uid")
+                    .is_none_or(|uri| uri.is_empty() || uri == "http://www.altova.com/mapforce")
+            })
+    }
+    root.descendants().find(|entry| {
+        entry.has_tag_name("entry")
+            && entry.attribute("name") == Some("document")
+            && entry.attribute("ferrule-kind").is_none()
+            && protocol_namespace(*entry, root)
+            && entry
+                .ancestors()
+                .skip(1)
+                .take_while(|ancestor| *ancestor != root)
+                .all(|ancestor| {
+                    ancestor.has_tag_name("entry")
+                        && ancestor.attribute("ferrule-kind").is_none()
+                        && match ancestor.attribute("name") {
+                            Some("FileInstance") => protocol_namespace(ancestor, root),
+                            Some("parent-context" | "compute-when") => true,
+                            _ => false,
+                        }
+                })
+    })
+}
+
 fn read_schema_component_resolved(
     component: &roxmltree::Node,
     mfd_path: &Path,
@@ -320,28 +373,16 @@ fn read_schema_component_resolved(
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "root")?;
 
-    // Prefer the payload below the synthetic `document` entry wherever it
-    // appears. Variable components can put compute-when or parent-context
-    // entries before/around it instead of using the ordinary
-    // FileInstance/document wrapper.
-    let document_entry = root_el
-        .descendants()
-        .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("document"));
-    let mut entry = document_entry
+    // The document wrapper is a protocol level. Descend through it once,
+    // then retain the complete payload even when its local name or namespace
+    // intentionally matches either reserved wrapper.
+    let entry = xml_document_wrapper(root_el)
         .and_then(|document| {
             document
                 .children()
                 .find(|node| node.has_tag_name("entry") && !is_document_decoration_entry(node))
         })
         .or_else(|| root_el.children().find(|node| node.has_tag_name("entry")))?;
-    while matches!(
-        entry.attribute("name"),
-        Some("FileInstance") | Some("document")
-    ) {
-        entry = entry
-            .children()
-            .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
-    }
 
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;

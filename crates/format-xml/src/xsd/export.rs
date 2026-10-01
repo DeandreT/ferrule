@@ -37,20 +37,32 @@ pub(super) fn export_document(
     schema: &SchemaNode,
     external_references: &[ExternalReference],
 ) -> Result<String, XmlFormatError> {
-    export_document_inner(schema, external_references, false)
+    export_document_inner(schema, external_references, false, None)
 }
 
 pub(super) fn export_set_document(
     schema: &SchemaNode,
     external_references: &[ExternalReference],
+    reserved_type_names: &BTreeSet<String>,
 ) -> Result<String, XmlFormatError> {
-    export_document_inner(schema, external_references, true)
+    export_document_inner(schema, external_references, true, Some(reserved_type_names))
+}
+
+pub(super) fn export_set_type_names(
+    schema: &SchemaNode,
+    external_references: &[ExternalReference],
+) -> Result<BTreeSet<String>, XmlFormatError> {
+    let alternatives = AlternativeExportPlan::build_set(schema, external_references)?;
+    let mut names = substitution::partitioned_type_names(schema, true)?;
+    names.extend(alternatives.type_names().cloned());
+    Ok(names)
 }
 
 fn export_document_inner(
     schema: &SchemaNode,
     external_references: &[ExternalReference],
     partition_cross_substitutions: bool,
+    reserved_type_names: Option<&BTreeSet<String>>,
 ) -> Result<String, XmlFormatError> {
     crate::instance::validate_namespace_siblings(schema)?;
     let recursive_anchors = recursive_export_anchors(schema)?;
@@ -66,6 +78,12 @@ fn export_document_inner(
     };
     let namespace = export_target_namespace(schema, &alternatives)?;
     alternatives.set_export_namespace(namespace.clone());
+    let mut type_names =
+        substitution::partitioned_type_names(schema, partition_cross_substitutions)?;
+    if let Some(reserved) = reserved_type_names {
+        type_names.extend(reserved.iter().cloned());
+    }
+    alternatives.allocate_recursive_type_names(&recursive_anchors, type_names);
     validate_namespace_tree(
         schema,
         namespace.as_deref(),
@@ -84,10 +102,13 @@ fn export_document_inner(
     );
     alternatives.write_imports(&mut out);
     for (anchor, node) in &recursive_anchors {
+        if alternatives.type_for(node).is_some() {
+            continue;
+        }
         write_complex_type(
             node,
             1,
-            Some(&recursive_type_name(anchor)),
+            Some(alternatives.recursive_type_name(anchor)),
             &schema.name,
             &recursive_anchors,
             &alternatives,
@@ -127,11 +148,15 @@ pub(super) fn export_set_substitution_member(
     member_identity: &str,
     target_namespace: &str,
     external_references: &[ExternalReference],
+    reserved_type_names: &BTreeSet<String>,
 ) -> Result<String, XmlFormatError> {
     crate::instance::validate_namespace_siblings(head)?;
     let recursive_anchors = recursive_export_anchors(head)?;
     let mut alternatives = AlternativeExportPlan::build_set(head, external_references)?;
     alternatives.set_export_namespace(Some(target_namespace.to_string()));
+    let mut type_names = substitution::partitioned_type_names(head, true)?;
+    type_names.extend(reserved_type_names.iter().cloned());
+    alternatives.allocate_recursive_type_names(&recursive_anchors, type_names);
     validate_export_node(head, true, &head.name, &recursive_anchors)?;
     let mut out = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"{} elementFormDefault=\"unqualified\" attributeFormDefault=\"unqualified\">\n",
@@ -255,7 +280,7 @@ fn recursive_export_anchors(
     schema: &SchemaNode,
 ) -> Result<BTreeMap<String, &SchemaNode>, XmlFormatError> {
     let mut references = BTreeMap::new();
-    collect_recursive_references(schema, &schema.name, &mut references);
+    collect_recursive_references(schema, &mut references);
     let mut anchors = BTreeMap::new();
     for (anchor, node) in references {
         let mut candidates = Vec::new();
@@ -294,25 +319,19 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.kind == right.kind
 }
 
-fn collect_recursive_references(
-    node: &SchemaNode,
-    root_name: &str,
-    references: &mut BTreeMap<String, String>,
-) {
+fn collect_recursive_references(node: &SchemaNode, references: &mut BTreeMap<String, String>) {
     if node.name == XML_ELEMENTS_FIELD {
         return;
     }
     if let Some(anchor) = &node.recursive_ref {
-        if anchor != root_name {
-            references
-                .entry(anchor.clone())
-                .or_insert_with(|| node.name.clone());
-        }
+        references
+            .entry(anchor.clone())
+            .or_insert_with(|| node.name.clone());
         return;
     }
     if let ir::SchemaKind::Group { children, .. } = &node.kind {
         for child in children {
-            collect_recursive_references(child, root_name, references);
+            collect_recursive_references(child, references);
         }
     }
 }
@@ -336,8 +355,13 @@ fn collect_concrete_anchors<'a>(
     }
 }
 
-fn recursive_type_name(anchor: &str) -> String {
-    format!("{anchor}Type")
+fn qualified_recursive_type_name(anchor: &str, alternatives: &AlternativeExportPlan<'_>) -> String {
+    let name = alternatives.recursive_type_name(anchor);
+    if alternatives.export_namespace().is_some() {
+        format!("tns:{name}")
+    } else {
+        name.to_string()
+    }
 }
 
 fn validate_export_node(
@@ -567,35 +591,21 @@ fn write_element_required(
     } else {
         ""
     };
-    if let Some(anchor) = node.recursive_ref.as_deref() {
-        if anchor == root_name {
-            let reference = if matches!(node.xml_namespace, Some(XmlNamespace::Qualified(_))) {
-                format!("tns:{root_name}")
-            } else {
-                root_name.to_string()
-            };
-            out.push_str(&format!(
-                "{pad}<xs:element ref=\"{reference}\"{legacy_name}{occurs}{nillable}{value_constraint}/>\n"
-            ));
-        } else {
-            out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}/>\n",
-                node.name,
-                recursive_type_name(anchor)
-            ));
-        }
-        return Ok(());
-    }
-    if node.name != root_name && recursive_anchors.contains_key(&node.name) {
-        out.push_str(&format!(
-            "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}/>\n",
-            node.name,
-            recursive_type_name(&node.name)
-        ));
-        return Ok(());
-    }
-    if let Some(type_name) = alternatives.type_for(node) {
-        if let Some(view) = alternatives.restricted_view_for(node) {
+    let (type_name, view_node) = if let Some(anchor) = node.recursive_ref.as_deref() {
+        (
+            Some(qualified_recursive_type_name(anchor, alternatives)),
+            recursive_anchors[anchor],
+        )
+    } else if recursive_anchors.contains_key(&node.name) {
+        (
+            Some(qualified_recursive_type_name(&node.name, alternatives)),
+            node,
+        )
+    } else {
+        (alternatives.type_for(node), node)
+    };
+    if let Some(type_name) = type_name {
+        if let Some(view) = alternatives.restricted_view_for(view_node) {
             out.push_str(&format!(
                 "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}>\n{pad}  <xs:annotation>\n{pad}    <xs:appinfo source=\"{ALTERNATIVE_VIEW_NAMESPACE}\">\n",
                 node.name

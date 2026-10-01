@@ -12,6 +12,10 @@ use crate::MfdError;
 use super::concatenation::TargetBranches;
 use super::flextext;
 
+mod xml_namespaces;
+
+use xml_namespaces::XmlNamespaces;
+
 const XLSX_MAX_ROW: u32 = 1_048_576;
 const XLSX_MAX_COLUMN: u32 = 16_384;
 
@@ -299,7 +303,15 @@ pub(super) fn render_schema_component(
                     xml_escape(&schema.name),
                     xml_escape(&schema_file),
                     xml_escape(&instance_root),
-                    ports.portable_xml_entries_xml(schema, attr, 10, true, None, target_branches),
+                    ports.portable_xml_entries_xml(
+                        schema,
+                        attr,
+                        10,
+                        true,
+                        None,
+                        target_branches,
+                        None
+                    ),
                     xml_escape(url),
                     http.timeout_seconds().get(),
                 );
@@ -308,13 +320,15 @@ pub(super) fn render_schema_component(
                     siblings: sibling.into_iter().chain(additional_siblings).collect(),
                 });
             }
+            let namespaces = XmlNamespaces::new(schema, exported.namespace.as_deref());
+            let namespaces_header = namespaces.header();
             let _ = write!(
                 out,
                 "\t\t\t\t<component name=\"{}\" library=\"xml\" uid=\"{uid}\" kind=\"14\">\n\
                  \t\t\t\t\t{header}{view}\n\
                  \t\t\t\t\t<data>\n\
                  \t\t\t\t\t\t<root>\n\
-                 \t\t\t\t\t\t\t<header><namespaces><namespace/><namespace uid=\"http://www.altova.com/mapforce\"/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t{namespaces_header}\n\
                  \t\t\t\t\t\t\t<entry name=\"FileInstance\" ns=\"1\"{file_instance_output} expanded=\"1\">\n\
                  \t\t\t\t\t\t\t\t<entry name=\"document\" ns=\"1\" expanded=\"1\">\n\
                  {}\
@@ -332,6 +346,7 @@ pub(super) fn render_schema_component(
                     force_root_port,
                     source_root_input.then_some("inpkey"),
                     target_branches,
+                    Some(&namespaces),
                 ),
                 xml_escape(&schema_file),
                 xml_escape(&instance_root),
@@ -1421,12 +1436,14 @@ impl PortTree {
             root_attr,
             target_branches,
             false,
+            None,
         )
     }
 
     /// Entry-tree XML that can replace a generated XSD without losing schema
     /// semantics. Unsupported metadata keeps the ordinary visual-only tree,
     /// so importer fallback cannot claim an inexact schema is authoritative.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn portable_xml_entries_xml(
         &self,
         schema: &SchemaNode,
@@ -1435,6 +1452,7 @@ impl PortTree {
         force_root_port: bool,
         root_attr: Option<&str>,
         target_branches: Option<&TargetBranches>,
+        namespaces: Option<&XmlNamespaces>,
     ) -> String {
         self.entries_xml_impl(
             schema,
@@ -1444,6 +1462,7 @@ impl PortTree {
             root_attr,
             target_branches,
             xml_entry_schema_is_exact(schema),
+            namespaces,
         )
     }
 
@@ -1468,6 +1487,7 @@ impl PortTree {
             root_attr,
             target_branches,
             true,
+            None,
         )
     }
 
@@ -1481,6 +1501,7 @@ impl PortTree {
         root_attr: Option<&str>,
         target_branches: Option<&TargetBranches>,
         typed: bool,
+        namespaces: Option<&XmlNamespaces>,
     ) -> String {
         let mut out = String::new();
         let anchors = concrete_group_anchors(schema);
@@ -1498,6 +1519,7 @@ impl PortTree {
             active_branch: Option<(&[String], usize)>,
             anchors: &BTreeMap<&'a str, Option<&'a SchemaNode>>,
             typed: bool,
+            namespaces: Option<&XmlNamespaces>,
             out: &mut String,
         ) {
             if let SchemaKind::Group { children, .. } = &node.kind {
@@ -1544,9 +1566,12 @@ impl PortTree {
                         } else {
                             String::new()
                         };
+                        let namespace = namespaces
+                            .map(|plan| plan.entry_attribute(child, false))
+                            .unwrap_or_default();
                         let _ = write!(
                             out,
-                            "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{key}\" expanded=\"1\"{clone}{metadata}",
+                            "{pad}<entry name=\"{}\"{namespace}{type_attr} {attr}=\"{key}\" expanded=\"1\"{clone}{metadata}",
                             xml_escape(&child.name),
                         );
                         if child.is_scalar() {
@@ -1555,7 +1580,7 @@ impl PortTree {
                                 for clone_key in branches.binding_clone_keys(branch, path) {
                                     let _ = writeln!(
                                         out,
-                                        "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{clone_key}\" expanded=\"1\" clone=\"1\"{metadata}/>",
+                                        "{pad}<entry name=\"{}\"{namespace}{type_attr} {attr}=\"{clone_key}\" expanded=\"1\" clone=\"1\"{metadata}/>",
                                         xml_escape(&child.name),
                                     );
                                 }
@@ -1583,6 +1608,7 @@ impl PortTree {
                                 branch,
                                 anchors,
                                 typed,
+                                namespaces,
                                 out,
                             );
                             let _ = writeln!(out, "{pad}</entry>");
@@ -1593,6 +1619,9 @@ impl PortTree {
                         && child.xml_alternative_kind == ir::XmlAlternativeKind::XsiType
                     {
                         let pad = "\t".repeat(indent);
+                        let namespace = namespaces
+                            .map(|plan| plan.entry_attribute(child, false))
+                            .unwrap_or_default();
                         for alternative in child.alternatives() {
                             let Some(key) = ports.key_for_alternative(path, &alternative.name)
                             else {
@@ -1600,7 +1629,7 @@ impl PortTree {
                             };
                             let _ = writeln!(
                                 out,
-                                "{pad}<entry name=\"{}\" {attr}=\"{key}\" expanded=\"1\" clone=\"1\">",
+                                "{pad}<entry name=\"{}\"{namespace} {attr}=\"{key}\" expanded=\"1\" clone=\"1\">",
                                 xml_escape(&child.name)
                             );
                             append_xml_type_condition(out, indent + 1, &alternative.name);
@@ -1627,9 +1656,12 @@ impl PortTree {
         } else {
             String::new()
         };
+        let namespace = namespaces
+            .map(|plan| plan.entry_attribute(schema, true))
+            .unwrap_or_default();
         let _ = writeln!(
             out,
-            "{pad}<entry name=\"{}\"{root_port} expanded=\"1\"{root_metadata}>",
+            "{pad}<entry name=\"{}\"{namespace}{root_port} expanded=\"1\"{root_metadata}>",
             xml_escape(&schema.name),
         );
         walk(
@@ -1643,6 +1675,7 @@ impl PortTree {
             None,
             &anchors,
             typed,
+            namespaces,
             &mut out,
         );
         let _ = writeln!(out, "{pad}</entry>");

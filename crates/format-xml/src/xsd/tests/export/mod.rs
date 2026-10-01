@@ -819,9 +819,12 @@ fn export_set_supports_multiple_declarations_in_one_foreign_namespace() {
     );
 
     let set = export_set(&schema, "shared.xsd").unwrap();
-    assert_eq!(set.dependencies.len(), 2);
+    assert_eq!(set.dependencies.len(), 1);
     assert!(set.root.contains(r#"schemaLocation="shared-ns1.xsd""#));
-    assert!(set.root.contains(r#"schemaLocation="shared-ns2.xsd""#));
+    assert!(!set.root.contains(r#"schemaLocation="shared-ns2.xsd""#));
+    assert_eq!(set.root.matches("<xs:import ").count(), 1);
+    assert!(set.dependencies[0].contents.contains(r#"name="First""#));
+    assert!(set.dependencies[0].contents.contains(r#"name="Second""#));
     assert!(set.root.contains(r#"ref="ns1:First""#));
     assert!(set.root.contains(r#"ref="ns1:Second""#));
 
@@ -1152,7 +1155,7 @@ fn export_set_materializes_a_foreign_recursive_occurrence() {
     assert_eq!(set.dependencies.len(), 1);
     let dependency = &set.dependencies[0].contents;
     assert!(dependency.contains(r#"<xs:element name="Emphasis""#));
-    assert!(dependency.contains(r#"<xs:element ref="tns:Emphasis""#));
+    assert!(dependency.contains(r#"<xs:element name="Emphasis" type="tns:EmphasisType""#));
     assert!(set.root.contains(r#"ref="ns1:Emphasis""#));
 }
 

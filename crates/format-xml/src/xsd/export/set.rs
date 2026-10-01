@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
 use ir::{SchemaKind, SchemaNode, XmlNamespace};
@@ -7,8 +7,11 @@ use crate::XmlFormatError;
 
 use super::{
     ExternalReference, alternatives, attribute_value_constraint, export_namespace,
-    export_set_document, export_set_substitution_member, substitution, xsd_type_name,
+    export_set_document, export_set_substitution_member, export_set_type_names, substitution,
+    xsd_type_name,
 };
+
+mod merge;
 
 const MAX_NAMESPACE_ARTIFACTS: usize = 64;
 const MAX_NAMESPACE_REFERENCES: usize = 4_096;
@@ -50,7 +53,24 @@ pub fn export_set(
     let root_imports =
         planner.scan_document(schema, target_namespace.as_deref(), &mut active, true)?;
     let root_references = planner.references(&root_imports);
-    let root = export_set_document(schema, &root_references)?;
+    // All planned documents for one namespace share one type symbol space,
+    // even before their declarations are consolidated into one artifact.
+    let mut type_names = BTreeMap::<Option<String>, BTreeSet<String>>::new();
+    type_names.insert(
+        target_namespace.clone(),
+        export_set_type_names(schema, &root_references)?,
+    );
+    for dependency in &planner.dependencies {
+        if dependency.key.attribute {
+            continue;
+        }
+        let references = planner.references(&dependency.imports);
+        type_names
+            .entry(Some(dependency.key.namespace.clone()))
+            .or_default()
+            .extend(export_set_type_names(&dependency.declaration, &references)?);
+    }
+    let root = export_set_document(schema, &root_references, &type_names[&target_namespace])?;
 
     let mut dependencies = Vec::with_capacity(planner.dependencies.len());
     for dependency in &planner.dependencies {
@@ -65,17 +85,23 @@ pub fn export_set(
                 member_identity,
                 &dependency.key.namespace,
                 &references,
+                &type_names[&Some(dependency.key.namespace.clone())],
             )?
         } else if dependency.key.attribute {
             export_attribute_document(&dependency.declaration, &dependency.key)?
         } else {
-            export_set_document(&dependency.declaration, &references)?
+            export_set_document(
+                &dependency.declaration,
+                &references,
+                &type_names[&Some(dependency.key.namespace.clone())],
+            )?
         };
         dependencies.push(XsdExportArtifact {
             filename: dependency.filename.clone(),
             contents,
         });
     }
+    let (root, dependencies) = merge::consolidate(root, dependencies)?;
     Ok(XsdExportSet {
         namespace: target_namespace,
         root,
