@@ -846,6 +846,37 @@ Set `FERRULE_REFERENCE_CORPUS_CASE` to a sample path such as
 The corpus files are never added to the repository. This checks generated
 backends against the local interpreter; the yearly-temperature mapping has
 no pinned native reference output in the corpus.
+A separate opt-in generic host has compiled and executed sixty additional local
+designs in both languages without adding their fixture contents to the repository.
+Both local-corpus hosts stage the complete bounded package before import, check
+database paths before introspection, and verify that the original files retain
+their bytes and modification times. Admission
+requires warning-free import, deterministic execution without preview host
+values, and exact typed source round trips through schema-shaped JSON. All
+primary and static named inputs are retained, and every primary/named output
+is compared in declaration order after schema-shaped normalization. Each
+compiled host checks its string and UTF-8 byte APIs against the same inputs,
+including missing, duplicate and unexpected named-input rejection.
+
+Run `generic_generated_hosts_execute_sixty_additional_local_designs` with the
+same feature and `--ignored --nocapture` options. Set
+`FERRULE_GENERIC_CORPUS_CASE` to one exact reviewed filename for a focused run;
+omitting it requires the complete sixty-design list. Target comparison uses
+normalized JSON fixed points, not raw internal output instances or generated
+physical format codecs. Context-dependent, dynamic, warning-bearing and
+nonrepresentable adapter contracts remain outside this host's admission gate.
+
+Closed schemas may declare a field more than once. Generated C# retains each
+typed declaration in order, resolves the first slot during field lookup, and
+validates every effective output declaration before retaining the final JSON
+assignment for each property. Unique property order and object constraints
+apply to that normalized object. Deep copies retain those declaration slots;
+public group construction and dynamic output still reject duplicate names.
+Embedded structured-text field projection retains its validated layout and field
+path as generated parser configuration. Only the input expression executes at
+runtime; configuration constants also used by ordinary expressions remain
+reachable. Strict generated Rust builds cover main mappings and nested functions.
+
 The filtered-position case has XSD-derived `Contact` and
 `ContactWithAddress` alternatives whose member sets overlap. JSON hosts accept
 the value only when one matching type has a member set strictly contained in

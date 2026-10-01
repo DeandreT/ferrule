@@ -1,0 +1,75 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Buffers.Binary;
+using System.Text;
+
+var utf8 = new UTF8Encoding(false, true);
+var input = utf8.GetString(File.ReadAllBytes(args[0]));
+if ((args.Length - 1) % 2 != 0) throw new ArgumentException("Named inputs are name/path pairs.");
+var named = new List<NamedJsonInput>();
+for (var index = 1; index < args.Length; index += 2)
+    named.Add(new NamedJsonInput(args[index], utf8.GetString(File.ReadAllBytes(args[index + 1]))));
+void NamedError(Action action, FerruleRuntimeError category, string expected)
+{
+    try { action(); }
+    catch (FerruleRuntimeException error)
+    {
+        if (error.Error != category || error.Detail != expected) throw new InvalidOperationException("Wrong named-input failure category or payload.", error);
+        return;
+    }
+    throw new InvalidOperationException("Named-input failure was required.");
+}
+var namedBytes = named.Select(item => new NamedJsonBytesInput(item.Name, utf8.GetBytes(item.Document))).ToArray();
+if (named.Count != 0)
+{
+    var first = named[0];
+    NamedError(() => GeneratedMapping.ExecuteJsonOutputsWithSources("!", named.Skip(1).ToArray()), FerruleRuntimeError.MissingNamedSource, first.Name);
+    NamedError(() => GeneratedMapping.ExecuteJsonBytesOutputsWithSources(new byte[] { 0xff }, namedBytes.Skip(1).ToArray()), FerruleRuntimeError.MissingNamedSource, first.Name);
+    NamedError(() => GeneratedMapping.ExecuteJsonOutputsWithSources("!", named.Append(first).ToArray()), FerruleRuntimeError.DuplicateNamedSource, first.Name);
+    NamedError(() => GeneratedMapping.ExecuteJsonBytesOutputsWithSources(new byte[] { 0xff }, namedBytes.Append(namedBytes[0]).ToArray()), FerruleRuntimeError.DuplicateNamedSource, first.Name);
+}
+var unknown = "__unknown_generic_source";
+while (named.Any(source => source.Name == unknown)) unknown += "_";
+NamedError(() => GeneratedMapping.ExecuteJsonOutputsWithSources("!", named.Append(new NamedJsonInput(unknown, "!")).ToArray()), FerruleRuntimeError.UnexpectedNamedSource, unknown);
+NamedError(() => GeneratedMapping.ExecuteJsonBytesOutputsWithSources(new byte[] { 0xff }, namedBytes.Append(new NamedJsonBytesInput(unknown, new byte[] { 0xff })).ToArray()), FerruleRuntimeError.UnexpectedNamedSource, unknown);
+var output = GeneratedMapping.ExecuteJsonOutputsWithSources(input, named);
+var bytes = GeneratedMapping.ExecuteJsonBytesOutputsWithSources(utf8.GetBytes(input), named.Select(item => new NamedJsonBytesInput(item.Name, utf8.GetBytes(item.Document))).ToArray());
+if (!utf8.GetBytes(output.Primary).AsSpan().SequenceEqual(bytes.Primary) || output.Extras.Count != bytes.Extras.Count)
+    throw new InvalidOperationException("String and UTF-8 output sets differ.");
+for (var index = 0; index < output.Extras.Count; index++)
+    if (output.Extras[index].Name != bytes.Extras[index].Name || !utf8.GetBytes(output.Extras[index].Document).AsSpan().SequenceEqual(bytes.Extras[index].Document))
+        throw new InvalidOperationException("String and UTF-8 named outputs differ.");
+var documents = new List<(string Name, string Document)> { ("", output.Primary) };
+documents.AddRange(output.Extras.Select(item => (item.Name, item.Document)));
+if (documents.Count is < 1 or > 4097) throw new InvalidOperationException("Invalid output count.");
+var magic = utf8.GetBytes("FERRULE-CORPUS-JSON-OUTPUTS/1\n");
+long size = magic.Length + 4;
+var encoded = new List<(byte[] Name, byte[] Document)>();
+foreach (var document in documents)
+{
+    var name = utf8.GetBytes(document.Name);
+    var data = utf8.GetBytes(document.Document);
+    if (name.Length > 256 || data.Length > 64 * 1024 * 1024) throw new InvalidOperationException("Output member exceeds limit.");
+    size = checked(size + 8 + name.Length + data.Length);
+    encoded.Add((name, data));
+}
+if (size > 256 * 1024 * 1024) throw new InvalidOperationException("Output envelope exceeds limit.");
+using var envelope = new MemoryStream((int)size);
+envelope.Write(magic);
+void Number(int value)
+{
+    Span<byte> field = stackalloc byte[4];
+    BinaryPrimitives.WriteUInt32BigEndian(field, checked((uint)value));
+    envelope.Write(field);
+}
+Number(encoded.Count);
+foreach (var document in encoded)
+{
+    Number(document.Name.Length);
+    envelope.Write(document.Name);
+    Number(document.Document.Length);
+    envelope.Write(document.Document);
+}
+using var stdout = Console.OpenStandardOutput();
+envelope.Position = 0;
+envelope.CopyTo(stdout);

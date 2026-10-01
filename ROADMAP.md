@@ -109,8 +109,13 @@ are preserved.
   failure. Seven network or captured-service inputs are unavailable. The
   round-trip profile records 166 semantic matches, zero drifts, and one explicit
   unsupported SQL preview-contract skip. An earlier manifest recorded 79 exact
-  deterministic reference matches; this machine has no pinned native oracle,
-  and those matches have not been rechecked after preview corrections.
+  deterministic reference matches. The supplied native test application is
+  activated in an isolated environment. Three fresh original-design runs match
+  exact typed outputs; strict XML annotations differ. The document-wrapper
+  namespace correction lets one exported string-join design validate, execute
+  and re-save without warnings; its reimported mapping retains the exact typed
+  result. Recursive-schema and filtered-position export gates remain open. The earlier
+  79 matches have not been rechecked after preview corrections.
   The single-project counts do not establish faithful behavior for warned
   connected chains; the typed pipeline path is measured separately.
 - Named optional host inputs retain connected defaults and overrides through project
@@ -339,7 +344,9 @@ classifies known Ferrule extension dependencies and blocks a selected native
 profile before publication. Strict executable import now rejects warnings,
 unresolved runtime dependencies, and invalid mappings while the default import
 remains repair-oriented. Selected private survey counts are enforceable in a
-qualification environment; native reference-application execution evidence remains absent.
+qualification environment. Three fresh native executions match typed outputs;
+one corrected exported design also executes and re-saves cleanly. Broader
+strict XML annotations and native export acceptance still require corrections.
 
 - Maintain a checked-in, machine-readable Enterprise 2026r2 `.mfd`
   capability ledger.

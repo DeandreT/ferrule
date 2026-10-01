@@ -1292,7 +1292,7 @@ public static partial class FerruleJson
             element,
             budget,
             depth);
-        return new FerruleGroup(fields);
+        return FerruleGroup.FromSchemaFields(fields);
     }
 
     private static FerruleValue ReadScalar(
@@ -1551,6 +1551,12 @@ public static partial class FerruleJson
             throw Shape(schema.Name, "object", InstanceKind(instance));
         }
 
+        if (schema.Dynamic is null && schema.DuplicateChildren)
+        {
+            WriteDuplicateDeclarationObject(writer, schema, group, budget, depth);
+            return;
+        }
+
         ValidateOutputRequired(schema, group);
         ValidateOutputPropertyNames(schema, group, budget);
         ValidateOutputPatternProperties(schema, group, budget);
@@ -1575,14 +1581,20 @@ public static partial class FerruleJson
         writer.WriteStartObject();
         if (schema.Dynamic is { } dynamic)
         {
+            var written = new HashSet<string>(StringComparer.Ordinal);
             foreach (var field in group.Fields)
             {
+                if (written.Contains(field.Name))
+                {
+                    throw Boundary($"JSON object '{schema.Name}' has duplicate property '{field.Name}'.");
+                }
                 var child = schema.Child(field.Name) ?? dynamic;
                 if (BoundaryAbsence(child, field.Value))
                 {
                     continue;
                 }
 
+                written.Add(field.Name);
                 writer.WritePropertyName(field.Name);
                 WriteNode(writer, child, field.Value, budget, depth + 1);
             }
@@ -1603,6 +1615,107 @@ public static partial class FerruleJson
         }
 
         writer.WriteEndObject();
+    }
+
+    // Preserve every declaration's validation and work, then project the last
+    // assignment while retaining the first property position, as a native JSON map does.
+    private static void WriteDuplicateDeclarationObject(
+        Utf8JsonWriter writer,
+        JsonSchemaNode schema,
+        FerruleGroup group,
+        NodeBudget budget,
+        int depth)
+    {
+        var names = new List<string>();
+        var last = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var index = 0; index < schema.Children.Count; index++)
+        {
+            var child = schema.Children[index];
+            if (!group.TryGetField(child.Name, out var value) || BoundaryAbsence(child, value))
+            {
+                continue;
+            }
+            if (last.TryAdd(child.Name, index))
+            {
+                names.Add(child.Name);
+            }
+            else
+            {
+                last[child.Name] = index;
+            }
+        }
+
+        var values = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
+        long retainedBytes = 0;
+        for (var index = 0; index < schema.Children.Count; index++)
+        {
+            var child = schema.Children[index];
+            if (!group.TryGetField(child.Name, out var value) || BoundaryAbsence(child, value))
+            {
+                continue;
+            }
+            var encoded = new BoundedJsonBufferWriter(
+                MaximumEscapedDocumentBytes,
+                $"Normalized JSON property '{child.Name}'");
+            using (var childWriter = new Utf8JsonWriter(
+                       encoded,
+                       new JsonWriterOptions
+                       {
+                           Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                           MaxDepth = MaximumDepth,
+                       }))
+            {
+                WriteNode(childWriter, child, value, budget, depth + 1);
+            }
+            // Earlier assignments still validate, but are never retained. This
+            // prevents repeated aliases from multiplying the projected buffer.
+            if (last[child.Name] == index)
+            {
+                retainedBytes = checked(retainedBytes + encoded.WrittenMemory.Length);
+                if (retainedBytes > MaximumEscapedDocumentBytes)
+                {
+                    throw Boundary($"Normalized JSON object '{schema.Name}' exceeds the bounded output buffer.");
+                }
+                values.Add(child.Name, encoded.WrittenMemory);
+            }
+        }
+
+        var buffer = new BoundedJsonBufferWriter(
+            MaximumEscapedDocumentBytes,
+            $"Normalized JSON object '{schema.Name}'");
+        using (var objectWriter = new Utf8JsonWriter(
+                   buffer,
+                   new JsonWriterOptions
+                   {
+                       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                       MaxDepth = MaximumDepth,
+                   }))
+        {
+            objectWriter.WriteStartObject();
+            foreach (var name in names)
+            {
+                objectWriter.WritePropertyName(name);
+                objectWriter.WriteRawValue(values[name].Span, skipInputValidation: true);
+            }
+            objectWriter.WriteEndObject();
+        }
+        if (CanonicalOutputUtf8ByteCount(buffer.WrittenSpan) > MaximumDocumentBytes)
+        {
+            throw Boundary($"Normalized JSON object '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit.");
+        }
+        using var document = JsonDocument.Parse(
+            buffer.WrittenMemory,
+            new JsonDocumentOptions { MaxDepth = MaximumDepth });
+        var properties = OrderedProperties(document.RootElement);
+        var matcher = budget.OutputMatcher();
+        ValidatePropertyNames(schema, properties, matcher);
+        ValidatePatternProperties(schema, properties, matcher);
+        ValidateRequired(schema, properties);
+        ValidatePropertyDependencies(schema, properties);
+        ValidateAlternatives(schema, properties, matcher);
+        ValidatePropertyCount(schema, properties.Count);
+        ValidateDependentSchemas(schema, properties, document.RootElement, matcher, depth);
+        document.RootElement.WriteTo(writer);
     }
 
     private static void WriteAny(
@@ -3205,6 +3318,7 @@ public static partial class FerruleJson
             PatternPropertyNames = patternPropertyNames;
             JsonUniqueItems = jsonUniqueItems;
             Children = children;
+            DuplicateChildren = children.Select(child => child.Name).Distinct(StringComparer.Ordinal).Count() != children.Count;
             Dynamic = dynamic;
             Required = required;
             Alternatives = alternatives;
@@ -3266,6 +3380,8 @@ public static partial class FerruleJson
         public bool IsScalarUnion => IsScalar && !IsSingleScalar(ScalarDomain);
 
         public IReadOnlyList<JsonSchemaNode> Children { get; }
+
+        public bool DuplicateChildren { get; }
 
         public JsonSchemaNode? Dynamic { get; }
 

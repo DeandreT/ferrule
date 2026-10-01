@@ -46,6 +46,8 @@ mod path_hierarchy;
 mod recursive_sequences;
 #[path = "code_generation/reference_corpus.rs"]
 mod reference_corpus;
+#[path = "code_generation/reference_corpus_generic.rs"]
+mod reference_corpus_generic;
 #[path = "code_generation/regex_unicode.rs"]
 mod regex_unicode;
 #[path = "code_generation/required_query_host.rs"]

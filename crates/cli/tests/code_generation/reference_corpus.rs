@@ -314,10 +314,17 @@ const CASES: [CorpusCase; 43] = [
 #[test]
 #[ignore = "requires the local ignored ReferenceSamples corpus and .NET 10 SDK"]
 fn generated_rust_and_csharp_execute_local_samples_like_engine() -> TestResult<()> {
-    let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
+    let original = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;
     let directory = TempDir::new("reference_corpus")?;
+    let package = super::reference_corpus_generic::package::Snapshot::copy(
+        &original,
+        &directory.0.join("ReferenceSamples"),
+    )?;
+    let samples = &package.root;
+    let reviewed: Vec<_> = CASES.iter().map(|case| case.sample).collect();
+    package.preflight_connections(&reviewed)?;
     let rust_target = directory.0.join("rust-target");
     let case_filter = std::env::var("FERRULE_REFERENCE_CORPUS_CASE").ok();
     let mut executed = 0;
@@ -330,10 +337,12 @@ fn generated_rust_and_csharp_execute_local_samples_like_engine() -> TestResult<(
         }
         let case_dir = directory.0.join(format!("case-{index}"));
         std::fs::create_dir(&case_dir)?;
-        run_case(&samples, &case_dir, &rust_target, case)?;
+        run_case(samples, &case_dir, &rust_target, case)?;
+        package.verify()?;
         executed += 1;
     }
     assert!(executed > 0, "no local corpus case matched the filter");
+    package.verify()?;
     println!(
         "{} local mappings compiled and executed in generated Rust and C#",
         executed
