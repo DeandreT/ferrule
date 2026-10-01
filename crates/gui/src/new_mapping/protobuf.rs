@@ -124,6 +124,36 @@ impl ProtobufBoundaryDraft {
     }
 }
 
+/// A schema chooser edits the mapping boundary without selecting a new codec.
+/// Existing binary metadata remains valid only for its exact root projection.
+pub(crate) fn validate_schema_replacement(
+    options: &FormatOptions,
+    schema: &ir::SchemaNode,
+) -> anyhow::Result<()> {
+    let Some(protobuf) = &options.protobuf else {
+        return Ok(());
+    };
+    let layout = format_protobuf::Layout::parse_files(
+        protobuf.schema_path.as_deref().unwrap_or("root.proto"),
+        &protobuf.schema,
+        protobuf
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )
+    .context("the existing Protocol Buffers schema cannot be read")?;
+    let expected = format_protobuf::to_ir_schema(&layout, &protobuf.root_message)
+        .context("the existing Protocol Buffers root cannot be mapped")?;
+    if *schema != expected {
+        bail!(
+            "selected schema does not match the embedded Protocol Buffers root `{}`; \
+             choose a matching schema to keep binary data, or explicitly change the format first",
+            protobuf.root_message
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -621,6 +621,12 @@ mapping. The GUI also exposes guarded native MFD export with component-specific
 findings and `.mfd` filename suggestions; native application acceptance remains
 unverified.
 
+Named boundary editors retain embedded formats independently of filename
+suffixes and reject incompatible Protocol Buffers schema replacement. Passive
+rendering preserves CSV defaults, while deliberate format changes clear stale
+settings. Synthetic save/reopen checks retain exact named binary bytes and
+explicit XML/JSON/JSON Lines outputs through file and payload hosts.
+
 Exit criteria:
 
 - XML-to-JSON and CSV-plus-SQLite lookup mappings can be created from a blank
