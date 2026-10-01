@@ -636,7 +636,11 @@ impl GraphViewer<'_> {
 
     /// Reuses an unowned `SourceField` with this exact frame and relative
     /// path, or creates one. Generated items never back ordinary Source-pin wires.
-    fn source_field_for(&mut self, frame: Option<Vec<String>>, path: Vec<String>) -> NodeId {
+    fn source_field_for(
+        &mut self,
+        frame: Option<Vec<String>>,
+        path: Vec<String>,
+    ) -> Result<NodeId, String> {
         let owned_items = if self.function_output.is_none() {
             sequence_item_ids(
                 self.graph,
@@ -656,13 +660,23 @@ impl GraphViewer<'_> {
             }
             _ => None,
         });
-        existing.unwrap_or_else(|| {
-            let id = self.fresh_id();
-            self.graph
-                .nodes
-                .insert(id, Node::SourceField { path, frame });
-            id
-        })
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+        let exhausted = || "mapping node IDs are exhausted".to_string();
+        let mut id = match self.graph.nodes.keys().next_back() {
+            Some(maximum) => maximum.checked_add(1).ok_or_else(exhausted)?,
+            None => 0,
+        };
+        // Preserve append-only IDs and leave missing generated items untouched.
+        // At most one candidate per owned ID is skipped before success/failure.
+        while owned_items.contains(&id) {
+            id = id.checked_add(1).ok_or_else(exhausted)?;
+        }
+        self.graph
+            .nodes
+            .insert(id, Node::SourceField { path, frame });
+        Ok(id)
     }
 
     fn set_input(&mut self, node_id: NodeId, idx: usize, from_id: NodeId) -> bool {
@@ -2248,7 +2262,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     // The graph retains independent ownership after this pin
                     // catalog is rebuilt on the next UI frame.
                     let field =
-                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone());
+                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone())?;
                     if !self.set_input(to_id, to.id.input, field) {
                         self.remove_orphaned_input(field, snarl);
                         return Err(format!(
@@ -2274,7 +2288,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     )?;
                     let displaced = self.binding_node(&target_leaf);
                     let field =
-                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone());
+                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone())?;
                     self.set_binding(&target_leaf, field);
                     Ok(displaced)
                 }

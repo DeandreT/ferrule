@@ -696,6 +696,17 @@ fn connect_physical_source(
     framed: bool,
     isolated_function: bool,
 ) -> NodeId {
+    connect_physical_source_attempt(project, named, to_function, framed, isolated_function)
+        .expect("physical endpoint connection")
+}
+
+fn connect_physical_source_attempt(
+    project: &mut Project,
+    named: bool,
+    to_function: bool,
+    framed: bool,
+    isolated_function: bool,
+) -> Result<NodeId, String> {
     let source_blocks = source_blocks(&project.source);
     let target_blocks = target_blocks(&project.target);
     let source_paths = SourcePathCatalog::new(&project.source, &project.extra_sources);
@@ -739,6 +750,39 @@ fn connect_physical_source(
         node: call,
         input: 0,
     };
+    // Recreate pre-existing ordinary wires for displacement/error tests.
+    // These fields live on this physical Source endpoint block.
+    let old_source_pin = |node: NodeId| {
+        let Node::SourceField { path, frame } = project.graph.nodes.get(&node)? else {
+            return None;
+        };
+        source_blocks[source_block]
+            .leaves
+            .iter()
+            .position(|leaf| &leaf.path == path && &leaf.frame == frame)
+            .map(|output| OutPinId {
+                node: source,
+                output,
+            })
+    };
+    let previous_root = if named {
+        &project.extra_targets[1].root
+    } else {
+        &project.root
+    };
+    if let Some(from) = previous_root
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Output")
+        .and_then(|binding| old_source_pin(binding.node))
+    {
+        snarl.connect(from, target_id);
+    }
+    if let Some(Node::Call { args, .. }) = project.graph.nodes.get(&REUSE_CALL)
+        && let Some(from) = args.first().copied().and_then(old_source_pin)
+    {
+        snarl.connect(from, call_input);
+    }
     let mut endpoint_scroll = crate::canvas_endpoints::EndpointScrollState::default();
     let inactive;
     let (root_scope, extra_targets) = if named {
@@ -788,8 +832,19 @@ fn connect_physical_source(
         error: None,
     };
     let to_id = if to_function { call_input } else { target_id };
+    let before_wires = snarl.wires().collect::<std::collections::BTreeSet<_>>();
     viewer.connect(&snarl.out_pin(from_id), &snarl.in_pin(to_id), &mut snarl);
-    assert_eq!(viewer.error, None, "physical endpoint connection");
+    if let Some(error) = viewer.error.take() {
+        assert!(
+            !before_wires.is_empty(),
+            "exhaustion fixture must begin with existing ordinary wires"
+        );
+        assert_eq!(
+            snarl.wires().collect::<std::collections::BTreeSet<_>>(),
+            before_wires
+        );
+        return Err(error);
+    }
     let field = if to_function {
         let Node::Call { args, .. } = &viewer.graph.nodes[&REUSE_CALL] else {
             panic!("call")
@@ -826,14 +881,14 @@ fn connect_physical_source(
             .nodes()
             .any(|node| matches!(node, CanvasNode::Placeholder(_)))
     );
-    field
+    Ok(field)
 }
 
 fn repaired_physical_outputs(project: &Project, named: bool, to_function: bool) {
     // The stored fixture intentionally has a malformed generated item. Repair
     // only a clone to exercise the new ordinary wire as an executable mapping.
     let mut executable = project.clone();
-    for item in REUSE_ITEMS {
+    for item in crate::graph_viewer::project_sequence_item_ids(&executable) {
         executable.graph.nodes.insert(
             item,
             Node::SourceField {
@@ -1040,3 +1095,6 @@ fn isolated_function_source_reuse_ignores_project_item_id_collisions() {
         assert_eq!(snapshot(&project), snapshot(&expected));
     }
 }
+
+#[path = "graph_viewer_sequence_item_tests/allocation.rs"]
+mod allocation;

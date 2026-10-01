@@ -80,8 +80,11 @@ are preserved.
   graph nodes survive, and undo restores exact item identities and wires.
   Generated item nodes show their indexed scope, reducer, or failure-rule owners
   and remain read-only, including malformed saved paths that match source fields.
-  Source wires and Auto-connect reuse only ordinary source fields; Auto-connect
-  also reserves absent node IDs retained by generated owners.
+  Source wires and Auto-connect reuse only ordinary source fields and reserve
+  absent node IDs retained by generated owners. Exhausted manual connections
+  preserve the graph, bindings, inputs, and existing wires.
+  Function calls reserve all inputs and the call before changing a canvas;
+  exhausted additions preserve output, layout, dirty state, and undo history.
   XML child scopes on ordinary singular target groups can select the first
   surviving element or every surviving element; unavailable formats and complex
   schemas retain their saved mode without passive changes.
