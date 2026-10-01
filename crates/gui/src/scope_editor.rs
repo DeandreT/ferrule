@@ -9,8 +9,11 @@ use mapping::{Binding, Graph, NodeId, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::path_picker::SourcePathCatalog;
 
+mod copy_controls;
 mod sort_controls;
 mod window_controls;
+
+pub(crate) use copy_controls::{check_static_binding, copied_ancestor_at_path};
 
 /// Path of child-indices from the project root to the scope being edited.
 pub type ScopePath = Vec<usize>;
@@ -50,6 +53,7 @@ pub enum ScopeTreeError {
         target_field: String,
     },
     CannotExpandScope(Vec<String>),
+    WholeGroupCopyContent(Vec<String>),
     ExpansionLimitExceeded(usize),
     CannotRemoveRoot,
 }
@@ -105,6 +109,11 @@ impl std::fmt::Display for ScopeTreeError {
             Self::CannotExpandScope(path) => write!(
                 formatter,
                 "target scope {} uses a construction or iteration mode that cannot contain an expanded subtree",
+                path_label(path)
+            ),
+            Self::WholeGroupCopyContent(path) => write!(
+                formatter,
+                "target scope {} belongs to a whole source group copy; individual child scopes cannot be added",
                 path_label(path)
             ),
             Self::ExpansionLimitExceeded(limit) => write!(
@@ -264,7 +273,10 @@ pub fn available_static_child_scopes(
 ) -> Result<Vec<StaticChildScopeCandidate>, ScopeTreeError> {
     let parent = scope_at(root, parent_path)
         .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
-    let (target_parent, _) = target_scope_for_path(root, target, parent_path)?;
+    let (target_parent, target_chain) = target_scope_for_path(root, target, parent_path)?;
+    if copy_controls::copied_ancestor_at_path(root, parent_path).is_some() {
+        return Err(ScopeTreeError::WholeGroupCopyContent(target_chain));
+    }
     let SchemaKind::Group { children, .. } = &target_parent.kind else {
         return Ok(Vec::new());
     };
@@ -293,6 +305,9 @@ pub fn create_static_child_scope(
     let parent = scope_at(root, parent_path)
         .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
     let (target_parent, target_chain) = target_scope_for_path(root, target, parent_path)?;
+    if copy_controls::copied_ancestor_at_path(root, parent_path).is_some() {
+        return Err(ScopeTreeError::WholeGroupCopyContent(target_chain));
+    }
     if parent
         .children
         .iter()
@@ -343,6 +358,9 @@ pub fn expand_static_target_subtree(
     let (target_parent, target_chain) = target_scope_for_path(root, target, parent_path)?;
     if !can_expand_scope(selected) {
         return Err(ScopeTreeError::CannotExpandScope(target_chain));
+    }
+    if copy_controls::copied_ancestor_at_path(root, parent_path).is_some() {
+        return Err(ScopeTreeError::WholeGroupCopyContent(target_chain));
     }
     let mut expanded = selected.clone();
     let mut visited = 0;
@@ -548,6 +566,11 @@ pub fn show_scope_editor(
         format!("scope: {}", scope.target_field)
     });
 
+    let whole_group_copy = matches!(scope.construction, ScopeConstruction::CopyCurrentSource);
+    if whole_group_copy {
+        copy_controls::show_reason(ui);
+    }
+
     match &scope.iteration {
         ScopeIteration::Sequence(sequence) => {
             ui.horizontal(|ui| {
@@ -637,79 +660,81 @@ pub fn show_scope_editor(
         });
 
         if scope.join().is_none() {
-            ui.horizontal(|ui| {
-                ui.label("  grouping:");
-                let mut mode = grouping_mode(scope);
-                let previous = mode;
-                ui.add_enabled_ui(mode != GroupingMode::None || first_node.is_some(), |ui| {
-                    egui::ComboBox::from_id_salt("scope_grouping_mode")
-                        .selected_text(mode.label())
-                        .show_ui(ui, |ui| {
-                            for choice in [
-                                GroupingMode::None,
-                                GroupingMode::ByKey,
-                                GroupingMode::AdjacentBy,
-                                GroupingMode::StartingWith,
-                                GroupingMode::EndingWith,
-                                GroupingMode::IntoBlocks,
-                            ] {
-                                ui.selectable_value(&mut mode, choice, choice.label());
-                            }
-                        });
-                })
-                .response
-                .on_disabled_hover_text("Add a graph node before enabling grouping");
-                if mode != previous {
-                    set_grouping_mode(scope, mode, first_node);
-                }
-                match mode {
-                    GroupingMode::None => {}
-                    GroupingMode::ByKey => {
-                        if let Some(group_by) = &mut scope.group_by {
-                            node_picker(ui, "group_by_node", group_by, graph);
-                        }
-                    }
-                    GroupingMode::AdjacentBy => {
-                        if let Some(group_by) = &mut scope.group_adjacent_by {
-                            node_picker(ui, "group_adjacent_by_node", group_by, graph);
-                        }
-                    }
-                    GroupingMode::StartingWith => {
-                        if let Some(predicate) = &mut scope.group_starting_with {
-                            node_picker(ui, "group_starting_node", predicate, graph);
-                        }
-                    }
-                    GroupingMode::EndingWith => {
-                        if let Some(predicate) = &mut scope.group_ending_with {
-                            node_picker(ui, "group_ending_node", predicate, graph);
-                        }
-                    }
-                    GroupingMode::IntoBlocks => {
-                        if let Some(block_size) = &mut scope.group_into_blocks {
-                            node_picker(ui, "group_block_size_node", block_size, graph);
-                        }
-                    }
-                }
-            });
-            if grouping_mode(scope) != GroupingMode::None {
+            ui.add_enabled_ui(!whole_group_copy, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("  after-group filter:");
-                    let mut enabled = scope.post_group_filter.is_some();
-                    if ui
-                        .add_enabled(
-                            enabled || first_node.is_some(),
-                            egui::Checkbox::new(&mut enabled, "filtered"),
-                        )
-                        .on_disabled_hover_text("Add a graph node before enabling a filter")
-                        .changed()
-                    {
-                        scope.post_group_filter = enabled.then_some(first_node).flatten();
+                    ui.label("  grouping:");
+                    let mut mode = grouping_mode(scope);
+                    let previous = mode;
+                    ui.add_enabled_ui(mode != GroupingMode::None || first_node.is_some(), |ui| {
+                        egui::ComboBox::from_id_salt("scope_grouping_mode")
+                            .selected_text(mode.label())
+                            .show_ui(ui, |ui| {
+                                for choice in [
+                                    GroupingMode::None,
+                                    GroupingMode::ByKey,
+                                    GroupingMode::AdjacentBy,
+                                    GroupingMode::StartingWith,
+                                    GroupingMode::EndingWith,
+                                    GroupingMode::IntoBlocks,
+                                ] {
+                                    ui.selectable_value(&mut mode, choice, choice.label());
+                                }
+                            });
+                    })
+                    .response
+                    .on_disabled_hover_text("Add a graph node before enabling grouping");
+                    if mode != previous {
+                        set_grouping_mode(scope, mode, first_node);
                     }
-                    if let Some(filter) = &mut scope.post_group_filter {
-                        node_picker(ui, "post_group_filter_node", filter, graph);
+                    match mode {
+                        GroupingMode::None => {}
+                        GroupingMode::ByKey => {
+                            if let Some(group_by) = &mut scope.group_by {
+                                node_picker(ui, "group_by_node", group_by, graph);
+                            }
+                        }
+                        GroupingMode::AdjacentBy => {
+                            if let Some(group_by) = &mut scope.group_adjacent_by {
+                                node_picker(ui, "group_adjacent_by_node", group_by, graph);
+                            }
+                        }
+                        GroupingMode::StartingWith => {
+                            if let Some(predicate) = &mut scope.group_starting_with {
+                                node_picker(ui, "group_starting_node", predicate, graph);
+                            }
+                        }
+                        GroupingMode::EndingWith => {
+                            if let Some(predicate) = &mut scope.group_ending_with {
+                                node_picker(ui, "group_ending_node", predicate, graph);
+                            }
+                        }
+                        GroupingMode::IntoBlocks => {
+                            if let Some(block_size) = &mut scope.group_into_blocks {
+                                node_picker(ui, "group_block_size_node", block_size, graph);
+                            }
+                        }
                     }
                 });
-            }
+                if grouping_mode(scope) != GroupingMode::None {
+                    ui.horizontal(|ui| {
+                        ui.label("  after-group filter:");
+                        let mut enabled = scope.post_group_filter.is_some();
+                        if ui
+                            .add_enabled(
+                                enabled || first_node.is_some(),
+                                egui::Checkbox::new(&mut enabled, "filtered"),
+                            )
+                            .on_disabled_hover_text("Add a graph node before enabling a filter")
+                            .changed()
+                        {
+                            scope.post_group_filter = enabled.then_some(first_node).flatten();
+                        }
+                        if let Some(filter) = &mut scope.post_group_filter {
+                            node_picker(ui, "post_group_filter_node", filter, graph);
+                        }
+                    });
+                }
+            });
         }
 
         sort_controls::show(ui, scope, graph);
@@ -718,60 +743,62 @@ pub fn show_scope_editor(
     }
 
     ui.separator();
-    ui.label("bindings (target field -> graph node):");
-    let mut remove_idx = None;
-    for (i, binding) in scope.bindings.iter_mut().enumerate() {
-        ui.horizontal(|ui| {
-            egui::ComboBox::from_id_salt(("binding_target", i))
-                .selected_text(if binding.target_field.is_empty() {
-                    "<target field>"
-                } else {
-                    &binding.target_field
-                })
-                .width(130.0)
-                .show_ui(ui, |ui| {
-                    for field in target_fields {
-                        ui.selectable_value(&mut binding.target_field, field.clone(), field);
-                    }
-                });
-            ui.label("->");
-            node_picker(ui, format!("binding_{i}"), &mut binding.node, graph);
-            if ui
-                .small_button("x")
-                .on_hover_text("Remove binding")
-                .clicked()
-            {
-                remove_idx = Some(i);
-            }
-        });
-    }
-    if let Some(i) = remove_idx {
-        scope.bindings.remove(i);
-    }
-    let next_target = target_fields
-        .iter()
-        .find(|field| {
-            !scope
-                .bindings
-                .iter()
-                .any(|binding| binding.target_field.as_str() == field.as_str())
-        })
-        .cloned();
-    if ui
-        .add_enabled(
-            first_node.is_some() && next_target.is_some(),
-            egui::Button::new("+ binding").small(),
-        )
-        .on_disabled_hover_text(if first_node.is_none() {
-            "Add a graph node before creating a binding"
-        } else {
-            "Every scalar target field already has a binding"
-        })
-        .clicked()
-        && let (Some(node), Some(target_field)) = (first_node, next_target)
-    {
-        scope.bindings.push(Binding { target_field, node });
-    }
+    ui.add_enabled_ui(!whole_group_copy, |ui| {
+        ui.label("bindings (target field -> graph node):");
+        let mut remove_idx = None;
+        for (i, binding) in scope.bindings.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_salt(("binding_target", i))
+                    .selected_text(if binding.target_field.is_empty() {
+                        "<target field>"
+                    } else {
+                        &binding.target_field
+                    })
+                    .width(130.0)
+                    .show_ui(ui, |ui| {
+                        for field in target_fields {
+                            ui.selectable_value(&mut binding.target_field, field.clone(), field);
+                        }
+                    });
+                ui.label("->");
+                node_picker(ui, format!("binding_{i}"), &mut binding.node, graph);
+                if ui
+                    .small_button("x")
+                    .on_hover_text("Remove binding")
+                    .clicked()
+                {
+                    remove_idx = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove_idx {
+            scope.bindings.remove(i);
+        }
+        let next_target = target_fields
+            .iter()
+            .find(|field| {
+                !scope
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.target_field.as_str() == field.as_str())
+            })
+            .cloned();
+        if ui
+            .add_enabled(
+                first_node.is_some() && next_target.is_some(),
+                egui::Button::new("+ binding").small(),
+            )
+            .on_disabled_hover_text(if first_node.is_none() {
+                "Add a graph node before creating a binding"
+            } else {
+                "Every scalar target field already has a binding"
+            })
+            .clicked()
+            && let (Some(node), Some(target_field)) = (first_node, next_target)
+        {
+            scope.bindings.push(Binding { target_field, node });
+        }
+    });
 }
 
 fn node_picker(
