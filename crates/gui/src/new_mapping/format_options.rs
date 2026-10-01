@@ -2,7 +2,9 @@ use mapping::FormatOptions;
 
 /// Explicit layouts retain their own settings when a filename changes.
 pub(crate) fn configured_layout_label(options: &FormatOptions) -> Option<&'static str> {
-    if options.protobuf.is_some() {
+    if options.csv_text_repair_dependency.is_some() {
+        Some("CSV repair required")
+    } else if options.protobuf.is_some() {
         Some("Protocol Buffers")
     } else if options.idoc.is_some()
         || options.idoc_native_config.is_some()

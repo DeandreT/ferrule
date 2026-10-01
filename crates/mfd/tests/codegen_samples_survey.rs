@@ -23,7 +23,7 @@ use sample_discovery::discover_sample_paths;
 use survey_import_options::SurveyResourceSelection;
 
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
-const LEGACY_VENDOR_NAME: &str = concat!("Alto", "va");
+const LEGACY_VENDOR_NAME: &str = "Altova";
 const LEGACY_REFERENCE_RELEASE: &str = "MapForce2026";
 const LEGACY_REFERENCE_EXAMPLES: &str = "MapForceExamples";
 
@@ -134,6 +134,7 @@ fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
         };
         if !imported.project.runtime_dependencies().is_empty()
             || !imported.project.pdf_runtime_dependencies().is_empty()
+            || !imported.project.csv_runtime_dependencies().is_empty()
         {
             dependency_blocked += 1;
             continue;

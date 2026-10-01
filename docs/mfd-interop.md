@@ -491,15 +491,22 @@ the component; executable imports reject the warnings. Headerless source and
 target values retain their columns even when declaration elements are shuffled.
 CSV text boundaries accept absent encoding or the supported UTF-8 code `1000`.
 Other declared encodings produce a bounded warning; repair imports continue
-using UTF-8, while executable imports reject the unsupported contract.
+as editable schema/connection drafts, while executable imports reject the
+unsupported contract. A closed `csv_text_repair_dependency` cause set survives
+project and pipeline save/reopen. Configured file, payload, browser, and pipeline
+preview byte I/O reject that dependency before format dispatch; renamed paths
+cannot select another decoder. Both export profiles reject before publication,
+including existing design/schema siblings. Intentional host-preparsed typed
+instances remain usable.
 CSV components retain `byteordermark="0"` or `"1"` as the saved
 `csv_utf8_bom` option. Native export writes the observed UTF-8 tuple
 `encoding="1000" byteorder="1"` and an explicit BOM flag; two strict
 export/reimport cycles retain the setting and exact UTF-8 output bytes.
 Input accepts either UTF-8 form, while file, payload, and browser output add
 the BOM only when selected. Unsupported byte-order or BOM codes produce
-bounded repair warnings and reject executable import. These checks establish
-local serialization and execution behavior; native application execution
+bounded repair warnings and reject executable import.
+The same saved repair marker retains unsupported byte-order and BOM causes.
+These checks establish local serialization and execution behavior; native application execution
 remains unverified.
 CSV sources with `removeempty="false"` (or `0`) retain present empty text cells
 as `Value::String("")`; `true` (or `1`) keeps them absent. Old Ferrule projects

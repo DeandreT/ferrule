@@ -626,6 +626,7 @@ fn preflight_format(path: &Path, options: &FormatOptions, output: bool) -> anyho
 }
 
 fn preflight_output_options(options: &FormatOptions) -> anyhow::Result<()> {
+    format_csv::require_executable_dependency(options.csv_text_repair_dependency)?;
     reject_stateful_options(options)?;
     preflight_typed_options(options, true)?;
     if options.json5 && options.json_lines {

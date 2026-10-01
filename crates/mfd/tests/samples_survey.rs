@@ -296,6 +296,12 @@ fn runtime_dependency_messages(project: &mapping::Project) -> Vec<String> {
                 .into_iter()
                 .map(|dependency| dependency.to_string()),
         )
+        .chain(
+            project
+                .csv_runtime_dependencies()
+                .into_iter()
+                .map(|dependency| dependency.to_string()),
+        )
         .collect()
 }
 
@@ -436,6 +442,23 @@ fn diagnostic_categories_replace_quoted_values_once() {
         diagnostic_category("binding for `Person/Name` comes from `source`"),
         "binding for `_` comes from `_`"
     );
+}
+
+#[test]
+fn self_authored_csv_repair_is_recorded_as_dependency_blocked() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let inputs = workspace.0.join("csv-inputs");
+    std::fs::create_dir(&inputs)?;
+    let design = inputs.join("mapping.mfd");
+    std::fs::write(&design, include_str!("fixtures/csv-text-repair.mfd"))?;
+    let output = workspace.export_path(0);
+    let outcome = survey_file(&inputs, &design, &output, &mfd::ImportOptions::default());
+    assert_eq!(outcome.validation.status, StageStatus::DependencyBlocked);
+    assert_eq!(outcome.runtime_dependencies.len(), 1);
+    assert!(outcome.runtime_dependencies[0].contains("CSV text settings"));
+    assert_eq!(outcome.export.status, StageStatus::Failed);
+    assert!(!output.exists());
+    Ok(())
 }
 
 #[test]

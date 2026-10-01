@@ -535,6 +535,28 @@ fn controlled_mapping_failures_are_compared_as_semantic_outcomes() {
 }
 
 #[test]
+fn self_authored_csv_repair_blocks_roundtrip_and_reload_validation() -> Result<(), Box<dyn Error>> {
+    let samples = TestDir::new("csv-repair");
+    let design = super::write_self_authored_csv_repair_case(&samples.0)?;
+    let workspace = SurveyWorkspace::new()?;
+    let options = mfd::ImportOptions::default();
+    let outcome = survey_roundtrip_file(0, &design, &samples.0, &workspace, &options);
+    assert_eq!(outcome.validation.status, Status::DependencyBlocked);
+    assert_eq!(outcome.original_execution.status, Status::DependencyBlocked);
+    assert_eq!(outcome.source_load.status, Status::Skipped);
+    assert_eq!(outcome.runtime_dependencies.len(), 1);
+    let project = mfd::import_with_options(&design, &options)?.project;
+    let reopened =
+        mapping::project_file::decode_str(&mapping::project_file::encode_pretty(&project)?)?;
+    assert_eq!(
+        validation_outcome(&reopened).status,
+        Status::DependencyBlocked
+    );
+    assert!(!workspace.0.join("sample-0").exists());
+    Ok(())
+}
+
+#[test]
 fn self_authored_pdf_repair_blocks_roundtrip_and_reload_validation() -> Result<(), Box<dyn Error>> {
     let samples = TestDir::new("pdf-repair");
     let design = super::write_self_authored_pdf_repair_case(&samples.0)?;

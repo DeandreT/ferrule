@@ -44,14 +44,32 @@ impl fmt::Display for DataSide {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeError {
     InvalidProject(Vec<String>),
-    XbrlFormatRequired { side: DataSide },
-    XbrlBoundaryRequired { side: DataSide },
-    XbrlExtraSourceNotExecutable { name: String },
-    Parse { format: DataFormat, message: String },
+    XbrlFormatRequired {
+        side: DataSide,
+    },
+    XbrlBoundaryRequired {
+        side: DataSide,
+    },
+    XbrlExtraSourceNotExecutable {
+        name: String,
+    },
+    Parse {
+        format: DataFormat,
+        message: String,
+    },
     Execute(String),
-    Serialize { format: DataFormat, message: String },
+    Serialize {
+        format: DataFormat,
+        message: String,
+    },
     CsvTargetNotRepeated,
-    CsvFormatRequired { side: DataSide },
+    CsvFormatRequired {
+        side: DataSide,
+    },
+    CsvRepairDependency {
+        side: DataSide,
+        dependency: mapping::CsvTextRepairDependency,
+    },
 }
 
 impl fmt::Display for RuntimeError {
@@ -85,6 +103,9 @@ impl fmt::Display for RuntimeError {
             Self::Serialize { format, message } => {
                 write!(formatter, "could not serialize {format} target: {message}")
             }
+            Self::CsvRepairDependency { side, dependency } => {
+                write!(formatter, "the project {side} requires {dependency}")
+            }
             Self::CsvFormatRequired { side } => {
                 write!(
                     formatter,
@@ -107,6 +128,12 @@ pub fn parse_source(
     text: &str,
     format: DataFormat,
 ) -> Result<Instance, RuntimeError> {
+    if let Some(dependency) = project.source_options.csv_text_repair_dependency {
+        return Err(RuntimeError::CsvRepairDependency {
+            side: DataSide::Source,
+            dependency,
+        });
+    }
     if (project.source_options.csv_preserve_empty_strings || project.source_options.csv_utf8_bom)
         && format != DataFormat::Csv
     {
@@ -181,6 +208,12 @@ pub fn serialize_target(
     target: &Instance,
     format: DataFormat,
 ) -> Result<String, RuntimeError> {
+    if let Some(dependency) = project.target_options.csv_text_repair_dependency {
+        return Err(RuntimeError::CsvRepairDependency {
+            side: DataSide::Target,
+            dependency,
+        });
+    }
     if (project.target_options.csv_preserve_empty_strings || project.target_options.csv_utf8_bom)
         && format != DataFormat::Csv
     {
@@ -641,6 +674,55 @@ mod tests {
         .unwrap();
 
         assert_eq!(output, "Ada|37\nGrace|42\n");
+    }
+
+    #[test]
+    fn persisted_csv_repairs_reject_all_browser_format_selections() {
+        let dependency =
+            mapping::CsvTextRepairDependency::new(mapping::CsvTextRepairCause::Encoding);
+        let mut project = scalar_project(true);
+        project.source_options.csv_text_repair_dependency = Some(dependency);
+        project = mapping::project_file::decode_str(
+            &mapping::project_file::encode_pretty(&project).unwrap(),
+        )
+        .unwrap();
+        for format in [
+            DataFormat::Csv,
+            DataFormat::Json,
+            DataFormat::Xml,
+            DataFormat::Xbrl,
+        ] {
+            assert_eq!(
+                parse_source(&project, "not a document", format),
+                Err(RuntimeError::CsvRepairDependency {
+                    side: DataSide::Source,
+                    dependency
+                })
+            );
+        }
+        project.source_options.csv_text_repair_dependency = None;
+        let source = parse_source(&project, "name,age\nAda,37\n", DataFormat::Csv).unwrap();
+        let target = engine::run(&project, &source).unwrap();
+        project.target_options.csv_text_repair_dependency = Some(dependency);
+        for format in [
+            DataFormat::Csv,
+            DataFormat::Json,
+            DataFormat::Xml,
+            DataFormat::Xbrl,
+        ] {
+            assert_eq!(
+                serialize_target(&project, &target, format),
+                Err(RuntimeError::CsvRepairDependency {
+                    side: DataSide::Target,
+                    dependency
+                })
+            );
+        }
+        project.target_options.csv_text_repair_dependency = None;
+        assert_eq!(
+            serialize_target(&project, &target, DataFormat::Csv).unwrap(),
+            "name,age\nAda,37\n"
+        );
     }
 
     #[test]

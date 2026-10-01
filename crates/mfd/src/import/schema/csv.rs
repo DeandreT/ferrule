@@ -1,25 +1,28 @@
 use std::collections::BTreeSet;
 
 use ir::{ScalarType, SchemaNode};
+use mapping::{CsvTextRepairCause, CsvTextRepairDependency};
 
 use super::parse_u32;
 
 const CSV_SINGLETON_BEFORE: &str = "\u{1f}ferrule-csv-singleton-before";
 const CSV_SINGLETON_AFTER: &str = "\u{1f}ferrule-csv-singleton-after";
 
-pub(super) fn read_utf8_bom(
+pub(super) fn read_text_settings(
     text: &roxmltree::Node<'_, '_>,
     component_name: &str,
     warnings: &mut Vec<String>,
-) -> bool {
+) -> (bool, Option<CsvTextRepairDependency>) {
+    let mut repair = None;
     if text
         .attribute("encoding")
         .is_some_and(|encoding| encoding != "1000")
     {
         warnings.push(format!(
             "csv component `{component_name}` declares an unsupported text encoding; \
-             only UTF-8 encoding code 1000 is supported; imported using UTF-8"
+             only UTF-8 encoding code 1000 is supported; retained as a repair draft"
         ));
+        add_cause(&mut repair, CsvTextRepairCause::Encoding);
     }
     if text
         .attribute("byteorder")
@@ -27,20 +30,30 @@ pub(super) fn read_utf8_bom(
     {
         warnings.push(format!(
             "csv component `{component_name}` declares an unsupported byte order code; \
-             only absent or code 1 is supported; imported using UTF-8"
+             only absent or code 1 is supported; retained as a repair draft"
         ));
+        add_cause(&mut repair, CsvTextRepairCause::ByteOrder);
     }
-    match text.attribute("byteordermark") {
+    let utf8_bom = match text.attribute("byteordermark") {
         None | Some("0") => false,
         Some("1") => true,
         Some(_) => {
             warnings.push(format!(
                 "csv component `{component_name}` declares an unsupported byte order mark code; \
-                 expected absent, 0, or 1; imported without a UTF-8 BOM"
+                 expected absent, 0, or 1; retained as a repair draft"
             ));
+            add_cause(&mut repair, CsvTextRepairCause::ByteOrderMark);
             false
         }
-    }
+    };
+    (utf8_bom, repair)
+}
+
+fn add_cause(repair: &mut Option<CsvTextRepairDependency>, cause: CsvTextRepairCause) {
+    *repair = Some(match *repair {
+        Some(dependency) => dependency.with_cause(cause),
+        None => CsvTextRepairDependency::new(cause),
+    });
 }
 
 pub(super) fn empty_text_policy(
