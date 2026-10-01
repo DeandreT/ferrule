@@ -1103,6 +1103,7 @@ pub(super) fn read_csv_component(
     let text_el = data
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "text")?;
+    csv::warn_text_encoding(&text_el, &name, warnings);
     let settings = text_el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "settings");
@@ -1118,26 +1119,16 @@ pub(super) fn read_csv_component(
     let block = select_csv_block(root_el, configured_block, &name, "csv", warnings)?;
     let singleton_rows = csv::singleton_rows(root_el, configured_block, block);
 
-    let fields: Vec<SchemaNode> = names_el
-        .map(|names| {
-            names
-                .children()
-                .filter(|n| n.is_element() && n.tag_name().name().starts_with("field"))
-                .map(|f| {
-                    let field_name = f.attribute("name").unwrap_or_default();
-                    let ty = match f.attribute("type") {
-                        Some("number") | Some("decimal") | Some("double") | Some("float") => {
-                            ir::ScalarType::Float
-                        }
-                        Some("integer") | Some("int") => ir::ScalarType::Int,
-                        Some("boolean") => ir::ScalarType::Bool,
-                        _ => ir::ScalarType::String,
-                    };
-                    SchemaNode::scalar(field_name, ty)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let fields = match names_el
+        .map(|names| csv::field_declarations(&names))
+        .transpose()
+    {
+        Ok(fields) => fields.unwrap_or_default(),
+        Err(reason) => {
+            warnings.push(format!("csv component `{name}` {reason}; skipped"));
+            return None;
+        }
+    };
     if fields.is_empty() {
         warnings.push(format!(
             "csv component `{name}` declares no fields; skipped"
