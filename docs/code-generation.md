@@ -520,6 +520,12 @@ scalar complements, active case folding, and all 14 ASCII POSIX class terms.
 C# class compilation has a 100-million interval-work bound in addition to its
 source, depth, and translated-size limits; exact backend compilation budgets
 still differ.
+General-category aliases, one-letter property forms, and `gc`/`General_Category`
+queries retain loose name normalization, query inversion, and scalar case folding.
+`LC`, `Any`, `ASCII`, and `Assigned` use the same scalar sets. Recognized
+`Cs`/`Surrogate` queries reject because the Rust scalar property data has no such
+set. `IsPrivateUse` retains the complete Co category, including supplementary
+private-use planes.
 C# `\b` and `\B` compare the same Unicode scalar word set as `\w`, preserving
 supplementary letters, combining marks, join controls, source-order captures,
 greedy/lazy choices, and global match spans. A prioritized non-backtracking
@@ -534,6 +540,8 @@ Rust and .NET still expose different regex dialects. Additional boundary spellin
 single-dash host subtraction, property vocabularies, repeated quantifiers, and some
 host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
+Existing host block spellings outside the category profile can differ from Rust
+script membership; script and binary property sets are not approximated here.
 This applies to mapping-language regex operations only;
 JSON Schema `pattern` uses Ferrule's separate portable matcher and has identical
 Rust/C# behavior. Correlated join scopes and joined-tuple aggregates without an
