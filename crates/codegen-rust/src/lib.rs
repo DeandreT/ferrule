@@ -3,7 +3,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use codegen::{
@@ -352,7 +352,47 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     for function in &program.user_functions {
         source.push_str(&render_user_function(function, &functions)?);
     }
+    let mut scopes = Vec::new();
+    collect_scopes(&program.root, "scope_root".to_string(), &mut scopes);
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
+    }
+    let item_ids: BTreeSet<_> = scopes
+        .iter()
+        .filter_map(|(_, scope, _, _)| {
+            scope
+                .iteration
+                .as_ref()
+                .and_then(IterationPlan::generated_sequence)
+                .map(GeneratedSequence::item)
+        })
+        .chain(
+            program
+                .expressions
+                .iter()
+                .filter_map(|node| match &node.expression {
+                    Expression::SequenceExists { sequence, .. }
+                    | Expression::SequenceItemAt { sequence, .. }
+                    | Expression::SequenceAggregate { sequence, .. } => Some(sequence.item()),
+                    _ => None,
+                }),
+        )
+        .chain(
+            program
+                .failure_rules
+                .iter()
+                .filter_map(|rule| match &rule.iteration {
+                    codegen::FailureIteration::Generated(sequence) => Some(sequence.item()),
+                    codegen::FailureIteration::Source(_) => None,
+                }),
+        )
+        .collect();
     for node in &program.expressions {
+        if item_ids.contains(&node.id) {
+            // Portable validation retains item identity even when no expression
+            // reads its value. Only these owned metadata functions may be unused.
+            source.push_str("#[allow(dead_code)]\n");
+        }
         source.push_str(&render_expression(
             node.id,
             &node.expression,
@@ -363,11 +403,6 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     }
     source.push_str(&failure::render(program));
 
-    let mut scopes = Vec::new();
-    collect_scopes(&program.root, "scope_root".to_string(), &mut scopes);
-    for (index, target) in program.extra_targets.iter().enumerate() {
-        collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
-    }
     for (name, scope, child_names, segment_names) in scopes {
         source.push_str(&render_scope(
             program,

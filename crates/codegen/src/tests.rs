@@ -24,6 +24,7 @@ mod joins;
 mod path_hierarchy;
 mod recursive_filter;
 mod scalar_functions;
+mod sequence_context;
 mod sequences;
 mod source_document_path;
 mod user_functions;

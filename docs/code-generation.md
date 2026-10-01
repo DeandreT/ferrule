@@ -453,6 +453,18 @@ The current portable model includes:
 - active collection identity, outward source-field fallback, and compacted
   output positions
 
+Validation checks generated item permissions at each expression's evaluation
+site. Generator inputs, window bounds, and block sizes use the enclosing scope;
+candidate controls and content can use that scope's item and active ancestors.
+Primary and named targets and concatenated segments keep independent contexts.
+Exists and aggregate predicates and computed values use only their private item;
+aggregate generator inputs and optional scalar arguments can read an active
+parent item. Scalar item-at keeps its existing isolated input/index policy.
+An ancestor item ID grants permission without pinning a runtime frame: its value
+still resolves from the innermost active scalar frame. CLI and editor execution
+hosts validate before running; the low-level interpreter APIs keep their existing
+caller-managed validation contract.
+
 The generated source contains static expression and scope functions rather than
 a serialized project plus the general-purpose interpreter. Arguments retain the
 engine's left-to-right evaluation and lazy-branch behavior, while aggregate and
