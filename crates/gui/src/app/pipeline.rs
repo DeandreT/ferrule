@@ -1338,11 +1338,13 @@ impl FerruleApp {
                 };
             let source_probe = |_stage: &str| hook.source_field_probe();
             let stage_trace = |stage: &str, event: cli::TraceEvent| trace.record(stage, event);
+            let source_row_capacity = || trace.can_retain_event();
             let gate = || hook.before_publish();
             let mut options = cli::PipelineRunOptions::default()
                 .with_stage_debug_hook(&stage_hook)
                 .with_stage_source_field_probe(&source_probe)
                 .with_stage_trace_sink(&stage_trace)
+                .with_stage_trace_source_row_capacity(&source_row_capacity)
                 .with_before_publish(&gate);
             options.runtime_parameters = Some(&runtime_parameters);
             if hook.expression_condition.is_some() {
@@ -1394,6 +1396,7 @@ impl FerruleApp {
                         .with_stage_debug_hook(&stage_hook)
                         .with_stage_source_field_probe(&source_probe)
                         .with_stage_trace_sink(&stage_trace)
+                        .with_stage_trace_source_row_capacity(&source_row_capacity)
                         .with_cancellation(hook.cancelled.as_ref());
                     if hook.expression_condition.is_some() {
                         preview_options = preview_options

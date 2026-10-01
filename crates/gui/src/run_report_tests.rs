@@ -215,8 +215,11 @@ fn summary_units_are_compact_and_deterministic() {
 #[test]
 fn trace_collection_is_bounded_and_reports_omissions() {
     let collector = TraceCollector::with_limit(2);
+    assert!(cli::TraceSink::wants_source_row(&collector));
     cli::TraceSink::record(&collector, trace_event(1, ir::Value::Int(10)));
+    assert!(cli::TraceSink::wants_source_row(&collector));
     cli::TraceSink::record(&collector, trace_event(2, ir::Value::String("kept".into())));
+    assert!(!cli::TraceSink::wants_source_row(&collector));
     cli::TraceSink::record(&collector, trace_event(3, ir::Value::Bool(false)));
 
     let trace = collector.finish();
@@ -427,8 +430,11 @@ fn pipeline_history_and_replay_disambiguate_reused_node_ids_by_stage() {
 #[test]
 fn pipeline_trace_collector_bounds_events_across_all_stages() {
     let collector = PipelineTraceCollector::with_limit(2);
+    assert!(collector.can_retain_event());
     collector.record("prepare", trace_event(0, ir::Value::Int(1)));
+    assert!(collector.can_retain_event());
     collector.record("finish", trace_event(0, ir::Value::Int(2)));
+    assert!(!collector.can_retain_event());
     collector.record("finish", trace_event(0, ir::Value::Int(3)));
     let trace = collector.finish();
     assert_eq!(trace.events.len(), 2);
@@ -449,6 +455,7 @@ fn pipeline_source_row_history_follows_the_selected_stage() {
             value: None,
             fields: Vec::new(),
             omitted_fields: 0,
+            structure: None,
         }),
     };
     collector.record("prepare", candidate.clone());
@@ -466,6 +473,108 @@ fn pipeline_source_row_history_follows_the_selected_stage() {
     assert_eq!(source_rows::filtered_source_row_indices(&view), [0]);
     view.select_history_stage(1);
     assert_eq!(source_rows::filtered_source_row_indices(&view), [1]);
+}
+
+#[test]
+fn nested_source_rows_are_searchable_stage_specific_and_visible_in_replay() {
+    let leaf = cli::TraceSourceTree {
+        name: Some("Code".into()),
+        name_truncated: false,
+        kind: cli::TraceOutputKind::Scalar,
+        value: Some(cli::TraceValue {
+            value_type: "string",
+            preview: "nested needle".into(),
+            truncated: false,
+        }),
+        children: Vec::new(),
+        omitted_children: 0,
+        depth_limited: false,
+    };
+    let mut limited = leaf.clone();
+    limited.name = Some("Deep".into());
+    limited.kind = cli::TraceOutputKind::Group;
+    limited.value = None;
+    limited.omitted_children = 1;
+    limited.depth_limited = true;
+    let item = cli::TraceSourceTree {
+        name: None,
+        name_truncated: false,
+        kind: cli::TraceOutputKind::Group,
+        value: None,
+        children: vec![leaf, limited],
+        omitted_children: 0,
+        depth_limited: false,
+    };
+    let mut collection = item.clone();
+    collection.name = Some("Items".into());
+    collection.kind = cli::TraceOutputKind::Repeated;
+    collection.children = vec![item];
+    collection.omitted_children = 3;
+    let candidate = cli::TraceEvent::IterationCandidate {
+        scope: trace_scope(),
+        ordinal: 1,
+        positions: Vec::new(),
+        source_row: Some(cli::TraceSourceRow {
+            kind: cli::TraceOutputKind::Repeated,
+            value: None,
+            fields: Vec::new(),
+            omitted_fields: 0,
+            structure: Some(collection),
+        }),
+    };
+    let collector = PipelineTraceCollector::new();
+    collector.record("prepare", candidate.clone());
+    collector.record("finish", candidate);
+    let report = RunReport::from_pipeline_outcome(
+        cli::PipelineRunOutcome {
+            stages_executed: vec!["prepare".into(), "finish".into()],
+            artifacts: Vec::new(),
+        },
+        PathBuf::from("pipeline.json"),
+        Duration::ZERO,
+        collector.finish(),
+    );
+    let mut view = RunReportView::new(report);
+    view.trace_filter = "NESTED NEEDLE".into();
+    assert_eq!(source_rows::filtered_source_row_indices(&view), [0]);
+    view.select_history_stage(1);
+    assert_eq!(source_rows::filtered_source_row_indices(&view), [1]);
+    let details = source_row_details(1, &view.report.trace.events[1]).unwrap();
+    assert_eq!(source_rows::filtered_source_row_indices(&view), [1]);
+    view.trace_filter = "no matching nested value".into();
+    assert!(source_rows::filtered_source_row_indices(&view).is_empty());
+    view.trace_filter = "  nested needle  ".into();
+    assert_eq!(source_rows::filtered_source_row_indices(&view), [1]);
+    assert!(details.iter().any(|line| line == "  [1]=group"));
+    assert!(
+        details
+            .iter()
+            .any(|line| line == "    Code=string(nested needle)")
+    );
+    assert!(
+        details
+            .iter()
+            .any(|line| line.contains("+1 child values omitted (snapshot depth limit)"))
+    );
+    assert!(
+        details
+            .iter()
+            .any(|line| line == "  +3 child values omitted")
+    );
+    assert!(view.replay_from(1));
+    assert_eq!(view.replay_event, Some(1));
+    assert!(
+        replay::replay_event_details(1, &view.report.trace.events[1])
+            .iter()
+            .any(|line| line.contains("nested needle"))
+    );
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    let mut open = true;
+    let output = context.run_ui(Default::default(), |ui| {
+        show(ui.ctx(), &mut open, &mut view)
+    });
+    assert!(!output.shapes.is_empty());
 }
 
 #[test]
@@ -503,6 +612,7 @@ fn source_row_history_indexes_candidates_and_shows_bounded_fields() {
                 },
             ],
             omitted_fields: 2,
+            structure: None,
         }),
     };
     let events = vec![
@@ -631,6 +741,7 @@ fn report_links_replay_exact_retained_indices_after_filtering() {
             value: None,
             fields: Vec::new(),
             omitted_fields: 0,
+            structure: None,
         }),
     };
     let collector = TraceCollector::with_limit(4);
@@ -780,6 +891,7 @@ fn replay_details_keep_positions_and_source_fields_on_the_same_event() {
                 }),
             }],
             omitted_fields: 1,
+            structure: None,
         }),
     };
     let node = cli::TraceEvent::NodeValue {

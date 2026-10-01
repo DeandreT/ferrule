@@ -343,6 +343,20 @@ fn source_candidates_write_bounded_rows_to_v3_json_lines() -> Result<(), Box<dyn
         )
     };
     project.source = rows("Input");
+    if let ir::SchemaKind::Group { children, .. } = &mut project.source.kind
+        && let ir::SchemaKind::Group { children, .. } = &mut children[0].kind
+    {
+        children.push(SchemaNode::group(
+            "Nested",
+            vec![
+                SchemaNode::group(
+                    "Items",
+                    vec![SchemaNode::scalar("Code", ScalarType::String)],
+                )
+                .repeating(),
+            ],
+        ));
+    }
     project.target = rows("Output");
     project.graph = Graph {
         nodes: [(
@@ -369,7 +383,7 @@ fn source_candidates_write_bounded_rows_to_v3_json_lines() -> Result<(), Box<dyn
     let project = write_project(&dir.0, &project)?;
     std::fs::write(
         dir.0.join("input.json"),
-        r#"{"Rows":[{"Value":"a"},{"Value":"b"}]}"#,
+        r#"{"Rows":[{"Value":"a","Nested":{"Items":[{"Code":"A"},{"Code":"B"}]}},{"Value":"b","Nested":{"Items":[]}}]}"#,
     )?;
     let trace = dir.0.join("run.trace.jsonl");
 
@@ -400,6 +414,21 @@ fn source_candidates_write_bounded_rows_to_v3_json_lines() -> Result<(), Box<dyn
     assert_eq!(source_rows[0]["fields"][0]["name"], "Value");
     assert_eq!(source_rows[0]["fields"][0]["value"]["preview"], "a");
     assert_eq!(source_rows[1]["fields"][0]["value"]["preview"], "b");
+    let tree = &source_rows[0]["structure"];
+    assert_eq!(tree["kind"], "group");
+    assert_eq!(tree["children"][1]["name"], "Nested");
+    let items = &tree["children"][1]["children"][0];
+    assert_eq!(items["name"], "Items");
+    assert_eq!(items["kind"], "repeated");
+    assert_eq!(items["children"].as_array().unwrap().len(), 2);
+    assert_eq!(items["children"][0]["children"][0]["value"]["preview"], "A");
+    assert_eq!(items["children"][1]["children"][0]["value"]["preview"], "B");
+    assert_eq!(items["omitted_children"], 0);
+    assert_eq!(items["depth_limited"], false);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(dir.0.join("output.json"))?)?,
+        serde_json::json!({"Rows": [{"Value": "a"}, {"Value": "b"}]})
+    );
     assert!(lines.iter().all(|line| line["schema_version"] == 4));
     Ok(())
 }
