@@ -63,6 +63,8 @@ pub use project_paths::rebase as rebase_project_paths;
 pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;
 
+/// Typed CSV failures, including recoverable authoring sample limits.
+pub use format_csv::CsvFormatError;
 /// A bounded, quote-aware CSV sample for GUI schema authoring.
 pub use format_csv::CsvSample;
 

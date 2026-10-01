@@ -1,5 +1,7 @@
 use super::*;
-use crate::new_mapping::{CsvBoundaryDraft, CsvColumnDraft, MappingBoundary, SqliteBoundaryDraft};
+use crate::new_mapping::{
+    CsvBoundaryDraft, CsvColumnDraft, CsvQuoteMode, MappingBoundary, SqliteBoundaryDraft,
+};
 
 #[path = "new_mapping/flextext.rs"]
 mod flextext;
@@ -51,9 +53,16 @@ impl FerruleApp {
         match CsvBoundaryDraft::source(path) {
             Ok(draft) => {
                 if let Some(setup) = self.new_mapping_setup.as_mut() {
+                    let sample_error = draft.sample_error.clone();
                     setup.source = Some(MappingBoundary::Csv(draft));
-                    self.status = "loaded CSV source sample".to_owned();
-                    self.diagnostics.clear();
+                    if let Some(error) = sample_error {
+                        self.status = "CSV sample needs format settings".to_owned();
+                        self.diagnostics
+                            .error("CSV sample needs format settings", error);
+                    } else {
+                        self.status = "loaded CSV source sample".to_owned();
+                        self.diagnostics.clear();
+                    }
                 }
             }
             Err(error) => {
@@ -532,7 +541,8 @@ fn show_sqlite_validation(ui: &mut egui::Ui, draft: &SqliteBoundaryDraft, target
 }
 
 fn show_csv_options(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, side: &str) -> bool {
-    let previous = (draft.delimiter, draft.has_header_row);
+    let previous = (draft.delimiter, draft.has_header_row, draft.quote_mode);
+    let mut quote_character_changed = false;
     ui.horizontal(|ui| {
         ui.checkbox(&mut draft.has_header_row, "Header row");
         ui.label("Delimiter");
@@ -560,12 +570,48 @@ fn show_csv_options(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, side: &str)
             }
         }
     });
+    ui.horizontal(|ui| {
+        ui.label("Quoting");
+        egui::ComboBox::from_id_salt(("new_mapping_quote", side))
+            .selected_text(quote_mode_label(draft.quote_mode))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut draft.quote_mode,
+                    CsvQuoteMode::Standard,
+                    "Double quote",
+                );
+                ui.selectable_value(
+                    &mut draft.quote_mode,
+                    CsvQuoteMode::Custom,
+                    "Custom character",
+                );
+                ui.selectable_value(&mut draft.quote_mode, CsvQuoteMode::Disabled, "Disabled");
+            });
+        if draft.quote_mode == CsvQuoteMode::Custom {
+            ui.label("Quote");
+            quote_character_changed = ui
+                .add(
+                    egui::TextEdit::singleline(&mut draft.custom_quote)
+                        .char_limit(1)
+                        .desired_width(28.0),
+                )
+                .changed();
+        }
+    });
     if side == "source" {
         ui.checkbox(&mut draft.preserve_empty_strings, "Keep empty text fields");
     } else {
         ui.checkbox(&mut draft.utf8_bom, "UTF-8 byte order mark");
     }
-    previous != (draft.delimiter, draft.has_header_row)
+    quote_character_changed || previous != (draft.delimiter, draft.has_header_row, draft.quote_mode)
+}
+
+fn quote_mode_label(mode: CsvQuoteMode) -> &'static str {
+    match mode {
+        CsvQuoteMode::Standard => "Double quote",
+        CsvQuoteMode::Custom => "Custom character",
+        CsvQuoteMode::Disabled => "Disabled",
+    }
 }
 
 fn delimiter_label(delimiter: char) -> String {
@@ -694,6 +740,10 @@ enum NewMappingAction {
     Cancel,
     Create,
 }
+
+#[cfg(test)]
+#[path = "new_mapping/csv_quote_tests.rs"]
+mod csv_quote_tests;
 
 #[cfg(test)]
 mod tests {
