@@ -606,6 +606,14 @@ and class operations retain their existing work limits. `InCB` and Boolean-value
 binary queries remain unsupported in the pinned Rust vocabulary. Ordinary
 no-profile host property behavior remains unchanged.
 
+Explicit `gcb` / `Grapheme_Cluster_Break` queries retain 13 pinned Unicode 16
+sets and 18 value aliases in that profile, including combining marks, Hangul
+classes and regional indicators. Category names keep their meaning: `gcb=L`
+selects leading Hangul Jamo, while bare `L` selects letters. Inversion, folding
+and class-work limits use the same bounded scalar operations. The pinned
+obsolete emoji values and `Other` remain unsupported. These queries select
+character sets; grapheme segmentation remains outside the generated subset.
+
 The scalar matcher rejects unsupported host groups and escapes. It caps its AST
 at 8,192 nodes and structural height at
 256 before recursive compilation, expanded instructions at 163,840,

@@ -140,6 +140,10 @@ mod tests {
                 "Runtime/FerruleScalarRegex.BinaryTables.cs",
                 &notice_lines[1..],
             ),
+            (
+                "Runtime/FerruleScalarRegex.GraphemeTables.cs",
+                &notice_lines[1..],
+            ),
         ];
         for file in first.files() {
             let contents = std::str::from_utf8(&file.contents)

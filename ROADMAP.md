@@ -274,6 +274,9 @@ are preserved.
   including exact Alphabetic/Lowercase/Uppercase distinctions from categories.
   Binary aliases share bounded cache identities and existing class-work limits;
   unreachable InCB and Boolean-valued binary queries still reject.
+  Explicit Grapheme_Cluster_Break queries retain 13 pinned sets and 18 aliases,
+  with category precedence, exact inversion/folding and unchanged work limits.
+  Obsolete/Other values and grapheme segmentation remain outside this subset.
   The mapping compares matching, replacement, and tokenization through Rust/C# JSON string
   and UTF-8 byte hosts against the interpreter. Broader property vocabularies,
   host-only syntax, and compilation budgets

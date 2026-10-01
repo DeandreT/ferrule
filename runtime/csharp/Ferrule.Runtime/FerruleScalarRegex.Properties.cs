@@ -7,7 +7,7 @@ namespace Ferrule.Runtime;
 
 internal static partial class FerruleScalarRegex
 {
-    private enum PropertyDomain { Existing, Script, ScriptExtensions, Binary }
+    private enum PropertyDomain { Existing, Script, ScriptExtensions, Binary, GraphemeClusterBreak }
     private readonly record struct PropertyIdentity(PropertyDomain Domain, string Name);
     private static readonly ConcurrentDictionary<string, ScalarSet> NamedProperties = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<(PropertyIdentity Identity, bool Folded, bool Complemented), ScalarSet> ModifiedProperties = new();
@@ -33,12 +33,22 @@ internal static partial class FerruleScalarRegex
                 "gc" or "generalcategory" => PropertyDomain.Existing,
                 "sc" or "script" => PropertyDomain.Script,
                 "scx" or "scriptextensions" => PropertyDomain.ScriptExtensions,
+                "gcb" or "graphemeclusterbreak" => PropertyDomain.GraphemeClusterBreak,
                 _ => throw Invalid("unsupported property query"),
             };
             value = query[(separator + width)..];
             complemented ^= inverted;
         }
         var normalized = NormalizePropertyName(value);
+        // GCB values are explicit ByValue queries. Bare spellings retain
+        // their existing category/binary/script meaning, and obsolete values
+        // without pinned scalar tables remain unsupported.
+        if (domain == PropertyDomain.GraphemeClusterBreak)
+        {
+            if (!GcbAliases.TryGetValue(normalized, out var grapheme))
+            { throw Invalid("unsupported Grapheme_Cluster_Break property value"); }
+            return (new PropertyIdentity(domain, grapheme), complemented);
+        }
         // Reachable bare binary names precede categories/scripts. The pinned
         // binary aliases exclude cf/lc/sc, which remain general categories.
         // Do not accept Boolean-valued binary queries or unreachable InCB data.
@@ -68,6 +78,7 @@ internal static partial class FerruleScalarRegex
                 PropertyDomain.Script => ScriptSets.Value[key.Identity.Name],
                 PropertyDomain.ScriptExtensions => ScriptExtensionSets.Value[key.Identity.Name],
                 PropertyDomain.Binary => BinarySets.Value[key.Identity.Name],
+                PropertyDomain.GraphemeClusterBreak => GcbSets.Value[key.Identity.Name],
                 _ => throw Invalid("unsupported property domain"),
             };
             if (key.Folded) { value = value.FoldCase(); }
