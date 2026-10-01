@@ -519,6 +519,9 @@ fn show_csv_options(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, side: &str)
             }
         }
     });
+    if side == "source" {
+        ui.checkbox(&mut draft.preserve_empty_strings, "Keep empty text fields");
+    }
     previous != (draft.delimiter, draft.has_header_row)
 }
 

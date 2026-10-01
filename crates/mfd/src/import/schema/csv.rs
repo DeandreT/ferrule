@@ -23,6 +23,40 @@ pub(super) fn warn_text_encoding(
     }
 }
 
+pub(super) fn empty_text_policy(
+    settings: &roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> bool {
+    match settings.attribute("removeempty") {
+        None | Some("true" | "1") => false,
+        Some("false" | "0") => true,
+        Some(_) => {
+            warnings.push(format!(
+                "csv component `{component_name}` declares an invalid removeempty flag; \
+                 expected true, false, 1, or 0; imported treating empty fields as absent"
+            ));
+            false
+        }
+    }
+}
+
+pub(super) fn warn_typed_empty_cells(
+    schema: &SchemaNode,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) {
+    let all_text = matches!(&schema.kind, ir::SchemaKind::Group { children, .. }
+        if children.iter().all(|field| matches!(field.kind, ir::SchemaKind::Scalar { ty: ScalarType::String })));
+    if !all_text {
+        warnings.push(format!(
+            "csv source component `{component_name}` keeps empty fields and declares non-text columns; \
+             empty text is preserved, but empty numeric and boolean cells are imported as absent; \
+             native behavior for those typed empty cells is not supported"
+        ));
+    }
+}
+
 pub(super) fn field_declarations(
     names: &roxmltree::Node<'_, '_>,
 ) -> Result<Vec<SchemaNode>, &'static str> {
