@@ -4,8 +4,14 @@ use anyhow::{Context as _, bail};
 use ir::{ScalarType, SchemaNode};
 use mapping::{FormatOptions, Graph, Project, Scope, TabularBoundaryKind};
 
+mod format_options;
 mod protobuf;
+pub(crate) use format_options::{
+    can_update_existing_workbook, configured_layout_label_for_path, uses_csv_format,
+    uses_path_format,
+};
 pub(super) use protobuf::ProtobufBoundaryDraft;
+pub(crate) use protobuf::validate_schema_replacement;
 
 #[derive(Default)]
 pub(super) struct NewMappingSetup {

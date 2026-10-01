@@ -15,7 +15,13 @@ impl FerruleApp {
     }
 
     pub(super) fn stage_extra_target_schema(&mut self, path: PathBuf) {
-        match crate::new_mapping::import_schema(&path) {
+        let loaded = crate::new_mapping::import_schema(&path).and_then(|schema| {
+            if let Some(draft) = self.extra_target_draft.as_ref() {
+                crate::new_mapping::validate_schema_replacement(&draft.options, &schema)?;
+            }
+            Ok(schema)
+        });
+        match loaded {
             Ok(schema) => {
                 let Some(draft) = self.extra_target_draft.as_mut() else {
                     return;
@@ -24,13 +30,17 @@ impl FerruleApp {
                     draft.name.clone_from(&schema.name);
                 }
                 draft.schema = Some(schema);
-                self.status = format!("loaded target schema {}", path.display());
+                self.status = if draft.options.protobuf.is_some() {
+                    "loaded matching target schema; kept Protocol Buffers format".to_owned()
+                } else {
+                    format!("loaded target schema {}", path.display())
+                };
                 self.diagnostics.clear();
             }
             Err(error) => {
                 self.status = "failed to load target schema".to_string();
                 self.diagnostics
-                    .error("Schema import failed", error.to_string());
+                    .error("Schema import failed", format!("{error:#}"));
             }
         }
     }
@@ -226,14 +236,20 @@ impl FerruleApp {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DocumentKind {
+    ProtocolBuffers,
+    Configured,
     Automatic,
     Xml,
     Json,
     JsonLines,
 }
 
-fn document_kind(options: &mapping::FormatOptions) -> DocumentKind {
-    if options.xml_document {
+fn document_kind(options: &mapping::FormatOptions, output_path: &str) -> DocumentKind {
+    if options.protobuf.is_some() {
+        DocumentKind::ProtocolBuffers
+    } else if crate::new_mapping::configured_layout_label_for_path(options, output_path).is_some() {
+        DocumentKind::Configured
+    } else if options.xml_document {
         DocumentKind::Xml
     } else if options.json_lines {
         DocumentKind::JsonLines
@@ -245,6 +261,13 @@ fn document_kind(options: &mapping::FormatOptions) -> DocumentKind {
 }
 
 fn set_document_kind(options: &mut mapping::FormatOptions, kind: DocumentKind) {
+    if matches!(
+        kind,
+        DocumentKind::ProtocolBuffers | DocumentKind::Configured
+    ) {
+        return;
+    }
+    *options = mapping::FormatOptions::default();
     options.xml_document = kind == DocumentKind::Xml;
     options.json_document = kind == DocumentKind::Json;
     options.json_lines = kind == DocumentKind::JsonLines;
@@ -255,22 +278,50 @@ fn show_target_format_options(
     output_path: &str,
     options: &mut mapping::FormatOptions,
 ) {
-    let extension = std::path::Path::new(output_path.trim())
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let mut kind = document_kind(options);
+    let previous_kind = document_kind(options, output_path);
+    let mut kind = previous_kind;
     ui.horizontal_wrapped(|ui| {
+        if options.protobuf.is_some() {
+            ui.selectable_value(&mut kind, DocumentKind::ProtocolBuffers, "Protocol Buffers");
+        } else if let Some(label) =
+            crate::new_mapping::configured_layout_label_for_path(options, output_path)
+        {
+            ui.selectable_value(&mut kind, DocumentKind::Configured, label);
+        }
         ui.selectable_value(&mut kind, DocumentKind::Automatic, "From path");
         ui.selectable_value(&mut kind, DocumentKind::Xml, "XML");
         ui.selectable_value(&mut kind, DocumentKind::Json, "JSON");
         ui.selectable_value(&mut kind, DocumentKind::JsonLines, "JSON Lines");
     });
-    set_document_kind(options, kind);
-    if matches!(extension.as_str(), "csv" | "txt") {
-        let headers = options.has_header_row.get_or_insert(true);
-        ui.checkbox(headers, "Header row");
+    if kind != previous_kind {
+        set_document_kind(options, kind);
+    }
+    if let Some(protobuf) = &options.protobuf {
+        ui.label(format!("Root message: {}", protobuf.root_message));
+        ui.weak("Binary output uses the embedded schema for any filename.");
+        return;
+    }
+    if let Some(label) = crate::new_mapping::configured_layout_label_for_path(options, output_path)
+    {
+        ui.label(format!("Configured format: {label}"));
+        if label == "XLSX workbook"
+            && crate::new_mapping::can_update_existing_workbook(options, output_path)
+        {
+            ui.checkbox(
+                &mut options.xlsx_update_existing,
+                "Update existing workbook",
+            );
+        }
+        return;
+    }
+    if !crate::new_mapping::uses_path_format(options, output_path) {
+        return;
+    }
+    if crate::new_mapping::uses_csv_format(options, output_path) {
+        let mut headers = options.has_header_row.unwrap_or(true);
+        if ui.checkbox(&mut headers, "Header row").changed() {
+            options.has_header_row = Some(headers);
+        }
         ui.checkbox(&mut options.csv_utf8_bom, "UTF-8 byte order mark");
         let mut delimiter = options.delimiter.unwrap_or(',').to_string();
         ui.horizontal(|ui| {
@@ -283,7 +334,7 @@ fn show_target_format_options(
             }
         });
     }
-    if extension == "xlsx" {
+    if crate::new_mapping::can_update_existing_workbook(options, output_path) {
         ui.checkbox(
             &mut options.xlsx_update_existing,
             "Update existing workbook",
@@ -311,7 +362,7 @@ mod tests {
             ..mapping::FormatOptions::default()
         };
 
-        assert_eq!(document_kind(&options), DocumentKind::Xml);
+        assert_eq!(document_kind(&options, "output.csv"), DocumentKind::Xml);
         set_document_kind(&mut options, DocumentKind::JsonLines);
         assert!(!options.xml_document);
         assert!(!options.json_document);
@@ -323,3 +374,7 @@ mod tests {
         assert!(!options.json_lines);
     }
 }
+
+#[cfg(test)]
+#[path = "extra_targets/protobuf_format_tests.rs"]
+mod protobuf_format_tests;

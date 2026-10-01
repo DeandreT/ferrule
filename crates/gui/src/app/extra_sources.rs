@@ -7,7 +7,13 @@ impl FerruleApp {
     }
 
     pub(super) fn stage_extra_source_schema(&mut self, path: PathBuf) {
-        match crate::new_mapping::import_schema(&path) {
+        let loaded = crate::new_mapping::import_schema(&path).and_then(|schema| {
+            if let Some(draft) = self.extra_source_draft.as_ref() {
+                crate::new_mapping::validate_schema_replacement(&draft.options, &schema)?;
+            }
+            Ok(schema)
+        });
+        match loaded {
             Ok(schema) => {
                 let Some(draft) = self.extra_source_draft.as_mut() else {
                     return;
@@ -16,13 +22,17 @@ impl FerruleApp {
                     draft.name.clone_from(&schema.name);
                 }
                 draft.set_schema(schema);
-                self.status = format!("loaded extra source schema {}", path.display());
+                self.status = if draft.options.protobuf.is_some() {
+                    "loaded matching source schema; kept Protocol Buffers format".to_owned()
+                } else {
+                    format!("loaded extra source schema {}", path.display())
+                };
                 self.diagnostics.clear();
             }
             Err(error) => {
                 self.status = "failed to load extra source schema".to_string();
                 self.diagnostics
-                    .error("Schema import failed", error.to_string());
+                    .error("Schema import failed", format!("{error:#}"));
             }
         }
     }
@@ -31,6 +41,14 @@ impl FerruleApp {
         let Some(draft) = self.extra_source_draft.as_mut() else {
             return;
         };
+        if !source_uses_sqlite(draft) {
+            self.status = "SQLite table import blocked".to_owned();
+            self.diagnostics.error(
+                "SQLite table import blocked",
+                "Choose a SQLite database and select Use path format before loading a table; the current input format keeps its own schema.",
+            );
+            return;
+        }
         draft.clear_schema();
         let result = (|| {
             let mut sqlite =
@@ -68,7 +86,7 @@ impl FerruleApp {
         let can_add = !draft.name.trim().is_empty()
             && !draft.instance_path.trim().is_empty()
             && draft.schema.is_some();
-        let sqlite_instance = is_sqlite_instance_path(&draft.instance_path);
+        let sqlite_instance = source_uses_sqlite(draft);
         let mut action = None;
         egui::Window::new("Add Extra Source")
             .collapsible(false)
@@ -138,6 +156,10 @@ impl FerruleApp {
                         }
                         ui.end_row();
                     });
+                if !crate::new_mapping::uses_path_format(&draft.options, &draft.instance_path) {
+                    ui.separator();
+                    show_configured_source_format(ui, draft);
+                }
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui
@@ -256,6 +278,48 @@ enum ExtraSourceAction {
     LoadSqliteTable,
     Cancel,
     Add,
+}
+
+fn source_uses_sqlite(draft: &ExtraSourceDraft) -> bool {
+    crate::new_mapping::uses_path_format(&draft.options, &draft.instance_path)
+        && is_sqlite_instance_path(&draft.instance_path)
+}
+
+fn show_configured_source_format(ui: &mut egui::Ui, draft: &mut ExtraSourceDraft) {
+    if let Some(protobuf) = &draft.options.protobuf {
+        ui.label(format!("Protocol Buffers: {}", protobuf.root_message));
+        ui.weak("Binary input uses the embedded schema for any filename.");
+    } else {
+        let label = crate::new_mapping::configured_layout_label_for_path(
+            &draft.options,
+            &draft.instance_path,
+        )
+        .unwrap_or(if draft.options.xml_document {
+            "XML"
+        } else if draft.options.json_lines {
+            "JSON Lines"
+        } else {
+            "JSON"
+        });
+        ui.label(format!("Configured input format: {label}"));
+    }
+    ui.horizontal_wrapped(|ui| {
+        if ui.button("Use XML").clicked() {
+            draft.options = mapping::FormatOptions {
+                xml_document: true,
+                ..mapping::FormatOptions::default()
+            };
+        }
+        if ui.button("Use JSON").clicked() {
+            draft.options = mapping::FormatOptions {
+                json_document: true,
+                ..mapping::FormatOptions::default()
+            };
+        }
+        if ui.button("Use path format").clicked() {
+            draft.options = mapping::FormatOptions::default();
+        }
+    });
 }
 
 fn is_sqlite_instance_path(path: &str) -> bool {
@@ -378,3 +442,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "extra_sources/protobuf_format_tests.rs"]
+mod protobuf_format_tests;

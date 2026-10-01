@@ -367,3 +367,11 @@ paths provide run-time defaults. Saved projects embed the schema and its
 confined local imports, so execution does not reopen the original `.proto`
 files. Unsupported recursive roots and imports outside the selected schema
 folder show an error without replacing the open mapping.
+
+Named input and output editors preserve embedded layouts and explicit XML/JSON
+formats when filenames change. Opening the format editor leaves saved CSV
+defaults intact; choosing another format clears the previous format's settings.
+Tabular fallback identities defer to recognized filename extensions, and
+update-existing workbook controls are available only for flat XLSX output.
+Replacing a Protocol Buffers boundary schema requires its exact embedded root
+projection, or an explicit format change first.
