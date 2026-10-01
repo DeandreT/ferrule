@@ -236,10 +236,13 @@ are preserved.
   supplementary private-use aliases align and unavailable surrogate properties
   reject. Consecutive repetitions retain nested greedy/lazy semantics and exact
   capture values through the bounded scalar matcher, including nullable inner
-  repeats and discarded zero-count bodies. A compiled 251-case mapping
+  repeats and discarded zero-count bodies. Eligible ordinary captured nullable
+  loops retain the last consumed capture. Inline Unicode modes support bounded
+  ASCII classes, word assertions, and folding, with exact scoped restoration;
+  unsafe byte-matching forms reject. A compiled mapping
   compares matching, replacement, and tokenization through Rust/C# JSON string
-  and UTF-8 byte hosts against the interpreter. Additional boundary spellings,
-  broader property vocabularies, host-only syntax, and compilation budgets
+  and UTF-8 byte hosts against the interpreter. Broader inline flags,
+  property vocabularies, host-only syntax, and compilation budgets
   remain separate backend differences.
 - File and export fidelity: project, pipeline, generated-schema, and PDF-layout
   codecs preserve finite floating-point tags and bits. Generated JSON Schema
