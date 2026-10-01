@@ -64,6 +64,9 @@ are preserved.
   Canvas deletion protects graph nodes used by other outputs, failure rules,
   dynamic input/output paths, and scope or generated-item ownership; ordinary
   active bindings and graph consumers still disconnect when deletion is allowed.
+  Primary and named Inspector scope controls obey the same preview, run, and
+  dialog edit locks as the canvases; locked interaction preserves project,
+  history, and output while the scope panel remains scrollable.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as
