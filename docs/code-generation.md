@@ -587,6 +587,17 @@ restore the enclosing mode, including combinations with `u`, `U` and `s`.
 Captures, replacements and token separators retain the original line endings;
 input text is never normalized.
 
+The selected strict scalar profile supports the pinned Unicode 16 `Script`
+and `Script_Extensions` catalogs: 170 sets in each domain and 334 normalized
+value aliases. Bare `Greek`/`Grek`/`IsGreek` denotes Script; explicit
+`sc`/`Script` and `scx`/`Script_Extensions` queries select distinct sets.
+For example, a combining Greek perispomeni matches `scx=Greek` while its
+single Script assignment is Inherited. General categories retain precedence
+for bare `Sc`, `Cf` and `Lc`. Colon, equals and not-equals queries preserve
+complement and case-folding order. Unknown/Zzzz and Hrkt retain typed errors
+because the pinned catalog has no corresponding table. Ordinary host blocks
+outside this selected profile keep their existing behavior.
+
 The scalar matcher rejects unsupported host groups and escapes. It caps its AST
 at 8,192 nodes and structural height at
 256 before recursive compilation, expanded instructions at 163,840,
@@ -604,8 +615,9 @@ host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
 Nullable loops retained on the host path can still select different final capture
 values for host-only or over-depth source syntax.
-Existing host block spellings outside the category profile can differ from Rust
-script membership; script and binary property sets are not approximated here.
+Existing host block spellings outside the selected strict profile can differ
+from Rust script membership. Binary, age and segmentation property domains
+remain outside this profile; no host block approximation is used for scripts.
 This applies to mapping-language regex operations only;
 JSON Schema `pattern` uses Ferrule's separate portable matcher and has identical
 Rust/C# behavior. Correlated join scopes and joined-tuple aggregates without an
