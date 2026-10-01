@@ -363,12 +363,21 @@ or disabled quoting independently for source and target. Source previews use
 the selected dialect. If the first preview exceeds its width or byte limit,
 the form retains the file so you can correct its delimiter or quote settings;
 creation stays blocked until a bounded preview succeeds. Missing or unreadable
-file selections preserve the previous source draft.
+file selections preserve the previous source draft. Saved CSV format identity
+also supports extensionless and unfamiliar data filenames. Recognized non-CSV
+filename extensions still reject during setup, matching runtime dispatch.
+
+Named CSV inputs and outputs have the same delimiter, quote, and header
+controls. Input empty-text handling and output BOM settings are independent.
+Invalid pending edits block Add/Save while retaining the saved boundary; they
+can be abandoned. Opening the editor preserves existing defaults and native
+repair dependencies.
 
 The new-mapping form offers fixed-width setup after importing a flat XSD or
 JSON Schema for either side. Source and target retain independent layouts and
-optional data paths; configuration does not open the data file. Named outputs
-with flat scalar schemas also offer fixed-width setup. Widths count Unicode
+optional data paths; configuration does not open the data file. Named inputs
+and outputs with flat scalar schemas also offer fixed-width setup. Named inputs
+require their own data path. Widths count Unicode
 characters, and each layout retains its fill character and fill-only input
 policy. Delimited records write LF and accept LF/CRLF on input;
 contiguous records have no line endings. Pending changes leave the existing

@@ -4,16 +4,18 @@ use anyhow::{Context as _, bail};
 use ir::{ScalarType, SchemaNode};
 use mapping::{FormatOptions, Graph, Project, Scope, TabularBoundaryKind};
 
+mod csv_dialect;
 mod fixed_width;
 mod flextext;
 mod format_options;
 mod protobuf;
+pub(crate) use csv_dialect::{CsvDialectDraft, validate_existing_csv_options};
 pub(super) use fixed_width::FixedWidthBoundaryDraft;
 pub(super) use flextext::FlexTextBoundaryDraft;
 pub(crate) use flextext::is_flextext_configuration;
 pub(crate) use format_options::{
-    can_update_existing_workbook, configured_layout_label_for_path, uses_csv_format,
-    uses_path_format,
+    can_update_existing_workbook, configured_layout_label_for_path, csv_path_compatible,
+    uses_csv_format, uses_path_format,
 };
 pub(super) use protobuf::ProtobufBoundaryDraft;
 pub(crate) use protobuf::{
@@ -286,15 +288,14 @@ impl CsvBoundaryDraft {
         if self.path.trim().is_empty() {
             bail!("CSV path is required");
         }
-        if let Some(extension) = std::path::Path::new(self.path.trim())
-            .extension()
-            .and_then(|extension| extension.to_str())
-            && !matches!(
-                extension.to_ascii_lowercase().as_str(),
-                "csv" | "txt" | "tsv"
-            )
-        {
-            bail!("CSV path must have a .csv, .txt, or .tsv extension");
+        let csv_identity = FormatOptions {
+            tabular_kind: Some(TabularBoundaryKind::Csv),
+            ..FormatOptions::default()
+        };
+        if !uses_csv_format(&csv_identity, &self.path) {
+            bail!(
+                "CSV path selects a different format; use .csv, .txt, .tsv, an unknown suffix, or no suffix"
+            );
         }
         self.quote_settings()?;
         if self.columns.is_empty() {
@@ -324,30 +325,13 @@ impl CsvBoundaryDraft {
     }
 
     fn quote_settings(&self) -> anyhow::Result<(Option<char>, bool)> {
-        if !self.delimiter.is_ascii() || matches!(self.delimiter, '\0' | '\r' | '\n') {
-            bail!("CSV delimiter must be a single ASCII character other than NUL or a line break");
-        }
-        let quote = match self.quote_mode {
-            CsvQuoteMode::Standard => '"',
-            CsvQuoteMode::Custom => {
-                let mut characters = self.custom_quote.chars();
-                let Some(quote) = characters.next() else {
-                    bail!("CSV quote must be exactly one printable ASCII character");
-                };
-                if characters.next().is_some() || !quote.is_ascii_graphic() {
-                    bail!("CSV quote must be exactly one printable ASCII character");
-                }
-                quote
-            }
-            CsvQuoteMode::Disabled => return Ok((None, true)),
-        };
-        if quote == self.delimiter {
-            bail!("CSV quote and delimiter must be different characters");
-        }
-        Ok((
-            (self.quote_mode == CsvQuoteMode::Custom).then_some(quote),
-            false,
-        ))
+        let (_, quote, disabled) = csv_dialect::validate_fields(
+            &self.delimiter.to_string(),
+            self.quote_mode,
+            &self.custom_quote,
+        )
+        .map_err(anyhow::Error::msg)?;
+        Ok((quote, disabled))
     }
 
     fn options(&self) -> anyhow::Result<FormatOptions> {

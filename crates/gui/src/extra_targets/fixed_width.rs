@@ -14,26 +14,26 @@ pub(crate) struct FixedWidthTargetDraft {
 
 pub(crate) fn flat_scalar_fields(schema: &SchemaNode) -> Result<Vec<&SchemaNode>, String> {
     if schema.repeating {
-        return Err("fixed-width root must not repeat; its scope supplies rows".into());
+        return Err("table root must not repeat; its scope supplies rows".into());
     }
     let SchemaKind::Group { children, .. } = &schema.kind else {
-        return Err("fixed-width layout needs a flat group of scalar fields".into());
+        return Err("table boundary needs a flat group of scalar fields".into());
     };
     if children.is_empty() {
-        return Err("fixed-width layout needs at least one scalar field".into());
+        return Err("table boundary needs at least one scalar field".into());
     }
     if children
         .iter()
         .any(|field| !matches!(field.kind, SchemaKind::Scalar { .. }) || field.repeating)
     {
-        return Err("fixed-width fields must be direct, non-repeating scalars".into());
+        return Err("table fields must be direct, non-repeating scalars".into());
     }
     let mut names = std::collections::BTreeSet::new();
     if children
         .iter()
         .any(|field| field.name.is_empty() || !names.insert(field.name.as_str()))
     {
-        return Err("fixed-width fields need distinct, nonempty names".into());
+        return Err("table fields need distinct, nonempty names".into());
     }
     Ok(children.iter().collect())
 }

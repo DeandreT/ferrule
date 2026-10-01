@@ -965,3 +965,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "new_mapping/csv_dispatch_tests.rs"]
+mod csv_dispatch_tests;
