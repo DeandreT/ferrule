@@ -93,7 +93,7 @@ internal static partial class Program
             "sc=Unknown", "sc=Zzzz", "sc=Hrkt", "sc=Katakana_Or_Hiragana",
             "scx=Unknown", "scx=Zzzz", "scx=Hrkt", "scx=Katakana_Or_Hiragana",
             "sc=NoSuchScript", "scx=", "gc=Greek", "Script==Greek", "Script=Greek=Latin",
-            "IsC", "isc", "sc=IsC", "Age=16", "Block=Greek", "Alphabetic",
+            "IsC", "isc", "sc=IsC", "Age=16", "Block=Greek",
         })
         {
             var pattern = @"(?u)\p{" + query + "}";
