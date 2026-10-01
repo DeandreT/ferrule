@@ -1,3 +1,5 @@
+#[path = "regex_unicode/binary_cases.rs"]
+mod binary_cases;
 #[path = "regex_unicode/crlf_cases.rs"]
 mod crlf_cases;
 #[path = "regex_unicode/script_cases.rs"]
@@ -866,7 +868,8 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     let ungreedy_cases = ungreedy_cases::CASES;
     let crlf_cases = crlf_cases::CASES;
     let script_cases = script_cases::CASES;
-    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).chain(&boundary_alias_cases).chain(&ascii_mode_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).chain(nullable_capture_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(group_header_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(ungreedy_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(crlf_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(script_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
+    let binary_cases = binary_cases::CASES;
+    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).chain(&boundary_alias_cases).chain(&ascii_mode_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).chain(nullable_capture_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(group_header_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(ungreedy_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(crlf_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(script_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).chain(binary_cases.iter().map(|&(text, pattern, flags, replacement, _, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
     }).collect::<Vec<_>>()}).to_string();
     let source = format_json::from_str(&input, &project.source)?;
@@ -917,6 +920,7 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
             + ungreedy_cases.len()
             + crlf_cases.len()
             + script_cases.len()
+            + binary_cases.len()
     );
     for (index, (row, &(_, pattern, _, _, matches))) in
         rows.iter().skip(cases.len()).zip(&class_cases).enumerate()
@@ -1126,6 +1130,8 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     );
     let script_begin = crlf_begin + crlf_cases.len();
     script_cases::assert_rows(&ascii_rows[script_begin..script_begin + script_cases.len()]);
+    let binary_begin = script_begin + script_cases.len();
+    binary_cases::assert_rows(&ascii_rows[binary_begin..binary_begin + binary_cases.len()]);
     super::json_text_boundaries::run_generated_boundary_cases(
         &project,
         &[serde_json::json!({"input": input, "expected": expected})],
