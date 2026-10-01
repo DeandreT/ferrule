@@ -790,6 +790,102 @@ fn dynamic_outputs_render_each_member_and_validate_options_before_execution() ->
 }
 
 #[test]
+fn csv_bom_conflicts_reject_metadata_before_pipeline_decode_or_callbacks() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    for source_conflict in [false, true] {
+        let mut project = copy_project();
+        project.target_path = Some("output.csv".into());
+        project.target_options = FormatOptions::default();
+        let input_path = if source_conflict {
+            project.source_options = FormatOptions {
+                csv_utf8_bom: true,
+                ..FormatOptions::default()
+            };
+            Path::new("input.xml")
+        } else {
+            project.target_options.csv_utf8_bom = true;
+            Path::new("input.json")
+        };
+        let pipeline = single(project);
+        assert!(engine::validate_pipeline(&pipeline).is_empty());
+        let bytes: &[u8] = if source_conflict {
+            b"invalid document"
+        } else {
+            br#"{"Value":"valid source"}"#
+        };
+        let hosts = [host("input", input_path, bytes)?];
+        let sentinel = dir.0.join(format!("sentinel-{source_conflict}.xml"));
+        std::fs::write(&sentinel, b"preserved")?;
+        let identities = [PipelinePreviewOutputIdentity {
+            stage: "one".into(),
+            target: None,
+            path: sentinel.clone(),
+        }];
+        let count = AtomicUsize::new(0);
+        let debug = |_: &str, _: &engine::PendingTargetWrite| {
+            count.fetch_add(1, Ordering::Relaxed);
+            DebugDecision::Resume
+        };
+        let trace = |_: &str, _: engine::TraceEvent| {
+            count.fetch_add(1, Ordering::Relaxed);
+        };
+        let options = PipelinePreviewOptions::new(&hosts)
+            .with_output_identities(&identities)
+            .with_stage_debug_hook(&debug)
+            .with_stage_trace_sink(&trace);
+        let metadata_error =
+            validate_pipeline_preview(&pipeline, &dir.0.join("pipeline.json"), &options)
+                .unwrap_err();
+        assert!(format!("{metadata_error:#}").contains("csv_utf8_bom"));
+        let error =
+            preview_pipeline_value_payloads(&pipeline, &dir.0.join("pipeline.json"), &options)
+                .unwrap_err();
+        assert!(format!("{error:#}").contains("csv_utf8_bom"));
+        assert_eq!(count.load(Ordering::Relaxed), 0);
+        assert_eq!(std::fs::read(&sentinel)?, b"preserved");
+    }
+    Ok(())
+}
+
+#[test]
+fn csv_bom_pipeline_preview_returns_exact_marked_bytes_without_writing() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let mut project = copy_project();
+    project.source_options = FormatOptions {
+        csv_utf8_bom: true,
+        ..FormatOptions::default()
+    };
+    project.target_options = project.source_options.clone();
+    project.target_path = Some("output.csv".into());
+    project.root.iteration = ScopeIteration::Source(Vec::new());
+    let pipeline = single(project);
+    let hosts = [host(
+        "input",
+        Path::new("input.csv"),
+        b"\xef\xbb\xbfValue\ncaf\xc3\xa9\n",
+    )?];
+    let identities = [PipelinePreviewOutputIdentity {
+        stage: "one".into(),
+        target: None,
+        path: dir.0.join("uncreated/output.csv"),
+    }];
+    let options = PipelinePreviewOptions::new(&hosts).with_output_identities(&identities);
+    validate_pipeline_preview(&pipeline, &dir.0.join("pipeline.json"), &options)?;
+    let output =
+        preview_pipeline_value_payloads(&pipeline, &dir.0.join("pipeline.json"), &options)?;
+    assert_eq!(output.artifacts.len(), 1);
+    assert_eq!(output.artifacts[0].target, None);
+    assert_eq!(output.artifacts[0].records_written, 1);
+    assert_eq!(output.artifacts[0].path, identities[0].path);
+    assert_eq!(
+        output.artifacts[0].bytes,
+        b"\xef\xbb\xbfValue\ncaf\xc3\xa9\n"
+    );
+    assert!(!dir.0.join("uncreated").exists());
+    Ok(())
+}
+
+#[test]
 fn stage_trace_capacity_skips_source_snapshots_but_keeps_event_order() -> anyhow::Result<()> {
     let dir = TempDir::new()?;
     let pipeline = single(dynamic_project());

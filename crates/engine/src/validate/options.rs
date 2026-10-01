@@ -8,31 +8,36 @@ pub(super) fn validate_csv_dialect_options(
     options: &FormatOptions,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    if options.csv_preserve_empty_strings
-        && (options
-            .tabular_kind
-            .is_some_and(|kind| kind != mapping::TabularBoundaryKind::Csv)
-            || options.xml_document
-            || options.local_xml_file_set
-            || options.json_document
-            || options.json5
-            || options.json_lines
-            || options.fixed_width.is_some()
-            || options.flextext.is_some()
-            || options.pdf.is_some()
-            || options.edi_kind.is_some()
-            || options.idoc.is_some()
-            || options.swift_mt.is_some()
-            || options.xbrl.is_some()
-            || options.protobuf.is_some()
-            || options.wsdl.is_some()
-            || options.http_get.is_some()
-            || options.external_source.is_some()
-            || has_xlsx_format_options(options))
-    {
+    let conflicting_format = options
+        .tabular_kind
+        .is_some_and(|kind| kind != mapping::TabularBoundaryKind::Csv)
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
+        || options.json5
+        || options.json_lines
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.pdf.is_some()
+        || options.edi_kind.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.xbrl.is_some()
+        || options.protobuf.is_some()
+        || options.wsdl.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || has_xlsx_format_options(options);
+    if options.csv_preserve_empty_strings && conflicting_format {
         issues.push(ValidationIssue::new(
             location,
             "`csv_preserve_empty_strings` cannot be combined with another format's options",
+        ));
+    }
+    if options.csv_utf8_bom && conflicting_format {
+        issues.push(ValidationIssue::new(
+            location,
+            "`csv_utf8_bom` cannot be combined with another format's options",
         ));
     }
     let delimiter = options.delimiter.unwrap_or(',');
@@ -122,6 +127,7 @@ pub(super) fn validate_json5_options(
         || options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -253,6 +259,7 @@ fn has_non_idoc_format_options(options: &FormatOptions) -> bool {
     options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -272,6 +279,7 @@ fn has_non_swift_format_options(options: &FormatOptions) -> bool {
     options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -330,6 +338,7 @@ fn has_non_external_source_format_options(options: &FormatOptions) -> bool {
         || options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -392,6 +401,7 @@ fn has_non_xbrl_format_options(options: &FormatOptions) -> bool {
         || options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -554,6 +564,7 @@ pub(super) fn validate_wsdl_options(
         || options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()

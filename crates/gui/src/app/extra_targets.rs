@@ -271,6 +271,7 @@ fn show_target_format_options(
     if matches!(extension.as_str(), "csv" | "txt") {
         let headers = options.has_header_row.get_or_insert(true);
         ui.checkbox(headers, "Header row");
+        ui.checkbox(&mut options.csv_utf8_bom, "UTF-8 byte order mark");
         let mut delimiter = options.delimiter.unwrap_or(',').to_string();
         ui.horizontal(|ui| {
             ui.label("Delimiter");

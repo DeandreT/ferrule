@@ -586,6 +586,7 @@ fn reject_stateful_options(options: &FormatOptions) -> anyhow::Result<()> {
 }
 
 fn preflight_format(path: &Path, options: &FormatOptions, output: bool) -> anyhow::Result<()> {
+    super::validate_csv_metadata_identity(path, options, if output { "output" } else { "input" })?;
     reject_stateful_options(options)?;
     if output {
         preflight_output_options(options)?;

@@ -1103,7 +1103,7 @@ pub(super) fn read_csv_component(
     let text_el = data
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "text")?;
-    csv::warn_text_encoding(&text_el, &name, warnings);
+    let utf8_bom = csv::read_utf8_bom(&text_el, &name, warnings);
     let settings = text_el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "settings");
@@ -1143,6 +1143,7 @@ pub(super) fn read_csv_component(
 
     let mut options = FormatOptions {
         tabular_kind: Some(TabularBoundaryKind::Csv),
+        csv_utf8_bom: utf8_bom,
         ..FormatOptions::default()
     };
     if let Some(settings) = settings {

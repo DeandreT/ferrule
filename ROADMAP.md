@@ -212,7 +212,9 @@ are preserved.
   templates retain a lossless Ferrule payload and report `pdf_layout` instead
   of claiming native compatibility. CSV preserves optional present-empty text
   through file, payload, browser, and strict native round trips, with typed-empty
-  uncertainty diagnosed explicitly.
+  uncertainty diagnosed explicitly. The observed UTF-8 BOM setting survives
+  project save/reopen and strict native round trips, and file, payload, and
+  browser writers emit matching bytes for independent primary and named targets.
   JSON Schema import shares reference, expanded-depth, and cumulative work
   limits across ordinary trees and private predicates.
 - Known architectural constraints: each mapping stage has one primary driver,

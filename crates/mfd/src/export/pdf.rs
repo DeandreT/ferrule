@@ -350,6 +350,7 @@ fn has_conflicting_options(options: &FormatOptions) -> bool {
         || options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
