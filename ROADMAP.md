@@ -137,7 +137,7 @@ are preserved.
   remains unverified and the executable import profile rejects them. Cross-type
   dynamic SQL coercion remains unsupported. Missing imported filter predicates skip the dependent
   iteration with a diagnostic instead of producing unfiltered rows.
-- Generated Rust and C# hosts have compiled and executed forty supported warning-free
+- Generated Rust and C# hosts have compiled and executed forty-one supported warning-free
   local-corpus mappings: JSON-to-JSON, XML-to-JSON, FlexText-to-XML, grouped
   CSV-to-XML, grouped XML-to-XML with annual reductions, and XML-to-XML with
   three-key sorting, top-ten temperature selection, and filtered compact
@@ -226,6 +226,10 @@ are preserved.
   XLSX sheet into a SQLite People table. Generated Rust and C# typed and JSON
   results agree with the interpreter, including exact nested JSON text that
   retains `25.0` as a floating value; decoded SQLite rows receive IDs 1–15.
+  Case forty-one maps 24 XML sales rows through frame-pinned scaling and numeric
+  picture formatting. Both generated JSON string hosts match the interpreter;
+  decoding their output and using the native CSV adapter also preserves exact
+  CSV bytes. The source JSON bridge retains enclosing and current-item fields.
   The book-catalog case reads a two-page PDF with 52 books. The native
   PDF reader supplies schema-shaped JSON to both generated hosts; typed XML
   and JSON string/byte results match the interpreter. The generated hosts do
