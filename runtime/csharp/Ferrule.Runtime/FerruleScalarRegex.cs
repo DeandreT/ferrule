@@ -14,6 +14,7 @@ internal static class FerruleScalarRegex
 {
     private const int MaximumTranslatedCharacters = 10 * 1024 * 1024;
     private const int MaximumClassDepth = 256;
+    private const long MaximumClassWork = 100_000_000;
 
     internal static Regex Compile(string source, RegexOptions options) => Compile(source, options, out _);
 
@@ -81,6 +82,24 @@ internal static class FerruleScalarRegex
         }
 
         internal ScalarSet Union(ScalarSet other) => new(Ranges.Concat(other.Ranges));
+
+        internal ScalarSet Intersect(ScalarSet other)
+        {
+            var result = new List<Range>();
+            var left = 0;
+            var right = 0;
+            while (left < Ranges.Length && right < other.Ranges.Length)
+            {
+                var first = Math.Max(Ranges[left].First, other.Ranges[right].First);
+                var last = Math.Min(Ranges[left].Last, other.Ranges[right].Last);
+                if (first <= last) { result.Add(new Range(first, last)); }
+                if (Ranges[left].Last <= other.Ranges[right].Last) { left++; }
+                else { right++; }
+            }
+            return new ScalarSet(result);
+        }
+
+        internal ScalarSet SymmetricDifference(ScalarSet other) => Except(other).Union(other.Except(this));
 
         internal ScalarSet Except(ScalarSet other)
         {
@@ -257,6 +276,25 @@ internal static class FerruleScalarRegex
 
     private static ScalarSet Shorthand(char kind) => Shorthands.Value[kind];
 
+    private static readonly IReadOnlyDictionary<string, ScalarSet> AsciiClasses =
+        new Dictionary<string, ScalarSet>(StringComparer.Ordinal) {
+            ["alnum"] = new(new[] { new Range('0', '9'), new Range('A', 'Z'), new Range('a', 'z') }),
+            ["alpha"] = new(new[] { new Range('A', 'Z'), new Range('a', 'z') }),
+            ["ascii"] = ScalarSet.Between(0, 0x7F),
+            ["blank"] = new(new[] { new Range(9, 9), new Range(0x20, 0x20) }),
+            ["cntrl"] = new(new[] { new Range(0, 0x1F), new Range(0x7F, 0x7F) }),
+            ["digit"] = ScalarSet.Between('0', '9'),
+            ["graph"] = ScalarSet.Between(0x21, 0x7E),
+            ["lower"] = ScalarSet.Between('a', 'z'),
+            ["print"] = ScalarSet.Between(0x20, 0x7E),
+            ["punct"] = new(new[] { new Range(0x21, 0x2F), new Range(0x3A, 0x40), new Range(0x5B, 0x60), new Range(0x7B, 0x7E) }),
+            ["space"] = new(new[] { new Range(9, 13), new Range(0x20, 0x20) }),
+            ["upper"] = ScalarSet.Between('A', 'Z'),
+            ["word"] = new(new[] { new Range('0', '9'), new Range('A', 'Z'), new Range('_', '_'), new Range('a', 'z') }),
+            ["xdigit"] = new(new[] { new Range('0', '9'), new Range('A', 'F'), new Range('a', 'f') }),
+        };
+    private static readonly ConcurrentDictionary<(string Name, bool Folded, bool Complemented), ScalarSet> ModifiedAsciiClasses = new();
+
     private static string Atom(ScalarSet set)
     {
         if (set.Ranges.Length == 0) { return @"[\u0000-[\u0000]]"; }
@@ -309,6 +347,7 @@ internal static class FerruleScalarRegex
         private bool _hasOperand;
         private RegexOptions _options;
         private int _index;
+        private long _classWork;
 
         internal Translator(string source, RegexOptions options) { _source = source; _options = options; }
         private bool IgnoreCase => (_options & RegexOptions.IgnoreCase) != 0;
@@ -608,34 +647,105 @@ internal static class FerruleScalarRegex
             return new Item(ScalarSet.Between(scalarValue, scalarValue), scalarValue);
         }
 
+        private ScalarSet? AsciiClass()
+        {
+            if (_index + 1 >= _source.Length || _source[_index + 1] != ':') { return null; }
+            var next = _index + 2;
+            var complemented = next < _source.Length && _source[next] == '^';
+            if (complemented) { next++; }
+            var start = next;
+            // Known names have at most six ASCII letters; malformed prefixes
+            // cannot trigger repeated scans over the remainder of the pattern.
+            while (next < _source.Length && next - start < 6 && _source[next] is >= 'a' and <= 'z') { next++; }
+            if (next + 1 >= _source.Length || _source[next] != ':' || _source[next + 1] != ']') { return null; }
+            var name = _source[start..next];
+            if (!AsciiClasses.ContainsKey(name)) { return null; }
+            _index = next + 2;
+            ClassWork(1);
+            return ModifiedAsciiClasses.GetOrAdd((name, IgnoreCase, complemented), static key => {
+                var set = AsciiClasses[key.Name];
+                if (key.Folded) { set = set.FoldCase(); }
+                return key.Complemented ? set.Complement() : set;
+            });
+        }
+
+        private void ClassWork(long amount)
+        {
+            if (amount > MaximumClassWork - _classWork)
+            {
+                throw Invalid("character-class compilation exceeds its bounded work limit");
+            }
+            _classWork += amount;
+        }
+
         private ScalarSet Class(int depth)
         {
             if (depth > MaximumClassDepth) { throw Invalid("character-class nesting exceeds its bounded depth"); }
-            _index++;
-            SkipIgnored();
+            ClassWork(1);
+            _index++; SkipIgnored();
             var complemented = _index < _source.Length && _source[_index] == '^';
-            if (complemented) { _index++; }
-            // Collect first, then normalize/fold once. Irregular large classes
-            // must not repeatedly clone and sort every previously parsed item.
+            if (complemented) { _index++; SkipIgnored(); }
             var scalarRanges = new List<Range>();
             var composites = new HashSet<ScalarSet>();
-            ScalarSet Finish()
+            ScalarSet TakeUnion()
             {
+                var count = scalarRanges.Count + composites.Sum(item => item.Ranges.Length);
+                // Charge the normalization sort and scalar-fold membership work
+                // before allocating the combined interval set.
+                ClassWork((long)count * (1 + (int)Math.Log2(Math.Max(count, 1))));
                 var scalars = new ScalarSet(scalarRanges);
-                if (IgnoreCase) { scalars = scalars.FoldCase(); }
+                if (IgnoreCase && scalars.Ranges.Length != 0)
+                {
+                    ClassWork(CaseTables.Value.Groups.Sum(group => (long)group.Length)
+                        * (1 + (int)Math.Log2(Math.Max(scalars.Ranges.Length, 1))));
+                    scalars = scalars.FoldCase();
+                }
                 var combined = new ScalarSet(scalars.Ranges.Concat(composites.SelectMany(item => item.Ranges)));
-                return complemented ? combined.Complement() : combined;
+                scalarRanges.Clear(); composites.Clear();
+                return combined;
             }
-            var first = true;
+            ScalarSet Apply(ScalarSet left, ScalarSet right, char operation)
+            {
+                var count = (long)left.Ranges.Length + right.Ranges.Length;
+                ClassWork(count * (operation == '~' ? 3 : 1) * (1 + (int)Math.Log2(Math.Max(count, 1))));
+                return operation switch {
+                    '&' => left.Intersect(right), '-' => left.Except(right),
+                    '~' => left.SymmetricDifference(right), _ => right,
+                };
+            }
+            // Rust treats opening dashes and the first closing bracket literally.
+            while (_index < _source.Length && _source[_index] == '-')
+            {
+                scalarRanges.Add(new Range('-', '-')); _index++; SkipIgnored(); ClassWork(1);
+            }
+            if (scalarRanges.Count == 0 && _index < _source.Length && _source[_index] == ']')
+            {
+                scalarRanges.Add(new Range(']', ']')); _index++; SkipIgnored();
+            }
+            ScalarSet? accumulated = null;
+            var operation = '\0';
             while (_index < _source.Length)
             {
                 SkipIgnored();
                 if (_index == _source.Length) { break; }
-                if (_source[_index] == ']' && !first)
+                ClassWork(1);
+                if (_source[_index] == ']')
                 {
-                    _index++; return Finish();
+                    _index++;
+                    var finalUnion = TakeUnion();
+                    var result = accumulated is null ? finalUnion : Apply(accumulated, finalUnion, operation);
+                    return complemented ? result.Complement() : result;
                 }
-                if (!first && _source[_index] == '-')
+                if (_index + 1 < _source.Length && _source[_index] is '&' or '-' or '~'
+                    && _source[_index + 1] == _source[_index])
+                {
+                    var next = _source[_index]; _index += 2;
+                    var union = TakeUnion();
+                    accumulated = accumulated is null ? union : Apply(accumulated, union, operation);
+                    operation = next; continue;
+                }
+                // Retain the previously accepted single-dash host subtraction.
+                if (_source[_index] == '-' && (accumulated is not null || scalarRanges.Count != 0 || composites.Count != 0))
                 {
                     var dash = _index++;
                     SkipIgnored();
@@ -643,19 +753,25 @@ internal static class FerruleScalarRegex
                     {
                         var excluded = Class(depth + 1);
                         SkipIgnored();
-                        if (_index >= _source.Length || _source[_index++] != ']') { throw Invalid("subtraction must end the class"); }
-                        return Finish().Except(excluded);
+                        if (_index == _source.Length || _source[_index++] != ']') { throw Invalid("subtraction must end the class"); }
+                        var union = TakeUnion();
+                        var result = accumulated is null ? union : Apply(accumulated, union, operation);
+                        if (complemented) { result = result.Complement(); }
+                        return Apply(result, excluded, '-');
                     }
                     _index = dash;
                 }
+                if (_source[_index] == '[')
+                {
+                    composites.Add(AsciiClass() ?? Class(depth + 1)); continue;
+                }
                 var item = ClassItem();
-                first = false;
                 SkipIgnored();
                 if (_index < _source.Length && _source[_index] == '-')
                 {
                     var dash = _index++;
                     SkipIgnored();
-                    if (_index < _source.Length && _source[_index] is not (']' or '['))
+                    if (_index < _source.Length && _source[_index] is not (']' or '[' or '-'))
                     {
                         var last = ClassItem();
                         if (!item.Scalar.HasValue || !last.Scalar.HasValue) { throw Invalid("range endpoints must be scalars"); }

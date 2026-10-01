@@ -514,8 +514,14 @@ Numeric replacements use source capture opening order, including mixed named
 and unnamed groups and Python named headers. Scalar Unicode hex escapes and
 supported repetition bounds are validated before host compilation; malformed
 opening-brace quantifiers retain typed failures instead of becoming literals.
+Nested character classes retain union/range precedence and left-associative
+intersection (`&&`), difference (`--`), and symmetric difference (`~~`), including
+scalar complements, active case folding, and all 14 ASCII POSIX class terms.
+C# class compilation has a 100-million interval-work bound in addition to its
+source, depth, and translated-size limits; exact backend compilation budgets
+still differ.
 Rust and .NET still expose different regex dialects. Word-boundary assertions,
-class set operators, property vocabularies, repeated quantifiers, and some
+single-dash host subtraction, property vocabularies, repeated quantifiers, and some
 host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
 This applies to mapping-language regex operations only;
