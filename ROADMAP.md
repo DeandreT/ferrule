@@ -67,6 +67,9 @@ are preserved.
   Primary and named Inspector scope controls obey the same preview, run, and
   dialog edit locks as the canvases; locked interaction preserves project,
   history, and output while the scope panel remains scrollable.
+  Ordered secondary sort keys expose independent expressions and directions,
+  insertion, removal, and priority changes. Filtering can run before or after
+  sorting; disabling sorting clears every key, and undo restores them.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as
@@ -210,7 +213,10 @@ are preserved.
   captures, nested character classes, intersection/difference/symmetric
   difference, and all 14 ASCII POSIX class terms. Unicode word/nonword assertions
   share scalar word membership and retain ordered alternatives, greedy/lazy
-  captures, and global spans within explicit execution limits. A compiled 149-case mapping
+  captures, and global spans within explicit execution limits. General-category
+  aliases and queries preserve scalar membership, inversion, and loose names;
+  supplementary private-use aliases align and unavailable surrogate properties
+  reject. A compiled 201-case mapping
   compares matching, replacement, and tokenization through Rust/C# JSON string
   and UTF-8 byte hosts against the interpreter. Additional boundary spellings,
   broader property vocabularies, host-only syntax, and compilation budgets

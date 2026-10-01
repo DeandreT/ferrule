@@ -57,7 +57,7 @@ internal static partial class Program
         CallEquals(Bool(false), "matches", Text("\U0001D7CE"), Text(@"^\D$"));
         CallEquals(Bool(true), "matches", Text("\u00A0"), Text(@"^\s$"));
         CallEquals(Bool(true), "matches", Text("Ω"), Text(@"^\p{IsGreek}$"));
-        CallEquals(Bool(false), "matches", Text("🙂"), Text(@"^\p{Cs}$"));
+        AssertInvalidArgument("matches", "pattern is invalid or exceeds the compiled-size limit", Text("🙂"), Text(@"^\p{Cs}$"));
         foreach (var pattern in new[] { @"^\P{L}+$", @"^[\P{L}]+$", @"^\W+$" })
         {
             CallEquals(Bool(true), "matches", Text("🙂\n"), Text(pattern));
@@ -121,7 +121,7 @@ internal static partial class Program
         CallEquals(Text("[🙂🙃]"), "replace", Text("🙂🙃"), Text("(.+)"), Text("[$1]"));
         CallEquals(Text("[𐐨]"), "replace", Text("𐐨"), Text("(?i:(𐐀))"), Text("[$1]"));
         CallEquals(Text("[𐐨]"), "replace", Text("𐐨"), Text(@"(\p{L})"), Text("[$1]"));
-        CallEquals(Text("🙂"), "replace", Text("🙂"), Text(@"\p{Cs}"), Text("x"));
+        AssertInvalidArgument("replace", "pattern is invalid or exceeds the compiled-size limit", Text("🙂"), Text(@"\p{Cs}"), Text("x"));
     }
 
     private static void RegexUnicodeTokenizationAndErrors()

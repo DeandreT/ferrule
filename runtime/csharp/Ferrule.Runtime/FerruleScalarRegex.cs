@@ -223,6 +223,7 @@ internal static partial class FerruleScalarRegex
             ["Zp"] = new[] { UnicodeCategory.ParagraphSeparator }, ["Cc"] = new[] { UnicodeCategory.Control },
             ["Cf"] = new[] { UnicodeCategory.Format }, ["Cs"] = new[] { UnicodeCategory.Surrogate },
             ["Co"] = new[] { UnicodeCategory.PrivateUse }, ["Cn"] = new[] { UnicodeCategory.OtherNotAssigned },
+            ["LC"] = new[] { UnicodeCategory.UppercaseLetter, UnicodeCategory.LowercaseLetter, UnicodeCategory.TitlecaseLetter },
             ["L"] = new[] { UnicodeCategory.UppercaseLetter, UnicodeCategory.LowercaseLetter, UnicodeCategory.TitlecaseLetter, UnicodeCategory.ModifierLetter, UnicodeCategory.OtherLetter },
             ["M"] = new[] { UnicodeCategory.NonSpacingMark, UnicodeCategory.SpacingCombiningMark, UnicodeCategory.EnclosingMark },
             ["N"] = new[] { UnicodeCategory.DecimalDigitNumber, UnicodeCategory.LetterNumber, UnicodeCategory.OtherNumber },
@@ -232,7 +233,102 @@ internal static partial class FerruleScalarRegex
             ["C"] = new[] { UnicodeCategory.Control, UnicodeCategory.Format, UnicodeCategory.Surrogate, UnicodeCategory.PrivateUse, UnicodeCategory.OtherNotAssigned },
         };
 
+    private static readonly IReadOnlyDictionary<string, string> CategoryAliases = BuildCategoryAliases();
+
+    private static IReadOnlyDictionary<string, string> BuildCategoryAliases()
+    {
+        var aliases = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (canonical, names) in new[] {
+            ("C", "c other"),
+            ("LC", "casedletter lc"),
+            ("Cc", "cc cntrl control"),
+            ("Cf", "cf format"),
+            ("Pe", "closepunctuation pe"),
+            ("Cn", "cn unassigned"),
+            ("Co", "co privateuse"),
+            ("M", "combiningmark m mark"),
+            ("Pc", "connectorpunctuation pc"),
+            ("Cs", "cs surrogate"),
+            ("Sc", "currencysymbol sc"),
+            ("Pd", "dashpunctuation pd"),
+            ("Nd", "decimalnumber digit nd"),
+            ("Me", "enclosingmark me"),
+            ("Pf", "finalpunctuation pf"),
+            ("Pi", "initialpunctuation pi"),
+            ("L", "l letter"),
+            ("Nl", "letternumber nl"),
+            ("Zl", "lineseparator zl"),
+            ("Ll", "ll lowercaseletter"),
+            ("Lm", "lm modifierletter"),
+            ("Lo", "lo otherletter"),
+            ("Lt", "lt titlecaseletter"),
+            ("Lu", "lu uppercaseletter"),
+            ("Sm", "mathsymbol sm"),
+            ("Mc", "mc spacingmark"),
+            ("Mn", "mn nonspacingmark"),
+            ("Sk", "modifiersymbol sk"),
+            ("N", "n number"),
+            ("No", "no othernumber"),
+            ("Ps", "openpunctuation ps"),
+            ("Po", "otherpunctuation po"),
+            ("So", "othersymbol so"),
+            ("P", "p punct punctuation"),
+            ("Zp", "paragraphseparator zp"),
+            ("S", "s symbol"),
+            ("Z", "separator z"),
+            ("Zs", "spaceseparator zs"),
+            ("Any", "any"), ("ASCII", "ascii"), ("Assigned", "assigned"),
+        })
+        {
+            foreach (var name in names.Split(' ')) { aliases.Add(name, canonical); }
+        }
+        return aliases;
+    }
+
+    private static string NormalizePropertyName(string name)
+    {
+        var prefixed = name.Length >= 2 && name[0] is 'i' or 'I' && name[1] is 's' or 'S';
+        var normalized = new StringBuilder(name.Length);
+        for (var index = prefixed ? 2 : 0; index < name.Length; index++)
+        {
+            var value = name[index];
+            if (value > 0x7F || value is ' ' or '_' or '-') { continue; }
+            normalized.Append(value is >= 'A' and <= 'Z' ? (char)(value + ('a' - 'A')) : value);
+        }
+        // ISO_Comment's abbreviation is not the Other category after stripping "is".
+        var result = normalized.ToString();
+        return prefixed && result == "c" ? "isc" : result;
+    }
+
+    private static (string Name, bool Complemented) PropertyQuery(string query, bool complemented)
+    {
+        var separator = query.IndexOf("!=", StringComparison.Ordinal);
+        var width = 2;
+        var inverted = separator >= 0;
+        if (separator < 0) { separator = query.IndexOf(':'); width = 1; }
+        if (separator < 0) { separator = query.IndexOf('='); }
+        var value = query;
+        if (separator >= 0)
+        {
+            var property = NormalizePropertyName(query[..separator]);
+            if (property is not ("gc" or "generalcategory")) { throw Invalid("unsupported property query"); }
+            value = query[(separator + width)..];
+            complemented ^= inverted;
+        }
+        if (CategoryAliases.TryGetValue(NormalizePropertyName(value), out var canonical))
+        {
+            if (canonical == "Cs") { throw Invalid("surrogate category has no Unicode scalar property data"); }
+            return (canonical, complemented);
+        }
+        if (separator >= 0) { throw Invalid("unrecognized general category"); }
+        // Retain raw accepted host blocks outside the selected category vocabulary.
+        return (query, complemented);
+    }
+
     private static ScalarSet Property(string name) => NamedProperties.GetOrAdd(name, static key => {
+        if (key == "Any") { return ScalarSet.All; }
+        if (key == "ASCII") { return ScalarSet.Between(0, 0x7F); }
+        if (key == "Assigned") { return Property("Cn").Complement(); }
         if (CategoryNames.TryGetValue(key, out var categories))
         {
             return new ScalarSet(categories.SelectMany(category => Categories.Value.TryGetValue(category, out var set)
@@ -627,11 +723,8 @@ internal static partial class FerruleScalarRegex
             if (kind is 'd' or 'D' or 's' or 'S' or 'w' or 'W') { return new Item(Shorthand(kind), null); }
             if (kind is 'p' or 'P')
             {
-                if (_index >= _source.Length || _source[_index++] != '{') { throw Invalid("missing property name"); }
-                var start = _index;
-                while (_index < _source.Length && _source[_index] != '}') { _index++; }
-                if (_index == _source.Length) { throw Invalid("missing property terminator"); }
-                var key = (_source[start.._index++], IgnoreCase, kind == 'P');
+                var query = PropertyQuery(ReadPropertyName(), kind == 'P');
+                var key = (query.Name, IgnoreCase, query.Complemented);
                 var set = ModifiedProperties.GetOrAdd(key, static key => {
                     var value = Property(key.Name);
                     if (key.Folded) { value = value.FoldCase(); }
@@ -648,6 +741,27 @@ internal static partial class FerruleScalarRegex
             };
             if (!Rune.IsValid(scalarValue)) { throw Invalid("escape is not a Unicode scalar"); }
             return new Item(ScalarSet.Between(scalarValue, scalarValue), scalarValue);
+        }
+
+        private string ReadPropertyName()
+        {
+            SkipIgnored();
+            if (_index == _source.Length) { throw Invalid("missing property name"); }
+            if (_source[_index] != '{')
+            {
+                if (_source[_index] == '\\') { throw Invalid("invalid one-letter property name"); }
+                return char.ConvertFromUtf32(ReadScalar());
+            }
+            _index++; SkipIgnored();
+            var name = new StringBuilder();
+            while (_index < _source.Length && _source[_index] != '}')
+            {
+                name.Append(char.ConvertFromUtf32(ReadScalar()));
+                SkipIgnored();
+            }
+            if (_index == _source.Length) { throw Invalid("missing property terminator"); }
+            _index++;
+            return name.ToString();
         }
 
         private ScalarSet? AsciiClass()
