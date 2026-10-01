@@ -616,7 +616,7 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports thirty-nine warning-free designs: JSON to
+An opt-in local-corpus smoke test imports forty-two warning-free designs: JSON to
 JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
 with yearly minimum, maximum, and average temperatures, XML to XML with
 three-key person sorting, XML to XML with top-ten temperature selection, and
@@ -791,6 +791,18 @@ nested Switch instance, interpreter and generated Rust/C# typed and JSON
 output sets, and exact 100-column space-padded LF records from the same
 fixed-width writer. No native reference output files are pinned for this
 design.
+The fortieth maps XLSX staff rows to SQLite, retaining nested JSON text and
+database-generated IDs after native adapter writes. The forty-first
+formats scaled sales values using imported numeric pictures while preserving
+current and enclosing XML fields. The forty-second selects address lines and
+composes substring functions, preserving office order and omitting the parent
+location when an address is absent. Its native XML readback comparison covers
+every mapped field; declared but unmapped fields remain outside that comparison.
+Ordinary corpus JSON hosts call both string and UTF-8 byte entry points with
+identical primary and named input content, then require exact output bytes before
+the existing interpreter comparison. Specialized typed, XML and dynamic-input
+hosts retain their separately described checks; this addition does not test
+invalid raw UTF-8 or every named target's byte buffer.
 The test executes every design in the interpreter, then compiles and runs
 generated Rust and C# hosts. Run it with
 `cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
