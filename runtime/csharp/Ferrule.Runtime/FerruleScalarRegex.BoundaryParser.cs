@@ -8,7 +8,10 @@ internal static partial class FerruleScalarRegex
     private const int MaximumBoundaryDepth = 256;
 
     private enum BoundaryKind { Empty, Consume, Assertion, Sequence, Alternate, Repeat, Capture }
-    private enum BoundaryAssertion { Start, End, LineStart, LineEnd, Word, NotWord }
+    private enum BoundaryAssertion {
+        Start, End, LineStart, LineEnd, Word, NotWord,
+        WordStart, WordEnd, WordStartHalf, WordEndHalf,
+    }
 
     private sealed record BoundaryNode(
         BoundaryKind Kind,
@@ -129,12 +132,15 @@ internal static partial class FerruleScalarRegex
                         : (multiline ? BoundaryAssertion.LineEnd : BoundaryAssertion.End)));
                 case '\\':
                     if (_index + 1 == _source.Length) { throw Invalid("trailing backslash"); }
+                    if (TryReadWordAssertion(out var wordAssertion))
+                    {
+                        return BoundaryNew(new(BoundaryKind.Assertion, Assertion: wordAssertion));
+                    }
                     var escape = _source[_index + 1];
-                    if (escape is 'b' or 'B' or 'A' or 'z')
+                    if (escape is 'A' or 'z')
                     {
                         _index += 2;
                         return BoundaryNew(new(BoundaryKind.Assertion, Assertion: escape switch {
-                            'b' => BoundaryAssertion.Word, 'B' => BoundaryAssertion.NotWord,
                             'A' => BoundaryAssertion.Start, _ => BoundaryAssertion.End,
                         }));
                     }

@@ -286,8 +286,13 @@ internal static partial class FerruleScalarRegex
                 BoundaryAssertion.End => position == input.Length,
                 BoundaryAssertion.LineStart => position == 0 || input[position - 1] == '\n',
                 BoundaryAssertion.LineEnd => position == input.Length || input[position] == '\n',
-                _ => (WordBefore(input, position) != WordAfter(input, position))
-                    == (assertion == BoundaryAssertion.Word),
+                BoundaryAssertion.Word => WordBefore(input, position) != WordAfter(input, position),
+                BoundaryAssertion.NotWord => WordBefore(input, position) == WordAfter(input, position),
+                BoundaryAssertion.WordStart => !WordBefore(input, position) && WordAfter(input, position),
+                BoundaryAssertion.WordEnd => WordBefore(input, position) && !WordAfter(input, position),
+                BoundaryAssertion.WordStartHalf => !WordBefore(input, position),
+                BoundaryAssertion.WordEndHalf => !WordAfter(input, position),
+                _ => throw Invalid("invalid scalar word assertion"),
             };
         }
 

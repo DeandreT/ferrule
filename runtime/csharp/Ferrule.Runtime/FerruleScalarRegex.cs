@@ -23,7 +23,12 @@ internal static partial class FerruleScalarRegex
         var translator = new Translator(source, options);
         // A neutral line-anchor alternative establishes the host's newline context.
         // Without it, NonBacktracking loses a final LF for large scalar sets.
-        var regex = new Regex("(?m:^|)(?:" + translator.Translate() + ")", options);
+        var translated = translator.Translate();
+        if (translator.HasSpecialWordAssertion)
+        {
+            throw Invalid("special word assertions require the scalar matcher");
+        }
+        var regex = new Regex("(?m:^|)(?:" + translated + ")", options);
         captureGroups = translator.CaptureGroups(regex);
         return regex;
     }
@@ -451,6 +456,8 @@ internal static partial class FerruleScalarRegex
         private int _index;
         private bool _hasWordBoundary;
         internal bool HasWordBoundary => _hasWordBoundary;
+        private bool _hasSpecialWordAssertion;
+        internal bool HasSpecialWordAssertion => _hasSpecialWordAssertion;
         private bool _hasConsecutiveRepetition;
         internal bool HasConsecutiveRepetition => _hasConsecutiveRepetition;
         private long _classWork;
@@ -773,13 +780,67 @@ internal static partial class FerruleScalarRegex
             return value;
         }
 
+        private bool TryReadWordAssertion(out BoundaryAssertion assertion)
+        {
+            assertion = default;
+            if (_index + 1 >= _source.Length || _source[_index] != '\\') { return false; }
+            var escape = _source[_index + 1];
+            switch (escape)
+            {
+                case 'b': assertion = BoundaryAssertion.Word; break;
+                case 'B': assertion = BoundaryAssertion.NotWord; break;
+                case '<': assertion = BoundaryAssertion.WordStart; break;
+                case '>': assertion = BoundaryAssertion.WordEnd; break;
+                default: return false;
+            }
+            _index += 2;
+            // Only an immediately adjacent brace can name a special assertion.
+            // Ignored x whitespace/comments are allowed inside that brace.
+            if (escape != 'b' || _index == _source.Length || _source[_index] != '{') { return true; }
+            var brace = _index++;
+            SkipIgnored();
+            if (_index == _source.Length) { throw Invalid("unterminated special word assertion"); }
+            static bool NameCharacter(char value) => value is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '-';
+            if (!NameCharacter(_source[_index]))
+            {
+                // Numeric braces belong to the ordinary repetition reader.
+                _index = brace; return true;
+            }
+            var name = new StringBuilder(10);
+            while (_index < _source.Length && NameCharacter(_source[_index]))
+            {
+                if (name.Length == 10) { throw Invalid("unrecognized special word assertion"); }
+                name.Append(_source[_index++]); SkipIgnored();
+            }
+            if (_index == _source.Length || _source[_index++] != '}')
+            {
+                throw Invalid("unterminated special word assertion");
+            }
+            assertion = name.ToString() switch {
+                "start" => BoundaryAssertion.WordStart,
+                "end" => BoundaryAssertion.WordEnd,
+                "start-half" => BoundaryAssertion.WordStartHalf,
+                "end-half" => BoundaryAssertion.WordEndHalf,
+                _ => throw Invalid("unrecognized special word assertion"),
+            };
+            return true;
+        }
+
         private void EscapeOutside()
         {
+            if (TryReadWordAssertion(out var assertion))
+            {
+                _hasWordBoundary = true;
+                _hasSpecialWordAssertion |= assertion is not (BoundaryAssertion.Word or BoundaryAssertion.NotWord);
+                // Public execution uses the original source in the scalar VM.
+                // This bounded marker retains operand/capture offsets during
+                // lowering; Compile rejects special markers before host use.
+                Append(assertion == BoundaryAssertion.NotWord ? @"\B" : @"\b"); return;
+            }
             var start = _index++;
             if (_index >= _source.Length) { throw Invalid("trailing backslash"); }
             var escape = _source[_index];
-            if (escape is 'b' or 'B') { _hasWordBoundary = true; }
-            if (escape is 'b' or 'B' or 'A' or 'Z' or 'z' or 'G' or 'k' or >= '1' and <= '9')
+            if (escape is 'A' or 'Z' or 'z' or 'G' or 'k' or >= '1' and <= '9')
             {
                 _index++;
                 if (escape is >= '1' and <= '9')

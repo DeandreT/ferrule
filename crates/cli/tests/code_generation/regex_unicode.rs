@@ -401,7 +401,111 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
             true,
         ),
     ];
-    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
+    let boundary_alias_cases = [
+        ("a", "^\\<a\\>$", "", "[$0]", true),
+        ("<a>", "^\\<a\\>$", "", "x", false),
+        ("<", "\\<", "", "x", false),
+        (">", "\\>", "", "x", false),
+        ("🙂", "^\\b{start-half}(🙂)\\b{end-half}$", "", "[$1]", true),
+        ("🙂", "^\\b{start}(🙂)\\b{end}$", "", "x", false),
+        ("𐐨", "(?i)^\\<𐐀\\>$", "", "[$0]", true),
+        ("\n𐐀\n", "(?m)^\\b{start}𐐀\\b{end}$", "", "[$0]", true),
+        (
+            " a🙂𐐀 ",
+            "\\b{start}(?<word>\\w+)\\b{end}",
+            "",
+            "[$0:$1]",
+            true,
+        ),
+        (" a🙂𐐀 ", "\\<(?<word>\\w+)\\>", "", "[$0:$1]", true),
+        (
+            " a🙂𐐀 ",
+            "\\b{start-half}(?<word>\\w+)\\b{end-half}",
+            "",
+            "[$0:$1]",
+            true,
+        ),
+        (
+            "ab",
+            "^\\b{start}(?<first>a)(b)\\b{end}$",
+            "",
+            "$1/$2",
+            true,
+        ),
+        (
+            "aaaaaa",
+            "^(?<edge>\\b{start}){2}{3}(?<word>a+)\\b{end}$",
+            "",
+            "$1/$2",
+            true,
+        ),
+        (
+            "aaa",
+            "^(?<edge>\\b{start-half})+*(?<word>a+)\\b{end}$",
+            "",
+            "$1/$2",
+            true,
+        ),
+        ("aaa", "\\b{start}(a+?)(a*)\\b{end}", "", "$1/$2", true),
+        ("🙂", "^\\b{start}{0}(🙂)\\b{end}{0}$", "", "[$1]", true),
+        ("a", "^\\b{ 2 }{3}a\\b{end}$", "", "x", true),
+        (
+            "aa",
+            "\\b{ s t a r t }(a+)\\b{ e n d }# eof",
+            "x",
+            "[$1]",
+            true,
+        ),
+        (
+            "aa",
+            "\\b{# open\nsta# middle\nrt# close\n}(a+)\\b{end# terminal\n}",
+            "x",
+            "[$1]",
+            true,
+        ),
+        (
+            "🙂",
+            "^\\b{ s t a r t - h a l f }🙂\\b{ e n d - h a l f }$",
+            "x",
+            "[$0]",
+            true,
+        ),
+        (
+            "a",
+            "^\\b{start} # repeat\n {2}{3} a \\b{end}$",
+            "x",
+            "x",
+            true,
+        ),
+        ("a", "^\\<{4294967295}{0}a\\>{0}$", "", "x", true),
+        (" a a ", "\\b{start}(a)\\b{end}", "", "[$1]", true),
+        (" a a ", "\\<(a)\\>", "", "[$1]", true),
+        ("aa", "^(a)\\b{start}(a)$", "", "$1/$2", false),
+        ("a!", "^(a)\\b{start}(!)$", "", "$1/$2", false),
+        ("!a", "^(!)\\b{start}(a)$", "", "$1/$2", true),
+        ("!!", "^(!)\\b{start}(!)$", "", "$1/$2", false),
+        ("aa", "^(a)\\b{end}(a)$", "", "$1/$2", false),
+        ("a!", "^(a)\\b{end}(!)$", "", "$1/$2", true),
+        ("!a", "^(!)\\b{end}(a)$", "", "$1/$2", false),
+        ("!!", "^(!)\\b{end}(!)$", "", "$1/$2", false),
+        ("aa", "^(a)\\b{start-half}(a)$", "", "$1/$2", false),
+        ("a!", "^(a)\\b{start-half}(!)$", "", "$1/$2", false),
+        ("!a", "^(!)\\b{start-half}(a)$", "", "$1/$2", true),
+        ("!!", "^(!)\\b{start-half}(!)$", "", "$1/$2", true),
+        ("aa", "^(a)\\b{end-half}(a)$", "", "$1/$2", false),
+        ("a!", "^(a)\\b{end-half}(!)$", "", "$1/$2", true),
+        ("!a", "^(!)\\b{end-half}(a)$", "", "$1/$2", false),
+        ("!!", "^(!)\\b{end-half}(!)$", "", "$1/$2", true),
+        ("𐐀🙂", "^(𐐀)\\b{end}(🙂)$", "", "$1/$2", true),
+        ("🙂𐐀", "^(🙂)\\b{start}(𐐀)$", "", "$1/$2", true),
+        ("🙂🙂", "^(🙂)\\b{start-half}(🙂)$", "", "$1/$2", true),
+        ("🙂🙂", "^(🙂)\\b{end-half}(🙂)$", "", "$1/$2", true),
+        ("𐐀𐐨", "^(𐐀)\\b{start-half}(𐐨)$", "", "$1/$2", false),
+        ("𐐀𐐨", "^(𐐀)\\b{end-half}(𐐨)$", "", "$1/$2", false),
+        ("́!", "^(́)\\b{end}(!)$", "", "$1/$2", true),
+        ("!‍", "^(!)\\b{start}(‍)$", "", "$1/$2", true),
+    ];
+    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).chain(&boundary_alias_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
     }).collect::<Vec<_>>()}).to_string();
     let source = format_json::from_str(&input, &project.source)?;
@@ -445,6 +549,7 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
             + boundary_cases.len()
             + property_cases.len()
             + repetition_cases.len()
+            + boundary_alias_cases.len()
     );
     for (index, (row, &(_, pattern, _, _, matches))) in
         rows.iter().skip(cases.len()).zip(&class_cases).enumerate()
@@ -514,6 +619,37 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
         repetition_rows[49]["Tokens"],
         serde_json::json!([{"Value": "x "}, {"Value": " y "}, {"Value": " z"}])
     );
+    let alias_rows = &repetition_rows[repetition_cases.len()..];
+    for (index, (row, &(_, pattern, _, _, matches))) in
+        alias_rows.iter().zip(&boundary_alias_cases).enumerate()
+    {
+        assert_eq!(
+            row["Match"], matches,
+            "boundary alias case {index}: {pattern}"
+        );
+    }
+    assert_eq!(alias_rows[0]["Replaced"], "[a]");
+    assert_eq!(alias_rows[2]["Replaced"], "<");
+    assert_eq!(alias_rows[3]["Replaced"], ">");
+    assert_eq!(alias_rows[4]["Replaced"], "[🙂]");
+    for index in [8, 9, 10] {
+        assert_eq!(alias_rows[index]["Replaced"], " [a:a]🙂[𐐀:𐐀] ");
+        assert_eq!(
+            alias_rows[index]["Tokens"],
+            serde_json::json!([{"Value": " "}, {"Value": "🙂"}, {"Value": " "}])
+        );
+    }
+    assert_eq!(alias_rows[11]["Replaced"], "a/b");
+    assert_eq!(alias_rows[12]["Replaced"], "/aaaaaa");
+    assert_eq!(alias_rows[13]["Replaced"], "/aaa");
+    assert_eq!(alias_rows[14]["Replaced"], "a/aa");
+    for index in [22, 23] {
+        assert_eq!(alias_rows[index]["Replaced"], " [a] [a] ");
+        assert_eq!(
+            alias_rows[index]["Tokens"],
+            serde_json::json!([{"Value": " "}, {"Value": " "}, {"Value": " "}])
+        );
+    }
     super::json_text_boundaries::run_generated_boundary_cases(
         &project,
         &[serde_json::json!({"input": input, "expected": expected})],
