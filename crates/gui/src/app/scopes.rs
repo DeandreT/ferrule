@@ -33,13 +33,25 @@ impl FerruleApp {
             }),
             None => crate::auto_connect::scope_at(&self.project.root, &self.selected_scope),
         };
-        let can_expand = selected.is_some_and(|scope| {
-            matches!(scope.construction, mapping::ScopeConstruction::Constructed)
-                && scope.concatenated().is_none()
-        });
+        let whole_group_copy = match target_index {
+            Some(index) => self.project.extra_targets.get(index).is_some_and(|target| {
+                crate::scope_editor::copied_ancestor_at_path(&target.root, &self.selected_scope)
+                    .is_some()
+            }),
+            None => crate::scope_editor::copied_ancestor_at_path(
+                &self.project.root,
+                &self.selected_scope,
+            )
+            .is_some(),
+        };
+        let can_expand = !whole_group_copy
+            && selected.is_some_and(|scope| {
+                matches!(scope.construction, mapping::ScopeConstruction::Constructed)
+                    && scope.concatenated().is_none()
+            });
         let mut action = None;
         ui.horizontal(|ui| {
-            ui.add_enabled_ui(!candidates.is_empty(), |ui| {
+            ui.add_enabled_ui(!whole_group_copy && !candidates.is_empty(), |ui| {
                 ui.menu_button("Add child", |ui| {
                     for candidate in &candidates {
                         let label = if candidate.repeating {
@@ -55,7 +67,11 @@ impl FerruleApp {
                 });
             })
             .response
-            .on_disabled_hover_text("No unrepresented target groups");
+            .on_disabled_hover_text(if whole_group_copy {
+                "Whole source group copies retain their complete children; individual child scopes cannot be added"
+            } else {
+                "No unrepresented target groups"
+            });
             if ui
                 .add_enabled(can_expand, egui::Button::new("Expand subtree"))
                 .on_hover_text("Add missing target group scopes below this scope. Configure source iteration separately for repeating groups.")
