@@ -17,6 +17,7 @@ mod iteration;
 mod model;
 mod path_hierarchy;
 mod pdf;
+pub mod pdf_layout_file;
 mod pipeline;
 pub mod pipeline_file;
 pub mod project_file;

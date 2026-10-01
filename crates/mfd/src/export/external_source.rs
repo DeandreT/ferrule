@@ -78,6 +78,7 @@ fn validate_boundary(
             request_schema,
             ..
         } => {
+            validate_inline_response_constraints(schema)?;
             if boundary.payload() != ExternalPayloadFormat::Json {
                 return Err(unsupported(
                     "captured HTTP POST export currently requires a JSON response contract",
@@ -139,6 +140,57 @@ fn validate_json_schema(schema: &SchemaNode, role: &str) -> Result<(), MfdError>
         }
         for child in children {
             validate_json_schema(child, role)?;
+        }
+    }
+    Ok(())
+}
+
+// HTTP POST response components carry only an inline entry tree. Unlike the
+// request and user-function result, they have no JSON Schema sibling in which
+// these assertions could survive a native round trip.
+fn validate_inline_response_constraints(schema: &SchemaNode) -> Result<(), MfdError> {
+    if matches!(&schema.kind, SchemaKind::ScalarUnion { .. }) {
+        return Err(unsupported(format!(
+            "captured HTTP POST response schema `{}` has a scalar union that its inline entry tree cannot preserve",
+            schema.name
+        )));
+    }
+    if schema.container_nullable
+        || schema.json_any
+        || schema.json_allowed_values.is_some()
+        || schema.numeric_range.is_some()
+        || schema.json_multiple_of.is_some()
+        || schema.item_count_range.is_some()
+        || schema.json_contains.is_some()
+        || schema.json_dependent_schemas.is_some()
+        || schema.property_count_range.is_some()
+        || schema.json_property_dependencies.is_some()
+        || schema.json_pattern_property_names.is_some()
+        || schema.json_property_names.is_some()
+        || schema.json_unique_items
+        || schema.string_length_range.is_some()
+        || schema.json_patterns.is_some()
+        || !schema.json_formats.is_empty()
+        || schema.default.is_some()
+        || schema.value_generation.is_some()
+    {
+        return Err(unsupported(format!(
+            "captured HTTP POST response schema `{}` has assertions that its inline entry tree cannot preserve",
+            schema.name
+        )));
+    }
+    if let SchemaKind::Group {
+        children, required, ..
+    } = &schema.kind
+    {
+        if !required.is_empty() {
+            return Err(unsupported(format!(
+                "captured HTTP POST response schema `{}` has required properties that its inline entry tree cannot preserve",
+                schema.name
+            )));
+        }
+        for child in children {
+            validate_inline_response_constraints(child)?;
         }
     }
     Ok(())
@@ -212,7 +264,7 @@ pub(super) fn request_schema_artifact(
     Ok(Some(RequestSchemaArtifact {
         file_name,
         path,
-        contents: format_json::json_schema::export(schema)?,
+        contents: super::json_schema_fidelity::render(schema, "captured HTTP POST request")?,
     }))
 }
 
@@ -303,7 +355,10 @@ pub(super) fn render_user_function(
         xml,
         siblings: vec![GeneratedSibling {
             path: schema_path,
-            contents: format_json::json_schema::export(args.schema)?,
+            contents: super::json_schema_fidelity::render(
+                args.schema,
+                &format!("captured user-function response `{}`", args.component_name),
+            )?,
         }],
     })
 }

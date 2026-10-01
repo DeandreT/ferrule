@@ -8,6 +8,8 @@ use std::path::Path;
 use ir::{ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{Graph, Node, NodeId};
 
+use crate::MfdError;
+
 use super::schema::{GeneratedSibling, KeyAlloc, xml_escape};
 
 const MAX_FIELDS: usize = 4_096;
@@ -19,6 +21,17 @@ pub(super) struct Rendered {
     pub(super) output: u32,
     pub(super) inputs: Vec<(NodeId, u32)>,
     pub(super) sibling: GeneratedSibling,
+}
+
+pub(super) enum RenderError {
+    Unsupported(String),
+    SchemaFidelity(MfdError),
+}
+
+impl From<String> for RenderError {
+    fn from(value: String) -> Self {
+        Self::Unsupported(value)
+    }
 }
 
 struct Field {
@@ -33,13 +46,15 @@ pub(super) fn render(
     keys: &mut KeyAlloc,
     uid: &mut u32,
     mfd_path: &Path,
-) -> Result<Rendered, String> {
+) -> Result<Rendered, RenderError> {
     if args.is_empty() || !args.len().is_multiple_of(3) {
-        return Err("expected one or more path, scalar type, and value triples".to_string());
+        return Err("expected one or more path, scalar type, and value triples"
+            .to_string()
+            .into());
     }
     let field_count = args.len() / 3;
     if field_count > MAX_FIELDS {
-        return Err(format!("declares more than {MAX_FIELDS} scalar properties"));
+        return Err(format!("declares more than {MAX_FIELDS} scalar properties").into());
     }
 
     let mut schema = SchemaNode::group(format!("JsonObject{node}"), Vec::new());
@@ -49,29 +64,30 @@ pub(super) fn render(
     for triple in triples {
         let path_descriptor = literal_string(graph, triple[0], "property path")?;
         if path_descriptor.len() > MAX_DESCRIPTOR_BYTES {
-            return Err("property path descriptor exceeds 64 KiB".to_string());
+            return Err("property path descriptor exceeds 64 KiB".to_string().into());
         }
         let path = serde_json::from_str::<Vec<String>>(path_descriptor)
             .map_err(|_| "property path descriptor is not a JSON string array".to_string())?;
         if path.is_empty() {
-            return Err("property paths cannot be empty".to_string());
+            return Err("property paths cannot be empty".to_string().into());
         }
         if path.len() > MAX_PATH_DEPTH {
             return Err(format!(
                 "property path `{}` exceeds {MAX_PATH_DEPTH} segments",
                 path.join("/")
-            ));
+            )
+            .into());
         }
         let scalar_type_descriptor = literal_string(graph, triple[1], "scalar type")?;
         if scalar_type_descriptor.len() > MAX_DESCRIPTOR_BYTES {
-            return Err("scalar type descriptor exceeds 64 KiB".to_string());
+            return Err("scalar type descriptor exceeds 64 KiB".to_string().into());
         }
         let scalar_type = match scalar_type_descriptor {
             "string" => ScalarType::String,
             "integer" => ScalarType::Int,
             "number" => ScalarType::Float,
             "boolean" => ScalarType::Bool,
-            other => return Err(format!("scalar type `{other}` is unsupported")),
+            other => return Err(format!("scalar type `{other}` is unsupported").into()),
         };
         insert_field(&mut schema, &path, scalar_type)?;
         fields.push(Field {
@@ -102,7 +118,14 @@ pub(super) fn render(
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join(&schema_file),
-        contents: format_json::json_schema::export(&schema).map_err(|error| error.to_string())?,
+        contents: super::json_schema_fidelity::render(
+            &schema,
+            &format!("JSON string serializer node {node}"),
+        )
+        .map_err(|error| match error {
+            error @ MfdError::SchemaFidelity(_) => RenderError::SchemaFidelity(error),
+            other => RenderError::Unsupported(other.to_string()),
+        })?,
     };
     *uid += 1;
     let xml = format!(

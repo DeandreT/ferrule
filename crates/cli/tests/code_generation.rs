@@ -58,6 +58,8 @@ mod sequence_reducers;
 mod static_sources;
 #[path = "code_generation/value_maps.rs"]
 mod value_maps;
+#[path = "code_generation/xml_text.rs"]
+mod xml_text;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 type ArtifactFiles = Vec<(String, Vec<u8>)>;

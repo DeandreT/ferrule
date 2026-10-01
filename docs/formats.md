@@ -40,6 +40,9 @@ layout and dialect details that an extension cannot express.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.
 - XML preserves declared expanded-name identity for elements and attributes.
+  Scalar, simple-content, and retained mixed-content text preserve carriage
+  returns through XML character references; attributes and generated XSD
+  fixed/default values also preserve tabs and line breaks.
   MFD export partitions foreign declarations into deterministic local XSD
   siblings and publishes the complete graph atomically. Bounded local-graph
   substitution groups, compatible element-only or mixed `complexContent`
@@ -66,6 +69,13 @@ layout and dialect details that an extension cannot express.
   compositions, heterogeneous scalar type arrays, exact scalar
   `anyOf` unions, pairwise-disjoint scalar `oneOf`, and identical or
   scalar-domain-subsumed array `anyOf` branches, including local references.
+  File and in-memory imports share a 64-hop reference-depth limit, a 64-edge
+  schema-materialization nesting limit, and a 100,000-step parsing budget.
+  Excess returns a typed resource-limit error before stack exhaustion. The
+  main parser resolves flat references iteratively, so those hops do not
+  consume materialization depth. In-memory
+  `format_json::json_schema::import_str` resolves document-local references
+  without opening files and rejects external resources.
   Object-shaped `required` declarations preserve property presence independently
   from value nullability, including declared names on closed objects and named
   runtime properties on open objects. Required-only schemas without an object

@@ -46,6 +46,7 @@ internal static partial class Program
             ("XML type alternatives", XmlTypeAlternatives),
             ("XML repeating choices", XmlRepeatingChoices),
             ("XML virtual text name", XmlVirtualTextName),
+            ("XML text whitespace", XmlTextWhitespace),
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),
             ("scalar functions", ScalarFunctions),
