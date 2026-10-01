@@ -1022,9 +1022,9 @@ fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error
         panic!("first stage must have a host input");
     };
     assert_eq!(name, "source");
-    for index in 1..3 {
+    for (index, stage) in pipeline.stages.iter().enumerate().skip(1) {
         assert_eq!(
-            pipeline.stages[index].source,
+            stage.source,
             PipelineInput::StageTarget {
                 stage: format!("mfd-stage-{index}"),
                 target: None,
