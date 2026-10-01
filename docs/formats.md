@@ -358,6 +358,18 @@ omit the BOM. Readers accept UTF-8 with or without a BOM. CSV target setup
 exposes “UTF-8 byte order mark.” Selecting another format with this option
 rejects before output publication.
 
+### Creating FlexText mappings
+
+In the native editor's new mapping form, choose a `.mft` layout for either
+side through “Choose schema or layout.” Source and target keep independent
+layouts, including their delimiters, output line endings, and UTF-8 BOM
+settings. Optional data paths start empty; importing a layout does not open
+its configured data file. The editor derives the visible schema once and
+keeps the layout in the saved project, so runs do not need the original `.mft`.
+Failed configuration imports leave both staged boundaries and the open mapping
+intact. The shared configuration reader stops after the 4 MiB limit plus one
+byte, before decoding or parsing oversized files.
+
 ### Creating Protocol Buffers mappings
 
 In the native editor's new mapping form, choose a `.proto` schema for either

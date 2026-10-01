@@ -1,6 +1,8 @@
 use super::*;
 use crate::new_mapping::{CsvBoundaryDraft, CsvColumnDraft, MappingBoundary, SqliteBoundaryDraft};
 
+#[path = "new_mapping/flextext.rs"]
+mod flextext;
 #[path = "new_mapping/protobuf.rs"]
 mod protobuf;
 
@@ -10,6 +12,10 @@ impl FerruleApp {
     }
 
     pub(super) fn stage_mapping_schema(&mut self, side: SchemaSide, path: PathBuf) {
+        if crate::new_mapping::is_flextext_configuration(&path) {
+            self.stage_mapping_flextext(side, path);
+            return;
+        }
         if path
             .extension()
             .and_then(|value| value.to_str())
@@ -162,7 +168,7 @@ impl FerruleApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(boundary_label(setup.source.as_ref()));
                     if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Choose schema..."))
+                        .add_enabled(dialog_idle, egui::Button::new("Choose schema or layout..."))
                         .clicked()
                     {
                         action = Some(NewMappingAction::ChooseSchema(SchemaSide::Source));
@@ -190,6 +196,9 @@ impl FerruleApp {
                 if let Some(MappingBoundary::Protobuf(draft)) = setup.source.as_mut() {
                     protobuf::show_options(ui, draft, "source", false);
                 }
+                if let Some(MappingBoundary::FlexText(draft)) = setup.source.as_mut() {
+                    flextext::show_options(ui, draft, false);
+                }
                 if let Some(MappingBoundary::Sqlite(draft)) = setup.source.as_mut()
                     && show_sqlite_table(ui, draft, "source", false)
                 {
@@ -201,7 +210,7 @@ impl FerruleApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(boundary_label(setup.target.as_ref()));
                     if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Choose schema..."))
+                        .add_enabled(dialog_idle, egui::Button::new("Choose schema or layout..."))
                         .clicked()
                     {
                         action = Some(NewMappingAction::ChooseSchema(SchemaSide::Target));
@@ -256,6 +265,9 @@ impl FerruleApp {
                 }
                 if let Some(MappingBoundary::Protobuf(draft)) = setup.target.as_mut() {
                     protobuf::show_options(ui, draft, "target", true);
+                }
+                if let Some(MappingBoundary::FlexText(draft)) = setup.target.as_mut() {
+                    flextext::show_options(ui, draft, true);
                 }
                 if let Some(MappingBoundary::Sqlite(draft)) = setup.target.as_mut() {
                     if show_sqlite_table(ui, draft, "target", true) {
@@ -322,7 +334,10 @@ impl FerruleApp {
                     SchemaSide::Source => DialogKind::BrowseSourceSchema,
                     SchemaSide::Target => DialogKind::BrowseTargetSchema,
                 };
-                self.pending_dialog = Some((kind, pick_file("schema", &["xsd", "json", "proto"])));
+                self.pending_dialog = Some((
+                    kind,
+                    pick_file("schema or layout", &["xsd", "json", "proto", "mft"]),
+                ));
             }
             Some(NewMappingAction::ChooseCsvSource) => {
                 self.pending_dialog = Some((
@@ -357,7 +372,8 @@ impl FerruleApp {
                         MappingBoundary::Csv(draft) => Some(draft.path.as_str()),
                         MappingBoundary::Schema(_)
                         | MappingBoundary::Sqlite(_)
-                        | MappingBoundary::Protobuf(_) => None,
+                        | MappingBoundary::Protobuf(_)
+                        | MappingBoundary::FlexText(_) => None,
                     })
                     .filter(|path| !path.is_empty())
                     .unwrap_or("output.csv");
@@ -436,6 +452,9 @@ fn boundary_label(boundary: Option<&MappingBoundary>) -> String {
         }
         Some(MappingBoundary::Protobuf(draft)) => {
             format!("Protocol Buffers: {}", draft.schema_path.display())
+        }
+        Some(MappingBoundary::FlexText(draft)) => {
+            format!("FlexText: {}", draft.configuration_path.display())
         }
     }
 }

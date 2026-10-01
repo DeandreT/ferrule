@@ -60,6 +60,8 @@ mod target_type_cast;
 mod udf;
 mod xml_serializer;
 
+pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
+
 use db_query::is_routine_catalog;
 use function::{
     is_db_function_component, is_isbn_converter_component, is_xbrl_measure_component,
