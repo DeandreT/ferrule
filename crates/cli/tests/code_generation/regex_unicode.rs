@@ -161,6 +161,19 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
         ("🄰", r"^\w$", "", "x"),
         ("🅐", r"^\w$", "", "x"),
         ("🅰", r"^\W$", "", "x"),
+        ("ab", "(?<first>a)(b)", "", "$1-$2"),
+        ("ab", "(?P<first>a)(b)", "", "$1-$2"),
+        ("abc", "^(?<outer>a(?<inner>b))(c)$", "", "$0|$1|$2|$3"),
+        ("ab", "^(?<a.b>a)(b)$", "", "$1-$2"),
+        ("a🙂", "^(?P<𐐀>a)(.)$", "", "$1|$2"),
+        ("🙂", r"^\x{1F642}$", "", "x"),
+        ("🙂🙂", r"^\u{1F642}{2}$", "", "x"),
+        ("m", r"^[\x{61}-\u{7A}]$", "", "x"),
+        ("🙂", r"^[\U0001F600-\U0001F64F]$", "", "x"),
+        ("a}", "^a}$", "", "x"),
+        ("aa", "^a{ 2 }$", "", "x"),
+        ("aaaaaaaaaaaa", "^a{1 2}$", "x", "x"),
+        ("a{word}", r"^a\{word\}$", "", "x"),
     ];
     let input = serde_json::json!({"Cases": cases.into_iter().map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
@@ -190,6 +203,14 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     }
     for index in [28, 30, 33, 35, 36, 40] {
         assert_eq!(rows[index]["Match"], false, "case {index}");
+    }
+    assert_eq!(rows[41]["Replaced"], "a-b");
+    assert_eq!(rows[42]["Replaced"], "a-b");
+    assert_eq!(rows[43]["Replaced"], "abc|ab|b|c");
+    assert_eq!(rows[44]["Replaced"], "a-b");
+    assert_eq!(rows[45]["Replaced"], "a|🙂");
+    for (index, row) in rows.iter().enumerate().take(54).skip(46) {
+        assert_eq!(row["Match"], true, "case {index}");
     }
     super::json_text_boundaries::run_generated_boundary_cases(
         &project,
