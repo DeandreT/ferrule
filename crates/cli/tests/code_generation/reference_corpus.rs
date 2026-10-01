@@ -1508,6 +1508,7 @@ fn run_case(
     } else if sqlite_csv_output {
         assert_eq!(project.target_options.delimiter, Some(','));
         assert_eq!(project.target_options.has_header_row, Some(false));
+        assert!(project.target_options.csv_utf8_bom);
         assert_eq!(source.as_repeated().expect("SQLite user rows").len(), 4);
         let rows = expected_json
             .as_array()
@@ -1530,8 +1531,12 @@ fn run_case(
         assert_eq!(rows[3]["Category"], "Misc.");
         assert_eq!(rows[3]["Description"], "No Description");
         let bytes = corpus_csv_bytes(&project, &expected)?;
-        assert_eq!(bytes.len(), 234, "{sample}: exact four-row CSV length");
-        assert!(bytes.starts_with(b"Vernon Callaby,"));
+        assert_eq!(
+            bytes.len(),
+            237,
+            "{sample}: exact four-row CSV length with BOM"
+        );
+        assert!(bytes.starts_with(b"\xef\xbb\xbfVernon Callaby,"));
         assert!(bytes.ends_with(b"Susi Sanna,Notepad,Misc.,No Description\n"));
         assert_eq!(bytes.iter().filter(|&&byte| byte == b'\n').count(), 4);
         Some(bytes)
@@ -2286,13 +2291,10 @@ fn corpus_csv_bytes(project: &Project, instance: &Instance) -> TestResult<Vec<u8
     let Instance::Repeated(rows) = instance else {
         panic!("CSV target should contain repeated rows");
     };
-    Ok(format_csv::to_string_with_dialect(
+    Ok(format_csv::to_string_with_options(
         &project.target,
         rows,
-        project.target_options.delimiter,
-        project.target_options.csv_quote,
-        project.target_options.csv_quote_disabled,
-        project.target_options.has_header_row.unwrap_or(true),
+        &format_csv::CsvWriteOptions::from(&project.target_options),
     )?
     .into_bytes())
 }

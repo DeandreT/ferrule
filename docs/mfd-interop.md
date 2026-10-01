@@ -485,6 +485,15 @@ target values retain their columns even when declaration elements are shuffled.
 CSV text boundaries accept absent encoding or the supported UTF-8 code `1000`.
 Other declared encodings produce a bounded warning; repair imports continue
 using UTF-8, while executable imports reject the unsupported contract.
+CSV components retain `byteordermark="0"` or `"1"` as the saved
+`csv_utf8_bom` option. Native export writes the observed UTF-8 tuple
+`encoding="1000" byteorder="1"` and an explicit BOM flag; two strict
+export/reimport cycles retain the setting and exact UTF-8 output bytes.
+Input accepts either UTF-8 form, while file, payload, and browser output add
+the BOM only when selected. Unsupported byte-order or BOM codes produce
+bounded repair warnings and reject executable import. These checks establish
+local serialization and execution behavior; native application execution
+remains unverified.
 CSV sources with `removeempty="false"` (or `0`) retain present empty text cells
 as `Value::String("")`; `true` (or `1`) keeps them absent. Old Ferrule projects
 and imports without a flag preserve their existing absent-empty behavior.

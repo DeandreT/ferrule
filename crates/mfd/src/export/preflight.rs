@@ -15,17 +15,17 @@ use super::{
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     json_parser::validate_provenance(&project.graph)?;
-    validate_csv_empty_identity(&project.source_path, &project.source_options, "source")?;
-    validate_csv_empty_identity(&project.target_path, &project.target_options, "target")?;
+    validate_csv_metadata_identity(&project.source_path, &project.source_options, "source")?;
+    validate_csv_metadata_identity(&project.target_path, &project.target_options, "target")?;
     for source in &project.extra_sources {
-        validate_csv_empty_identity(
+        validate_csv_metadata_identity(
             &Some(source.path.clone()),
             &source.options,
             &format!("additional source `{}`", source.name),
         )?;
     }
     for target in &project.extra_targets {
-        validate_csv_empty_identity(
+        validate_csv_metadata_identity(
             &target.path,
             &target.options,
             &format!("additional target `{}`", target.name),
@@ -278,7 +278,7 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     Ok(())
 }
 
-fn validate_csv_empty_identity(
+fn validate_csv_metadata_identity(
     path: &Option<String>,
     options: &FormatOptions,
     side_name: &str,
@@ -286,6 +286,41 @@ fn validate_csv_empty_identity(
     if options.csv_preserve_empty_strings && side_format(path, options) != SideFormat::Csv {
         return Err(MfdError::Unsupported(format!(
             "the {side_name} keeps empty CSV text fields on a non-CSV boundary"
+        )));
+    }
+    let recognized_non_csv_path = path
+        .as_deref()
+        .and_then(|path| Path::new(path).extension())
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|extension| {
+            matches!(
+                extension.as_str(),
+                "xlsx"
+                    | "xml"
+                    | "json"
+                    | "json5"
+                    | "jsonl"
+                    | "ndjson"
+                    | "db"
+                    | "sqlite"
+                    | "sqlite3"
+                    | "edi"
+                    | "x12"
+                    | "edifact"
+                    | "hl7"
+                    | "idoc"
+                    | "fin"
+                    | "swift"
+                    | "pdf"
+                    | "xbrl"
+            )
+        });
+    if options.csv_utf8_bom
+        && (side_format(path, options) != SideFormat::Csv || recognized_non_csv_path)
+    {
+        return Err(MfdError::Unsupported(format!(
+            "the {side_name} requests a UTF-8 CSV byte order mark on a non-CSV boundary"
         )));
     }
     Ok(())
@@ -486,6 +521,7 @@ fn validate_tabular_identity(
             if options.delimiter.is_some()
                 || options.csv_quote.is_some()
                 || options.csv_quote_disabled
+                || options.csv_utf8_bom
                 || options.csv_preserve_empty_strings =>
         {
             Err(MfdError::Unsupported(format!(
@@ -521,6 +557,7 @@ fn validate_xml_identity(
         || options.delimiter.is_some()
         || options.csv_quote.is_some()
         || options.csv_quote_disabled
+        || options.csv_utf8_bom
         || options.csv_preserve_empty_strings
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -615,6 +652,7 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
                     || options.delimiter.is_some()
                     || options.csv_quote.is_some()
                     || options.csv_quote_disabled
+                    || options.csv_utf8_bom
                     || options.csv_preserve_empty_strings
                     || options.has_header_row.is_some()
                     || options.fixed_width.is_some()

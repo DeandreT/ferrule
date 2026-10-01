@@ -144,6 +144,7 @@ pub(super) struct CsvBoundaryDraft {
     pub(super) delimiter: char,
     pub(super) has_header_row: bool,
     pub(super) preserve_empty_strings: bool,
+    pub(super) utf8_bom: bool,
     pub(super) columns: Vec<CsvColumnDraft>,
     pub(super) preview_rows: Vec<Vec<String>>,
     pub(super) sample_error: Option<String>,
@@ -174,6 +175,7 @@ impl CsvBoundaryDraft {
             delimiter,
             has_header_row: true,
             preserve_empty_strings: false,
+            utf8_bom: false,
             columns: Vec::new(),
             preview_rows: Vec::new(),
             sample_error: None,
@@ -188,6 +190,7 @@ impl CsvBoundaryDraft {
             delimiter: ',',
             has_header_row: true,
             preserve_empty_strings: false,
+            utf8_bom: false,
             columns: vec![CsvColumnDraft {
                 name: String::new(),
                 ty: ScalarType::String,
@@ -285,6 +288,7 @@ impl CsvBoundaryDraft {
             delimiter: Some(self.delimiter),
             has_header_row: Some(self.has_header_row),
             csv_preserve_empty_strings: self.preserve_empty_strings,
+            csv_utf8_bom: self.utf8_bom,
             ..FormatOptions::default()
         }
     }
@@ -412,13 +416,14 @@ mod tests {
     }
 
     #[test]
-    fn csv_source_empty_text_choice_survives_project_save() {
+    fn csv_source_empty_text_and_target_bom_choices_survive_project_save() {
         let path = source_file("empty-text", "csv", "A,B\n,beta\n");
         let mut source = CsvBoundaryDraft::source(path.clone()).unwrap();
         assert!(!source.preserve_empty_strings);
         source.preserve_empty_strings = true;
         let mut target = CsvBoundaryDraft::target();
         target.path = "output.csv".into();
+        target.utf8_bom = true;
         target.columns = vec![
             CsvColumnDraft {
                 name: "A".into(),
@@ -441,6 +446,8 @@ mod tests {
         .unwrap();
         assert!(reopened.source_options.csv_preserve_empty_strings);
         assert!(!reopened.target_options.csv_preserve_empty_strings);
+        assert!(!reopened.source_options.csv_utf8_bom);
+        assert!(reopened.target_options.csv_utf8_bom);
         std::fs::remove_file(path).unwrap();
     }
 
