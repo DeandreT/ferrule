@@ -271,7 +271,67 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
         (r"\b", r"^\\b$", "", "x", true),
         ("a", "a # \\b", "x", "x", true),
     ];
-    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
+    let property_cases = [
+        ("a", r"^\p{Letter}$", "", "x", true),
+        ("🙂", r"^\p{Letter}$", "", "x", false),
+        ("A", r"^\p{Uppercase_Letter}$", "", "x", true),
+        ("a", r"^\p{Uppercase_Letter}$", "", "x", false),
+        ("é", r"^\p{Lowercase_Letter}$", "", "x", true),
+        ("ǅ", r"^\p{LC}$", "", "x", true),
+        ("漢", r"^\p{LC}$", "", "x", false),
+        ("𐐀", r"^\p{gc=Lu}$", "", "x", true),
+        (
+            "𐐨",
+            r"^\p{General_Category:Uppercase_Letter}$",
+            "i",
+            "x",
+            true,
+        ),
+        ("a", r"^\p{gc!=Lu}$", "", "x", true),
+        ("A", r"^\p{gc!=Lu}$", "", "x", false),
+        ("A", r"^\P{gc!=Lu}$", "", "x", true),
+        ("a", r"^\P{gc!=Lu}$", "i", "x", true),
+        ("a", r"^\pL$", "", "x", true),
+        ("🙂", r"^\PL$", "", "x", true),
+        ("a", r"^\p{ L e t t e r }$", "", "x", true),
+        ("a", r"^\p{Is_Letter}$", "", "x", true),
+        ("a", r"^\p{Léetter}$", "", "x", true),
+        ("a", r"^\p{g c = l u}$", "i", "x", true),
+        ("a", "^\\p # query\n L$", "x", "x", true),
+        ("a", "^\\p{ g c # query\n = L e t t e r }$", "x", "x", true),
+        ("_", r"^\p{gc=Connector_Punctuation}$", "", "x", true),
+        ("-", r"^\p{gc:Dash_Punctuation}$", "", "x", true),
+        ("0", r"^\p{Decimal_Number}$", "", "x", true),
+        ("٠", r"^\p{digit}$", "", "x", true),
+        ("\u{e000}", r"^\p{IsPrivateUse}$", "", "x", true),
+        ("\u{f0000}", r"^\p{IsPrivateUse}$", "", "x", true),
+        ("\u{100000}", r"^\p{Private_Use}$", "", "x", true),
+        ("\u{fdd0}", r"^\p{Assigned}$", "", "x", false),
+        ("\u{378}", r"^\p{Assigned}$", "", "x", false),
+        ("\u{378}", r"^\p{Any}$", "", "x", true),
+        ("🙂", r"^\p{ASCII}$", "", "x", false),
+        ("\0", r"^\p{ASCII}$", "", "x", true),
+        ("\u{378}", r"^\P{Assigned}$", "", "x", true),
+        ("\u{f0000}", r"^\p{Assigned}$", "", "x", true),
+        ("aBc🅰", r"(\p{gc=Letter})", "i", "[$1]", true),
+        ("aBc🅰", r"(\P{gc!=Letter})", "", "[$1]", true),
+        ("a🙂𐐀b", r"(\p{LC})", "", "[$1]", true),
+        ("🙂a🙃b🙏", r"[[:alpha:]&&\p{gc:Letter}]", "", "x", true),
+        ("𐐀", r"^\b\p{General_Category=Letter}\b$", "", "x", true),
+        ("\u{f0000}", r"^\B\p{IsPrivateUse}\B$", "", "x", true),
+        ("\u{301}", r"^\b\pM\b$", "", "x", true),
+        ("F9", r"^[\p{ASCII}&&[A-F0-9]]+$", "", "x", true),
+        ("é", r"^[\p{ASCII}&&\p{Letter}]$", "", "x", false),
+        ("𐐨", r"^\P{gc!=Lu}$", "i", "x", true),
+        ("漢", r"^[\p{L}--\p{LC}]$", "", "x", true),
+        ("π", r"^\p{lowercaseletter}$", "", "x", true),
+        ("🅰", r"^\p{gc=Other_Symbol}$", "", "x", true),
+        ("\0", r"^\p{gc=Control}$", "", "x", true),
+        ("\u{a0}", r"^\p{Space_Separator}$", "", "x", true),
+        ("\n", r"^\p{gc=Line_Separator}$", "", "x", false),
+        ("\u{2028}", r"^\p{Line_Separator}$", "", "x", true),
+    ];
+    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
     }).collect::<Vec<_>>()}).to_string();
     let source = format_json::from_str(&input, &project.source)?;
@@ -310,7 +370,7 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     }
     assert_eq!(
         rows.len(),
-        cases.len() + class_cases.len() + boundary_cases.len()
+        cases.len() + class_cases.len() + boundary_cases.len() + property_cases.len()
     );
     for (index, (row, &(_, pattern, _, _, matches))) in
         rows.iter().skip(cases.len()).zip(&class_cases).enumerate()
@@ -338,6 +398,19 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     assert_eq!(
         boundary_rows[28]["Tokens"],
         serde_json::json!([{"Value": "x"}, {"Value": "z"}])
+    );
+    let property_rows = &boundary_rows[boundary_cases.len()..];
+    for (index, (row, &(_, pattern, _, _, matches))) in
+        property_rows.iter().zip(&property_cases).enumerate()
+    {
+        assert_eq!(row["Match"], matches, "property case {index}: {pattern}");
+    }
+    assert_eq!(property_rows[35]["Replaced"], "[a][B][c]🅰");
+    assert_eq!(property_rows[36]["Replaced"], "[a][B][c]🅰");
+    assert_eq!(property_rows[37]["Replaced"], "[a]🙂[𐐀][b]");
+    assert_eq!(
+        property_rows[38]["Tokens"],
+        serde_json::json!([{"Value": "🙂"}, {"Value": "🙃"}, {"Value": "🙏"}])
     );
     super::json_text_boundaries::run_generated_boundary_cases(
         &project,
