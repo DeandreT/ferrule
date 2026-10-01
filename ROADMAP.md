@@ -59,7 +59,8 @@ are preserved.
   original configurations are unnecessary after saving.
   Named FlexText inputs and outputs use the same embedded layouts. CSV setup
   selects custom or disabled quoting and retries previews with the chosen
-  dialect; named flat outputs can configure positional fixed-width layouts.
+  dialect. Primary flat inputs and outputs, and named flat outputs, can configure
+  positional fixed-width layouts with independent Unicode widths and fill settings.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as
