@@ -17,6 +17,7 @@ ir = { workspace = true }
 mapping = { workspace = true }
 functions = { workspace = true }
 format-edi = { workspace = true }
+format-protobuf = { workspace = true }
 cli = { workspace = true }
 mfd = { workspace = true }
 serde = { workspace = true }

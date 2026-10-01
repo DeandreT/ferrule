@@ -236,7 +236,7 @@ are preserved.
 | Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML pass-through chain import and guarded export for up to 64 pass-through targets with XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, bounded XBRL, or new-workbook XLSX final primary output, connected final-stage XML target fan-out or one named CSV or JSON target beside an XML primary, and original XML hosts feeding named inputs across stages through distinct ports or shared-port fan-out, plus one guarded earlier-intermediate branch that feeds the final stage as a named input, and GUI editing/inspection/running of saved pipelines with stored input-path hints | Fully general named N-to-M endpoints, general `.mfd` stage-graph import/export including other connected later-stage named sources, service hosts, and embedded per-stage graph editing |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
-| Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV/SQLite blank-project setup, SQLite table introspection for named lookup sources, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
+| Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV/SQLite/Protocol Buffers blank-project setup, explicit native/Ferrule MFD export profiles, SQLite table introspection for named lookup sources, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
 | Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, dynamic keys, collection searches, XML mixed-content replacements, generated-sequence generator arguments, existence predicates, item-at indexes, and aggregate and generated-sequence reduction expressions/arguments, bounded source-row previews with nested row/join context, event-by-event replay of completed traces with direct links from retained trace/history/source-row entries, stage-attributed pipeline traces with stage-specific Node History/Source Rows/Replay, opt-in target-write, post-evaluation graph-node, and delivered graph-input debug hooks, and worker-backed live GUI Preview/file-Run/pipeline stepping with static target-field breakpoints, bounded typed scalar-value, innermost active-position, exact active-frame source-field, target-write value-node, exact expression-node/value, recorded consumer-pin conditions, first failing graph or reusable-function node pauses, and shallow active source-frame snapshots | Remaining connector classes, full source-row inspection, richer expression/context breakpoint predicates |
 | `.mfd` | 187 imports (169 warning-free in the isolated resource profile), 174 dependency-complete engine-valid projects, 186 best-effort exports/reimports (185 warning-free), 174 supported engine-valid round trips, persisted EDI-catalog and PDF repair dependencies, explicitly trusted/confined catalog resolution, 167/167 safe preview executions with 163 outputs, and 166 semantic round-trip matches with zero drift and one unsupported-contract skip; previous native references remain unverified here | Reference-application open/validate/execute/re-save verification, complete behavioral-reference coverage, and broader explicit extension-dependent export reporting |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 174 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
@@ -599,18 +599,27 @@ Exit criteria:
 
 #### B2. Self-Hosting Mapping Authoring
 
-- Source/target wizards for XSD, JSON Schema, CSV, and database tables.
+- Source/target wizards for XSD, JSON Schema, CSV, Protocol Buffers, and database tables.
 - Extra-source CRUD and format options.
 - Scope add/remove plus target-driven scope skeleton generation.
 - Searchable categorized function palette with correct initial pins.
 - Auto-connect matching children and explicit subtree expansion.
 
-Progress: XSD/JSON/CSV/SQLite blank-project setup, introspected SQLite named
+Progress: XSD/JSON/CSV/SQLite/Protocol Buffers blank-project setup, introspected SQLite named
 lookup sources, extra-source and named-target CRUD, independent primary/named-
 target canvases, scope editing, the catalog-backed function palette, and
 conservative compatible-field auto-connect and bounded target-driven static
 scope-subtree expansion are implemented. Broader database boundary wizards
 remain.
+
+Protocol Buffers setup selects independent source/target root messages and
+optional binary file paths. Bounded local schema imports are embedded in the
+saved project; a synthetic nested Unicode mapping saves, reopens, and produces
+identical binary output after its original schemas are removed. Invalid root
+changes clear the prior projection, and failed imports preserve the open
+mapping. The GUI also exposes guarded native MFD export with component-specific
+findings and `.mfd` filename suggestions; native application acceptance remains
+unverified.
 
 Exit criteria:
 

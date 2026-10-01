@@ -2186,6 +2186,7 @@ dependencies = [
  "egui-snarl",
  "engine",
  "format-edi",
+ "format-protobuf",
  "functions",
  "ir",
  "lucide-icons",
