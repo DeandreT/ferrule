@@ -7,6 +7,13 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "2"
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_DEV_STRIP: symbols
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_PROFILE_TEST_STRIP: symbols
+  RUST_TEST_THREADS: "4"
 
 jobs:
   test:
@@ -17,14 +24,26 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: workspace-bounded-builds
+      - name: virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: test
         run: >-
+          xvfb-run -a env -u WAYLAND_DISPLAY LIBGL_ALWAYS_SOFTWARE=1
           cargo test --workspace
           --exclude codegen
           --exclude codegen-runtime
           --exclude codegen-rust
           --exclude codegen-csharp
+      - name: runner resources
+        if: always()
+        run: |
+          df -h
+          free -h

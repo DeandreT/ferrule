@@ -14,6 +14,12 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "2"
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_DEV_STRIP: symbols
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_PROFILE_TEST_STRIP: symbols
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   DOTNET_NOLOGO: 1
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
@@ -31,6 +37,8 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: codegen-bounded-builds
       - name: clippy
         run: >-
           cargo clippy -p cli --test code_generation
@@ -47,3 +55,8 @@ jobs:
         run: >-
           cargo test -p cli --test code_generation
           --features codegen-tests -- --test-threads=2
+      - name: runner resources
+        if: always()
+        run: |
+          df -h
+          free -h
