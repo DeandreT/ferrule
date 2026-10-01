@@ -506,18 +506,26 @@ Input accepts either UTF-8 form, while file, payload, and browser output add
 the BOM only when selected. Unsupported byte-order or BOM codes produce
 bounded repair warnings and reject executable import.
 The same saved repair marker retains unsupported byte-order and BOM causes.
-These checks establish local serialization and execution behavior; native application execution
-remains unverified.
+It also retains malformed empty-field policies, empty/multiple/unsupported
+separators, invalid quote settings, and unrecognized header flags. Header flags
+are limited to absent, `true`, or `false`; numeric aliases are not inferred
+without reference evidence. Repair drafts use a supported delimiter/quote pair
+and bounded diagnostics without retaining the original unsupported declarations.
+These checks establish local serialization and execution behavior; native
+application execution remains unverified.
 CSV sources with `removeempty="false"` (or `0`) retain present empty text cells
 as `Value::String("")`; `true` (or `1`) keeps them absent. Old Ferrule projects
 and imports without a flag preserve their existing absent-empty behavior.
 The saved `csv_preserve_empty_strings` option applies to file, payload, and
 browser reads; missing trailing columns remain `Null`. Export writes the
 explicit inverse `removeempty` setting, and two strict cycles retain the
-presence distinction. Invalid flags warn and executable imports reject them.
-Empty numeric/boolean cells still become `Null`; a native source requesting
-present empty fields with non-text columns warns, executable import rejects,
-and both export profiles reject the unverified typed-empty contract. CSV
+presence distinction. Invalid flags persist a repair cause and executable
+imports reject them. A native source requesting present empty fields with
+non-text columns retains a typed-empty repair cause; physical reads, executable
+assessment after warning clearing, and both export profiles reject that
+unverified contract. Typed CSV targets remain supported. Manually authored
+Ferrule projects retain their defined empty numeric/boolean-cell `Null`
+behavior; intentional host-preparsed typed instances remain usable. CSV
 source setup exposes “Keep empty text fields.” Browser reads and writes now
 also honor custom or disabled quoting, including the writer's boundary errors.
 

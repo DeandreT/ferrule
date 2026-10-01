@@ -1,18 +1,32 @@
 use std::collections::BTreeSet;
 
 use ir::{ScalarType, SchemaNode};
-use mapping::{CsvTextRepairCause, CsvTextRepairDependency};
+use mapping::{CsvTextRepairCause, CsvTextRepairDependency, FormatOptions};
 
 use super::parse_u32;
 
 const CSV_SINGLETON_BEFORE: &str = "\u{1f}ferrule-csv-singleton-before";
 const CSV_SINGLETON_AFTER: &str = "\u{1f}ferrule-csv-singleton-after";
 
+fn diagnostic_component_name(name: &str) -> &str {
+    if name.len() <= 32 {
+        return name;
+    }
+    let end = name
+        .char_indices()
+        .map(|(index, _)| index)
+        .take_while(|index| *index <= 32)
+        .last()
+        .unwrap_or(0);
+    &name[..end]
+}
+
 pub(super) fn read_text_settings(
     text: &roxmltree::Node<'_, '_>,
     component_name: &str,
     warnings: &mut Vec<String>,
 ) -> (bool, Option<CsvTextRepairDependency>) {
+    let component_name = diagnostic_component_name(component_name);
     let mut repair = None;
     if text
         .attribute("encoding")
@@ -56,37 +70,151 @@ fn add_cause(repair: &mut Option<CsvTextRepairDependency>, cause: CsvTextRepairC
     });
 }
 
-pub(super) fn empty_text_policy(
+fn empty_text_policy(
     settings: &roxmltree::Node<'_, '_>,
     component_name: &str,
+    repair: &mut Option<CsvTextRepairDependency>,
     warnings: &mut Vec<String>,
 ) -> bool {
+    let component_name = diagnostic_component_name(component_name);
     match settings.attribute("removeempty") {
         None | Some("true" | "1") => false,
         Some("false" | "0") => true,
         Some(_) => {
             warnings.push(format!(
                 "csv component `{component_name}` declares an invalid removeempty flag; \
-                 expected true, false, 1, or 0; imported treating empty fields as absent"
+                 expected true, false, 1, or 0; retained as a repair draft treating empty fields as absent"
             ));
+            add_cause(repair, CsvTextRepairCause::EmptyPolicy);
             false
         }
+    }
+}
+
+pub(super) fn read_settings(
+    settings: &roxmltree::Node<'_, '_>,
+    component_name: &str,
+    options: &mut FormatOptions,
+    warnings: &mut Vec<String>,
+) {
+    let component_name = diagnostic_component_name(component_name);
+    options.csv_preserve_empty_strings = empty_text_policy(
+        settings,
+        component_name,
+        &mut options.csv_text_repair_dependency,
+        warnings,
+    );
+    if let Some(separator) = settings.attribute("separator") {
+        let mut characters = separator.chars();
+        options.delimiter = characters.next();
+        if options.delimiter.is_none() {
+            warnings.push(format!(
+                "csv component `{component_name}` declares an empty separator; \
+                 only one character is representable; retained as a repair draft using comma"
+            ));
+            add_cause(
+                &mut options.csv_text_repair_dependency,
+                CsvTextRepairCause::Separator,
+            );
+        } else if characters.next().is_some() {
+            warnings.push(format!(
+                "csv component `{component_name}` declares a multi-character separator; \
+                 only one character is representable; retained as a repair draft using a supported separator"
+            ));
+            add_cause(
+                &mut options.csv_text_repair_dependency,
+                CsvTextRepairCause::Separator,
+            );
+        }
+    }
+    options.has_header_row = Some(match settings.attribute("firstrownames") {
+        None | Some("false") => false,
+        Some("true") => true,
+        Some(_) => {
+            warnings.push(format!(
+                "csv component `{component_name}` declares an invalid firstrownames flag; \
+                 expected absent, true, or false; retained as a repair draft without header rows"
+            ));
+            add_cause(
+                &mut options.csv_text_repair_dependency,
+                CsvTextRepairCause::HeaderRow,
+            );
+            false
+        }
+    });
+    if let Some(raw_quote) = settings.attribute("quote") {
+        if raw_quote.is_empty() {
+            options.csv_quote_disabled = true;
+        } else {
+            let mut characters = raw_quote.chars();
+            match (characters.next(), characters.next()) {
+                (Some(quote), None)
+                    if quote.is_ascii_graphic() && quote != options.delimiter.unwrap_or(',') =>
+                {
+                    options.csv_quote = (quote != '"').then_some(quote);
+                }
+                _ => {
+                    warnings.push(format!(
+                        "csv component `{component_name}`: quote setting must be one printable \
+                         ASCII character distinct from the separator; retained as a repair draft using double quote"
+                    ));
+                    add_cause(
+                        &mut options.csv_text_repair_dependency,
+                        CsvTextRepairCause::Quote,
+                    );
+                }
+            }
+        }
+    }
+    let delimiter = options.delimiter.unwrap_or(',');
+    let quote = options.csv_quote.unwrap_or('"');
+    if !delimiter.is_ascii()
+        || matches!(delimiter, '\0' | '\r' | '\n')
+        || (!options.csv_quote_disabled && delimiter == quote)
+    {
+        let already_marked = options
+            .csv_text_repair_dependency
+            .is_some_and(|dependency| {
+                dependency
+                    .causes()
+                    .any(|cause| cause == CsvTextRepairCause::Separator)
+            });
+        if !already_marked {
+            warnings.push(format!(
+                "csv component `{component_name}` declares an unsupported separator; \
+                 expected one non-NUL, non-newline ASCII byte distinct from the active quote; retained as a repair draft"
+            ));
+        }
+        add_cause(
+            &mut options.csv_text_repair_dependency,
+            CsvTextRepairCause::Separator,
+        );
+        options.delimiter = Some(if !options.csv_quote_disabled && quote == ',' {
+            '\t'
+        } else {
+            ','
+        });
     }
 }
 
 pub(super) fn warn_typed_empty_cells(
     schema: &SchemaNode,
     component_name: &str,
+    options: &mut FormatOptions,
     warnings: &mut Vec<String>,
 ) {
+    let component_name = diagnostic_component_name(component_name);
     let all_text = matches!(&schema.kind, ir::SchemaKind::Group { children, .. }
         if children.iter().all(|field| matches!(field.kind, ir::SchemaKind::Scalar { ty: ScalarType::String })));
     if !all_text {
         warnings.push(format!(
-            "csv source component `{component_name}` keeps empty fields and declares non-text columns; \
-             empty text is preserved, but empty numeric and boolean cells are imported as absent; \
-             native behavior for those typed empty cells is not supported"
+            "csv source component `{component_name}` keeps empty fields with non-text columns; \
+             native typed-empty-cell behavior is unsupported; retained as a repair draft"
         ));
+        add_cause(
+            &mut options.csv_text_repair_dependency,
+            CsvTextRepairCause::TypedEmptyCells,
+        );
     }
 }
 
