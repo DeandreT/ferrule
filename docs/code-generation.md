@@ -505,10 +505,16 @@ value-scalar by normalized-pattern-scalar cell updates. Both limits produce
 typed invalid-argument failures; consecutive `%` tokens collapse before the
 work calculation.
 Generated scopes, failure rules, and sequence reducers support bounded regex
-tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
-expose materially different regex dialects and Unicode behavior, so patterns
-outside the shared non-backtracking dialect can produce a backend-specific
-invalid-pattern error. This applies to mapping-language tokenization only;
+tokenization with the common `i`, `m`, `s`, and `x` flags. C# matching,
+replacement, and tokenization lower consuming atoms to complete Unicode
+scalars, including supplementary literals, dot, classes, ranges, categories,
+and case folding. Paired compiled mappings check these operations through
+both JSON string and UTF-8 byte APIs against the interpreter and Rust.
+Rust and .NET still expose different regex dialects. Word-boundary assertions,
+capture numbering with mixed named and unnamed groups, class set operators,
+and property vocabularies remain backend differences; some patterns produce
+different results as well as backend-specific invalid-pattern errors.
+This applies to mapping-language regex operations only;
 JSON Schema `pattern` uses Ferrule's separate portable matcher and has identical
 Rust/C# behavior. Correlated join scopes and joined-tuple aggregates without an
 exact current-owned singleton or non-empty descendant anchor, with an empty

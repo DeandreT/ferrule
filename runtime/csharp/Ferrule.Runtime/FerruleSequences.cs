@@ -170,7 +170,7 @@ public static class FerruleSequences
         Regex regex;
         try
         {
-            regex = new Regex(expression, options);
+            regex = FerruleScalarRegex.Compile(expression, options);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException)
         {
