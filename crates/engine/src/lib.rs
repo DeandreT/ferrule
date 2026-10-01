@@ -793,6 +793,9 @@ mod scalar_union_tests;
 #[path = "tests/sequence_aggregate.rs"]
 mod sequence_aggregate_tests;
 #[cfg(test)]
+#[path = "tests/sequence_context.rs"]
+mod sequence_context_tests;
+#[cfg(test)]
 #[path = "tests/sequence_exists.rs"]
 mod sequence_exists_tests;
 #[cfg(test)]

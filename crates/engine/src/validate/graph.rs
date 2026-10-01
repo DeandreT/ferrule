@@ -71,6 +71,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
         );
     }
     let sequence_items: BTreeSet<_> = sequence_item_scopes.keys().copied().collect();
+    super::sequences::validate_project(project, &sequence_items, issues);
     validate_sequence_exists_contexts(project, &sequence_items, issues);
     validate_sequence_item_at_contexts(project, &sequence_items, issues);
     validate_sequence_aggregate_contexts(project, &sequence_items, issues);
@@ -935,16 +936,8 @@ fn validate_sequence_aggregate_contexts(
                     ),
                 ));
             }
-            for foreign in dependencies.intersection(sequence_items) {
-                if *foreign != item {
-                    issues.push(ValidationIssue::new(
-                        &location,
-                        format!(
-                            "{label} references sequence item node {foreign} owned by another generated context"
-                        ),
-                    ));
-                }
-            }
+            // Foreign items are legal when active in the caller's parent
+            // context; the site-specific walker checks that permission.
         }
 
         for (label, root) in [
@@ -1029,7 +1022,7 @@ fn collect_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
     roots.extend(scope.filter);
     roots.extend(scope.post_group_filter);
     roots.extend(scope.grouping_nodes());
-    roots.extend(scope.sort_by);
+    roots.extend(scope.sort_keys().map(|key| key.node));
     roots.extend(scope.output_path());
     roots.extend(
         scope
@@ -1040,6 +1033,9 @@ fn collect_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
     );
     if let Some(sequence) = scope.sequence() {
         roots.extend(sequence.inputs());
+    }
+    if let ScopeConstruction::Scalar { value } = &scope.construction {
+        roots.insert(*value);
     }
     if let ScopeConstruction::RecursiveFilter { plan } = &scope.construction {
         roots.insert(plan.predicate());

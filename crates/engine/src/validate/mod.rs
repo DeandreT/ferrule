@@ -9,6 +9,7 @@ mod options;
 mod owner;
 mod schema;
 mod scope;
+mod sequences;
 mod user_function;
 
 use graph::{validate_cycles, validate_graph};
