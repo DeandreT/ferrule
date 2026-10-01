@@ -1,6 +1,9 @@
 use super::*;
 use crate::new_mapping::SqliteBoundaryDraft;
 
+#[path = "extra_sources/fixed_width.rs"]
+mod fixed_width;
+
 impl FerruleApp {
     pub(super) fn begin_extra_source(&mut self) {
         self.extra_source_draft = Some(ExtraSourceDraft::default());
@@ -67,10 +70,25 @@ impl FerruleApp {
                 })
                 .transpose()?;
             if let Some(draft) = self.extra_source_draft.as_ref() {
-                crate::new_mapping::validate_schema_replacement(
-                    pending_options.as_ref().unwrap_or(&draft.options),
-                    &schema,
-                )?;
+                if let Some(pending) = &draft.fixed_width_draft {
+                    pending
+                        .layout_for_schema(&schema)
+                        .map_err(anyhow::Error::msg)?;
+                } else {
+                    crate::new_mapping::validate_schema_replacement(
+                        pending_options.as_ref().unwrap_or(&draft.options),
+                        &schema,
+                    )?;
+                    if pending_options.is_none()
+                        && let Some(layout) = &draft.options.fixed_width
+                    {
+                        if draft.schema.as_ref() != Some(&schema) {
+                            anyhow::bail!("the saved fixed-width widths belong to the current field order; choose Use path format before replacing this schema");
+                        }
+                        crate::extra_targets::validate_layout_for_schema(&schema, layout)
+                            .map_err(anyhow::Error::msg)?;
+                    }
+                }
             }
             Ok((schema, pending_options))
         });
@@ -109,6 +127,8 @@ impl FerruleApp {
         };
         if draft.protobuf_draft.is_some()
             || draft.flextext_draft.is_some()
+            || draft.fixed_width_draft.is_some()
+            || draft.csv_dialect_draft.is_some()
             || !source_uses_sqlite(draft)
         {
             self.status = "SQLite table import blocked".to_owned();
@@ -181,6 +201,8 @@ impl FerruleApp {
             && draft.schema_is_ready();
         let sqlite_instance = draft.protobuf_draft.is_none()
             && draft.flextext_draft.is_none()
+            && draft.fixed_width_draft.is_none()
+            && draft.csv_dialect_draft.is_none()
             && source_uses_sqlite(draft);
         let mut action = None;
         egui::Window::new("Add Extra Source")
@@ -257,12 +279,86 @@ impl FerruleApp {
                 } else if draft.flextext_draft.is_some() {
                     ui.separator();
                     show_named_source_flextext(ui, draft);
-                } else if !crate::new_mapping::uses_path_format(
-                    &draft.options,
-                    &draft.instance_path,
-                ) {
+                } else if draft.fixed_width_draft.is_some() {
                     ui.separator();
-                    show_configured_source_format(ui, draft);
+                    fixed_width::show_options(ui, draft);
+                } else if draft.csv_dialect_draft.is_some() {
+                    ui.separator();
+                    if let Some(pending) = draft.csv_dialect_draft.as_mut() {
+                        super::csv_dialect_ui::show_fields(
+                            ui,
+                            pending,
+                            &draft.instance_path,
+                            true,
+                            "named_source",
+                        );
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Abandon CSV changes").clicked() {
+                            draft.abandon_csv_dialect();
+                        }
+                        if ui.button("Use path format").clicked() {
+                            draft.use_path_format();
+                        }
+                        if ui.button("Use XML").clicked() {
+                            draft.use_path_format();
+                            draft.options.xml_document = true;
+                        }
+                        if ui.button("Use JSON").clicked() {
+                            draft.use_path_format();
+                            draft.options.json_document = true;
+                        }
+                    });
+                } else {
+                    if !crate::new_mapping::uses_path_format(&draft.options, &draft.instance_path) {
+                        ui.separator();
+                        show_configured_source_format(ui, draft);
+                    }
+                    let csv_shape = draft.schema.as_ref().is_some_and(|schema| {
+                        crate::extra_targets::flat_scalar_fields(schema).is_ok()
+                    });
+                    if crate::new_mapping::uses_csv_format(&draft.options, &draft.instance_path) {
+                        ui.separator();
+                        let mut editor = crate::new_mapping::CsvDialectDraft::from_options(
+                            &draft.options,
+                            &draft.instance_path,
+                        );
+                        if super::csv_dialect_ui::show_fields(
+                            ui,
+                            &mut editor,
+                            &draft.instance_path,
+                            true,
+                            "named_source",
+                        ) {
+                            draft.csv_dialect_draft = Some(editor);
+                        }
+                    } else if csv_shape
+                        && crate::new_mapping::csv_path_compatible(&draft.instance_path)
+                        && (crate::new_mapping::uses_path_format(
+                            &draft.options,
+                            &draft.instance_path,
+                        ) || draft.options.csv_text_repair_dependency.is_some())
+                        && ui.button("Configure CSV input").clicked()
+                        && let Err(error) = draft.begin_csv_dialect()
+                    {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
+                    if draft.schema.as_ref().is_some_and(|schema| {
+                        crate::extra_targets::flat_scalar_fields(schema).is_ok()
+                    }) && ui
+                        .add_enabled(
+                            dialog_idle,
+                            egui::Button::new(if draft.options.fixed_width.is_some() {
+                                "Edit fixed-width layout"
+                            } else {
+                                "Configure fixed-width input"
+                            }),
+                        )
+                        .clicked()
+                        && let Err(error) = draft.begin_fixed_width()
+                    {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -416,7 +512,9 @@ fn show_named_source_protobuf(ui: &mut egui::Ui, draft: &mut ExtraSourceDraft) {
 }
 
 fn source_uses_sqlite(draft: &ExtraSourceDraft) -> bool {
-    crate::new_mapping::uses_path_format(&draft.options, &draft.instance_path)
+    draft.fixed_width_draft.is_none()
+        && draft.csv_dialect_draft.is_none()
+        && crate::new_mapping::uses_path_format(&draft.options, &draft.instance_path)
         && is_sqlite_instance_path(&draft.instance_path)
 }
 
@@ -440,19 +538,15 @@ fn show_configured_source_format(ui: &mut egui::Ui, draft: &mut ExtraSourceDraft
     }
     ui.horizontal_wrapped(|ui| {
         if ui.button("Use XML").clicked() {
-            draft.options = mapping::FormatOptions {
-                xml_document: true,
-                ..mapping::FormatOptions::default()
-            };
+            draft.use_path_format();
+            draft.options.xml_document = true;
         }
         if ui.button("Use JSON").clicked() {
-            draft.options = mapping::FormatOptions {
-                json_document: true,
-                ..mapping::FormatOptions::default()
-            };
+            draft.use_path_format();
+            draft.options.json_document = true;
         }
         if ui.button("Use path format").clicked() {
-            draft.options = mapping::FormatOptions::default();
+            draft.use_path_format();
         }
     });
 }
@@ -467,6 +561,14 @@ fn is_sqlite_instance_path(path: &str) -> bool {
         "db" | "sqlite" | "sqlite3"
     )
 }
+
+#[cfg(test)]
+#[path = "extra_sources/fixed_width_tests.rs"]
+mod fixed_width_tests;
+
+#[cfg(test)]
+#[path = "named_csv_dialect_tests.rs"]
+mod named_csv_dialect_tests;
 
 #[cfg(test)]
 mod tests {

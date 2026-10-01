@@ -78,6 +78,16 @@ pub(crate) fn uses_csv_format(options: &FormatOptions, path: &str) -> bool {
     effective_tabular_kind(options, path) == Some(mapping::TabularBoundaryKind::Csv)
 }
 
+/// Whether CSV can be selected for this path. A recognized non-CSV extension
+/// takes precedence over the tabular fallback at run time.
+pub(crate) fn csv_path_compatible(path: &str) -> bool {
+    let csv_fallback = FormatOptions {
+        tabular_kind: Some(mapping::TabularBoundaryKind::Csv),
+        ..FormatOptions::default()
+    };
+    effective_tabular_kind(&csv_fallback, path) == Some(mapping::TabularBoundaryKind::Csv)
+}
+
 pub(crate) fn uses_xlsx_format(options: &FormatOptions, path: &str) -> bool {
     effective_tabular_kind(options, path) == Some(mapping::TabularBoundaryKind::Xlsx)
 }

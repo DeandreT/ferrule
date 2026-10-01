@@ -30,6 +30,7 @@ impl FerruleApp {
                     draft.flextext_draft = Some(Box::new(flextext));
                     draft.protobuf_draft = None;
                     draft.fixed_width_draft = None;
+                    draft.csv_dialect_draft = None;
                     self.status = "loaded target FlexText layout".to_owned();
                     self.diagnostics.clear();
                 }
@@ -50,6 +51,7 @@ impl FerruleApp {
                     draft.protobuf_draft = Some(Box::new(protobuf));
                     draft.flextext_draft = None;
                     draft.fixed_width_draft = None;
+                    draft.csv_dialect_draft = None;
                     self.status =
                         "loaded target Protocol Buffers schema; choose a root message".to_owned();
                     self.diagnostics.clear();
@@ -216,7 +218,56 @@ impl FerruleApp {
                 } else if draft.fixed_width_draft.is_some() {
                     fixed_width::show_options(ui, draft);
                 } else {
-                    show_target_format_options(ui, &draft.output_path, &mut draft.options);
+                    if show_target_format_options(ui, &draft.output_path, &mut draft.options) {
+                        draft.csv_dialect_draft = None;
+                    }
+                    let csv_shape = draft.schema.as_ref().is_some_and(|schema| {
+                        crate::extra_targets::flat_scalar_fields(schema).is_ok()
+                    });
+                    if let Some(pending) = draft.csv_dialect_draft.as_mut() {
+                        super::csv_dialect_ui::show_fields(
+                            ui,
+                            pending,
+                            &draft.output_path,
+                            false,
+                            "named_target",
+                        );
+                        ui.horizontal(|ui| {
+                            if ui.button("Abandon CSV changes").clicked() {
+                                draft.abandon_csv_dialect();
+                            }
+                            if ui.button("Use path format").clicked() {
+                                draft.use_path_format();
+                            }
+                        });
+                    } else if crate::new_mapping::uses_csv_format(
+                        &draft.options,
+                        &draft.output_path,
+                    ) {
+                        let mut editor = crate::new_mapping::CsvDialectDraft::from_options(
+                            &draft.options,
+                            &draft.output_path,
+                        );
+                        if super::csv_dialect_ui::show_fields(
+                            ui,
+                            &mut editor,
+                            &draft.output_path,
+                            false,
+                            "named_target",
+                        ) {
+                            draft.csv_dialect_draft = Some(editor);
+                        }
+                    } else if csv_shape
+                        && crate::new_mapping::csv_path_compatible(&draft.output_path)
+                        && (crate::new_mapping::uses_path_format(
+                            &draft.options,
+                            &draft.output_path,
+                        ) || draft.options.csv_text_repair_dependency.is_some())
+                        && ui.button("Configure CSV output").clicked()
+                        && let Err(error) = draft.begin_csv_dialect()
+                    {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
                     if draft.schema.as_ref().is_some_and(|schema| {
                         crate::extra_targets::flat_scalar_fields(schema).is_ok()
                     }) && ui
@@ -443,7 +494,7 @@ fn show_target_format_options(
     ui: &mut egui::Ui,
     output_path: &str,
     options: &mut mapping::FormatOptions,
-) {
+) -> bool {
     let previous_kind = document_kind(options, output_path);
     let mut kind = previous_kind;
     ui.horizontal_wrapped(|ui| {
@@ -459,13 +510,14 @@ fn show_target_format_options(
         ui.selectable_value(&mut kind, DocumentKind::Json, "JSON");
         ui.selectable_value(&mut kind, DocumentKind::JsonLines, "JSON Lines");
     });
-    if kind != previous_kind {
+    let kind_changed = kind != previous_kind;
+    if kind_changed {
         set_document_kind(options, kind);
     }
     if let Some(protobuf) = &options.protobuf {
         ui.label(format!("Root message: {}", protobuf.root_message));
         ui.weak("Binary output uses the embedded schema for any filename.");
-        return;
+        return kind_changed;
     }
     if let Some(label) = crate::new_mapping::configured_layout_label_for_path(options, output_path)
     {
@@ -473,39 +525,29 @@ fn show_target_format_options(
         if label == "XLSX workbook"
             && crate::new_mapping::can_update_existing_workbook(options, output_path)
         {
-            ui.checkbox(
-                &mut options.xlsx_update_existing,
-                "Update existing workbook",
-            );
+            return ui
+                .checkbox(
+                    &mut options.xlsx_update_existing,
+                    "Update existing workbook",
+                )
+                .changed()
+                || kind_changed;
         }
-        return;
+        return kind_changed;
     }
     if !crate::new_mapping::uses_path_format(options, output_path) {
-        return;
-    }
-    if crate::new_mapping::uses_csv_format(options, output_path) {
-        let mut headers = options.has_header_row.unwrap_or(true);
-        if ui.checkbox(&mut headers, "Header row").changed() {
-            options.has_header_row = Some(headers);
-        }
-        ui.checkbox(&mut options.csv_utf8_bom, "UTF-8 byte order mark");
-        let mut delimiter = options.delimiter.unwrap_or(',').to_string();
-        ui.horizontal(|ui| {
-            ui.label("Delimiter");
-            if ui
-                .add(egui::TextEdit::singleline(&mut delimiter).char_limit(1))
-                .changed()
-            {
-                options.delimiter = delimiter.chars().next();
-            }
-        });
+        return kind_changed;
     }
     if crate::new_mapping::can_update_existing_workbook(options, output_path) {
-        ui.checkbox(
-            &mut options.xlsx_update_existing,
-            "Update existing workbook",
-        );
+        return ui
+            .checkbox(
+                &mut options.xlsx_update_existing,
+                "Update existing workbook",
+            )
+            .changed()
+            || kind_changed;
     }
+    kind_changed
 }
 
 enum ExtraTargetAction {

@@ -59,8 +59,11 @@ are preserved.
   original configurations are unnecessary after saving.
   Named FlexText inputs and outputs use the same embedded layouts. CSV setup
   selects custom or disabled quoting and retries previews with the chosen
-  dialect. Primary flat inputs and outputs, and named flat outputs, can configure
+  dialect. Primary and named flat inputs and outputs can configure
   positional fixed-width layouts with independent Unicode widths and fill settings.
+  Canvas deletion protects graph nodes used by other outputs, failure rules,
+  dynamic input/output paths, and scope or generated-item ownership; ordinary
+  active bindings and graph consumers still disconnect when deletion is allowed.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as
@@ -639,6 +642,21 @@ roots and retains its embedded schema graph through undo/redo, save/reopen,
 and exact file/payload output checks after original schemas are removed.
 Abandoning a pending binary schema after changing a previously introspected
 SQLite path or table requires loading a new table schema.
+
+Named delimited-text editors expose independent delimiters, custom or disabled
+quotes, headers, input empty-text handling, and output BOM settings. Pending
+invalid edits preserve the saved boundary. File and payload checks cover
+Unicode, embedded delimiters, distinct input/output dialects, and saved format
+identity for extensionless or unfamiliar filenames.
+
+Function-body node menus select the saved function output directly, including
+parameter identity outputs. Output protection moves with the selection;
+undo/redo, save/reopen, lazy conditional evaluation, and file/payload execution
+retain the selected expression. Shared graph removal also checks inactive
+target bindings and project-owned controls before changing a node.
+Function creation and call insertion respect the same editing lock as the
+canvas during runs and pending project actions; viewing and cancellation
+remain available.
 
 Exit criteria:
 
