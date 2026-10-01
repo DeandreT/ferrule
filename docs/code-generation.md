@@ -538,10 +538,16 @@ queries retain loose name normalization, query inversion, and scalar case foldin
 `Cs`/`Surrogate` queries reject because the Rust scalar property data has no such
 set. `IsPrivateUse` retains the complete Co category, including supplementary
 private-use planes.
-C# `\b` and `\B` compare the same Unicode scalar word set as `\w`, preserving
+C# `\b`, `\B`, `\b{start}` / `\<`, `\b{end}` / `\>`,
+`\b{start-half}`, and `\b{end-half}` compare the same Unicode scalar word set
+as `\w`, preserving
 supplementary letters, combining marks, join controls, source-order captures,
 greedy/lazy choices, and global match spans. A prioritized non-backtracking
 matcher handles patterns containing these assertions or consecutive repetitions.
+Start/end assertions require the corresponding word transition; half assertions
+check only the non-word side and can match an empty input. Special boundary braces
+must immediately follow `\b`; `x` whitespace/comments are accepted inside the
+brace and between its name characters. Numeric braces still repeat the assertion.
 Consecutive operators such as `a{2}{3}` and `a++` create nested repeats, with one
 lazy suffix per operator. Source-order capture values, nullable repeated bodies,
 and outer zero counts retain the same behavior as Rust. Patterns without these
@@ -555,8 +561,9 @@ body's structural height. Deferred host lowering adds at most 256 consecutive
 wrappers per operand and counts them toward its translated-size limit.
 These local caps preserve typed failures without claiming identical backend
 compilation or execution budgets.
-Rust and .NET still expose different regex dialects. Additional boundary spellings,
-single-dash host subtraction, property vocabularies, and some
+Rust and .NET still expose different regex dialects. ASCII `-u` boundary scopes,
+word-assertion escapes inside host character classes, single-dash host subtraction,
+property vocabularies, and some
 host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
 Ordinary host-path nullable loops can still select different final capture values
