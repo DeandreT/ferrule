@@ -436,6 +436,13 @@ splitter region may use only its boundary's begin/end anchors; its search is
 empty and its initial/final skips are zero. Its fallback region is inferred
 from the last eligible capture on native import, so export requires that
 inference to match the stored layout exactly.
+Another closed shape retains a first-page scalar capture and two ordered,
+independent physical-page regions, from the first page and exact page two,
+feeding one edge-row splitter and direct captures in a named group. A
+self-authored ruled PDF preserves its company value and four ordered rows
+through two strict cycles; the local book-catalog design retains identical
+extraction and XML for 52 books. Collage, ambiguous source ordering, incompatible
+page selection, and altered fallback regions remain outside this shape.
 Native splitter import accepts only absent or empty search controls and absent,
 empty, or zero initial/final skips. Nondefault, malformed, or duplicate controls
 reject the template with a diagnostic instead of silently changing extraction.
@@ -451,6 +458,14 @@ to 1 MiB. The export report inspects the actual generated sibling and reports
 `pdf_layout` when that sibling requires Ferrule's extension; strict native
 export then rejects before publication. Local parser checks do not establish
 that the reference application accepts or executes the template.
+
+Inline CSV field declarations are sorted by their numeric `fieldN` suffix.
+Malformed or duplicate indexes and empty or duplicate names diagnose and skip
+the component; executable imports reject the warnings. Headerless source and
+target values retain their columns even when declaration elements are shuffled.
+CSV text boundaries accept absent encoding or the supported UTF-8 code `1000`.
+Other declared encodings produce a bounded warning; repair imports continue
+using UTF-8, while executable imports reject the unsupported contract.
 
 Pipeline export writes one connected design for a validated serial XML
 pass-through chain of 2–65 stages. Each intermediate primary target becomes

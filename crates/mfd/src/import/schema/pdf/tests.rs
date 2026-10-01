@@ -6,6 +6,180 @@ use super::{
 };
 use mapping::{PdfCapture, PdfCommand, PdfCoordinate, PdfGroup, PdfReference, PdfRegion};
 
+const FULL_REGION: &str = "{ Left: Left, Top: Top, Right: Right, Bottom: Bottom }";
+const ZERO_REGION: &str =
+    "{ Left: Left - 0pt, Top: Top + 0pt, Right: Right - 0pt, Bottom: Bottom - 0pt }";
+const NARROW_REGION: &str = "{ Left: Left + 5pt, Top: Top, Right: Right, Bottom: Bottom }";
+
+fn template(commands: &str) -> String {
+    format!(
+        "<Document><Template><Model><Root><Label>Document</Label><Children>{commands}\
+         </Children></Root></Model></Template></Document>"
+    )
+}
+
+fn capture() -> String {
+    format!("<Capture><Label>Value</Label><Region>{FULL_REGION}</Region></Capture>")
+}
+
+fn grouping(label: &str, region: &str, filter: &str, children: &str) -> String {
+    format!(
+        "<Grouping><Label>{label}</Label>{region}<Kind><OneGroupPerPage/></Kind>\
+         <Filter>{filter}</Filter><Children>{children}</Children></Grouping>"
+    )
+}
+
+#[test]
+fn transparent_group_defaults_keep_direct_children_and_exact_page_selection() {
+    for filter in ["", "1", "2"] {
+        let expected = parse_native_template_text(
+            &template(&grouping("", "", filter, &capture())),
+            "Document",
+        )
+        .unwrap();
+        for region in [
+            "".to_string(),
+            "<Region/>".to_string(),
+            format!("<Region>{FULL_REGION}</Region>"),
+            format!("<Region>{ZERO_REGION}</Region>"),
+        ] {
+            let layout = parse_native_template_text(
+                &template(&grouping("", &region, filter, &capture())),
+                "Document",
+            )
+            .unwrap();
+            assert_eq!(layout, expected);
+            match layout.commands() {
+                [PdfCommand::Capture(_)] => assert_eq!(filter, ""),
+                [PdfCommand::Pages(pages)] => {
+                    assert!(matches!(
+                        pages.children.as_slice(),
+                        [PdfCommand::Capture(_)]
+                    ));
+                    assert_eq!(
+                        pages.selection,
+                        if filter == "1" {
+                            mapping::PdfPageSelection::First
+                        } else {
+                            let page = std::num::NonZeroU32::new(2).unwrap();
+                            mapping::PdfPageSelection::Range {
+                                first: page,
+                                last: page,
+                            }
+                        }
+                    );
+                }
+                commands => panic!("unexpected transparent commands: {commands:?}"),
+            }
+        }
+    }
+    assert_eq!(
+        parse_region(ZERO_REGION).unwrap().left.offset.to_bits(),
+        (-0.0_f64).to_bits()
+    );
+}
+
+#[test]
+fn transparent_groups_reject_narrowed_or_malformed_regions_without_echoing_payloads() {
+    let huge_invalid = "x".repeat(65_536);
+    for region in [
+        format!("<Region>{NARROW_REGION}</Region>"),
+        "<Region>{ Left: Top, Top: Top, Right: Right, Bottom: Bottom }</Region>".to_string(),
+        format!("<Region>{huge_invalid}</Region>"),
+        "<Region><Unknown/></Region>".to_string(),
+        format!("<Region/><Region>{NARROW_REGION}</Region>"),
+        format!("<Region>{FULL_REGION}<!-- separator -->invalid</Region>"),
+    ] {
+        for filter in ["", "1", "2"] {
+            let error = parse_native_template_text(
+                &template(&grouping("", &region, filter, &capture())),
+                "Document",
+            )
+            .unwrap_err();
+            assert!(error.contains("unnamed Grouping Region"), "{error}");
+            assert!(error.contains("cannot be retained"));
+            assert!(error.len() < 200);
+        }
+        let nested = grouping("Outer", "", "", &grouping("", &region, "", &capture()));
+        assert!(parse_native_template_text(&template(&nested), "Document").is_err());
+    }
+}
+
+#[test]
+fn named_groups_retain_narrowed_regions_and_signed_zero() {
+    for filter in ["", "1", "2"] {
+        let region = "{ Left: Left + 5pt, Top: Top, Right: Right - 0pt, Bottom: Bottom - 0pt }";
+        let layout = parse_native_template_text(
+            &template(&grouping(
+                "Rows",
+                &format!("<Region>{region}</Region>"),
+                filter,
+                &capture(),
+            )),
+            "Document",
+        )
+        .unwrap();
+        let commands = match layout.commands() {
+            [PdfCommand::Pages(pages)] => pages.children.as_slice(),
+            commands => commands,
+        };
+        let [PdfCommand::GroupPerPage(group)] = commands else {
+            panic!("named group must retain its command");
+        };
+        assert_eq!(group.region.left.offset, 5.0);
+        assert_eq!(group.region.right.offset.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(group.region.bottom.offset.to_bits(), (-0.0_f64).to_bits());
+    }
+}
+
+#[test]
+fn transparent_merge_wrappers_accept_only_default_regions() {
+    let merge_source =
+        format!("<MergeSource><Target>Rows</Target><Region>{FULL_REGION}</Region></MergeSource>");
+    let merge_target = format!(
+        "<MergeTarget><Name>Rows</Name><Children>{}</Children></MergeTarget>",
+        grouping("Rows", "", "", &capture())
+    );
+    for (kind, filter, merge_inside) in [
+        ("<OneGroupPerPage/>", "", false),
+        ("<OneGroupPerPage/>", "1", false),
+        ("<OneGroupPerPage/>", "2", false),
+        (
+            "<GroupsFromList><Pages>2-</Pages></GroupsFromList>",
+            "",
+            true,
+        ),
+    ] {
+        let wrapper = |region: &str| {
+            let (children, trailing) = if merge_inside {
+                (format!("{merge_source}{merge_target}"), String::new())
+            } else {
+                (merge_source.clone(), merge_target.clone())
+            };
+            format!(
+                "<Grouping><Label/>{region}<Kind>{kind}</Kind><Filter>{filter}</Filter>\
+             <Children>{children}</Children></Grouping>{trailing}"
+            )
+        };
+        let expected = parse_native_template_text(&template(&wrapper("")), "Document").unwrap();
+        for region in [FULL_REGION, ZERO_REGION] {
+            let actual = parse_native_template_text(
+                &template(&wrapper(&format!("<Region>{region}</Region>"))),
+                "Document",
+            )
+            .unwrap();
+            assert_eq!(actual, expected);
+        }
+        assert!(matches!(expected.commands(), [PdfCommand::Merge(_)]));
+        let error = parse_native_template_text(
+            &template(&wrapper(&format!("<Region>{NARROW_REGION}</Region>"))),
+            "Document",
+        )
+        .unwrap_err();
+        assert!(error.contains("unnamed Grouping Region"));
+    }
+}
+
 #[test]
 fn native_template_self_check_enforces_byte_element_and_depth_limits() {
     let oversized = format!("<Document>{}</Document>", "x".repeat(1024 * 1024));
