@@ -161,11 +161,20 @@ pub(crate) fn show_protobuf_root_message(
 }
 
 /// A schema chooser edits the mapping boundary without selecting a new codec.
-/// Existing binary metadata remains valid only for its exact root projection.
+/// Embedded codec metadata remains valid only for its exact root projection.
 pub(crate) fn validate_schema_replacement(
     options: &FormatOptions,
     schema: &ir::SchemaNode,
 ) -> anyhow::Result<()> {
+    if let Some(layout) = &options.flextext
+        && *schema != layout.schema()
+    {
+        bail!(
+            "selected schema does not match the embedded FlexText root `{}`; \
+             choose a matching schema to keep structured text, or explicitly change the format first",
+            layout.root_name()
+        );
+    }
     let Some(protobuf) = &options.protobuf else {
         return Ok(());
     };

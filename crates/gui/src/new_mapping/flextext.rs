@@ -4,6 +4,7 @@ use anyhow::{Context as _, bail};
 use mapping::{FlexTextLayout, FormatOptions};
 
 /// A validated layout and its exact schema are loaded once during staging.
+#[derive(Debug, Clone)]
 pub(crate) struct FlexTextBoundaryDraft {
     pub(crate) configuration_path: PathBuf,
     pub(crate) instance_path: String,
@@ -29,6 +30,25 @@ impl FlexTextBoundaryDraft {
 
     pub(crate) fn layout(&self) -> &FlexTextLayout {
         &self.layout
+    }
+
+    pub(crate) fn show_summary(&self, ui: &mut egui::Ui) {
+        ui.label(format!("Root: {}", self.layout.root_name()));
+        ui.label(format!(
+            "Output line endings: {}",
+            match self.layout.output_line_ending() {
+                mapping::FlexLineEnding::Lf => "LF",
+                mapping::FlexLineEnding::Crlf => "CRLF",
+            }
+        ));
+        ui.label(format!(
+            "UTF-8 byte order mark on output: {}",
+            if self.layout.write_bom() { "On" } else { "Off" }
+        ));
+        ui.weak("The project keeps this layout for any data filename.");
+        if let Err(error) = self.validate() {
+            ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+        }
     }
 
     pub(crate) fn validate(&self) -> anyhow::Result<()> {

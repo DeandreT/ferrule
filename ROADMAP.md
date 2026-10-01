@@ -57,6 +57,9 @@ are preserved.
   The native new-mapping form creates primary FlexText sources and targets
   from independently embedded `.mft` layouts; data paths remain optional and
   original configurations are unnecessary after saving.
+  Named FlexText inputs and outputs use the same embedded layouts. CSV setup
+  selects custom or disabled quoting and retries previews with the chosen
+  dialect; named flat outputs can configure positional fixed-width layouts.
 - `.mfd` survey: all 187 local designs import. The isolated resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as

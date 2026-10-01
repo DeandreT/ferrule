@@ -7,6 +7,27 @@ impl FerruleApp {
     }
 
     pub(super) fn stage_extra_source_schema(&mut self, path: PathBuf) {
+        if crate::new_mapping::is_flextext_configuration(&path) {
+            match crate::new_mapping::FlexTextBoundaryDraft::from_configuration(path) {
+                Ok(flextext) => {
+                    let Some(draft) = self.extra_source_draft.as_mut() else {
+                        return;
+                    };
+                    if draft.name.trim().is_empty() {
+                        draft.name = flextext.layout().root_name().to_owned();
+                    }
+                    draft.stage_flextext(flextext);
+                    self.status = "loaded source FlexText layout".to_owned();
+                    self.diagnostics.clear();
+                }
+                Err(error) => {
+                    self.status = "failed to load source FlexText layout".to_owned();
+                    self.diagnostics
+                        .error("FlexText layout import failed", format!("{error:#}"));
+                }
+            }
+            return;
+        }
         if crate::new_mapping::is_protobuf_schema(&path) {
             match crate::new_mapping::ProtobufBoundaryDraft::from_schema(path) {
                 Ok(protobuf) => {
@@ -32,8 +53,18 @@ impl FerruleApp {
             let pending_options = self
                 .extra_source_draft
                 .as_ref()
-                .and_then(|draft| draft.protobuf_draft.as_ref())
-                .map(|protobuf| protobuf.options())
+                .and_then(|draft| {
+                    draft
+                        .protobuf_draft
+                        .as_ref()
+                        .map(|protobuf| protobuf.options())
+                        .or_else(|| {
+                            draft
+                                .flextext_draft
+                                .as_ref()
+                                .map(|flextext| flextext.options())
+                        })
+                })
                 .transpose()?;
             if let Some(draft) = self.extra_source_draft.as_ref() {
                 crate::new_mapping::validate_schema_replacement(
@@ -57,6 +88,8 @@ impl FerruleApp {
                 }
                 self.status = if draft.options.protobuf.is_some() {
                     "loaded matching source schema; kept Protocol Buffers format".to_owned()
+                } else if draft.options.flextext.is_some() {
+                    "loaded matching source schema; kept FlexText format".to_owned()
                 } else {
                     format!("loaded extra source schema {}", path.display())
                 };
@@ -74,7 +107,10 @@ impl FerruleApp {
         let Some(draft) = self.extra_source_draft.as_mut() else {
             return;
         };
-        if draft.protobuf_draft.is_some() || !source_uses_sqlite(draft) {
+        if draft.protobuf_draft.is_some()
+            || draft.flextext_draft.is_some()
+            || !source_uses_sqlite(draft)
+        {
             self.status = "SQLite table import blocked".to_owned();
             self.diagnostics.error(
                 "SQLite table import blocked",
@@ -114,10 +150,22 @@ impl FerruleApp {
         let dialog_idle = self.pending_dialog.is_none();
         let schema_label = draft.protobuf_draft.as_ref().map_or_else(
             || {
-                draft
-                    .schema
-                    .as_ref()
-                    .map_or_else(|| "Not selected".to_owned(), |schema| schema.name.clone())
+                draft.flextext_draft.as_ref().map_or_else(
+                    || {
+                        draft
+                            .schema
+                            .as_ref()
+                            .map_or_else(|| "Not selected".to_owned(), |schema| schema.name.clone())
+                    },
+                    |flextext| {
+                        flextext
+                            .configuration_path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned()
+                    },
+                )
             },
             |protobuf| {
                 protobuf
@@ -131,7 +179,9 @@ impl FerruleApp {
         let can_add = !draft.name.trim().is_empty()
             && !draft.instance_path.trim().is_empty()
             && draft.schema_is_ready();
-        let sqlite_instance = draft.protobuf_draft.is_none() && source_uses_sqlite(draft);
+        let sqlite_instance = draft.protobuf_draft.is_none()
+            && draft.flextext_draft.is_none()
+            && source_uses_sqlite(draft);
         let mut action = None;
         egui::Window::new("Add Extra Source")
             .collapsible(false)
@@ -204,6 +254,9 @@ impl FerruleApp {
                 if draft.protobuf_draft.is_some() {
                     ui.separator();
                     show_named_source_protobuf(ui, draft);
+                } else if draft.flextext_draft.is_some() {
+                    ui.separator();
+                    show_named_source_flextext(ui, draft);
                 } else if !crate::new_mapping::uses_path_format(
                     &draft.options,
                     &draft.instance_path,
@@ -244,7 +297,7 @@ impl FerruleApp {
             Some(ExtraSourceAction::ChooseSchema) => {
                 self.pending_dialog = Some((
                     DialogKind::BrowseExtraSourceSchema,
-                    pick_file("schema", &["xsd", "json", "proto"]),
+                    pick_file("schema or layout", &["xsd", "json", "proto", "mft"]),
                 ));
             }
             Some(ExtraSourceAction::LoadSqliteTable) => {
@@ -329,6 +382,17 @@ enum ExtraSourceAction {
     LoadSqliteTable,
     Cancel,
     Add,
+}
+
+fn show_named_source_flextext(ui: &mut egui::Ui, draft: &mut ExtraSourceDraft) {
+    let Some(flextext) = &draft.flextext_draft else {
+        return;
+    };
+    ui.strong("FlexText input");
+    flextext.show_summary(ui);
+    if ui.button("Use path format").clicked() {
+        draft.use_path_format();
+    }
 }
 
 fn show_named_source_protobuf(ui: &mut egui::Ui, draft: &mut ExtraSourceDraft) {
@@ -521,3 +585,7 @@ mod protobuf_format_tests;
 #[cfg(test)]
 #[path = "extra_sources/named_protobuf_tests.rs"]
 mod named_protobuf_tests;
+
+#[cfg(test)]
+#[path = "extra_sources/named_flextext_tests.rs"]
+mod named_flextext_tests;
