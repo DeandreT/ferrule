@@ -144,10 +144,21 @@ impl FerruleApp {
                                     .on_hover_text(path);
                             }
                         });
-                        if ui.button("Export MFD...").clicked() {
+                        if ui.button("Export MFD (Ferrule)...").clicked() {
                             self.pending_dialog = Some((
                                 DialogKind::ExportMfd,
-                                save_file("MFD design", &["mfd"], &self.document.display_path()),
+                                save_file("MFD design", &["mfd"], &self.mfd_export_suggestion()),
+                            ));
+                            ui.close();
+                        }
+                        if ui.button("Export native MFD...").clicked() {
+                            self.pending_dialog = Some((
+                                DialogKind::ExportNativeMfd,
+                                save_file(
+                                    "native MFD design",
+                                    &["mfd"],
+                                    &self.mfd_export_suggestion(),
+                                ),
                             ));
                             ui.close();
                         }

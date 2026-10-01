@@ -414,6 +414,13 @@ cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd 
 cargo +nightly run -p cli -- export-mfd --project flow.json --pipeline --out chained.mfd --profile native-mfd
 ```
 
+The native editor exposes both profiles under File: “Export MFD (Ferrule)...”
+and “Export native MFD...”. Both suggest an `.mfd` filename in the project's
+folder. Native rejection lists each affected component and retains its
+compatibility feature and emitted identity; existing design/schema files remain
+unchanged. A successful native-profile export confirms the local compatibility
+checks, while acceptance by the reference application remains unverified.
+
 Export writes the representable project subset plus generated schema or layout
 siblings. Component kinds are selected from endpoint format metadata and paths.
 JSON Schema siblings are reimported from their exact generated text before

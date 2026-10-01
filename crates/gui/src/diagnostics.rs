@@ -6,6 +6,12 @@ pub enum DiagnosticLocation {
     Validation(engine::ValidationOwner),
     /// Import warnings currently carry file provenance, not component identity.
     ImportFile(PathBuf),
+    /// Native export findings retain the exact emitted component identity.
+    ExportComponent {
+        name: String,
+        uid: Option<u32>,
+        feature: mfd::ExportCompatibilityFeature,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +30,28 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    pub fn error(message: impl Into<String>) -> Self {
+        Self {
+            level: DiagnosticLevel::Error,
+            message: message.into(),
+            location: None,
+            project_fingerprint: None,
+        }
+    }
+
+    pub fn export_compatibility_issue(issue: mfd::ExportCompatibilityIssue) -> Self {
+        Self {
+            level: DiagnosticLevel::Error,
+            message: format!("{}: {}", issue.component, issue.message),
+            location: Some(DiagnosticLocation::ExportComponent {
+                name: issue.component,
+                uid: issue.component_uid,
+                feature: issue.feature,
+            }),
+            project_fingerprint: None,
+        }
+    }
+
     pub fn warning(message: impl Into<String>) -> Self {
         Self {
             level: DiagnosticLevel::Warning,
@@ -80,15 +108,7 @@ impl Diagnostics {
     }
 
     pub fn error(&mut self, title: impl Into<String>, message: impl Into<String>) {
-        self.replace(
-            title,
-            [Diagnostic {
-                level: DiagnosticLevel::Error,
-                message: message.into(),
-                location: None,
-                project_fingerprint: None,
-            }],
-        );
+        self.replace(title, [Diagnostic::error(message)]);
     }
 
     pub fn warnings(
@@ -159,8 +179,18 @@ impl Diagnostics {
                     ui.horizontal_wrapped(|ui| {
                         ui.strong(prefix);
                         let label = ui.label(&item.message);
-                        if let Some(DiagnosticLocation::ImportFile(path)) = &item.location {
-                            label.on_hover_text(format!("Imported from {}", path.display()));
+                        match &item.location {
+                            Some(DiagnosticLocation::ImportFile(path)) => {
+                                label.on_hover_text(format!("Imported from {}", path.display()));
+                            }
+                            Some(DiagnosticLocation::ExportComponent { name, uid, .. }) => {
+                                let identity = uid.map_or_else(
+                                    || format!("MFD component {name}"),
+                                    |uid| format!("MFD component {name} (UID {uid})"),
+                                );
+                                label.on_hover_text(identity);
+                            }
+                            _ => {}
                         }
                         if matches!(item.location, Some(DiagnosticLocation::Validation(_)))
                             && ui.button("Go to").clicked()
