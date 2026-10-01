@@ -116,7 +116,7 @@ mod tests {
     }
 
     #[test]
-    fn artifacts_are_path_sorted_ascii_and_deterministic() {
+    fn artifacts_retain_sorted_paths_ascii_code_and_deterministic_notices() {
         let first = emit(&program()).expect("supported program emits");
         let second = emit(&program()).expect("supported program emits deterministically");
 
@@ -127,7 +127,39 @@ mod tests {
                 .windows(2)
                 .all(|files| files[0].path < files[1].path)
         );
-        assert!(first.files().iter().all(|file| file.contents.is_ascii()));
+        let notice_path = "Runtime/FerruleScalarRegex.ScriptTables.cs";
+        let notice_lines = [
+            "// Copyright © 1991-2026 Unicode, Inc.",
+            "// Copyright © 1991-2018 Unicode, Inc. All rights reserved.",
+        ];
+        for file in first.files() {
+            let contents = std::str::from_utf8(&file.contents)
+                .expect("emitted C# and project XML retain valid UTF-8");
+            assert!(
+                contents.lines().all(|line| {
+                    line.is_ascii()
+                        || file.path.as_str() == notice_path && notice_lines.contains(&line)
+                }),
+                "only original Unicode copyright notices may contain non-ASCII text: {}",
+                file.path.as_str()
+            );
+        }
+        let notice_file = first
+            .files()
+            .iter()
+            .find(|file| file.path.as_str() == notice_path)
+            .expect("vendored Unicode tables retain their notices");
+        for notice in notice_lines {
+            assert_eq!(
+                std::str::from_utf8(&notice_file.contents)
+                    .expect("original notices retain valid UTF-8")
+                    .lines()
+                    .filter(|line| *line == notice)
+                    .count(),
+                1,
+                "each original copyright notice survives emission exactly once"
+            );
+        }
         assert!(
             first
                 .files()
