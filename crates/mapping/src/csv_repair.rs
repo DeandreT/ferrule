@@ -6,7 +6,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{FormatOptions, Project, RuntimeBoundary};
 
-/// A native CSV text setting whose physical byte behavior is not implemented.
+/// A native CSV text setting whose physical byte behavior is unimplemented or
+/// whose declaration cannot be interpreted faithfully.
 /// Causes retain no original declaration text or document data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +18,16 @@ pub enum CsvTextRepairCause {
     ByteOrder,
     #[serde(rename = "unsupported_byte_order_mark")]
     ByteOrderMark,
+    #[serde(rename = "unsupported_empty_policy")]
+    EmptyPolicy,
+    #[serde(rename = "unsupported_separator")]
+    Separator,
+    #[serde(rename = "unsupported_quote")]
+    Quote,
+    #[serde(rename = "unsupported_header_row")]
+    HeaderRow,
+    #[serde(rename = "unsupported_typed_empty_cells")]
+    TypedEmptyCells,
 }
 
 impl CsvTextRepairCause {
@@ -25,6 +36,11 @@ impl CsvTextRepairCause {
             Self::Encoding => 1,
             Self::ByteOrder => 2,
             Self::ByteOrderMark => 4,
+            Self::EmptyPolicy => 8,
+            Self::Separator => 16,
+            Self::Quote => 32,
+            Self::HeaderRow => 64,
+            Self::TypedEmptyCells => 128,
         }
     }
 }
@@ -42,6 +58,11 @@ impl<'de> Deserialize<'de> for CsvTextRepairCause {
                     "unsupported_encoding" => Ok(CsvTextRepairCause::Encoding),
                     "unsupported_byte_order" => Ok(CsvTextRepairCause::ByteOrder),
                     "unsupported_byte_order_mark" => Ok(CsvTextRepairCause::ByteOrderMark),
+                    "unsupported_empty_policy" => Ok(CsvTextRepairCause::EmptyPolicy),
+                    "unsupported_separator" => Ok(CsvTextRepairCause::Separator),
+                    "unsupported_quote" => Ok(CsvTextRepairCause::Quote),
+                    "unsupported_header_row" => Ok(CsvTextRepairCause::HeaderRow),
+                    "unsupported_typed_empty_cells" => Ok(CsvTextRepairCause::TypedEmptyCells),
                     _ => Err(E::custom("unknown CSV text repair cause")),
                 }
             }
@@ -50,7 +71,7 @@ impl<'de> Deserialize<'de> for CsvTextRepairCause {
     }
 }
 
-/// A closed, nonempty set of at most three unsupported native CSV text settings.
+/// A closed, nonempty set of at most eight unsupported native CSV text settings.
 /// Kept on repair drafts so save/reopen cannot silently certify guessed byte I/O.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CsvTextRepairDependency(u8);
@@ -69,6 +90,11 @@ impl CsvTextRepairDependency {
             CsvTextRepairCause::Encoding,
             CsvTextRepairCause::ByteOrder,
             CsvTextRepairCause::ByteOrderMark,
+            CsvTextRepairCause::EmptyPolicy,
+            CsvTextRepairCause::Separator,
+            CsvTextRepairCause::Quote,
+            CsvTextRepairCause::HeaderRow,
+            CsvTextRepairCause::TypedEmptyCells,
         ]
         .into_iter()
         .filter(move |cause| self.0 & cause.bit() != 0)
@@ -113,7 +139,7 @@ impl<'de> Deserialize<'de> for CsvTextRepairDependency {
                 impl<'de> Visitor<'de> for SetVisitor {
                     type Value = CauseSet;
                     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                        formatter.write_str("one to three distinct CSV text repair causes")
+                        formatter.write_str("one to eight distinct CSV text repair causes")
                     }
                     fn visit_seq<A: SeqAccess<'de>>(
                         self,
@@ -169,6 +195,11 @@ impl fmt::Display for CsvTextRepairDependency {
                 CsvTextRepairCause::Encoding => "encoding",
                 CsvTextRepairCause::ByteOrder => "byte order",
                 CsvTextRepairCause::ByteOrderMark => "byte order mark",
+                CsvTextRepairCause::EmptyPolicy => "empty-field policy",
+                CsvTextRepairCause::Separator => "separator",
+                CsvTextRepairCause::Quote => "quote",
+                CsvTextRepairCause::HeaderRow => "header-row policy",
+                CsvTextRepairCause::TypedEmptyCells => "typed empty-cell policy",
             })?;
         }
         formatter.write_str("); the stored CSV boundary is a repair draft")

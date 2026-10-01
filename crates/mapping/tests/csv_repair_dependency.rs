@@ -161,3 +161,62 @@ fn legacy_format_options_have_no_repair_marker() {
             .contains("csv_text_repair_dependency")
     );
 }
+
+#[test]
+fn all_eight_causes_are_copy_canonical_bounded_and_persisted() {
+    let expected = vec![
+        Cause::Encoding,
+        Cause::ByteOrder,
+        Cause::ByteOrderMark,
+        Cause::EmptyPolicy,
+        Cause::Separator,
+        Cause::Quote,
+        Cause::HeaderRow,
+        Cause::TypedEmptyCells,
+    ];
+    let full = expected
+        .iter()
+        .copied()
+        .skip(1)
+        .fold(Dependency::new(expected[0]), Dependency::with_cause);
+    assert_eq!(full.causes().collect::<Vec<_>>(), expected);
+    let unordered = r#"{"causes":["unsupported_typed_empty_cells","unsupported_header_row","unsupported_quote","unsupported_separator","unsupported_empty_policy","unsupported_byte_order_mark","unsupported_byte_order","unsupported_encoding"]}"#;
+    assert_eq!(serde_json::from_str::<Dependency>(unordered).unwrap(), full);
+    let canonical = r#"{"causes":["unsupported_encoding","unsupported_byte_order","unsupported_byte_order_mark","unsupported_empty_policy","unsupported_separator","unsupported_quote","unsupported_header_row","unsupported_typed_empty_cells"]}"#;
+    assert_eq!(serde_json::to_string(&full).unwrap(), canonical);
+    // The ninth cause fails before parsing the unbounded tail.
+    let excessive = format!(
+        "{},\"unsupported_encoding\",{}]}}",
+        canonical.trim_end_matches("]}"),
+        std::iter::repeat_n("\"unsupported_encoding\"", 100_000)
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    assert!(
+        serde_json::from_str::<Dependency>(&excessive)
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate CSV text repair cause")
+    );
+    let mut project = project();
+    project.source_options.csv_text_repair_dependency = Some(full);
+    project.target_options.csv_text_repair_dependency = Some(full);
+    project.extra_sources[0].options.csv_text_repair_dependency = Some(full);
+    project.extra_targets[0].options.csv_text_repair_dependency = Some(full);
+    let reopened =
+        mapping::project_file::decode_str(&mapping::project_file::encode_pretty(&project).unwrap())
+            .unwrap();
+    assert_eq!(reopened.csv_runtime_dependencies().len(), 4);
+    assert!(
+        reopened
+            .csv_runtime_dependencies()
+            .iter()
+            .all(|finding| finding.dependency == full)
+    );
+    for cause in expected {
+        assert_eq!(
+            serde_json::from_str::<Cause>(&serde_json::to_string(&cause).unwrap()).unwrap(),
+            cause
+        );
+    }
+}
