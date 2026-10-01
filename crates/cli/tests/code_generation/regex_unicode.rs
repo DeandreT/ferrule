@@ -175,7 +175,63 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
         ("aaaaaaaaaaaa", "^a{1 2}$", "x", "x"),
         ("a{word}", r"^a\{word\}$", "", "x"),
     ];
-    let input = serde_json::json!({"Cases": cases.into_iter().map(|(text, pattern, flags, replacement)| {
+    let mut class_cases = vec![
+        ("a", "^[a-c&&b-d]$", "", "x", false),
+        ("b", "^[a-c&&b-d]$", "", "x", true),
+        ("d", "^[a-c&&b-d]$", "", "x", false),
+        ("&", "^[a-c&&b-d]$", "", "x", false),
+        ("abcd&~🙂🙃🙏", "([a-c&&b-d])", "", "[$1]", true),
+        ("a", "^[a-z--[aeiou]]$", "", "x", false),
+        ("b", "^[a-z--[aeiou]]$", "", "x", true),
+        ("-", "^[a-z--[aeiou]]$", "", "x", false),
+        ("a", "^[a-c~~b-d]$", "", "x", true),
+        ("b", "^[a-c~~b-d]$", "", "x", false),
+        ("d", "^[a-c~~b-d]$", "", "x", true),
+        ("acz", "^[[a-c][x-z]]+$", "", "x", true),
+        ("b", "^[^a-c&&b-d]$", "", "x", false),
+        ("🙂", "^[^a-c&&b-d]$", "", "x", true),
+        ("c", "^[ab~~bc&&cd]$", "", "x", true),
+        ("a", "^[ab~~bc&&cd]$", "", "x", false),
+        ("B", "^[a-c&&B-D]$", "i", "x", true),
+        ("a", "^[a--A]$", "i", "x", false),
+        ("A", "^[a&&A]$", "i", "x", true),
+        ("🙃", "^[🙂-🙏&&🙃]$", "", "x", true),
+        ("🙂", "^[🙂🙃--🙂]$", "", "x", false),
+        ("a🙂🙃🙏b", "([🙂🙃~~🙃🙏])", "", "[$1]", true),
+        ("𐐨", r"^[\p{Lu}&&[𐐀-𐐧]]$", "i", "x", true),
+        ("𐐨", r"^[\P{Lu}&&[𐐀-𐐧]]$", "i", "x", false),
+        ("é", r"^[\w&&[^a-z]]$", "", "x", true),
+        ("ſ", r"^[\w&&[^a-z]]$", "i", "x", false),
+        ("b", "(?x)^[a-c # left\n && [b-d]]$", "", "x", true),
+        ("&", "(?x)^[a& &b]$", "", "x", true),
+        ("a", "[a&&]", "", "x", false),
+        ("a", "[a~~]", "", "x", true),
+        ("-", "^[--a]$", "", "x", true),
+        ("K", "^[[:alpha:]]$", "i", "x", true),
+        ("é", "^[[:alpha:]]$", "i", "x", false),
+        ("f", "^[[:foobar:]]$", "", "x", true),
+        ("z", "^[[:foobar:]]$", "", "x", false),
+    ];
+    for (pattern, included, excluded) in [
+        ("^[[:alnum:]]$", "9", "_"),
+        ("^[[:alpha:]]$", "z", "é"),
+        ("^[[:ascii:]]$", "\u{7f}", "\u{80}"),
+        ("^[[:blank:]]$", "\t", "\n"),
+        ("^[[:cntrl:]]$", "\0", " "),
+        ("^[[:digit:]]$", "9", "٠"),
+        ("^[[:graph:]]$", "~", " "),
+        ("^[[:lower:]]$", "a", "A"),
+        ("^[[:print:]]$", " ", "\t"),
+        ("^[[:punct:]]$", "[", "z"),
+        ("^[[:space:]]$", "\r", "\u{85}"),
+        ("^[[:upper:]]$", "A", "a"),
+        ("^[[:word:]]$", "_", "é"),
+        ("^[[:xdigit:]]$", "F", "G"),
+    ] {
+        class_cases.push((included, pattern, "", "x", true));
+        class_cases.push((excluded, pattern, "", "x", false));
+    }
+    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
     }).collect::<Vec<_>>()}).to_string();
     let source = format_json::from_str(&input, &project.source)?;
@@ -212,6 +268,18 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     for (index, row) in rows.iter().enumerate().take(54).skip(46) {
         assert_eq!(row["Match"], true, "case {index}");
     }
+    assert_eq!(rows.len(), cases.len() + class_cases.len());
+    for (index, (row, &(_, pattern, _, _, matches))) in
+        rows.iter().skip(cases.len()).zip(&class_cases).enumerate()
+    {
+        assert_eq!(row["Match"], matches, "class case {index}: {pattern}");
+    }
+    assert_eq!(rows[58]["Replaced"], "a[b][c]d&~🙂🙃🙏");
+    assert_eq!(rows[75]["Replaced"], "a[🙂]🙃[🙏]b");
+    assert_eq!(
+        rows[75]["Tokens"],
+        serde_json::json!([{"Value": "a"}, {"Value": "🙃"}, {"Value": "b"}])
+    );
     super::json_text_boundaries::run_generated_boundary_cases(
         &project,
         &[serde_json::json!({"input": input, "expected": expected})],
