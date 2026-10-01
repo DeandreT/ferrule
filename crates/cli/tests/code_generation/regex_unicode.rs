@@ -331,7 +331,77 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
         ("\n", r"^\p{gc=Line_Separator}$", "", "x", false),
         ("\u{2028}", r"^\p{Line_Separator}$", "", "x", true),
     ];
-    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
+    let repetition_cases = [
+        ("aaaaaa", "^a{2}{3}$", "", "$0", true),
+        ("aaaa", "^a{2}{3}$", "", "$0", false),
+        ("aaaaa", "^a{2,3}{2}$", "", "$0", true),
+        ("aaaaaaa", "^a{2,3}{2}$", "", "$0", false),
+        ("aaab", "^a++b$", "", "$0", true),
+        ("aaab", "^a**b$", "", "$0", true),
+        ("b", "^a**b$", "", "$0", true),
+        ("aab", "^a{2}??b$", "", "$0", true),
+        ("b", "^a{2}??b$", "", "$0", true),
+        ("aaaab", "^a{2}?+b$", "", "$0", true),
+        ("aab", "^a+?+b$", "", "$0", true),
+        ("aaab", "^a?+b$", "", "$0", true),
+        ("aaaaaab", "^a{2}{3}{1}b$", "", "$0", true),
+        ("aaaaaa", "^(a){2}{3}$", "", "$1", true),
+        ("abababab", "^(?<first>a)(b){2}{3}$", "", "$1/$2", false),
+        ("aaaaaab", "^(?<first>a){2}{3}(b)$", "", "$1/$2", true),
+        ("🙂🙂🙂🙂a", "^(🙂){2}{2}(a)$", "", "$1/$2", true),
+        ("𐐨𐐨𐐨𐐨b", "^(𐐀){2}{2}(b)$", "i", "$1/$2", true),
+        ("aaaaab", "^(?:a|aa)+?+b$", "", "$0", true),
+        ("aaab", "^(a|aa)+?+b$", "", "$1", true),
+        ("aaaaab", "^(?:a|aa){1,2}{2}b$", "", "$0", true),
+        ("aab", "^(?:){2}{3}a{2}b$", "", "$0", true),
+        ("aaaaaab", "^[a]{2}{3}b$", "", "$0", true),
+        ("aaaaaab", "^\\p{Letter}{2}{3}b$", "", "$0", true),
+        ("aaaaaab", "^a{ 2 } { 3 }b$", "x", "$0", true),
+        (
+            "aaaaaab",
+            "^a{2} # between operators\n {3}b$",
+            "x",
+            "$0",
+            true,
+        ),
+        ("aaaaaab", "^(?i:a){2}{3}b$", "", "$0", true),
+        ("aaaaaab", "^((?:a)){2}{3}(b)$", "", "$1/$2", true),
+        ("aaaaaa", "^(?P<first>a){2}{3}$", "", "$1", true),
+        ("aaab", "^(a*){1,2}{2}b$", "", "$1", true),
+        ("b", "^a{2147483647}{0}b$", "", "$0", true),
+        ("aaab", "^a{0,2}{1,2}b$", "", "$0", true),
+        ("aaaaaa", "^a{2}{3}\\b$", "", "$0", true),
+        ("aaaa", "^a{2}{3}\\b$", "", "$0", false),
+        ("aaaab", "^a{2}?+b\\b$", "", "$0", true),
+        ("b", "^a**b\\b$", "", "$0", true),
+        ("aaaaaab", "^(?<first>a){2}{3}(b)\\b$", "", "$1/$2", true),
+        ("🙂🙂🙂🙂", "^(🙂){2}{2}\\B$", "", "$1", true),
+        ("𐐨𐐨𐐨𐐨b", "^(𐐀){2}{2}(b)\\b$", "i", "$1/$2", true),
+        ("aaab", "^(a|aa)+?+b\\b$", "", "$1", true),
+        ("aaab", "^(a*){1,2}{2}b\\b$", "", "$1", true),
+        ("b", "^a{2147483647}{0}b\\b$", "", "$0", true),
+        (
+            "aaaaaab",
+            "^a{2} # between operators\n {3}b\\b$",
+            "x",
+            "$0",
+            true,
+        ),
+        ("aaab", "^\\b{1}{2}a++b\\b$", "", "$0", true),
+        ("aaaaaab", "^[[:alpha:]]{2}{3}b\\b$", "", "$0", true),
+        ("aaaaaab", "^\\p{gc:Letter}{2}{3}b\\b$", "", "$0", true),
+        ("aaaaaab", "^(a{1,2}??)+(b)$", "", "[$0:$1:$2]", true),
+        ("aaaaaab", "^(a{1,2}??)+(b)\\b$", "", "[$0:$1:$2]", true),
+        ("xaaaaaayaaaaaaz", "(a){2}{3}", "", "[$0:$1]", true),
+        (
+            "x aaaaaa y aaaaaa z",
+            "\\b(a){2}{3}\\b",
+            "",
+            "[$0:$1]",
+            true,
+        ),
+    ];
+    let input = serde_json::json!({"Cases": cases.into_iter().chain(class_cases.iter().chain(&boundary_cases).chain(&property_cases).chain(&repetition_cases).map(|&(text, pattern, flags, replacement, _)| (text, pattern, flags, replacement))).map(|(text, pattern, flags, replacement)| {
         serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags, "Replacement": replacement})
     }).collect::<Vec<_>>()}).to_string();
     let source = format_json::from_str(&input, &project.source)?;
@@ -370,7 +440,11 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     }
     assert_eq!(
         rows.len(),
-        cases.len() + class_cases.len() + boundary_cases.len() + property_cases.len()
+        cases.len()
+            + class_cases.len()
+            + boundary_cases.len()
+            + property_cases.len()
+            + repetition_cases.len()
     );
     for (index, (row, &(_, pattern, _, _, matches))) in
         rows.iter().skip(cases.len()).zip(&class_cases).enumerate()
@@ -411,6 +485,34 @@ fn generated_regex_unicode_scalars_match_interpreter_in_rust_and_csharp() -> Tes
     assert_eq!(
         property_rows[38]["Tokens"],
         serde_json::json!([{"Value": "🙂"}, {"Value": "🙃"}, {"Value": "🙏"}])
+    );
+    let repetition_rows = &property_rows[property_cases.len()..];
+    for (index, (row, &(_, pattern, _, _, matches))) in
+        repetition_rows.iter().zip(&repetition_cases).enumerate()
+    {
+        assert_eq!(row["Match"], matches, "repetition case {index}: {pattern}");
+    }
+    assert_eq!(repetition_rows[13]["Replaced"], "a");
+    assert_eq!(repetition_rows[15]["Replaced"], "a/b");
+    assert_eq!(repetition_rows[16]["Replaced"], "🙂/a");
+    assert_eq!(repetition_rows[17]["Replaced"], "𐐨/b");
+    assert_eq!(repetition_rows[36]["Replaced"], "a/b");
+    assert_eq!(repetition_rows[37]["Replaced"], "🙂");
+    assert_eq!(repetition_rows[38]["Replaced"], "𐐨/b");
+    assert_eq!(repetition_rows[46]["Replaced"], "[aaaaaab:a:b]");
+    assert_eq!(repetition_rows[47]["Replaced"], "[aaaaaab:a:b]");
+    assert_eq!(repetition_rows[48]["Replaced"], "x[aaaaaa:a]y[aaaaaa:a]z");
+    assert_eq!(
+        repetition_rows[48]["Tokens"],
+        serde_json::json!([{"Value": "x"}, {"Value": "y"}, {"Value": "z"}])
+    );
+    assert_eq!(
+        repetition_rows[49]["Replaced"],
+        "x [aaaaaa:a] y [aaaaaa:a] z"
+    );
+    assert_eq!(
+        repetition_rows[49]["Tokens"],
+        serde_json::json!([{"Value": "x "}, {"Value": " y "}, {"Value": " z"}])
     );
     super::json_text_boundaries::run_generated_boundary_cases(
         &project,

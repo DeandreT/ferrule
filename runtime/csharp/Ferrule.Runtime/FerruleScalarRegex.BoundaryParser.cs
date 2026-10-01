@@ -18,7 +18,9 @@ internal static partial class FerruleScalarRegex
         uint Minimum = 0,
         uint? Maximum = 0,
         bool Lazy = false,
-        int Capture = 0);
+        int Capture = 0,
+        int Height = 0,
+        bool IsNullable = true);
 
     private sealed partial class Translator
     {
@@ -41,7 +43,23 @@ internal static partial class FerruleScalarRegex
             {
                 throw Invalid("word-boundary regex exceeds its AST limit");
             }
-            return node;
+            // Source group depth alone does not bound nested repetitions and
+            // other structural nodes. Compute height bottom-up before either
+            // recursive compiler pass can visit the completed tree.
+            var height = node.Children is null ? 0 : 1 + node.Children.Max(child => child.Height);
+            if (height > MaximumBoundaryDepth)
+            {
+                throw Invalid("word-boundary regex exceeds its structural nesting limit");
+            }
+            var nullable = node.Kind switch {
+                BoundaryKind.Consume => false,
+                BoundaryKind.Sequence => node.Children!.All(child => child.IsNullable),
+                BoundaryKind.Alternate => node.Children!.Any(child => child.IsNullable),
+                BoundaryKind.Capture => node.Children![0].IsNullable,
+                BoundaryKind.Repeat => node.Minimum == 0 || node.Children![0].IsNullable,
+                _ => true,
+            };
+            return node with { Height = height, IsNullable = nullable };
         }
 
         private BoundaryNode BoundaryExpression()
@@ -73,36 +91,12 @@ internal static partial class FerruleScalarRegex
                 var atom = BoundaryAtom();
                 if (atom is null) { continue; }
                 SkipIgnored();
-                if (_index < _source.Length && _source[_index] is '*' or '+' or '?' or '{')
+                while (_index < _source.Length && _source[_index] is '*' or '+' or '?' or '{')
                 {
-                    var quantifier = _source[_index++];
-                    uint minimum;
-                    uint? maximum;
-                    switch (quantifier)
-                    {
-                        case '*': minimum = 0; maximum = null; break;
-                        case '+': minimum = 1; maximum = null; break;
-                        case '?': minimum = 0; maximum = 1; break;
-                        default:
-                            SkipIgnored();
-                            minimum = Decimal(); maximum = minimum;
-                            if (_index < _source.Length && _source[_index] == ',')
-                            {
-                                _index++; SkipIgnored();
-                                maximum = _index < _source.Length && _source[_index] == '}' ? null : Decimal();
-                            }
-                            if (_index == _source.Length || _source[_index++] != '}'
-                                || maximum.HasValue && maximum < minimum)
-                            {
-                                throw Invalid("malformed repetition quantifier");
-                            }
-                            break;
-                    }
-                    SkipIgnored();
-                    var lazy = _index < _source.Length && _source[_index] == '?';
-                    if (lazy) { _index++; }
+                    var repetition = ReadRepetition();
                     atom = BoundaryNew(new(BoundaryKind.Repeat, Children: new[] { atom },
-                        Minimum: minimum, Maximum: maximum, Lazy: lazy));
+                        Minimum: repetition.Minimum, Maximum: repetition.Maximum, Lazy: repetition.Lazy));
+                    SkipIgnored();
                 }
                 items.Add(atom);
             }
