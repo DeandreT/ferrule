@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against forty-one supported local, gitignored mappings.
+//! Opt-in generated-backend execution against forty-two supported local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -7,6 +7,8 @@ use super::*;
 
 #[path = "reference_corpus/numeric_picture.rs"]
 mod numeric_picture;
+#[path = "reference_corpus/office_lines.rs"]
+mod office_lines;
 
 #[derive(Clone, Copy)]
 enum SourceKind {
@@ -46,7 +48,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 41] = [
+const CASES: [CorpusCase; 42] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -292,6 +294,12 @@ const CASES: [CorpusCase; 41] = [
         input: numeric_picture::INPUT,
         source_kind: SourceKind::Xml,
         target_kind: TargetKind::Csv,
+    },
+    CorpusCase {
+        sample: office_lines::SAMPLE,
+        input: office_lines::INPUT,
+        source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
     },
 ];
 
@@ -1479,6 +1487,9 @@ fn run_case(
         assert_eq!(years[0]["MinimumTemp"], -0.5);
         assert_eq!(years[0]["MaximumTemp"], 24.0);
         assert_eq!(years[0]["AverageTemp"], 11.6);
+    }
+    if sample == office_lines::SAMPLE {
+        office_lines::assert_case(&project, &source, &source_json, &expected, &expected_json)?;
     }
     let expected_csv = if sample == numeric_picture::SAMPLE {
         Some(numeric_picture::assert_case(
