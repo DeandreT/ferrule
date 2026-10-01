@@ -1,7 +1,65 @@
+use std::collections::BTreeSet;
+
+use ir::{ScalarType, SchemaNode};
+
 use super::parse_u32;
 
 const CSV_SINGLETON_BEFORE: &str = "\u{1f}ferrule-csv-singleton-before";
 const CSV_SINGLETON_AFTER: &str = "\u{1f}ferrule-csv-singleton-after";
+
+pub(super) fn warn_text_encoding(
+    text: &roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) {
+    if text
+        .attribute("encoding")
+        .is_some_and(|encoding| encoding != "1000")
+    {
+        warnings.push(format!(
+            "csv component `{component_name}` declares an unsupported text encoding; \
+             only UTF-8 encoding code 1000 is supported; imported using UTF-8"
+        ));
+    }
+}
+
+pub(super) fn field_declarations(
+    names: &roxmltree::Node<'_, '_>,
+) -> Result<Vec<SchemaNode>, &'static str> {
+    let mut declarations = names
+        .children()
+        .filter(|node| node.is_element() && node.tag_name().name().starts_with("field"))
+        .map(|node| {
+            node.tag_name()
+                .name()
+                .strip_prefix("field")
+                .and_then(|suffix| suffix.parse::<usize>().ok())
+                .map(|index| (index, node))
+                .ok_or("has a field declaration without a valid numeric suffix")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    declarations.sort_by_key(|(index, _)| *index);
+    if declarations.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+        return Err("has duplicate field declaration indexes");
+    }
+    let mut field_names = BTreeSet::new();
+    declarations
+        .into_iter()
+        .map(|(_, field)| {
+            let name = field.attribute("name").unwrap_or_default();
+            if name.is_empty() || !field_names.insert(name) {
+                return Err("has an empty or duplicate field name");
+            }
+            let ty = match field.attribute("type") {
+                Some("number" | "decimal" | "double" | "float") => ScalarType::Float,
+                Some("integer" | "int") => ScalarType::Int,
+                Some("boolean") => ScalarType::Bool,
+                _ => ScalarType::String,
+            };
+            Ok(SchemaNode::scalar(name, ty))
+        })
+        .collect()
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum SingletonPosition {
