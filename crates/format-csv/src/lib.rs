@@ -12,7 +12,7 @@ use std::io::Read as _;
 use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
-use mapping::FormatOptions;
+use mapping::{CsvTextRepairDependency, FormatOptions};
 use thiserror::Error;
 
 mod fixed_width;
@@ -36,6 +36,7 @@ pub struct CsvWriteOptions {
     pub quote_disabled: bool,
     pub has_headers: bool,
     pub utf8_bom: bool,
+    pub repair_dependency: Option<CsvTextRepairDependency>,
 }
 
 impl Default for CsvWriteOptions {
@@ -46,6 +47,7 @@ impl Default for CsvWriteOptions {
             quote_disabled: false,
             has_headers: true,
             utf8_bom: false,
+            repair_dependency: None,
         }
     }
 }
@@ -58,12 +60,15 @@ impl From<&FormatOptions> for CsvWriteOptions {
             quote_disabled: options.csv_quote_disabled,
             has_headers: options.has_header_row.unwrap_or(true),
             utf8_bom: options.csv_utf8_bom,
+            repair_dependency: options.csv_text_repair_dependency,
         }
     }
 }
 
 #[derive(Debug, Error)]
 pub enum CsvFormatError {
+    #[error("CSV boundary requires {0}")]
+    RepairDependency(CsvTextRepairDependency),
     #[error("csv error: {0}")]
     Csv(#[from] csv::Error),
     #[error("io error: {0}")]
@@ -438,6 +443,7 @@ pub fn to_string_with_options(
     rows: &[Instance],
     options: &CsvWriteOptions,
 ) -> Result<String, CsvFormatError> {
+    require_executable_dependency(options.repair_dependency)?;
     let fields = row_fields(schema)?;
     let (delimiter, quote) =
         dialect_bytes(options.delimiter, options.quote, options.quote_disabled)?;
@@ -643,6 +649,16 @@ fn instance_type_name(instance: &Instance) -> &'static str {
         Instance::Repeated(_) => "repeated",
         Instance::MappedSequence(_) => "mapped sequence",
         Instance::DocumentSet(_) => "document set",
+    }
+}
+
+/// Reject a persisted repair marker before configured physical or payload I/O.
+pub fn require_executable_dependency(
+    dependency: Option<CsvTextRepairDependency>,
+) -> Result<(), CsvFormatError> {
+    match dependency {
+        Some(dependency) => Err(CsvFormatError::RepairDependency(dependency)),
+        None => Ok(()),
     }
 }
 

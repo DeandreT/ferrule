@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::FormatOptions;
+use mapping::{CsvTextRepairDependency, FormatOptions};
 
 use crate::{CsvFormatError, dialect_bytes, parse_present_value, row_fields};
 
@@ -14,6 +14,7 @@ pub struct CsvReadOptions {
     pub quote_disabled: bool,
     pub has_headers: bool,
     pub preserve_empty_strings: bool,
+    pub repair_dependency: Option<CsvTextRepairDependency>,
 }
 
 impl Default for CsvReadOptions {
@@ -24,6 +25,7 @@ impl Default for CsvReadOptions {
             quote_disabled: false,
             has_headers: true,
             preserve_empty_strings: false,
+            repair_dependency: None,
         }
     }
 }
@@ -36,6 +38,7 @@ impl From<&FormatOptions> for CsvReadOptions {
             quote_disabled: options.csv_quote_disabled,
             has_headers: options.has_header_row.unwrap_or(true),
             preserve_empty_strings: options.csv_preserve_empty_strings,
+            repair_dependency: options.csv_text_repair_dependency,
         }
     }
 }
@@ -92,6 +95,7 @@ pub fn read_with_options(
     schema: &SchemaNode,
     options: &CsvReadOptions,
 ) -> Result<Vec<Instance>, CsvFormatError> {
+    crate::require_executable_dependency(options.repair_dependency)?;
     let fields = row_fields(schema)?;
     let (delimiter, quote) =
         dialect_bytes(options.delimiter, options.quote, options.quote_disabled)?;
@@ -157,6 +161,7 @@ pub fn from_str_with_options(
     schema: &SchemaNode,
     options: &CsvReadOptions,
 ) -> Result<Vec<Instance>, CsvFormatError> {
+    crate::require_executable_dependency(options.repair_dependency)?;
     let fields = row_fields(schema)?;
     let (delimiter, quote) =
         dialect_bytes(options.delimiter, options.quote, options.quote_disabled)?;

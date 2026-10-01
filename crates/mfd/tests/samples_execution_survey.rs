@@ -940,6 +940,12 @@ fn runtime_dependency_messages(project: &Project) -> Vec<String> {
                 .into_iter()
                 .map(|dependency| dependency.to_string()),
         )
+        .chain(
+            project
+                .csv_runtime_dependencies()
+                .into_iter()
+                .map(|dependency| dependency.to_string()),
+        )
         .collect()
 }
 
@@ -952,6 +958,35 @@ fn write_self_authored_pdf_repair_case(directory: &Path) -> Result<PathBuf, Box<
         directory.join("warehouse.pxt"),
     )?;
     Ok(design)
+}
+
+fn write_self_authored_csv_repair_case(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let design = directory.join("mapping.mfd");
+    std::fs::write(&design, include_str!("fixtures/csv-text-repair.mfd"))?;
+    Ok(design)
+}
+
+#[test]
+fn self_authored_csv_repair_blocks_execution_before_loading_inputs() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let inputs = workspace.0.join("csv-inputs");
+    std::fs::create_dir(&inputs)?;
+    let design = write_self_authored_csv_repair_case(&inputs)?;
+    let outcome = survey_file(
+        0,
+        &design,
+        &inputs,
+        &workspace,
+        None,
+        &mfd::ImportOptions::default(),
+    );
+    assert_eq!(outcome.validation.status, Status::DependencyBlocked);
+    assert_eq!(outcome.execution.status, Status::DependencyBlocked);
+    assert_eq!(outcome.runtime_dependencies.len(), 1);
+    assert!(outcome.runtime_dependencies[0].contains("CSV text settings"));
+    assert_eq!(outcome.output_write.status, Status::Skipped);
+    assert!(!workspace.0.join("sample-0").exists());
+    Ok(())
 }
 
 #[test]

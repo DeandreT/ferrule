@@ -92,6 +92,16 @@ pub fn assess_import(imported: &Imported) -> ImportReport {
             }),
     );
     issues.extend(
+        imported
+            .project
+            .csv_runtime_dependencies()
+            .into_iter()
+            .map(|dependency| ImportIssue {
+                kind: ImportIssueKind::RuntimeDependency,
+                message: dependency.to_string(),
+            }),
+    );
+    issues.extend(
         engine::validate(&imported.project)
             .into_iter()
             .map(|finding| ImportIssue {

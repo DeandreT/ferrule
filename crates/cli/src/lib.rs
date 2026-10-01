@@ -1571,6 +1571,7 @@ fn validate_csv_metadata_identity(
     options: &FormatOptions,
     side: &str,
 ) -> anyhow::Result<()> {
+    format_csv::require_executable_dependency(options.csv_text_repair_dependency)?;
     if options.csv_preserve_empty_strings
         && !matches!(
             extension_for_dispatch(path, options)?.as_str(),

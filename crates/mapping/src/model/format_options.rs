@@ -3,10 +3,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint,
-    ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout,
-    IdocNativeConfig, IdocNativeTextSettings, NodeId, PdfLayout, ProtobufOptions, SwiftMtLayout,
-    TabularBoundaryKind, WsdlMessageOptions, X12Separators, XbrlBoundaryOptions,
+    CsvTextRepairDependency, EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat,
+    EdiValueConstraint, ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions,
+    IdocLayout, IdocNativeConfig, IdocNativeTextSettings, NodeId, PdfLayout, ProtobufOptions,
+    SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators, XbrlBoundaryOptions,
     XlsxHierarchicalLayout, is_false,
 };
 
@@ -361,6 +361,10 @@ pub struct FormatOptions {
     /// treating empty text as absent.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub csv_preserve_empty_strings: bool,
+    /// Unsupported native CSV text settings retained on an editable repair draft.
+    /// Configured byte readers/writers and faithful export must reject this marker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub csv_text_repair_dependency: Option<CsvTextRepairDependency>,
     /// CSV: whether the file's first row is a header (default true).
     #[serde(default)]
     pub has_header_row: Option<bool>,

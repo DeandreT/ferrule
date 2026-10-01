@@ -74,6 +74,12 @@ fn rendering_preserves_default_csv_explicit_documents_and_configured_layouts() -
     let variants = vec![
         FormatOptions::default(),
         FormatOptions {
+            csv_text_repair_dependency: Some(mapping::CsvTextRepairDependency::new(
+                mapping::CsvTextRepairCause::ByteOrderMark,
+            )),
+            ..FormatOptions::default()
+        },
+        FormatOptions {
             has_header_row: Some(false),
             csv_utf8_bom: true,
             ..FormatOptions::default()
@@ -224,7 +230,13 @@ fn deliberate_document_switches_clear_previous_binary_csv_and_bom_settings() -> 
         has_header_row: Some(false),
         ..FormatOptions::default()
     };
-    for previous in [csv, protobuf] {
+    let repair = FormatOptions {
+        csv_text_repair_dependency: Some(mapping::CsvTextRepairDependency::new(
+            mapping::CsvTextRepairCause::Encoding,
+        )),
+        ..csv.clone()
+    };
+    for previous in [csv, protobuf, repair] {
         for kind in [
             DocumentKind::Xml,
             DocumentKind::Json,

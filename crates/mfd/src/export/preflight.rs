@@ -283,6 +283,11 @@ fn validate_csv_metadata_identity(
     options: &FormatOptions,
     side_name: &str,
 ) -> Result<(), MfdError> {
+    if let Some(dependency) = options.csv_text_repair_dependency {
+        return Err(MfdError::Unsupported(format!(
+            "the {side_name} requires {dependency}"
+        )));
+    }
     if options.csv_preserve_empty_strings && side_format(path, options) != SideFormat::Csv {
         return Err(MfdError::Unsupported(format!(
             "the {side_name} keeps empty CSV text fields on a non-CSV boundary"
