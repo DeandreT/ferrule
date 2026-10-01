@@ -14,6 +14,7 @@ pub(super) struct AlternativeExportPlan<'a> {
     group_views: BTreeMap<usize, Vec<String>>,
     alternatives_by_base: BTreeMap<String, BTreeSet<String>>,
     definitions: BTreeMap<String, TypeDefinition<'a>>,
+    recursive_types: BTreeMap<String, String>,
     external_names: BTreeMap<(bool, String, String), String>,
     external_namespaces: Vec<(String, String)>,
     external_imports: Vec<(String, String)>,
@@ -73,6 +74,7 @@ impl<'a> AlternativeExportPlan<'a> {
             group_views: BTreeMap::new(),
             alternatives_by_base: BTreeMap::new(),
             definitions: BTreeMap::new(),
+            recursive_types: BTreeMap::new(),
             external_names: BTreeMap::new(),
             external_namespaces: Vec::new(),
             external_imports: Vec::new(),
@@ -117,6 +119,36 @@ impl<'a> AlternativeExportPlan<'a> {
 
     pub(super) fn export_namespace(&self) -> Option<&str> {
         self.export_namespace.as_deref()
+    }
+
+    pub(super) fn type_names(&self) -> impl Iterator<Item = &String> {
+        self.definitions.keys()
+    }
+
+    pub(super) fn allocate_recursive_type_names(
+        &mut self,
+        anchors: &BTreeMap<String, &SchemaNode>,
+        mut reserved: BTreeSet<String>,
+    ) {
+        reserved.extend(self.definitions.keys().cloned());
+        for (anchor, node) in anchors {
+            if let Some(base) = self.groups.get(&node_key(node)) {
+                self.recursive_types.insert(anchor.clone(), base.clone());
+                continue;
+            }
+            let stem = format!("{anchor}Type");
+            let mut name = stem.clone();
+            let mut suffix = 2;
+            while !reserved.insert(name.clone()) {
+                name = format!("{stem}{suffix}");
+                suffix += 1;
+            }
+            self.recursive_types.insert(anchor.clone(), name);
+        }
+    }
+
+    pub(super) fn recursive_type_name(&self, anchor: &str) -> &str {
+        &self.recursive_types[anchor]
     }
 
     pub(super) fn needs_legacy_name_markers(&self) -> bool {
