@@ -4,9 +4,11 @@ use anyhow::{Context as _, bail};
 use ir::{ScalarType, SchemaNode};
 use mapping::{FormatOptions, Graph, Project, Scope, TabularBoundaryKind};
 
+mod fixed_width;
 mod flextext;
 mod format_options;
 mod protobuf;
+pub(super) use fixed_width::FixedWidthBoundaryDraft;
 pub(super) use flextext::FlexTextBoundaryDraft;
 pub(crate) use flextext::is_flextext_configuration;
 pub(crate) use format_options::{
@@ -31,6 +33,7 @@ pub(super) struct ImportedSchema {
 
 pub(super) enum MappingBoundary {
     Schema(Box<ImportedSchema>),
+    FixedWidth(Box<FixedWidthBoundaryDraft>),
     Csv(CsvBoundaryDraft),
     Sqlite(Box<SqliteBoundaryDraft>),
     Protobuf(Box<ProtobufBoundaryDraft>),
@@ -370,6 +373,7 @@ impl NewMappingSetup {
     pub(super) fn can_create(&self) -> bool {
         let ready = |boundary: &MappingBoundary, target| match boundary {
             MappingBoundary::Schema(_) => true,
+            MappingBoundary::FixedWidth(draft) => draft.validate().is_ok(),
             MappingBoundary::Csv(draft) => draft.validate().is_ok(),
             MappingBoundary::Sqlite(draft) => draft.schema(target).is_ok(),
             MappingBoundary::Protobuf(draft) => draft.validate().is_ok(),
@@ -390,6 +394,11 @@ impl NewMappingSetup {
         let mut project = blank_project();
         match source {
             MappingBoundary::Schema(imported) => project.source = imported.schema.clone(),
+            MappingBoundary::FixedWidth(draft) => {
+                project.source = draft.schema.clone();
+                project.source_options = draft.options()?;
+                project.source_path = draft.instance_path();
+            }
             MappingBoundary::Csv(draft) => {
                 project.source = draft.schema()?;
                 project.source_options = draft.options()?;
@@ -412,6 +421,11 @@ impl NewMappingSetup {
         }
         match target {
             MappingBoundary::Schema(imported) => project.target = imported.schema.clone(),
+            MappingBoundary::FixedWidth(draft) => {
+                project.target = draft.schema.clone();
+                project.target_options = draft.options()?;
+                project.target_path = draft.instance_path();
+            }
             MappingBoundary::Csv(draft) => {
                 project.target = draft.schema()?;
                 project.target_options = draft.options()?;

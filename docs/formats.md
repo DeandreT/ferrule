@@ -365,9 +365,12 @@ the form retains the file so you can correct its delimiter or quote settings;
 creation stays blocked until a bounded preview succeeds. Missing or unreadable
 file selections preserve the previous source draft.
 
-Named outputs with flat scalar schemas also offer fixed-width setup. Widths
-count Unicode characters, and each layout retains its fill character and
-fill-only input policy. Delimited records write LF and accept LF/CRLF on input;
+The new-mapping form offers fixed-width setup after importing a flat XSD or
+JSON Schema for either side. Source and target retain independent layouts and
+optional data paths; configuration does not open the data file. Named outputs
+with flat scalar schemas also offer fixed-width setup. Widths count Unicode
+characters, and each layout retains its fill character and fill-only input
+policy. Delimited records write LF and accept LF/CRLF on input;
 contiguous records have no line endings. Pending changes leave the existing
 format untouched until Add/Save, and can be abandoned. Saved layouts survive
 name and path edits, including filenames with other format extensions.

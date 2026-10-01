@@ -1,7 +1,7 @@
 use ir::{SchemaKind, SchemaNode};
 use mapping::{FixedFieldWidth, FixedWidthLayout};
 
-/// Edits a layout without changing the saved target until Add or Save succeeds.
+/// Edits a layout without changing the saved boundary until setup is accepted.
 #[derive(Debug, Clone)]
 pub(crate) struct FixedWidthTargetDraft {
     schema: SchemaNode,
@@ -14,26 +14,26 @@ pub(crate) struct FixedWidthTargetDraft {
 
 pub(crate) fn flat_scalar_fields(schema: &SchemaNode) -> Result<Vec<&SchemaNode>, String> {
     if schema.repeating {
-        return Err("fixed-width target root must not repeat; its scope supplies rows".into());
+        return Err("fixed-width root must not repeat; its scope supplies rows".into());
     }
     let SchemaKind::Group { children, .. } = &schema.kind else {
-        return Err("fixed-width target needs a flat group of scalar fields".into());
+        return Err("fixed-width layout needs a flat group of scalar fields".into());
     };
     if children.is_empty() {
-        return Err("fixed-width target needs at least one scalar field".into());
+        return Err("fixed-width layout needs at least one scalar field".into());
     }
     if children
         .iter()
         .any(|field| !matches!(field.kind, SchemaKind::Scalar { .. }) || field.repeating)
     {
-        return Err("fixed-width target fields must be direct, non-repeating scalars".into());
+        return Err("fixed-width fields must be direct, non-repeating scalars".into());
     }
     let mut names = std::collections::BTreeSet::new();
     if children
         .iter()
         .any(|field| field.name.is_empty() || !names.insert(field.name.as_str()))
     {
-        return Err("fixed-width target fields need distinct, nonempty names".into());
+        return Err("fixed-width fields need distinct, nonempty names".into());
     }
     Ok(children.iter().collect())
 }
@@ -45,7 +45,7 @@ pub(crate) fn validate_layout_for_schema(
     let fields = flat_scalar_fields(schema)?;
     if fields.len() != layout.field_widths().len() {
         return Err(format!(
-            "fixed-width layout has {} widths for {} target fields",
+            "fixed-width layout has {} widths for {} fields",
             layout.field_widths().len(),
             fields.len()
         ));
@@ -85,11 +85,14 @@ impl FixedWidthTargetDraft {
         schema: &SchemaNode,
     ) -> Result<FixedWidthLayout, String> {
         if schema != &self.schema {
-            return Err("target schema changed while configuring fixed-width fields; start the layout again".into());
+            return Err(
+                "schema changed while configuring fixed-width fields; start the layout again"
+                    .into(),
+            );
         }
         let fields = flat_scalar_fields(schema)?;
         if fields.len() != self.widths.len() {
-            return Err("fixed-width field count no longer matches the target schema".into());
+            return Err("fixed-width field count no longer matches the boundary schema".into());
         }
         let widths = self
             .widths

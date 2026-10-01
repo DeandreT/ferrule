@@ -3,6 +3,8 @@ use crate::new_mapping::{
     CsvBoundaryDraft, CsvColumnDraft, CsvQuoteMode, MappingBoundary, SqliteBoundaryDraft,
 };
 
+#[path = "new_mapping/fixed_width.rs"]
+mod fixed_width;
 #[path = "new_mapping/flextext.rs"]
 mod flextext;
 #[path = "new_mapping/protobuf.rs"]
@@ -188,6 +190,15 @@ impl FerruleApp {
                     {
                         action = Some(NewMappingAction::ChooseCsvSource);
                     }
+                    if setup.source.as_ref().is_some_and(|boundary| {
+                        matches!(boundary, MappingBoundary::Schema(imported)
+                            if crate::extra_targets::flat_scalar_fields(&imported.schema).is_ok())
+                    }) && ui
+                        .add_enabled(dialog_idle, egui::Button::new("Configure fixed-width"))
+                        .clicked()
+                    {
+                        action = Some(NewMappingAction::ConfigureFixedWidth(SchemaSide::Source));
+                    }
                     if ui
                         .add_enabled(dialog_idle, egui::Button::new("Choose SQLite..."))
                         .clicked()
@@ -201,6 +212,11 @@ impl FerruleApp {
                     show_csv_columns(ui, draft, true);
                     show_csv_preview(ui, draft);
                     show_csv_validation(ui, draft);
+                }
+                if let Some(MappingBoundary::FixedWidth(draft)) = setup.source.as_mut()
+                    && fixed_width::show_options(ui, draft, false)
+                {
+                    action = Some(NewMappingAction::AbandonFixedWidth(SchemaSide::Source));
                 }
                 if let Some(MappingBoundary::Protobuf(draft)) = setup.source.as_mut() {
                     protobuf::show_options(ui, draft, "source", false);
@@ -230,6 +246,15 @@ impl FerruleApp {
                             .clicked()
                     {
                         action = Some(NewMappingAction::ConfigureCsvTarget);
+                    }
+                    if setup.target.as_ref().is_some_and(|boundary| {
+                        matches!(boundary, MappingBoundary::Schema(imported)
+                            if crate::extra_targets::flat_scalar_fields(&imported.schema).is_ok())
+                    }) && ui
+                        .add_enabled(dialog_idle, egui::Button::new("Configure fixed-width"))
+                        .clicked()
+                    {
+                        action = Some(NewMappingAction::ConfigureFixedWidth(SchemaSide::Target));
                     }
                     if ui
                         .add_enabled(dialog_idle, egui::Button::new("Choose SQLite..."))
@@ -271,6 +296,11 @@ impl FerruleApp {
                         });
                     }
                     show_csv_validation(ui, draft);
+                }
+                if let Some(MappingBoundary::FixedWidth(draft)) = setup.target.as_mut()
+                    && fixed_width::show_options(ui, draft, true)
+                {
+                    action = Some(NewMappingAction::AbandonFixedWidth(SchemaSide::Target));
                 }
                 if let Some(MappingBoundary::Protobuf(draft)) = setup.target.as_mut() {
                     protobuf::show_options(ui, draft, "target", true);
@@ -372,6 +402,12 @@ impl FerruleApp {
                     setup.target = Some(MappingBoundary::Csv(CsvBoundaryDraft::target()));
                 }
             }
+            Some(NewMappingAction::ConfigureFixedWidth(side)) => {
+                self.configure_mapping_fixed_width(side);
+            }
+            Some(NewMappingAction::AbandonFixedWidth(side)) => {
+                self.abandon_mapping_fixed_width(side);
+            }
             Some(NewMappingAction::ChooseCsvTargetOutput) => {
                 let current = self
                     .new_mapping_setup
@@ -380,6 +416,7 @@ impl FerruleApp {
                     .and_then(|boundary| match boundary {
                         MappingBoundary::Csv(draft) => Some(draft.path.as_str()),
                         MappingBoundary::Schema(_)
+                        | MappingBoundary::FixedWidth(_)
                         | MappingBoundary::Sqlite(_)
                         | MappingBoundary::Protobuf(_)
                         | MappingBoundary::FlexText(_) => None,
@@ -451,6 +488,9 @@ fn boundary_label(boundary: Option<&MappingBoundary>) -> String {
     match boundary {
         None => "Not selected".to_owned(),
         Some(MappingBoundary::Schema(imported)) => imported.path.display().to_string(),
+        Some(MappingBoundary::FixedWidth(draft)) => {
+            format!("Fixed-width: {}", draft.schema_path.display())
+        }
         Some(MappingBoundary::Csv(draft)) if draft.path.is_empty() => "CSV".to_owned(),
         Some(MappingBoundary::Csv(draft)) => format!("CSV: {}", draft.path),
         Some(MappingBoundary::Sqlite(draft)) if draft.table.is_empty() => {
@@ -735,6 +775,8 @@ enum NewMappingAction {
     ChooseSqlite(SchemaSide),
     LoadSqliteTable(SchemaSide),
     ConfigureCsvTarget,
+    ConfigureFixedWidth(SchemaSide),
+    AbandonFixedWidth(SchemaSide),
     ChooseCsvTargetOutput,
     ChooseSqliteTargetOutput,
     Cancel,
@@ -744,6 +786,10 @@ enum NewMappingAction {
 #[cfg(test)]
 #[path = "new_mapping/csv_quote_tests.rs"]
 mod csv_quote_tests;
+
+#[cfg(test)]
+#[path = "new_mapping/fixed_width_tests.rs"]
+mod fixed_width_tests;
 
 #[cfg(test)]
 mod tests {
