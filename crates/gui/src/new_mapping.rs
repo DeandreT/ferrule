@@ -4,6 +4,9 @@ use anyhow::{Context as _, bail};
 use ir::{ScalarType, SchemaNode};
 use mapping::{FormatOptions, Graph, Project, Scope, TabularBoundaryKind};
 
+mod protobuf;
+pub(super) use protobuf::ProtobufBoundaryDraft;
+
 #[derive(Default)]
 pub(super) struct NewMappingSetup {
     pub(super) source: Option<MappingBoundary>,
@@ -19,6 +22,7 @@ pub(super) enum MappingBoundary {
     Schema(Box<ImportedSchema>),
     Csv(CsvBoundaryDraft),
     Sqlite(Box<SqliteBoundaryDraft>),
+    Protobuf(Box<ProtobufBoundaryDraft>),
 }
 
 pub(super) struct SqliteBoundaryDraft {
@@ -295,6 +299,22 @@ impl CsvBoundaryDraft {
 }
 
 impl NewMappingSetup {
+    pub(super) fn can_create(&self) -> bool {
+        let ready = |boundary: &MappingBoundary, target| match boundary {
+            MappingBoundary::Schema(_) => true,
+            MappingBoundary::Csv(draft) => draft.validate().is_ok(),
+            MappingBoundary::Sqlite(draft) => draft.schema(target).is_ok(),
+            MappingBoundary::Protobuf(draft) => draft.validate().is_ok(),
+        };
+        self.source
+            .as_ref()
+            .is_some_and(|source| ready(source, false))
+            && self
+                .target
+                .as_ref()
+                .is_some_and(|target| ready(target, true))
+    }
+
     pub(super) fn build_project(&self) -> anyhow::Result<Project> {
         let source = self.source.as_ref().context("choose a source boundary")?;
         let target = self.target.as_ref().context("choose a target boundary")?;
@@ -310,6 +330,11 @@ impl NewMappingSetup {
                 project.source = draft.schema(false)?;
                 project.source_path = Some(draft.schema_path.clone());
             }
+            MappingBoundary::Protobuf(draft) => {
+                project.source = draft.schema()?;
+                project.source_options = draft.options()?;
+                project.source_path = draft.instance_path();
+            }
         }
         match target {
             MappingBoundary::Schema(imported) => project.target = imported.schema.clone(),
@@ -321,6 +346,11 @@ impl NewMappingSetup {
             MappingBoundary::Sqlite(draft) => {
                 project.target = draft.schema(true)?;
                 project.target_path = Some(draft.output_path.trim().to_owned());
+            }
+            MappingBoundary::Protobuf(draft) => {
+                project.target = draft.schema()?;
+                project.target_options = draft.options()?;
+                project.target_path = draft.instance_path();
             }
         }
         Ok(project)
