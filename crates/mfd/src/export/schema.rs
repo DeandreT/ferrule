@@ -66,6 +66,7 @@ pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOption
         _ if options.delimiter.is_some()
             || options.csv_quote.is_some()
             || options.csv_quote_disabled
+            || options.csv_preserve_empty_strings
             || options.has_header_row.is_some() =>
         {
             SideFormat::Csv
@@ -488,7 +489,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
                  \t\t\t\t\t\t<text type=\"csv\"{instance}>\n\
-                 \t\t\t\t\t\t\t<settings separator=\"{}\" quote=\"{}\" firstrownames=\"{}\">\n\
+                 \t\t\t\t\t\t\t<settings separator=\"{}\" quote=\"{}\" firstrownames=\"{}\" removeempty=\"{}\">\n\
                  \t\t\t\t\t\t\t\t<names root=\"{}\" block=\"Rows\">\n\
                  {field_decls}\
                  \t\t\t\t\t\t\t\t</names>\n\
@@ -504,6 +505,7 @@ pub(super) fn render_schema_component(
                     xml_escape(&options.csv_quote.unwrap_or('"').to_string())
                 },
                 options.has_header_row.unwrap_or(true),
+                !options.csv_preserve_empty_strings,
                 xml_escape(&schema.name),
             );
         }
@@ -511,6 +513,7 @@ pub(super) fn render_schema_component(
             if options.delimiter.is_some()
                 || options.csv_quote.is_some()
                 || options.csv_quote_disabled
+                || options.csv_preserve_empty_strings
                 || options.has_header_row.is_some()
             {
                 return Err(MfdError::Unsupported(format!(
