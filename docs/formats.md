@@ -358,6 +358,21 @@ omit the BOM. Readers accept UTF-8 with or without a BOM. CSV target setup
 exposes “UTF-8 byte order mark.” Selecting another format with this option
 rejects before output publication.
 
+The CSV setup form selects double quotes, a custom printable ASCII character,
+or disabled quoting independently for source and target. Source previews use
+the selected dialect. If the first preview exceeds its width or byte limit,
+the form retains the file so you can correct its delimiter or quote settings;
+creation stays blocked until a bounded preview succeeds. Missing or unreadable
+file selections preserve the previous source draft.
+
+Named outputs with flat scalar schemas also offer fixed-width setup. Widths
+count Unicode characters, and each layout retains its fill character and
+fill-only input policy. Delimited records write LF and accept LF/CRLF on input;
+contiguous records have no line endings. Pending changes leave the existing
+format untouched until Add/Save, and can be abandoned. Saved layouts survive
+name and path edits, including filenames with other format extensions.
+Replacing their ordered schema requires explicitly changing format first.
+
 ### Creating FlexText mappings
 
 In the native editor's new mapping form, choose a `.mft` layout for either
@@ -366,6 +381,14 @@ layouts, including their delimiters, output line endings, and UTF-8 BOM
 settings. Optional data paths start empty; importing a layout does not open
 its configured data file. The editor derives the visible schema once and
 keeps the layout in the saved project, so runs do not need the original `.mft`.
+Named input and output schema choosers also accept `.mft`. Each boundary keeps
+its own layout through undo/redo and save/reopen after the configuration is
+removed. An input requires its own data path; an output path may remain empty.
+Pending layout changes remain separate from the saved boundary until Add/Save.
+An ordinary schema replacement must exactly match the embedded layout's schema,
+or you must explicitly change format first. Abandoning a pending source layout
+after changing a SQLite path or table requires a new table schema.
+
 Failed configuration imports leave both staged boundaries and the open mapping
 intact. The shared configuration reader stops after the 4 MiB limit plus one
 byte, before decoding or parsing oversized files.

@@ -11,6 +11,7 @@ pub struct ExtraSourceDraft {
     pub schema: Option<SchemaNode>,
     pub options: FormatOptions,
     pub(crate) protobuf_draft: Option<Box<crate::new_mapping::ProtobufBoundaryDraft>>,
+    pub(crate) flextext_draft: Option<Box<crate::new_mapping::FlexTextBoundaryDraft>>,
     pub sqlite_table: String,
     sqlite_loaded_from: Option<(String, String)>,
 }
@@ -23,6 +24,7 @@ pub enum ExtraSourceDraftError {
     MissingSchema,
     StaleSqliteSchema,
     InvalidProtobuf(String),
+    InvalidFlexText(String),
 }
 
 impl fmt::Display for ExtraSourceDraftError {
@@ -34,7 +36,9 @@ impl fmt::Display for ExtraSourceDraftError {
             }
             Self::EmptyInstancePath => formatter.write_str("instance path cannot be empty"),
             Self::MissingSchema => formatter.write_str("a source schema is required"),
-            Self::InvalidProtobuf(message) => formatter.write_str(message),
+            Self::InvalidProtobuf(message) | Self::InvalidFlexText(message) => {
+                formatter.write_str(message)
+            }
             Self::StaleSqliteSchema => {
                 formatter.write_str("reload the SQLite table after changing its path or name")
             }
@@ -63,12 +67,14 @@ impl ExtraSourceDraft {
 
     pub fn set_schema(&mut self, schema: SchemaNode) {
         self.protobuf_draft = None;
+        self.flextext_draft = None;
         self.schema = Some(schema);
         self.sqlite_loaded_from = None;
     }
 
     pub fn set_sqlite_schema(&mut self, schema: SchemaNode) {
         self.protobuf_draft = None;
+        self.flextext_draft = None;
         self.sqlite_loaded_from = Some((
             self.instance_path.trim().to_owned(),
             self.sqlite_table.trim().to_owned(),
@@ -78,23 +84,35 @@ impl ExtraSourceDraft {
 
     pub fn clear_schema(&mut self) {
         self.protobuf_draft = None;
+        self.flextext_draft = None;
         self.schema = None;
         self.sqlite_loaded_from = None;
     }
 
     pub(crate) fn stage_protobuf(&mut self, draft: crate::new_mapping::ProtobufBoundaryDraft) {
         self.protobuf_draft = Some(Box::new(draft));
+        self.flextext_draft = None;
+    }
+
+    pub(crate) fn stage_flextext(&mut self, draft: crate::new_mapping::FlexTextBoundaryDraft) {
+        self.flextext_draft = Some(Box::new(draft));
+        self.protobuf_draft = None;
     }
 
     pub(crate) fn use_path_format(&mut self) {
         self.protobuf_draft = None;
+        self.flextext_draft = None;
         self.options = FormatOptions::default();
     }
 
     pub(crate) fn schema_is_ready(&self) -> bool {
-        self.protobuf_draft
-            .as_ref()
-            .map_or(self.schema.is_some(), |draft| draft.has_valid_selection())
+        if let Some(draft) = &self.protobuf_draft {
+            draft.has_valid_selection()
+        } else if let Some(draft) = &self.flextext_draft {
+            draft.validate().is_ok()
+        } else {
+            self.schema.is_some()
+        }
     }
 
     /// Converts complete staged input into a project source.
@@ -115,6 +133,7 @@ impl ExtraSourceDraft {
             return Err(ExtraSourceDraftError::EmptyInstancePath);
         }
         if self.protobuf_draft.is_none()
+            && self.flextext_draft.is_none()
             && self
                 .sqlite_loaded_from
                 .as_ref()
@@ -131,6 +150,15 @@ impl ExtraSourceDraft {
                 })?,
                 draft.options().map_err(|error| {
                     ExtraSourceDraftError::InvalidProtobuf(format!("{error:#}"))
+                })?,
+            )
+        } else if let Some(draft) = self.flextext_draft {
+            (
+                draft.schema().map_err(|error| {
+                    ExtraSourceDraftError::InvalidFlexText(format!("{error:#}"))
+                })?,
+                draft.options().map_err(|error| {
+                    ExtraSourceDraftError::InvalidFlexText(format!("{error:#}"))
                 })?,
             )
         } else {
@@ -174,6 +202,7 @@ mod tests {
             schema: Some(schema("catalog")),
             options: FormatOptions::default(),
             protobuf_draft: None,
+            flextext_draft: None,
             sqlite_table: String::new(),
             sqlite_loaded_from: None,
         }

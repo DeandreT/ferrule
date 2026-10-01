@@ -3,6 +3,11 @@ use std::fmt;
 use ir::SchemaNode;
 use mapping::{FormatOptions, NamedTarget, Scope};
 
+mod fixed_width;
+pub(crate) use fixed_width::{
+    FixedWidthTargetDraft, flat_scalar_fields, validate_layout_for_schema,
+};
+
 /// Staged state for creating or editing one independently mapped output.
 #[derive(Debug, Clone, Default)]
 pub struct ExtraTargetDraft {
@@ -12,6 +17,8 @@ pub struct ExtraTargetDraft {
     pub schema: Option<SchemaNode>,
     pub options: FormatOptions,
     pub(crate) protobuf_draft: Option<Box<crate::new_mapping::ProtobufBoundaryDraft>>,
+    pub(crate) flextext_draft: Option<Box<crate::new_mapping::FlexTextBoundaryDraft>>,
+    pub(crate) fixed_width_draft: Option<FixedWidthTargetDraft>,
     pub root: Option<Scope>,
 }
 
@@ -22,6 +29,8 @@ pub enum ExtraTargetDraftError {
     MissingSchema,
     MissingTarget,
     InvalidProtobuf(String),
+    InvalidFlexText(String),
+    InvalidFixedWidth(String),
 }
 
 impl fmt::Display for ExtraTargetDraftError {
@@ -33,7 +42,10 @@ impl fmt::Display for ExtraTargetDraftError {
             }
             Self::MissingSchema => formatter.write_str("a target schema is required"),
             Self::MissingTarget => formatter.write_str("the target no longer exists"),
-            Self::InvalidProtobuf(message) => formatter.write_str(message),
+            Self::InvalidProtobuf(message) | Self::InvalidFlexText(message) => {
+                formatter.write_str(message)
+            }
+            Self::InvalidFixedWidth(message) => formatter.write_str(message),
         }
     }
 }
@@ -49,19 +61,57 @@ impl ExtraTargetDraft {
             schema: Some(target.schema.clone()),
             options: target.options.clone(),
             protobuf_draft: None,
+            flextext_draft: None,
+            fixed_width_draft: None,
             root: Some(target.root.clone()),
         }
     }
 
     pub(crate) fn use_path_format(&mut self) {
         self.protobuf_draft = None;
+        self.flextext_draft = None;
+        self.fixed_width_draft = None;
         self.options = FormatOptions::default();
     }
 
+    /// Begin an explicit format change. The existing options remain untouched
+    /// until the complete target draft is saved.
+    pub(crate) fn begin_fixed_width(&mut self) -> Result<(), String> {
+        if self.protobuf_draft.is_some() || self.flextext_draft.is_some() {
+            return Err(
+                "choose Use path format before replacing a pending embedded schema or layout"
+                    .into(),
+            );
+        }
+        let schema = self.schema.as_ref().ok_or("choose a target schema first")?;
+        self.fixed_width_draft = Some(FixedWidthTargetDraft::from_schema(
+            schema,
+            self.options.fixed_width.as_ref(),
+        )?);
+        Ok(())
+    }
+
+    pub(crate) fn abandon_fixed_width(&mut self) {
+        self.fixed_width_draft = None;
+    }
+
     pub(crate) fn schema_is_ready(&self) -> bool {
-        self.protobuf_draft
+        if let Some(draft) = &self.protobuf_draft {
+            return draft.has_valid_selection();
+        }
+        if let Some(draft) = &self.flextext_draft {
+            return draft.validate().is_ok();
+        }
+        let Some(schema) = &self.schema else {
+            return false;
+        };
+        if let Some(draft) = &self.fixed_width_draft {
+            return draft.layout_for_schema(schema).is_ok();
+        }
+        self.options
+            .fixed_width
             .as_ref()
-            .map_or(self.schema.is_some(), |draft| draft.has_valid_selection())
+            .is_none_or(|layout| validate_layout_for_schema(schema, layout).is_ok())
     }
 
     pub fn build(
@@ -91,11 +141,34 @@ impl ExtraTargetDraft {
                     ExtraTargetDraftError::InvalidProtobuf(format!("{error:#}"))
                 })?,
             )
-        } else {
+        } else if let Some(draft) = self.flextext_draft {
             (
-                self.schema.ok_or(ExtraTargetDraftError::MissingSchema)?,
-                self.options,
+                draft.schema().map_err(|error| {
+                    ExtraTargetDraftError::InvalidFlexText(format!("{error:#}"))
+                })?,
+                draft.options().map_err(|error| {
+                    ExtraTargetDraftError::InvalidFlexText(format!("{error:#}"))
+                })?,
             )
+        } else if let Some(draft) = self.fixed_width_draft {
+            let schema = self.schema.ok_or(ExtraTargetDraftError::MissingSchema)?;
+            let layout = draft
+                .layout_for_schema(&schema)
+                .map_err(ExtraTargetDraftError::InvalidFixedWidth)?;
+            (
+                schema,
+                FormatOptions {
+                    fixed_width: Some(layout),
+                    ..FormatOptions::default()
+                },
+            )
+        } else {
+            let schema = self.schema.ok_or(ExtraTargetDraftError::MissingSchema)?;
+            if let Some(layout) = &self.options.fixed_width {
+                validate_layout_for_schema(&schema, layout)
+                    .map_err(ExtraTargetDraftError::InvalidFixedWidth)?;
+            }
+            (schema, self.options)
         };
         Ok((
             self.editing,

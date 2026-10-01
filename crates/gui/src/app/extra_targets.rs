@@ -2,6 +2,9 @@ use super::*;
 
 use crate::extra_targets::remove_extra_target;
 
+#[path = "extra_targets/fixed_width.rs"]
+mod fixed_width;
+
 impl FerruleApp {
     pub(super) fn begin_extra_target(&mut self) {
         self.extra_target_draft = Some(ExtraTargetDraft::default());
@@ -15,6 +18,29 @@ impl FerruleApp {
     }
 
     pub(super) fn stage_extra_target_schema(&mut self, path: PathBuf) {
+        if crate::new_mapping::is_flextext_configuration(&path) {
+            match crate::new_mapping::FlexTextBoundaryDraft::from_configuration(path) {
+                Ok(flextext) => {
+                    let Some(draft) = self.extra_target_draft.as_mut() else {
+                        return;
+                    };
+                    if draft.name.trim().is_empty() {
+                        draft.name = flextext.layout().root_name().to_owned();
+                    }
+                    draft.flextext_draft = Some(Box::new(flextext));
+                    draft.protobuf_draft = None;
+                    draft.fixed_width_draft = None;
+                    self.status = "loaded target FlexText layout".to_owned();
+                    self.diagnostics.clear();
+                }
+                Err(error) => {
+                    self.status = "failed to load target FlexText layout".to_owned();
+                    self.diagnostics
+                        .error("FlexText layout import failed", format!("{error:#}"));
+                }
+            }
+            return;
+        }
         if crate::new_mapping::is_protobuf_schema(&path) {
             match crate::new_mapping::ProtobufBoundaryDraft::from_schema(path) {
                 Ok(protobuf) => {
@@ -22,6 +48,8 @@ impl FerruleApp {
                         return;
                     };
                     draft.protobuf_draft = Some(Box::new(protobuf));
+                    draft.flextext_draft = None;
+                    draft.fixed_width_draft = None;
                     self.status =
                         "loaded target Protocol Buffers schema; choose a root message".to_owned();
                     self.diagnostics.clear();
@@ -40,14 +68,37 @@ impl FerruleApp {
             let pending_options = self
                 .extra_target_draft
                 .as_ref()
-                .and_then(|draft| draft.protobuf_draft.as_ref())
-                .map(|protobuf| protobuf.options())
+                .and_then(|draft| {
+                    draft
+                        .protobuf_draft
+                        .as_ref()
+                        .map(|protobuf| protobuf.options())
+                        .or_else(|| {
+                            draft
+                                .flextext_draft
+                                .as_ref()
+                                .map(|flextext| flextext.options())
+                        })
+                })
                 .transpose()?;
             if let Some(draft) = self.extra_target_draft.as_ref() {
                 crate::new_mapping::validate_schema_replacement(
                     pending_options.as_ref().unwrap_or(&draft.options),
                     &schema,
                 )?;
+                if let Some(pending) = &draft.fixed_width_draft {
+                    pending
+                        .layout_for_schema(&schema)
+                        .map_err(anyhow::Error::msg)?;
+                } else if pending_options.is_none()
+                    && let Some(layout) = &draft.options.fixed_width
+                {
+                    if draft.schema.as_ref() != Some(&schema) {
+                        anyhow::bail!("the existing fixed-width widths belong to the current field order; choose From path before replacing this schema");
+                    }
+                    crate::extra_targets::validate_layout_for_schema(&schema, layout)
+                        .map_err(anyhow::Error::msg)?;
+                }
             }
             Ok((schema, pending_options))
         });
@@ -60,12 +111,15 @@ impl FerruleApp {
                     draft.name.clone_from(&schema.name);
                 }
                 draft.protobuf_draft = None;
+                draft.flextext_draft = None;
                 draft.schema = Some(schema);
                 if let Some(options) = pending_options {
                     draft.options = options;
                 }
                 self.status = if draft.options.protobuf.is_some() {
                     "loaded matching target schema; kept Protocol Buffers format".to_owned()
+                } else if draft.options.flextext.is_some() {
+                    "loaded matching target schema; kept FlexText format".to_owned()
                 } else {
                     format!("loaded target schema {}", path.display())
                 };
@@ -87,10 +141,22 @@ impl FerruleApp {
         let dialog_idle = self.pending_dialog.is_none();
         let schema_label = draft.protobuf_draft.as_ref().map_or_else(
             || {
-                draft
-                    .schema
-                    .as_ref()
-                    .map_or_else(|| "Not selected".to_owned(), |schema| schema.name.clone())
+                draft.flextext_draft.as_ref().map_or_else(
+                    || {
+                        draft
+                            .schema
+                            .as_ref()
+                            .map_or_else(|| "Not selected".to_owned(), |schema| schema.name.clone())
+                    },
+                    |flextext| {
+                        flextext
+                            .configuration_path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned()
+                    },
+                )
             },
             |protobuf| {
                 protobuf
@@ -145,8 +211,25 @@ impl FerruleApp {
                 ui.strong("Output format");
                 if draft.protobuf_draft.is_some() {
                     show_named_target_protobuf(ui, draft);
+                } else if draft.flextext_draft.is_some() {
+                    show_named_target_flextext(ui, draft);
+                } else if draft.fixed_width_draft.is_some() {
+                    fixed_width::show_options(ui, draft);
                 } else {
                     show_target_format_options(ui, &draft.output_path, &mut draft.options);
+                    if draft.schema.as_ref().is_some_and(|schema| {
+                        crate::extra_targets::flat_scalar_fields(schema).is_ok()
+                    }) && ui
+                        .button(if draft.options.fixed_width.is_some() {
+                            "Edit fixed-width layout"
+                        } else {
+                            "Configure fixed-width output"
+                        })
+                        .clicked()
+                        && let Err(error) = draft.begin_fixed_width()
+                    {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -170,7 +253,7 @@ impl FerruleApp {
             Some(ExtraTargetAction::ChooseSchema) => {
                 self.pending_dialog = Some((
                     DialogKind::BrowseExtraTargetSchema,
-                    pick_file("schema", &["xsd", "json", "proto"]),
+                    pick_file("schema or layout", &["xsd", "json", "proto", "mft"]),
                 ));
             }
             Some(ExtraTargetAction::ChooseOutput) => {
@@ -283,6 +366,17 @@ impl FerruleApp {
         } else {
             self.diagnostics.validation(&self.project, issues);
         }
+    }
+}
+
+fn show_named_target_flextext(ui: &mut egui::Ui, draft: &mut ExtraTargetDraft) {
+    let Some(flextext) = &draft.flextext_draft else {
+        return;
+    };
+    ui.strong("FlexText output");
+    flextext.show_summary(ui);
+    if ui.button("Use path format").clicked() {
+        draft.use_path_format();
     }
 }
 
@@ -454,3 +548,11 @@ mod protobuf_format_tests;
 #[cfg(test)]
 #[path = "extra_targets/named_protobuf_tests.rs"]
 mod named_protobuf_tests;
+
+#[cfg(test)]
+#[path = "extra_targets/fixed_width_tests.rs"]
+mod fixed_width_tests;
+
+#[cfg(test)]
+#[path = "extra_targets/named_flextext_tests.rs"]
+mod named_flextext_tests;
