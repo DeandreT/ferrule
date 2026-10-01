@@ -15,10 +15,17 @@ internal static class FerruleScalarRegex
     private const int MaximumTranslatedCharacters = 10 * 1024 * 1024;
     private const int MaximumClassDepth = 256;
 
-    internal static Regex Compile(string source, RegexOptions options) =>
+    internal static Regex Compile(string source, RegexOptions options) => Compile(source, options, out _);
+
+    internal static Regex Compile(string source, RegexOptions options, out int[] captureGroups)
+    {
+        var translator = new Translator(source, options);
         // A neutral line-anchor alternative establishes the host's newline context.
         // Without it, NonBacktracking loses a final LF for large scalar sets.
-        new("(?m:^|)(?:" + new Translator(source, options).Translate() + ")", options);
+        var regex = new Regex("(?m:^|)(?:" + translator.Translate() + ")", options);
+        captureGroups = translator.CaptureGroups(regex);
+        return regex;
+    }
 
     private readonly record struct Range(int First, int Last);
 
@@ -295,11 +302,57 @@ internal static class FerruleScalarRegex
         private readonly Stack<RegexOptions> _groups = new();
         private readonly Dictionary<(string Source, bool IgnoreCase, bool IgnoreWhitespace), string> _classes = new();
         private readonly Dictionary<(int Scalar, bool IgnoreCase), string> _literals = new();
+        private readonly List<(int AnonymousIndex, string? Name)> _captures = new();
+        private readonly HashSet<string> _captureNames = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _pythonCaptureNames = new(StringComparer.Ordinal);
+        private int _anonymousCaptures;
+        private bool _hasOperand;
         private RegexOptions _options;
         private int _index;
 
         internal Translator(string source, RegexOptions options) { _source = source; _options = options; }
         private bool IgnoreCase => (_options & RegexOptions.IgnoreCase) != 0;
+
+        internal int[] CaptureGroups(Regex regex) => new[] { 0 }.Concat(_captures.Select(capture =>
+            capture.Name is null ? capture.AnonymousIndex : regex.GroupNumberFromName(capture.Name))).ToArray();
+
+        private void Capture(string? name = null)
+        {
+            _captures.Add((name is null ? ++_anonymousCaptures : 0, name));
+        }
+
+        private string HostCaptureName(string name, bool python)
+        {
+            var portable = PortableCaptureName(name);
+            if (python && !portable) { throw Invalid("invalid Python capture name"); }
+            if (!_captureNames.Add(name) && (python || _pythonCaptureNames.Contains(name)))
+            {
+                throw Invalid("duplicate Python capture name");
+            }
+            if (python) { _pythonCaptureNames.Add(name); }
+            // Numeric replacements are the only public capture references.
+            // Encode supported Rust names into collision-free ASCII host names
+            // so dots, brackets and supplementary letters need no extra group.
+            var host = portable ? "ferrule" + string.Concat(name.Select(character =>
+                ((int)character).ToString("X4", CultureInfo.InvariantCulture))) : name;
+            Capture(host);
+            return host;
+        }
+
+        private static bool PortableCaptureName(string name)
+        {
+            var first = true;
+            foreach (var rune in name.EnumerateRunes())
+            {
+                var alphabetic = Rune.IsLetter(rune) || Rune.GetUnicodeCategory(rune) == UnicodeCategory.LetterNumber;
+                if (!(alphabetic || rune.Value == '_' || !first && (Rune.IsNumber(rune) || rune.Value is '.' or '[' or ']')))
+                {
+                    return false;
+                }
+                first = false;
+            }
+            return !first;
+        }
 
         internal string Translate()
         {
@@ -320,31 +373,35 @@ internal static class FerruleScalarRegex
                     case ')':
                         _index++; Append(")");
                         if (_groups.TryPop(out var previous)) { _options = previous; }
-                        break;
+                        _hasOperand = true; break;
                     case '[':
                         var start = _index;
                         var set = Class(0);
                         var key = (_source[start.._index], IgnoreCase,
                             (_options & RegexOptions.IgnorePatternWhitespace) != 0);
                         if (!_classes.TryGetValue(key, out var atom)) { atom = Atom(set); _classes.Add(key, atom); }
-                        Append(atom); break;
+                        Append(atom); _hasOperand = true; break;
                     case '.':
                         _index++; Append(Atom((_options & RegexOptions.Singleline) != 0
-                            ? ScalarSet.All : ScalarSet.All.Except(ScalarSet.Between('\n', '\n')))); break;
+                            ? ScalarSet.All : ScalarSet.All.Except(ScalarSet.Between('\n', '\n')))); _hasOperand = true; break;
                     case '$':
-                        _index++; Append((_options & RegexOptions.Multiline) != 0 ? "$" : @"\z"); break;
+                        _index++; Append((_options & RegexOptions.Multiline) != 0 ? "$" : @"\z"); _hasOperand = true; break;
                     case '\\':
-                        EscapeOutside(); break;
+                        EscapeOutside(); _hasOperand = true; break;
                     case '{':
                         Quantifier(); break;
-                    case '^': case '|': case '*': case '+': case '?': case '}':
+                    case '|':
+                        _index++; Append("|"); _hasOperand = false; break;
+                    case '*': case '+': case '?':
                         _index++; Append(current.ToString()); break;
+                    case '^': case '}':
+                        _index++; Append(current.ToString()); _hasOperand = true; break;
                     default:
                         if ((_options & RegexOptions.IgnorePatternWhitespace) != 0 && char.IsWhiteSpace(current))
                         {
                             _index++;
                         }
-                        else { Append(Literal(ReadScalar())); }
+                        else { Append(Literal(ReadScalar())); _hasOperand = true; }
                         break;
                 }
             }
@@ -378,7 +435,12 @@ internal static class FerruleScalarRegex
         private void Group()
         {
             var start = _index++;
-            if (_index == _source.Length || _source[_index] != '?') { _groups.Push(_options); Append("("); return; }
+            if (_index == _source.Length || _source[_index] != '?')
+            {
+                _groups.Push(_options);
+                if ((_options & RegexOptions.ExplicitCapture) == 0) { Capture(); }
+                Append("("); _hasOperand = false; return;
+            }
             _index++;
             if (_index < _source.Length && _source[_index] == '#')
             {
@@ -404,9 +466,19 @@ internal static class FerruleScalarRegex
             if (hasFlag && _index < _source.Length && _source[_index] is ':' or ')')
             {
                 if (_source[_index] == ':') { _groups.Push(_options); }
-                _options = updated; _index++; Append(_source[start.._index]); return;
+                _options = updated; _index++; Append(_source[start.._index]); _hasOperand = false; return;
             }
             _index = start + 2;
+            // Rust/Python named captures share the host angle-bracket header.
+            if (_index + 1 < _source.Length && _source[_index] == 'P' && _source[_index + 1] == '<')
+            {
+                _groups.Push(_options); _index += 2;
+                var nameStart = _index;
+                while (_index < _source.Length && _source[_index] != '>') { _index++; }
+                if (_index == _source.Length) { throw Invalid("unterminated capture name"); }
+                var name = HostCaptureName(_source[nameStart.._index++], true);
+                Append("(?<" + name + ">"); _hasOperand = false; return;
+            }
             _groups.Push(_options);
             if (_index < _source.Length && _source[_index] is ':' or '=' or '!' or '>') { _index++; }
             else if (_index < _source.Length && _source[_index] is '<' or '\'')
@@ -415,28 +487,68 @@ internal static class FerruleScalarRegex
                 if (_index < _source.Length && _source[_index] is '=' or '!') { _index++; }
                 else
                 {
+                    var nameStart = _index;
                     while (_index < _source.Length && _source[_index] != closer) { _index++; }
-                    if (_index < _source.Length) { _index++; }
+                    var name = HostCaptureName(_source[nameStart.._index], false);
+                    if (_index == _source.Length) { throw Invalid("unterminated capture name"); }
+                    _index++;
+                    Append("(?<" + name + ">"); _hasOperand = false; return;
                 }
             }
-            Append(_source[start.._index]);
+            Append(_source[start.._index]); _hasOperand = false;
+        }
+
+        private void SkipIgnored()
+        {
+            if ((_options & RegexOptions.IgnorePatternWhitespace) == 0) { return; }
+            while (_index < _source.Length)
+            {
+                if (char.IsWhiteSpace(_source[_index])) { _index++; }
+                else if (_source[_index] == '#')
+                {
+                    while (_index < _source.Length && _source[_index] != '\n') { _index++; }
+                }
+                else { break; }
+            }
         }
 
         private void Quantifier()
         {
-            var start = _index++;
-            while (_index < _source.Length && _source[_index] is >= '0' and <= '9') { _index++; }
-            var hasMinimum = _index > start + 1;
-            if (_index < _source.Length && _source[_index] == ',')
+            if (!_hasOperand) { throw Invalid("repetition quantifier has no operand"); }
+            _index++; SkipIgnored();
+            var minimum = Decimal();
+            uint? maximum = minimum;
+            var comma = _index < _source.Length && _source[_index] == ',';
+            if (comma)
             {
-                _index++;
-                while (_index < _source.Length && _source[_index] is >= '0' and <= '9') { _index++; }
+                _index++; SkipIgnored();
+                maximum = _index < _source.Length && _source[_index] == '}' ? null : Decimal();
             }
-            if (hasMinimum && _index < _source.Length && _source[_index] == '}')
+            if (_index == _source.Length || _source[_index] != '}' || maximum.HasValue && minimum > maximum)
             {
-                _index++; Append(_source[start.._index]);
+                throw Invalid("malformed repetition quantifier");
             }
-            else { _index = start + 1; Append(Literal('{')); }
+            _index++;
+            Append("{" + minimum.ToString(CultureInfo.InvariantCulture)
+                + (comma ? "," + maximum?.ToString(CultureInfo.InvariantCulture) : string.Empty) + "}");
+        }
+
+        private uint Decimal()
+        {
+            while (_index < _source.Length && char.IsWhiteSpace(_source[_index])) { _index++; }
+            var present = false;
+            uint value = 0;
+            while (_index < _source.Length && _source[_index] is >= '0' and <= '9')
+            {
+                present = true;
+                var digit = (uint)(_source[_index++] - '0');
+                if (value > (uint.MaxValue - digit) / 10) { throw Invalid("repetition count exceeds its integer bound"); }
+                value = value * 10 + digit;
+                SkipIgnored();
+            }
+            while (_index < _source.Length && char.IsWhiteSpace(_source[_index])) { _index++; SkipIgnored(); }
+            if (!present) { throw Invalid("missing repetition count"); }
+            return value;
         }
 
         private void EscapeOutside()
@@ -487,7 +599,7 @@ internal static class FerruleScalarRegex
             }
             var scalarValue = kind switch {
                 'a' => 7, 'b' => 8, 'e' => 27, 'f' => 12, 'n' => 10, 'r' => 13, 't' => 9, 'v' => 11,
-                'u' => HexScalar(), 'x' => Hex(2), 'c' => Control(),
+                'x' or 'u' or 'U' => EscapedHex(kind), 'c' => Control(),
                 >= '0' and <= '7' => Octal(kind),
                 _ when !char.IsLetterOrDigit(kind) => kind,
                 _ => throw Invalid("unrecognized escape"),
@@ -558,23 +670,40 @@ internal static class FerruleScalarRegex
             throw Invalid("unterminated character class");
         }
 
-        private void SkipIgnored()
-        {
-            if ((_options & RegexOptions.IgnorePatternWhitespace) == 0) { return; }
-            while (_index < _source.Length)
-            {
-                if (char.IsWhiteSpace(_source[_index])) { _index++; }
-                else if (_source[_index] == '#')
-                {
-                    while (_index < _source.Length && _source[_index] != '\n') { _index++; }
-                }
-                else { break; }
-            }
-        }
 
         private int ReadScalar()
         {
             var rune = Rune.GetRuneAt(_source, _index); _index += rune.Utf16SequenceLength; return rune.Value;
+        }
+
+        private int EscapedHex(char kind)
+        {
+            SkipIgnored();
+            if (_index < _source.Length && _source[_index] == '{') { return BracedScalar(); }
+            return kind switch { 'x' => Hex(2), 'u' => HexScalar(), _ => Hex(8) };
+        }
+
+        private int BracedScalar()
+        {
+            _index++; SkipIgnored();
+            var present = false;
+            var value = 0;
+            while (_index < _source.Length && _source[_index] != '}')
+            {
+                present = true;
+                var current = _source[_index++];
+                var digit = current switch {
+                    >= '0' and <= '9' => current - '0', >= 'a' and <= 'f' => current - 'a' + 10,
+                    >= 'A' and <= 'F' => current - 'A' + 10, _ => throw Invalid("invalid braced hex escape"),
+                };
+                if (value > (0x10FFFF - digit) / 16) { throw Invalid("escape exceeds the Unicode scalar range"); }
+                value = value * 16 + digit;
+                SkipIgnored();
+            }
+            if (!present || _index == _source.Length) { throw Invalid("incomplete braced hex escape"); }
+            _index++;
+            if (!Rune.IsValid(value)) { throw Invalid("escape is not a Unicode scalar"); }
+            return value;
         }
 
         private int HexScalar()
@@ -596,10 +725,11 @@ internal static class FerruleScalarRegex
 
         private int Hex(int digits)
         {
-            if (_source.Length - _index < digits) { throw Invalid("incomplete hex escape"); }
-            var value = 0;
+            long value = 0;
             for (var digit = 0; digit < digits; digit++)
             {
+                SkipIgnored();
+                if (_index == _source.Length) { throw Invalid("incomplete hex escape"); }
                 var current = _source[_index++];
                 var number = current switch {
                     >= '0' and <= '9' => current - '0', >= 'a' and <= 'f' => current - 'a' + 10,
@@ -607,7 +737,8 @@ internal static class FerruleScalarRegex
                 };
                 value = value * 16 + number;
             }
-            return value;
+            if (value > int.MaxValue) { throw Invalid("escape exceeds the Unicode scalar range"); }
+            return (int)value;
         }
 
         private int Control()

@@ -29,7 +29,6 @@ internal static partial class Program
         CallEquals(Bool(true), "matches", Text(" "), Text(@"^[a\ \#]$"), Text("x"));
         CallEquals(Bool(false), "matches", Text("y "), Text("x[a ]|(?x:y[a ])"));
         CallEquals(Bool(true), "matches", Text("x "), Text("(?x:y[a ])|x[a ]"));
-        CallEquals(Bool(true), "matches", Text("a{word}"), Text("a{word}"));
     }
 
     private static void RegexUnicodeScalarSets()

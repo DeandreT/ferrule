@@ -42,17 +42,12 @@ public static partial class FerruleFunctions
         {
             throw InvalidArgument("replace", "replacement exceeds 64 KiB");
         }
-        var regex = CompileRegex("replace", pattern, flags);
+        var regex = CompileRegex("replace", pattern, flags, out var captureGroups);
         if (regex.IsMatch(string.Empty))
         {
             throw InvalidArgument("replace", "pattern matches a zero-length string");
         }
-        var groupCount = 0;
-        foreach (var group in regex.GetGroupNumbers())
-        {
-            groupCount = Math.Max(groupCount, group);
-        }
-        var tokens = ParseReplacement(replacement, groupCount);
+        var tokens = ParseReplacement(replacement, captureGroups.Length - 1);
         var output = new StringBuilder();
         var outputBytes = 0;
         var end = 0;
@@ -70,9 +65,10 @@ public static partial class FerruleFunctions
                     AppendBounded(output, token.Literal, ref outputBytes);
                     continue;
                 }
-                if (token.Group < match.Groups.Count && match.Groups[token.Group].Success)
+                if (token.Group < captureGroups.Length)
                 {
-                    AppendBounded(output, match.Groups[token.Group].Value, ref outputBytes);
+                    var group = match.Groups[captureGroups[token.Group]];
+                    if (group.Success) { AppendBounded(output, group.Value, ref outputBytes); }
                 }
                 AppendBounded(output, token.Suffix, ref outputBytes);
             }
@@ -82,7 +78,10 @@ public static partial class FerruleFunctions
         return FerruleValue.FromString(output.ToString());
     }
 
-    private static Regex CompileRegex(string function, string pattern, string flags)
+    private static Regex CompileRegex(string function, string pattern, string flags) =>
+        CompileRegex(function, pattern, flags, out _);
+
+    private static Regex CompileRegex(string function, string pattern, string flags, out int[] captureGroups)
     {
         if (Encoding.UTF8.GetByteCount(pattern) > MaximumRegexPatternBytes)
         {
@@ -102,7 +101,7 @@ public static partial class FerruleFunctions
         }
         try
         {
-            return FerruleScalarRegex.Compile(pattern, options);
+            return FerruleScalarRegex.Compile(pattern, options, out captureGroups);
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException)
         {

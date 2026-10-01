@@ -510,9 +510,13 @@ replacement, and tokenization lower consuming atoms to complete Unicode
 scalars, including supplementary literals, dot, classes, ranges, categories,
 and case folding. Paired compiled mappings check these operations through
 both JSON string and UTF-8 byte APIs against the interpreter and Rust.
+Numeric replacements use source capture opening order, including mixed named
+and unnamed groups and Python named headers. Scalar Unicode hex escapes and
+supported repetition bounds are validated before host compilation; malformed
+opening-brace quantifiers retain typed failures instead of becoming literals.
 Rust and .NET still expose different regex dialects. Word-boundary assertions,
-capture numbering with mixed named and unnamed groups, class set operators,
-and property vocabularies remain backend differences; some patterns produce
+class set operators, property vocabularies, repeated quantifiers, and some
+host-only capture/escape forms remain backend differences; some patterns produce
 different results as well as backend-specific invalid-pattern errors.
 This applies to mapping-language regex operations only;
 JSON Schema `pattern` uses Ferrule's separate portable matcher and has identical
