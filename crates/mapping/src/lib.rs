@@ -18,6 +18,7 @@ mod model;
 mod path_hierarchy;
 mod pdf;
 pub mod pdf_layout_file;
+mod pdf_repair;
 mod pipeline;
 pub mod pipeline_file;
 pub mod project_file;
@@ -87,6 +88,7 @@ pub use pdf::{
     PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextProperties,
     PdfTextRows, PdfVerticalBoundaryFind, PdfWhitespaceMode, PdfWordSeparation,
 };
+pub use pdf_repair::{PdfRepairDependency, PdfRuntimeDependency};
 pub use pipeline::{Pipeline, PipelineInput, PipelineNamedInput, PipelineStage};
 pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;

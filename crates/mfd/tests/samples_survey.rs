@@ -285,6 +285,20 @@ fn validation_outcome(project: &mapping::Project) -> StageOutcome {
     }
 }
 
+fn runtime_dependency_messages(project: &mapping::Project) -> Vec<String> {
+    project
+        .runtime_dependencies()
+        .into_iter()
+        .map(|dependency| dependency.to_string())
+        .chain(
+            project
+                .pdf_runtime_dependencies()
+                .into_iter()
+                .map(|dependency| dependency.to_string()),
+        )
+        .collect()
+}
+
 fn sample_name(samples_dir: &Path, path: &Path) -> String {
     path.strip_prefix(samples_dir)
         .unwrap_or(path)
@@ -308,12 +322,7 @@ fn survey_file(
         }
     };
     outcome.import = StageOutcome::passed(imported.warnings);
-    outcome.runtime_dependencies = imported
-        .project
-        .runtime_dependencies()
-        .into_iter()
-        .map(|dependency| dependency.to_string())
-        .collect();
+    outcome.runtime_dependencies = runtime_dependency_messages(&imported.project);
     outcome.validation = if outcome.runtime_dependencies.is_empty() {
         validation_outcome(&imported.project)
     } else {
@@ -337,12 +346,7 @@ fn survey_file(
         }
     };
     outcome.reimport = StageOutcome::passed(roundtripped.warnings);
-    let roundtrip_dependencies = roundtripped
-        .project
-        .runtime_dependencies()
-        .into_iter()
-        .map(|dependency| dependency.to_string())
-        .collect::<Vec<_>>();
+    let roundtrip_dependencies = runtime_dependency_messages(&roundtripped.project);
     outcome.roundtrip_validation = if roundtrip_dependencies.is_empty() {
         validation_outcome(&roundtripped.project)
     } else {
@@ -432,6 +436,40 @@ fn diagnostic_categories_replace_quoted_values_once() {
         diagnostic_category("binding for `Person/Name` comes from `source`"),
         "binding for `_` comes from `_`"
     );
+}
+
+#[test]
+fn self_authored_pdf_repair_is_recorded_as_dependency_blocked() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let inputs = workspace.0.join("inputs");
+    std::fs::create_dir(&inputs)?;
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let design = inputs.join("mapping.mfd");
+    std::fs::copy(fixtures.join("pdf-text-groups.mfd"), &design)?;
+    std::fs::copy(
+        fixtures.join("pdf-text-groups.pxt"),
+        inputs.join("warehouse.pxt"),
+    )?;
+    let output = workspace.export_path(0);
+    let outcome = survey_file(
+        &inputs,
+        &design,
+        &output,
+        &mfd::ImportOptions::default().with_package_root(&inputs),
+    );
+    assert_eq!(outcome.validation.status, StageStatus::DependencyBlocked);
+    assert_eq!(outcome.runtime_dependencies.len(), 1);
+    assert!(outcome.runtime_dependencies[0].contains("ObjectFind"));
+    assert_eq!(outcome.export.status, StageStatus::Failed);
+    assert!(!output.exists());
+    assert_eq!(
+        outcome.to_json()["runtime_dependencies"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    Ok(())
 }
 
 #[test]

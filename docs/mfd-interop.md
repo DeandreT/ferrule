@@ -459,6 +459,25 @@ to 1 MiB. The export report inspects the actual generated sibling and reports
 export then rejects before publication. Local parser checks do not establish
 that the reference application accepts or executes the template.
 
+Two guarded anchored PDF families also export as native-shaped templates: a
+first-page header/painted-edge table/footer with ordered vertical and horizontal
+anchors, and a first-page named header followed by all-page boundary detection
+and anchored item rows. Emitted commands, page selection, names, capture modes,
+fallbacks, and every coordinate/finder bit are compared with the actual local
+native-template parser. Self-authored two-page files and the two local invoice
+regressions retain extracted values and serialized output through two strict
+cycles. These checks do not certify reference-application execution.
+
+Native `ObjectFind` templates retain their visible schema, connections, and
+approximate layout for repair, together with a closed `repair_dependency`
+marker inside `PdfLayout`. The physical reader cannot reproduce background-based
+visual candidate detection or its object-level minimum extent. Executable import,
+PDF file/payload execution, and both export profiles therefore reject that
+boundary. The marker survives ordinary and exact project/layout save/reopen;
+renaming input paths cannot select another decoder. Intentional host-preparsed
+typed instances remain usable. This withdraws the earlier stock-PDF extraction
+claim until the native candidate model is implemented and verified.
+
 Inline CSV field declarations are sorted by their numeric `fieldN` suffix.
 Malformed or duplicate indexes and empty or duplicate names diagnose and skip
 the component; executable imports reject the warnings. Headerless source and
@@ -466,6 +485,19 @@ target values retain their columns even when declaration elements are shuffled.
 CSV text boundaries accept absent encoding or the supported UTF-8 code `1000`.
 Other declared encodings produce a bounded warning; repair imports continue
 using UTF-8, while executable imports reject the unsupported contract.
+CSV sources with `removeempty="false"` (or `0`) retain present empty text cells
+as `Value::String("")`; `true` (or `1`) keeps them absent. Old Ferrule projects
+and imports without a flag preserve their existing absent-empty behavior.
+The saved `csv_preserve_empty_strings` option applies to file, payload, and
+browser reads; missing trailing columns remain `Null`. Export writes the
+explicit inverse `removeempty` setting, and two strict cycles retain the
+presence distinction. Invalid flags warn and executable imports reject them.
+Empty numeric/boolean cells still become `Null`; a native source requesting
+present empty fields with non-text columns warns, executable import rejects,
+and both export profiles reject the unverified typed-empty contract. CSV
+source setup exposes “Keep empty text fields.” Browser reads and writes now
+also honor custom or disabled quoting, including the writer's boundary errors.
+
 
 Pipeline export writes one connected design for a validated serial XML
 pass-through chain of 2–65 stages. Each intermediate primary target becomes
