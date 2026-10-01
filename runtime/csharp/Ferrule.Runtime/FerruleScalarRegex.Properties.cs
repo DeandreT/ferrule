@@ -7,7 +7,7 @@ namespace Ferrule.Runtime;
 
 internal static partial class FerruleScalarRegex
 {
-    private enum PropertyDomain { Existing, Script, ScriptExtensions }
+    private enum PropertyDomain { Existing, Script, ScriptExtensions, Binary }
     private readonly record struct PropertyIdentity(PropertyDomain Domain, string Name);
     private static readonly ConcurrentDictionary<string, ScalarSet> NamedProperties = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<(PropertyIdentity Identity, bool Folded, bool Complemented), ScalarSet> ModifiedProperties = new();
@@ -39,6 +39,13 @@ internal static partial class FerruleScalarRegex
             complemented ^= inverted;
         }
         var normalized = NormalizePropertyName(value);
+        // Reachable bare binary names precede categories/scripts. The pinned
+        // binary aliases exclude cf/lc/sc, which remain general categories.
+        // Do not accept Boolean-valued binary queries or unreachable InCB data.
+        if (separator < 0 && BinaryAliases.TryGetValue(normalized, out var binary))
+        {
+            return (new PropertyIdentity(PropertyDomain.Binary, binary), complemented);
+        }
         // Bare general categories take precedence over script aliases.
         if ((separator < 0 || domain == PropertyDomain.Existing)
             && CategoryAliases.TryGetValue(normalized, out var category))
@@ -60,6 +67,7 @@ internal static partial class FerruleScalarRegex
                 PropertyDomain.Existing => Property(key.Identity.Name),
                 PropertyDomain.Script => ScriptSets.Value[key.Identity.Name],
                 PropertyDomain.ScriptExtensions => ScriptExtensionSets.Value[key.Identity.Name],
+                PropertyDomain.Binary => BinarySets.Value[key.Identity.Name],
                 _ => throw Invalid("unsupported property domain"),
             };
             if (key.Folded) { value = value.FoldCase(); }

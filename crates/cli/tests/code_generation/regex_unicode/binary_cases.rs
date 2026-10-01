@@ -1,0 +1,158 @@
+pub(super) const CASES: &[(&str, &str, &str, &str, bool, &str)] = &[
+    ("ͅ", "(?u)(\\p{Alphabetic})", "", "[$1]", true, "[ͅ]"),
+    ("ͅ", "(?u)(\\p{L})", "", "[$1]", false, "ͅ"),
+    ("ͅ", "(?u)(\\p{Lowercase})", "", "[$1]", true, "[ͅ]"),
+    ("ͅ", "(?u)(\\p{Ll})", "", "[$1]", false, "ͅ"),
+    ("Ⅻ", "(?U)(\\p{Uppercase})", "", "[$1]", true, "[Ⅻ]"),
+    ("Ⅻ", "(?U)(\\p{Lu})", "", "[$1]", false, "Ⅻ"),
+    ("ⅻ", "(?u)(\\p{lower})", "", "[$1]", true, "[ⅻ]"),
+    ("🙂", "(?R)(\\p{Emoji})", "", "[$1]", true, "[🙂]"),
+    (
+        "🙂",
+        "(?u)(\\p{Extended_Pictographic})",
+        "",
+        "[$1]",
+        true,
+        "[🙂]",
+    ),
+    ("0", "(?u)(\\p{Emoji})", "", "[$1]", true, "[0]"),
+    ("0", "(?u)(\\p{Emoji_Presentation})", "", "[$1]", false, "0"),
+    ("️", "(?u)(\\p{Variation_Selector})", "", "[$1]", true, "[️]"),
+    ("️", "(?u)(\\p{Emoji_Component})", "", "[$1]", true, "[️]"),
+    ("‍", "(?u)(\\p{Join_Control})", "", "[$1]", true, "[‍]"),
+    (
+        "‍",
+        "(?u)(\\p{Default_Ignorable_Code_Point})",
+        "",
+        "[$1]",
+        true,
+        "[‍]",
+    ),
+    ("‍", "(?u)(\\p{cf})", "", "[$1]", true, "[‍]"),
+    ("$", "(?u)(\\p{sc})", "", "[$1]", true, "[$]"),
+    ("A", "(?u)(\\p{lc})", "", "[$1]", true, "[A]"),
+    (" ", "(?u)(\\p{White_Space})", "", "[$1]", true, "[ ]"),
+    (
+        " ",
+        "(?u)(\\p{Pattern_White_Space})",
+        "",
+        "[$1]",
+        false,
+        " ",
+    ),
+    ("\u{85}", "(?u)(\\p{space})", "", "[$1]", true, "[\u{85}]"),
+    (
+        "🇺",
+        "(?u)(\\p{Regional_Indicator})",
+        "",
+        "[$1]",
+        true,
+        "[🇺]",
+    ),
+    (
+        "﷐",
+        "(?u)(\\p{Noncharacter_Code_Point})",
+        "",
+        "[$1]",
+        true,
+        "[﷐]",
+    ),
+    ("=", "(?u)(\\p{Pattern_Syntax})", "", "[$1]", true, "[=]"),
+    ("Ａ", "(?u)(\\p{Hex_Digit})", "", "[$1]", true, "[Ａ]"),
+    ("Ａ", "(?u)(\\p{ASCII_Hex_Digit})", "", "[$1]", false, "Ａ"),
+    ("+", "(?u)(\\p{Math})", "", "[$1]", true, "[+]"),
+    ("α", "(?u)(\\p{XID_Start})", "", "[$1]", true, "[α]"),
+    ("9", "(?u)(\\p{XID_Start})", "", "[$1]", false, "9"),
+    ("9", "(?u)(\\p{XID_Continue})", "", "[$1]", true, "[9]"),
+    ("𐐨", "(?iu)(\\p{Uppercase})", "", "[$1]", true, "[𐐨]"),
+    ("A", "(?iu)(\\p{Lowercase})", "", "[$1]", true, "[A]"),
+    ("A", "(?iu)(\\P{Lowercase})", "", "[$1]", false, "A"),
+    ("ͅ", "(?iu)(\\P{Alphabetic})", "", "[$1]", false, "ͅ"),
+    (
+        "·",
+        "(?u)([\\p{Alphabetic}&&\\p{scx=Greek}])",
+        "",
+        "[$1]",
+        false,
+        "·",
+    ),
+    (
+        "α",
+        "(?u)([\\p{Alphabetic}&&\\p{Greek}])",
+        "",
+        "[$1]",
+        true,
+        "[α]",
+    ),
+    (
+        "ͅ",
+        "(?u)([\\p{Alphabetic}--\\p{L}])",
+        "",
+        "[$1]",
+        true,
+        "[ͅ]",
+    ),
+    (
+        "aAͅ",
+        "(?u)([\\p{lower}~~\\p{Ll}])",
+        "",
+        "[$1]",
+        true,
+        "aA[ͅ]",
+    ),
+    ("🙂A", "(?u)([^\\p{Emoji}])", "", "[$1]", true, "🙂[A]"),
+    (
+        "1αβ🙂Z!",
+        "(?u)(?<letters>\\p{Alphabetic}+)",
+        "",
+        "[$1]",
+        true,
+        "1[αβ]🙂[Z]!",
+    ),
+    (
+        "a\r\nb",
+        "(?R)(\\p{WhiteSpace}+)",
+        "",
+        "[$1]",
+        true,
+        "a[\r\n]b",
+    ),
+    ("ab", "(?U)(\\p{Alphabetic}+)", "", "[$1]", true, "[a][b]"),
+    ("ab", "(?U)(\\p{Alphabetic}+?)", "", "[$1]", true, "[ab]"),
+    (
+        "A🙂",
+        "(?u)(?-u:(A))|(\\p{Emoji})",
+        "",
+        "[$1/$2]",
+        true,
+        "[A/][/🙂]",
+    ),
+    ("🙂", "(?R)(?-R:(\\p{Emoji}))", "", "[$1]", true, "[🙂]"),
+    (
+        "ͅ",
+        "(?ux)(\\p{Alpha# comment\nbetic})",
+        "",
+        "[$1]",
+        true,
+        "[ͅ]",
+    ),
+    ("ͅ", "(?u)(\\p{Is_Alpha_betic})", "", "[$1]", true, "[ͅ]"),
+    ("٠", "(?u)(\\p{Decimal_Number})", "", "[$1]", true, "[٠]"),
+];
+
+pub(super) fn assert_rows(rows: &[serde_json::Value]) {
+    assert_eq!(rows.len(), CASES.len());
+    for (index, (row, &(_, pattern, _, _, matched, replaced))) in rows.iter().zip(CASES).enumerate()
+    {
+        assert_eq!(row["Match"], matched, "binary case {index}: {pattern}");
+        assert_eq!(row["Replaced"], replaced, "binary case {index}: {pattern}");
+    }
+    assert_eq!(
+        rows[39]["Tokens"],
+        serde_json::json!([{ "Value": "1" }, { "Value": "🙂" }, { "Value": "!" }])
+    );
+    assert_eq!(
+        rows[40]["Tokens"],
+        serde_json::json!([{ "Value": "a" }, { "Value": "b" }])
+    );
+}
