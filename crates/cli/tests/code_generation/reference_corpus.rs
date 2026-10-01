@@ -1,4 +1,4 @@
-//! Opt-in generated-backend execution against forty-two supported local, gitignored mappings.
+//! Opt-in generated-backend execution against forty-three supported local, gitignored mappings.
 //! Run with `cargo test -p cli --features codegen-tests --test code_generation
 //! reference_corpus -- --ignored --nocapture` when the local sample corpus and
 //! .NET 10 SDK are available. No sample contents are copied into this test.
@@ -9,6 +9,8 @@ use super::*;
 mod numeric_picture;
 #[path = "reference_corpus/office_lines.rs"]
 mod office_lines;
+#[path = "reference_corpus/suppress_unavailable.rs"]
+mod suppress_unavailable;
 
 #[derive(Clone, Copy)]
 enum SourceKind {
@@ -48,7 +50,7 @@ struct CorpusCase {
     target_kind: TargetKind,
 }
 
-const CASES: [CorpusCase; 42] = [
+const CASES: [CorpusCase; 43] = [
     CorpusCase {
         sample: "EmployeesToJSONObject.mfd",
         input: "Altova_Hierarchical.json",
@@ -299,6 +301,12 @@ const CASES: [CorpusCase; 42] = [
         sample: office_lines::SAMPLE,
         input: office_lines::INPUT,
         source_kind: SourceKind::Xml,
+        target_kind: TargetKind::Xml,
+    },
+    CorpusCase {
+        sample: suppress_unavailable::SAMPLE,
+        input: suppress_unavailable::INPUT,
+        source_kind: SourceKind::Csv,
         target_kind: TargetKind::Xml,
     },
 ];
@@ -1490,6 +1498,15 @@ fn run_case(
     }
     if sample == office_lines::SAMPLE {
         office_lines::assert_case(&project, &source, &source_json, &expected, &expected_json)?;
+    }
+    if sample == suppress_unavailable::SAMPLE {
+        suppress_unavailable::assert_case(
+            &project,
+            &source,
+            &source_json,
+            &expected,
+            &expected_json,
+        )?;
     }
     let expected_csv = if sample == numeric_picture::SAMPLE {
         Some(numeric_picture::assert_case(
