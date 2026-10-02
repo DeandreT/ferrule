@@ -13,9 +13,11 @@ use mapping::{
 use crate::MfdError;
 
 use super::TargetExport;
-use super::schema::{RenderedSchemaComponent, SideFormat};
+use super::schema::{KeyAlloc, RenderedSchemaComponent, SideFormat};
 use super::source::SourceExports;
 use super::udf;
+
+mod group_key;
 
 const NODE_FUNCTION: &str = "35F2ECD9-F69F-498C-BCDA-969EE7F2797C";
 
@@ -40,6 +42,7 @@ pub(super) struct NativeGroupFahrenheit {
     absorbed: BTreeSet<NodeId>,
     products: [(NodeId, NodeId); 3],
     function: FunctionId,
+    group_key: NodeId,
 }
 
 impl NativeGroupFahrenheit {
@@ -143,6 +146,29 @@ impl NativeGroupFahrenheit {
             rendered.xml.replace_range(range, &replacement);
         }
         Ok(())
+    }
+
+    pub(super) fn connect_group_key(
+        &self,
+        target: &TargetExport<'_>,
+        sources: &SourceExports<'_>,
+        outputs: &BTreeMap<NodeId, u32>,
+        keys: &mut KeyAlloc,
+        components: &mut String,
+        edges: &mut [(u32, u32)],
+    ) -> Result<(), MfdError> {
+        let row = target.ports.key_for_abs(&["YearlyStats".into()]);
+        let year = target
+            .ports
+            .key_for_abs(&["YearlyStats".into(), "Year".into()]);
+        let raw = outputs.get(&self.group_key).copied();
+        let driver = sources.key_for_abs(&["data".into()]);
+        let (Some(row), Some(year), Some(raw), Some(driver)) = (row, year, raw, driver) else {
+            return Err(MfdError::Unsupported(
+                "native temperature group-key ports are missing".into(),
+            ));
+        };
+        group_key::connect_owned(row, year, raw, driver, keys, components, edges)
     }
 
     pub(super) fn definition(
@@ -249,6 +275,7 @@ fn group_plan(project: &Project) -> Option<NativeGroupFahrenheit> {
         absorbed,
         products,
         function,
+        group_key: row.group_by?,
     })
 }
 

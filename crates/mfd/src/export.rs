@@ -688,6 +688,16 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         }
     }
     components.push_str(&scope_components);
+    if let Some(plan) = &native_group_fahrenheit {
+        plan.connect_group_key(
+            &targets[0],
+            &sources,
+            &node_out_key,
+            &mut keys,
+            &mut components,
+            &mut edges,
+        )?;
+    }
     native_database_xml.mark_structural_edges(&edges, &mut structural_edges)?;
 
     // Database components reference a mapping-level datasource.
