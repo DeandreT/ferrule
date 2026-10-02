@@ -21,7 +21,10 @@ mod shared;
 mod wsdl;
 mod xbrl;
 mod xlsx;
+mod xml_attribute_required;
 mod xml_ports;
+
+pub(super) use xml_attribute_required::validate_xml_attribute_required_metadata;
 
 pub use flextext::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 
@@ -320,12 +323,15 @@ pub(super) fn read_schema_component_in_package_with_provenance(
 pub(super) struct XmlSchemaComponentRead {
     pub(super) component: SchemaComponent,
     pub(super) entry_tree_fallback: bool,
+    pub(super) schema_file_authoritative: bool,
+    pub(super) authoritative_schema_path: Option<std::path::PathBuf>,
+    pub(super) no_port_warning_index: Option<usize>,
 }
 
 /// Finds a protocol document wrapper without traversing user payload entries.
 /// File wrappers and variable-control wrappers may lead to the document level;
 /// names below that level are always user data, regardless of their namespace.
-fn xml_document_wrapper<'a, 'input>(
+pub(super) fn xml_document_wrapper<'a, 'input>(
     root: roxmltree::Node<'a, 'input>,
 ) -> Option<roxmltree::Node<'a, 'input>> {
     fn protocol_namespace(entry: roxmltree::Node<'_, '_>, root: roxmltree::Node<'_, '_>) -> bool {
@@ -417,9 +423,11 @@ fn read_schema_component_resolved(
         &mut in_count,
     );
     let input_ancestors = input_port_ancestors(&entry, &input_keys);
-    if out_count == 0 && in_count == 0 {
+    let no_port_warning_index = (out_count == 0 && in_count == 0).then(|| {
+        let index = warnings.len();
         warnings.push(format!("component `{name}` has no connected ports"));
-    }
+        index
+    });
     let is_source = out_count >= in_count;
     let has_typed_entry_schema = entry.attribute("ferrule-kind").is_some();
     let typed_entry_schema = has_typed_entry_schema
@@ -438,6 +446,7 @@ fn read_schema_component_resolved(
         .and_then(|d| d.attribute("instanceroot"))
         .map(instance_root_segments)
         .unwrap_or_default();
+    let mut authoritative_schema_path = None;
     let schema_from_file = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
@@ -454,6 +463,7 @@ fn read_schema_component_resolved(
                 };
             match read_xml_schema_file(&schema_path, instance_root.first().map(String::as_str)) {
                 Ok(schema) => {
+                    authoritative_schema_path = Some(schema_path.clone());
                     if instance_root.len() <= 1 {
                         Some(schema)
                     } else {
@@ -486,6 +496,10 @@ fn read_schema_component_resolved(
                 }
             }
         });
+    let schema_file_authoritative = schema_from_file.is_some();
+    if !schema_file_authoritative {
+        authoritative_schema_path = None;
+    }
     let schema_from_entry_tree = schema_from_file.is_none() && typed_entry_schema.is_none();
     let mut schema = schema_from_file
         .or(typed_entry_schema)
@@ -592,6 +606,9 @@ fn read_schema_component_resolved(
             dynamic_json: None,
         },
         entry_tree_fallback: schema_from_entry_tree,
+        schema_file_authoritative,
+        authoritative_schema_path,
+        no_port_warning_index,
     })
 }
 
@@ -1457,7 +1474,13 @@ pub(super) fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
         return generic_entry_schema(entry);
     }
     if legacy_attribute || entry.attribute("type") == Some("attribute") {
-        return SchemaNode::scalar(name, ir::ScalarType::String).attribute();
+        let mut schema = SchemaNode::scalar(name, ir::ScalarType::String).attribute();
+        // Public import validates annotation syntax and role before any fallback.
+        schema.xml_attribute_required = xml_attribute_required::decode(entry)
+            .ok()
+            .flatten()
+            .unwrap_or(false);
+        return schema;
     }
     let entry_children = entry
         .children()
@@ -1549,6 +1572,7 @@ fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<Schema
     };
     schema.repeating = repeating;
     schema.xml_optional = optional;
+    schema.xml_attribute_required = xml_attribute_required::decode(entry).ok()?.unwrap_or(false);
     schema.attribute = legacy_attribute || entry.attribute("type") == Some("attribute");
     schema.text = entry.attribute("ferrule-text") == Some("1");
     schema.nillable = entry.attribute("ferrule-nillable") == Some("1");

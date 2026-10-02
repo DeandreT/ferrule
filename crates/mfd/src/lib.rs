@@ -94,6 +94,14 @@ pub enum MfdError {
         "invalid Ferrule XML optional metadata for entry `{entry}`: `{value}` (expected `0` or `1`)"
     )]
     InvalidXmlOptionalMetadata { entry: String, value: String },
+    #[error(
+        "invalid Ferrule XML required attribute metadata for entry `{entry}`: `{value}` ({reason})"
+    )]
+    InvalidXmlAttributeRequiredMetadata {
+        entry: String,
+        value: String,
+        reason: &'static str,
+    },
     #[error("resource resolution error: {0}")]
     Resource(String),
     #[error("cannot export: {0}")]

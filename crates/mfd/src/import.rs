@@ -59,6 +59,7 @@ mod target_node_default;
 mod target_node_function;
 mod target_type_cast;
 mod udf;
+mod unused_xml_source;
 mod xml_serializer;
 
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
@@ -649,6 +650,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         return Err(MfdError::NotMfd("root element is not <mapping>"));
     }
     schema::validate_xml_optional_metadata(&mapping)?;
+    schema::validate_xml_attribute_required_metadata(&mapping)?;
     let wrapper = mapping
         .children()
         .find(|node| node.has_tag_name("component"))
@@ -1442,6 +1444,7 @@ fn import_resolved(
         return Err(MfdError::NotMfd("root element is not <mapping>"));
     }
     schema::validate_xml_optional_metadata(&mapping_el)?;
+    schema::validate_xml_attribute_required_metadata(&mapping_el)?;
     let wrapper = mapping_el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "component")
@@ -1475,6 +1478,8 @@ fn import_resolved(
     let mut exception_recipes = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
+    let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
+    let mut xml_boundary_witnesses = Vec::new();
     let mut fallback_xml_source_outputs = BTreeSet::new();
     let mut fallback_xml_target_inputs = BTreeSet::new();
     let source_node_functions = source_node_function::read(&mapping_el);
@@ -1499,6 +1504,20 @@ fn import_resolved(
                         Some(read) => {
                             let sc = read.component;
                             let mut retain = |sc: SchemaComponent| {
+                                if inspect_unused_input {
+                                    xml_boundary_witnesses.push(
+                                        unused_xml_source::BoundaryWitness {
+                                            component,
+                                            schema: sc.schema.clone(),
+                                            schema_file_authoritative: read
+                                                .schema_file_authoritative,
+                                            authoritative_schema_path: read
+                                                .authoritative_schema_path
+                                                .clone(),
+                                            no_port_warning_index: read.no_port_warning_index,
+                                        },
+                                    );
+                                }
                                 if read.entry_tree_fallback {
                                     if sc.is_source {
                                         fallback_xml_source_outputs
@@ -2366,6 +2385,15 @@ fn import_resolved(
     };
     project.prune_unreachable_nodes();
     enrich_unresolved_edi_source_schemas(&mut project);
+    if matches!(selection, StageSelection::Ordinary) {
+        unused_xml_source::classify(
+            &mapping_el,
+            &structure,
+            &xml_boundary_witnesses,
+            &project,
+            &mut warnings,
+        );
+    }
     Ok(LoweredStage {
         imported: Imported {
             project,
