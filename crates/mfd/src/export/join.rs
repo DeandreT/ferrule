@@ -132,6 +132,7 @@ struct RenderedJoin {
     row_output: u32,
     structural_row: bool,
     input_edges: Vec<(u32, u32)>,
+    structural_input_edges: Vec<(u32, u32)>,
     node_outputs: Vec<(NodeId, u32)>,
 }
 
@@ -232,6 +233,7 @@ pub(super) struct RenderJoinArgs<'a> {
     pub(super) node_out_key: &'a mut BTreeMap<NodeId, u32>,
     pub(super) components: &'a mut String,
     pub(super) edges: &'a mut Vec<(u32, u32)>,
+    pub(super) structural_edges: &'a mut BTreeSet<(u32, u32)>,
     pub(super) warnings: &'a mut Vec<String>,
 }
 
@@ -246,6 +248,7 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
         node_out_key,
         components,
         edges,
+        structural_edges,
         warnings,
     } = args;
     let mut owners = BTreeMap::new();
@@ -362,6 +365,7 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
             Ok(rendered) => {
                 components.push_str(&rendered.xml);
                 edges.extend(rendered.input_edges);
+                structural_edges.extend(rendered.structural_input_edges);
                 node_out_key.extend(rendered.node_outputs);
                 exports.row_outputs.insert(join, rendered.row_output);
                 exports.tuple_outputs.insert(join, rendered.tuple_output);
@@ -516,6 +520,7 @@ fn render_one(
     let mut source_indices = BTreeMap::new();
     let mut input_ports = Vec::with_capacity(sources.len());
     let mut input_edges = Vec::with_capacity(sources.len());
+    let mut structural_input_edges = Vec::with_capacity(sources.len());
     for (index, source) in sources.iter().enumerate() {
         let collection = source.collection();
         if collection.is_empty() {
@@ -551,6 +556,9 @@ fn render_one(
         let input_port = keys.next();
         input_ports.push(input_port);
         input_edges.push((source_port, input_port));
+        if source.cardinality() == JoinSourceCardinality::Repeating {
+            structural_input_edges.push((source_port, input_port));
+        }
     }
 
     let mut output_trees = (0..sources.len())
@@ -657,13 +665,13 @@ fn render_one(
         if children.is_empty() {
             let _ = writeln!(
                 branches,
-                "\t\t\t\t\t\t\t\t<entry name=\"dynamic_tree_node{index}\"><entry name=\"{}\" inpkey=\"{input_port}\"{output_attr}/></entry>",
+                "\t\t\t\t\t\t\t\t<entry name=\"dynamic_tree_node{index}\" ns=\"1\"><entry name=\"{}\" inpkey=\"{input_port}\"{output_attr}/></entry>",
                 xml_escape(name)
             );
         } else {
             let _ = write!(
                 branches,
-                "\t\t\t\t\t\t\t\t<entry name=\"dynamic_tree_node{index}\">\n\
+                "\t\t\t\t\t\t\t\t<entry name=\"dynamic_tree_node{index}\" ns=\"1\">\n\
                  \t\t\t\t\t\t\t\t\t<entry name=\"{}\" inpkey=\"{input_port}\"{output_attr}>\n\
                  {children}\
                  \t\t\t\t\t\t\t\t\t</entry>\n\
@@ -699,14 +707,14 @@ fn render_one(
         "\t\t\t\t<component name=\"join\" library=\"core\" uid=\"{component_uid}\" kind=\"32\">\n\
          \t\t\t\t\t<view ltx=\"360\" lty=\"20\" rbx=\"560\" rby=\"300\"/>\n\
          \t\t\t\t\t<data>\n\
-         \t\t\t\t\t\t<root><entry name=\"document\"><entry name=\"tuple\" outkey=\"{tuple_output}\">\n\
+         \t\t\t\t\t\t<root><header><namespaces><namespace/><namespace uid=\"http://www.altova.com/mapforce\"/></namespaces></header><entry name=\"document\" ns=\"1\"><entry name=\"tuple\" ns=\"1\" outkey=\"{tuple_output}\">\n\
          {branches}\
          \t\t\t\t\t\t</entry></entry></root>\n\
          \t\t\t\t\t\t<join>\n\
          \t\t\t\t\t\t\t<joinkeys>\n\
          {pairs_xml}\
          \t\t\t\t\t\t\t</joinkeys>\n\
-         \t\t\t\t\t\t\t<keypaths><entry{root_key_attr}><condition/>\n\
+         \t\t\t\t\t\t\t<keypaths><header><namespaces><namespace/></namespaces></header><entry{root_key_attr}><condition/>\n\
          {key_entries}\
          \t\t\t\t\t\t\t</entry></keypaths>\n\
          \t\t\t\t\t\t</join>\n\
@@ -721,6 +729,7 @@ fn render_one(
             .unwrap_or(tuple_output),
         structural_row: structural_index.is_some(),
         input_edges,
+        structural_input_edges,
         node_outputs,
     })
 }

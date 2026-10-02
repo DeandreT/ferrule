@@ -395,6 +395,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         node_out_key: &mut node_out_key,
         components: &mut components,
         edges: &mut edges,
+        structural_edges: &mut structural_edges,
         warnings: &mut warnings,
     });
     let mut blocked_nodes = dynamic_sources.owned_nodes().clone();
