@@ -32,6 +32,63 @@ fn is_scalar_component(component: &roxmltree::Node<'_, '_>) -> bool {
         || library == "ferrule" && kind == Some("5") && crate::canonical_function::is_internal(name)
 }
 
+// A saved scalar interface can retain an unused input declaration while
+// removing its internal output key. Only the explicit scalar declaration
+// shape authorizes retaining that parameter without inventing a feed port.
+fn is_unused_scalar_parameter(component: &roxmltree::Node<'_, '_>) -> bool {
+    if component.attribute("library") != Some("core") || component.attribute("kind") != Some("6") {
+        return false;
+    }
+    let name = component.attribute("name").unwrap_or_default();
+    if name.trim().is_empty() {
+        return false;
+    }
+    for tag in ["sources", "targets"] {
+        let containers: Vec<_> = component
+            .children()
+            .filter(|node| node.has_tag_name(tag))
+            .collect();
+        let [container] = containers.as_slice() else {
+            return false;
+        };
+        let pins: Vec<_> = container
+            .children()
+            .filter(|node| node.is_element())
+            .collect();
+        let [pin] = pins.as_slice() else {
+            return false;
+        };
+        if !pin.has_tag_name("datapoint")
+            || pin.children().any(|node| node.is_element())
+            || pin
+                .attributes()
+                .any(|attribute| attribute.name() != "pos" || attribute.value() != "0")
+        {
+            return false;
+        }
+    }
+    let data: Vec<_> = component
+        .children()
+        .filter(|node| node.has_tag_name("data"))
+        .collect();
+    let [data] = data.as_slice() else {
+        return false;
+    };
+    let declarations: Vec<_> = data.children().filter(|node| node.is_element()).collect();
+    let [input, parameter] = declarations.as_slice() else {
+        return false;
+    };
+    input.has_tag_name("input")
+        && !input.children().any(|node| node.is_element())
+        && input.attributes().len() == 1
+        && input.attribute("datatype").and_then(scalar_type).is_some()
+        && parameter.has_tag_name("parameter")
+        && !parameter.children().any(|node| node.is_element())
+        && parameter.attributes().len() == 2
+        && parameter.attribute("usageKind") == Some("input")
+        && parameter.attribute("name") == Some(name)
+}
+
 pub(super) enum ReadError {
     Shape(String),
     Nested(String),
@@ -89,6 +146,7 @@ pub(super) fn read(
     let mut functions = Vec::new();
     let mut function_component_ids = Vec::new();
     let mut parameter_types = BTreeMap::new();
+    let mut unused_parameters = BTreeSet::new();
     let mut scalar_parameters = Vec::new();
     let mut scalar_outputs = Vec::new();
     let mut nested_calls = Vec::new();
@@ -190,6 +248,9 @@ pub(super) fn read(
             )));
         }
         if function.kind == 6 {
+            if function.outputs.is_empty() && is_unused_scalar_parameter(&child) {
+                unused_parameters.insert(component_id);
+            }
             if let Some(parameter_type) = function.input_type {
                 parameter_types.insert(component_id, parameter_type);
             }
@@ -243,6 +304,9 @@ pub(super) fn read(
     for (idx, function) in functions.iter().enumerate() {
         let component_id = function_component_ids[idx];
         if function.kind == 6 {
+            if function.outputs.is_empty() && unused_parameters.contains(&component_id) {
+                continue;
+            }
             let key = function.outputs.first().copied().ok_or_else(|| {
                 ReadError::Shape(format!("input parameter `{}` has no output", function.name))
             })?;
@@ -311,7 +375,11 @@ pub(super) fn read(
         outputs.insert(component_id, OutputExpr::Scalar(expression));
     }
     Ok(Definition {
-        parameters: parameter_by_key.values().copied().collect(),
+        parameters: parameter_by_key
+            .values()
+            .copied()
+            .chain(unused_parameters)
+            .collect(),
         structured_parameters: BTreeSet::new(),
         outputs,
         scalar_interface: Some(ScalarInterface {
