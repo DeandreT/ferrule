@@ -8,6 +8,23 @@ use super::ProgramValidationError;
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidPrimaryRootSchema { node } => write!(
+                formatter,
+                "compiled mapping expression {node} requires a supported nonrepeating closed primary XML root"
+            ),
+            Self::InvalidPrimaryRootType { node, identity } => write!(
+                formatter,
+                "compiled mapping expression {node} has unproved primary-root XML type {identity:?}"
+            ),
+            Self::InvalidPrimaryRootField { node, path } => write!(
+                formatter,
+                "compiled mapping expression {node} has unproved primary-root scalar path {}",
+                display_path(path)
+            ),
+            Self::PrimaryRootRequiresStaticBinding { node } => write!(
+                formatter,
+                "compiled mapping expression {node} requires a flat primary-target-root static binding"
+            ),
             Self::InvalidSchemaMetadata { boundary, path } => write!(
                 formatter,
                 "compiled mapping {boundary} schema {} has invalid metadata",

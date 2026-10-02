@@ -655,6 +655,14 @@ pub enum Expression {
         frame: Option<Vec<String>>,
         path: Vec<String>,
     },
+    /// Compares the actual observed annotation of the immutable primary root.
+    SourceRootXmlTypeEquals {
+        canonical_expanded_type: String,
+    },
+    /// Reads one scalar through exact nonrepeating primary-root group fields.
+    SourceRootField {
+        path: Vec<String>,
+    },
     /// Reads one runtime-named scalar field from an open source object.
     ///
     /// Missing objects/properties, structural values, inactive frames, and

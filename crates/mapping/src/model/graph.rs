@@ -48,6 +48,56 @@ const fn default_xml_indent() -> bool {
     true
 }
 
+fn deserialize_root_type<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<String, D::Error> {
+    let value = String::deserialize(deserializer)?;
+    if !ir::primary_root_type_identity_is_valid(&value) {
+        return Err(serde::de::Error::custom(
+            "primary root XML type requires a bounded resolved identity",
+        ));
+    }
+    Ok(value)
+}
+
+fn serialize_root_type<S: serde::Serializer>(
+    value: &str,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if !ir::primary_root_type_identity_is_valid(value) {
+        return Err(serde::ser::Error::custom(
+            "primary root XML type requires a bounded resolved identity",
+        ));
+    }
+    value.serialize(serializer)
+}
+
+fn deserialize_root_path<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error> {
+    let value = Vec::<String>::deserialize(deserializer)?;
+    if !ir::primary_root_scalar_path_is_valid(&value.iter().map(String::as_str).collect::<Vec<_>>())
+    {
+        return Err(serde::de::Error::custom(
+            "primary root scalar requires a bounded ordinary data path",
+        ));
+    }
+    Ok(value)
+}
+
+fn serialize_root_path<S: serde::Serializer>(
+    value: &[String],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if !ir::primary_root_scalar_path_is_valid(&value.iter().map(String::as_str).collect::<Vec<_>>())
+    {
+        return Err(serde::ser::Error::custom(
+            "primary root scalar requires a bounded ordinary data path",
+        ));
+    }
+    value.serialize(serializer)
+}
+
 /// A value supplied by the execution host rather than source instance data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -76,6 +126,24 @@ pub enum Node {
         /// `None` preserves the usual innermost-first outward fallback.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         frame: Option<Vec<String>>,
+    },
+    /// Compares an observed XML annotation owned by the immutable primary root.
+    /// This reads neither the selected writer marker nor any active source frame.
+    SourceRootXmlTypeEquals {
+        #[serde(
+            deserialize_with = "deserialize_root_type",
+            serialize_with = "serialize_root_type"
+        )]
+        canonical_expanded_type: String,
+    },
+    /// Reads one schema-known scalar from the exact immutable primary source root.
+    /// Missing fields are Null; collections, documents and unrelated frames never unwrap.
+    SourceRootField {
+        #[serde(
+            deserialize_with = "deserialize_root_path",
+            serialize_with = "serialize_root_path"
+        )]
+        path: Vec<String>,
     },
     /// Reads the resolved location retained by the nearest active source
     /// document. This is boundary metadata, not a schema field.
@@ -288,6 +356,8 @@ impl Node {
     pub fn dependencies(&self) -> Vec<NodeId> {
         match self {
             Self::SourceField { .. }
+            | Self::SourceRootXmlTypeEquals { .. }
+            | Self::SourceRootField { .. }
             | Self::SourceDocumentPath
             | Self::Position { .. }
             | Self::JoinField { .. }

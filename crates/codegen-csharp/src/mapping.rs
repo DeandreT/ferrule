@@ -79,6 +79,21 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 }
                 output.push_str(");\n");
             }
+            Expression::SourceRootXmlTypeEquals {
+                canonical_expanded_type,
+            } => {
+                output.push_str(&format!(
+                    " =>\n        context.ResolveSourceRootXmlTypeEquals({node}U, {});\n",
+                    literal::string(canonical_expanded_type)
+                ));
+            }
+            Expression::SourceRootField { path } => {
+                output.push_str(&format!(
+                    " =>\n        context.ResolveSourceRootField({node}U, "
+                ));
+                render_path(path, &mut output);
+                output.push_str(");\n");
+            }
             Expression::DynamicSourceField { object, frame, key } => {
                 output.push_str("\n    {\n        var key = Node_");
                 output.push_str(&key.to_string());

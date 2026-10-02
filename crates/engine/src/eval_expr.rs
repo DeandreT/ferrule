@@ -28,6 +28,7 @@ pub(crate) struct EvalProgram<'a> {
     pub(crate) debug_hook: Option<&'a dyn DebugHook>,
     pub(crate) first_failure_reported: &'a Cell<bool>,
     purpose: ExecutionPurpose,
+    primary_source: Option<&'a Instance>,
 }
 
 impl<'a> EvalProgram<'a> {
@@ -44,6 +45,7 @@ impl<'a> EvalProgram<'a> {
             debug_hook: None,
             first_failure_reported,
             purpose: ExecutionPurpose::Run,
+            primary_source: None,
         }
     }
 
@@ -54,6 +56,11 @@ impl<'a> EvalProgram<'a> {
 
     pub(crate) fn with_purpose(mut self, purpose: ExecutionPurpose) -> Self {
         self.purpose = purpose;
+        self
+    }
+
+    pub(crate) fn with_primary_source(mut self, source: &'a Instance) -> Self {
+        self.primary_source = Some(source);
         self
     }
 }
@@ -97,6 +104,22 @@ fn eval_expr_inner(
         .ok_or(EngineError::MissingNode(node_id))?;
 
     let result = match node {
+        Node::SourceRootXmlTypeEquals {
+            canonical_expanded_type,
+        } => ir::primary_root_xml_type_equals(program.primary_source, canonical_expanded_type)
+            .map(Value::Bool)
+            .map_err(|source| EngineError::PrimaryRoot {
+                node: node_id,
+                source,
+            }),
+        Node::SourceRootField { path } => ir::primary_root_scalar(
+            program.primary_source,
+            &path.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+        .map_err(|source| EngineError::PrimaryRoot {
+            node: node_id,
+            source,
+        }),
         Node::SourceField { path, frame } => match frame {
             Some(frame) => {
                 Ok(scalar_in_frame(context, positions, frame, path).unwrap_or(Value::Null))
@@ -877,5 +900,71 @@ mod tests {
         .expect("nested lookup should evaluate");
 
         assert_eq!(value, Value::String("second".into()));
+    }
+}
+
+#[cfg(test)]
+mod primary_root_owner_tests {
+    use super::*;
+    use ir::{InstanceGroup, PrimaryRootError, XmlTypeOrigin};
+    fn marked(value: &str, annotation: &str) -> Instance {
+        Instance::Group(
+            InstanceGroup::from(vec![(
+                "Code".into(),
+                Instance::Scalar(Value::String(value.into())),
+            )])
+            .with_xml_type_origin(XmlTypeOrigin::Explicit(annotation))
+            .unwrap(),
+        )
+    }
+    #[test]
+    fn primary_owner_is_explicit_and_independent_of_all_frame_indices() {
+        let owner = marked("primary", "Derived");
+        let outer = marked("outer", "Other");
+        let inner = marked("inner", "Other");
+        let graph = Graph {
+            nodes: [
+                (
+                    0,
+                    Node::SourceRootXmlTypeEquals {
+                        canonical_expanded_type: "Derived".into(),
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceRootField {
+                        path: vec!["Code".into()],
+                    },
+                ),
+            ]
+            .into(),
+        };
+        let functions = BTreeMap::new();
+        let reported = Cell::new(false);
+        let program =
+            EvalProgram::new(&graph, &functions, None, &reported).with_primary_source(&owner);
+        for frames in [
+            vec![],
+            vec![&inner],
+            vec![&outer, &inner],
+            vec![&outer, &inner, &outer, &inner],
+        ] {
+            assert_eq!(
+                eval_expr(program, 0, &frames, &[], &mut HashSet::new()).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                eval_expr(program, 1, &frames, &[], &mut HashSet::new()).unwrap(),
+                Value::String("primary".into())
+            );
+        }
+        let missing = EvalProgram::new(&graph, &functions, None, &reported);
+        assert!(matches!(
+            eval_expr(missing, 0, &[&owner], &[], &mut HashSet::new()),
+            Err(EngineError::PrimaryRoot {
+                node: 0,
+                source: PrimaryRootError::MissingOwner
+            })
+        ));
     }
 }
