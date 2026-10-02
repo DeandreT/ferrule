@@ -8,6 +8,13 @@ internal static partial class Program
     {
         var tests = new (string Name, Action Run)[]
         {
+            ("primary root annotation states", PrimaryRootAnnotationStates),
+            ("primary root unknown and identity errors", PrimaryRootUnknownAndIdentityErrors),
+            ("primary root scalar shapes", PrimaryRootScalarShapes),
+            ("primary root never unwraps owner", PrimaryRootNeverUnwrapsOwner),
+            ("primary root duplicates and limits", PrimaryRootDuplicatesAndLimits),
+            ("primary root owner collisions", PrimaryRootOwnerCollisions),
+            ("primary root ordinary data and Unicode bounds", PrimaryRootOrdinaryDataAndUnicodeBounds),
             ("group traversal", GroupTraversal),
             ("copy current group", CopyCurrentGroup),
             ("repeated first item", RepeatedFirstItem),

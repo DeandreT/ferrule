@@ -686,6 +686,12 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             frame: frame.clone(),
             path: path.clone(),
         },
+        Node::SourceRootXmlTypeEquals {
+            canonical_expanded_type,
+        } => Expression::SourceRootXmlTypeEquals {
+            canonical_expanded_type: canonical_expanded_type.clone(),
+        },
+        Node::SourceRootField { path } => Expression::SourceRootField { path: path.clone() },
         Node::DynamicSourceField { object, frame, key } => Expression::DynamicSourceField {
             object: object.clone(),
             frame: frame.clone(),

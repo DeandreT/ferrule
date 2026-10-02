@@ -8,17 +8,25 @@ namespace Ferrule.Runtime;
 /// </summary>
 public sealed partial class ScopeContext
 {
+    public FerruleValue ResolveSourceRootXmlTypeEquals(uint node, string identity) =>
+        FerruleValue.FromBoolean(FerrulePrimaryRoot.XmlTypeEquals(_primarySource, identity, node));
+
+    public FerruleValue ResolveSourceRootField(uint node, IReadOnlyList<string> path) =>
+        FerrulePrimaryRoot.Scalar(_primarySource, path, node);
+    private readonly FerruleInstance _primarySource;
     private readonly IReadOnlyList<FerruleInstance> _frames;
     private readonly IReadOnlyList<CollectionIdentity> _collections;
     private readonly FerruleExecutionContext? _executionContext;
     private readonly IFerruleDynamicSourceLoader? _dynamicSourceLoader;
 
     private ScopeContext(
+        FerruleInstance primarySource,
         IReadOnlyList<FerruleInstance> frames,
         IReadOnlyList<CollectionIdentity> collections,
         FerruleExecutionContext? executionContext,
         IFerruleDynamicSourceLoader? dynamicSourceLoader = null)
     {
+        _primarySource = primarySource;
         _frames = frames;
         _collections = collections;
         _executionContext = executionContext;
@@ -33,7 +41,7 @@ public sealed partial class ScopeContext
     public ScopeContext WithDynamicSourceLoader(IFerruleDynamicSourceLoader loader)
     {
         ArgumentNullException.ThrowIfNull(loader);
-        return new ScopeContext(_frames, _collections, _executionContext, loader);
+        return new ScopeContext(_primarySource, _frames, _collections, _executionContext, loader);
     }
 
     public static ScopeContext FromSource(
@@ -42,6 +50,7 @@ public sealed partial class ScopeContext
     {
         ArgumentNullException.ThrowIfNull(source);
         return new ScopeContext(
+            source,
             new ReadOnlyCollection<FerruleInstance>(new[] { source }),
             Array.Empty<CollectionIdentity>(),
             executionContext);
@@ -61,6 +70,7 @@ public sealed partial class ScopeContext
         ArgumentNullException.ThrowIfNull(extraSources);
         var extras = new FerruleGroup(extraSources);
         return new ScopeContext(
+            source,
             new ReadOnlyCollection<FerruleInstance>(new FerruleInstance[] { extras, source }),
             Array.Empty<CollectionIdentity>(),
             executionContext);
@@ -579,6 +589,7 @@ public sealed partial class ScopeContext
             ? collections[^1] with { JoinPosition = index }
             : collections[^1] with { Index = index };
         return new ScopeContext(
+            _primarySource,
             _frames,
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
@@ -653,6 +664,7 @@ public sealed partial class ScopeContext
         collections.AddRange(_collections);
         collections.Add(new CollectionIdentity(Array.Empty<string>(), item, index));
         return new ScopeContext(
+            _primarySource,
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
@@ -824,6 +836,7 @@ public sealed partial class ScopeContext
         allCollections.AddRange(_collections);
         allCollections.AddRange(collections);
         output.Add(new ScopeContext(
+            _primarySource,
             new ReadOnlyCollection<FerruleInstance>(allFrames),
             new ReadOnlyCollection<CollectionIdentity>(allCollections),
             _executionContext,

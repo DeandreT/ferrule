@@ -14,6 +14,7 @@ use super::{
 };
 
 pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
+    super::primary_root::validate_primary_root_primitives(project, issues);
     let mut sequence_item_scopes = BTreeMap::new();
     collect_sequence_items(
         &project.root,
@@ -89,6 +90,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
         }
 
         match node {
+            Node::SourceRootXmlTypeEquals { .. } | Node::SourceRootField { .. } => {}
             Node::SourceField { .. } if sequence_items.contains(&id) => {}
             Node::SourceField { path, frame } => {
                 let mut absolute = frame.clone().unwrap_or_default();
@@ -577,7 +579,10 @@ fn validate_failure_dynamic_sources(
     }
 }
 
-fn all_dependencies(graph: &Graph, roots: impl IntoIterator<Item = NodeId>) -> BTreeSet<NodeId> {
+pub(super) fn all_dependencies(
+    graph: &Graph,
+    roots: impl IntoIterator<Item = NodeId>,
+) -> BTreeSet<NodeId> {
     let mut pending: Vec<_> = roots.into_iter().collect();
     let mut visited = BTreeSet::new();
     while let Some(node) = pending.pop() {
@@ -638,6 +643,8 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
             }
         }
         Node::SourceDocumentPath
+        | Node::SourceRootXmlTypeEquals { .. }
+        | Node::SourceRootField { .. }
         | Node::JoinPosition { .. }
         | Node::Unconnected
         | Node::Const { .. }
@@ -1132,6 +1139,8 @@ pub(super) fn validate_collection_value(
 pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     match node {
         Node::SourceField { .. }
+        | Node::SourceRootXmlTypeEquals { .. }
+        | Node::SourceRootField { .. }
         | Node::SourceDocumentPath
         | Node::Position { .. }
         | Node::JoinField { .. }

@@ -50,6 +50,7 @@ impl GeneratedItems {
 /// when the selected value is not itself a collection.
 #[derive(Clone)]
 pub struct ScopeContext<'a> {
+    primary_source: &'a Instance,
     frames: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
     execution: Option<ExecutionContext<'a>>,
@@ -108,6 +109,7 @@ impl<'a> ScopeContext<'a> {
     /// Creates the root context for one generated mapping execution.
     pub fn new(source: &'a Instance) -> Self {
         Self {
+            primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
@@ -125,6 +127,7 @@ impl<'a> ScopeContext<'a> {
     /// one outer named frame.
     pub fn with_named_inputs(source: &'a Instance, inputs: &'a [NamedInput<'a>]) -> Self {
         Self {
+            primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
@@ -143,6 +146,7 @@ impl<'a> ScopeContext<'a> {
     /// values remain borrowed for the mapping execution.
     pub fn with_execution_context(source: &'a Instance, execution: &ExecutionContext<'a>) -> Self {
         Self {
+            primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
@@ -163,6 +167,7 @@ impl<'a> ScopeContext<'a> {
         execution: &ExecutionContext<'a>,
     ) -> Self {
         Self {
+            primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
@@ -184,6 +189,23 @@ impl<'a> ScopeContext<'a> {
 
     pub(crate) fn dynamic_source_loader(&self) -> Option<&'a dyn DynamicSourceLoader> {
         self.dynamic_source_loader
+    }
+
+    /// Compares the observed annotation owned by the immutable primary root.
+    pub fn source_root_xml_type_equals(
+        &self,
+        node: u32,
+        canonical_expanded_type: &str,
+    ) -> Result<Value, RuntimeError> {
+        ir::primary_root_xml_type_equals(Some(self.primary_source), canonical_expanded_type)
+            .map(Value::Bool)
+            .map_err(|source| RuntimeError::PrimaryRoot { node, source })
+    }
+
+    /// Reads exact group fields from the immutable primary root, without fallback.
+    pub fn source_root_field(&self, node: u32, path: &[&str]) -> Result<Value, RuntimeError> {
+        ir::primary_root_scalar(Some(self.primary_source), path)
+            .map_err(|source| RuntimeError::PrimaryRoot { node, source })
     }
 
     /// Resolves one host-supplied scalar or returns the same typed missing
@@ -402,6 +424,7 @@ impl<'a> ScopeContext<'a> {
                 },
             ));
             ScopeContext {
+                primary_source: self.primary_source,
                 frames,
                 named_inputs: self.named_inputs,
                 execution: self.execution,
@@ -454,6 +477,7 @@ impl<'a> ScopeContext<'a> {
             },
         ));
         ScopeContext {
+            primary_source: self.primary_source,
             frames,
             named_inputs: self.named_inputs,
             execution: self.execution,
@@ -489,6 +513,7 @@ impl<'a> ScopeContext<'a> {
             },
         ));
         ScopeContext {
+            primary_source: self.primary_source,
             frames,
             named_inputs: self.named_inputs,
             execution: self.execution,

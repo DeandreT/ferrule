@@ -1034,6 +1034,16 @@ fn render_expression(
                 }
             }
         }
+        Expression::SourceRootXmlTypeEquals {
+            canonical_expanded_type,
+        } => format!(
+            "context.source_root_xml_type_equals({id}, {})",
+            rust_string(canonical_expanded_type)
+        ),
+        Expression::SourceRootField { path } => format!(
+            "context.source_root_field({id}, &[{}])",
+            render_string_path(path)
+        ),
         Expression::DynamicSourceField { object, frame, key } => {
             let object = render_string_path(object);
             let frame = frame.as_ref().map_or_else(

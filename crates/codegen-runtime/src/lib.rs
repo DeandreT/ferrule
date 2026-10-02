@@ -46,7 +46,8 @@ pub use generated_sequence::{
     tokenize_by_length, tokenize_regex,
 };
 pub use ir::{
-    DocumentMember, Instance, InstanceGroup, ScalarType, Value, XmlTypeOrigin, XmlTypeOriginError,
+    DocumentMember, Instance, InstanceGroup, PrimaryRootError, ScalarType, Value, XmlTypeOrigin,
+    XmlTypeOriginError,
 };
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
@@ -73,6 +74,10 @@ pub use xml_mixed_content::{
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
     SourcePath(SourcePathError),
+    PrimaryRoot {
+        node: u32,
+        source: ir::PrimaryRootError,
+    },
     Function(FunctionError),
     AggregateIntegerOverflow {
         function: AggregateFunction,
@@ -244,6 +249,7 @@ impl fmt::Display for RuntimeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::SourcePath(error) => error.fmt(formatter),
+            Self::PrimaryRoot { node, source } => write!(formatter, "node {node}: {source}"),
             Self::Function(error) => error.fmt(formatter),
             Self::AggregateIntegerOverflow { function } => {
                 write!(
@@ -480,6 +486,7 @@ impl std::error::Error for RuntimeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::SourcePath(error) => Some(error),
+            Self::PrimaryRoot { source, .. } => Some(source),
             Self::Function(error) => Some(error),
             Self::AggregateIntegerOverflow { .. }
             | Self::AggregateNonFinite { .. }

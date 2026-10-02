@@ -833,6 +833,10 @@ fn node_label(node: &mapping::Node) -> String {
     match node {
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
+        mapping::Node::SourceRootXmlTypeEquals { .. } => {
+            "primary XML annotation equality".to_string()
+        }
+        mapping::Node::SourceRootField { path } => format!("primary field {}", display_path(path)),
         mapping::Node::Position { collection } => {
             format!("position {}", display_path(collection))
         }

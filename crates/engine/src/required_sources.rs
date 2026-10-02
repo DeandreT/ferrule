@@ -210,6 +210,8 @@ impl<'a> Analysis<'a> {
                 }
             }
             Node::SourceDocumentPath
+            | Node::SourceRootXmlTypeEquals { .. }
+            | Node::SourceRootField { .. }
             | Node::JoinPosition { .. }
             | Node::Unconnected
             | Node::Const { .. }

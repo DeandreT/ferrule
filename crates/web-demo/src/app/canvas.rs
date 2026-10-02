@@ -79,6 +79,8 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
     match node {
         Node::SourceField { .. }
         | Node::SourceDocumentPath
+        | Node::SourceRootXmlTypeEquals { .. }
+        | Node::SourceRootField { .. }
         | Node::Unconnected
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
@@ -146,6 +148,8 @@ fn node_title(node: &Node) -> String {
     match node {
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),
+        Node::SourceRootXmlTypeEquals { .. } => "primary XML annotation equality".to_string(),
+        Node::SourceRootField { path } => format!("primary field · {}", path.join("/")),
         Node::Position { collection } => format!("position · {}", collection.join("/")),
         Node::JoinField {
             join,

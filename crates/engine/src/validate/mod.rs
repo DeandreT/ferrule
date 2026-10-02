@@ -7,6 +7,7 @@ mod graph;
 mod join;
 mod options;
 mod owner;
+mod primary_root;
 mod schema;
 mod scope;
 mod sequences;

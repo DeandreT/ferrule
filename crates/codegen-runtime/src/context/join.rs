@@ -56,6 +56,7 @@ impl<'a> ScopeContext<'a> {
                 let mut frames = self.frames.clone();
                 frames.extend(row.frames);
                 Self {
+                    primary_source: self.primary_source,
                     frames,
                     named_inputs: self.named_inputs,
                     execution: self.execution,

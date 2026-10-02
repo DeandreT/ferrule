@@ -64,6 +64,7 @@ public enum FerruleRuntimeError
     UserFunctionType,
     XmlSerialization,
     JsonBoundary,
+    PrimaryRoot,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
@@ -91,7 +92,8 @@ public sealed class FerruleRuntimeException : Exception
         FerruleScalarType? expectedScalarType = null,
         string? runtimeParameter = null,
         string? sourceField = null,
-        string? foundInstance = null)
+        string? foundInstance = null,
+        FerrulePrimaryRootFailure? primaryRoot = null)
         : base(message)
     {
         Error = error;
@@ -115,6 +117,7 @@ public sealed class FerruleRuntimeException : Exception
         RuntimeParameter = runtimeParameter;
         SourceField = sourceField;
         FoundInstance = foundInstance;
+        PrimaryRoot = primaryRoot;
     }
 
     public FerruleRuntimeException(
@@ -140,7 +143,8 @@ public sealed class FerruleRuntimeException : Exception
         FerruleScalarType? expectedScalarType = null,
         string? runtimeParameter = null,
         string? sourceField = null,
-        string? foundInstance = null)
+        string? foundInstance = null,
+        FerrulePrimaryRootFailure? primaryRoot = null)
         : base(message, innerException)
     {
         Error = error;
@@ -164,6 +168,7 @@ public sealed class FerruleRuntimeException : Exception
         RuntimeParameter = runtimeParameter;
         SourceField = sourceField;
         FoundInstance = foundInstance;
+        PrimaryRoot = primaryRoot;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -207,4 +212,6 @@ public sealed class FerruleRuntimeException : Exception
     public string? SourceField { get; }
 
     public string? FoundInstance { get; }
+
+    public FerrulePrimaryRootFailure? PrimaryRoot { get; }
 }

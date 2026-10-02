@@ -1603,3 +1603,34 @@ fn adjacency_tree_root_node_is_protected_from_deletion() {
 
 #[path = "graph_viewer_tests/allocation.rs"]
 mod allocation_tests;
+
+#[test]
+fn primary_root_primitives_are_zero_input_visible_graph_nodes() {
+    let mut fx = fixture();
+    for (id, node) in [
+        (
+            10,
+            Node::SourceRootXmlTypeEquals {
+                canonical_expanded_type: "Derived".into(),
+            },
+        ),
+        (
+            11,
+            Node::SourceRootField {
+                path: vec!["Code".into()],
+            },
+        ),
+    ] {
+        assert_eq!(GraphViewer::input_count(&node), 0);
+        assert!(node_inputs(&node).is_empty());
+        fx.graph.nodes.insert(id, node);
+        assert_eq!(fx.viewer().input_at(id, 0), None);
+        assert_eq!(fx.viewer().input_at(id, 1), None);
+    }
+    let mut viewer = fx.viewer();
+    assert_eq!(
+        viewer.title(&CanvasNode::Graph(10)),
+        "Primary XML annotation equality"
+    );
+    assert_eq!(viewer.title(&CanvasNode::Graph(11)), "Primary field: Code");
+}

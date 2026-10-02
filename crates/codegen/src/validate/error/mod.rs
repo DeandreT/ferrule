@@ -12,6 +12,20 @@ mod display;
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
+    InvalidPrimaryRootSchema {
+        node: NodeId,
+    },
+    InvalidPrimaryRootType {
+        node: NodeId,
+        identity: String,
+    },
+    InvalidPrimaryRootField {
+        node: NodeId,
+        path: Vec<String>,
+    },
+    PrimaryRootRequiresStaticBinding {
+        node: NodeId,
+    },
     InvalidSchemaMetadata {
         boundary: String,
         path: Vec<String>,

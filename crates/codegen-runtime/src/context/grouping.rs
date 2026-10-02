@@ -11,6 +11,7 @@ pub struct GroupedItems<'a> {
 }
 
 struct OwnedGroup<'a> {
+    primary_source: &'a Instance,
     prefix: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
     execution: Option<crate::ExecutionContext<'a>>,
@@ -337,6 +338,7 @@ impl<'a> GroupedItems<'a> {
                 grouped_frame.document_path = group.document_path;
                 frames.push(grouped_frame);
                 ScopeContext {
+                    primary_source: group.primary_source,
                     frames,
                     named_inputs: group.named_inputs,
                     execution: group.execution,
@@ -364,6 +366,7 @@ impl<'a> GroupedItems<'a> {
                     });
                     let prefix_len = group.first.frames.len().saturating_sub(1);
                     Some(OwnedGroup {
+                        primary_source: group.first.primary_source,
                         prefix: group.first.frames[..prefix_len].to_vec(),
                         named_inputs: group.first.named_inputs,
                         execution: group.first.execution,

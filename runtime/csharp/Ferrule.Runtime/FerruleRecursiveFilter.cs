@@ -290,6 +290,7 @@ public sealed partial class ScopeContext
         collections.AddRange(_collections);
         collections.Add(new CollectionIdentity(new[] { collection }, item, index));
         return new ScopeContext(
+            _primarySource,
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,

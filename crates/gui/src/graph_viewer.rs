@@ -803,6 +803,8 @@ impl GraphViewer<'_> {
             } => expression.iter().chain(arg).nth(idx).copied(),
             Node::SourceField { .. }
             | Node::SourceDocumentPath
+            | Node::SourceRootXmlTypeEquals { .. }
+            | Node::SourceRootField { .. }
             | Node::Position { .. }
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
@@ -987,6 +989,8 @@ impl GraphViewer<'_> {
         match node {
             Node::SourceField { .. }
             | Node::SourceDocumentPath
+            | Node::SourceRootXmlTypeEquals { .. }
+            | Node::SourceRootField { .. }
             | Node::Position { .. }
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
@@ -1097,6 +1101,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         compact_graph_title(&format!("Source: {owner}{}", path.join("/")))
                     }
                     Some(Node::SourceDocumentPath) => "Source document path".to_string(),
+                    Some(Node::SourceRootXmlTypeEquals { .. }) => {
+                        "Primary XML annotation equality".to_string()
+                    }
+                    Some(Node::SourceRootField { path }) => {
+                        compact_graph_title(&format!("Primary field: {}", path.join("/")))
+                    }
                     Some(Node::Position { collection }) if collection.is_empty() => {
                         "Position".to_string()
                     }
@@ -1775,6 +1785,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         ))
                         .on_hover_text(format!("source frame: {}", frame.join("/")));
                     }
+                }
+                Node::SourceRootXmlTypeEquals {
+                    canonical_expanded_type,
+                } => {
+                    ui.label("immutable primary XML annotation");
+                    ui.label(canonical_expanded_type.as_str());
+                }
+                Node::SourceRootField { path } => {
+                    ui.label("immutable primary source field");
+                    ui.label(path.join("/"));
                 }
                 Node::SourceDocumentPath => {
                     ui.label("current source document path");
