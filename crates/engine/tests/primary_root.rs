@@ -57,6 +57,7 @@ fn project() -> Project {
                     1,
                     Node::SourceRootField {
                         path: vec!["Code".into()],
+                        required: false,
                     },
                 ),
                 (2, Node::Const { value: Value::Null }),
@@ -288,6 +289,7 @@ fn initial_context_gate_rejects_controls_descendants_named_targets_and_virtual_f
         1,
         Node::SourceRootField {
             path: vec![XML_TYPE_FIELD.into()],
+            required: false,
         },
     );
     assert!(!validate(&virtual_path).is_empty());
@@ -309,6 +311,7 @@ fn isolated_user_function_cannot_read_primary_root_provenance_or_data() {
         },
         Node::SourceRootField {
             path: vec!["Code".into()],
+            required: false,
         },
     ] {
         let mut project = project();

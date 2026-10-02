@@ -208,6 +208,16 @@ impl<'a> ScopeContext<'a> {
             .map_err(|source| RuntimeError::PrimaryRoot { node, source })
     }
 
+    /// Reads one required primary-root scalar only when the caller evaluates it.
+    pub fn source_root_required_field(
+        &self,
+        node: u32,
+        path: &[&str],
+    ) -> Result<Value, RuntimeError> {
+        ir::primary_root_scalar_with_requirement(Some(self.primary_source), path, true)
+            .map_err(|source| RuntimeError::PrimaryRoot { node, source })
+    }
+
     /// Resolves one host-supplied scalar or returns the same typed missing
     /// value error as the interpreter.
     pub fn runtime_value(&self, value: RuntimeValue) -> Result<Value, RuntimeError> {

@@ -3,6 +3,40 @@ use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions, WsdlMessageRole, 
 
 use super::ValidationIssue;
 
+pub(super) fn validate_inactive_root_xml_read_options(
+    location: &str,
+    options: &FormatOptions,
+    schema: &SchemaNode,
+    path: Option<&str>,
+    source_side: bool,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if !options.xml_allow_inactive_root_type_members {
+        return;
+    }
+    let accepted_options = FormatOptions {
+        xml_document: true,
+        xml_allow_inactive_root_type_members: true,
+        ..Default::default()
+    };
+    let remote = path.is_some_and(|path| {
+        path.split_once("://").is_some_and(|(scheme, _)| {
+            scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+        })
+    });
+    if !source_side
+        || !options.xml_document
+        || *options != accepted_options
+        || remote
+        || !ir::xml_inactive_root_type_members_are_supported(schema)
+    {
+        issues.push(ValidationIssue::new(
+            location,
+            "`xml_allow_inactive_root_type_members` requires a closed flat typed local XML input with no other format options",
+        ));
+    }
+}
+
 pub(super) fn validate_csv_dialect_options(
     location: &str,
     options: &FormatOptions,

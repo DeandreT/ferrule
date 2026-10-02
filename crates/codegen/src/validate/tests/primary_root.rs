@@ -24,6 +24,7 @@ fn primary_root_validates_known_owner_type_and_exact_physical_field() {
     assert_eq!(validate_program(&valid), Ok(()));
     valid.expressions[0].expression = Expression::SourceRootField {
         path: vec!["NodeName".into()],
+        required: false,
     };
     valid.target = SchemaNode::group(
         "Target",
@@ -37,7 +38,10 @@ fn primary_root_validates_known_owner_type_and_exact_physical_field() {
         vec!["element()".into()],
         vec![ir::XML_TYPE_ORIGIN_FIELD.into()],
     ] {
-        valid.expressions[0].expression = Expression::SourceRootField { path: path.clone() };
+        valid.expressions[0].expression = Expression::SourceRootField {
+            path: path.clone(),
+            required: false,
+        };
         assert_eq!(
             validate_program(&valid),
             Err(ProgramValidationError::InvalidPrimaryRootField { node: 1, path })

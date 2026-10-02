@@ -137,13 +137,17 @@ pub enum Node {
         canonical_expanded_type: String,
     },
     /// Reads one schema-known scalar from the exact immutable primary source root.
-    /// Missing fields are Null; collections, documents and unrelated frames never unwrap.
+    /// Collections, documents and unrelated frames never unwrap.
     SourceRootField {
         #[serde(
             deserialize_with = "deserialize_root_path",
             serialize_with = "serialize_root_path"
         )]
         path: Vec<String>,
+        /// Fail on a missing/Null value only when this expression is evaluated.
+        /// False preserves the legacy nullable read policy.
+        #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+        required: bool,
     },
     /// Reads the resolved location retained by the nearest active source
     /// document. This is boundary metadata, not a schema field.
