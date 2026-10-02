@@ -871,6 +871,8 @@ fn mfd_import_options(
 
 /// Converts a Ferrule project file into an `.mfd` design (plus
 /// generated XSDs next to it). Returns warnings for skipped constructs.
+/// Static local instance paths retain their location relative to the saved
+/// project when the exported design is written to another directory.
 /// Existing callers retain the Ferrule extension profile.
 pub fn export_mfd(project_path: &Path, out_path: &Path) -> anyhow::Result<Vec<String>> {
     export_mfd_with_profile(project_path, out_path, mfd::ExportProfile::default())
@@ -883,7 +885,8 @@ pub fn preflight_mfd_export(
     project_path: &Path,
     out_path: &Path,
 ) -> anyhow::Result<mfd::ExportReport> {
-    let project = load_project(project_path)?;
+    let mut project = load_project(project_path)?;
+    rebase_project_paths(&mut project, project_path, out_path)?;
     mfd::preflight_export(&project, out_path)
         .with_context(|| format!("checking export to {}", out_path.display()))
 }
@@ -895,13 +898,17 @@ pub fn preflight_mfd_pipeline_export(
 ) -> anyhow::Result<mfd::ExportReport> {
     let encoded = std::fs::read_to_string(pipeline_path)
         .with_context(|| format!("reading {}", pipeline_path.display()))?;
-    let pipeline = mapping::pipeline_file::decode_str(&encoded)
+    let mut pipeline = mapping::pipeline_file::decode_str(&encoded)
         .with_context(|| format!("parsing {}", pipeline_path.display()))?;
+    for stage in &mut pipeline.stages {
+        rebase_project_paths(&mut stage.project, pipeline_path, out_path)?;
+    }
     mfd::preflight_pipeline_export(&pipeline, out_path)
         .with_context(|| format!("checking pipeline export to {}", out_path.display()))
 }
 
 /// Write a bounded serial XML pipeline as one connected `.mfd` design.
+/// Stage instance paths are rebased from the saved pipeline to the design.
 pub fn export_mfd_pipeline_with_profile(
     pipeline_path: &Path,
     out_path: &Path,
@@ -909,8 +916,11 @@ pub fn export_mfd_pipeline_with_profile(
 ) -> anyhow::Result<mfd::ExportReport> {
     let encoded = std::fs::read_to_string(pipeline_path)
         .with_context(|| format!("reading {}", pipeline_path.display()))?;
-    let pipeline = mapping::pipeline_file::decode_str(&encoded)
+    let mut pipeline = mapping::pipeline_file::decode_str(&encoded)
         .with_context(|| format!("parsing {}", pipeline_path.display()))?;
+    for stage in &mut pipeline.stages {
+        rebase_project_paths(&mut stage.project, pipeline_path, out_path)?;
+    }
     mfd::export_pipeline_with_profile(&pipeline, out_path, profile)
         .with_context(|| format!("writing {}", out_path.display()))
 }
@@ -923,7 +933,8 @@ pub fn export_mfd_with_profile(
     out_path: &Path,
     profile: mfd::ExportProfile,
 ) -> anyhow::Result<mfd::ExportReport> {
-    let project = load_project(project_path)?;
+    let mut project = load_project(project_path)?;
+    rebase_project_paths(&mut project, project_path, out_path)?;
     let report = mfd::export_with_profile(&project, out_path, profile)
         .with_context(|| format!("writing {}", out_path.display()))?;
     Ok(report)
