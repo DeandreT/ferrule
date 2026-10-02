@@ -990,16 +990,22 @@ recorded separately without inferring broader runtime coverage.
   attribute metadata while matching its existing closed schema profile.
   Scalar-function input/output names survive canonical export, and grouped
   temperature keys use the selected group's key output. These survey checks
-  are static. WSDL response transport still loses two required-attribute flags.
+  are static. WSDL response entry metadata now retains required-attribute uses
+  through export and re-import without overriding authoritative XSDs.
 - Separate authored scalar-function native checks execute and save seven
-  profiles with zero warnings. Six saved-file imports and interpreter replays
+  profiles with zero warnings. All seven current saved-file imports and
+  interpreter replays
   are warning-free, schema-valid and exactly typed, including the repaired
-  unused-parameter signature. A zero-parameter design replays correctly but
-  retains an unconnected-source warning. Four grouped-temperature cases now
+  unused-parameter signature and zero-parameter design. The latter's unused
+  source warning is removed only when its bounded physical schema and constant
+  mapping prove that the source is irrelevant; restricted or unproved schemas
+  retain the diagnostic. Four grouped-temperature cases now
   execute, save and replay exactly without native warnings, covering same-year,
   different-year, empty-driver and multiple-group inputs. A control missing
   the required month rejects in both implementations; error-category equivalence
-  is not claimed. The fresh `.mfd` suite passes 1,064 tests with no failures.
+  is not claimed. The fresh `.mfd` suite passes 1,083 tests with no failures
+  and 35 ignored tests. Current saved-file checks reuse the earlier native
+  executions; this checkpoint does not claim new native application runs.
 - Earlier isolated `.mfd` survey checkpoint: 187/187 imports; 169 are warning-free in that resource profile.
   Four connected chains warn in single-project mode and validate as pipelines;
   synthetic linear three- and four-stage XML chains also import and execute.
