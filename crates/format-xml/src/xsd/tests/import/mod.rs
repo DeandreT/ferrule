@@ -684,6 +684,10 @@ fn imported_derived_types_select_xsi_type_across_an_include() {
             "{urn:ferrule:orders}International".into()
         ))
     );
+    assert_eq!(
+        ship_to.xml_default_type.as_deref(),
+        Some("{urn:ferrule:orders}Address")
+    );
     let base = from_str(
         r#"<Order xmlns="urn:ferrule:orders"><shipTo><name>Ada</name></shipTo></Order>"#,
         &schema,
@@ -693,7 +697,7 @@ fn imported_derived_types_select_xsi_type_across_an_include() {
         base.field("shipTo")
             .and_then(|address| address.field(ir::XML_TYPE_FIELD))
             .and_then(ir::Instance::as_scalar),
-        Some(&ir::Value::String("{urn:ferrule:orders}Address".into()))
+        None
     );
     assert!(matches!(
         from_str(
@@ -2282,11 +2286,11 @@ fn defaults_materialize_at_xml_boundaries_and_roundtrip_through_xsd() {
     assert_eq!(from_str(&rendered, &schema).unwrap(), materialized);
     let exported = export(&schema).unwrap();
     assert!(
-        exported.contains(r#"name="Count" type="xs:integer" default="7""#),
+        exported.contains(r#"name="Count" type="xs:integer" minOccurs="0" default="7""#),
         "{exported}"
     );
     assert!(
-        exported.contains(r#"name="Price" default="12.5""#),
+        exported.contains(r#"name="Price" minOccurs="0" default="12.5""#),
         "{exported}"
     );
     assert!(

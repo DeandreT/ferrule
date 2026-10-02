@@ -358,7 +358,7 @@ fn malformed_group_block_sizes_skip_the_affected_iteration() {
 }
 
 #[test]
-fn group_block_and_window_counts_export_parent_position_dependencies() {
+fn group_block_and_window_counts_keep_edges_and_report_inactive_parent_positions() {
     let mut project = mfd::import(&fixture("group-blocks.mfd")).unwrap().project;
     let next = project.graph.nodes.keys().next_back().copied().unwrap() + 1;
     let block_position = next;
@@ -402,7 +402,18 @@ fn group_block_and_window_counts_export_parent_position_dependencies() {
     let dir = TempDir::new("group_block_position_export");
     let out = dir.0.join("group-block-position.mfd");
     let warnings = mfd::export(&project, &out).unwrap();
-    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    for position in [block_position, window_position] {
+        assert!(warnings.iter().any(|warning| {
+            warning.contains(&format!("position node {position}"))
+                && warning.contains("inactive at primary/Block parent bounds")
+        }));
+    }
+    let before = std::fs::read_dir(&dir.0).unwrap().count();
+    let native = dir.0.join("native-group-block-position.mfd");
+    assert!(mfd::export_with_profile(&project, &native, mfd::ExportProfile::NativeMfd).is_err());
+    assert!(!native.exists());
+    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), before);
     let exported = std::fs::read_to_string(out).unwrap();
     let doc = roxmltree::Document::parse(&exported).unwrap();
     let position_inputs: Vec<&str> = doc

@@ -156,6 +156,18 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.xml_optional_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("XML optional-occurrence metadata{suffix} requires a named singular element"),
+        ));
+    }
+    if !schema.xml_default_type_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("XML default-type metadata{suffix} requires a retained concrete declared base"),
+        ));
+    }
     if !schema.xml_name_alternatives_are_valid() {
         issues.push(ValidationIssue::new(
             root,

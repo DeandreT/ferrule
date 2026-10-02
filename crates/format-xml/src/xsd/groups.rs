@@ -202,6 +202,25 @@ fn apply_model_group_occurrence(
     group: &mut ParsedComplexType,
 ) -> Result<(), XmlFormatError> {
     if !is_repeating(occurrence) {
+        if occurrence
+            .attribute("minOccurs")
+            .is_some_and(super::non_negative_integer_is_zero)
+        {
+            if group.children.len() > 1
+                || !group.repeating_choices.is_empty()
+                || !group.repeating_sequences.is_empty()
+                || group.children.iter().any(|child| child.repeating)
+            {
+                return Err(unsupported(
+                    "group",
+                    reference,
+                    "optional group references cannot preserve correlated absence or repetition",
+                ));
+            }
+            if let Some(child) = group.children.first_mut() {
+                child.xml_optional = true;
+            }
+        }
         return Ok(());
     }
     if !group.repeating_choices.is_empty() || !group.repeating_sequences.is_empty() {
@@ -235,6 +254,7 @@ fn apply_model_group_occurrence(
         ));
     }
     child.repeating = true;
+    child.xml_optional = false;
     Ok(())
 }
 

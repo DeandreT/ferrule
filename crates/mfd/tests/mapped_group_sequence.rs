@@ -679,7 +679,8 @@ fn nested_first_output_roundtrips_controls_and_compacted_position() {
                 (
                     4,
                     Node::Position {
-                        collection: vec!["Department".into(), "Person".into()],
+                        // The inner iteration records its relative selector.
+                        collection: vec!["Person".into()],
                     },
                 ),
                 (
@@ -770,6 +771,8 @@ fn nested_first_output_roundtrips_controls_and_compacted_position() {
     let first_export = dir.0.join("first.mfd");
     assert!(mfd::export(&project, &first_export).unwrap().is_empty());
     let design = std::fs::read_to_string(&first_export).unwrap();
+    assert!(design.contains("name=\"scope-sequence\""));
+    assert!(design.contains("usageKind=\"variable\""));
     assert_eq!(design.matches("name=\"first-items\"").count(), 2);
     assert_eq!(design.matches("name=\"skip-first-items\"").count(), 1);
     assert!(design.contains("<key direction=\"descending\"/>"));
@@ -857,7 +860,23 @@ fn computed_text_mapping_uses_a_distinct_occurrence_port() {
     };
 
     let path = dir.0.join("computed-text.mfd");
-    assert!(mfd::export(&project, &path).unwrap().is_empty());
+    let report = mfd::preflight_export(&project, &path).unwrap();
+    assert!(report.warnings.is_empty(), "{report:?}");
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| { issue.feature == mfd::ExportCompatibilityFeature::XmlTextOccurrence }),
+        "{report:?}"
+    );
+    let warnings = mfd::export(&project, &path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let native = dir.0.join("computed-text-native.mfd");
+    assert!(matches!(
+        mfd::export_with_profile(&project, &native, mfd::ExportProfile::NativeMfd),
+        Err(mfd::MfdError::IncompatibleExport(_))
+    ));
+    assert!(!native.exists());
     let design = std::fs::read_to_string(&path).unwrap();
     assert!(design.contains("name=\"#text\""), "{design}");
     let imported = mfd::import(&path).unwrap();

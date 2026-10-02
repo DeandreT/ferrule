@@ -79,7 +79,7 @@ fn absent_groups_remain_absent_while_present_empty_groups_round_trip() {
     let xml = to_string(&schema, &instance).unwrap();
     assert!(xml.contains("<Left>"), "{xml}");
     assert!(!xml.contains("<Right>"), "{xml}");
-    assert!(xml.contains("<Flag>"), "{xml}");
+    assert!(xml.contains("<Flag/>"), "{xml}");
     assert!(from_str(&xml, &schema).unwrap().field("Flag").is_some());
 }
 

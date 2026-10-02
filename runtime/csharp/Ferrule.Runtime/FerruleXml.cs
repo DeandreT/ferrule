@@ -283,6 +283,14 @@ public static class FerruleXml
             }
             var kind = Required(element, "kind");
             var kindName = RequiredString(kind, "kind");
+            if (OptionalBoolean(element, "xml_optional") &&
+                (name.Length == 0 || name is "#text" or "element()" or "attribute()" ||
+                 name.StartsWith('\u001f') || OptionalBoolean(element, "repeating") ||
+                 OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
+                 kindName is not ("scalar" or "group")))
+            {
+                throw new InvalidOperationException("invalid optional XML occurrence metadata");
+            }
             var virtualText =
                 depth > 0 &&
                 name == "#text" &&
@@ -705,7 +713,8 @@ public static class FerruleXml
             }
 
             var textChildren = schema.Children.Where(child => child.Text).ToArray();
-            if (textChildren.Length != 0 && !HasSerializedContent(schema, group))
+            if ((textChildren.Length != 0 || schema.Children.All(child => child.Attribute)) &&
+                !HasSerializedContent(schema, group))
             {
                 _output.Append("/>");
                 return;
@@ -1088,7 +1097,9 @@ public static class FerruleXml
                     continue;
                 }
                 if (field is FerruleScalar { Value.Kind: FerruleValueKind.String } text &&
-                    text.Value.StringValue.Length == 0 && child.Text)
+                    text.Value.StringValue.Length == 0 && child.Text &&
+                    child.ScalarType == XmlScalarType.String &&
+                    (child.Fixed is null || child.Fixed.Length == 0))
                 {
                     continue;
                 }

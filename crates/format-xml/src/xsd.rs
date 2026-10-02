@@ -80,6 +80,7 @@ struct ParseState {
     unsupported_default: Option<XmlFormatError>,
     unsupported_schema_group: Option<XmlFormatError>,
     unsupported_restriction: Option<XmlFormatError>,
+    unsupported_alternative_occurrence: Option<XmlFormatError>,
     unsupported_substitution: Option<XmlFormatError>,
     unsupported_wildcard: Option<XmlFormatError>,
     substitutions: substitution::SubstitutionIndex,
@@ -193,6 +194,9 @@ impl ParseState {
             return Err(error);
         }
         if let Some(error) = self.unsupported_schema_group {
+            return Err(error);
+        }
+        if let Some(error) = self.unsupported_alternative_occurrence {
             return Err(error);
         }
         if let Some(error) = self.unsupported_restriction {
@@ -567,7 +571,7 @@ fn parse_element(
         state.substitutions.effective_namespace(schema_path),
         false,
     );
-    apply_exported_alternative_view(el, &mut node);
+    apply_exported_alternative_view(el, &mut node, schema_el, schema_path, state);
     apply_fixed_value(el, &mut node);
     apply_default_value(el, &mut node, state);
     if el
@@ -659,7 +663,13 @@ fn apply_default_value(declaration: &Node<'_, '_>, node: &mut SchemaNode, state:
     }
 }
 
-fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
+fn apply_exported_alternative_view(
+    el: &Node,
+    node: &mut SchemaNode,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) {
     let names = el
         .children()
         .find(|child| child.is_element() && child.tag_name().name() == "annotation")
@@ -681,6 +691,41 @@ fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
         .collect::<Vec<_>>();
     if names.is_empty() {
         return;
+    }
+    // A single retained concrete default needs no derived declaration. Its
+    // exported view can retain that typed projection without changing plain
+    // named-complex-type imports which have no such view metadata.
+    if node.alternatives().is_empty()
+        && node.recursive_ref.is_none()
+        && names.len() == 1
+        && !el.children().any(|child| {
+            child.is_element() && matches!(child.tag_name().name(), "complexType" | "simpleType")
+        })
+        && let Some(identity) = el.attribute("type").and_then(|qname| {
+            if complex_type_abstractness(schema_el, schema_path, qname, state) != Some(false) {
+                return None;
+            }
+            expanded_qname_identity(
+                el,
+                schema_el
+                    .attribute("targetNamespace")
+                    .or_else(|| state.substitutions.effective_namespace(schema_path)),
+                qname,
+            )
+        })
+        && names[0] == identity
+        && let SchemaKind::Group { children, .. } = &node.kind
+    {
+        let members = children.iter().map(|child| child.name.clone()).collect();
+        if node.set_alternatives(vec![ir::GroupAlternative {
+            name: identity.clone(),
+            members,
+            required: Vec::new(),
+            constraints: Vec::new(),
+        }]) {
+            node.xml_type_alternatives = true;
+            node.xml_default_type = Some(identity);
+        }
     }
     let SchemaKind::Group {
         children,
@@ -712,6 +757,7 @@ fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
         .filter(|name| names.contains(name))
         .cloned()
         .collect::<Vec<_>>();
+    let original_default_type = node.xml_default_type.clone();
     let original_children = children.clone();
     let retained = children
         .iter()
@@ -726,6 +772,7 @@ fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
         && node.set_xml_restricted_alternatives(selected_restrictions)
     {
         node.xml_type_alternatives = true;
+        node.xml_default_type = original_default_type.filter(|identity| names.contains(identity));
     } else {
         // The exported view is advisory metadata; malformed external metadata
         // leaves the ordinary XSD-derived alternatives intact.
@@ -804,7 +851,14 @@ fn attach_type_alternatives(
         ) else {
             return;
         };
-        if !group.repeating_sequences.is_empty() {
+        if !group.repeating_sequences.is_empty()
+            || group.repeating_choices != node.xml_repeating_choices
+        {
+            state.unsupported_alternative_occurrence.get_or_insert(
+                XmlFormatError::UnsupportedXmlAlternativeCompositor {
+                    group: node.name.clone(),
+                },
+            );
             return;
         }
         resolved.push((
@@ -819,6 +873,15 @@ fn attach_type_alternatives(
     for (_, _, children) in &resolved {
         for child in children {
             if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
+                if let Some(field) = incompatible_optional_occurrence(existing, child) {
+                    state.unsupported_alternative_occurrence.get_or_insert(
+                        XmlFormatError::UnsupportedXmlAlternativeOccurrence {
+                            group: node.name.clone(),
+                            field,
+                        },
+                    );
+                    return;
+                }
                 if existing != child {
                     return;
                 }
@@ -830,7 +893,7 @@ fn attach_type_alternatives(
     let mut alternatives = Vec::with_capacity(alternative_count);
     if !base_is_abstract {
         alternatives.push(ir::GroupAlternative {
-            name: base_identity,
+            name: base_identity.clone(),
             members: base_members,
             required: Vec::new(),
             constraints: Vec::new(),
@@ -857,12 +920,44 @@ fn attach_type_alternatives(
             .collect();
         if node.set_xml_restricted_alternatives(restricted) {
             node.xml_type_alternatives = true;
+            node.xml_default_type = (!base_is_abstract).then_some(base_identity);
         } else if let SchemaKind::Group { children, .. } = &mut node.kind {
             *children = original_children;
         }
     } else if let SchemaKind::Group { children, .. } = &mut node.kind {
         *children = original_children;
     }
+}
+
+// A flattened member has one occurrence profile for every xsi:type view.
+// Reject differing profiles before falling back from an otherwise supported
+// derivation; dropping the alternatives would also lose their declared default.
+fn incompatible_optional_occurrence(left: &SchemaNode, right: &SchemaNode) -> Option<String> {
+    if left.xml_optional != right.xml_optional {
+        return Some(left.name.clone());
+    }
+    if let (
+        SchemaKind::Group {
+            children: left_children,
+            ..
+        },
+        SchemaKind::Group {
+            children: right_children,
+            ..
+        },
+    ) = (&left.kind, &right.kind)
+    {
+        for left_child in left_children {
+            if let Some(right_child) = right_children
+                .iter()
+                .find(|child| child.name == left_child.name)
+                && let Some(path) = incompatible_optional_occurrence(left_child, right_child)
+            {
+                return Some(format!("{}/{}", left.name, path));
+            }
+        }
+    }
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -959,27 +1054,43 @@ fn complex_type_is_abstract(
     qname: &str,
     state: &mut ParseState,
 ) -> bool {
+    complex_type_abstractness(schema_el, schema_path, qname, state).unwrap_or(false)
+}
+
+/// Resolves the declaration before classifying it; absence is not concrete.
+fn complex_type_abstractness(
+    schema_el: &Node,
+    schema_path: &Path,
+    qname: &str,
+    state: &mut ParseState,
+) -> Option<bool> {
+    if qname.is_empty() || qname.chars().any(char::is_whitespace) {
+        return None;
+    }
+    if let Some((prefix, local)) = qname.split_once(':') {
+        if prefix.is_empty() || local.is_empty() || local.contains(':') {
+            return None;
+        }
+        schema_el.lookup_namespace_uri(Some(prefix))?;
+    }
+    fn abstractness(declaration: &Node) -> Option<bool> {
+        match declaration.attribute("abstract").map(str::trim) {
+            None | Some("false" | "0") => Some(false),
+            Some("true" | "1") => Some(true),
+            Some(_) => None,
+        }
+    }
     let local = local_name(qname);
     if is_local_qname(schema_el, qname)
         && let Some(declaration) = top_level(schema_el, "complexType", local)
     {
-        return declaration
-            .attribute("abstract")
-            .is_some_and(|value| matches!(value, "true" | "1"));
+        return abstractness(&declaration);
     }
-    let Some(path) = state.find_external_declaration(schema_el, schema_path, "complexType", qname)
-    else {
-        return false;
-    };
-    let Ok(text) = read_xml_text(&path) else {
-        return false;
-    };
-    let Ok(document) = roxmltree::Document::parse(&text) else {
-        return false;
-    };
+    let path = state.find_external_declaration(schema_el, schema_path, "complexType", qname)?;
+    let text = read_xml_text(&path).ok()?;
+    let document = roxmltree::Document::parse(&text).ok()?;
     top_level(&document.root_element(), "complexType", local)
-        .and_then(|declaration| declaration.attribute("abstract"))
-        .is_some_and(|value| matches!(value, "true" | "1"))
+        .and_then(|declaration| abstractness(&declaration))
 }
 
 fn collect_derived_type_declarations(
@@ -1734,6 +1845,12 @@ fn parse_complex_type(
                     &mut parsed.repeating_choices,
                 );
             }
+            "group" if !is_disabled_particle(&child) => {
+                match groups::resolve_model_group(&child, schema_el, schema_path, state) {
+                    Ok(group) => parsed.extend(group),
+                    Err(error) => state.reject_schema_group(error),
+                }
+            }
             // complexContent/extension: the named base type's children
             // first, then whatever the extension adds.
             "complexContent" => {
@@ -1965,20 +2082,42 @@ fn repeating_sequence(
 
 fn repeating_choice(choice: &Node<'_, '_>) -> Option<XmlRepeatingChoice> {
     let repeating = is_repeating(choice);
-    if !repeating && !is_single_occurrence(choice) {
+    if !repeating
+        && !is_single_occurrence(choice)
+        && !(choice
+            .attribute("minOccurs")
+            .is_some_and(non_negative_integer_is_zero)
+            && choice
+                .attribute("maxOccurs")
+                .is_none_or(non_negative_integer_is_one))
+    {
         return None;
     }
     let mut members = Vec::new();
+    let mut nullable_member = false;
     for node in choice
         .children()
         .filter(|node| node.is_element() && !is_disabled_particle(node))
     {
-        if node.tag_name().name() != "element"
-            || is_repeating(&node)
-            || node.attribute("minOccurs") == Some("0")
+        if node.tag_name().name() != "element" || is_repeating(&node) {
+            return None;
+        }
+        let optional = node
+            .attribute("minOccurs")
+            .is_some_and(non_negative_integer_is_zero);
+        // An optional single-element branch in an unbounded choice adds only
+        // an empty selection. Retain that exact language with an optional
+        // ordered choice; its repeated members already own occurrence roles.
+        if optional
+            && (!repeating
+                || choice.attribute("maxOccurs") != Some("unbounded")
+                || choice.attribute("minOccurs").is_some_and(|value| {
+                    !non_negative_integer_is_zero(value) && !non_negative_integer_is_one(value)
+                }))
         {
             return None;
         }
+        nullable_member |= optional;
         let name = node
             .attribute("name")
             .or_else(|| node.attribute("ref").map(local_name))?;
@@ -1990,7 +2129,10 @@ fn repeating_choice(choice: &Node<'_, '_>) -> Option<XmlRepeatingChoice> {
         return None;
     }
     Some(XmlRepeatingChoice {
-        required: choice.attribute("minOccurs") != Some("0"),
+        required: !nullable_member
+            && !choice
+                .attribute("minOccurs")
+                .is_some_and(non_negative_integer_is_zero),
         repeating,
         members,
     })
@@ -2123,6 +2265,112 @@ fn collect_sequence(
     if is_disabled_particle(sequence) {
         return;
     }
+    // Resolve nested compositors and named groups before deciding whether the
+    // wrapper owns one optional field or an unrepresentable correlated set.
+    let optional = matches!(sequence.tag_name().name(), "sequence" | "choice" | "all")
+        && !inherited_repeating
+        && !is_repeating(sequence)
+        && sequence
+            .attribute("minOccurs")
+            .is_some_and(non_negative_integer_is_zero);
+    if !optional {
+        collect_sequence_contents(
+            sequence,
+            inherited_repeating,
+            schema_el,
+            schema_path,
+            state,
+            out,
+            repeating_choices,
+        );
+        return;
+    }
+    let mut children = Vec::new();
+    let mut choices = Vec::new();
+    collect_sequence_contents(
+        sequence,
+        inherited_repeating,
+        schema_el,
+        schema_path,
+        state,
+        &mut children,
+        &mut choices,
+    );
+    let retained_choice = sequence.tag_name().name() == "choice"
+        && (repeating_choice(sequence).is_some()
+            || (particle_contains_wildcard(sequence)
+                && wildcard_choice_projection(sequence, &children, false).is_some()));
+    if retained_choice
+        || (sequence.tag_name().name() == "sequence" && sequence_contents_accept_empty(sequence, 0))
+    {
+        out.extend(children);
+        repeating_choices.extend(choices);
+        return;
+    }
+    if children.len() > 1 || !choices.is_empty() || children.iter().any(|child| child.repeating) {
+        let error = if sequence.tag_name().name() == "sequence" {
+            XmlFormatError::UnsupportedOptionalSequence {
+                element_count: children.len(),
+            }
+        } else {
+            XmlFormatError::UnsupportedOptionalCompositor {
+                compositor: sequence.tag_name().name().to_string(),
+                element_count: children.len(),
+            }
+        };
+        state.reject_repeating_particle(error);
+        return;
+    }
+    if let Some(child) = children.first_mut() {
+        child.xml_optional = true;
+    }
+    out.extend(children);
+    repeating_choices.extend(choices);
+}
+
+/// Prove that a supported sequence's content already admits absence before
+/// discarding its redundant optional wrapper. Unknown particles and named
+/// group expansion do not supply evidence for this narrow physical grammar.
+fn sequence_contents_accept_empty(sequence: &Node<'_, '_>, depth: usize) -> bool {
+    if depth >= MAX_TYPE_DERIVATION_DEPTH {
+        return false;
+    }
+    sequence.children().filter(Node::is_element).all(|child| {
+        if is_disabled_particle(&child) || child.tag_name().name() == "annotation" {
+            return true;
+        }
+        match child.tag_name().name() {
+            "element" | "any" => {
+                child
+                    .attribute("minOccurs")
+                    .is_some_and(non_negative_integer_is_zero)
+                    && child.attribute("maxOccurs").is_none_or(|value| {
+                        value == "unbounded" || non_negative_integer_is_one(value)
+                    })
+            }
+            "sequence" => {
+                !is_repeating(&child) && sequence_contents_accept_empty(&child, depth + 1)
+            }
+            "choice" => {
+                child
+                    .attribute("maxOccurs")
+                    .is_none_or(|value| value == "unbounded" || non_negative_integer_is_one(value))
+                    && repeating_choice(&child).is_some_and(|choice| !choice.required)
+            }
+            _ => false,
+        }
+    })
+}
+
+fn collect_sequence_contents(
+    sequence: &Node,
+    inherited_repeating: bool,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+    out: &mut Vec<SchemaNode>,
+    repeating_choices: &mut Vec<XmlRepeatingChoice>,
+) {
     for child in sequence.children().filter(|n| n.is_element()) {
         if is_disabled_particle(&child) {
             continue;
@@ -2134,6 +2382,10 @@ fn collect_sequence(
                 }
                 let mut node = parse_element(&child, schema_el, schema_path, state);
                 node.repeating = inherited_repeating || is_repeating(&child);
+                node.xml_optional = !node.repeating
+                    && child
+                        .attribute("minOccurs")
+                        .is_some_and(non_negative_integer_is_zero);
                 out.push(node);
             }
             "any" => match parse_wildcard(&child, schema_el, schema_path, state) {
@@ -2249,7 +2501,9 @@ fn wildcard_choice_projection(
         && members.len() > 1
         && children.iter().all(|child| child.repeating == repeating))
     .then(|| XmlRepeatingChoice {
-        required: choice.attribute("minOccurs") != Some("0"),
+        required: !choice
+            .attribute("minOccurs")
+            .is_some_and(non_negative_integer_is_zero),
         repeating,
         members,
     })
@@ -2751,6 +3005,18 @@ fn unsupported_wildcard(reason: &'static str) -> XmlFormatError {
 
 fn unsupported_attribute_wildcard(reason: &'static str) -> XmlFormatError {
     XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
+}
+
+fn non_negative_integer_is_one(value: &str) -> bool {
+    let value = value.trim();
+    let digits = value.strip_prefix('+').unwrap_or(value);
+    digits.trim_start_matches('0') == "1"
+}
+
+fn non_negative_integer_is_zero(value: &str) -> bool {
+    let value = value.trim();
+    let digits = value.strip_prefix('+').unwrap_or(value);
+    !digits.is_empty() && digits.bytes().all(|digit| digit == b'0')
 }
 
 fn is_disabled_particle(particle: &Node) -> bool {

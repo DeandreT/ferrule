@@ -32,6 +32,8 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) query_scope_sources: BTreeSet<usize>,
     pub(super) warned_unscoped_queries: BTreeSet<usize>,
     pub(super) xml_type_conditions: BTreeMap<u32, String>,
+    /// All conditioned entry ports, including expressions without a typed interpretation.
+    pub(super) xml_condition_ports: BTreeSet<u32>,
     pub(super) edge_from: &'a BTreeMap<u32, u32>,
     pub(super) sources: &'a [&'a SchemaComponent],
     pub(super) source_names: &'a [String],
