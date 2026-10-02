@@ -1071,6 +1071,9 @@ fn entry_schema_metadata(node: &SchemaNode, preserve_optional: bool) -> String {
     if preserve_optional && node.xml_optional {
         metadata.push_str(" ferrule-xml-optional=\"1\"");
     }
+    if preserve_optional && node.xml_attribute_required {
+        metadata.push_str(" ferrule-xml-attribute-required=\"1\"");
+    }
     if node.text {
         metadata.push_str(" ferrule-text=\"1\"");
     }
