@@ -988,18 +988,18 @@ recorded separately without inferring broader runtime coverage.
   preflight admits 157 designs. Optional-field and declared-default metadata
   defects are fixed, and the optimized temperature exporter retains required
   attribute metadata while matching its existing closed schema profile.
-  Relative to that repair, 477 of 489 artifacts retain exact bytes; twelve
-  designs add 37 scalar-function input/output naming lines, with every schema
-  unchanged. These survey checks are static. WSDL response transport still
-  loses two required-attribute flags.
+  Scalar-function input/output names survive canonical export, and grouped
+  temperature keys use the selected group's key output. These survey checks
+  are static. WSDL response transport still loses two required-attribute flags.
 - Separate authored scalar-function native checks execute and save seven
-  profiles with zero warnings. Five saved-file imports and interpreter replays
-  are warning-free, schema-valid and exactly typed. An unused-parameter saved
-  function imports incorrectly and changes its replay result; a zero-parameter
-  design replays correctly but retains an unconnected-source warning. The
-  temperature workflow executes, saves and replays exactly but retains one
-  native warning about multiple values mapped to its Year attribute. These
-  importer and grouped-cardinality gaps remain open.
+  profiles with zero warnings. Six saved-file imports and interpreter replays
+  are warning-free, schema-valid and exactly typed, including the repaired
+  unused-parameter signature. A zero-parameter design replays correctly but
+  retains an unconnected-source warning. Four grouped-temperature cases now
+  execute, save and replay exactly without native warnings, covering same-year,
+  different-year, empty-driver and multiple-group inputs. A control missing
+  the required month rejects in both implementations; error-category equivalence
+  is not claimed. The fresh `.mfd` suite passes 1,064 tests with no failures.
 - Earlier isolated `.mfd` survey checkpoint: 187/187 imports; 169 are warning-free in that resource profile.
   Four connected chains warn in single-project mode and validate as pipelines;
   synthetic linear three- and four-stage XML chains also import and execute.
