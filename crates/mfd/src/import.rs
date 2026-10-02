@@ -60,6 +60,7 @@ mod target_node_function;
 mod target_type_cast;
 mod udf;
 mod unused_xml_source;
+mod xml_root_view;
 mod xml_serializer;
 
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
@@ -1479,6 +1480,7 @@ fn import_resolved(
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
+    let root_view_inventory = xml_root_view::Inventory::read(structure);
     let mut xml_boundary_witnesses = Vec::new();
     let mut fallback_xml_source_outputs = BTreeSet::new();
     let mut fallback_xml_target_inputs = BTreeSet::new();
@@ -1496,6 +1498,7 @@ fn import_resolved(
             let name = component.attribute("name").unwrap_or_default().to_string();
             match library {
                 "xml" => {
+                    let root_view_findings = root_view_inventory.inspect(component);
                     match read_schema_component_in_package_with_provenance(
                         &component,
                         resources,
@@ -1503,6 +1506,11 @@ fn import_resolved(
                     ) {
                         Some(read) => {
                             let sc = read.component;
+                            xml_root_view::warn(
+                                root_view_findings,
+                                Some(&sc.schema),
+                                &mut warnings,
+                            );
                             let mut retain = |sc: SchemaComponent| {
                                 if inspect_unused_input {
                                     xml_boundary_witnesses.push(
@@ -1540,7 +1548,10 @@ fn import_resolved(
                                 }
                             }
                         }
-                        None => warnings.push(format!("skipped xml component `{name}`")),
+                        None => {
+                            xml_root_view::warn(root_view_findings, None, &mut warnings);
+                            warnings.push(format!("skipped xml component `{name}`"));
+                        }
                     }
                 }
                 "json" => {
