@@ -56,6 +56,8 @@ pub enum ExportCompatibilityFeature {
     XmlRootTypeViewOwnership,
     /// WSDL optional occurrences are retained only in private entry metadata.
     XmlOptionalOccurrence,
+    /// WSDL required attribute use is retained only in private entry metadata.
+    XmlAttributeRequiredUse,
     /// Newly emitted metadata is conservative until its native behavior is known.
     UnknownExtension,
 }
@@ -218,6 +220,12 @@ pub(super) fn profile(
                     node,
                     ExportCompatibilityFeature::XmlOptionalOccurrence,
                     "XML optional occurrence is retained in private entry metadata; native boundary compatibility has not been established",
+                ),
+                "ferrule-xml-attribute-required" => push_issue(
+                    &mut issues,
+                    node,
+                    ExportCompatibilityFeature::XmlAttributeRequiredUse,
+                    "XML required attribute use is retained in private entry metadata; native boundary compatibility has not been established",
                 ),
                 "ferrulemessagetype" | "ferruletransactionset" => push_issue(
                     &mut issues,
