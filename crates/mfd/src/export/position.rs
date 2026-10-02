@@ -62,6 +62,8 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         } => expression.iter().chain(arg).copied().collect(),
         Node::SourceField { .. }
         | Node::SourceDocumentPath
+        | Node::SourceRootXmlTypeEquals { .. }
+        | Node::SourceRootField { .. }
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

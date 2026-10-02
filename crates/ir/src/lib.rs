@@ -11,11 +11,19 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
 mod instance_group;
+mod primary_root;
 mod scalar_lexical;
 mod schema;
 mod xml_type_origin;
 
 pub use instance_group::InstanceGroup;
+pub use primary_root::{
+    MAX_PRIMARY_ROOT_FIELDS, MAX_PRIMARY_ROOT_IDENTITY_BYTES, MAX_PRIMARY_ROOT_PATH_BYTES,
+    MAX_PRIMARY_ROOT_PATH_SEGMENTS, PrimaryRootError, primary_root_ncname_is_valid,
+    primary_root_scalar, primary_root_scalar_path_is_valid, primary_root_schema_has_scalar,
+    primary_root_schema_has_type, primary_root_schema_is_supported,
+    primary_root_type_identity_is_valid, primary_root_xml_type_equals,
+};
 pub use xml_type_origin::{XmlTypeOrigin, XmlTypeOriginError};
 
 pub use scalar_lexical::parse_exact_decimal_i64;

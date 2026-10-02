@@ -901,6 +901,8 @@ fn node_dependencies(node: &Node) -> Vec<NodeId> {
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::SourceField { .. }
         | Node::SourceDocumentPath
+        | Node::SourceRootXmlTypeEquals { .. }
+        | Node::SourceRootField { .. }
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

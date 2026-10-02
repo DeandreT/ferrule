@@ -284,6 +284,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
             continue;
         }
         match node {
+            Node::SourceRootXmlTypeEquals { .. } | Node::SourceRootField { .. } => {
+                return Err(MfdError::Unsupported(format!("primary-root primitive node {id} has no qualified native export representation")));
+            }
             Node::SourceField { path, frame } => {
                 if node_out_key.contains_key(&id) {
                     continue;

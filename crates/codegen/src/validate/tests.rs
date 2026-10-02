@@ -16,6 +16,7 @@ mod grouping;
 mod invariants;
 mod joins;
 mod path_hierarchy;
+mod primary_root;
 mod recursive_filter;
 mod sources;
 mod user_functions;

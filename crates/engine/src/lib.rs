@@ -265,6 +265,12 @@ pub enum EngineError {
     UserFunctionDepth { limit: usize },
     #[error("no source field found at path `{0}`")]
     MissingSourceField(String),
+    #[error("primary-root node {node}: {source}")]
+    PrimaryRoot {
+        node: NodeId,
+        #[source]
+        source: ir::PrimaryRootError,
+    },
     #[error("node {node}: XML serialization failed: {message}")]
     XmlSerialization { node: NodeId, message: String },
     #[error("node {node}: expected a bool, got {found}")]
@@ -724,6 +730,7 @@ fn evaluate_run<R>(
         execution.and_then(|execution| execution.trace_sink),
         &first_failure_reported,
     )
+    .with_primary_source(source)
     .with_debug_hook(execution.and_then(|execution| execution.debug_hook))
     .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose));
     failure::evaluate(program, &project.failure_rules, &context)?;

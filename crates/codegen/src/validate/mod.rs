@@ -18,6 +18,7 @@ mod grouping;
 mod joins;
 mod lookup;
 mod path_hierarchy;
+mod primary_root;
 mod recursive_sequence;
 mod sequences;
 mod sources;
@@ -52,6 +53,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     let expressions = collect_expressions(program)?;
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
+    primary_root::validate(program, &expressions)?;
     validate_dynamic_sources(program, sources, &expressions)?;
     user_functions::validate(program, &expressions)?;
     xml::validate(sources, &expressions)?;

@@ -102,6 +102,7 @@ impl<'a> ScopeContext<'a> {
                     .collect::<Vec<_>>();
                 frames.extend(extension);
                 ScopeContext {
+                    primary_source: self.primary_source,
                     frames,
                     named_inputs: self.named_inputs,
                     execution: self.execution,
@@ -265,6 +266,7 @@ impl<'a> ScopeContext<'a> {
         let mut frames = self.frames.clone();
         frames.extend(extension);
         Self {
+            primary_source: self.primary_source,
             frames,
             named_inputs: self.named_inputs,
             execution: self.execution,
