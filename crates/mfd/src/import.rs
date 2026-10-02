@@ -648,6 +648,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
     if !mapping.has_tag_name("mapping") {
         return Err(MfdError::NotMfd("root element is not <mapping>"));
     }
+    schema::validate_xml_optional_metadata(&mapping)?;
     let wrapper = mapping
         .children()
         .find(|node| node.has_tag_name("component"))
@@ -1440,6 +1441,7 @@ fn import_resolved(
     if mapping_el.tag_name().name() != "mapping" {
         return Err(MfdError::NotMfd("root element is not <mapping>"));
     }
+    schema::validate_xml_optional_metadata(&mapping_el)?;
     let wrapper = mapping_el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "component")

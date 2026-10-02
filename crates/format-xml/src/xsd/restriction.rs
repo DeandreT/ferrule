@@ -83,6 +83,12 @@ pub(super) fn apply(
             .iter()
             .any(|prohibited| same_xml_name(prohibited, &base_attribute))
         {
+            if base_attribute.xml_attribute_required {
+                return Err(unsupported(
+                    base_name,
+                    "a restriction cannot prohibit a required attribute",
+                ));
+            }
             continue;
         }
         if let Some(replacement) = restricted_attributes
@@ -162,6 +168,12 @@ pub(super) fn apply_simple_content(
             .iter()
             .any(|prohibited| same_xml_name(prohibited, &base_attribute))
         {
+            if base_attribute.xml_attribute_required {
+                return Err(unsupported_simple(
+                    base_name,
+                    "a restriction cannot prohibit a required attribute",
+                ));
+            }
             continue;
         }
         if let Some(replacement) = restricted_attributes
@@ -257,6 +269,7 @@ fn normalize_restriction(base: &SchemaNode, restricted: &SchemaNode) -> Option<S
         || base.xml_namespace != restricted.xml_namespace
         || (!base.repeating && restricted.repeating)
         || (!base.xml_optional && restricted.xml_optional)
+        || (base.xml_attribute_required && !restricted.xml_attribute_required)
         || (!base.nillable && restricted.nillable)
     {
         return None;

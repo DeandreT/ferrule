@@ -61,6 +61,7 @@ mod udf;
 mod wsdl;
 mod xbrl;
 mod xlsx;
+mod xml_root_view;
 
 use artifact::write_artifacts;
 pub use compatibility::{
@@ -1056,8 +1057,11 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     let (rewritten, first_presence_issues) = first_presence.rewrite(&out)?;
     out = rewritten;
     crate::design::validate_export(&out)?;
+    let root_view_issues = xml_root_view::issues(&out, &sources, &targets)?;
     let mut report = compatibility::profile(&out, warnings, path, &artifacts)?;
-    if !first_presence_issues.is_empty() || !text_issues.is_empty() {
+    if !first_presence_issues.is_empty() || !text_issues.is_empty() || !root_view_issues.is_empty()
+    {
+        report.issues.extend(root_view_issues);
         report.issues.extend(text_issues);
         report.issues.extend(first_presence_issues);
         if report.compatibility == ExportCompatibility::NativeMfd {

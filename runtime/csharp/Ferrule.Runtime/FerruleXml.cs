@@ -268,7 +268,8 @@ public static class FerruleXml
         XmlScalarType? ScalarType,
         IReadOnlyList<XmlSchemaNode> Children,
         IReadOnlyList<XmlAlternative> Alternatives,
-        IReadOnlyList<XmlRepeatingChoice> RepeatingChoices)
+        IReadOnlyList<XmlRepeatingChoice> RepeatingChoices,
+        string? DefaultType)
     {
         internal static XmlSchemaNode Parse(JsonElement element, int depth)
         {
@@ -290,6 +291,14 @@ public static class FerruleXml
                  kindName is not ("scalar" or "group")))
             {
                 throw new InvalidOperationException("invalid optional XML occurrence metadata");
+            }
+            if (OptionalBoolean(element, "xml_attribute_required") &&
+                (name.Length == 0 || name is "#text" or "element()" or "attribute()" ||
+                 name.StartsWith('\u001f') || OptionalBoolean(element, "repeating") ||
+                 !OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
+                 kindName != "scalar"))
+            {
+                throw new InvalidOperationException("invalid required XML attribute-use metadata");
             }
             var virtualText =
                 depth > 0 &&
@@ -357,6 +366,11 @@ public static class FerruleXml
             {
                 throw new InvalidOperationException($"unsupported XML schema kind '{kindName}'");
             }
+            var defaultType = OptionalString(element, "xml_default_type");
+            if (defaultType is not null)
+            {
+                ValidateDefaultType(element, kind, kindName, children, alternatives, defaultType);
+            }
             return new XmlSchemaNode(
                 name,
                 namespaceIsExplicit,
@@ -370,7 +384,44 @@ public static class FerruleXml
                 scalarType,
                 children,
                 alternatives,
-                repeatingChoices);
+                repeatingChoices,
+                defaultType);
+        }
+
+        private static void ValidateDefaultType(
+            JsonElement element,
+            JsonElement kind,
+            string kindName,
+            IReadOnlyList<XmlSchemaNode> children,
+            IReadOnlyList<XmlAlternative> alternatives,
+            string defaultType)
+        {
+            if (kindName != "group" ||
+                !OptionalBoolean(element, "xml_type_alternatives") ||
+                OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
+                OptionalString(element, "recursive_ref") is not null ||
+                alternatives.Count == 0 ||
+                (kind.TryGetProperty("dynamic", out var dynamic) &&
+                 dynamic.ValueKind != JsonValueKind.Null) ||
+                children.Select(child => child.Name).Distinct(StringComparer.Ordinal).Count() != children.Count ||
+                alternatives.Select(alternative => alternative.Name).Distinct(StringComparer.Ordinal).Count() != alternatives.Count ||
+                alternatives.Any(alternative => alternative.Required.Count != 0 ||
+                    alternative.Members.Distinct(StringComparer.Ordinal).Count() != alternative.Members.Count ||
+                    alternative.Members.Any(member => !children.Any(child => child.Name == member))))
+            {
+                throw new InvalidOperationException("invalid declared XML default-type metadata");
+            }
+            var restricted = OptionalStrings(kind, "xml_restricted_alternatives");
+            var declared = alternatives.FirstOrDefault(alternative => alternative.Name == defaultType);
+            if (declared is null || restricted.Contains(defaultType) ||
+                restricted.Distinct(StringComparer.Ordinal).Count() != restricted.Length ||
+                restricted.Any(name => !alternatives.Any(alternative => alternative.Name == name)) ||
+                alternatives.Any(alternative => restricted.Contains(alternative.Name)
+                    ? alternative.Members.Any(member => !declared.Members.Contains(member))
+                    : declared.Members.Any(member => !alternative.Members.Contains(member))))
+            {
+                throw new InvalidOperationException("invalid declared XML default-type identity or refinement");
+            }
         }
 
         private static (bool IsExplicit, string? Uri) ParseNamespace(JsonElement element)
@@ -677,7 +728,8 @@ public static class FerruleXml
             ValidateFields(schema, group);
             var alternative = SelectAlternative(schema, group);
             Start(schema.Name, elementNamespace, namespaceChanged);
-            if (alternative is not null)
+            if (alternative is not null &&
+                (alternative.Name != schema.DefaultType || group.TryGetField(XmlTypeField, out _)))
             {
                 Attribute("xmlns:xsi", XsiNamespace);
                 var (alternativeNamespace, alternativeName) =
@@ -713,8 +765,10 @@ public static class FerruleXml
             }
 
             var textChildren = schema.Children.Where(child => child.Text).ToArray();
-            if ((textChildren.Length != 0 || schema.Children.All(child => child.Attribute)) &&
-                !HasSerializedContent(schema, group))
+            var selectedChildren = schema.Children.Where(child =>
+                alternative is null || alternative.Members.Contains(child.Name));
+            if ((selectedChildren.Any(child => child.Text) || selectedChildren.All(child => child.Attribute)) &&
+                !HasSerializedContent(schema, rootSchema, group, recursionDepth))
             {
                 _output.Append("/>");
                 return;
@@ -758,7 +812,11 @@ public static class FerruleXml
                     child => !child.Attribute && !child.Text))
                 {
                     if (!group.TryGetField(child.Name, out var field) ||
-                        !WillWrite(child, field))
+                        !WillWrite(
+                            child,
+                            rootSchema,
+                            field,
+                            recursionDepth + (child.RecursiveReference is null ? 0 : 1)))
                     {
                         continue;
                     }
@@ -920,6 +978,15 @@ public static class FerruleXml
                     field.Name != XmlTypeField && InstanceHasValue(field.Value))
                 .Select(field => field.Name)
                 .ToArray();
+            if (schema.DefaultType is { } defaultType)
+            {
+                var declared = schema.Alternatives.First(alternative => alternative.Name == defaultType);
+                if (populated.All(field => declared.Members.Contains(field)))
+                {
+                    ValidateAlternativeFields(schema, declared, group);
+                    return declared;
+                }
+            }
             var matches = schema.Alternatives
                 .Where(alternative =>
                     populated.All(field => alternative.Members.Contains(field)))
@@ -1065,23 +1132,37 @@ public static class FerruleXml
             _output.Append('\n').Append(' ', depth * 2);
         }
 
-        private static bool WillWrite(XmlSchemaNode schema, FerruleInstance instance) =>
-            instance switch
+        private static bool WillWrite(
+            XmlSchemaNode schema,
+            XmlSchemaNode rootSchema,
+            FerruleInstance instance,
+            int recursionDepth)
+        {
+            if (instance is FerruleRepeated { Items.Count: 0 } or
+                FerruleMappedSequence { Items.Count: 0 })
+            {
+                schema = Resolve(schema, rootSchema, recursionDepth);
+                return instance is FerruleRepeated
+                    ? !schema.Repeating
+                    : schema.Repeating || schema.ScalarType is not null;
+            }
+            return instance switch
             {
                 FerruleScalar scalar when schema.ScalarType is not null =>
                     schema.Repeating ||
                     scalar.Value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull),
-                FerruleScalar => true,
-                FerruleRepeated repeated => repeated.Items.Count != 0,
-                FerruleMappedSequence mapped => mapped.Items.Count != 0,
                 _ => true,
             };
+        }
 
-        private static bool HasSerializedContent(XmlSchemaNode schema, FerruleGroup group)
+        private static bool HasSerializedContent(
+            XmlSchemaNode schema,
+            XmlSchemaNode rootSchema,
+            FerruleGroup group,
+            int recursionDepth)
         {
             if (schema.RepeatingChoices.Count != 0 &&
-                group.TryGetField(XmlMixedContentField, out var ordered) &&
-                ordered is FerruleRepeated { Items.Count: > 0 })
+                group.TryGetField(XmlMixedContentField, out _))
             {
                 return true;
             }
@@ -1096,18 +1177,22 @@ public static class FerruleXml
                 {
                     continue;
                 }
-                if (field is FerruleScalar { Value.Kind: FerruleValueKind.String } text &&
-                    text.Value.StringValue.Length == 0 && child.Text &&
-                    child.ScalarType == XmlScalarType.String &&
-                    (child.Fixed is null || child.Fixed.Length == 0))
+                if (child.Text)
                 {
-                    continue;
+                    if (field is FerruleScalar { Value.Kind: FerruleValueKind.String } text &&
+                        text.Value.StringValue.Length == 0 &&
+                        child.ScalarType == XmlScalarType.String &&
+                        (child.Fixed is null || child.Fixed.Length == 0))
+                    {
+                        continue;
+                    }
+                    return true;
                 }
-                if (field is FerruleRepeated repeated && repeated.Items.Count == 0)
-                {
-                    continue;
-                }
-                if (field is FerruleMappedSequence mapped && mapped.Items.Count == 0)
+                if (!WillWrite(
+                    child,
+                    rootSchema,
+                    field,
+                    recursionDepth + (child.RecursiveReference is null ? 0 : 1)))
                 {
                     continue;
                 }

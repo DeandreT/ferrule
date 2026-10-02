@@ -39,6 +39,25 @@ pub(crate) use csv::{SingletonPosition as CsvSingletonPosition, split_singleton_
 use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};
 use xml_ports::{normalize_xml_text_ports, reconcile_explicit_text_entries};
 
+pub(super) fn validate_xml_optional_metadata(
+    mapping: &roxmltree::Node<'_, '_>,
+) -> Result<(), crate::MfdError> {
+    for entry in mapping
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+    {
+        if let Some(value) = entry.attribute("ferrule-xml-optional")
+            && !matches!(value, "0" | "1")
+        {
+            return Err(crate::MfdError::InvalidXmlOptionalMetadata {
+                entry: entry.attribute("name").unwrap_or_default().to_string(),
+                value: value.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 fn resolve_resource_reference(
     mfd_path: &Path,
     resources: Option<&ResourceResolver>,
@@ -1477,11 +1496,17 @@ fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<Schema
         "1" => true,
         _ => return None,
     };
+    let optional = match entry.attribute("ferrule-xml-optional") {
+        None | Some("0") => false,
+        Some("1") => true,
+        _ => return None,
+    };
     if name == XML_ELEMENTS_FIELD {
         if entry.attribute("ferrule-kind") != Some("group") || !repeating {
             return None;
         }
         let mut schema = generic_entry_schema(entry);
+        schema.xml_optional = optional;
         if let Some(index) = entry.attribute("ferrule-text-index") {
             let index = index.parse::<usize>().ok()?;
             let SchemaKind::Group { children, .. } = &mut schema.kind else {
@@ -1523,6 +1548,7 @@ fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<Schema
         _ => return None,
     };
     schema.repeating = repeating;
+    schema.xml_optional = optional;
     schema.attribute = legacy_attribute || entry.attribute("type") == Some("attribute");
     schema.text = entry.attribute("ferrule-text") == Some("1");
     schema.nillable = entry.attribute("ferrule-nillable") == Some("1");

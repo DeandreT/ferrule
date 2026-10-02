@@ -519,7 +519,14 @@ fn merge_alternatives_at(
             }
         }
     }
-    if !node.set_alternatives(metadata) {
+    // The resolved XSD already validates this exact xsi:type view. Avoid
+    // replacing it with identical membership: the generic IR setter resets
+    // XML default/restriction metadata when replacing an alternative view.
+    let unchanged_resolved_view = node.xml_type_alternatives
+        && node.alternative_mode == ir::GroupAlternativeMode::Exclusive
+        && node.xml_alternative_kind == ir::XmlAlternativeKind::XsiType
+        && node.alternatives() == metadata.as_slice();
+    if !unchanged_resolved_view && !node.set_alternatives(metadata) {
         return Err("the derived type alternatives have inconsistent metadata".to_string());
     }
     node.xml_type_alternatives = true;

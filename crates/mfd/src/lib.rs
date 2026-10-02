@@ -90,6 +90,10 @@ pub enum MfdError {
     NotMfd(&'static str),
     #[error("cannot import: {0}")]
     UnsupportedImport(String),
+    #[error(
+        "invalid Ferrule XML optional metadata for entry `{entry}`: `{value}` (expected `0` or `1`)"
+    )]
+    InvalidXmlOptionalMetadata { entry: String, value: String },
     #[error("resource resolution error: {0}")]
     Resource(String),
     #[error("cannot export: {0}")]

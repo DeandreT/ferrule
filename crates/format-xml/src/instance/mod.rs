@@ -51,6 +51,18 @@ pub enum XmlFormatError {
     UnsupportedSchemaDefault { name: String, reason: &'static str },
     #[error("XML node `{name}` has invalid optional element occurrence metadata")]
     InvalidXmlOptional { name: String },
+    #[error("XML node `{name}` has invalid required attribute-use metadata")]
+    InvalidXmlAttributeRequired { name: String },
+    #[error("XML attribute `{name}` has unsupported use `{value}`")]
+    UnsupportedXmlAttributeUse { name: String, value: String },
+    #[error(
+        "required XML attribute `{name}` cannot preserve flattened declaration-default provenance"
+    )]
+    UnsupportedXmlAttributeDefault { name: String },
+    #[error("XML attribute `{name}` cannot preserve a fixed declaration reference")]
+    UnsupportedXmlAttributeFixedReference { name: String },
+    #[error("XML alternatives on `{group}` have incompatible attribute uses at `{field}`")]
+    UnsupportedXmlAlternativeAttributeUse { group: String, field: String },
     #[error(
         "optional singular XML sequence with {element_count} members cannot preserve correlated absence"
     )]
@@ -745,6 +757,11 @@ pub(crate) fn validate_namespace_siblings(schema: &SchemaNode) -> Result<(), Xml
         });
     }
 
+    if !schema.xml_attribute_required_is_valid() {
+        return Err(XmlFormatError::InvalidXmlAttributeRequired {
+            name: schema.name.clone(),
+        });
+    }
     validate_schema_default(schema)?;
     if !schema.xml_name_alternatives_are_valid() {
         return Err(XmlFormatError::InvalidXmlNameAlternatives {
@@ -1058,10 +1075,12 @@ fn write_single_node<W: std::io::Write>(
                     }
                 }
             }
-            // EMPTY and attribute-only content must not acquire indentation text.
-            if (children.iter().any(|child| child.text)
-                || children
-                    .iter()
+            // The selected type determines whether indentation text is allowed.
+            let mut selected_children = children.iter().filter(|child| {
+                selected.is_none_or(|alternative| alternative.members.contains(&child.name))
+            });
+            if (selected_children.clone().any(|child| child.text)
+                || selected_children
                     .all(|child| child.attribute || child.name == XML_ATTRIBUTES_FIELD))
                 && !group_has_serialized_content(children, fields)
             {

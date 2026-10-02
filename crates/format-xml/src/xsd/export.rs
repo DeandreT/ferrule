@@ -308,6 +308,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.xml_wildcard_process_contents == right.xml_wildcard_process_contents
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
+        && left.xml_attribute_required == right.xml_attribute_required
         && left.text == right.text
         && left.fixed == right.fixed
         && left.default == right.default
@@ -1034,10 +1035,25 @@ fn write_attribute(
     alternatives: &AlternativeExportPlan<'_>,
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
+    if attribute.xml_attribute_required && attribute.default.is_some() {
+        return Err(XmlFormatError::UnsupportedXmlAttributeDefault {
+            name: attribute.name.clone(),
+        });
+    }
+    let use_required = if attribute.xml_attribute_required {
+        " use=\"required\""
+    } else {
+        ""
+    };
     if let Some(prefix) = alternatives.external_prefix(attribute) {
+        if attribute.xml_attribute_required && attribute.fixed.is_some() {
+            return Err(XmlFormatError::UnsupportedXmlAttributeFixedReference {
+                name: attribute.name.clone(),
+            });
+        }
         let pad = "  ".repeat(depth);
         out.push_str(&format!(
-            "{pad}<xs:attribute ref=\"{prefix}:{}\"/>\n",
+            "{pad}<xs:attribute ref=\"{prefix}:{}\"{use_required}/>\n",
             attribute.name
         ));
         return Ok(());
@@ -1066,7 +1082,7 @@ fn write_attribute(
             ""
         };
     out.push_str(&format!(
-        "{pad}<xs:attribute name=\"{}\" type=\"{}\"{form}{legacy_name}{value_constraint}/>\n",
+        "{pad}<xs:attribute name=\"{}\" type=\"{}\"{form}{legacy_name}{use_required}{value_constraint}/>\n",
         attribute.name,
         xsd_type_name(ty)
     ));
