@@ -431,6 +431,7 @@ impl<'a> ExportSetPlanner<'a> {
         let Some(anchor) = occurrence.recursive_ref.as_deref() else {
             let mut declaration = occurrence.clone();
             declaration.repeating = false;
+            declaration.xml_optional = false;
             declaration.xml_name_alternatives.clear();
             return Ok(declaration);
         };
@@ -462,6 +463,7 @@ impl<'a> ExportSetPlanner<'a> {
             .xml_name_alternatives
             .clone_from(&occurrence.xml_name_alternatives);
         declaration.repeating = false;
+        declaration.xml_optional = false;
         declaration.attribute = occurrence.attribute;
         declaration.text = occurrence.text;
         declaration.nillable = occurrence.nillable;
@@ -549,6 +551,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.value_generation == right.value_generation
         && left.alternative_mode == right.alternative_mode
         && left.xml_alternative_kind == right.xml_alternative_kind
+        && left.xml_default_type == right.xml_default_type
         && left.xml_repeating_sequences == right.xml_repeating_sequences
         && left.xml_repeating_choices == right.xml_repeating_choices
         && left.kind == right.kind

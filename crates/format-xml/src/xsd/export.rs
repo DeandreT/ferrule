@@ -314,6 +314,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.value_generation == right.value_generation
         && left.alternative_mode == right.alternative_mode
         && left.xml_alternative_kind == right.xml_alternative_kind
+        && left.xml_default_type == right.xml_default_type
         && left.xml_repeating_sequences == right.xml_repeating_sequences
         && left.xml_repeating_choices == right.xml_repeating_choices
         && left.kind == right.kind
@@ -518,6 +519,7 @@ fn write_element(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ElementOccurrence {
+    Schema,
     Required,
     Optional,
     RepeatingRequired,
@@ -533,11 +535,13 @@ fn write_element_required(
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
+    let optional = occurrence == ElementOccurrence::Optional
+        || (occurrence == ElementOccurrence::Schema && node.xml_optional);
     if node.name == XML_ELEMENTS_FIELD {
         let namespace = wildcard_namespace_attribute(node, alternatives)?;
         let occurs = if node.repeating {
             " minOccurs=\"0\" maxOccurs=\"unbounded\""
-        } else if occurrence == ElementOccurrence::Optional {
+        } else if optional {
             " minOccurs=\"0\""
         } else {
             ""
@@ -552,7 +556,7 @@ fn write_element_required(
         " maxOccurs=\"unbounded\""
     } else if node.repeating {
         " minOccurs=\"0\" maxOccurs=\"unbounded\""
-    } else if occurrence == ElementOccurrence::Optional {
+    } else if optional {
         " minOccurs=\"0\""
     } else {
         ""
@@ -962,6 +966,8 @@ fn write_nested_elements(
             let pad = "  ".repeat(depth);
             let occurs = if child.repeating {
                 " minOccurs=\"0\" maxOccurs=\"unbounded\""
+            } else if child.xml_optional {
+                " minOccurs=\"0\""
             } else {
                 ""
             };
@@ -980,9 +986,10 @@ fn write_nested_elements(
             out.push_str(&format!("{pad}</xs:choice>\n"));
             continue;
         }
-        write_element(
+        write_element_required(
             child,
             depth,
+            ElementOccurrence::Schema,
             root_name,
             recursive_anchors,
             alternatives,

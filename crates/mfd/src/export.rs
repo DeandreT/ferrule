@@ -26,6 +26,7 @@ mod dynamic_json;
 mod edi;
 mod exception;
 mod external_source;
+mod first_presence;
 mod flextext;
 mod flextext_parser;
 mod function;
@@ -49,7 +50,9 @@ mod protobuf;
 mod recursive;
 mod schema;
 mod scope;
+mod scope_variable;
 mod sequence;
+mod simple_content;
 mod source;
 mod temperature_native;
 #[cfg(test)]
@@ -334,6 +337,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
             &mut keys,
         )?);
     }
+    let first_presence = first_presence::Plan::build(&project.graph, &sources, &targets);
     let native_datetime_casts = native_datetime_cast::NativeDatetimeCasts::plan(project, &targets);
     for (name, options) in sources
         .iter()
@@ -1019,6 +1023,22 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     out.push_str(user_functions.declarations());
     out.push_str("</mapping>\n");
     crate::design::validate_export(&out)?;
+    let (rewritten, text_issues) =
+        simple_content::rewrite(&out, project, &sources, &targets, &node_out_key)?;
+    out = rewritten;
+    let (rewritten, resolved_positions, selector_warnings) =
+        scope_variable::rewrite_controlled_positions(&out, project, &sources, &mut keys, &mut uid)?;
+    out = rewritten;
+    warnings.extend(selector_warnings);
+    for (id, input) in &position_inputs {
+        if resolved_positions.contains(input) {
+            let obsolete = format!(
+                "position node {id} is used in multiple iteration stages or scopes; its first context connection was kept"
+            );
+            warnings.retain(|warning| warning != &obsolete);
+        }
+    }
+    crate::design::validate_export(&out)?;
 
     let mut artifacts = Vec::new();
     artifacts.extend(
@@ -1033,7 +1053,17 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     {
         artifacts.push((sibling.path, sibling.contents));
     }
-    let report = compatibility::profile(&out, warnings, path, &artifacts)?;
+    let (rewritten, first_presence_issues) = first_presence.rewrite(&out)?;
+    out = rewritten;
+    crate::design::validate_export(&out)?;
+    let mut report = compatibility::profile(&out, warnings, path, &artifacts)?;
+    if !first_presence_issues.is_empty() || !text_issues.is_empty() {
+        report.issues.extend(text_issues);
+        report.issues.extend(first_presence_issues);
+        if report.compatibility == ExportCompatibility::NativeMfd {
+            report.compatibility = ExportCompatibility::FerruleExtensions;
+        }
+    }
     // Publish the design after its schema siblings reach their final paths.
     artifacts.push((path.to_path_buf(), out));
     Ok(PreparedExport { artifacts, report })

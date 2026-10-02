@@ -49,6 +49,25 @@ pub enum XmlFormatError {
     },
     #[error("XSD default on `{name}` cannot be represented: {reason}")]
     UnsupportedSchemaDefault { name: String, reason: &'static str },
+    #[error("XML node `{name}` has invalid optional element occurrence metadata")]
+    InvalidXmlOptional { name: String },
+    #[error(
+        "optional singular XML sequence with {element_count} members cannot preserve correlated absence"
+    )]
+    UnsupportedOptionalSequence { element_count: usize },
+    #[error(
+        "optional {compositor} compositor with {element_count} elements cannot preserve correlated absence or repetition"
+    )]
+    UnsupportedOptionalCompositor {
+        compositor: String,
+        element_count: usize,
+    },
+    #[error("XML alternatives on `{group}` cannot preserve compositor correlations")]
+    UnsupportedXmlAlternativeCompositor { group: String },
+    #[error("XML alternatives on `{group}` have incompatible optional occurrences at `{field}`")]
+    UnsupportedXmlAlternativeOccurrence { group: String, field: String },
+    #[error("XML node `{name}` has invalid declared default type `{value}`")]
+    InvalidXmlDefaultType { name: String, value: String },
     #[error("XML node `{name}` cannot preserve a heterogeneous scalar union")]
     UnsupportedScalarUnion { name: String },
     #[error("element `{name}` expected {expected}, got {got}")]
@@ -332,6 +351,14 @@ fn read_node(
             let Instance::Group(fields) = &mut instance else {
                 unreachable!("read_group_fields always returns a group")
             };
+            if schema.xml_alternative_kind == XmlAlternativeKind::XsiType
+                && schema.xml_default_type.as_deref() == Some(alternative.name.as_str())
+                && el
+                    .attribute(("http://www.w3.org/2001/XMLSchema-instance", "type"))
+                    .is_none()
+            {
+                return Ok(instance);
+            }
             let marker = match schema.xml_alternative_kind {
                 XmlAlternativeKind::XsiType => XML_TYPE_FIELD,
                 XmlAlternativeKind::SubstitutionGroup => XML_SUBSTITUTION_FIELD,
@@ -460,6 +487,7 @@ fn resolve_recursive_schema(
         .clone_from(&occurrence.xml_wildcard_namespace);
     resolved.xml_wildcard_process_contents = occurrence.xml_wildcard_process_contents;
     resolved.repeating = occurrence.repeating;
+    resolved.xml_optional = occurrence.xml_optional;
     resolved.nillable = occurrence.nillable;
     Ok(resolved)
 }
@@ -705,6 +733,18 @@ pub fn to_string_with_options(
 }
 
 pub(crate) fn validate_namespace_siblings(schema: &SchemaNode) -> Result<(), XmlFormatError> {
+    if !schema.xml_optional_is_valid() {
+        return Err(XmlFormatError::InvalidXmlOptional {
+            name: schema.name.clone(),
+        });
+    }
+    if !schema.xml_default_type_is_valid() {
+        return Err(XmlFormatError::InvalidXmlDefaultType {
+            name: schema.name.clone(),
+            value: schema.xml_default_type.clone().unwrap_or_default(),
+        });
+    }
+
     validate_schema_default(schema)?;
     if !schema.xml_name_alternatives_are_valid() {
         return Err(XmlFormatError::InvalidXmlNameAlternatives {
@@ -965,6 +1005,8 @@ fn write_single_node<W: std::io::Write>(
             push_element_namespace(&mut start, element_namespace, namespace_changed);
             if schema.xml_alternative_kind == XmlAlternativeKind::XsiType
                 && let Some(alternative) = selected
+                && (schema.xml_default_type.as_deref() != Some(alternative.name.as_str())
+                    || fields.iter().any(|(name, _)| name == XML_TYPE_FIELD))
             {
                 start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
                 let (namespace, local) = split_expanded_name(&alternative.name);
@@ -1016,7 +1058,11 @@ fn write_single_node<W: std::io::Write>(
                     }
                 }
             }
-            if children.iter().any(|child| child.text)
+            // EMPTY and attribute-only content must not acquire indentation text.
+            if (children.iter().any(|child| child.text)
+                || children
+                    .iter()
+                    .all(|child| child.attribute || child.name == XML_ATTRIBUTES_FIELD))
                 && !group_has_serialized_content(children, fields)
             {
                 writer.write_event(Event::Empty(start))?;
@@ -1579,7 +1625,7 @@ fn group_has_serialized_content(children: &[SchemaNode], fields: &[(String, Inst
     }
     children
         .iter()
-        .filter(|child| !child.attribute)
+        .filter(|child| !child.attribute && child.name != XML_ATTRIBUTES_FIELD)
         .any(|child| {
             let Some((_, instance)) = fields.iter().find(|(name, _)| name == &child.name) else {
                 return false;
@@ -1587,7 +1633,18 @@ fn group_has_serialized_content(children: &[SchemaNode], fields: &[(String, Inst
             if child.text {
                 return match instance {
                     Instance::Scalar(Value::Null | Value::JsonNull(_)) => false,
-                    Instance::Scalar(Value::String(value)) if value.is_empty() => false,
+                    Instance::Scalar(Value::String(value))
+                        if value.is_empty()
+                            && matches!(
+                                child.kind,
+                                SchemaKind::Scalar {
+                                    ty: ScalarType::String
+                                }
+                            )
+                            && child.fixed.as_deref().is_none_or(str::is_empty) =>
+                    {
+                        false
+                    }
                     _ => true,
                 };
             }
@@ -1731,6 +1788,17 @@ fn select_group_alternative<'a>(
         .filter(|(name, instance)| !is_xml_metadata_field(name) && instance_has_value(instance))
         .map(|(name, _)| name.as_str())
         .collect();
+    if let Some(identity) = &schema.xml_default_type
+        && let Some(default) = alternatives
+            .iter()
+            .find(|alternative| alternative.name == *identity)
+        && populated
+            .iter()
+            .all(|field| default.members.iter().any(|member| member == field))
+    {
+        validate_alternative_fields(schema, default, fields)?;
+        return Ok(Some(default));
+    }
     let matches = alternatives
         .iter()
         .filter(|alternative| {

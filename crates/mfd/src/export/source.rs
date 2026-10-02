@@ -1,6 +1,8 @@
 //! Source component ownership and port resolution for MFD export.
 
-use ir::SchemaNode;
+use std::collections::BTreeMap;
+
+use ir::{SchemaKind, SchemaNode};
 use mapping::{FormatOptions, NodeId, Project};
 
 use crate::MfdError;
@@ -26,6 +28,15 @@ pub(super) struct SourceExport<'a> {
 pub(super) struct SourceExports<'a> {
     primary: SourceExport<'a>,
     extras: Vec<SourceExport<'a>>,
+}
+
+/// Native schema identity for one XML collection materialization.
+pub(super) struct XmlSequenceIdentity {
+    pub(super) source_uid: u32,
+    pub(super) collection_port: u32,
+    pub(super) instance_root: String,
+    pub(super) namespaces: BTreeMap<u32, Option<String>>,
+    pub(super) parent_ports: Vec<u32>,
 }
 
 pub(super) struct JoinCollection<'a> {
@@ -69,6 +80,128 @@ impl<'a> SourceExports<'a> {
 
     pub(super) fn iter(&self) -> impl Iterator<Item = &SourceExport<'a>> {
         std::iter::once(&self.primary).chain(&self.extras)
+    }
+
+    pub(super) fn xml_sequence_identity_for_port(
+        &self,
+        port: u32,
+    ) -> Result<Option<XmlSequenceIdentity>, MfdError> {
+        fn find(
+            node: &SchemaNode,
+            path: &mut Vec<String>,
+            ports: &PortTree,
+            port: u32,
+        ) -> Option<Vec<String>> {
+            if matches!(node.kind, SchemaKind::Group { .. })
+                && ports.key_for_abs(path) == Some(port)
+            {
+                return Some(path.clone());
+            }
+            if let SchemaKind::Group { children, .. } = &node.kind {
+                for child in children {
+                    path.push(child.name.clone());
+                    let found = find(child, path, ports, port);
+                    path.pop();
+                    if found.is_some() {
+                        return found;
+                    }
+                }
+            }
+            None
+        }
+        for (index, source) in self.iter().enumerate() {
+            if let Some(mut path) = find(source.schema, &mut Vec::new(), &source.ports, port) {
+                if index > 0 {
+                    path.insert(0, source.name.to_string());
+                }
+                return self.xml_sequence_identity(&path);
+            }
+        }
+        Ok(None)
+    }
+
+    pub(super) fn xml_sequence_identity(
+        &self,
+        path: &[String],
+    ) -> Result<Option<XmlSequenceIdentity>, MfdError> {
+        let (source, _, local) = self.owner(path);
+        if source.format != SideFormat::Xml
+            || source.options.wsdl.is_some()
+            || source.options.http_get.is_some()
+            || source.options.external_source.is_some()
+            || source.options.local_xml_file_set
+            || source.dynamic_path_node.is_some()
+        {
+            return Ok(None);
+        }
+        let root_namespace = format_xml::xsd::export_namespace(source.schema)?;
+        let mut instance_root = format!(
+            "{{{}}}{}",
+            root_namespace.as_deref().unwrap_or_default(),
+            source.schema.name
+        );
+        let mut node = source.schema;
+        let mut parent_ports = Vec::new();
+        let mut prefix = Vec::new();
+        for segment in local {
+            if let Some(port) = source.ports.key_for_abs(&prefix) {
+                parent_ports.push(port);
+            }
+            prefix.push(segment.clone());
+            let Some(child) = node.child(segment) else {
+                return Ok(None);
+            };
+            let namespace = child
+                .xml_namespace
+                .as_ref()
+                .and_then(ir::XmlNamespace::uri)
+                .unwrap_or_default();
+            instance_root.push_str(&format!("/{{{namespace}}}{}", child.name));
+            node = child;
+        }
+        if node.attribute || node.text || !matches!(node.kind, SchemaKind::Group { .. }) {
+            return Ok(None);
+        }
+        let Some(collection_port) = source.ports.key_for_abs(local) else {
+            return Ok(None);
+        };
+        let mut namespaces = BTreeMap::new();
+        fn collect(
+            node: &SchemaNode,
+            path: &mut Vec<String>,
+            ports: &PortTree,
+            namespaces: &mut BTreeMap<u32, Option<String>>,
+        ) {
+            if !node.text
+                && let Some(port) = ports.key_for_abs(path)
+            {
+                namespaces.insert(
+                    port,
+                    node.xml_namespace
+                        .as_ref()
+                        .and_then(ir::XmlNamespace::uri)
+                        .map(str::to_string),
+                );
+            }
+            if let SchemaKind::Group { children, .. } = &node.kind {
+                for child in children {
+                    path.push(child.name.clone());
+                    collect(child, path, ports, namespaces);
+                    path.pop();
+                }
+            }
+        }
+        collect(node, &mut local.to_vec(), &source.ports, &mut namespaces);
+        if local.is_empty() {
+            namespaces.insert(collection_port, root_namespace);
+        }
+        Ok(Some(XmlSequenceIdentity {
+            source_uid: source.component_uid,
+            collection_port,
+            instance_root,
+            namespaces,
+            parent_ports,
+        }))
     }
 
     pub(super) fn key_for_abs(&self, path: &[String]) -> Option<u32> {
@@ -357,5 +490,191 @@ mod tests {
             sources.resolve_scope_path(&["Item".into()], &["Item".into()]),
             (vec!["Item".into()], true)
         );
+    }
+    #[test]
+    fn xml_sequence_identity_retains_expanded_nested_and_attribute_names() {
+        let mut value = SchemaNode::scalar("Value", ScalarType::String);
+        value.xml_namespace = ir::XmlNamespace::qualified("urn:value");
+        let mut attribute = SchemaNode::scalar("code", ScalarType::String);
+        attribute.attribute = true;
+        let mut items = SchemaNode::group("Item", vec![value, attribute]).repeating();
+        items.xml_namespace = ir::XmlNamespace::qualified("urn:item");
+        let mut schema = SchemaNode::group("Root", vec![items]);
+        schema.xml_namespace = ir::XmlNamespace::qualified("urn:root");
+        let options = FormatOptions::default();
+        let mut keys = KeyAlloc { next: 1 };
+        let primary = build_source(
+            "Root",
+            &schema,
+            Some("source.xml"),
+            &options,
+            None,
+            0,
+            &mut keys,
+        )
+        .expect("XML source");
+        let sources = SourceExports {
+            primary,
+            extras: Vec::new(),
+        };
+        let path = ["Item".to_string()];
+        let identity = sources
+            .xml_sequence_identity(&path)
+            .expect("valid namespaces")
+            .expect("XML group");
+        assert_eq!(identity.source_uid, 2);
+        assert_eq!(identity.instance_root, "{urn:root}Root/{urn:item}Item");
+        assert_eq!(
+            identity.namespaces[&sources.key_for_abs(&path).unwrap()],
+            Some("urn:item".to_string())
+        );
+        assert_eq!(
+            identity.namespaces[&sources
+                .key_for_abs(&["Item".into(), "Value".into()])
+                .unwrap()],
+            Some("urn:value".to_string())
+        );
+        assert_eq!(
+            identity.namespaces[&sources
+                .key_for_abs(&["Item".into(), "code".into()])
+                .unwrap()],
+            None
+        );
+        assert!(
+            sources
+                .xml_sequence_identity(&["Item".into(), "Value".into()])
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            sources
+                .xml_sequence_identity(&["Missing".into()])
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn xml_sequence_identity_keeps_named_source_ownership_and_rejects_other_formats() {
+        let primary_schema = SchemaNode::group(
+            "Primary",
+            vec![SchemaNode::group("Rows", Vec::new()).repeating()],
+        );
+        let named_schema = SchemaNode::group(
+            "External",
+            vec![SchemaNode::group("Rows", Vec::new()).repeating()],
+        );
+        let options = FormatOptions::default();
+        let mut keys = KeyAlloc { next: 1 };
+        let primary = build_source(
+            "Primary",
+            &primary_schema,
+            Some("source.xml"),
+            &options,
+            None,
+            0,
+            &mut keys,
+        )
+        .expect("primary");
+        let named = build_source(
+            "Aux",
+            &named_schema,
+            Some("named.xml"),
+            &options,
+            None,
+            1,
+            &mut keys,
+        )
+        .expect("named");
+        let sources = SourceExports {
+            primary,
+            extras: vec![named],
+        };
+        let identity = sources
+            .xml_sequence_identity(&["Aux".into(), "Rows".into()])
+            .unwrap()
+            .unwrap();
+        assert_eq!(identity.source_uid, 3);
+        assert_eq!(identity.instance_root, "{}External/{}Rows");
+        let by_port = sources
+            .xml_sequence_identity_for_port(identity.collection_port)
+            .unwrap()
+            .unwrap();
+        assert_eq!(by_port.source_uid, 3);
+        assert_eq!(by_port.instance_root, identity.instance_root);
+        let primary_identity = sources
+            .xml_sequence_identity(&["Rows".into()])
+            .unwrap()
+            .unwrap();
+        assert_eq!(primary_identity.source_uid, 2);
+        assert_ne!(primary_identity.collection_port, identity.collection_port);
+        assert_eq!(
+            sources
+                .xml_sequence_identity_for_port(primary_identity.collection_port)
+                .unwrap()
+                .unwrap()
+                .source_uid,
+            2
+        );
+        let primary = build_source(
+            "Primary",
+            &named_schema,
+            Some("source.json"),
+            &options,
+            None,
+            0,
+            &mut keys,
+        )
+        .expect("JSON source");
+        let sources = SourceExports {
+            primary,
+            extras: Vec::new(),
+        };
+        assert!(
+            sources
+                .xml_sequence_identity(&["Rows".into()])
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn xml_sequence_identity_declines_document_set_and_dynamic_source_boundaries() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![SchemaNode::group("Rows", Vec::new()).repeating()],
+        );
+        for (options, dynamic) in [
+            (
+                FormatOptions {
+                    local_xml_file_set: true,
+                    ..FormatOptions::default()
+                },
+                None,
+            ),
+            (FormatOptions::default(), Some(99)),
+        ] {
+            let mut keys = KeyAlloc { next: 1 };
+            let primary = build_source(
+                "Root",
+                &schema,
+                Some("input.xml"),
+                &options,
+                dynamic,
+                0,
+                &mut keys,
+            )
+            .expect("XML boundary");
+            let sources = SourceExports {
+                primary,
+                extras: Vec::new(),
+            };
+            assert!(
+                sources
+                    .xml_sequence_identity(&["Rows".into()])
+                    .unwrap()
+                    .is_none()
+            );
+        }
     }
 }

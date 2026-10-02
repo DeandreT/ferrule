@@ -48,6 +48,10 @@ pub enum ExportCompatibilityFeature {
     CapturedHttpPost,
     PdfLayout,
     XmlSerializationIndent,
+    /// A first-item group must remain present even when its candidates are empty.
+    XmlFirstGroupPresence,
+    /// A generated or mapped text occurrence has no qualified native construction.
+    XmlTextOccurrence,
     /// Newly emitted metadata is conservative until its native behavior is known.
     UnknownExtension,
 }

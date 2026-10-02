@@ -30,6 +30,7 @@ mod external_scalar;
 mod external_udf;
 mod external_xslt;
 mod feed;
+mod first_presence;
 mod flextext_parser;
 mod function;
 mod generated_occurrence;
@@ -2109,6 +2110,24 @@ fn import_resolved(
     let joins = pending_joins.resolve(&edge_from, &sources, &source_names, &mut warnings);
 
     let xml_type_conditions = alternatives::conditioned_port_types(&structure);
+    let xml_condition_ports = structure
+        .descendants()
+        .filter(|entry| {
+            entry.has_tag_name("entry")
+                && entry.children().any(|node| node.has_tag_name("condition"))
+        })
+        // A wrapper can carry a condition without having a port itself.
+        // Preserve that condition on every descendant endpoint of this exact
+        // entry branch rather than guessing from keyed entries alone.
+        .flat_map(|entry| {
+            entry
+                .descendants()
+                .filter(|node| node.has_tag_name("entry"))
+        })
+        .flat_map(|entry| [entry.attribute("outkey"), entry.attribute("inpkey")])
+        .flatten()
+        .filter_map(|key| key.parse::<u32>().ok())
+        .collect();
     let mut builder = GraphBuilder {
         graph: Graph::default(),
         native_decimal_input_names: BTreeMap::new(),
@@ -2134,6 +2153,7 @@ fn import_resolved(
         query_scope_sources: BTreeSet::new(),
         warned_unscoped_queries: BTreeSet::new(),
         xml_type_conditions,
+        xml_condition_ports,
         edge_from: &edge_from,
         sources: &sources,
         source_names: &source_names,

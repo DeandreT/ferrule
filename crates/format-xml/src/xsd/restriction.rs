@@ -256,6 +256,7 @@ fn normalize_restriction(base: &SchemaNode, restricted: &SchemaNode) -> Option<S
         || base.text != restricted.text
         || base.xml_namespace != restricted.xml_namespace
         || (!base.repeating && restricted.repeating)
+        || (!base.xml_optional && restricted.xml_optional)
         || (!base.nillable && restricted.nillable)
     {
         return None;
@@ -277,6 +278,7 @@ fn normalize_restriction(base: &SchemaNode, restricted: &SchemaNode) -> Option<S
             if base.recursive_ref.is_some() {
                 let mut normalized = base.clone();
                 normalized.repeating = restricted.repeating;
+                normalized.xml_optional = restricted.xml_optional;
                 normalized.nillable = restricted.nillable;
                 return Some(normalized);
             }

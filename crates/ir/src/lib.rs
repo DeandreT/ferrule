@@ -506,6 +506,10 @@ pub struct SchemaNode {
     /// This XML element may be present with `xsi:nil="true"`.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub nillable: bool,
+    /// This named singular XML element occurrence permits absence (0..1).
+    /// XML and JSON instance boundaries retain their existing presence rules.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub xml_optional: bool,
     /// This JSON scalar may be the explicit `null` value.
     ///
     /// Missing object properties remain boundary-level absence and do not
@@ -627,6 +631,10 @@ pub struct SchemaNode {
     /// strictly fewer members than every other matching derived type.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub xml_type_alternatives: bool,
+    /// Exact expanded identity of a retained concrete declared XML type.
+    /// Absent metadata remains conservative for abstract or legacy declarations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xml_default_type: Option<String>,
     /// Repeating anonymous XML sequences flattened into this group's named
     /// children for mapping-port compatibility. XML adapters use this metadata
     /// to retain document order and recreate the original compositor.
@@ -705,6 +713,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             nillable: bool,
             #[serde(default)]
+            xml_optional: bool,
+            #[serde(default)]
             nullable: bool,
             #[serde(default)]
             container_nullable: bool,
@@ -751,6 +761,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_type_alternatives: bool,
             #[serde(default)]
+            xml_default_type: Option<String>,
+            #[serde(default)]
             xml_repeating_sequences: Vec<XmlRepeatingSequence>,
             #[serde(default)]
             xml_repeating_choices: Vec<XmlRepeatingChoice>,
@@ -772,6 +784,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             attribute: repr.attribute,
             text: repr.text,
             nillable: repr.nillable,
+            xml_optional: repr.xml_optional,
             nullable: repr.nullable,
             container_nullable: repr.container_nullable,
             json_any: repr.json_any,
@@ -795,6 +808,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             alternative_mode: repr.alternative_mode,
             xml_alternative_kind: repr.xml_alternative_kind,
             xml_type_alternatives: repr.xml_type_alternatives,
+            xml_default_type: repr.xml_default_type,
             xml_repeating_sequences: repr.xml_repeating_sequences,
             xml_repeating_choices: repr.xml_repeating_choices,
             database_relation: repr.database_relation,
@@ -1047,6 +1061,8 @@ impl SchemaNode {
             && self.alternative_mode_is_valid()
             && self.xml_alternative_kind_is_valid()
             && self.xml_type_alternatives_are_valid()
+            && self.xml_default_type_is_valid()
+            && self.xml_optional_is_valid()
             && self.xml_repeating_sequences_are_valid()
             && self.xml_repeating_choices_are_valid()
             && self.database_relation_is_valid()
@@ -1083,6 +1099,8 @@ impl SchemaNode {
             && self.alternative_mode_is_valid()
             && self.xml_alternative_kind_is_valid()
             && self.xml_type_alternatives_are_valid()
+            && self.xml_default_type_is_valid()
+            && self.xml_optional_is_valid()
             && self.xml_repeating_sequences_are_valid()
             && self.xml_repeating_choices_are_valid()
             && self.database_relation_is_valid()
@@ -1105,6 +1123,7 @@ impl SchemaNode {
             attribute: false,
             text: false,
             nillable: false,
+            xml_optional: false,
             nullable: false,
             container_nullable: false,
             json_any: false,
@@ -1128,6 +1147,7 @@ impl SchemaNode {
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
             xml_type_alternatives: false,
+            xml_default_type: None,
             xml_repeating_sequences: Vec::new(),
             xml_repeating_choices: Vec::new(),
             database_relation: None,
@@ -1153,6 +1173,7 @@ impl SchemaNode {
             attribute: false,
             text: false,
             nillable: false,
+            xml_optional: false,
             nullable: false,
             container_nullable: false,
             json_any: false,
@@ -1176,6 +1197,7 @@ impl SchemaNode {
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
             xml_type_alternatives: false,
+            xml_default_type: None,
             xml_repeating_sequences: Vec::new(),
             xml_repeating_choices: Vec::new(),
             database_relation: None,
@@ -1210,6 +1232,7 @@ impl SchemaNode {
             attribute: false,
             text: false,
             nillable: false,
+            xml_optional: false,
             nullable: false,
             container_nullable: false,
             json_any: false,
@@ -1233,6 +1256,7 @@ impl SchemaNode {
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
             xml_type_alternatives: false,
+            xml_default_type: None,
             xml_repeating_sequences: Vec::new(),
             xml_repeating_choices: Vec::new(),
             database_relation: None,
@@ -2611,6 +2635,7 @@ impl SchemaNode {
         let previous_xml_kind = std::mem::replace(&mut self.xml_alternative_kind, xml_kind);
         let previous_xml_type_alternatives =
             std::mem::replace(&mut self.xml_type_alternatives, false);
+        let previous_xml_default_type = self.xml_default_type.take();
         if self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_pattern_property_names_are_valid()
@@ -2631,6 +2656,7 @@ impl SchemaNode {
             self.alternative_mode = previous_mode;
             self.xml_alternative_kind = previous_xml_kind;
             self.xml_type_alternatives = previous_xml_type_alternatives;
+            self.xml_default_type = previous_xml_default_type;
             false
         }
     }
@@ -2746,6 +2772,80 @@ impl SchemaNode {
                                 && alternative.constraints.is_empty()
                         })
             )
+    }
+
+    /// Checks that optional occurrence metadata belongs to a named singular
+    /// XML element, including a singular recursive group reference.
+    pub fn xml_optional_is_valid(&self) -> bool {
+        !self.xml_optional
+            || (!self.name.is_empty()
+                && !matches!(
+                    self.name.as_str(),
+                    XML_TEXT_FIELD | XML_ELEMENTS_FIELD | XML_ATTRIBUTES_FIELD
+                )
+                && !self.name.starts_with('\u{1f}')
+                && !self.attribute
+                && !self.text
+                && !self.repeating
+                && matches!(
+                    self.kind,
+                    SchemaKind::Scalar { .. } | SchemaKind::Group { .. }
+                ))
+    }
+
+    /// Sets optional XML occurrence metadata without leaving an invalid role.
+    pub fn set_xml_optional(&mut self, optional: bool) -> bool {
+        let previous = std::mem::replace(&mut self.xml_optional, optional);
+        if self.xml_optional_is_valid() {
+            true
+        } else {
+            self.xml_optional = previous;
+            false
+        }
+    }
+
+    /// A declared default is a concrete retained base, never a guessed member
+    /// of an abstract or structurally unrelated alternative set.
+    pub fn xml_default_type_is_valid(&self) -> bool {
+        let Some(identity) = &self.xml_default_type else {
+            return true;
+        };
+        if !self.alternatives_are_valid()
+            || !self.xml_type_alternatives_are_valid()
+            || !self.xml_type_alternatives
+            || self.attribute
+            || self.text
+            || self.recursive_ref.is_some()
+        {
+            return false;
+        }
+        let SchemaKind::Group {
+            alternatives,
+            xml_restricted_alternatives,
+            ..
+        } = &self.kind
+        else {
+            return false;
+        };
+        let Some(base) = alternatives
+            .iter()
+            .find(|alternative| alternative.name == *identity)
+        else {
+            return false;
+        };
+        !xml_restricted_alternatives.contains(identity)
+            && alternatives.iter().all(|alternative| {
+                if xml_restricted_alternatives.contains(&alternative.name) {
+                    alternative
+                        .members
+                        .iter()
+                        .all(|member| base.members.contains(member))
+                } else {
+                    base.members
+                        .iter()
+                        .all(|member| alternative.members.contains(member))
+                }
+            })
     }
 
     pub fn alternative_mode(&self) -> GroupAlternativeMode {

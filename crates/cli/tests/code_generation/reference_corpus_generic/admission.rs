@@ -162,6 +162,55 @@ fn ordinary(value: &Instance) -> bool {
     }
 }
 
+fn reserved_xml_field(name: &str) -> bool {
+    matches!(
+        name,
+        ir::XML_TYPE_FIELD
+            | ir::XML_SUBSTITUTION_FIELD
+            | ir::XML_MIXED_CONTENT_FIELD
+            | ir::XML_MIXED_CONTENT_VALUE_FIELD
+    )
+}
+
+fn contains_xml_metadata(value: &Instance) -> bool {
+    match value {
+        Instance::Group(fields) => fields
+            .iter()
+            .any(|(name, value)| reserved_xml_field(name) || contains_xml_metadata(value)),
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            items.iter().any(contains_xml_metadata)
+        }
+        Instance::Scalar(_) | Instance::DocumentSet(_) => false,
+    }
+}
+
+// A physical or dynamic JSON property may legally share one of these names.
+// Reject only fields that disappear from the actual typed JSON projection;
+// scalar and mapped-sequence normalization remains the existing contract.
+fn loses_xml_metadata(value: &Instance, projected: &Instance) -> bool {
+    match value {
+        Instance::Group(fields) => fields
+            .iter()
+            .any(|(name, value)| match projected.field(name) {
+                Some(projected) => loses_xml_metadata(value, projected),
+                None => reserved_xml_field(name) || contains_xml_metadata(value),
+            }),
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            let projected_items = match projected {
+                Instance::Repeated(items) | Instance::MappedSequence(items) => Some(items),
+                _ => None,
+            };
+            items.iter().enumerate().any(|(index, value)| {
+                match projected_items.and_then(|items| items.get(index)) {
+                    Some(projected) => loses_xml_metadata(value, projected),
+                    None => contains_xml_metadata(value),
+                }
+            })
+        }
+        Instance::Scalar(_) | Instance::DocumentSet(_) => false,
+    }
+}
+
 pub(super) fn source_document(
     schema: &SchemaNode,
     value: &Instance,
@@ -178,6 +227,9 @@ pub(super) fn source_document(
         .map_err(|_| AdmissionError::Schema { slot })?;
     let boundary = |error| AdmissionError::Boundary { slot, error };
     let strict = codegen_runtime::parse_json(&codec, &document).map_err(boundary)?;
+    if loses_xml_metadata(value, &strict) {
+        return Err(AdmissionError::Unsupported("reserved XML metadata"));
+    }
     let bytes = codegen_runtime::parse_json_bytes(&codec, document.as_bytes()).map_err(boundary)?;
     let round = codegen_runtime::serialize_json(&codec, &strict).map_err(boundary)?;
     let raw = codegen_runtime::serialize_json(&codec, value).map_err(boundary)?;
@@ -206,6 +258,9 @@ pub(super) fn target_document(
         .map_err(|_| AdmissionError::Schema { slot })?;
     let boundary = |error| AdmissionError::Boundary { slot, error };
     let strict = codegen_runtime::parse_json(&codec, &document).map_err(boundary)?;
+    if loses_xml_metadata(value, &strict) {
+        return Err(AdmissionError::Unsupported("reserved XML metadata"));
+    }
     let strict_bytes =
         codegen_runtime::parse_json_bytes(&codec, document.as_bytes()).map_err(boundary)?;
     let round = codegen_runtime::serialize_json(&codec, &strict).map_err(boundary)?;

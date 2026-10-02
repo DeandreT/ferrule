@@ -498,6 +498,7 @@ fn projection(head: &SchemaNode, members: &[String]) -> SchemaNode {
     });
     projected.xml_alternative_kind = XmlAlternativeKind::XsiType;
     projected.repeating = false;
+    projected.xml_optional = false;
     projected
 }
 
