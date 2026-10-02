@@ -178,6 +178,8 @@ pub enum JsonFormatError {
     NullableJsonLinesContainer { name: String },
     #[error("recursive JSON schema reference `{node}` is malformed")]
     InvalidRecursiveReference { node: String },
+    #[error("XML attribute-use metadata on `{node}` requires one named singular scalar attribute")]
+    InvalidXmlAttributeRequired { node: String },
     #[error(
         "recursive JSON schema reference `{node}` has no unique concrete group anchor `{anchor}`"
     )]
@@ -197,6 +199,11 @@ impl<'a> RecursiveSchemas<'a> {
         let mut references = Vec::new();
         let mut pending = vec![root];
         while let Some(node) = pending.pop() {
+            if !node.xml_attribute_required_is_valid() {
+                return Err(JsonFormatError::InvalidXmlAttributeRequired {
+                    node: node.name.clone(),
+                });
+            }
             if let Some(anchor) = &node.recursive_ref {
                 if !node.recursive_ref_is_valid() || !Self::supported_occurrence_metadata(node) {
                     return Err(JsonFormatError::InvalidRecursiveReference {

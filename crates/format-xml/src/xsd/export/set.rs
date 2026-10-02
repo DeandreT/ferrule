@@ -432,6 +432,7 @@ impl<'a> ExportSetPlanner<'a> {
             let mut declaration = occurrence.clone();
             declaration.repeating = false;
             declaration.xml_optional = false;
+            declaration.xml_attribute_required = false;
             declaration.xml_name_alternatives.clear();
             return Ok(declaration);
         };
@@ -464,6 +465,7 @@ impl<'a> ExportSetPlanner<'a> {
             .clone_from(&occurrence.xml_name_alternatives);
         declaration.repeating = false;
         declaration.xml_optional = false;
+        declaration.xml_attribute_required = false;
         declaration.attribute = occurrence.attribute;
         declaration.text = occurrence.text;
         declaration.nillable = occurrence.nillable;
@@ -545,6 +547,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.xml_wildcard_process_contents == right.xml_wildcard_process_contents
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
+        && left.xml_attribute_required == right.xml_attribute_required
         && left.text == right.text
         && left.fixed == right.fixed
         && left.default == right.default

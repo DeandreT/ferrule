@@ -335,7 +335,7 @@ are preserved.
 
 | Area | Ferrule now | Full-compatibility target |
 | --- | --- | --- |
-| XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, lax element and attribute wildcards with typed known declarations plus nonduplicating generic fallback, closed strict wildcards resolved to exact singular or repeating typed choices, strict known-attribute projection, direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes, XSD 1.1 wildcard exclusions, unordered wildcard compositors, and unresolved strict wildcard declaration sets |
+| XML | XSD subset, local include/import graphs, named model/attribute groups, retained required-attribute uses, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, lax element and attribute wildcards with typed known declarations plus nonduplicating generic fallback, closed strict wildcards resolved to exact singular or repeating typed choices, strict known-attribute projection, direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes, XSD 1.1 wildcard exclusions, unordered wildcard compositors, and unresolved strict wildcard declaration sets |
 | JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, bounded exact scalar `const`/`enum` value sets including finite `anyOf`/`oneOf` composition, exact numeric ranges including contiguous same-type `anyOf` unions, exact decimal `multipleOf` constraints, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded exact homogeneous Draft 2020-12/undeclared `prefixItems` and Draft 4/6/7/2019-09/undeclared tuple-form `items` normalization, bounded portable string `pattern` assertions, exact closed homogeneous `patternProperties`, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditional normalization for Draft 7/2019-09/2020-12/undeclared schemas including guarded nullable objects and representable `else: false`, property-name constraints including exact finite and portable-pattern `not` complements, and open/closed object semantics, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties, and bounded ordered `format` annotation preservation without vocabulary assertion | Incompatible or correlated validation composition, correlated property-name unions and complements involving length, format, or mixed assertions, distinct per-selector `patternProperties` schemas, pattern-property objects under active `allOf`, alternatives, or structural `$ref` siblings, open or typed pattern-property fallbacks, general overlap intersection, pattern-property value shapes outside the ordinary exact JSON profile, `unevaluatedProperties`, value-sensitive, multi-trigger, general-`if`, `else: false` over object alternatives or a closed undeclared trigger, or other nontrivial-`else` conditional schemas, general heterogeneous positional array schemas, heterogeneous or correlated numeric-range scalar unions, heterogeneous array composition, overlapping cross-mode or incompatible typed-wrapper union composition, structured discriminator values, mixed arrays, and remaining validation-keyword enforcement |
 | Flat files | Delimited CSV with configurable single-byte or disabled quoting, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
@@ -981,16 +981,19 @@ catalogs; its counts, generated execution, and bounded native checks are
 recorded separately without inferring broader runtime coverage.
 
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
-- Current complete static `.mfd` survey: all 187 designs import, 179 without
-  warnings and with executable-profile admission. All 187 imported graphs
-  validate, including explicitly incomplete designs. Default export/reimport
-  succeeds for 186 designs; the PDF repair draft rejects. Native preflight
-  admits 158 designs, of which 153 also pass original executable import; the
-  other five retain warned original behavior. All 489 published designs and
-  schema siblings remain byte-identical across the text-report correction.
-  These are static checks, with no mapping or native-application execution.
-  Two warning-free round trips still lose optional WSDL target fields or a
-  declared source type; their execution consequences remain unverified.
+- Current complete static `.mfd` survey: all 187 designs import and validate,
+  with 179 warning-free executable-profile admissions. Default export/reimport
+  succeeds for 186 designs; the PDF repair draft rejects. Of those reimports,
+  185 are warning-free and one retains two known fallback warnings. Native
+  preflight admits 156 designs, including 151 original executable imports.
+  The two prior optional-field and declared-default metadata defects are fixed.
+  Across 489 published artifacts, 418 retain exact bytes and 71 change (69
+  schemas and two designs). These are static checks, with no mapping or
+  native-application execution. WSDL response transport still loses two
+  required-attribute flags. Retained attribute requirements also expose an
+  existing exact-schema recovery mismatch: one optimized native export now
+  falls back to unsupported number-conversion components. That recovery fix
+  remains a separate gate; the mapping graph is unchanged.
 - Earlier isolated `.mfd` survey checkpoint: 187/187 imports; 169 are warning-free in that resource profile.
   Four connected chains warn in single-project mode and validate as pipelines;
   synthetic linear three- and four-stage XML chains also import and execute.
@@ -1041,8 +1044,15 @@ recorded separately without inferring broader runtime coverage.
   EMPTY-aware comparisons detect invalid whitespace instead of treating it as
   formatting. Current EMPTY serialization repairs the sort output's schema
   validity; that original design's input still violates its declared schema.
-  Required-attribute fidelity and remaining derived-type contracts are separate
-  open gates.
+  Required-attribute uses now survive local and qualified declarations, refs,
+  attribute groups, recursion, and compatible derived schema round trips. They
+  remain XML metadata and do not change lenient instance reads or JSON required
+  properties. Thirteen additional authored attribute-projection inputs execute
+  and re-save; twelve match exact typed and expanded XML output. The remaining
+  derived root drops its type marker and extra attribute during native execution,
+  although both outputs are schema-valid and all thirteen saved-file replays
+  match. Connected fields outside a declared XML root type now produce a typed
+  native-export rejection; native root-view lowering remains open.
 - Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample
   compatibility report and `FERRULE_SURVEY_DETAILS=1` for text diagnostics.
 - All three report-producing read-only surveys accept one explicitly selected

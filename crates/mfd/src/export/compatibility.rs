@@ -52,6 +52,10 @@ pub enum ExportCompatibilityFeature {
     XmlFirstGroupPresence,
     /// A generated or mapped text occurrence has no qualified native construction.
     XmlTextOccurrence,
+    /// Connected root fields outside the declared view have no owned native ports.
+    XmlRootTypeViewOwnership,
+    /// WSDL optional occurrences are retained only in private entry metadata.
+    XmlOptionalOccurrence,
     /// Newly emitted metadata is conservative until its native behavior is known.
     UnknownExtension,
 }
@@ -208,6 +212,12 @@ pub(super) fn profile(
                     node,
                     ExportCompatibilityFeature::XmlSerializationIndent,
                     "XML string serialization indentation is retained only in Ferrule metadata",
+                ),
+                "ferrule-xml-optional" => push_issue(
+                    &mut issues,
+                    node,
+                    ExportCompatibilityFeature::XmlOptionalOccurrence,
+                    "XML optional occurrence is retained in private entry metadata; native boundary compatibility has not been established",
                 ),
                 "ferrulemessagetype" | "ferruletransactionset" => push_issue(
                     &mut issues,

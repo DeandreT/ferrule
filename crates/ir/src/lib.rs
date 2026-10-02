@@ -510,6 +510,10 @@ pub struct SchemaNode {
     /// XML and JSON instance boundaries retain their existing presence rules.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub xml_optional: bool,
+    /// This singular XML attribute use requires an explicitly present attribute.
+    /// Instance boundaries retain their existing lenient presence semantics.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub xml_attribute_required: bool,
     /// This JSON scalar may be the explicit `null` value.
     ///
     /// Missing object properties remain boundary-level absence and do not
@@ -715,6 +719,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_optional: bool,
             #[serde(default)]
+            xml_attribute_required: bool,
+            #[serde(default)]
             nullable: bool,
             #[serde(default)]
             container_nullable: bool,
@@ -785,6 +791,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             text: repr.text,
             nillable: repr.nillable,
             xml_optional: repr.xml_optional,
+            xml_attribute_required: repr.xml_attribute_required,
             nullable: repr.nullable,
             container_nullable: repr.container_nullable,
             json_any: repr.json_any,
@@ -1063,6 +1070,7 @@ impl SchemaNode {
             && self.xml_type_alternatives_are_valid()
             && self.xml_default_type_is_valid()
             && self.xml_optional_is_valid()
+            && self.xml_attribute_required_is_valid()
             && self.xml_repeating_sequences_are_valid()
             && self.xml_repeating_choices_are_valid()
             && self.database_relation_is_valid()
@@ -1101,6 +1109,7 @@ impl SchemaNode {
             && self.xml_type_alternatives_are_valid()
             && self.xml_default_type_is_valid()
             && self.xml_optional_is_valid()
+            && self.xml_attribute_required_is_valid()
             && self.xml_repeating_sequences_are_valid()
             && self.xml_repeating_choices_are_valid()
             && self.database_relation_is_valid()
@@ -1124,6 +1133,7 @@ impl SchemaNode {
             text: false,
             nillable: false,
             xml_optional: false,
+            xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
             json_any: false,
@@ -1174,6 +1184,7 @@ impl SchemaNode {
             text: false,
             nillable: false,
             xml_optional: false,
+            xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
             json_any: false,
@@ -1233,6 +1244,7 @@ impl SchemaNode {
             text: false,
             nillable: false,
             xml_optional: false,
+            xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
             json_any: false,
@@ -2800,6 +2812,32 @@ impl SchemaNode {
             true
         } else {
             self.xml_optional = previous;
+            false
+        }
+    }
+
+    /// Checks that required-use metadata belongs to one named scalar attribute.
+    pub fn xml_attribute_required_is_valid(&self) -> bool {
+        !self.xml_attribute_required
+            || (!self.name.is_empty()
+                && !matches!(
+                    self.name.as_str(),
+                    XML_TEXT_FIELD | XML_ELEMENTS_FIELD | XML_ATTRIBUTES_FIELD
+                )
+                && !self.name.starts_with('\u{1f}')
+                && self.attribute
+                && !self.text
+                && !self.repeating
+                && matches!(self.kind, SchemaKind::Scalar { .. }))
+    }
+
+    /// Sets XML attribute requiredness without leaving an invalid role.
+    pub fn set_xml_attribute_required(&mut self, required: bool) -> bool {
+        let previous = std::mem::replace(&mut self.xml_attribute_required, required);
+        if self.xml_attribute_required_is_valid() {
+            true
+        } else {
+            self.xml_attribute_required = previous;
             false
         }
     }

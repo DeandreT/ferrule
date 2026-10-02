@@ -1051,7 +1051,7 @@ pub(super) const fn db_type_name(ty: ScalarType) -> &'static str {
     }
 }
 
-fn entry_schema_metadata(node: &SchemaNode) -> String {
+fn entry_schema_metadata(node: &SchemaNode, preserve_optional: bool) -> String {
     let kind = match node.kind {
         SchemaKind::Scalar { .. } => "scalar",
         SchemaKind::ScalarUnion { .. } => "scalar",
@@ -1067,6 +1067,9 @@ fn entry_schema_metadata(node: &SchemaNode) -> String {
             " datatype=\"{}\"",
             super::function::scalar_type_name(ty)
         );
+    }
+    if preserve_optional && node.xml_optional {
+        metadata.push_str(" ferrule-xml-optional=\"1\"");
     }
     if node.text {
         metadata.push_str(" ferrule-text=\"1\"");
@@ -1436,6 +1439,7 @@ impl PortTree {
             root_attr,
             target_branches,
             false,
+            false,
             None,
         )
     }
@@ -1462,6 +1466,7 @@ impl PortTree {
             root_attr,
             target_branches,
             xml_entry_schema_is_exact(schema),
+            false,
             namespaces,
         )
     }
@@ -1487,6 +1492,7 @@ impl PortTree {
             root_attr,
             target_branches,
             true,
+            true,
             None,
         )
     }
@@ -1501,6 +1507,7 @@ impl PortTree {
         root_attr: Option<&str>,
         target_branches: Option<&TargetBranches>,
         typed: bool,
+        preserve_optional: bool,
         namespaces: Option<&XmlNamespaces>,
     ) -> String {
         let mut out = String::new();
@@ -1519,6 +1526,7 @@ impl PortTree {
             active_branch: Option<(&[String], usize)>,
             anchors: &BTreeMap<&'a str, Option<&'a SchemaNode>>,
             typed: bool,
+            preserve_optional: bool,
             namespaces: Option<&XmlNamespaces>,
             out: &mut String,
         ) {
@@ -1562,7 +1570,7 @@ impl PortTree {
                             ""
                         };
                         let metadata = if typed {
-                            entry_schema_metadata(child)
+                            entry_schema_metadata(child, preserve_optional)
                         } else {
                             String::new()
                         };
@@ -1608,6 +1616,7 @@ impl PortTree {
                                 branch,
                                 anchors,
                                 typed,
+                                preserve_optional,
                                 namespaces,
                                 out,
                             );
@@ -1652,7 +1661,7 @@ impl PortTree {
             String::new()
         };
         let root_metadata = if typed {
-            entry_schema_metadata(schema)
+            entry_schema_metadata(schema, preserve_optional)
         } else {
             String::new()
         };
@@ -1675,6 +1684,7 @@ impl PortTree {
             None,
             &anchors,
             typed,
+            preserve_optional,
             namespaces,
             &mut out,
         );
