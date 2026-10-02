@@ -836,7 +836,14 @@ fn node_label(node: &mapping::Node) -> String {
         mapping::Node::SourceRootXmlTypeEquals { .. } => {
             "primary XML annotation equality".to_string()
         }
-        mapping::Node::SourceRootField { path } => format!("primary field {}", display_path(path)),
+        mapping::Node::SourceRootField { path, required } => {
+            let title = if *required {
+                "required primary field"
+            } else {
+                "primary field"
+            };
+            format!("{title} {}", display_path(path))
+        }
         mapping::Node::Position { collection } => {
             format!("position {}", display_path(collection))
         }

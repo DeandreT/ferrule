@@ -691,7 +691,10 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         } => Expression::SourceRootXmlTypeEquals {
             canonical_expanded_type: canonical_expanded_type.clone(),
         },
-        Node::SourceRootField { path } => Expression::SourceRootField { path: path.clone() },
+        Node::SourceRootField { path, required } => Expression::SourceRootField {
+            path: path.clone(),
+            required: *required,
+        },
         Node::DynamicSourceField { object, frame, key } => Expression::DynamicSourceField {
             object: object.clone(),
             frame: frame.clone(),

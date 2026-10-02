@@ -19,6 +19,9 @@ pub enum PrimaryRootError {
     InvalidTypeIdentity,
     InvalidScalarPath,
     FieldLimit,
+    MissingRequiredField {
+        path: Vec<String>,
+    },
     DuplicateField {
         path: Vec<String>,
     },
@@ -52,6 +55,11 @@ impl std::fmt::Display for PrimaryRootError {
             Self::FieldLimit => {
                 formatter.write_str("primary root path group exceeds its field limit")
             }
+            Self::MissingRequiredField { path } => write!(
+                formatter,
+                "primary root path `{}` is required but has no value",
+                path.join("/")
+            ),
             Self::DuplicateField { path } => write!(
                 formatter,
                 "primary root path `{}` has duplicate fields",
@@ -134,6 +142,23 @@ pub fn primary_root_scalar(
             found: instance_kind(current),
         }),
     }
+}
+
+/// Read the same exact physical scalar, optionally failing on absence.
+/// Validation and wrong-shape errors retain their original precedence.
+/// A required read is evaluated lazily by its mapping expression owner.
+pub fn primary_root_scalar_with_requirement(
+    root: Option<&Instance>,
+    path: &[&str],
+    required: bool,
+) -> Result<Value, PrimaryRootError> {
+    let value = primary_root_scalar(root, path)?;
+    if required && matches!(value, Value::Null) {
+        return Err(PrimaryRootError::MissingRequiredField {
+            path: owned_path(path),
+        });
+    }
+    Ok(value)
 }
 
 /// Closed resolved identity: NCName or `{nonempty namespace}NCName`, never a prefix.
@@ -226,6 +251,73 @@ pub fn primary_root_schema_is_supported(schema: &SchemaNode) -> bool {
             .iter()
             .all(|alternative| primary_root_type_identity_is_valid(&alternative.name))
         && schema.metadata_is_valid()
+}
+
+/// Closed flat XML root shape supported by an explicitly relaxed member read.
+/// The policy changes only alternative membership; scalar lexical and fixed
+/// value validation retain their ordinary behavior.
+pub fn xml_inactive_root_type_members_are_supported(schema: &SchemaNode) -> bool {
+    let SchemaKind::Group {
+        children,
+        alternatives,
+        ..
+    } = &schema.kind
+    else {
+        return false;
+    };
+    // Reject unbounded or nested shapes before cloning or recursively validating
+    // any metadata. Each alternative's membership remains bounded by this same
+    // flat attribute set.
+    if schema.xml_namespace.is_none()
+        || schema.xml_default_type.is_none()
+        || !primary_root_ncname_is_valid(&schema.name)
+        || children.is_empty()
+        || children.len() > 32
+        || !(2..=32).contains(&alternatives.len())
+        || alternatives.iter().any(|alternative| {
+            !primary_root_type_identity_is_valid(&alternative.name)
+                || alternative.members.len() > children.len()
+                || !alternative.required.is_empty()
+                || !alternative.constraints.is_empty()
+                || alternative
+                    .members
+                    .iter()
+                    .any(|member| !primary_root_ncname_is_valid(member))
+        })
+    {
+        return false;
+    }
+    for child in children {
+        if !primary_root_ncname_is_valid(&child.name) {
+            return false;
+        }
+        let SchemaKind::Scalar { ty } = child.kind else {
+            return false;
+        };
+        let mut expected = SchemaNode::scalar(&child.name, ty);
+        expected.attribute = true;
+        expected.xml_namespace.clone_from(&child.xml_namespace);
+        expected.xml_attribute_required = child.xml_attribute_required;
+        expected.fixed.clone_from(&child.fixed);
+        if child.xml_namespace.is_none() || *child != expected {
+            return false;
+        }
+    }
+    let mut expected = SchemaNode::group(&schema.name, children.clone());
+    expected.xml_namespace.clone_from(&schema.xml_namespace);
+    expected.xml_type_alternatives = true;
+    expected
+        .xml_default_type
+        .clone_from(&schema.xml_default_type);
+    let SchemaKind::Group {
+        alternatives: expected_alternatives,
+        ..
+    } = &mut expected.kind
+    else {
+        unreachable!("group constructor returns a group")
+    };
+    expected_alternatives.clone_from(alternatives);
+    *schema == expected && primary_root_schema_is_supported(schema)
 }
 
 pub fn primary_root_schema_has_type(schema: &SchemaNode, identity: &str) -> bool {
