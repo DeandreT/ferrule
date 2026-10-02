@@ -81,6 +81,7 @@ struct ParseState {
     unsupported_schema_group: Option<XmlFormatError>,
     unsupported_restriction: Option<XmlFormatError>,
     unsupported_alternative_occurrence: Option<XmlFormatError>,
+    unsupported_attribute_use: Option<XmlFormatError>,
     unsupported_substitution: Option<XmlFormatError>,
     unsupported_wildcard: Option<XmlFormatError>,
     substitutions: substitution::SubstitutionIndex,
@@ -190,6 +191,9 @@ impl ParseState {
         if let Some(error) = self.unsupported_particle {
             return Err(error);
         }
+        if let Some(error) = self.unsupported_attribute_use {
+            return Err(error);
+        }
         if let Some(error) = self.unsupported_default {
             return Err(error);
         }
@@ -224,6 +228,10 @@ impl ParseState {
 
     fn reject_repeating_particle(&mut self, error: XmlFormatError) {
         self.unsupported_particle.get_or_insert(error);
+    }
+
+    fn reject_attribute_use(&mut self, error: XmlFormatError) {
+        self.unsupported_attribute_use.get_or_insert(error);
     }
 
     fn reject_default(&mut self, error: XmlFormatError) {
@@ -873,6 +881,15 @@ fn attach_type_alternatives(
     for (_, _, children) in &resolved {
         for child in children {
             if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
+                if let Some(field) = incompatible_attribute_use(existing, child) {
+                    state.unsupported_alternative_occurrence.get_or_insert(
+                        XmlFormatError::UnsupportedXmlAlternativeAttributeUse {
+                            group: node.name.clone(),
+                            field,
+                        },
+                    );
+                    return;
+                }
                 if let Some(field) = incompatible_optional_occurrence(existing, child) {
                     state.unsupported_alternative_occurrence.get_or_insert(
                         XmlFormatError::UnsupportedXmlAlternativeOccurrence {
@@ -932,6 +949,34 @@ fn attach_type_alternatives(
 // A flattened member has one occurrence profile for every xsi:type view.
 // Reject differing profiles before falling back from an otherwise supported
 // derivation; dropping the alternatives would also lose their declared default.
+fn incompatible_attribute_use(left: &SchemaNode, right: &SchemaNode) -> Option<String> {
+    if left.xml_attribute_required != right.xml_attribute_required {
+        return Some(left.name.clone());
+    }
+    if let (
+        SchemaKind::Group {
+            children: left_children,
+            ..
+        },
+        SchemaKind::Group {
+            children: right_children,
+            ..
+        },
+    ) = (&left.kind, &right.kind)
+    {
+        for left_child in left_children {
+            if let Some(right_child) = right_children
+                .iter()
+                .find(|child| child.name == left_child.name)
+                && let Some(path) = incompatible_attribute_use(left_child, right_child)
+            {
+                return Some(format!("{}/{}", left.name, path));
+            }
+        }
+    }
+    None
+}
+
 fn incompatible_optional_occurrence(left: &SchemaNode, right: &SchemaNode) -> Option<String> {
     if left.xml_optional != right.xml_optional {
         return Some(left.name.clone());
@@ -1982,18 +2027,29 @@ fn parse_attribute(
         && let Some(reference) = declaration.attribute("ref")
     {
         if let Some(mut attribute) = resolve_attribute(reference, schema, schema_path, state) {
+            if attribute.fixed.is_some()
+                && (declaration.attribute("use") == Some("required")
+                    || declaration.attribute("fixed").is_some()
+                    || declaration.attribute("default").is_some())
+            {
+                state.reject_attribute_use(XmlFormatError::UnsupportedXmlAttributeFixedReference {
+                    name: attribute.name.clone(),
+                });
+            }
             if let Some(fixed) = declaration.attribute("fixed") {
                 attribute.fixed = Some(fixed.to_string());
             }
             if let Some(default) = declaration.attribute("default") {
                 attribute.default = Some(default.to_string());
             }
+            apply_attribute_use(declaration, &mut attribute, state);
             return attribute;
         }
         let mut attribute =
             SchemaNode::scalar(local_name(reference), ScalarType::String).attribute();
         attribute.xml_namespace =
             qname_namespace(declaration, reference).or(Some(XmlNamespace::Unqualified));
+        apply_attribute_use(declaration, &mut attribute, state);
         return attribute;
     }
 
@@ -2022,7 +2078,41 @@ fn parse_attribute(
     if let Some(default) = declaration.attribute("default") {
         attribute.default = Some(default.to_string());
     }
+    apply_attribute_use(declaration, &mut attribute, state);
     attribute
+}
+
+fn apply_attribute_use(
+    declaration: &Node<'_, '_>,
+    attribute: &mut SchemaNode,
+    state: &mut ParseState,
+) {
+    if declaration
+        .parent()
+        .is_some_and(|parent| parent.is_element() && parent.tag_name().name() == "schema")
+        && let Some(value) = declaration.attribute("use")
+    {
+        state.reject_attribute_use(XmlFormatError::UnsupportedXmlAttributeUse {
+            name: attribute.name.clone(),
+            value: value.to_string(),
+        });
+    }
+    attribute.xml_attribute_required = match declaration.attribute("use") {
+        None | Some("optional" | "prohibited") => false,
+        Some("required") => true,
+        Some(value) => {
+            state.reject_attribute_use(XmlFormatError::UnsupportedXmlAttributeUse {
+                name: attribute.name.clone(),
+                value: value.to_string(),
+            });
+            false
+        }
+    };
+    if attribute.xml_attribute_required && attribute.default.is_some() {
+        state.reject_attribute_use(XmlFormatError::UnsupportedXmlAttributeDefault {
+            name: attribute.name.clone(),
+        });
+    }
 }
 
 fn resolve_attribute(

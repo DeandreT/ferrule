@@ -277,6 +277,14 @@ public static partial class FerruleJson
         {
             throw Boundary($"Embedded JSON schema node '{name}' has invalid optional XML occurrence metadata.");
         }
+        if (OptionalBoolean(element, "xml_attribute_required") &&
+            (name.Length == 0 || name is "#text" or "element()" or "attribute()" ||
+             name.StartsWith('\u001f') || repeating ||
+             !OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
+             kind != "scalar"))
+        {
+            throw Boundary($"Embedded JSON schema node '{name}' has invalid required XML attribute-use metadata.");
+        }
         var recursiveReference = OptionalString(element, "recursive_ref");
         var jsonUniqueItems = ReadJsonUniqueItems(name, element, repeating);
         var scalarDomain = kind switch

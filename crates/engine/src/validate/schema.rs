@@ -162,6 +162,12 @@ pub(super) fn validate_schema(
             format!("XML optional-occurrence metadata{suffix} requires a named singular element"),
         ));
     }
+    if !schema.xml_attribute_required_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!("required XML attribute-use metadata{suffix} requires one named singular scalar attribute"),
+        ));
+    }
     if !schema.xml_default_type_is_valid() {
         issues.push(ValidationIssue::new(
             root,
