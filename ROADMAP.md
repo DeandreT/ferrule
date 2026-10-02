@@ -980,7 +980,12 @@ checkpoint. The fresh complete static survey uses separately staged installed
 catalogs; its counts, generated execution, and bounded native checks are
 recorded separately without inferring broader runtime coverage.
 
-- Workspace tests and strict all-target clippy pass on the pinned nightly.
+- Fresh workspace coverage passes 3,964 tests across 360 suites, with 36
+  optional checks ignored. Three generated-code checks initially exhausted
+  disk space during compilation; all three pass when rerun through their
+  original workspace test binary after cache recovery. Remaining workspace
+  and documentation checks pass. Both forced strict all-target lint
+  configurations pass on the pinned nightly.
 - Current complete static `.mfd` survey: all 187 designs import and validate,
   with 179 warning-free executable-profile admissions. Default export/reimport
   succeeds for 186 designs; the PDF repair draft rejects. Of those reimports,
@@ -992,6 +997,18 @@ recorded separately without inferring broader runtime coverage.
   temperature keys use the selected group's key output. These survey checks
   are static. WSDL response entry metadata now retains required-attribute uses
   through export and re-import without overriding authoritative XSDs.
+  Relocated exports now resolve their original database files correctly;
+  seven reimported boundaries consequently recover 31 additional scalar
+  columns through existing introspection. Existing columns and mapped scopes
+  remain intact, but those boundary schemas are not byte-identical to the
+  earlier fallback projections. Runtime equivalence is not inferred.
+- The current `.mfd` suite passes 1,094 tests with no failures and 35 ignored
+  tests; all 35 affected CLI tests pass. Strict executable import now reports
+  connected XML root conditions, default types and ancestor-owned root views
+  before projecting the first entry tree. Best-effort projection remains
+  unchanged, and ordinary or disconnected entries retain their prior behavior.
+  Diagnostic metadata identifies the entry that owns the reported condition.
+  General native root-view lowering remains open.
 - Separate authored scalar-function native checks execute and save seven
   profiles with zero warnings. All seven current saved-file imports and
   interpreter replays
@@ -1003,7 +1020,7 @@ recorded separately without inferring broader runtime coverage.
   execute, save and replay exactly without native warnings, covering same-year,
   different-year, empty-driver and multiple-group inputs. A control missing
   the required month rejects in both implementations; error-category equivalence
-  is not claimed. The fresh `.mfd` suite passes 1,083 tests with no failures
+  is not claimed. The prior `.mfd` suite passes 1,083 tests with no failures
   and 35 ignored tests. Current saved-file checks reuse the earlier native
   executions; this checkpoint does not claim new native application runs.
 - Earlier isolated `.mfd` survey checkpoint: 187/187 imports; 169 are warning-free in that resource profile.
@@ -1065,6 +1082,13 @@ recorded separately without inferring broader runtime coverage.
   although both outputs are schema-valid and all thirteen saved-file replays
   match. Connected fields outside a declared XML root type now produce a typed
   native-export rejection; native root-view lowering remains open.
+  A fresh production export of one composite-key XML join with two repeating
+  group inputs now validates, executes and saves without native errors or
+  warnings. Its output and saved-file replay are schema-valid and match the
+  expected expanded XML except for schema-location metadata; all three saved
+  boundary schemas re-import exactly. This check redirects every input and
+  output and does not qualify default native instance paths or a separate
+  public instance-tree comparison.
 - Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample
   compatibility report and `FERRULE_SURVEY_DETAILS=1` for text diagnostics.
 - All three report-producing read-only surveys accept one explicitly selected
@@ -1076,6 +1100,9 @@ recorded separately without inferring broader runtime coverage.
   a separate bounded version-3 JSON Lines contract.
 - CLI run paths: explicit flags override project-relative `source_path` and
   primary `target_path` defaults while stored extra targets retain their own paths.
+  CLI `.mfd` export and preflight rebase static paths from the saved project or
+  pipeline location to the destination design, including named boundaries.
+  Dynamic expressions and URL or absolute hints retain their identities.
 
 ## Primary References
 
