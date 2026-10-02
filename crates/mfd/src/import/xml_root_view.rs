@@ -15,6 +15,19 @@ pub(super) struct Inventory {
     connected: BTreeSet<u32>,
     owners: BTreeMap<u32, usize>,
     uids: BTreeMap<String, usize>,
+    feeds: Vec<(u32, u32)>,
+    malformed_feeds: bool,
+    scoped_owners: BTreeMap<u32, Vec<PortOwner>>,
+    scoped_uids: BTreeMap<u32, usize>,
+    malformed_components: BTreeSet<usize>,
+    variable_components: BTreeSet<usize>,
+    xml_document_roles: BTreeMap<usize, Option<bool>>,
+}
+
+struct PortOwner {
+    component: usize,
+    uid: Option<u32>,
+    kind: &'static str,
 }
 
 pub(super) struct Finding {
@@ -32,36 +45,56 @@ pub(super) struct Finding {
 impl Inventory {
     pub(super) fn read(structure: Node<'_, '_>) -> Self {
         let mut connected = BTreeSet::new();
-        if let Some(vertices) = structure
+        let mut feeds = Vec::new();
+        let mut malformed_feeds = structure
             .children()
-            .find(|node| node.has_tag_name("graph"))
-            .and_then(|graph| graph.children().find(|node| node.has_tag_name("vertices")))
+            .filter(|node| node.has_tag_name("graph"))
+            .count()
+            != 1;
+        if let Some(graph) = structure.children().find(|node| node.has_tag_name("graph"))
+            && let Some(vertices) = graph.children().find(|node| node.has_tag_name("vertices"))
         {
+            malformed_feeds |= graph.attribute("directed") != Some("1")
+                || graph
+                    .children()
+                    .filter(|node| node.has_tag_name("vertices"))
+                    .count()
+                    != 1;
             for vertex in vertices
                 .children()
                 .filter(|node| node.has_tag_name("vertex"))
             {
-                let Some(source) = vertex
+                let source = vertex
                     .attribute("vertexkey")
-                    .and_then(|key| key.parse::<u32>().ok())
-                else {
-                    continue;
-                };
+                    .and_then(|key| key.parse::<u32>().ok());
                 let Some(edges) = vertex.children().find(|node| node.has_tag_name("edges")) else {
                     continue;
                 };
+                malformed_feeds |= vertex
+                    .children()
+                    .filter(|node| node.has_tag_name("edges"))
+                    .count()
+                    != 1;
                 for edge in edges.children().filter(|node| node.has_tag_name("edge")) {
-                    if let Some(target) = edge
+                    let target = edge
                         .attribute("vertexkey")
-                        .and_then(|key| key.parse::<u32>().ok())
-                    {
+                        .and_then(|key| key.parse::<u32>().ok());
+                    if let (Some(source), Some(target)) = (source, target) {
                         connected.extend([source, target]);
+                        feeds.push((source, target));
+                    } else {
+                        malformed_feeds = true;
                     }
                 }
             }
         }
         let mut owners = BTreeMap::new();
         let mut uids = BTreeMap::new();
+        let mut scoped_owners = BTreeMap::<u32, Vec<PortOwner>>::new();
+        let mut scoped_uids = BTreeMap::new();
+        let mut malformed_components = BTreeSet::new();
+        let mut variable_components = BTreeSet::new();
+        let mut xml_document_roles = BTreeMap::new();
         for node in structure.descendants().filter(Node::is_element) {
             for attribute in ["inpkey", "outkey"] {
                 if let Some(key) = node
@@ -76,12 +109,120 @@ impl Inventory {
             {
                 *uids.entry(uid.to_string()).or_default() += 1;
             }
+            if node
+                .ancestors()
+                .find(|ancestor| ancestor.has_tag_name("structure"))
+                != Some(structure)
+            {
+                continue;
+            }
+            if node.has_tag_name("component")
+                && let Some(uid) = node
+                    .attribute("uid")
+                    .and_then(|uid| uid.parse::<u32>().ok())
+            {
+                *scoped_uids.entry(uid).or_default() += 1;
+            }
+            if node.has_tag_name("component") && variable_component(node) {
+                variable_components.insert(node.range().start);
+            }
+            if node.has_tag_name("component") && node.attribute("library") == Some("xml") {
+                xml_document_roles.insert(node.range().start, document_role(node));
+            }
+            let Some(component) = node
+                .ancestors()
+                .find(|ancestor| ancestor.has_tag_name("component"))
+            else {
+                continue;
+            };
+            for kind in ["inpkey", "outkey"] {
+                if let Some(raw) = node.attribute(kind) {
+                    if let Ok(key) = raw.parse::<u32>() {
+                        scoped_owners.entry(key).or_default().push(PortOwner {
+                            component: component.range().start,
+                            uid: component.attribute("uid").and_then(|uid| uid.parse().ok()),
+                            kind,
+                        });
+                    } else {
+                        malformed_components.insert(component.range().start);
+                    }
+                }
+            }
         }
         Self {
             connected,
             owners,
             uids,
+            feeds,
+            malformed_feeds,
+            scoped_owners,
+            scoped_uids,
+            malformed_components,
+            variable_components,
+            xml_document_roles,
         }
+    }
+
+    /// Recover a diagnostic role only; sibling view ports remain unprojected.
+    pub(super) fn diagnostic_role(
+        &self,
+        component: Node<'_, '_>,
+        has_connected_root_view: bool,
+    ) -> Option<bool> {
+        if !has_connected_root_view || self.malformed_feeds {
+            return None;
+        }
+        let uid = component.attribute("uid")?.parse::<u32>().ok()?;
+        if self.scoped_uids.get(&uid) != Some(&1)
+            || self.malformed_components.contains(&component.range().start)
+        {
+            return None;
+        }
+        if self.variable_components.contains(&component.range().start) {
+            return None;
+        }
+        let is_source = document_role(component)?;
+        let mut found = false;
+        let mut targets = BTreeSet::new();
+        for &(source, target) in &self.feeds {
+            if !targets.insert(target) {
+                return None;
+            }
+            let source = self.unique_owner(source)?;
+            let target = self.unique_owner(target)?;
+            if source.kind != "outkey" || target.kind != "inpkey" {
+                return None;
+            }
+            if source.component == component.range().start {
+                if !is_source {
+                    return None;
+                }
+                found = true;
+            }
+            if target.component == component.range().start {
+                if is_source {
+                    return None;
+                }
+                found = true;
+            }
+        }
+        found.then_some(is_source)
+    }
+
+    fn unique_owner(&self, key: u32) -> Option<&PortOwner> {
+        let owners = self.scoped_owners.get(&key)?;
+        let [owner] = owners.as_slice() else {
+            return None;
+        };
+        if let Some(role) = self.xml_document_roles.get(&owner.component)
+            && *role != Some(owner.kind == "outkey")
+        {
+            return None;
+        }
+        (self.scoped_uids.get(&owner.uid?) == Some(&1)
+            && !self.malformed_components.contains(&owner.component)
+            && !self.variable_components.contains(&owner.component))
+        .then_some(owner)
     }
 
     pub(super) fn inspect(&self, component: Node<'_, '_>) -> Vec<Finding> {
@@ -241,6 +382,50 @@ impl Inventory {
     }
 }
 
+fn document_role(component: Node<'_, '_>) -> Option<bool> {
+    let mut data = component
+        .children()
+        .filter(|node| node.has_tag_name("data"));
+    let data_node = data.next()?;
+    if data.next().is_some() {
+        return None;
+    }
+    let mut documents = data_node
+        .children()
+        .filter(|node| node.has_tag_name("document"));
+    let document = documents.next()?;
+    if documents.next().is_some() {
+        return None;
+    }
+    match (
+        document
+            .attribute("inputinstance")
+            .is_some_and(|s| !s.is_empty()),
+        document
+            .attribute("outputinstance")
+            .is_some_and(|s| !s.is_empty()),
+    ) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        _ => None,
+    }
+}
+
+fn variable_component(component: Node<'_, '_>) -> bool {
+    component
+        .children()
+        .any(|node| node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1"))
+        || component
+            .children()
+            .find(|node| node.has_tag_name("data"))
+            .is_some_and(|data| {
+                data.descendants().any(|node| {
+                    node.has_tag_name("parameter")
+                        && node.attribute("usageKind") == Some("variable")
+                })
+            })
+}
+
 pub(super) fn warn(
     findings: Vec<Finding>,
     schema: Option<&SchemaNode>,
@@ -251,10 +436,38 @@ pub(super) fn warn(
         .unwrap_or("<none/unresolved>");
     for finding in findings {
         warnings.push(format!(
-            "component `{}` UID {}: unproved XML document-root view `{}` (declared `{}`, role {}, type condition `{}`, default `{}`); {} on {}; {}. Best-effort projection is retained; executable import requires explicit root-view ownership and condition/construction support",
-            finding.name, finding.uid, finding.root, finding.declared_root, finding.role,
-            finding.type_condition, excerpt(default), finding.reason, finding.ports, finding.ownership,
+            "{}. Best-effort projection is retained; executable import requires explicit root-view ownership and condition/construction support",
+            finding.message(default),
         ));
+    }
+}
+
+pub(super) fn evidence(
+    findings: &[Finding],
+    schema: Option<&SchemaNode>,
+    evidence: &mut Vec<String>,
+) {
+    let default = schema
+        .and_then(|schema| schema.xml_default_type.as_deref())
+        .unwrap_or("<none/unresolved>");
+    evidence.extend(findings.iter().map(|finding| finding.message(default)));
+}
+
+impl Finding {
+    fn message(&self, default: &str) -> String {
+        format!(
+            "component `{}` UID {}: unproved XML document-root view `{}` (declared `{}`, role {}, type condition `{}`, default `{}`); {} on {}; {}",
+            self.name,
+            self.uid,
+            self.root,
+            self.declared_root,
+            self.role,
+            self.type_condition,
+            excerpt(default),
+            self.reason,
+            self.ports,
+            self.ownership,
+        )
     }
 }
 
