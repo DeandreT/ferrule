@@ -283,6 +283,211 @@ fn import_exported(path: &Path) -> mfd::Imported {
     imported
 }
 
+fn assert_join_input_modes(xml: &str, source_driven: &[bool]) {
+    let document = roxmltree::Document::parse(xml).unwrap();
+    let join = document
+        .descendants()
+        .find(|node| node.has_tag_name("component") && node.attribute("kind") == Some("32"))
+        .unwrap();
+    let inputs = join
+        .descendants()
+        .filter_map(|node| node.attribute("inpkey"))
+        .collect::<Vec<_>>();
+    assert_eq!(inputs.len(), source_driven.len());
+    let graph = document
+        .descendants()
+        .find(|node| node.has_tag_name("graph"))
+        .unwrap();
+    for (input, expected) in inputs.into_iter().zip(source_driven) {
+        let feeds = graph
+            .descendants()
+            .filter(|node| node.has_tag_name("edge") && node.attribute("vertexkey") == Some(input))
+            .collect::<Vec<_>>();
+        assert_eq!(feeds.len(), 1);
+        if *expected {
+            let key = feeds[0]
+                .attribute("edgekey")
+                .expect("structural join input must be source driven");
+            let metadata = graph
+                .children()
+                .filter(|node| node.has_tag_name("edges"))
+                .flat_map(|node| node.children())
+                .filter(|node| node.has_tag_name("edge") && node.attribute("edgekey") == Some(key))
+                .collect::<Vec<_>>();
+            assert_eq!(metadata.len(), 1);
+            let connection = metadata[0]
+                .descendants()
+                .find(|node| node.has_tag_name("dataconnection"))
+                .unwrap();
+            assert_eq!(connection.attribute("type"), Some("2"));
+        } else {
+            assert_eq!(feeds[0].attribute("edgekey"), None);
+        }
+    }
+    let root = join
+        .descendants()
+        .find(|node| node.has_tag_name("root"))
+        .unwrap();
+    let outputs = root
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("entry")
+                && node.attribute("name") != Some("tuple")
+                && node.attribute("inpkey").is_none()
+        })
+        .filter_map(|node| node.attribute("outkey"))
+        .collect::<Vec<_>>();
+    for edge in graph.descendants().filter(|node| node.has_tag_name("edge")) {
+        let Some(vertex) = edge.parent().and_then(|node| node.parent()) else {
+            continue;
+        };
+        if vertex.has_tag_name("vertex")
+            && vertex
+                .attribute("vertexkey")
+                .is_some_and(|key| outputs.contains(&key))
+        {
+            assert_eq!(
+                edge.attribute("edgekey"),
+                None,
+                "constructed join outputs keep default connections"
+            );
+        }
+    }
+}
+
+#[test]
+fn join_virtual_wrappers_and_ordinary_keypaths_have_separate_namespace_tables() {
+    for (tag, project) in [
+        ("namespace-primary", two_way_project()),
+        ("namespace-named", named_source_project()),
+    ] {
+        let dir = TempDir::new(tag);
+        let path = dir.path("mapping.mfd");
+        let report =
+            mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd).unwrap();
+        assert!(report.is_native_compatible());
+        let xml = fs::read_to_string(&path).unwrap();
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let join = document
+            .descendants()
+            .find(|node| node.has_tag_name("component") && node.attribute("kind") == Some("32"))
+            .unwrap();
+        let root = join
+            .descendants()
+            .find(|node| node.has_tag_name("root"))
+            .unwrap();
+        let namespaces = root
+            .children()
+            .find(|node| node.has_tag_name("header"))
+            .expect("join root namespace header")
+            .descendants()
+            .filter(|node| node.has_tag_name("namespace"))
+            .collect::<Vec<_>>();
+        assert_eq!(namespaces.len(), 2);
+        assert_eq!(namespaces[0].attribute("uid"), None);
+        assert_eq!(
+            namespaces[1].attribute("uid"),
+            Some("http://www.altova.com/mapforce")
+        );
+        for entry in root.descendants().filter(|node| node.has_tag_name("entry")) {
+            let name = entry.attribute("name").unwrap();
+            if name == "document" || name == "tuple" || name.starts_with("dynamic_tree_node") {
+                assert_eq!(entry.attribute("ns"), Some("1"));
+            } else {
+                assert!(
+                    matches!(entry.attribute("ns"), None | Some("0")),
+                    "ordinary field {name} must stay outside the virtual namespace"
+                );
+            }
+        }
+        let keypaths = join
+            .descendants()
+            .find(|node| node.has_tag_name("keypaths"))
+            .unwrap();
+        let namespaces = keypaths
+            .children()
+            .find(|node| node.has_tag_name("header"))
+            .expect("ordinary keypath namespace header")
+            .descendants()
+            .filter(|node| node.has_tag_name("namespace"))
+            .collect::<Vec<_>>();
+        assert_eq!(namespaces.len(), 1);
+        assert_eq!(namespaces[0].attribute("uid"), None);
+        assert!(
+            keypaths
+                .descendants()
+                .filter(|node| node.has_tag_name("entry"))
+                .all(|entry| matches!(entry.attribute("ns"), None | Some("0")))
+        );
+        let imported = import_exported(&path);
+        assert_eq!(imported.project.source, project.source);
+        assert_eq!(imported.project.target, project.target);
+    }
+}
+
+#[test]
+fn repeating_join_inputs_are_source_driven_and_constructed_outputs_keep_default_feeds() {
+    for (tag, project) in [
+        ("feeds-primary", two_way_project()),
+        ("feeds-named", named_source_project()),
+        ("feeds-aggregate", root_aggregate_project()),
+    ] {
+        let dir = TempDir::new(tag);
+        let path = dir.path("mapping.mfd");
+        assert!(mfd::export(&project, &path).unwrap().is_empty());
+        let xml = fs::read_to_string(&path).unwrap();
+        assert_join_input_modes(&xml, &[true, true]);
+        if tag != "feeds-aggregate" {
+            assert_eq!(xml.matches("<dataconnection type=\"2\"/>").count(), 2);
+        }
+        import_exported(&path);
+    }
+}
+
+#[test]
+fn singleton_join_inputs_keep_scalar_connections_and_exact_tuple_execution() {
+    let mut project = two_way_project();
+    let right = project.source.child("Right").unwrap().clone();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![SchemaNode::scalar("Key", ScalarType::String), right],
+    );
+    let (join, _) = project.root.children[0].join().unwrap();
+    let plan = JoinPlan::new(
+        JoinSource::singleton(vec!["Key".into()]),
+        JoinSource::new(vec!["Right".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["Key".into()],
+            Vec::new(),
+            vec!["Code".into()],
+        )),
+    )
+    .unwrap();
+    project.root.children[0].iteration = ScopeIteration::InnerJoin { id: join, plan };
+    project.root.children[0]
+        .bindings
+        .retain(|binding| binding.node != 0);
+    project.graph.nodes.remove(&0);
+    let source = Instance::Group(vec![
+        scalar("Key", "A"),
+        (
+            "Right".into(),
+            Instance::Repeated(vec![
+                row(&[("Code", "A"), ("Tenant", "T"), ("Description", "R1")]),
+                row(&[("Code", "B"), ("Tenant", "T"), ("Description", "skip")]),
+                row(&[("Code", "A"), ("Tenant", "X"), ("Description", "R2")]),
+            ]),
+        ),
+    ]);
+    let expected = engine::run(&project, &source).unwrap();
+    let dir = TempDir::new("scalar-feed");
+    let path = dir.path("mapping.mfd");
+    assert!(mfd::export(&project, &path).unwrap().is_empty());
+    assert_join_input_modes(&fs::read_to_string(&path).unwrap(), &[false, true]);
+    let imported = import_exported(&path);
+    assert_eq!(engine::run(&imported.project, &source).unwrap(), expected);
+}
+
 #[test]
 fn exports_and_round_trips_composite_join_fields_position_and_window() {
     let dir = TempDir::new("two-way");
@@ -494,6 +699,42 @@ fn exports_and_round_trips_a_three_way_join() {
     };
     assert_eq!(imported_plan.sources().count(), 3);
     assert_eq!(imported_plan.stages().count(), 2);
+    assert_join_input_modes(&fs::read_to_string(&output).unwrap(), &[true, true, true]);
+    let source = Instance::Group(vec![
+        ("A".into(), Instance::Repeated(vec![row(&[("Id", "A")])])),
+        (
+            "B".into(),
+            Instance::Repeated(vec![
+                row(&[("Id", "B"), ("AId", "A")]),
+                row(&[("Id", "B"), ("AId", "A")]),
+            ]),
+        ),
+        (
+            "C".into(),
+            Instance::Repeated(vec![
+                row(&[("BId", "B"), ("Value", "C1")]),
+                row(&[("BId", "B"), ("Value", "C2")]),
+            ]),
+        ),
+    ]);
+    let expected = engine::run(&project, &source).unwrap();
+    let actual = engine::run(&imported.project, &source).unwrap();
+    assert_eq!(actual, expected);
+    assert_eq!(
+        actual
+            .field("Row")
+            .and_then(Instance::as_repeated)
+            .unwrap()
+            .iter()
+            .map(|row| row.field("Value").and_then(Instance::as_scalar))
+            .collect::<Vec<_>>(),
+        [
+            Some(&Value::String("C1".into())),
+            Some(&Value::String("C2".into())),
+            Some(&Value::String("C1".into())),
+            Some(&Value::String("C2".into()))
+        ]
+    );
 }
 
 #[test]
@@ -1002,7 +1243,8 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
     let warnings = mfd::export(&project, &structural_output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = fs::read_to_string(&structural_output).unwrap();
-    assert_eq!(xml.matches("<dataconnection type=\"2\"/>").count(), 1);
+    assert_eq!(xml.matches("<dataconnection type=\"2\"/>").count(), 2);
+    assert_join_input_modes(&xml, &[false, true]);
     let structural = import_exported(&structural_output);
     assert_eq!(
         structural.project.root.children[0].iteration_output,
