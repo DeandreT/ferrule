@@ -662,6 +662,7 @@ pub enum Expression {
     /// Reads one scalar through exact nonrepeating primary-root group fields.
     SourceRootField {
         path: Vec<String>,
+        required: bool,
     },
     /// Reads one runtime-named scalar field from an open source object.
     ///

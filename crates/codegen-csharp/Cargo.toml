@@ -13,5 +13,6 @@ mapping = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+codegen-rust = { workspace = true }
 codegen-runtime = { workspace = true }
 engine = { workspace = true }

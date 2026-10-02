@@ -13,6 +13,8 @@ public sealed partial class ScopeContext
 
     public FerruleValue ResolveSourceRootField(uint node, IReadOnlyList<string> path) =>
         FerrulePrimaryRoot.Scalar(_primarySource, path, node);
+    public FerruleValue ResolveRequiredSourceRootField(uint node, IReadOnlyList<string> path) =>
+        FerrulePrimaryRoot.RequiredScalar(_primarySource, path, node);
     private readonly FerruleInstance _primarySource;
     private readonly IReadOnlyList<FerruleInstance> _frames;
     private readonly IReadOnlyList<CollectionIdentity> _collections;

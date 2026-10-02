@@ -112,9 +112,10 @@ fn eval_expr_inner(
                 node: node_id,
                 source,
             }),
-        Node::SourceRootField { path } => ir::primary_root_scalar(
+        Node::SourceRootField { path, required } => ir::primary_root_scalar_with_requirement(
             program.primary_source,
             &path.iter().map(String::as_str).collect::<Vec<_>>(),
+            *required,
         )
         .map_err(|source| EngineError::PrimaryRoot {
             node: node_id,
@@ -934,6 +935,7 @@ mod primary_root_owner_tests {
                     1,
                     Node::SourceRootField {
                         path: vec!["Code".into()],
+                        required: false,
                     },
                 ),
             ]
