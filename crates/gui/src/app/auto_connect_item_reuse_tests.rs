@@ -187,19 +187,25 @@ fn repaired_outputs(project: &Project, named: bool) {
     }
     let issues = engine::validate(&executable);
     assert!(issues.is_empty(), "repaired mapping: {issues:?}");
-    let source = Instance::Group(vec![(
-        "Name".into(),
-        Instance::Scalar(Value::String("physical".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Name".into(),
+            Instance::Scalar(Value::String("physical".into())),
+        )])
+        .into(),
+    );
     let output = engine::run_outputs(&executable, &source).expect("physical mapping output");
     let rows = Instance::Repeated(
         ["a", "b"]
             .into_iter()
             .map(|value| {
-                Instance::Group(vec![(
-                    "Value".into(),
-                    Instance::Scalar(Value::String(value.into())),
-                )])
+                Instance::Group(
+                    (vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String(value.into())),
+                    )])
+                    .into(),
+                )
             })
             .collect(),
     );

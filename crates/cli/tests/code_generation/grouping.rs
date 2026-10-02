@@ -194,91 +194,106 @@ fn grouping_project() -> Project {
 }
 
 fn source_row(category: &str, label: &str, keep: bool, start: bool, priority: i64) -> Instance {
-    Instance::Group(vec![
-        (
-            "Category".into(),
-            Instance::Scalar(Value::String(category.into())),
-        ),
-        (
-            "Label".into(),
-            Instance::Scalar(Value::String(label.into())),
-        ),
-        ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
-        ("Start".into(), Instance::Scalar(Value::Bool(start))),
-        ("Priority".into(), Instance::Scalar(Value::Int(priority))),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Category".into(),
+                Instance::Scalar(Value::String(category.into())),
+            ),
+            (
+                "Label".into(),
+                Instance::Scalar(Value::String(label.into())),
+            ),
+            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+            ("Start".into(), Instance::Scalar(Value::Bool(start))),
+            ("Priority".into(), Instance::Scalar(Value::Int(priority))),
+        ])
+        .into(),
+    )
 }
 
 fn grouping_source(block_size: Value) -> Instance {
-    Instance::Group(vec![
-        ("BlockSize".into(), Instance::Scalar(block_size)),
-        (
-            "Rows".into(),
-            Instance::Repeated(vec![
-                source_row("A", "alpha", true, false, 4),
-                source_row("B", "bravo", false, true, 7),
-                source_row("A", "amber", true, false, 2),
-                source_row("B", "beta", true, true, 5),
-                source_row("A", "apex", true, true, 1),
-                source_row("B", "birch", true, false, 3),
-                source_row("C", "cedar", true, true, 6),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("BlockSize".into(), Instance::Scalar(block_size)),
+            (
+                "Rows".into(),
+                Instance::Repeated(vec![
+                    source_row("A", "alpha", true, false, 4),
+                    source_row("B", "bravo", false, true, 7),
+                    source_row("A", "amber", true, false, 2),
+                    source_row("B", "beta", true, true, 5),
+                    source_row("A", "apex", true, true, 1),
+                    source_row("B", "birch", true, false, 3),
+                    source_row("C", "cedar", true, true, 6),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn output_group(first: &str, joined: &str, position: i64, members: &[&str]) -> Instance {
-    Instance::Group(vec![
-        (
-            "First".into(),
-            Instance::Scalar(Value::String(first.into())),
-        ),
-        (
-            "Joined".into(),
-            Instance::Scalar(Value::String(joined.into())),
-        ),
-        ("Position".into(), Instance::Scalar(Value::Int(position))),
-        (
-            "Member".into(),
-            Instance::Repeated(
-                members
-                    .iter()
-                    .map(|label| {
-                        Instance::Group(vec![(
-                            "Label".into(),
-                            Instance::Scalar(Value::String((*label).into())),
-                        )])
-                    })
-                    .collect(),
+    Instance::Group(
+        (vec![
+            (
+                "First".into(),
+                Instance::Scalar(Value::String(first.into())),
             ),
-        ),
-    ])
+            (
+                "Joined".into(),
+                Instance::Scalar(Value::String(joined.into())),
+            ),
+            ("Position".into(), Instance::Scalar(Value::Int(position))),
+            (
+                "Member".into(),
+                Instance::Repeated(
+                    members
+                        .iter()
+                        .map(|label| {
+                            Instance::Group(
+                                (vec![(
+                                    "Label".into(),
+                                    Instance::Scalar(Value::String((*label).into())),
+                                )])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn grouping_expected() -> Instance {
-    Instance::Group(vec![
-        (
-            "By".into(),
-            Instance::Repeated(vec![
-                output_group("apex", "apex,amber,alpha", 1, &["apex", "amber", "alpha"]),
-                output_group("birch", "birch,beta", 2, &["birch", "beta"]),
-            ]),
-        ),
-        (
-            "Starting".into(),
-            Instance::Repeated(vec![
-                output_group("beta", "beta", 1, &["beta"]),
-                output_group("apex", "apex,birch", 2, &["apex", "birch"]),
-            ]),
-        ),
-        (
-            "Block".into(),
-            Instance::Repeated(vec![
-                output_group("beta", "beta,apex", 1, &["beta", "apex"]),
-                output_group("birch", "birch,cedar", 2, &["birch", "cedar"]),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "By".into(),
+                Instance::Repeated(vec![
+                    output_group("apex", "apex,amber,alpha", 1, &["apex", "amber", "alpha"]),
+                    output_group("birch", "birch,beta", 2, &["birch", "beta"]),
+                ]),
+            ),
+            (
+                "Starting".into(),
+                Instance::Repeated(vec![
+                    output_group("beta", "beta", 1, &["beta"]),
+                    output_group("apex", "apex,birch", 2, &["apex", "birch"]),
+                ]),
+            ),
+            (
+                "Block".into(),
+                Instance::Repeated(vec![
+                    output_group("beta", "beta,apex", 1, &["beta", "apex"]),
+                    output_group("birch", "birch,cedar", 2, &["birch", "cedar"]),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn write_grouping_project(directory: &Path) -> TestResult<PathBuf> {

@@ -816,27 +816,35 @@ mod tests {
     #[test]
     fn lookup_flattens_repeating_collection_ancestors() {
         let record = |code: i64, name: &str| {
-            Instance::Group(vec![
-                ("Code".into(), Instance::Scalar(Value::Int(code))),
-                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            ])
+            Instance::Group(
+                (vec![
+                    ("Code".into(), Instance::Scalar(Value::Int(code))),
+                    ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                ])
+                .into(),
+            )
         };
         let branch = |record| {
-            Instance::Group(vec![(
-                "Cube".into(),
-                Instance::Repeated(vec![Instance::Group(vec![(
+            Instance::Group(
+                (vec![(
                     "Cube".into(),
-                    Instance::Repeated(vec![record]),
-                )])]),
-            )])
+                    Instance::Repeated(vec![Instance::Group(
+                        (vec![("Cube".into(), Instance::Repeated(vec![record]))]).into(),
+                    )]),
+                )])
+                .into(),
+            )
         };
-        let source = Instance::Group(vec![(
-            "Cube".into(),
-            Instance::Repeated(vec![
-                branch(record(1, "first")),
-                branch(record(42, "second")),
-            ]),
-        )]);
+        let source = Instance::Group(
+            (vec![(
+                "Cube".into(),
+                Instance::Repeated(vec![
+                    branch(record(1, "first")),
+                    branch(record(42, "second")),
+                ]),
+            )])
+            .into(),
+        );
         let graph = Graph {
             nodes: [
                 (

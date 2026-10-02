@@ -58,11 +58,14 @@ fn boundaries_validate_actual_input_and_normalized_output_property_names()
     assert_eq!(
         serialize_json(
             &schema,
-            &Instance::Group(vec![
-                ("".into(), Instance::Scalar(Value::Int(1))),
-                ("valid".into(), Instance::Scalar(Value::Int(2))),
-                ("omitted".into(), Instance::Scalar(Value::Null)),
-            ]),
+            &Instance::Group(
+                (vec![
+                    ("".into(), Instance::Scalar(Value::Int(1))),
+                    ("valid".into(), Instance::Scalar(Value::Int(2))),
+                    ("omitted".into(), Instance::Scalar(Value::Null)),
+                ])
+                .into()
+            ),
         )
         .as_deref(),
         Ok("{\n  \"\": 1,\n  \"valid\": 2\n}\n"),
@@ -70,7 +73,7 @@ fn boundaries_validate_actual_input_and_normalized_output_property_names()
     assert_eq!(
         serialize_json(
             &schema,
-            &Instance::Group(vec![("bad-key".into(), Instance::Scalar(Value::Null))]),
+            &Instance::Group((vec![("bad-key".into(), Instance::Scalar(Value::Null))]).into()),
         )
         .as_deref(),
         Ok("{}\n"),
@@ -78,10 +81,10 @@ fn boundaries_validate_actual_input_and_normalized_output_property_names()
     assert!(matches!(
         serialize_json(
             &schema,
-            &Instance::Group(vec![(
+            &Instance::Group((vec![(
                 "bad-key".into(),
                 Instance::Scalar(Value::Int(1)),
-            )]),
+            )]).into()),
         ),
         Err(JsonBoundaryError::InvalidOutput { message })
             if message.contains("bad-key") && message.contains("property name"),
@@ -99,7 +102,7 @@ fn exact_false_accepts_only_empty_objects() -> Result<(), Box<dyn std::error::Er
             if message.contains("property name"),
     ));
     assert_eq!(
-        serialize_json(&schema, &Instance::Group(Vec::new())).as_deref(),
+        serialize_json(&schema, &Instance::Group((Vec::new()).into())).as_deref(),
         Ok("{}\n"),
     );
     Ok(())
@@ -117,7 +120,7 @@ fn boundaries_validate_excluded_property_name_patterns() -> Result<(), Box<dyn s
     assert_eq!(
         serialize_json(
             &schema,
-            &Instance::Group(vec![("public".into(), Instance::Scalar(Value::Int(1)),)]),
+            &Instance::Group((vec![("public".into(), Instance::Scalar(Value::Int(1)),)]).into()),
         )
         .as_deref(),
         Ok("{\n  \"public\": 1\n}\n"),
@@ -125,10 +128,10 @@ fn boundaries_validate_excluded_property_name_patterns() -> Result<(), Box<dyn s
     assert!(matches!(
         serialize_json(
             &schema,
-            &Instance::Group(vec![(
+            &Instance::Group((vec![(
                 "private".into(),
                 Instance::Scalar(Value::Int(1)),
-            )]),
+            )]).into()),
         ),
         Err(JsonBoundaryError::InvalidOutput { message })
             if message.contains("private") && message.contains("property name"),

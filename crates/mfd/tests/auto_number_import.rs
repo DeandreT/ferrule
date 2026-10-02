@@ -87,13 +87,16 @@ fn auto_number_uses_current_position_start_and_increment() -> Result<(), Box<dyn
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let input = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![
-            Instance::Group(Vec::new()),
-            Instance::Group(Vec::new()),
-        ]),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![
+                Instance::Group((Vec::new()).into()),
+                Instance::Group((Vec::new()).into()),
+            ]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &input)?;
     let numbers = output
         .field("Row")
@@ -138,13 +141,16 @@ fn shared_auto_number_roundtrips_across_concatenated_target_branches()
     });
     assert!(engine::validate(&project).is_empty());
 
-    let input = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![
-            Instance::Group(Vec::new()),
-            Instance::Group(Vec::new()),
-        ]),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![
+                Instance::Group((Vec::new()).into()),
+                Instance::Group((Vec::new()).into()),
+            ]),
+        )])
+        .into(),
+    );
     let expected = engine::run(&project, &input)?;
     let expected_numbers = expected
         .field("Row")

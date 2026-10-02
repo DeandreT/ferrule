@@ -1,10 +1,13 @@
 use super::*;
 
 fn source_row(name: &str, score: i64) -> Instance {
-    Instance::Group(vec![
-        ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-        ("Score".into(), Instance::Scalar(Value::Int(score))),
-    ])
+    Instance::Group(
+        (vec![
+            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+            ("Score".into(), Instance::Scalar(Value::Int(score))),
+        ])
+        .into(),
+    )
 }
 
 fn source_rows() -> Instance {
@@ -20,10 +23,13 @@ fn output_names(names: &[&str]) -> Instance {
         names
             .iter()
             .map(|name| {
-                Instance::Group(vec![(
-                    "Name".into(),
-                    Instance::Scalar(Value::String((*name).into())),
-                )])
+                Instance::Group(
+                    (vec![(
+                        "Name".into(),
+                        Instance::Scalar(Value::String((*name).into())),
+                    )])
+                    .into(),
+                )
             })
             .collect(),
     )

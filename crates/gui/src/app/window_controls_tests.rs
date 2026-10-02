@@ -70,16 +70,21 @@ fn original_windows() -> Vec<SequenceWindow> {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(
-            (1..=8)
-                .map(|value| {
-                    Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(value)))])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(
+                (1..=8)
+                    .map(|value| {
+                        Instance::Group(
+                            (vec![("Value".into(), Instance::Scalar(Value::Int(value)))]).into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn active_scope(app: &FerruleApp) -> &Scope {

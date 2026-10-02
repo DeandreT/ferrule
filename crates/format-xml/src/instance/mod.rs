@@ -232,6 +232,11 @@ pub enum XmlFormatError {
         "schema group `{group}` has alternatives whose xsi:type identity XML input cannot preserve"
     )]
     UnsupportedAlternativeRead { group: String },
+    #[error("element `{name}` has invalid XML type origin: {source}")]
+    InvalidXmlTypeOrigin {
+        name: String,
+        source: ir::XmlTypeOriginError,
+    },
     #[error("element `{name}` has invalid xsi:type QName `{value}`")]
     InvalidXmlType { name: String, value: String },
     #[error("element `{name}` has undeclared xsi:type `{value}`")]
@@ -359,16 +364,21 @@ fn read_node(
             if alternatives.is_empty() {
                 return Ok(instance);
             }
-            let alternative = input_group_alternative(el, schema, alternatives, &instance)?;
+            let (alternative, annotation) =
+                input_group_alternative(el, schema, alternatives, &instance)?;
             let Instance::Group(fields) = &mut instance else {
                 unreachable!("read_group_fields always returns a group")
             };
             if schema.xml_alternative_kind == XmlAlternativeKind::XsiType
+                && annotation.is_none()
                 && schema.xml_default_type.as_deref() == Some(alternative.name.as_str())
-                && el
-                    .attribute(("http://www.w3.org/2001/XMLSchema-instance", "type"))
-                    .is_none()
             {
+                fields
+                    .set_xml_type_origin(ir::XmlTypeOrigin::Absent)
+                    .map_err(|source| XmlFormatError::InvalidXmlTypeOrigin {
+                        name: schema.name.clone(),
+                        source,
+                    })?;
                 return Ok(instance);
             }
             let marker = match schema.xml_alternative_kind {
@@ -379,6 +389,17 @@ fn read_node(
                 marker.to_string(),
                 Instance::Scalar(Value::String(alternative.name.clone())),
             ));
+            if schema.xml_alternative_kind == XmlAlternativeKind::XsiType {
+                let origin = annotation
+                    .as_deref()
+                    .map_or(ir::XmlTypeOrigin::Absent, ir::XmlTypeOrigin::Explicit);
+                fields.set_xml_type_origin(origin).map_err(|source| {
+                    XmlFormatError::InvalidXmlTypeOrigin {
+                        name: schema.name.clone(),
+                        source,
+                    }
+                })?;
+            }
             Ok(instance)
         }
     }
@@ -389,7 +410,7 @@ fn input_group_alternative<'a>(
     schema: &SchemaNode,
     alternatives: &'a [ir::GroupAlternative],
     instance: &Instance,
-) -> Result<&'a ir::GroupAlternative, XmlFormatError> {
+) -> Result<(&'a ir::GroupAlternative, Option<String>), XmlFormatError> {
     const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
     let fields = group_fields(instance);
     if schema.xml_alternative_kind == XmlAlternativeKind::SubstitutionGroup {
@@ -402,27 +423,31 @@ fn input_group_alternative<'a>(
                 value: identity,
             })?;
         validate_alternative_fields(schema, selected, fields)?;
-        return Ok(selected);
+        return Ok((selected, None));
     }
-    let selected = match element.attribute((XSI, "type")) {
+    let (selected, annotation) = match element.attribute((XSI, "type")) {
         Some(value) => {
             let expanded = expand_xml_qname(element, schema, value)?;
-            alternatives
+            let selected = alternatives
                 .iter()
                 .find(|alternative| alternative.name == expanded)
                 .ok_or_else(|| XmlFormatError::UnknownXmlType {
                     name: schema.name.clone(),
-                    value: expanded,
-                })?
+                    value: expanded.clone(),
+                })?;
+            (selected, Some(expanded))
         }
-        None => select_group_alternative(schema, alternatives, fields)?.ok_or_else(|| {
-            XmlFormatError::NoMatchingAlternative {
-                name: schema.name.clone(),
-            }
-        })?,
+        None => (
+            select_group_alternative(schema, alternatives, fields)?.ok_or_else(|| {
+                XmlFormatError::NoMatchingAlternative {
+                    name: schema.name.clone(),
+                }
+            })?,
+            None,
+        ),
     };
     validate_alternative_fields(schema, selected, fields)?;
-    Ok(selected)
+    Ok((selected, annotation))
 }
 
 fn expand_xml_qname(

@@ -194,7 +194,7 @@ fn all_four_scalar_interfaces_have_explicit_names_and_keep_typed_results_twice()
         (3, ScalarType::Bool, Value::Bool(true)),
     ] {
         let p = project(ty, "value", "result");
-        let input = Instance::Group(vec![("Value".into(), Instance::Scalar(value))]);
+        let input = Instance::Group((vec![("Value".into(), Instance::Scalar(value))]).into());
         let expected = engine::run(&p, &input).unwrap();
         let restored = roundtrip(
             &p,
@@ -263,10 +263,13 @@ fn zero_and_unused_ascii_parameters_retain_declared_interfaces() {
             }
             p.graph.nodes.remove(&0);
         }
-        let input = Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("input".into())),
-        )]);
+        let input = Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String("input".into())),
+            )])
+            .into(),
+        );
         let expected = engine::run(&p, &input).unwrap();
         let restored = roundtrip(
             &p,
@@ -334,10 +337,13 @@ fn nested_and_multi_parameter_ascii_interfaces_keep_identity_and_connections() {
     if let Node::UserFunctionCall { args, .. } = p.graph.nodes.get_mut(&1).unwrap() {
         args.push(2);
     }
-    let input = Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String("prefix".into())),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("prefix".into())),
+        )])
+        .into(),
+    );
     let expected = engine::run(&p, &input).unwrap();
     let restored = roundtrip(&p, &dir.0.join("nested.mfd"), mfd::ExportProfile::NativeMfd);
     assert_eq!(engine::run(&restored, &input).unwrap(), expected);

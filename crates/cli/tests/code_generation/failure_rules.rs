@@ -210,54 +210,69 @@ fn primary(case: FailureCase) -> Instance {
         _ => vec![row("A", true), row("B", true)],
     };
     let empty = matches!(case, FailureCase::EmptyMessage)
-        .then(|| Instance::Group(Vec::new()))
+        .then(|| Instance::Group((Vec::new()).into()))
         .into_iter()
         .collect();
     let bad = matches!(case, FailureCase::NonBoolean)
         .then(|| {
-            Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String("not-bool".into())),
-            )])
+            Instance::Group(
+                (vec![(
+                    "Value".into(),
+                    Instance::Scalar(Value::String("not-bool".into())),
+                )])
+                .into(),
+            )
         })
         .into_iter()
         .collect();
-    Instance::Group(vec![
-        (
-            "Name".into(),
-            Instance::Scalar(Value::String("mapped".into())),
-        ),
-        (
-            "FailGenerated".into(),
-            Instance::Scalar(Value::Bool(matches!(case, FailureCase::Generated))),
-        ),
-        ("Row".into(), Instance::Repeated(rows)),
-        ("EmptyTrigger".into(), Instance::Repeated(empty)),
-        ("BadTrigger".into(), Instance::Repeated(bad)),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Name".into(),
+                Instance::Scalar(Value::String("mapped".into())),
+            ),
+            (
+                "FailGenerated".into(),
+                Instance::Scalar(Value::Bool(matches!(case, FailureCase::Generated))),
+            ),
+            ("Row".into(), Instance::Repeated(rows)),
+            ("EmptyTrigger".into(), Instance::Repeated(empty)),
+            ("BadTrigger".into(), Instance::Repeated(bad)),
+        ])
+        .into(),
+    )
 }
 
 fn row(code: &str, valid: bool) -> Instance {
-    Instance::Group(vec![
-        ("Code".into(), Instance::Scalar(Value::String(code.into()))),
-        ("Valid".into(), Instance::Scalar(Value::Bool(valid))),
-    ])
+    Instance::Group(
+        (vec![
+            ("Code".into(), Instance::Scalar(Value::String(code.into()))),
+            ("Valid".into(), Instance::Scalar(Value::Bool(valid))),
+        ])
+        .into(),
+    )
 }
 
 fn rules(case: FailureCase) -> Instance {
     let flag = |code: &str, reject| {
-        Instance::Group(vec![
-            ("Code".into(), Instance::Scalar(Value::String(code.into()))),
-            ("Reject".into(), Instance::Scalar(Value::Bool(reject))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Code".into(), Instance::Scalar(Value::String(code.into()))),
+                ("Reject".into(), Instance::Scalar(Value::Bool(reject))),
+            ])
+            .into(),
+        )
     };
-    Instance::Group(vec![(
-        "Flag".into(),
-        Instance::Repeated(vec![
-            flag("allowed", false),
-            flag("blocked", matches!(case, FailureCase::Named)),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Flag".into(),
+            Instance::Repeated(vec![
+                flag("allowed", false),
+                flag("blocked", matches!(case, FailureCase::Named)),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn sources(case: FailureCase) -> Vec<(String, Instance)> {
@@ -265,10 +280,13 @@ fn sources(case: FailureCase) -> Vec<(String, Instance)> {
 }
 
 fn expected_output() -> Instance {
-    Instance::Group(vec![(
-        "Name".into(),
-        Instance::Scalar(Value::String("mapped".into())),
-    )])
+    Instance::Group(
+        (vec![(
+            "Name".into(),
+            Instance::Scalar(Value::String("mapped".into())),
+        )])
+        .into(),
+    )
 }
 
 #[test]

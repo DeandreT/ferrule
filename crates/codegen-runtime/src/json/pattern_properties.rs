@@ -40,10 +40,10 @@ fn boundaries_select_dynamic_names_after_fixed_children() -> Result<(), Box<dyn 
     assert!(matches!(
         serialize_json(
             &schema,
-            &Instance::Group(vec![(
+            &Instance::Group((vec![(
                 "other".into(),
                 Instance::Scalar(Value::Int(1)),
-            )]),
+            )]).into()),
         ),
         Err(JsonBoundaryError::InvalidOutput { message })
             if message.contains("other") && message.contains("patternProperties"),
@@ -51,7 +51,7 @@ fn boundaries_select_dynamic_names_after_fixed_children() -> Result<(), Box<dyn 
     assert_eq!(
         serialize_json(
             &schema,
-            &Instance::Group(vec![("other".into(), Instance::Scalar(Value::Null),)]),
+            &Instance::Group((vec![("other".into(), Instance::Scalar(Value::Null),)]).into()),
         )?,
         "{}\n"
     );
@@ -107,10 +107,10 @@ fn selectors_in_dependent_predicates_share_the_document_pattern_budget()
     assert!(matches!(
         serialize_json(
             &encoded,
-            &Instance::Group(vec![
+            &Instance::Group((vec![
                 ("Trigger".into(), Instance::Scalar(Value::Bool(true))),
                 (property, Instance::Scalar(Value::Int(1))),
-            ]),
+            ]).into()),
         ),
         Err(JsonBoundaryError::InvalidOutput { ref message })
             if message.contains("work limit"),

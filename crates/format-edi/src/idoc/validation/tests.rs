@@ -77,26 +77,29 @@ fn descriptor() -> IdocNativeConfig {
 }
 
 fn record(value: Value) -> Instance {
-    Instance::Group(vec![("Code".into(), Instance::Scalar(value))])
+    Instance::Group((vec![("Code".into(), Instance::Scalar(value))]).into())
 }
 
 fn group(codes: &[&str]) -> Instance {
-    Instance::Group(vec![
-        ("HEAD0001".into(), record(Value::String("H".into()))),
-        (
-            "ROW00001".into(),
-            Instance::Repeated(
-                codes
-                    .iter()
-                    .map(|code| record(Value::String((*code).into())))
-                    .collect(),
+    Instance::Group(
+        (vec![
+            ("HEAD0001".into(), record(Value::String("H".into()))),
+            (
+                "ROW00001".into(),
+                Instance::Repeated(
+                    codes
+                        .iter()
+                        .map(|code| record(Value::String((*code).into())))
+                        .collect(),
+                ),
             ),
-        ),
-    ])
+        ])
+        .into(),
+    )
 }
 
 fn document(groups: Vec<Instance>) -> Instance {
-    Instance::Group(vec![("SG1".into(), Instance::Repeated(groups))])
+    Instance::Group((vec![("SG1".into(), Instance::Repeated(groups))]).into())
 }
 
 fn report(descriptor: &IdocNativeConfig, instance: &Instance) -> IdocValidationReport {
@@ -157,7 +160,7 @@ fn mandatory_status_requires_presence_even_with_zero_configured_minimum() {
         vec![segment("HEAD0001", IdocNativeStatus::Mandatory, 0, 1, &[])],
     )
     .unwrap();
-    let report = report(&descriptor, &Instance::Group(vec![]));
+    let report = report(&descriptor, &Instance::Group((vec![]).into()));
     assert_eq!(report.issues()[0].location(), "HEAD0001");
     assert_eq!(
         report.issues()[0].violation(),
@@ -211,15 +214,18 @@ fn code_validation_skips_absent_null_and_checks_explicit_empty_and_writer_coerci
         )],
     )
     .unwrap();
-    let instance = Instance::Group(vec![(
-        "ROW00001".into(),
-        Instance::Repeated(vec![
-            Instance::Group(vec![]),
-            record(Value::Null),
-            record(Value::String("".into())),
-            record(Value::Int(1)),
-        ]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            "ROW00001".into(),
+            Instance::Repeated(vec![
+                Instance::Group((vec![]).into()),
+                record(Value::Null),
+                record(Value::String("".into())),
+                record(Value::Int(1)),
+            ]),
+        )])
+        .into(),
+    );
     assert!(report(&descriptor, &instance).is_empty());
 
     let no_empty_code = IdocNativeConfig::new(
@@ -340,7 +346,7 @@ fn descriptor_pairing_rejects_changed_schema_and_layout_before_reading() {
 fn shape_failures_and_duplicate_fields_remain_typed() {
     let descriptor = descriptor();
     let (schema, layout) = descriptor.project().unwrap();
-    let malformed = Instance::Group(vec![("SG1".into(), group(&[]))]);
+    let malformed = Instance::Group((vec![("SG1".into(), group(&[]))]).into());
     assert!(matches!(
         validate_native(&schema, &malformed, &layout, &descriptor),
         Err(EdiFormatError::InstanceShape {
@@ -348,10 +354,13 @@ fn shape_failures_and_duplicate_fields_remain_typed() {
             ..
         })
     ));
-    let duplicate = Instance::Group(vec![
-        ("SG1".into(), Instance::Repeated(vec![])),
-        ("SG1".into(), Instance::Repeated(vec![])),
-    ]);
+    let duplicate = Instance::Group(
+        (vec![
+            ("SG1".into(), Instance::Repeated(vec![])),
+            ("SG1".into(), Instance::Repeated(vec![])),
+        ])
+        .into(),
+    );
     assert!(matches!(
         validate_native(&schema, &duplicate, &layout, &descriptor),
         Err(EdiFormatError::DuplicateField { .. })
@@ -371,10 +380,13 @@ fn issue_collection_is_bounded_and_truncation_is_visible() {
         )],
     )
     .unwrap();
-    let instance = Instance::Group(vec![(
-        "ROW00001".into(),
-        Instance::Repeated(vec![record(Value::String("XX".into())); 10_005]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            "ROW00001".into(),
+            Instance::Repeated(vec![record(Value::String("XX".into())); 10_005]),
+        )])
+        .into(),
+    );
     let report = report(&descriptor, &instance);
     assert_eq!(report.issues().len(), 10_000);
     assert!(report.truncated());
@@ -398,20 +410,26 @@ fn host_owned_instance_work_and_text_are_bounded() {
     )
     .unwrap();
     let (schema, layout) = descriptor.project().unwrap();
-    let many = Instance::Group(vec![(
-        "ROW00001".into(),
-        Instance::Repeated(vec![Instance::Group(vec![]); 333_334]),
-    )]);
+    let many = Instance::Group(
+        (vec![(
+            "ROW00001".into(),
+            Instance::Repeated(vec![Instance::Group((vec![]).into()); 333_334]),
+        )])
+        .into(),
+    );
     assert!(matches!(
         validate_native(&schema, &many, &layout, &descriptor),
         Err(EdiFormatError::IdocLimit("validation work"))
     ));
-    let huge = Instance::Group(vec![(
-        "ROW00001".into(),
-        Instance::Repeated(vec![record(Value::String(
-            "X".repeat(64 * 1024 * 1024 + 1),
-        ))]),
-    )]);
+    let huge = Instance::Group(
+        (vec![(
+            "ROW00001".into(),
+            Instance::Repeated(vec![record(Value::String(
+                "X".repeat(64 * 1024 * 1024 + 1),
+            ))]),
+        )])
+        .into(),
+    );
     assert!(matches!(
         validate_native(&schema, &huge, &layout, &descriptor),
         Err(EdiFormatError::IdocLimit("validation bytes"))
@@ -483,7 +501,7 @@ fn guarded_writer_bounds_wide_record_searches_before_serialization() {
             .unwrap()
         })
         .collect();
-    let values = fields
+    let values: Vec<_> = fields
         .iter()
         .map(|field| (field.name().into(), Instance::Scalar(Value::Null)))
         .collect();
@@ -505,7 +523,8 @@ fn guarded_writer_bounds_wide_record_searches_before_serialization() {
     )
     .unwrap();
     let (schema, layout) = descriptor.project().unwrap();
-    let instance = Instance::Group(vec![("ROW00001".into(), Instance::Group(values))]);
+    let instance =
+        Instance::Group((vec![("ROW00001".into(), Instance::Group((values).into()))]).into());
     assert!(
         validate_native(&schema, &instance, &layout, &descriptor)
             .unwrap()

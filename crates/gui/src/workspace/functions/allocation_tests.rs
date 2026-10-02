@@ -127,7 +127,7 @@ fn selected_canvas(app: &FerruleApp) -> &Snarl<CanvasNode> {
 fn assert_keep_outputs(app: &FerruleApp, active: &str, other: &str) {
     let issues = engine::validate(&app.project);
     assert!(issues.is_empty(), "{issues:#?}");
-    let output = engine::run_outputs(&app.project, &Instance::Group(Vec::new())).unwrap();
+    let output = engine::run_outputs(&app.project, &Instance::Group((Vec::new()).into())).unwrap();
     let keep = |instance: &Instance| {
         instance
             .field("Keep")

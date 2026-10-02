@@ -271,13 +271,16 @@ mod tests {
     use super::*;
 
     fn row(month: &str, west: f64) -> Instance {
-        Instance::Group(vec![
-            (
-                "Month".into(),
-                Instance::Scalar(Value::String(month.into())),
-            ),
-            ("West".into(), Instance::Scalar(Value::Float(west))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Month".into(),
+                    Instance::Scalar(Value::String(month.into())),
+                ),
+                ("West".into(), Instance::Scalar(Value::Float(west))),
+            ])
+            .into(),
+        )
     }
 
     #[test]

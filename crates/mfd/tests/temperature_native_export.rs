@@ -105,19 +105,25 @@ fn annual_pdf_native_roundtrip_keeps_148_csv_rows() -> Result<(), Box<dyn Error>
     assert_eq!(csv, std::fs::read(&after_csv)?);
 
     for malformed in ["not-a-number", "1e309"] {
-        let source = Instance::Group(vec![(
-            "Row".into(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                (
-                    "Year".into(),
-                    Instance::Scalar(Value::String("2000".into())),
-                ),
-                (
-                    "AverageTemperature".into(),
-                    Instance::Scalar(Value::String(malformed.into())),
-                ),
-            ])]),
-        )]);
+        let source = Instance::Group(
+            (vec![(
+                "Row".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        (
+                            "Year".into(),
+                            Instance::Scalar(Value::String("2000".into())),
+                        ),
+                        (
+                            "AverageTemperature".into(),
+                            Instance::Scalar(Value::String(malformed.into())),
+                        ),
+                    ])
+                    .into(),
+                )]),
+            )])
+            .into(),
+        );
         let before_error = engine::run(&imported.project, &source).unwrap_err();
         let after_error = engine::run(&restored, &source).unwrap_err();
         let (

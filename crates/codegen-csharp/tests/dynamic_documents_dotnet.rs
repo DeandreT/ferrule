@@ -145,16 +145,19 @@ fn member(portable: &str, resolved: &str, output_path: &str, value: &str) -> Doc
     DocumentMember::new_source(
         portable,
         resolved,
-        Instance::Group(vec![
-            (
-                "OutputPath".into(),
-                Instance::Scalar(Value::String(output_path.into())),
-            ),
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            ),
-        ]),
+        Instance::Group(
+            (vec![
+                (
+                    "OutputPath".into(),
+                    Instance::Scalar(Value::String(output_path.into())),
+                ),
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                ),
+            ])
+            .into(),
+        ),
     )
     .expect("fixture member is valid")
 }

@@ -227,7 +227,7 @@ fn false_else_narrows_nullable_object_and_retains_then() -> Result<(), Box<dyn s
         serde_json::json!({"mode":"strict","payload":4})
     );
     assert!(matches!(
-        crate::to_string(&schema, &Instance::Group(Vec::new())),
+        crate::to_string(&schema, &Instance::Group((Vec::new()).into())),
         Err(JsonFormatError::MissingRequiredProperty { ref property, .. })
             if property == "mode"
     ));

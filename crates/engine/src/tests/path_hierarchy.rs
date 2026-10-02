@@ -50,15 +50,18 @@ fn project() -> Project {
 }
 
 fn source(paths: &[&str]) -> Instance {
-    Instance::Group(vec![(
-        "File".into(),
-        Instance::Repeated(
-            paths
-                .iter()
-                .map(|path| Instance::Scalar(Value::String((*path).into())))
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "File".into(),
+            Instance::Repeated(
+                paths
+                    .iter()
+                    .map(|path| Instance::Scalar(Value::String((*path).into())))
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn scalar<'a>(instance: &'a Instance, field: &str) -> &'a str {

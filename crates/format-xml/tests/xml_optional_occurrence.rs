@@ -59,7 +59,10 @@ fn lenient_presence_keeps_null_absent_empty_and_nil_distinct() {
         empty.field("Value"),
         Some(&Instance::Scalar(Value::String(String::new())))
     );
-    assert_eq!(empty.field("Maybe"), Some(&Instance::Group(vec![])));
+    assert_eq!(
+        empty.field("Maybe"),
+        Some(&Instance::Group((vec![]).into()))
+    );
     let nil = format_xml::from_str(r#"<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Value xsi:nil="true"/><Must>x</Must></Root>"#, &s).unwrap();
     assert_eq!(
         nil.field("Value"),

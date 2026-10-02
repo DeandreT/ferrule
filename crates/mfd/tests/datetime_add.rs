@@ -92,10 +92,13 @@ fn three_input_datetime_add_exports_as_growable_and_reimports() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let output = engine::run(
         &imported.project,
-        &Instance::Group(vec![(
-            "Unused".to_string(),
-            Instance::Scalar(Value::String(String::new())),
-        )]),
+        &Instance::Group(
+            (vec![(
+                "Unused".to_string(),
+                Instance::Scalar(Value::String(String::new())),
+            )])
+            .into(),
+        ),
     )
     .unwrap();
     assert_eq!(

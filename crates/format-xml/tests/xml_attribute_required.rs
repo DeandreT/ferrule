@@ -273,7 +273,7 @@ fn malformed_role_is_rejected_by_read_write_and_export_before_payload() {
         Err(XmlFormatError::InvalidXmlAttributeRequired { .. })
     ));
     assert!(matches!(
-        format_xml::to_string(&schema, &Instance::Group(vec![])),
+        format_xml::to_string(&schema, &Instance::Group((vec![]).into())),
         Err(XmlFormatError::InvalidXmlAttributeRequired { .. })
     ));
     assert!(matches!(

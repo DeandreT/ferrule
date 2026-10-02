@@ -114,7 +114,7 @@ fn parent_presence_reconstructs_controls_and_empty_first_group() {
     );
     assert_eq!(
         departments[1].field("Selected"),
-        Some(&Instance::Group(Vec::new()))
+        Some(&Instance::Group((Vec::new()).into()))
     );
     let second = directory.0.join("second.mfd");
     assert!(mfd::export(&imported.project, &second).unwrap().is_empty());

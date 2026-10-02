@@ -97,18 +97,24 @@ fn integer(value: i64) -> Instance {
 }
 
 fn order(needle: &str, qty: i64) -> Instance {
-    Instance::Group(vec![
-        ("Needle".into(), text(needle)),
-        ("Qty".into(), integer(qty)),
-    ])
+    Instance::Group(
+        (vec![
+            ("Needle".into(), text(needle)),
+            ("Qty".into(), integer(qty)),
+        ])
+        .into(),
+    )
 }
 
 fn item(key: &str, label: &str, price: i64) -> Instance {
-    Instance::Group(vec![
-        ("Key".into(), text(key)),
-        ("Label".into(), text(label)),
-        ("Price".into(), integer(price)),
-    ])
+    Instance::Group(
+        (vec![
+            ("Key".into(), text(key)),
+            ("Label".into(), text(label)),
+            ("Price".into(), integer(price)),
+        ])
+        .into(),
+    )
 }
 
 #[test]
@@ -117,14 +123,20 @@ fn structured_lookup_output_emits_zero_or_many_constructed_occurrences() {
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.extra_sources.len(), 1);
-    let source = Instance::Group(vec![(
-        "Order".into(),
-        Instance::Repeated(vec![order("A", 2), order("B", 3)]),
-    )]);
-    let catalog = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![item("A", "first", 4), item("A", "second", 5)]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Order".into(),
+            Instance::Repeated(vec![order("A", 2), order("B", 3)]),
+        )])
+        .into(),
+    );
+    let catalog = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![item("A", "first", 4), item("A", "second", 5)]),
+        )])
+        .into(),
+    );
     let target = engine::run_with_sources(
         &imported.project,
         &source,

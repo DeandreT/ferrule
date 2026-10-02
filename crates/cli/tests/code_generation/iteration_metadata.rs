@@ -129,93 +129,110 @@ fn metadata_project() -> Project {
 
 fn metadata_source(invalid_filter: bool) -> Instance {
     let inner = |code: &str| {
-        Instance::Group(vec![(
-            "Code".into(),
-            Instance::Scalar(Value::String(code.into())),
-        )])
+        Instance::Group(
+            (vec![("Code".into(), Instance::Scalar(Value::String(code.into())))]).into(),
+        )
     };
     let outer = |code: &str, inner_codes: &[&str]| {
-        Instance::Group(vec![
-            ("Code".into(), Instance::Scalar(Value::String(code.into()))),
-            (
-                "Rows".into(),
-                Instance::Repeated(inner_codes.iter().map(|code| inner(code)).collect()),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Code".into(), Instance::Scalar(Value::String(code.into()))),
+                (
+                    "Rows".into(),
+                    Instance::Repeated(inner_codes.iter().map(|code| inner(code)).collect()),
+                ),
+            ])
+            .into(),
+        )
     };
     let department = |name: &str, rows: Vec<Instance>| {
-        Instance::Group(vec![
-            (
-                "Department".into(),
-                Instance::Scalar(Value::String(name.into())),
-            ),
-            ("Rows".into(), Instance::Repeated(rows)),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Department".into(),
+                    Instance::Scalar(Value::String(name.into())),
+                ),
+                ("Rows".into(), Instance::Repeated(rows)),
+            ])
+            .into(),
+        )
     };
 
-    Instance::Group(vec![
-        (
-            "InvalidFilter".into(),
-            Instance::Scalar(Value::Bool(invalid_filter)),
-        ),
-        (
-            "Departments".into(),
-            Instance::Repeated(vec![
-                department(
-                    "North",
-                    vec![
-                        outer("N-A", &["N-A1", "N-A2", "N-A3"]),
-                        outer("N-B", &["N-B1", "N-B2"]),
-                    ],
-                ),
-                department("South", vec![outer("S-C", &["S-C1", "S-C2"])]),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "InvalidFilter".into(),
+                Instance::Scalar(Value::Bool(invalid_filter)),
+            ),
+            (
+                "Departments".into(),
+                Instance::Repeated(vec![
+                    department(
+                        "North",
+                        vec![
+                            outer("N-A", &["N-A1", "N-A2", "N-A3"]),
+                            outer("N-B", &["N-B1", "N-B2"]),
+                        ],
+                    ),
+                    department("South", vec![outer("S-C", &["S-C1", "S-C2"])]),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn metadata_expected() -> Instance {
     let item = |department: &str, outer: &str, inner: &str, position: i64| {
-        Instance::Group(vec![
-            (
-                "Department".into(),
-                Instance::Scalar(Value::String(department.into())),
-            ),
-            (
-                "OuterCode".into(),
-                Instance::Scalar(Value::String(outer.into())),
-            ),
-            (
-                "InnerCode".into(),
-                Instance::Scalar(Value::String(inner.into())),
-            ),
-            ("Position".into(), Instance::Scalar(Value::Int(position))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Department".into(),
+                    Instance::Scalar(Value::String(department.into())),
+                ),
+                (
+                    "OuterCode".into(),
+                    Instance::Scalar(Value::String(outer.into())),
+                ),
+                (
+                    "InnerCode".into(),
+                    Instance::Scalar(Value::String(inner.into())),
+                ),
+                ("Position".into(), Instance::Scalar(Value::Int(position))),
+            ])
+            .into(),
+        )
     };
     let department = |name: &str, items: Vec<Instance>| {
-        Instance::Group(vec![
-            (
-                "Department".into(),
-                Instance::Scalar(Value::String(name.into())),
-            ),
-            ("Items".into(), Instance::Repeated(items)),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Department".into(),
+                    Instance::Scalar(Value::String(name.into())),
+                ),
+                ("Items".into(), Instance::Repeated(items)),
+            ])
+            .into(),
+        )
     };
 
-    Instance::Group(vec![(
-        "DepartmentOut".into(),
-        Instance::Repeated(vec![
-            department(
-                "North",
-                vec![
-                    item("North", "N-A", "N-A2", 1),
-                    item("North", "N-A", "N-A3", 2),
-                    item("North", "N-B", "N-B2", 3),
-                ],
-            ),
-            department("South", vec![item("South", "S-C", "S-C2", 1)]),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "DepartmentOut".into(),
+            Instance::Repeated(vec![
+                department(
+                    "North",
+                    vec![
+                        item("North", "N-A", "N-A2", 1),
+                        item("North", "N-A", "N-A3", 2),
+                        item("North", "N-B", "N-B2", 3),
+                    ],
+                ),
+                department("South", vec![item("South", "S-C", "S-C2", 1)]),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn write_metadata_project(directory: &Path) -> TestResult<PathBuf> {

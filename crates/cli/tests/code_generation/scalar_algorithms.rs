@@ -479,141 +479,148 @@ fn scalar_algorithm_project() -> Project {
 }
 
 fn source(mode: ErrorMode) -> Instance {
-    Instance::Group(vec![
-        (
-            "FailType".into(),
-            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Type))),
-        ),
-        (
-            "FailInvalid".into(),
-            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Invalid))),
-        ),
-        (
-            "FailNumberInvalid".into(),
-            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::NumberInvalid))),
-        ),
-        (
-            "FailDelayType".into(),
-            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::DelayType))),
-        ),
-        (
-            "FailDelayInvalid".into(),
-            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::DelayInvalid))),
-        ),
-        ("NaN".into(), Instance::Scalar(Value::Float(f64::NAN))),
-        (
-            "Infinity".into(),
-            Instance::Scalar(Value::Float(f64::INFINITY)),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "FailType".into(),
+                Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Type))),
+            ),
+            (
+                "FailInvalid".into(),
+                Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Invalid))),
+            ),
+            (
+                "FailNumberInvalid".into(),
+                Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::NumberInvalid))),
+            ),
+            (
+                "FailDelayType".into(),
+                Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::DelayType))),
+            ),
+            (
+                "FailDelayInvalid".into(),
+                Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::DelayInvalid))),
+            ),
+            ("NaN".into(), Instance::Scalar(Value::Float(f64::NAN))),
+            (
+                "Infinity".into(),
+                Instance::Scalar(Value::Float(f64::INFINITY)),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn values(fields: Vec<(&str, Value)>) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .into_iter()
             .map(|(name, value)| (name.into(), Instance::Scalar(value)))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
 fn expected() -> Instance {
-    Instance::Group(vec![
-        (
-            "Substring".into(),
-            values(vec![
-                ("Unicode", Value::String("🙂é".into())),
-                ("RoundedStart", Value::String("cdef".into())),
-                ("RoundedLength", Value::String("bcd".into())),
-                ("ZeroStart", Value::String("a".into())),
-                ("Maximum", Value::String(String::new())),
-                ("NaN", Value::String("abc".into())),
-                ("Infinity", Value::String(String::new())),
-            ]),
-        ),
-        (
-            "Like".into(),
-            values(vec![
-                ("AsciiFold", Value::Bool(true)),
-                ("UnicodeWildcards", Value::Bool(true)),
-                ("NonAsciiExact", Value::Bool(false)),
-                ("EmptyPercent", Value::Bool(true)),
-                ("RepeatedPercent", Value::Bool(true)),
-                ("NulValue", Value::Bool(true)),
-                ("NulPattern", Value::Bool(true)),
-                ("BackslashLiteral", Value::Bool(true)),
-            ]),
-        ),
-        (
-            "Pad".into(),
-            values(vec![
-                ("FloatLength", Value::String("007".into())),
-                ("EmojiPadding", Value::String("🙂🙂é".into())),
-                ("EmojiValue", Value::String("🙂éé".into())),
-                ("Negative", Value::String("abc".into())),
-                ("Exact", Value::String("abc".into())),
-                ("NullValue", Value::String("**".into())),
-            ]),
-        ),
-        (
-            "Isbn".into(),
-            values(vec![
-                ("Hyphenated", Value::String("9780764549649".into())),
-                ("LowerXAndSpaces", Value::String("9780804429573".into())),
-            ]),
-        ),
-        (
-            "Round".into(),
-            values(vec![
-                ("Integer", Value::Int(7)),
-                ("PositiveHalf", Value::Float(3.0)),
-                ("NegativeHalf", Value::Float(-3.0)),
-                ("Precision", Value::Float(1.23)),
-                ("RoundedDigits", Value::Float(1.23)),
-                ("NegativeDigits", Value::Float(150.0)),
-                ("Infinity", Value::Float(f64::INFINITY)),
-            ]),
-        ),
-        (
-            "Date".into(),
-            values(vec![
-                ("DateTime", Value::String("2024-03-01".into())),
-                ("DateOnly", Value::String("2024-03-01Z".into())),
-                ("MultipleT", Value::String("alpha".into())),
-            ]),
-        ),
-        (
-            "Conversions".into(),
-            values(vec![
-                ("Trimmed", Value::String("value".into())),
-                ("NumericInt", Value::Bool(true)),
-                ("NumericDecimal", Value::Bool(true)),
-                ("NumericOverflow", Value::Bool(true)),
-                ("NumericInfinity", Value::Bool(false)),
-                ("NumericNull", Value::Bool(false)),
-                ("NumericXmlNil", Value::Bool(false)),
-                ("NumericBool", Value::Bool(false)),
-                ("NumberInt", Value::Int(i64::MAX)),
-                ("NumberMin", Value::Int(i64::MIN)),
-                ("NumberFloat", Value::Float(12.5)),
-                ("NumberExponent", Value::Float(1000.0)),
-                ("NumberNegativeZero", Value::Float(-0.0)),
-                ("NumberNull", Value::Null),
-                ("DelayText", Value::String("ready".into())),
-                ("DelayNil", Value::xml_nil()),
-            ]),
-        ),
-        (
-            "Errors".into(),
-            values(vec![
-                ("Type", Value::String("safe-type".into())),
-                ("Invalid", Value::String("safe-invalid".into())),
-                ("NumberInvalid", Value::String("safe-number".into())),
-                ("DelayType", Value::String("safe-delay-type".into())),
-                ("DelayInvalid", Value::String("safe-delay-invalid".into())),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Substring".into(),
+                values(vec![
+                    ("Unicode", Value::String("🙂é".into())),
+                    ("RoundedStart", Value::String("cdef".into())),
+                    ("RoundedLength", Value::String("bcd".into())),
+                    ("ZeroStart", Value::String("a".into())),
+                    ("Maximum", Value::String(String::new())),
+                    ("NaN", Value::String("abc".into())),
+                    ("Infinity", Value::String(String::new())),
+                ]),
+            ),
+            (
+                "Like".into(),
+                values(vec![
+                    ("AsciiFold", Value::Bool(true)),
+                    ("UnicodeWildcards", Value::Bool(true)),
+                    ("NonAsciiExact", Value::Bool(false)),
+                    ("EmptyPercent", Value::Bool(true)),
+                    ("RepeatedPercent", Value::Bool(true)),
+                    ("NulValue", Value::Bool(true)),
+                    ("NulPattern", Value::Bool(true)),
+                    ("BackslashLiteral", Value::Bool(true)),
+                ]),
+            ),
+            (
+                "Pad".into(),
+                values(vec![
+                    ("FloatLength", Value::String("007".into())),
+                    ("EmojiPadding", Value::String("🙂🙂é".into())),
+                    ("EmojiValue", Value::String("🙂éé".into())),
+                    ("Negative", Value::String("abc".into())),
+                    ("Exact", Value::String("abc".into())),
+                    ("NullValue", Value::String("**".into())),
+                ]),
+            ),
+            (
+                "Isbn".into(),
+                values(vec![
+                    ("Hyphenated", Value::String("9780764549649".into())),
+                    ("LowerXAndSpaces", Value::String("9780804429573".into())),
+                ]),
+            ),
+            (
+                "Round".into(),
+                values(vec![
+                    ("Integer", Value::Int(7)),
+                    ("PositiveHalf", Value::Float(3.0)),
+                    ("NegativeHalf", Value::Float(-3.0)),
+                    ("Precision", Value::Float(1.23)),
+                    ("RoundedDigits", Value::Float(1.23)),
+                    ("NegativeDigits", Value::Float(150.0)),
+                    ("Infinity", Value::Float(f64::INFINITY)),
+                ]),
+            ),
+            (
+                "Date".into(),
+                values(vec![
+                    ("DateTime", Value::String("2024-03-01".into())),
+                    ("DateOnly", Value::String("2024-03-01Z".into())),
+                    ("MultipleT", Value::String("alpha".into())),
+                ]),
+            ),
+            (
+                "Conversions".into(),
+                values(vec![
+                    ("Trimmed", Value::String("value".into())),
+                    ("NumericInt", Value::Bool(true)),
+                    ("NumericDecimal", Value::Bool(true)),
+                    ("NumericOverflow", Value::Bool(true)),
+                    ("NumericInfinity", Value::Bool(false)),
+                    ("NumericNull", Value::Bool(false)),
+                    ("NumericXmlNil", Value::Bool(false)),
+                    ("NumericBool", Value::Bool(false)),
+                    ("NumberInt", Value::Int(i64::MAX)),
+                    ("NumberMin", Value::Int(i64::MIN)),
+                    ("NumberFloat", Value::Float(12.5)),
+                    ("NumberExponent", Value::Float(1000.0)),
+                    ("NumberNegativeZero", Value::Float(-0.0)),
+                    ("NumberNull", Value::Null),
+                    ("DelayText", Value::String("ready".into())),
+                    ("DelayNil", Value::xml_nil()),
+                ]),
+            ),
+            (
+                "Errors".into(),
+                values(vec![
+                    ("Type", Value::String("safe-type".into())),
+                    ("Invalid", Value::String("safe-invalid".into())),
+                    ("NumberInvalid", Value::String("safe-number".into())),
+                    ("DelayType", Value::String("safe-delay-type".into())),
+                    ("DelayInvalid", Value::String("safe-delay-invalid".into())),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 #[test]

@@ -497,30 +497,42 @@ mod tests {
             ],
         );
         let item = |code: &str, count: i64| {
-            Instance::Group(vec![
-                ("code".into(), Instance::Scalar(Value::String(code.into()))),
-                ("count".into(), Instance::Scalar(Value::Int(count))),
-            ])
+            Instance::Group(
+                (vec![
+                    ("code".into(), Instance::Scalar(Value::String(code.into()))),
+                    ("count".into(), Instance::Scalar(Value::Int(count))),
+                ])
+                .into(),
+            )
         };
-        let instance = Instance::Group(vec![
-            (
-                "HEADER0001".into(),
-                Instance::Group(vec![
-                    (
-                        "number".into(),
-                        Instance::Scalar(Value::String("ABC12".into())),
+        let instance = Instance::Group(
+            (vec![
+                (
+                    "HEADER0001".into(),
+                    Instance::Group(
+                        (vec![
+                            (
+                                "number".into(),
+                                Instance::Scalar(Value::String("ABC12".into())),
+                            ),
+                            ("kind".into(), Instance::Scalar(Value::String("XY".into()))),
+                        ])
+                        .into(),
                     ),
-                    ("kind".into(), Instance::Scalar(Value::String("XY".into()))),
-                ]),
-            ),
-            (
-                "Items".into(),
-                Instance::Group(vec![(
-                    "ITEM000001".into(),
-                    Instance::Repeated(vec![item("P100", 2), item("P200", 13)]),
-                )]),
-            ),
-        ]);
+                ),
+                (
+                    "Items".into(),
+                    Instance::Group(
+                        (vec![(
+                            "ITEM000001".into(),
+                            Instance::Repeated(vec![item("P100", 2), item("P200", 13)]),
+                        )])
+                        .into(),
+                    ),
+                ),
+            ])
+            .into(),
+        );
 
         let bytes = to_bytes(&schema, &instance, &layout).unwrap();
         assert_eq!(
@@ -543,13 +555,19 @@ mod tests {
             )],
         );
         let instance = |value: &str| {
-            Instance::Group(vec![(
-                "SEGMENT".into(),
-                Instance::Group(vec![(
-                    "value".into(),
-                    Instance::Scalar(Value::String(value.into())),
-                )]),
-            )])
+            Instance::Group(
+                (vec![(
+                    "SEGMENT".into(),
+                    Instance::Group(
+                        (vec![(
+                            "value".into(),
+                            Instance::Scalar(Value::String(value.into())),
+                        )])
+                        .into(),
+                    ),
+                )])
+                .into(),
+            )
         };
 
         let narrow = IdocLayout::new(vec![

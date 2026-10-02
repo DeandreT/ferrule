@@ -26,28 +26,40 @@ fn write_then_read_roundtrips_nested_repeating_groups() {
         std::process::id()
     ));
 
-    let instance = Instance::Group(vec![
-        (
-            "Name".into(),
-            Instance::Scalar(Value::String("Jane".into())),
-        ),
-        (
-            "Tags".into(),
-            Instance::Group(vec![(
-                "Tag".into(),
-                Instance::Repeated(vec![
-                    Instance::Group(vec![(
-                        "Value".into(),
-                        Instance::Scalar(Value::String("a".into())),
-                    )]),
-                    Instance::Group(vec![(
-                        "Value".into(),
-                        Instance::Scalar(Value::String("b".into())),
-                    )]),
-                ]),
-            )]),
-        ),
-    ]);
+    let instance = Instance::Group(
+        (vec![
+            (
+                "Name".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            (
+                "Tags".into(),
+                Instance::Group(
+                    (vec![(
+                        "Tag".into(),
+                        Instance::Repeated(vec![
+                            Instance::Group(
+                                (vec![(
+                                    "Value".into(),
+                                    Instance::Scalar(Value::String("a".into())),
+                                )])
+                                .into(),
+                            ),
+                            Instance::Group(
+                                (vec![(
+                                    "Value".into(),
+                                    Instance::Scalar(Value::String("b".into())),
+                                )])
+                                .into(),
+                            ),
+                        ]),
+                    )])
+                    .into(),
+                ),
+            ),
+        ])
+        .into(),
+    );
 
     write(&path, &schema(), &instance).unwrap();
     let read_back = read(&path, &schema()).unwrap();
@@ -72,26 +84,35 @@ fn attributes_roundtrip_including_missing_optional_ones() {
             .repeating(),
         ],
     );
-    let instance = Instance::Group(vec![
-        ("count".into(), Instance::Scalar(Value::Int(2))),
-        (
-            "Book".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![
-                    (
-                        "isbn".into(),
-                        Instance::Scalar(Value::String("978-1".into())),
+    let instance = Instance::Group(
+        (vec![
+            ("count".into(), Instance::Scalar(Value::Int(2))),
+            (
+                "Book".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![
+                            (
+                                "isbn".into(),
+                                Instance::Scalar(Value::String("978-1".into())),
+                            ),
+                            ("Title".into(), Instance::Scalar(Value::String("A".into()))),
+                        ])
+                        .into(),
                     ),
-                    ("Title".into(), Instance::Scalar(Value::String("A".into()))),
+                    Instance::Group(
+                        (vec![
+                            // Null attribute: omitted on write, read back as Null.
+                            ("isbn".into(), Instance::Scalar(Value::Null)),
+                            ("Title".into(), Instance::Scalar(Value::String("B".into()))),
+                        ])
+                        .into(),
+                    ),
                 ]),
-                Instance::Group(vec![
-                    // Null attribute: omitted on write, read back as Null.
-                    ("isbn".into(), Instance::Scalar(Value::Null)),
-                    ("Title".into(), Instance::Scalar(Value::String("B".into()))),
-                ]),
-            ]),
-        ),
-    ]);
+            ),
+        ])
+        .into(),
+    );
 
     let path = std::env::temp_dir().join(format!(
         "ferrule_format_xml_attr_test_{}.xml",
@@ -114,10 +135,13 @@ fn attribute_newlines_and_xml_metacharacters_roundtrip_exactly() {
         vec![SchemaNode::scalar("Title", ScalarType::String).attribute()],
     );
     let title = "The Mystery of Edwin\nDrood & \"Others\"";
-    let instance = Instance::Group(vec![(
-        "Title".into(),
-        Instance::Scalar(Value::String(title.into())),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            "Title".into(),
+            Instance::Scalar(Value::String(title.into())),
+        )])
+        .into(),
+    );
 
     let xml = to_string(&schema, &instance).unwrap();
 
@@ -138,16 +162,22 @@ fn absent_simple_content_does_not_capture_pretty_print_indentation() {
         ],
     );
     let schema = SchemaNode::group("Root", vec![telecom]);
-    let instance = Instance::Group(vec![(
-        "telecom".into(),
-        Instance::Group(vec![
-            (
-                "value".into(),
-                Instance::Scalar(Value::String("1111111".into())),
+    let instance = Instance::Group(
+        (vec![(
+            "telecom".into(),
+            Instance::Group(
+                (vec![
+                    (
+                        "value".into(),
+                        Instance::Scalar(Value::String("1111111".into())),
+                    ),
+                    ("#text".into(), Instance::Scalar(Value::Null)),
+                ])
+                .into(),
             ),
-            ("#text".into(), Instance::Scalar(Value::Null)),
-        ]),
-    )]);
+        )])
+        .into(),
+    );
 
     let xml = to_string(&schema, &instance).unwrap();
     let parsed = from_str(&xml, &schema).unwrap();
@@ -245,8 +275,8 @@ fn xml_booleans_accept_word_and_numeric_lexicals() {
 #[test]
 fn writer_rejects_instance_shapes_that_cannot_form_one_document() {
     let repeated_root = Instance::Repeated(vec![
-        Instance::Group(Vec::new()),
-        Instance::Group(Vec::new()),
+        Instance::Group((Vec::new()).into()),
+        Instance::Group((Vec::new()).into()),
     ]);
     assert!(matches!(
         to_string(&schema(), &repeated_root),
@@ -257,7 +287,8 @@ fn writer_rejects_instance_shapes_that_cannot_form_one_document() {
         }) if name == "Root"
     ));
 
-    let malformed_child = Instance::Group(vec![("Name".into(), Instance::Group(Vec::new()))]);
+    let malformed_child =
+        Instance::Group((vec![("Name".into(), Instance::Group((Vec::new()).into()))]).into());
     assert!(matches!(
         to_string(&schema(), &malformed_child),
         Err(XmlFormatError::Shape {
@@ -278,17 +309,21 @@ fn mapped_sequence_writes_zero_one_or_many_non_repeating_child_groups() {
         )],
     );
     let entry = |value: &str| {
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String(value.into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            )])
+            .into(),
+        )
     };
     for (items, expected) in [
         (Vec::new(), Vec::<&str>::new()),
         (vec![entry("one")], vec!["one"]),
         (vec![entry("one"), entry("two")], vec!["one", "two"]),
     ] {
-        let instance = Instance::Group(vec![("Entry".into(), Instance::MappedSequence(items))]);
+        let instance =
+            Instance::Group((vec![("Entry".into(), Instance::MappedSequence(items))]).into());
         let xml = to_string(&schema, &instance).unwrap();
         let document = roxmltree::Document::parse(&xml).unwrap();
         let values = document
@@ -306,7 +341,7 @@ fn mapped_sequence_writes_zero_one_or_many_non_repeating_child_groups() {
 
 #[test]
 fn mapped_sequence_is_rejected_for_roots_scalars_and_repeating_schema_nodes() {
-    let sequence = Instance::MappedSequence(vec![Instance::Group(Vec::new())]);
+    let sequence = Instance::MappedSequence(vec![Instance::Group((Vec::new()).into())]);
     assert!(matches!(
         to_string(&schema(), &sequence),
         Err(XmlFormatError::Shape {
@@ -321,7 +356,7 @@ fn mapped_sequence_is_rejected_for_roots_scalars_and_repeating_schema_nodes() {
         vec![SchemaNode::scalar("Value", ScalarType::String)],
     );
     let scalar_sequence =
-        Instance::Group(vec![("Value".into(), Instance::MappedSequence(Vec::new()))]);
+        Instance::Group((vec![("Value".into(), Instance::MappedSequence(Vec::new()))]).into());
     assert!(matches!(
         to_string(&scalar_schema, &scalar_sequence),
         Err(XmlFormatError::Shape {
@@ -336,7 +371,7 @@ fn mapped_sequence_is_rejected_for_roots_scalars_and_repeating_schema_nodes() {
         vec![SchemaNode::group("Entry", Vec::new()).repeating()],
     );
     let repeating_sequence =
-        Instance::Group(vec![("Entry".into(), Instance::MappedSequence(Vec::new()))]);
+        Instance::Group((vec![("Entry".into(), Instance::MappedSequence(Vec::new()))]).into());
     assert!(matches!(
         to_string(&repeating_schema, &repeating_sequence),
         Err(XmlFormatError::Shape {
@@ -366,10 +401,13 @@ fn writer_rejects_incompatible_scalar_values() {
         "Root",
         vec![SchemaNode::scalar("Count", ScalarType::Int).repeating()],
     );
-    let instance = Instance::Group(vec![(
-        "Count".into(),
-        Instance::Repeated(vec![Instance::Scalar(Value::Null)]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            "Count".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::Null)]),
+        )])
+        .into(),
+    );
     assert!(matches!(
         to_string(&schema, &instance),
         Err(XmlFormatError::ValueType {
@@ -426,10 +464,13 @@ fn writer_coerces_exact_integral_decimal_strings() {
 
 #[test]
 fn writer_rejects_unexpected_and_duplicate_group_fields() {
-    let unexpected = Instance::Group(vec![(
-        "Extra".into(),
-        Instance::Scalar(Value::String("lost".into())),
-    )]);
+    let unexpected = Instance::Group(
+        (vec![(
+            "Extra".into(),
+            Instance::Scalar(Value::String("lost".into())),
+        )])
+        .into(),
+    );
     assert!(matches!(
         to_string(&schema(), &unexpected),
         Err(XmlFormatError::UnexpectedField {
@@ -438,10 +479,13 @@ fn writer_rejects_unexpected_and_duplicate_group_fields() {
         }) if group == "Root" && field == "Extra"
     ));
 
-    let duplicate = Instance::Group(vec![
-        ("Name".into(), Instance::Scalar(Value::String("A".into()))),
-        ("Name".into(), Instance::Scalar(Value::String("B".into()))),
-    ]);
+    let duplicate = Instance::Group(
+        (vec![
+            ("Name".into(), Instance::Scalar(Value::String("A".into()))),
+            ("Name".into(), Instance::Scalar(Value::String("B".into()))),
+        ])
+        .into(),
+    );
     assert!(matches!(
         to_string(&schema(), &duplicate),
         Err(XmlFormatError::DuplicateField {
@@ -463,16 +507,22 @@ fn simple_content_text_and_attributes_roundtrip() {
             ],
         )],
     );
-    let instance = Instance::Group(vec![(
-        "Price".into(),
-        Instance::Group(vec![
-            (XML_TEXT_FIELD.into(), Instance::Scalar(Value::Float(12.5))),
-            (
-                "currency".into(),
-                Instance::Scalar(Value::String("USD".into())),
+    let instance = Instance::Group(
+        (vec![(
+            "Price".into(),
+            Instance::Group(
+                (vec![
+                    (XML_TEXT_FIELD.into(), Instance::Scalar(Value::Float(12.5))),
+                    (
+                        "currency".into(),
+                        Instance::Scalar(Value::String("USD".into())),
+                    ),
+                ])
+                .into(),
             ),
-        ]),
-    )]);
+        )])
+        .into(),
+    );
     let path = std::env::temp_dir().join(format!(
         "ferrule_xml_simple_content_test_{}.xml",
         std::process::id()
@@ -570,19 +620,25 @@ fn generic_text_elements_use_the_mapped_runtime_name() {
     )
     .repeating();
     let schema = SchemaNode::group("Record", vec![generic]);
-    let instance = Instance::Group(vec![(
-        XML_ELEMENTS_FIELD.into(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            (
-                XML_NODE_NAME_FIELD.into(),
-                Instance::Scalar(Value::String("Code".into())),
-            ),
-            (
-                XML_TEXT_FIELD.into(),
-                Instance::Scalar(Value::String("A-17".into())),
-            ),
-        ])]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            XML_ELEMENTS_FIELD.into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
+                    (
+                        XML_NODE_NAME_FIELD.into(),
+                        Instance::Scalar(Value::String("Code".into())),
+                    ),
+                    (
+                        XML_TEXT_FIELD.into(),
+                        Instance::Scalar(Value::String("A-17".into())),
+                    ),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
 
     let xml = to_string(&schema, &instance).unwrap();
     assert!(xml.contains("<Code>A-17</Code>"), "{xml}");
@@ -690,15 +746,21 @@ fn group_alternatives_emit_selected_xsi_type_and_integral_float() {
         Err(XmlFormatError::UnknownXmlType { .. })
     ));
     let schema = SchemaNode::group("Root", vec![address]);
-    let instance = Instance::Group(vec![(
-        "Address".into(),
-        Instance::Group(vec![
-            ("name".into(), Instance::Scalar(Value::String("Ada".into()))),
-            ("state".into(), Instance::Scalar(Value::String("WA".into()))),
-            ("zip".into(), Instance::Scalar(Value::Float(98101.0))),
-            ("postcode".into(), Instance::Scalar(Value::Null)),
-        ]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            "Address".into(),
+            Instance::Group(
+                (vec![
+                    ("name".into(), Instance::Scalar(Value::String("Ada".into()))),
+                    ("state".into(), Instance::Scalar(Value::String("WA".into()))),
+                    ("zip".into(), Instance::Scalar(Value::Float(98101.0))),
+                    ("postcode".into(), Instance::Scalar(Value::Null)),
+                ])
+                .into(),
+            ),
+        )])
+        .into(),
+    );
     let xml = to_string(&schema, &instance).unwrap();
     assert!(xml.contains("xsi:type=\"ft:Domestic\""), "{xml}");
     assert!(xml.contains("xmlns:ft=\"urn:ferrule:test\""), "{xml}");
@@ -882,9 +944,9 @@ fn recursive_xml_writes_are_depth_bounded() {
         "directory",
         vec![SchemaNode::recursive_group("directory", "directory")],
     );
-    let mut instance = Instance::Group(Vec::new());
+    let mut instance = Instance::Group((Vec::new()).into());
     for _ in 0..=MAX_XML_RECURSION_DEPTH {
-        instance = Instance::Group(vec![("directory".into(), instance)]);
+        instance = Instance::Group((vec![("directory".into(), instance)]).into());
     }
     assert!(matches!(
         to_string(&schema, &instance),
@@ -895,14 +957,17 @@ fn recursive_xml_writes_are_depth_bounded() {
 }
 
 fn recursive_directory(name: &str, child: Option<Instance>) -> Instance {
-    Instance::Group(vec![
-        (
-            "name".into(),
-            Instance::Scalar(Value::String(name.to_string())),
-        ),
-        (
-            "directory".into(),
-            Instance::Repeated(child.into_iter().collect()),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String(name.to_string())),
+            ),
+            (
+                "directory".into(),
+                Instance::Repeated(child.into_iter().collect()),
+            ),
+        ])
+        .into(),
+    )
 }

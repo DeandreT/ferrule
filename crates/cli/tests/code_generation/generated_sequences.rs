@@ -509,81 +509,96 @@ fn generated_sequence_source(error_precedence: bool) -> Instance {
                   length: i64,
                   from: i64,
                   to: i64| {
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            (
-                "Tokens".into(),
-                Instance::Scalar(Value::String(tokens.into())),
-            ),
-            (
-                "Unicode".into(),
-                Instance::Scalar(Value::String(unicode.into())),
-            ),
-            (
-                "Delimiter".into(),
-                Instance::Scalar(Value::String(delimiter.into())),
-            ),
-            ("Length".into(), Instance::Scalar(Value::Int(length))),
-            ("From".into(), Instance::Scalar(Value::Int(from))),
-            ("To".into(), Instance::Scalar(Value::Int(to))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                (
+                    "Tokens".into(),
+                    Instance::Scalar(Value::String(tokens.into())),
+                ),
+                (
+                    "Unicode".into(),
+                    Instance::Scalar(Value::String(unicode.into())),
+                ),
+                (
+                    "Delimiter".into(),
+                    Instance::Scalar(Value::String(delimiter.into())),
+                ),
+                ("Length".into(), Instance::Scalar(Value::Int(length))),
+                ("From".into(), Instance::Scalar(Value::Int(from))),
+                ("To".into(), Instance::Scalar(Value::Int(to))),
+            ])
+            .into(),
+        )
     };
 
-    Instance::Group(vec![
-        (
-            "ErrorInput".into(),
-            Instance::Scalar(if error_precedence {
-                Value::Int(7)
-            } else {
-                Value::String("left,right".into())
-            }),
-        ),
-        (
-            "TriggerError".into(),
-            Instance::Scalar(Value::Bool(error_precedence)),
-        ),
-        (
-            "Parents".into(),
-            Instance::Repeated(vec![
-                parent("Alpha", "delta,,alpha,beta,gamma", "aé🙂z", ",", 2, 2, 4),
-                parent("Beta", "one|three|two", "", "|", 2, 4, 2),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "ErrorInput".into(),
+                Instance::Scalar(if error_precedence {
+                    Value::Int(7)
+                } else {
+                    Value::String("left,right".into())
+                }),
+            ),
+            (
+                "TriggerError".into(),
+                Instance::Scalar(Value::Bool(error_precedence)),
+            ),
+            (
+                "Parents".into(),
+                Instance::Repeated(vec![
+                    parent("Alpha", "delta,,alpha,beta,gamma", "aé🙂z", ",", 2, 2, 4),
+                    parent("Beta", "one|three|two", "", "|", 2, 4, 2),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn generated_sequence_expected() -> Instance {
     fn parent_string(value: &str, parent: &str, position: i64) -> Instance {
-        Instance::Group(vec![
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            ),
-            (
-                "Parent".into(),
-                Instance::Scalar(Value::String(parent.into())),
-            ),
-            ("Position".into(), Instance::Scalar(Value::Int(position))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                ),
+                (
+                    "Parent".into(),
+                    Instance::Scalar(Value::String(parent.into())),
+                ),
+                ("Position".into(), Instance::Scalar(Value::Int(position))),
+            ])
+            .into(),
+        )
     }
     fn parent_int(value: i64, parent: &str, position: i64) -> Instance {
-        Instance::Group(vec![
-            ("Value".into(), Instance::Scalar(Value::Int(value))),
-            (
-                "Parent".into(),
-                Instance::Scalar(Value::String(parent.into())),
-            ),
-            ("Position".into(), Instance::Scalar(Value::Int(position))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Value".into(), Instance::Scalar(Value::Int(value))),
+                (
+                    "Parent".into(),
+                    Instance::Scalar(Value::String(parent.into())),
+                ),
+                ("Position".into(), Instance::Scalar(Value::Int(position))),
+            ])
+            .into(),
+        )
     }
     fn simple_string(value: &str, position: i64) -> Instance {
-        Instance::Group(vec![
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            ),
-            ("Position".into(), Instance::Scalar(Value::Int(position))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                ),
+                ("Position".into(), Instance::Scalar(Value::Int(position))),
+            ])
+            .into(),
+        )
     }
     struct ExpectedParent<'a> {
         name: &'a str,
@@ -611,114 +626,123 @@ fn generated_sequence_expected() -> Instance {
                 .map(|(index, value)| parent_int(*value, name, index as i64 + 1))
                 .collect::<Vec<_>>()
         };
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            (
-                "Controlled".into(),
-                Instance::Repeated(strings(expected.controlled)),
-            ),
-            (
-                "Chunks".into(),
-                Instance::Repeated(strings(expected.chunks)),
-            ),
-            (
-                "DefaultRange".into(),
-                Instance::Repeated(ints(expected.default_range)),
-            ),
-            (
-                "ExplicitRange".into(),
-                Instance::Repeated(ints(expected.explicit_range)),
-            ),
-            ("First".into(), parent_string(expected.first, name, 1)),
-            (
-                "Mapped".into(),
-                Instance::MappedSequence(strings(expected.mapped)),
-            ),
-            (
-                "Nested".into(),
-                Instance::Repeated(
-                    expected
-                        .nested
-                        .iter()
-                        .enumerate()
-                        .map(|(outer_index, (value, pieces))| {
-                            Instance::Group(vec![
-                                (
-                                    "Value".into(),
-                                    Instance::Scalar(Value::String((*value).into())),
-                                ),
-                                (
-                                    "Position".into(),
-                                    Instance::Scalar(Value::Int(outer_index as i64 + 1)),
-                                ),
-                                (
-                                    "Pieces".into(),
-                                    Instance::Repeated(
-                                        pieces
-                                            .iter()
-                                            .enumerate()
-                                            .map(|(inner_index, piece)| {
-                                                simple_string(piece, inner_index as i64 + 1)
-                                            })
-                                            .collect(),
-                                    ),
-                                ),
-                            ])
-                        })
-                        .collect(),
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                (
+                    "Controlled".into(),
+                    Instance::Repeated(strings(expected.controlled)),
                 ),
-            ),
-        ])
+                (
+                    "Chunks".into(),
+                    Instance::Repeated(strings(expected.chunks)),
+                ),
+                (
+                    "DefaultRange".into(),
+                    Instance::Repeated(ints(expected.default_range)),
+                ),
+                (
+                    "ExplicitRange".into(),
+                    Instance::Repeated(ints(expected.explicit_range)),
+                ),
+                ("First".into(), parent_string(expected.first, name, 1)),
+                (
+                    "Mapped".into(),
+                    Instance::MappedSequence(strings(expected.mapped)),
+                ),
+                (
+                    "Nested".into(),
+                    Instance::Repeated(
+                        expected
+                            .nested
+                            .iter()
+                            .enumerate()
+                            .map(|(outer_index, (value, pieces))| {
+                                Instance::Group(
+                                    (vec![
+                                        (
+                                            "Value".into(),
+                                            Instance::Scalar(Value::String((*value).into())),
+                                        ),
+                                        (
+                                            "Position".into(),
+                                            Instance::Scalar(Value::Int(outer_index as i64 + 1)),
+                                        ),
+                                        (
+                                            "Pieces".into(),
+                                            Instance::Repeated(
+                                                pieces
+                                                    .iter()
+                                                    .enumerate()
+                                                    .map(|(inner_index, piece)| {
+                                                        simple_string(piece, inner_index as i64 + 1)
+                                                    })
+                                                    .collect(),
+                                            ),
+                                        ),
+                                    ])
+                                    .into(),
+                                )
+                            })
+                            .collect(),
+                    ),
+                ),
+            ])
+            .into(),
+        )
     }
 
-    Instance::Group(vec![
-        (
-            "ParentOut".into(),
-            Instance::Repeated(vec![
-                parent_output(&ExpectedParent {
-                    name: "Alpha",
-                    controlled: &["beta", "delta"],
-                    chunks: &["aé", "🙂z"],
-                    default_range: &[1, 2, 3, 4],
-                    explicit_range: &[2, 3, 4],
-                    first: "delta",
-                    mapped: &["delta", "alpha", "beta", "gamma"],
-                    nested: &[
-                        ("delta", &["de", "lt", "a"]),
-                        ("", &[]),
-                        ("alpha", &["al", "ph", "a"]),
-                        ("beta", &["be", "ta"]),
-                        ("gamma", &["ga", "mm", "a"]),
-                    ],
-                }),
-                parent_output(&ExpectedParent {
-                    name: "Beta",
-                    controlled: &["three", "two"],
-                    chunks: &[],
-                    default_range: &[1, 2],
-                    explicit_range: &[],
-                    first: "one",
-                    mapped: &["one", "three", "two"],
-                    nested: &[
-                        ("one", &["on", "e"]),
-                        ("three", &["th", "re", "e"]),
-                        ("two", &["tw", "o"]),
-                    ],
-                }),
-            ]),
-        ),
-        (
-            "EmptyTokens".into(),
-            Instance::Repeated(vec![simple_string("", 1)]),
-        ),
-        ("EmptyChunks".into(), Instance::Repeated(Vec::new())),
-        ("NullTokens".into(), Instance::Repeated(Vec::new())),
-        ("NullRange".into(), Instance::Repeated(Vec::new())),
-        (
-            "ErrorCheck".into(),
-            Instance::Repeated(vec![simple_string("left", 1), simple_string("right", 2)]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "ParentOut".into(),
+                Instance::Repeated(vec![
+                    parent_output(&ExpectedParent {
+                        name: "Alpha",
+                        controlled: &["beta", "delta"],
+                        chunks: &["aé", "🙂z"],
+                        default_range: &[1, 2, 3, 4],
+                        explicit_range: &[2, 3, 4],
+                        first: "delta",
+                        mapped: &["delta", "alpha", "beta", "gamma"],
+                        nested: &[
+                            ("delta", &["de", "lt", "a"]),
+                            ("", &[]),
+                            ("alpha", &["al", "ph", "a"]),
+                            ("beta", &["be", "ta"]),
+                            ("gamma", &["ga", "mm", "a"]),
+                        ],
+                    }),
+                    parent_output(&ExpectedParent {
+                        name: "Beta",
+                        controlled: &["three", "two"],
+                        chunks: &[],
+                        default_range: &[1, 2],
+                        explicit_range: &[],
+                        first: "one",
+                        mapped: &["one", "three", "two"],
+                        nested: &[
+                            ("one", &["on", "e"]),
+                            ("three", &["th", "re", "e"]),
+                            ("two", &["tw", "o"]),
+                        ],
+                    }),
+                ]),
+            ),
+            (
+                "EmptyTokens".into(),
+                Instance::Repeated(vec![simple_string("", 1)]),
+            ),
+            ("EmptyChunks".into(), Instance::Repeated(Vec::new())),
+            ("NullTokens".into(), Instance::Repeated(Vec::new())),
+            ("NullRange".into(), Instance::Repeated(Vec::new())),
+            (
+                "ErrorCheck".into(),
+                Instance::Repeated(vec![simple_string("left", 1), simple_string("right", 2)]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn write_generated_sequence_project(directory: &Path) -> TestResult<PathBuf> {

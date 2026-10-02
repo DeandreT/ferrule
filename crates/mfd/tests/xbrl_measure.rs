@@ -130,10 +130,13 @@ fn xbrl_measure_helpers_retain_qname_bindings() -> Result<(), Box<dyn Error>> {
     assert!(imported.project.graph.nodes.contains_key(&currency_node));
     assert!(imported.project.graph.nodes.contains_key(&shares_node));
 
-    let source = Instance::Group(vec![(
-        "Currency".to_string(),
-        Instance::Scalar(Value::String("USD".to_string())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Currency".to_string(),
+            Instance::Scalar(Value::String("USD".to_string())),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source)?;
     assert_eq!(
         scalar_field(&output, "CurrencyMeasure"),
@@ -209,10 +212,13 @@ fn malformed_xbrl_measure_pins_retain_a_null_binding() -> Result<(), Box<dyn Err
         imported.project.graph.nodes.get(&shares_node),
         Some(Node::Const { value: Value::Null })
     ));
-    let source = Instance::Group(vec![(
-        "Currency".to_string(),
-        Instance::Scalar(Value::String("USD".to_string())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Currency".to_string(),
+            Instance::Scalar(Value::String("USD".to_string())),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source)?;
     assert_eq!(scalar_field(&output, "SharesMeasure"), Some(&Value::Null));
     Ok(())

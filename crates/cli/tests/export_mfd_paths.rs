@@ -223,10 +223,13 @@ fn relocated_export_roundtrips_and_executes_all_static_boundaries() -> Result {
     ] {
         assert_eq!(
             format_xml::read(&temp.0.join("results").join(name), &document(root))?,
-            Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into()))
-            )])
+            Instance::Group(
+                (vec![(
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into()))
+                )])
+                .into()
+            )
         );
     }
     assert_eq!(
@@ -550,10 +553,13 @@ fn relocated_pipeline_export_preserves_connected_previews_and_static_resources()
     for (root, name) in [("Target", "target.xml"), ("Audit", "audit.xml")] {
         assert_eq!(
             format_xml::read(&temp.0.join("results").join(name), &document(root))?,
-            Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String("first:second".into()))
-            )])
+            Instance::Group(
+                (vec![(
+                    "Value".into(),
+                    Instance::Scalar(Value::String("first:second".into()))
+                )])
+                .into()
+            )
         );
     }
     assert_eq!(

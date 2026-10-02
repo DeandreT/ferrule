@@ -184,10 +184,13 @@ fn lax_wildcards_type_known_names_without_duplicating_generic_fallbacks()
         return Err("generic element item had no LocalName".into());
     };
     *name = "Known".into();
-    let constructed = Instance::Group(vec![(
-        XML_ELEMENTS_FIELD.into(),
-        Instance::Repeated(vec![known_through_fallback]),
-    )]);
+    let constructed = Instance::Group(
+        (vec![(
+            XML_ELEMENTS_FIELD.into(),
+            Instance::Repeated(vec![known_through_fallback]),
+        )])
+        .into(),
+    );
     assert!(matches!(
         to_string(&schema, &constructed),
         Err(XmlFormatError::KnownXmlWildcardElementRequiresTypedField {

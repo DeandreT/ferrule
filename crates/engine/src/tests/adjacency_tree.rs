@@ -149,29 +149,35 @@ fn target_schema() -> SchemaNode {
 }
 
 fn rows(rows: &[(&str, Option<&str>)]) -> Instance {
-    Instance::Group(vec![(
-        "type".into(),
-        Instance::Repeated(
-            rows.iter()
-                .map(|(key, parent)| {
-                    Instance::Group(vec![
-                        (
-                            "name".into(),
-                            Instance::Scalar(Value::String((*key).into())),
-                        ),
-                        (
-                            "base".into(),
-                            Instance::Scalar(
-                                parent
-                                    .map(|value| Value::String(value.into()))
-                                    .unwrap_or(Value::Null),
-                            ),
-                        ),
-                    ])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "type".into(),
+            Instance::Repeated(
+                rows.iter()
+                    .map(|(key, parent)| {
+                        Instance::Group(
+                            (vec![
+                                (
+                                    "name".into(),
+                                    Instance::Scalar(Value::String((*key).into())),
+                                ),
+                                (
+                                    "base".into(),
+                                    Instance::Scalar(
+                                        parent
+                                            .map(|value| Value::String(value.into()))
+                                            .unwrap_or(Value::Null),
+                                    ),
+                                ),
+                            ])
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn string<'a>(instance: &'a Instance, field: &str) -> &'a str {

@@ -223,66 +223,72 @@ fn join_project() -> Result<Project, mapping::JoinPlanError> {
 }
 
 fn primary_source() -> Instance {
-    Instance::Group(vec![
-        (
-            "A".into(),
-            Instance::Repeated(vec![
-                record(&[
-                    ("Id", Value::Int(1)),
-                    ("Region", Value::String("west".into())),
-                    ("Label", Value::String("A1".into())),
+    Instance::Group(
+        (vec![
+            (
+                "A".into(),
+                Instance::Repeated(vec![
+                    record(&[
+                        ("Id", Value::Int(1)),
+                        ("Region", Value::String("west".into())),
+                        ("Label", Value::String("A1".into())),
+                    ]),
+                    record(&[
+                        ("Id", Value::Int(1)),
+                        ("Region", Value::String("west".into())),
+                        ("Label", Value::String("A2".into())),
+                    ]),
+                    record(&[
+                        ("Id", Value::Null),
+                        ("Region", Value::String("west".into())),
+                        ("Label", Value::String("AN".into())),
+                    ]),
                 ]),
-                record(&[
-                    ("Id", Value::Int(1)),
-                    ("Region", Value::String("west".into())),
-                    ("Label", Value::String("A2".into())),
+            ),
+            (
+                "C".into(),
+                Instance::Repeated(vec![
+                    record(&[
+                        ("Code", Value::String("X".into())),
+                        ("Region", Value::String("west".into())),
+                        ("Value", Value::String("CX1".into())),
+                    ]),
+                    record(&[
+                        ("Code", Value::String("X".into())),
+                        ("Region", Value::String("west".into())),
+                        ("Value", Value::String("CX2".into())),
+                    ]),
+                    record(&[
+                        ("Code", Value::String("Y".into())),
+                        ("Region", Value::String("west".into())),
+                        ("Value", Value::String("CY".into())),
+                    ]),
+                    record(&[
+                        ("Code", Value::String("X".into())),
+                        ("Region", Value::String("east".into())),
+                        ("Value", Value::String("CE".into())),
+                    ]),
                 ]),
-                record(&[
-                    ("Id", Value::Null),
-                    ("Region", Value::String("west".into())),
-                    ("Label", Value::String("AN".into())),
-                ]),
-            ]),
-        ),
-        (
-            "C".into(),
-            Instance::Repeated(vec![
-                record(&[
-                    ("Code", Value::String("X".into())),
-                    ("Region", Value::String("west".into())),
-                    ("Value", Value::String("CX1".into())),
-                ]),
-                record(&[
-                    ("Code", Value::String("X".into())),
-                    ("Region", Value::String("west".into())),
-                    ("Value", Value::String("CX2".into())),
-                ]),
-                record(&[
-                    ("Code", Value::String("Y".into())),
-                    ("Region", Value::String("west".into())),
-                    ("Value", Value::String("CY".into())),
-                ]),
-                record(&[
-                    ("Code", Value::String("X".into())),
-                    ("Region", Value::String("east".into())),
-                    ("Value", Value::String("CE".into())),
-                ]),
-            ]),
-        ),
-    ])
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn catalog_source() -> Instance {
-    Instance::Group(vec![(
-        "B".into(),
-        Instance::Repeated(vec![
-            b_row(Value::String("1".into()), "west", "X", "low", 10),
-            b_row(Value::Int(1), "west", "X", "high", 30),
-            b_row(Value::Int(1), "west", "Y", "mid", 20),
-            b_row(Value::xml_nil(), "west", "X", "nil", 40),
-            b_row(Value::Int(1), "east", "X", "east", 50),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "B".into(),
+            Instance::Repeated(vec![
+                b_row(Value::String("1".into()), "west", "X", "low", 10),
+                b_row(Value::Int(1), "west", "X", "high", 30),
+                b_row(Value::Int(1), "west", "Y", "mid", 20),
+                b_row(Value::xml_nil(), "west", "X", "nil", 40),
+                b_row(Value::Int(1), "east", "X", "east", 50),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn b_row(aid: Value, region: &str, code: &str, tag: &str, rank: i64) -> Instance {
@@ -297,23 +303,27 @@ fn b_row(aid: Value, region: &str, code: &str, tag: &str, rank: i64) -> Instance
 
 fn record(fields: &[(&str, Value)]) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .iter()
             .map(|(name, value)| ((*name).into(), Instance::Scalar(value.clone())))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
 fn expected() -> Instance {
-    Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![
-            target_row("A1", "CX1", 1, 1, 1),
-            target_row("A1", "CX2", 2, 1, 2),
-            target_row("A2", "CX1", 1, 2, 3),
-            target_row("A2", "CX2", 2, 2, 4),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![
+                target_row("A1", "CX1", 1, 1, 1),
+                target_row("A1", "CX2", 2, 1, 2),
+                target_row("A2", "CX1", 1, 2, 3),
+                target_row("A2", "CX2", 2, 2, 4),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn target_row(
@@ -323,35 +333,41 @@ fn target_row(
     a_position: i64,
     join_position: i64,
 ) -> Instance {
-    Instance::Group(vec![
-        (
-            "ALabel".into(),
-            Instance::Scalar(Value::String(label.into())),
-        ),
-        (
-            "BTag".into(),
-            Instance::Scalar(Value::String("high".into())),
-        ),
-        (
-            "CValue".into(),
-            Instance::Scalar(Value::String(c_value.into())),
-        ),
-        (
-            "JoinPosition".into(),
-            Instance::Scalar(Value::Int(join_position)),
-        ),
-        ("APosition".into(), Instance::Scalar(Value::Int(a_position))),
-        ("BPosition".into(), Instance::Scalar(Value::Int(2))),
-        ("CPosition".into(), Instance::Scalar(Value::Int(c_position))),
-        ("Rank".into(), Instance::Scalar(Value::Int(30))),
-        (
-            "Details".into(),
-            Instance::Group(vec![(
-                "Summary".into(),
-                Instance::Scalar(Value::String(format!("{label}:{c_value}"))),
-            )]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "ALabel".into(),
+                Instance::Scalar(Value::String(label.into())),
+            ),
+            (
+                "BTag".into(),
+                Instance::Scalar(Value::String("high".into())),
+            ),
+            (
+                "CValue".into(),
+                Instance::Scalar(Value::String(c_value.into())),
+            ),
+            (
+                "JoinPosition".into(),
+                Instance::Scalar(Value::Int(join_position)),
+            ),
+            ("APosition".into(), Instance::Scalar(Value::Int(a_position))),
+            ("BPosition".into(), Instance::Scalar(Value::Int(2))),
+            ("CPosition".into(), Instance::Scalar(Value::Int(c_position))),
+            ("Rank".into(), Instance::Scalar(Value::Int(30))),
+            (
+                "Details".into(),
+                Instance::Group(
+                    (vec![(
+                        "Summary".into(),
+                        Instance::Scalar(Value::String(format!("{label}:{c_value}"))),
+                    )])
+                    .into(),
+                ),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn engine_sources() -> Vec<(String, Instance)> {

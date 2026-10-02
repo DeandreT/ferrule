@@ -99,13 +99,13 @@ fn property_count_input_precedes_shape_checks_and_output_uses_emitted_properties
     assert!(matches!(
         duplicate,
         Ok(Instance::Group(ref fields))
-            if fields == &vec![(
+            if fields.as_slice() == [(
                 "value".into(),
                 Instance::Scalar(Value::String("second".into()))
             )]
     ));
 
-    let omitted = Instance::Group(vec![("value".into(), Instance::Scalar(Value::Null))]);
+    let omitted = Instance::Group((vec![("value".into(), Instance::Scalar(Value::Null))]).into());
     assert!(matches!(
         crate::to_string(&schema, &omitted),
         Err(JsonFormatError::PropertyCountMismatch { .. })
@@ -121,7 +121,7 @@ fn property_count_input_precedes_shape_checks_and_output_uses_emitted_properties
 }"#,
     );
     let explicit_null =
-        Instance::Group(vec![("value".into(), Instance::Scalar(Value::json_null()))]);
+        Instance::Group((vec![("value".into(), Instance::Scalar(Value::json_null()))]).into());
     assert!(matches!(
         crate::to_string(&nullable, &explicit_null),
         Ok(ref rendered) if rendered == "{\n  \"value\": null\n}\n"

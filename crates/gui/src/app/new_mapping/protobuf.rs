@@ -171,22 +171,28 @@ message Other { bool enabled = 1; }"#,
                 .map(|file| (file.path.as_str(), file.source.as_str())),
         )?;
         let city = |value: &str| {
-            Instance::Group(vec![(
-                "city".into(),
-                Instance::Scalar(Value::String(value.to_owned())),
-            )])
+            Instance::Group(
+                (vec![(
+                    "city".into(),
+                    Instance::Scalar(Value::String(value.to_owned())),
+                )])
+                .into(),
+            )
         };
-        let source = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("Café".to_owned())),
-            ),
-            ("count".into(), Instance::Scalar(Value::Int(2))),
-            (
-                "addresses".into(),
-                Instance::Repeated(vec![city("Paris"), city("München")]),
-            ),
-        ]);
+        let source = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("Café".to_owned())),
+                ),
+                ("count".into(), Instance::Scalar(Value::Int(2))),
+                (
+                    "addresses".into(),
+                    Instance::Repeated(vec![city("Paris"), city("München")]),
+                ),
+            ])
+            .into(),
+        );
         let expected_bytes = format_protobuf::to_vec(&layout, "demo.Person", &source)?;
         std::fs::write(&source_path, &expected_bytes)?;
         app.project.root.construction = mapping::ScopeConstruction::CopyCurrentSource;

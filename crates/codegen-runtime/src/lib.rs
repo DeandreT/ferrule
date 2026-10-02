@@ -45,7 +45,9 @@ pub use generated_sequence::{
     generate_sequence, recursive_collect, recursive_sequence_parameter, tokenize,
     tokenize_by_length, tokenize_regex,
 };
-pub use ir::{DocumentMember, Instance, ScalarType, Value};
+pub use ir::{
+    DocumentMember, Instance, InstanceGroup, ScalarType, Value, XmlTypeOrigin, XmlTypeOriginError,
+};
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
 };
@@ -584,7 +586,7 @@ pub fn field(name: impl Into<String>, value: Instance) -> GroupField {
 
 /// Creates a group while retaining the input iterator's field order.
 pub fn group(fields: impl IntoIterator<Item = GroupField>) -> Instance {
-    Instance::Group(fields.into_iter().collect())
+    Instance::Group((fields.into_iter().collect::<Vec<_>>()).into())
 }
 
 /// Creates a scalar instance.

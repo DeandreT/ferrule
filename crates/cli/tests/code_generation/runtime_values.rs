@@ -174,39 +174,45 @@ fn runtime_project() -> Project {
 }
 
 fn source(use_current: bool) -> Instance {
-    Instance::Group(vec![(
-        "UseCurrent".into(),
-        Instance::Scalar(Value::Bool(use_current)),
-    )])
+    Instance::Group(
+        (vec![(
+            "UseCurrent".into(),
+            Instance::Scalar(Value::Bool(use_current)),
+        )])
+        .into(),
+    )
 }
 
 fn expected(current: &str) -> Instance {
-    Instance::Group(vec![
-        (
-            "Active".into(),
-            Instance::Scalar(Value::String(ACTIVE.into())),
-        ),
-        ("Main".into(), Instance::Scalar(Value::String(MAIN.into()))),
-        (
-            "CurrentOne".into(),
-            Instance::Scalar(Value::String(current.into())),
-        ),
-        (
-            "CurrentTwo".into(),
-            Instance::Scalar(Value::String(current.into())),
-        ),
-        (
-            "Lazy".into(),
-            Instance::Scalar(Value::String("lazy".into())),
-        ),
-        (
-            "Correlation".into(),
-            Instance::Scalar(Value::String("txn-42".into())),
-        ),
-        ("Control".into(), Instance::Scalar(Value::Int(42))),
-        ("TestMode".into(), Instance::Scalar(Value::Bool(true))),
-        ("Amount".into(), Instance::Scalar(Value::Float(125.0))),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Active".into(),
+                Instance::Scalar(Value::String(ACTIVE.into())),
+            ),
+            ("Main".into(), Instance::Scalar(Value::String(MAIN.into()))),
+            (
+                "CurrentOne".into(),
+                Instance::Scalar(Value::String(current.into())),
+            ),
+            (
+                "CurrentTwo".into(),
+                Instance::Scalar(Value::String(current.into())),
+            ),
+            (
+                "Lazy".into(),
+                Instance::Scalar(Value::String("lazy".into())),
+            ),
+            (
+                "Correlation".into(),
+                Instance::Scalar(Value::String("txn-42".into())),
+            ),
+            ("Control".into(), Instance::Scalar(Value::Int(42))),
+            ("TestMode".into(), Instance::Scalar(Value::Bool(true))),
+            ("Amount".into(), Instance::Scalar(Value::Float(125.0))),
+        ])
+        .into(),
+    )
 }
 
 #[test]

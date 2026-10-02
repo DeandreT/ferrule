@@ -6,10 +6,11 @@ use mapping::{
 
 fn record(fields: &[(&str, Value)]) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .iter()
             .map(|(name, value)| ((*name).into(), Instance::Scalar(value.clone())))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
@@ -131,25 +132,28 @@ fn singleton_scalar_can_join_a_repeating_collection() {
     );
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
 
-    let source = Instance::Group(vec![
-        (
-            "CustomerNr".into(),
-            Instance::Scalar(Value::String("B".into())),
-        ),
-        (
-            "Customer".into(),
-            repeated(vec![
-                record(&[
-                    ("Number", Value::String("A".into())),
-                    ("Name", Value::String("Ada".into())),
+    let source = Instance::Group(
+        (vec![
+            (
+                "CustomerNr".into(),
+                Instance::Scalar(Value::String("B".into())),
+            ),
+            (
+                "Customer".into(),
+                repeated(vec![
+                    record(&[
+                        ("Number", Value::String("A".into())),
+                        ("Name", Value::String("Ada".into())),
+                    ]),
+                    record(&[
+                        ("Number", Value::String("B".into())),
+                        ("Name", Value::String("Grace".into())),
+                    ]),
                 ]),
-                record(&[
-                    ("Number", Value::String("B".into())),
-                    ("Name", Value::String("Grace".into())),
-                ]),
-            ]),
-        ),
-    ]);
+            ),
+        ])
+        .into(),
+    );
     let output = run(&project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 1);
@@ -240,53 +244,56 @@ fn left_deep_inner_join_preserves_duplicates_order_and_raw_positions() {
             ("CPos", ScalarType::Int),
         ],
     );
-    let source = Instance::Group(vec![
-        (
-            "A".into(),
-            repeated(vec![
-                record(&[("id", Value::Int(1)), ("label", Value::String("A1".into()))]),
-                record(&[("id", Value::Int(1)), ("label", Value::String("A2".into()))]),
-                record(&[("id", Value::Null), ("label", Value::String("AN".into()))]),
-            ]),
-        ),
-        (
-            "B".into(),
-            repeated(vec![
-                record(&[
-                    ("aid", Value::String("1".into())),
-                    ("code", Value::String("X".into())),
-                    ("tag", Value::String("BX".into())),
+    let source = Instance::Group(
+        (vec![
+            (
+                "A".into(),
+                repeated(vec![
+                    record(&[("id", Value::Int(1)), ("label", Value::String("A1".into()))]),
+                    record(&[("id", Value::Int(1)), ("label", Value::String("A2".into()))]),
+                    record(&[("id", Value::Null), ("label", Value::String("AN".into()))]),
                 ]),
-                record(&[
-                    ("aid", Value::Int(1)),
-                    ("code", Value::String("Y".into())),
-                    ("tag", Value::String("BY".into())),
+            ),
+            (
+                "B".into(),
+                repeated(vec![
+                    record(&[
+                        ("aid", Value::String("1".into())),
+                        ("code", Value::String("X".into())),
+                        ("tag", Value::String("BX".into())),
+                    ]),
+                    record(&[
+                        ("aid", Value::Int(1)),
+                        ("code", Value::String("Y".into())),
+                        ("tag", Value::String("BY".into())),
+                    ]),
+                    record(&[
+                        ("aid", Value::Null),
+                        ("code", Value::String("X".into())),
+                        ("tag", Value::String("BN".into())),
+                    ]),
                 ]),
-                record(&[
-                    ("aid", Value::Null),
-                    ("code", Value::String("X".into())),
-                    ("tag", Value::String("BN".into())),
+            ),
+            (
+                "C".into(),
+                repeated(vec![
+                    record(&[
+                        ("code", Value::String("X".into())),
+                        ("value", Value::String("CX1".into())),
+                    ]),
+                    record(&[
+                        ("code", Value::String("X".into())),
+                        ("value", Value::String("CX2".into())),
+                    ]),
+                    record(&[
+                        ("code", Value::String("Y".into())),
+                        ("value", Value::String("CY".into())),
+                    ]),
                 ]),
-            ]),
-        ),
-        (
-            "C".into(),
-            repeated(vec![
-                record(&[
-                    ("code", Value::String("X".into())),
-                    ("value", Value::String("CX1".into())),
-                ]),
-                record(&[
-                    ("code", Value::String("X".into())),
-                    ("value", Value::String("CX2".into())),
-                ]),
-                record(&[
-                    ("code", Value::String("Y".into())),
-                    ("value", Value::String("CY".into())),
-                ]),
-            ]),
-        ),
-    ]);
+            ),
+        ])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
@@ -411,23 +418,26 @@ fn join_controls_compact_flat_positions_without_changing_raw_positions() {
         row_scope.sort_descending = true;
         row_scope.windows = vec![SequenceWindow::First { count: 3 }];
     }
-    let source = Instance::Group(vec![
-        (
-            "A".into(),
-            repeated(vec![
-                record(&[("id", Value::Int(1))]),
-                record(&[("id", Value::Int(1))]),
-            ]),
-        ),
-        (
-            "B".into(),
-            repeated(vec![
-                record(&[("aid", Value::Int(1)), ("rank", Value::Int(10))]),
-                record(&[("aid", Value::Int(1)), ("rank", Value::Int(30))]),
-                record(&[("aid", Value::Int(1)), ("rank", Value::Int(20))]),
-            ]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "A".into(),
+                repeated(vec![
+                    record(&[("id", Value::Int(1))]),
+                    record(&[("id", Value::Int(1))]),
+                ]),
+            ),
+            (
+                "B".into(),
+                repeated(vec![
+                    record(&[("aid", Value::Int(1)), ("rank", Value::Int(10))]),
+                    record(&[("aid", Value::Int(1)), ("rank", Value::Int(30))]),
+                    record(&[("aid", Value::Int(1)), ("rank", Value::Int(20))]),
+                ]),
+            ),
+        ])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
@@ -514,22 +524,25 @@ fn static_descendant_can_read_its_parent_join_tuple() {
         ],
         ..Scope::default()
     });
-    let source = Instance::Group(vec![
-        (
-            "A".into(),
-            repeated(vec![record(&[
-                ("id", Value::Int(1)),
-                ("label", Value::String("kept".into())),
-            ])]),
-        ),
-        (
-            "B".into(),
-            repeated(vec![record(&[
-                ("aid", Value::Int(1)),
-                ("tag", Value::String("matched".into())),
-            ])]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "A".into(),
+                repeated(vec![record(&[
+                    ("id", Value::Int(1)),
+                    ("label", Value::String("kept".into())),
+                ])]),
+            ),
+            (
+                "B".into(),
+                repeated(vec![record(&[
+                    ("aid", Value::Int(1)),
+                    ("tag", Value::String("matched".into())),
+                ])]),
+            ),
+        ])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let row = &output.field("Row").and_then(Instance::as_repeated).unwrap()[0];
@@ -556,13 +569,16 @@ fn runtime_rejects_grouping_a_join_scope() {
     )];
     let mut project = project(nodes, join_plan(), Vec::new(), &[]);
     project.root.children[0].group_by = Some(0);
-    let source = Instance::Group(vec![
-        ("A".into(), repeated(vec![record(&[("id", Value::Int(1))])])),
-        (
-            "B".into(),
-            repeated(vec![record(&[("aid", Value::Int(1))])]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            ("A".into(), repeated(vec![record(&[("id", Value::Int(1))])])),
+            (
+                "B".into(),
+                repeated(vec![record(&[("aid", Value::Int(1))])]),
+            ),
+        ])
+        .into(),
+    );
 
     assert_eq!(
         run(&project, &source),
@@ -677,48 +693,54 @@ fn join_aggregates_reduce_naked_duplicate_tuples_and_empty_results() {
         },
     };
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
-    let source = Instance::Group(vec![
-        (
-            "Separator".into(),
-            Instance::Scalar(Value::String("|".into())),
-        ),
-        (
-            "A".into(),
-            repeated(vec![
-                record(&[("id", Value::Int(1)), ("amount", Value::Int(2))]),
-                record(&[("id", Value::Int(1)), ("amount", Value::Int(3))]),
-                record(&[("id", Value::Null), ("amount", Value::Int(99))]),
-            ]),
-        ),
-        (
-            "B".into(),
-            repeated(vec![
-                record(&[("aid", Value::Int(1)), ("price", Value::Int(10))]),
-                record(&[("aid", Value::Int(1)), ("price", Value::Int(20))]),
-                record(&[("aid", Value::Null), ("price", Value::Int(99))]),
-            ]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "Separator".into(),
+                Instance::Scalar(Value::String("|".into())),
+            ),
+            (
+                "A".into(),
+                repeated(vec![
+                    record(&[("id", Value::Int(1)), ("amount", Value::Int(2))]),
+                    record(&[("id", Value::Int(1)), ("amount", Value::Int(3))]),
+                    record(&[("id", Value::Null), ("amount", Value::Int(99))]),
+                ]),
+            ),
+            (
+                "B".into(),
+                repeated(vec![
+                    record(&[("aid", Value::Int(1)), ("price", Value::Int(10))]),
+                    record(&[("aid", Value::Int(1)), ("price", Value::Int(20))]),
+                    record(&[("aid", Value::Null), ("price", Value::Int(99))]),
+                ]),
+            ),
+        ])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     assert_eq!(scalar(&output, "Sum"), &Value::Int(150));
     assert_eq!(scalar(&output, "Count"), &Value::Int(4));
     assert_eq!(scalar(&output, "Joined"), &Value::String("2|2|3|3".into()));
 
-    let empty = Instance::Group(vec![
-        (
-            "Separator".into(),
-            Instance::Scalar(Value::String("|".into())),
-        ),
-        (
-            "A".into(),
-            repeated(vec![record(&[
-                ("id", Value::Int(1)),
-                ("amount", Value::Int(2)),
-            ])]),
-        ),
-        ("B".into(), repeated(Vec::new())),
-    ]);
+    let empty = Instance::Group(
+        (vec![
+            (
+                "Separator".into(),
+                Instance::Scalar(Value::String("|".into())),
+            ),
+            (
+                "A".into(),
+                repeated(vec![record(&[
+                    ("id", Value::Int(1)),
+                    ("amount", Value::Int(2)),
+                ])]),
+            ),
+            ("B".into(), repeated(Vec::new())),
+        ])
+        .into(),
+    );
     let output = run(&project, &empty).unwrap();
     assert_eq!(scalar(&output, "Sum"), &Value::Int(0));
     assert_eq!(scalar(&output, "Count"), &Value::Int(0));

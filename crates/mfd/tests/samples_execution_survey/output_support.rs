@@ -630,12 +630,11 @@ mod tests {
             "Requests",
             vec![SchemaNode::scalar("Number", ScalarType::Int)],
         );
-        let primary_instance = Instance::Group(vec![(
-            "Code".into(),
-            Instance::Scalar(Value::String("A".into())),
-        )]);
+        let primary_instance = Instance::Group(
+            (vec![("Code".into(), Instance::Scalar(Value::String("A".into())))]).into(),
+        );
         let extra_instance =
-            Instance::Group(vec![("Number".into(), Instance::Scalar(Value::Int(7)))]);
+            Instance::Group((vec![("Number".into(), Instance::Scalar(Value::Int(7)))]).into());
         let actual_primary = workspace.0.join("actual-primary.xml");
         let actual_extra = workspace.0.join("actual-extra.xml");
         let reference_primary = workspace.0.join("ipos.xml");
@@ -712,10 +711,13 @@ mod tests {
             Ok::<_, io::Error>(Instance::DocumentSet(vec![
                 DocumentMember::new(
                     "shared.xml",
-                    Instance::Group(vec![(
-                        "Value".into(),
-                        Instance::Scalar(Value::String("same path".into())),
-                    )]),
+                    Instance::Group(
+                        (vec![(
+                            "Value".into(),
+                            Instance::Scalar(Value::String("same path".into())),
+                        )])
+                        .into(),
+                    ),
                 )
                 .ok_or_else(|| io::Error::other("test document path must be non-empty"))?,
             ]))

@@ -290,10 +290,13 @@ fn user_document_names_and_namespace_can_match_reserved_wrappers() -> TestResult
     )?;
     assert_eq!(
         engine::run(&project, &input)?,
-        ir::Instance::Group(vec![(
-            "document".into(),
-            ir::Instance::Scalar(ir::Value::String("payload".into()))
-        )])
+        ir::Instance::Group(
+            (vec![(
+                "document".into(),
+                ir::Instance::Scalar(ir::Value::String("payload".into()))
+            )])
+            .into()
+        )
     );
     Ok(())
 }

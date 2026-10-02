@@ -68,25 +68,34 @@ fn writes_child_owned_relations_with_generated_keys_idempotently() {
             ),
         ],
     );
-    let row = Instance::Group(vec![
-        value("id", Value::Null),
-        value("name", Value::String("Parent".into())),
-        (
-            "children|parent_id".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![
-                    value("id", Value::Null),
-                    value("parent_id", Value::Null),
-                    value("value", Value::String("First".into())),
+    let row = Instance::Group(
+        (vec![
+            value("id", Value::Null),
+            value("name", Value::String("Parent".into())),
+            (
+                "children|parent_id".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![
+                            value("id", Value::Null),
+                            value("parent_id", Value::Null),
+                            value("value", Value::String("First".into())),
+                        ])
+                        .into(),
+                    ),
+                    Instance::Group(
+                        (vec![
+                            value("id", Value::Null),
+                            value("parent_id", Value::Null),
+                            value("value", Value::String("Second".into())),
+                        ])
+                        .into(),
+                    ),
                 ]),
-                Instance::Group(vec![
-                    value("id", Value::Null),
-                    value("parent_id", Value::Null),
-                    value("value", Value::String("Second".into())),
-                ]),
-            ]),
-        ),
-    ]);
+            ),
+        ])
+        .into(),
+    );
     let instance = Instance::Repeated(vec![row]);
 
     write_instance(&path, &schema, &instance).unwrap();
@@ -139,16 +148,18 @@ fn generated_relational_keys_are_materialized_and_propagated() {
             ),
         ],
     );
-    let instance = Instance::Repeated(vec![Instance::Group(vec![
-        value("name", Value::String("Parent".into())),
-        (
-            "children|parent_id".into(),
-            Instance::Repeated(vec![Instance::Group(vec![value(
-                "value",
-                Value::String("Child".into()),
-            )])]),
-        ),
-    ])]);
+    let instance = Instance::Repeated(vec![Instance::Group(
+        (vec![
+            value("name", Value::String("Parent".into())),
+            (
+                "children|parent_id".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![value("value", Value::String("Child".into()))]).into(),
+                )]),
+            ),
+        ])
+        .into(),
+    )]);
 
     write_instance(&path, &schema, &instance).unwrap();
     write_instance(&path, &schema, &instance).unwrap();
@@ -191,18 +202,24 @@ fn writes_parent_owned_relations_before_the_referencing_row() {
             ),
         ],
     );
-    let instance = Instance::Repeated(vec![Instance::Group(vec![
-        value("id", Value::Null),
-        value("group_id", Value::Null),
-        value("name", Value::String("User".into())),
-        (
-            "groups|group_id".into(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                value("id", Value::Null),
-                value("name", Value::String("Group".into())),
-            ])]),
-        ),
-    ])]);
+    let instance = Instance::Repeated(vec![Instance::Group(
+        (vec![
+            value("id", Value::Null),
+            value("group_id", Value::Null),
+            value("name", Value::String("User".into())),
+            (
+                "groups|group_id".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        value("id", Value::Null),
+                        value("name", Value::String("Group".into())),
+                    ])
+                    .into(),
+                )]),
+            ),
+        ])
+        .into(),
+    )]);
 
     write_instance(&path, &schema, &instance).unwrap();
     let result = read_instance(&path, &schema).unwrap();

@@ -85,7 +85,7 @@ fn project() -> Project {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![])
+    Instance::Group((vec![]).into())
 }
 
 #[test]
@@ -107,15 +107,18 @@ fn typed_runtime_parameters_execute_with_bounded_scalar_coercion() {
 
     assert_eq!(
         run_with_context(&project, &source(), &execution).unwrap(),
-        Instance::Group(vec![
-            (
-                "Correlation".into(),
-                Instance::Scalar(Value::String("txn-17".into())),
-            ),
-            ("Control".into(), Instance::Scalar(Value::Int(42))),
-            ("Test".into(), Instance::Scalar(Value::Bool(true))),
-            ("Amount".into(), Instance::Scalar(Value::Float(125.0))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Correlation".into(),
+                    Instance::Scalar(Value::String("txn-17".into())),
+                ),
+                ("Control".into(), Instance::Scalar(Value::Int(42))),
+                ("Test".into(), Instance::Scalar(Value::Bool(true))),
+                ("Amount".into(), Instance::Scalar(Value::Float(125.0))),
+            ])
+            .into()
+        )
     );
 }
 
@@ -248,7 +251,7 @@ fn optional_runtime_parameter_uses_default_only_when_name_is_absent() {
     assert!(validate(&project).is_empty());
     assert_eq!(
         run(&project, &source()).unwrap(),
-        Instance::Group(vec![("Control".into(), Instance::Scalar(Value::Int(7)))])
+        Instance::Group((vec![("Control".into(), Instance::Scalar(Value::Int(7)))]).into())
     );
 
     let mut supplied = RuntimeParameters::new();
@@ -258,7 +261,7 @@ fn optional_runtime_parameter_uses_default_only_when_name_is_absent() {
     let context = ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&supplied);
     assert_eq!(
         run_with_context(&project, &source(), &context).unwrap(),
-        Instance::Group(vec![("Control".into(), Instance::Scalar(Value::Int(42)))])
+        Instance::Group((vec![("Control".into(), Instance::Scalar(Value::Int(42)))]).into())
     );
 
     let mut supplied_null = RuntimeParameters::new();
@@ -267,7 +270,7 @@ fn optional_runtime_parameter_uses_default_only_when_name_is_absent() {
         ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&supplied_null);
     assert_eq!(
         run_with_context(&project, &source(), &context).unwrap(),
-        Instance::Group(vec![("Control".into(), Instance::Scalar(Value::Null))]),
+        Instance::Group((vec![("Control".into(), Instance::Scalar(Value::Null))]).into()),
     );
 
     let mut wrong = RuntimeParameters::new();
@@ -298,7 +301,7 @@ fn optional_runtime_parameter_skips_failing_default_for_supplied_value() {
     let context = ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&supplied);
     assert_eq!(
         run_with_context(&project, &source(), &context).unwrap(),
-        Instance::Group(vec![("Control".into(), Instance::Scalar(Value::Int(9)))])
+        Instance::Group((vec![("Control".into(), Instance::Scalar(Value::Int(9)))]).into())
     );
     assert_eq!(
         run(&project, &source()),
@@ -340,15 +343,18 @@ fn preview_purpose_coerces_raw_values_and_normal_run_still_requires_host_inputs(
     ));
     assert_eq!(
         run_with_context(&project, &source(), &preview_context()).unwrap(),
-        Instance::Group(vec![
-            (
-                "Correlation".into(),
-                Instance::Scalar(Value::String("".into()))
-            ),
-            ("Control".into(), Instance::Scalar(Value::Int(17))),
-            ("Test".into(), Instance::Scalar(Value::Bool(true))),
-            ("Amount".into(), Instance::Scalar(Value::Float(5.5))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Correlation".into(),
+                    Instance::Scalar(Value::String("".into()))
+                ),
+                ("Control".into(), Instance::Scalar(Value::Int(17))),
+                ("Test".into(), Instance::Scalar(Value::Bool(true))),
+                ("Amount".into(), Instance::Scalar(Value::Float(5.5))),
+            ])
+            .into()
+        )
     );
 }
 

@@ -154,7 +154,8 @@ fn explicit_unused_input_constant_and_zero_argument_scalar_bodies_are_executable
             let directory = Directory::new();
             let p = project(ty, value.clone(), function);
             let path = export(&p, &directory.0);
-            let input = Instance::Group(vec![("Value".into(), Instance::Scalar(value.clone()))]);
+            let input =
+                Instance::Group((vec![("Value".into(), Instance::Scalar(value.clone()))]).into());
             let expected = engine::run(&p, &input).unwrap();
             let mut imported = mfd::import_with_profile(
                 &path,

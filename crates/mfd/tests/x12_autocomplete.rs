@@ -51,13 +51,19 @@ fn imported_x12_autocomplete_completes_unbound_isa_fields_with_the_run_clock() {
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
-    let source = Instance::Group(vec![(
-        "SRC".into(),
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("SENDER".into())),
-        )]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "SRC".into(),
+            Instance::Group(
+                (vec![(
+                    "Value".into(),
+                    Instance::Scalar(Value::String("SENDER".into())),
+                )])
+                .into(),
+            ),
+        )])
+        .into(),
+    );
     let timestamp = "2026-07-18T12:00:27-07:00";
     let execution = engine::ExecutionContext::new(&design).with_current_datetime(timestamp);
     let output = engine::run_with_context(&imported.project, &source, &execution).unwrap();

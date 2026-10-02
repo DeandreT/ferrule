@@ -74,7 +74,7 @@ fn filter_group(
             kept_items.as_deref().unwrap_or(&[]),
         );
     }
-    Ok(Instance::Group(output))
+    Ok(Instance::Group((output).into()))
 }
 
 // Reconcile the XML choice reader's private ordered child values with the

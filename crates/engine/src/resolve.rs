@@ -263,14 +263,20 @@ mod tests {
 
     #[test]
     fn empty_uniterated_repetition_is_null_and_shadows_outer_values() {
-        let outer = Instance::Group(vec![(
-            "rows".into(),
-            Instance::Repeated(vec![Instance::Group(vec![(
-                "value".into(),
-                Instance::Scalar(Value::String("outer".into())),
-            )])]),
-        )]);
-        let inner = Instance::Group(vec![("rows".into(), Instance::Repeated(Vec::new()))]);
+        let outer = Instance::Group(
+            (vec![(
+                "rows".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![(
+                        "value".into(),
+                        Instance::Scalar(Value::String("outer".into())),
+                    )])
+                    .into(),
+                )]),
+            )])
+            .into(),
+        );
+        let inner = Instance::Group((vec![("rows".into(), Instance::Repeated(Vec::new()))]).into());
 
         assert_eq!(
             scalar(&[&outer, &inner], &["rows".into(), "value".into()]),
@@ -281,19 +287,28 @@ mod tests {
 
     #[test]
     fn absolute_path_prefers_its_active_collection_ancestor() {
-        let root = Instance::Group(vec![(
-            "items".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![(
-                    "name".into(),
-                    Instance::Scalar(Value::String("first".into())),
-                )]),
-                Instance::Group(vec![(
-                    "name".into(),
-                    Instance::Scalar(Value::String("second".into())),
-                )]),
-            ]),
-        )]);
+        let root = Instance::Group(
+            (vec![(
+                "items".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![(
+                            "name".into(),
+                            Instance::Scalar(Value::String("first".into())),
+                        )])
+                        .into(),
+                    ),
+                    Instance::Group(
+                        (vec![(
+                            "name".into(),
+                            Instance::Scalar(Value::String("second".into())),
+                        )])
+                        .into(),
+                    ),
+                ]),
+            )])
+            .into(),
+        );
         let second = root
             .field("items")
             .and_then(Instance::as_repeated)

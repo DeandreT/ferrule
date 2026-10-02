@@ -335,7 +335,7 @@ pub fn read(db_path: &Path, schema: &SchemaNode) -> Result<Vec<Instance>, DbForm
             let value = read_value(name, row.get_ref(i)?, *ty)?;
             fields.push((name.to_string(), Instance::Scalar(value)));
         }
-        out.push(Instance::Group(fields));
+        out.push(Instance::Group((fields).into()));
     }
     Ok(out)
 }
@@ -737,12 +737,15 @@ mod tests {
     }
 
     fn person(name: &str, age: i64, score: f64, member: bool) -> Instance {
-        Instance::Group(vec![
-            ("name".into(), Instance::Scalar(Value::String(name.into()))),
-            ("age".into(), Instance::Scalar(Value::Int(age))),
-            ("score".into(), Instance::Scalar(Value::Float(score))),
-            ("member".into(), Instance::Scalar(Value::Bool(member))),
-        ])
+        Instance::Group(
+            (vec![
+                ("name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("age".into(), Instance::Scalar(Value::Int(age))),
+                ("score".into(), Instance::Scalar(Value::Float(score))),
+                ("member".into(), Instance::Scalar(Value::Bool(member))),
+            ])
+            .into(),
+        )
     }
 
     #[test]
@@ -860,16 +863,19 @@ mod tests {
         );
         assert_eq!(
             rows,
-            vec![Instance::Group(vec![
-                (
-                    "created_at".into(),
-                    Instance::Scalar(Value::String("2026-07-16 12:34:56".into())),
-                ),
-                (
-                    "event_date".into(),
-                    Instance::Scalar(Value::String("2026-07-16".into())),
-                ),
-            ])]
+            vec![Instance::Group(
+                (vec![
+                    (
+                        "created_at".into(),
+                        Instance::Scalar(Value::String("2026-07-16 12:34:56".into())),
+                    ),
+                    (
+                        "event_date".into(),
+                        Instance::Scalar(Value::String("2026-07-16".into())),
+                    ),
+                ])
+                .into()
+            )]
         );
         assert_eq!(roundtrip, rows);
     }
@@ -952,10 +958,13 @@ mod tests {
         )
         .repeating();
         let row = |score, member| {
-            Instance::Group(vec![
-                ("score".into(), Instance::Scalar(score)),
-                ("member".into(), Instance::Scalar(member)),
-            ])
+            Instance::Group(
+                (vec![
+                    ("score".into(), Instance::Scalar(score)),
+                    ("member".into(), Instance::Scalar(member)),
+                ])
+                .into(),
+            )
         };
 
         write(&path, &schema, &[row(Value::Int(42), Value::Bool(true))]).unwrap();
@@ -1010,21 +1019,24 @@ mod tests {
             ],
         )
         .repeating();
-        let row = Instance::Group(vec![
-            (
-                "count".into(),
-                Instance::Scalar(Value::String(" 42 ".into())),
-            ),
-            (
-                "ratio".into(),
-                Instance::Scalar(Value::String(" 1.25 ".into())),
-            ),
-            (
-                "active".into(),
-                Instance::Scalar(Value::String(" true ".into())),
-            ),
-            ("label".into(), Instance::Scalar(Value::Int(7))),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                (
+                    "count".into(),
+                    Instance::Scalar(Value::String(" 42 ".into())),
+                ),
+                (
+                    "ratio".into(),
+                    Instance::Scalar(Value::String(" 1.25 ".into())),
+                ),
+                (
+                    "active".into(),
+                    Instance::Scalar(Value::String(" true ".into())),
+                ),
+                ("label".into(), Instance::Scalar(Value::Int(7))),
+            ])
+            .into(),
+        );
 
         write(&path, &schema, &[row]).unwrap();
         let rows = read(&path, &schema).unwrap();
@@ -1150,10 +1162,9 @@ mod tests {
         .unwrap();
         drop(conn);
 
-        let rows = [Instance::Group(vec![(
-            "score".into(),
-            Instance::Scalar(Value::Float(1.5)),
-        )])];
+        let rows = [Instance::Group(
+            (vec![("score".into(), Instance::Scalar(Value::Float(1.5)))]).into(),
+        )];
         let error = write(&path, &schema, &rows).unwrap_err();
         assert!(matches!(
             error,
@@ -1189,10 +1200,9 @@ mod tests {
         )
         .repeating();
         let rows = ["Ada", "Grace"].map(|name| {
-            Instance::Group(vec![(
-                "Name".into(),
-                Instance::Scalar(Value::String(name.into())),
-            )])
+            Instance::Group(
+                (vec![("Name".into(), Instance::Scalar(Value::String(name.into())))]).into(),
+            )
         });
 
         write(&path, &schema, &rows).unwrap();
@@ -1204,10 +1214,13 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(ids, vec![Some(&Value::Int(1)), Some(&Value::Int(2))]);
 
-        let supplied = Instance::Group(vec![
-            ("Id".into(), Instance::Scalar(Value::Int(9))),
-            ("Name".into(), Instance::Scalar(Value::String("No".into()))),
-        ]);
+        let supplied = Instance::Group(
+            (vec![
+                ("Id".into(), Instance::Scalar(Value::Int(9))),
+                ("Name".into(), Instance::Scalar(Value::String("No".into()))),
+            ])
+            .into(),
+        );
         assert!(matches!(
             write(&path, &schema, &[supplied]),
             Err(DbFormatError::GeneratedFieldSupplied { row: 0, column }) if column == "Id"
@@ -1227,10 +1240,13 @@ mod tests {
             vec![SchemaNode::scalar("score", ScalarType::Int)],
         )
         .repeating();
-        let rows = [Instance::Group(vec![(
-            "score".into(),
-            Instance::Scalar(Value::String("not an integer".into())),
-        )])];
+        let rows = [Instance::Group(
+            (vec![(
+                "score".into(),
+                Instance::Scalar(Value::String("not an integer".into())),
+            )])
+            .into(),
+        )];
 
         assert!(matches!(
             write(&path, &schema, &rows),
@@ -1277,17 +1293,17 @@ mod tests {
             })
         ));
         assert!(matches!(
-            write(&path, &schema, &[Instance::Group(Vec::new())]),
+            write(&path, &schema, &[Instance::Group((Vec::new()).into())]),
             Err(DbFormatError::MissingField { row: 0, column }) if column == "score"
         ));
         assert!(matches!(
             write(
                 &path,
                 &schema,
-                &[Instance::Group(vec![(
+                &[Instance::Group((vec![(
                     "score".into(),
                     Instance::MappedSequence(Vec::new()),
-                )])],
+                )]).into())],
             ),
             Err(DbFormatError::ValueType {
                 column,
@@ -1299,10 +1315,10 @@ mod tests {
             write(
                 &path,
                 &schema,
-                &[Instance::Group(vec![
+                &[Instance::Group((vec![
                     ("score".into(), Instance::Scalar(Value::Int(1))),
                     ("extra".into(), Instance::Scalar(Value::Int(2))),
-                ])],
+                ]).into())],
             ),
             Err(DbFormatError::UnexpectedField { row: 0, column }) if column == "extra"
         ));

@@ -202,7 +202,7 @@ fn read_records<R: std::io::Read>(
             };
             row.push((name.to_string(), Instance::Scalar(value)));
         }
-        out.push(Instance::Group(row));
+        out.push(Instance::Group((row).into()));
     }
     Ok(out)
 }

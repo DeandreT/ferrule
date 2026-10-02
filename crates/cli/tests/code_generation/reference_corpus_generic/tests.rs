@@ -34,10 +34,13 @@ fn identity_project() -> Project {
 }
 
 fn input() -> Instance {
-    Instance::Group(vec![(
-        "Text".into(),
-        Instance::Scalar(Value::String("self-authored é🙂 value".into())),
-    )])
+    Instance::Group(
+        (vec![(
+            "Text".into(),
+            Instance::Scalar(Value::String("self-authored é🙂 value".into())),
+        )])
+        .into(),
+    )
 }
 
 #[test]
@@ -74,10 +77,13 @@ fn generic_admission_retains_exact_sources_and_ordered_named_outputs() {
     }
     let extras = vec![(
         "catalog".into(),
-        Instance::Group(vec![(
-            "Label".into(),
-            Instance::Scalar(Value::String("independent lookup 🙂".into())),
-        )]),
+        Instance::Group(
+            (vec![(
+                "Label".into(),
+                Instance::Scalar(Value::String("independent lookup 🙂".into())),
+            )])
+            .into(),
+        ),
     )];
     let admitted =
         admission::admit(&project, &input(), &extras, Path::new("self-authored.json")).unwrap();
@@ -129,18 +135,21 @@ fn generic_source_gate_rejects_projection_while_target_allows_stable_normalizati
         vec![SchemaNode::group("Child", vec![string("Value")])],
     );
     assert!(matches!(
-        admission::source_document(&schema, &Instance::Group(Vec::new()), 2),
+        admission::source_document(&schema, &Instance::Group((Vec::new()).into()), 2),
         Err(AdmissionError::SourceRoundtrip { slot: 2 })
     ));
     assert!(matches!(
-        admission::target_document(&schema, &Instance::Group(Vec::new()), 2),
+        admission::target_document(&schema, &Instance::Group((Vec::new()).into()), 2),
         Err(AdmissionError::TargetFixedPoint { slot: 2 })
     ));
     let repeated = SchemaNode::group("Root", vec![string("Value").repeating()]);
-    let mapped = Instance::Group(vec![(
-        "Value".into(),
-        Instance::MappedSequence(vec![Instance::Scalar(Value::String("a🙂".into()))]),
-    )]);
+    let mapped = Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::MappedSequence(vec![Instance::Scalar(Value::String("a🙂".into()))]),
+        )])
+        .into(),
+    );
     assert!(matches!(
         admission::source_document(&repeated, &mapped, 0),
         Err(AdmissionError::SourceRoundtrip { slot: 0 })
@@ -442,10 +451,9 @@ fn generic_snapshot_stages_database_and_detects_original_mutation() {
     format_db::write(
         &database,
         &schema,
-        &[Instance::Group(vec![(
-            "Id".into(),
-            Instance::Scalar(Value::Int(9)),
-        )])],
+        &[Instance::Group(
+            (vec![("Id".into(), Instance::Scalar(Value::Int(9)))]).into(),
+        )],
     )
     .unwrap();
     let bytes = std::fs::read(&database).unwrap();
@@ -453,10 +461,9 @@ fn generic_snapshot_stages_database_and_detects_original_mutation() {
     assert_eq!(
         native_input::read_instance(&snapshot.root.join("rows.db"), &schema, &Default::default())
             .unwrap(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            "Id".into(),
-            Instance::Scalar(Value::Int(9))
-        )])])
+        Instance::Repeated(vec![Instance::Group(
+            (vec![("Id".into(), Instance::Scalar(Value::Int(9)))]).into()
+        )])
     );
     snapshot.verify().unwrap();
     assert_eq!(std::fs::read(&database).unwrap(), bytes);
@@ -851,10 +858,13 @@ fn generic_admission_accepts_plain_concrete_xml_default_without_runtime_marker()
         "self-authored é🙂 value"
     );
     // Scalar payloads that spell a reserved metadata name remain ordinary data.
-    let literal = Instance::Group(vec![(
-        "Text".into(),
-        Instance::Scalar(Value::String(ir::XML_TYPE_FIELD.into())),
-    )]);
+    let literal = Instance::Group(
+        (vec![(
+            "Text".into(),
+            Instance::Scalar(Value::String(ir::XML_TYPE_FIELD.into())),
+        )])
+        .into(),
+    );
     admission::admit(&project, &literal, &[], Path::new("authored-literal.json")).unwrap();
 }
 
@@ -867,15 +877,18 @@ fn generic_json_helpers_reject_nested_actual_xml_metadata_in_both_directions() {
         ir::XML_MIXED_CONTENT_FIELD,
         ir::XML_MIXED_CONTENT_VALUE_FIELD,
     ] {
-        let metadata = Instance::Group(vec![(
-            name.into(),
-            Instance::Scalar(Value::String("authored metadata".into())),
-        )]);
+        let metadata = Instance::Group(
+            (vec![(
+                name.into(),
+                Instance::Scalar(Value::String("authored metadata".into())),
+            )])
+            .into(),
+        );
         for repeated in [
             Instance::Repeated(vec![metadata.clone()]),
             Instance::MappedSequence(vec![metadata.clone()]),
         ] {
-            let value = Instance::Group(vec![("Nested".into(), repeated)]);
+            let value = Instance::Group((vec![("Nested".into(), repeated)]).into());
             assert!(matches!(
                 admission::source_document(&schema, &value, 0),
                 Err(AdmissionError::Unsupported("reserved XML metadata"))
@@ -891,15 +904,19 @@ fn generic_json_helpers_reject_nested_actual_xml_metadata_in_both_directions() {
 #[test]
 fn generic_json_helpers_retain_same_spelling_physical_and_dynamic_properties() {
     for name in [
+        ir::XML_TYPE_ORIGIN_FIELD,
         ir::XML_TYPE_FIELD,
         ir::XML_SUBSTITUTION_FIELD,
         ir::XML_MIXED_CONTENT_FIELD,
         ir::XML_MIXED_CONTENT_VALUE_FIELD,
     ] {
-        let value = Instance::Group(vec![(
-            name.into(),
-            Instance::Scalar(Value::String("ordinary JSON data".into())),
-        )]);
+        let value = Instance::Group(
+            (vec![(
+                name.into(),
+                Instance::Scalar(Value::String("ordinary JSON data".into())),
+            )])
+            .into(),
+        );
         for schema in [
             SchemaNode::group("Root", vec![string(name)]),
             SchemaNode::group("Root", vec![])
@@ -920,10 +937,9 @@ fn generic_json_helpers_retain_same_spelling_physical_and_dynamic_properties() {
             "Root",
             vec![SchemaNode::group("Rows", vec![string(name)]).repeating()],
         );
-        let mapped = Instance::Group(vec![(
-            "Rows".into(),
-            Instance::MappedSequence(vec![value.clone()]),
-        )]);
+        let mapped = Instance::Group(
+            (vec![("Rows".into(), Instance::MappedSequence(vec![value.clone()]))]).into(),
+        );
         let document = admission::target_document(&schema, &mapped, 0).unwrap();
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&document).unwrap()["Rows"][0][name],
@@ -932,10 +948,9 @@ fn generic_json_helpers_retain_same_spelling_physical_and_dynamic_properties() {
         // A retained physical numeric property keeps the existing lexical
         // target adaptation even when its spelling matches a metadata key.
         let schema = SchemaNode::group("Root", vec![int(name)]);
-        let value = Instance::Group(vec![(
-            name.into(),
-            Instance::Scalar(Value::String("7".into())),
-        )]);
+        let value = Instance::Group(
+            (vec![(name.into(), Instance::Scalar(Value::String("7".into())))]).into(),
+        );
         let document = admission::target_document(&schema, &value, 0).unwrap();
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&document).unwrap()[name],

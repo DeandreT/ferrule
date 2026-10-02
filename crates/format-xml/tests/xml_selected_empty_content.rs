@@ -30,10 +30,13 @@ impl Drop for Dir {
 }
 const EMPTY: &str = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:complexType name="A"/><xs:complexType name="B"><xs:complexContent><xs:extension base="A"><xs:sequence><xs:element name="Value" type="xs:string" minOccurs="0"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType><xs:element name="Root" type="A"/></xs:schema>"#;
 fn typed(name: &str) -> Instance {
-    Instance::Group(vec![(
-        XML_TYPE_FIELD.into(),
-        Instance::Scalar(Value::String(name.into())),
-    )])
+    Instance::Group(
+        (vec![(
+            XML_TYPE_FIELD.into(),
+            Instance::Scalar(Value::String(name.into())),
+        )])
+        .into(),
+    )
 }
 fn write(schema: &SchemaNode, value: &Instance, indent: bool) -> String {
     format_xml::to_string_with_options(
@@ -55,7 +58,7 @@ fn assert_empty(xml: &str) {
 #[test]
 fn declared_empty_type_and_explicit_marker_have_no_indentation_content() {
     let schema = Dir::new().import(EMPTY);
-    for value in [Instance::Group(Vec::new()), typed("A")] {
+    for value in [Instance::Group((Vec::new()).into()), typed("A")] {
         for indent in [false, true] {
             let xml = write(&schema, &value, indent);
             assert_empty(&xml);
@@ -78,7 +81,7 @@ fn attribute_only_selected_type_keeps_attributes_without_text() {
         let mut value = if explicit {
             typed("A")
         } else {
-            Instance::Group(Vec::new())
+            Instance::Group((Vec::new()).into())
         };
         let Instance::Group(fields) = &mut value else {
             unreachable!()
@@ -108,7 +111,7 @@ fn qualified_selected_empty_type_retains_explicit_expanded_identity() {
         .replace("base=\"A\"", "base=\"q:A\"").replace("type=\"A\"", "type=\"q:A\"");
     let schema = Dir::new().import(&source);
     for value in [
-        Instance::Group(Vec::new()),
+        Instance::Group((Vec::new()).into()),
         typed("{urn:ferrule:selected}A"),
     ] {
         for indent in [false, true] {
@@ -136,7 +139,7 @@ fn qualified_selected_empty_type_retains_explicit_expanded_identity() {
 fn selected_empty_type_inside_ordinary_group_has_no_inner_whitespace() {
     let selected = Dir::new().import(EMPTY);
     let schema = SchemaNode::group("Envelope", vec![selected]);
-    let value = Instance::Group(vec![("Root".into(), typed("A"))]);
+    let value = Instance::Group((vec![("Root".into(), typed("A"))]).into());
     for indent in [false, true] {
         let xml = write(&schema, &value, indent);
         let doc = roxmltree::Document::parse(&xml).unwrap();
@@ -166,7 +169,7 @@ fn ordinary_and_selected_element_only_empty_groups_keep_existing_formatting() {
     let mut optional = SchemaNode::scalar("Value", ScalarType::String);
     optional.xml_optional = true;
     let ordinary = SchemaNode::group("Root", vec![optional]);
-    let absent = Instance::Group(Vec::new());
+    let absent = Instance::Group((Vec::new()).into());
     assert_eq!(write(&ordinary, &absent, false), "<Root></Root>");
     assert_eq!(write(&ordinary, &absent, true), "<Root>\n</Root>");
 }
@@ -203,16 +206,19 @@ fn explicit_selection_is_order_independent_and_does_not_admit_foreign_fields() {
     }
     for value in [
         typed("Unknown"),
-        Instance::Group(vec![
-            (
-                XML_TYPE_FIELD.into(),
-                Instance::Scalar(Value::String("A".into())),
-            ),
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String("foreign".into())),
-            ),
-        ]),
+        Instance::Group(
+            (vec![
+                (
+                    XML_TYPE_FIELD.into(),
+                    Instance::Scalar(Value::String("A".into())),
+                ),
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String("foreign".into())),
+                ),
+            ])
+            .into(),
+        ),
     ] {
         for indent in [false, true] {
             assert!(

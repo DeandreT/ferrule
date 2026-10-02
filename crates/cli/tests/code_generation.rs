@@ -341,41 +341,50 @@ fn write_nested_iteration_project(directory: &Path) -> TestResult<PathBuf> {
 }
 
 fn source_instance() -> Instance {
-    Instance::Group(vec![
-        ("Name".into(), Instance::Scalar(Value::String("Ada".into()))),
-        ("Score".into(), Instance::Scalar(Value::Int(8))),
-        ("Enabled".into(), Instance::Scalar(Value::Bool(true))),
-    ])
+    Instance::Group(
+        (vec![
+            ("Name".into(), Instance::Scalar(Value::String("Ada".into()))),
+            ("Score".into(), Instance::Scalar(Value::Int(8))),
+            ("Enabled".into(), Instance::Scalar(Value::Bool(true))),
+        ])
+        .into(),
+    )
 }
 
 fn expected_instance() -> Instance {
-    Instance::Group(vec![
-        (
-            "Copied".into(),
-            Instance::Scalar(Value::String("Ada".into())),
-        ),
-        (
-            "Fixed".into(),
-            Instance::Scalar(Value::String("fixed".into())),
-        ),
-        ("Adjusted".into(), Instance::Scalar(Value::Int(13))),
-        (
-            "Bucket".into(),
-            Instance::Scalar(Value::String("large".into())),
-        ),
-        ("Enabled".into(), Instance::Scalar(Value::Bool(true))),
-        (
-            "Lazy".into(),
-            Instance::Scalar(Value::String("fixed".into())),
-        ),
-        (
-            "Details".into(),
-            Instance::Group(vec![(
-                "NestedCopied".into(),
+    Instance::Group(
+        (vec![
+            (
+                "Copied".into(),
                 Instance::Scalar(Value::String("Ada".into())),
-            )]),
-        ),
-    ])
+            ),
+            (
+                "Fixed".into(),
+                Instance::Scalar(Value::String("fixed".into())),
+            ),
+            ("Adjusted".into(), Instance::Scalar(Value::Int(13))),
+            (
+                "Bucket".into(),
+                Instance::Scalar(Value::String("large".into())),
+            ),
+            ("Enabled".into(), Instance::Scalar(Value::Bool(true))),
+            (
+                "Lazy".into(),
+                Instance::Scalar(Value::String("fixed".into())),
+            ),
+            (
+                "Details".into(),
+                Instance::Group(
+                    (vec![(
+                        "NestedCopied".into(),
+                        Instance::Scalar(Value::String("Ada".into())),
+                    )])
+                    .into(),
+                ),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn nested_iteration_project() -> Project {
@@ -552,77 +561,98 @@ fn nested_iteration_project() -> Project {
 
 fn nested_source_instance() -> Instance {
     let line = |sku: &str, quantity: i64| {
-        Instance::Group(vec![
-            ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
-            ("Quantity".into(), Instance::Scalar(Value::Int(quantity))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
+                ("Quantity".into(), Instance::Scalar(Value::Int(quantity))),
+            ])
+            .into(),
+        )
     };
     let order = |id: &str, lines: Vec<Instance>| {
-        Instance::Group(vec![
-            ("OrderId".into(), Instance::Scalar(Value::String(id.into()))),
-            ("Lines".into(), Instance::Repeated(lines)),
-        ])
+        Instance::Group(
+            (vec![
+                ("OrderId".into(), Instance::Scalar(Value::String(id.into()))),
+                ("Lines".into(), Instance::Repeated(lines)),
+            ])
+            .into(),
+        )
     };
     let default = |label: &str| {
-        Instance::Group(vec![(
-            "Label".into(),
-            Instance::Scalar(Value::String(label.into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Label".into(),
+                Instance::Scalar(Value::String(label.into())),
+            )])
+            .into(),
+        )
     };
 
-    Instance::Group(vec![
-        (
-            "Batch".into(),
-            Instance::Scalar(Value::String("run-42".into())),
-        ),
-        ("Bonus".into(), Instance::Scalar(Value::Int(2))),
-        (
-            "Defaults".into(),
-            Instance::Repeated(vec![default("primary"), default("ignored")]),
-        ),
-        (
-            "Orders".into(),
-            Instance::Repeated(vec![
-                order("A", vec![line("red", 3), line("blue", 1)]),
-                order("B", vec![line("green", 2)]),
-            ]),
-        ),
-    ])
-}
-
-fn nested_expected_instance() -> Instance {
-    let line = |sku: &str, order_id: &str, adjusted: i64| {
-        Instance::Group(vec![
-            ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
-            (
-                "OrderId".into(),
-                Instance::Scalar(Value::String(order_id.into())),
-            ),
+    Instance::Group(
+        (vec![
             (
                 "Batch".into(),
                 Instance::Scalar(Value::String("run-42".into())),
             ),
+            ("Bonus".into(), Instance::Scalar(Value::Int(2))),
             (
-                "DefaultLabel".into(),
-                Instance::Scalar(Value::String("primary".into())),
+                "Defaults".into(),
+                Instance::Repeated(vec![default("primary"), default("ignored")]),
             ),
-            ("Adjusted".into(), Instance::Scalar(Value::Int(adjusted))),
+            (
+                "Orders".into(),
+                Instance::Repeated(vec![
+                    order("A", vec![line("red", 3), line("blue", 1)]),
+                    order("B", vec![line("green", 2)]),
+                ]),
+            ),
         ])
+        .into(),
+    )
+}
+
+fn nested_expected_instance() -> Instance {
+    let line = |sku: &str, order_id: &str, adjusted: i64| {
+        Instance::Group(
+            (vec![
+                ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
+                (
+                    "OrderId".into(),
+                    Instance::Scalar(Value::String(order_id.into())),
+                ),
+                (
+                    "Batch".into(),
+                    Instance::Scalar(Value::String("run-42".into())),
+                ),
+                (
+                    "DefaultLabel".into(),
+                    Instance::Scalar(Value::String("primary".into())),
+                ),
+                ("Adjusted".into(), Instance::Scalar(Value::Int(adjusted))),
+            ])
+            .into(),
+        )
     };
     let order = |id: &str, lines: Vec<Instance>| {
-        Instance::Group(vec![
-            ("OrderId".into(), Instance::Scalar(Value::String(id.into()))),
-            ("Lines".into(), Instance::Repeated(lines)),
-        ])
+        Instance::Group(
+            (vec![
+                ("OrderId".into(), Instance::Scalar(Value::String(id.into()))),
+                ("Lines".into(), Instance::Repeated(lines)),
+            ])
+            .into(),
+        )
     };
 
-    Instance::Group(vec![(
-        "Orders".into(),
-        Instance::Repeated(vec![
-            order("A", vec![line("red", "A", 5), line("blue", "A", 3)]),
-            order("B", vec![line("green", "B", 4)]),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Orders".into(),
+            Instance::Repeated(vec![
+                order("A", vec![line("red", "A", 5), line("blue", "A", 3)]),
+                order("B", vec![line("green", "B", 4)]),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn artifact_files(root: &Path) -> TestResult<ArtifactFiles> {
@@ -669,7 +699,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 59,
+            files_written: 60,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -719,6 +749,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleValueMaps.cs",
             "Runtime/FerruleXml.cs",
             "Runtime/FerruleXmlMixedContent.cs",
+            "Runtime/FerruleXmlTypeOrigin.cs",
             "Runtime/Json/FerruleJson.AllowedValues.cs",
             "Runtime/Json/FerruleJson.Canonical.cs",
             "Runtime/Json/FerruleJson.Contains.cs",

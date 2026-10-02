@@ -44,10 +44,11 @@ fn scalar(name: &str, value: &str) -> (String, Instance) {
 
 fn row(fields: &[(&str, &str)]) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .iter()
             .map(|(name, value)| scalar(name, value))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
@@ -179,24 +180,27 @@ fn two_way_project() -> Project {
 }
 
 fn two_way_source() -> Instance {
-    Instance::Group(vec![
-        (
-            "Left".into(),
-            Instance::Repeated(vec![
-                row(&[("Id", "A"), ("Tenant", "T"), ("Label", "L1")]),
-                row(&[("Id", "A"), ("Tenant", "T"), ("Label", "L2")]),
-                row(&[("Id", "A"), ("Tenant", "X"), ("Label", "LX")]),
-            ]),
-        ),
-        (
-            "Right".into(),
-            Instance::Repeated(vec![
-                row(&[("Code", "A"), ("Tenant", "T"), ("Description", "R1")]),
-                row(&[("Code", "A"), ("Tenant", "T"), ("Description", "R2")]),
-                row(&[("Code", "A"), ("Tenant", "Y"), ("Description", "RY")]),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Left".into(),
+                Instance::Repeated(vec![
+                    row(&[("Id", "A"), ("Tenant", "T"), ("Label", "L1")]),
+                    row(&[("Id", "A"), ("Tenant", "T"), ("Label", "L2")]),
+                    row(&[("Id", "A"), ("Tenant", "X"), ("Label", "LX")]),
+                ]),
+            ),
+            (
+                "Right".into(),
+                Instance::Repeated(vec![
+                    row(&[("Code", "A"), ("Tenant", "T"), ("Description", "R1")]),
+                    row(&[("Code", "A"), ("Tenant", "T"), ("Description", "R2")]),
+                    row(&[("Code", "A"), ("Tenant", "Y"), ("Description", "RY")]),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn named_source_project() -> Project {
@@ -270,7 +274,7 @@ fn named_source_instances() -> (Instance, Vec<(String, Instance)>) {
         Instance::Group(fields),
         vec![(
             "Reference".into(),
-            Instance::Group(vec![("Right".into(), right)]),
+            Instance::Group((vec![("Right".into(), right)]).into()),
         )],
     )
 }
@@ -468,17 +472,20 @@ fn singleton_join_inputs_keep_scalar_connections_and_exact_tuple_execution() {
         .bindings
         .retain(|binding| binding.node != 0);
     project.graph.nodes.remove(&0);
-    let source = Instance::Group(vec![
-        scalar("Key", "A"),
-        (
-            "Right".into(),
-            Instance::Repeated(vec![
-                row(&[("Code", "A"), ("Tenant", "T"), ("Description", "R1")]),
-                row(&[("Code", "B"), ("Tenant", "T"), ("Description", "skip")]),
-                row(&[("Code", "A"), ("Tenant", "X"), ("Description", "R2")]),
-            ]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            scalar("Key", "A"),
+            (
+                "Right".into(),
+                Instance::Repeated(vec![
+                    row(&[("Code", "A"), ("Tenant", "T"), ("Description", "R1")]),
+                    row(&[("Code", "B"), ("Tenant", "T"), ("Description", "skip")]),
+                    row(&[("Code", "A"), ("Tenant", "X"), ("Description", "R2")]),
+                ]),
+            ),
+        ])
+        .into(),
+    );
     let expected = engine::run(&project, &source).unwrap();
     let dir = TempDir::new("scalar-feed");
     let path = dir.path("mapping.mfd");
@@ -700,23 +707,26 @@ fn exports_and_round_trips_a_three_way_join() {
     assert_eq!(imported_plan.sources().count(), 3);
     assert_eq!(imported_plan.stages().count(), 2);
     assert_join_input_modes(&fs::read_to_string(&output).unwrap(), &[true, true, true]);
-    let source = Instance::Group(vec![
-        ("A".into(), Instance::Repeated(vec![row(&[("Id", "A")])])),
-        (
-            "B".into(),
-            Instance::Repeated(vec![
-                row(&[("Id", "B"), ("AId", "A")]),
-                row(&[("Id", "B"), ("AId", "A")]),
-            ]),
-        ),
-        (
-            "C".into(),
-            Instance::Repeated(vec![
-                row(&[("BId", "B"), ("Value", "C1")]),
-                row(&[("BId", "B"), ("Value", "C2")]),
-            ]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            ("A".into(), Instance::Repeated(vec![row(&[("Id", "A")])])),
+            (
+                "B".into(),
+                Instance::Repeated(vec![
+                    row(&[("Id", "B"), ("AId", "A")]),
+                    row(&[("Id", "B"), ("AId", "A")]),
+                ]),
+            ),
+            (
+                "C".into(),
+                Instance::Repeated(vec![
+                    row(&[("BId", "B"), ("Value", "C1")]),
+                    row(&[("BId", "B"), ("Value", "C2")]),
+                ]),
+            ),
+        ])
+        .into(),
+    );
     let expected = engine::run(&project, &source).unwrap();
     let actual = engine::run(&imported.project, &source).unwrap();
     assert_eq!(actual, expected);
@@ -905,34 +915,49 @@ fn root_aggregate_project() -> Project {
 }
 
 fn root_aggregate_source() -> Instance {
-    Instance::Group(vec![
-        (
-            "Left".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![
-                    scalar("Id", "A"),
-                    ("Amount".into(), Instance::Scalar(Value::Int(2))),
+    Instance::Group(
+        (vec![
+            (
+                "Left".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![
+                            scalar("Id", "A"),
+                            ("Amount".into(), Instance::Scalar(Value::Int(2))),
+                        ])
+                        .into(),
+                    ),
+                    Instance::Group(
+                        (vec![
+                            scalar("Id", "A"),
+                            ("Amount".into(), Instance::Scalar(Value::Int(3))),
+                        ])
+                        .into(),
+                    ),
                 ]),
-                Instance::Group(vec![
-                    scalar("Id", "A"),
-                    ("Amount".into(), Instance::Scalar(Value::Int(3))),
+            ),
+            (
+                "Right".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![
+                            scalar("Code", "A"),
+                            ("Quantity".into(), Instance::Scalar(Value::Int(10))),
+                        ])
+                        .into(),
+                    ),
+                    Instance::Group(
+                        (vec![
+                            scalar("Code", "A"),
+                            ("Quantity".into(), Instance::Scalar(Value::Int(20))),
+                        ])
+                        .into(),
+                    ),
                 ]),
-            ]),
-        ),
-        (
-            "Right".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![
-                    scalar("Code", "A"),
-                    ("Quantity".into(), Instance::Scalar(Value::Int(10))),
-                ]),
-                Instance::Group(vec![
-                    scalar("Code", "A"),
-                    ("Quantity".into(), Instance::Scalar(Value::Int(20))),
-                ]),
-            ]),
-        ),
-    ])
+            ),
+        ])
+        .into(),
+    )
 }
 
 #[test]
@@ -1191,16 +1216,19 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
             ..Scope::default()
         },
     };
-    let primary = Instance::Group(vec![(
-        "Customer".into(),
-        Instance::Repeated(vec![
-            row(&[("Number", "A"), ("Name", "Ada")]),
-            row(&[("Number", "B"), ("Name", "Bea")]),
-        ]),
-    )]);
+    let primary = Instance::Group(
+        (vec![(
+            "Customer".into(),
+            Instance::Repeated(vec![
+                row(&[("Number", "A"), ("Name", "Ada")]),
+                row(&[("Number", "B"), ("Name", "Bea")]),
+            ]),
+        )])
+        .into(),
+    );
     let extras = vec![(
         "Order".into(),
-        Instance::Group(vec![scalar("CustomerNumber", "B")]),
+        Instance::Group((vec![scalar("CustomerNumber", "B")]).into()),
     )];
     let expected = engine::run_with_sources(&project, &primary, extras.clone()).unwrap();
 

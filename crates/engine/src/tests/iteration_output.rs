@@ -127,31 +127,37 @@ fn project_with_output(iteration_output: IterationOutput) -> Project {
 }
 
 fn person(name: &str, keep: bool) -> Instance {
-    Instance::Group(vec![
-        ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-        ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
-    ])
+    Instance::Group(
+        (vec![
+            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+        ])
+        .into(),
+    )
 }
 
 fn department(people: Vec<Instance>) -> Instance {
-    Instance::Group(vec![("Person".into(), Instance::Repeated(people))])
+    Instance::Group((vec![("Person".into(), Instance::Repeated(people))]).into())
 }
 
 #[test]
 fn first_output_applies_filter_and_window_and_preserves_nested_positions() {
     let project = project();
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
-    let source = Instance::Group(vec![(
-        "Department".into(),
-        Instance::Repeated(vec![
-            department(vec![
-                person("discarded", false),
-                person("first", true),
-                person("not reached", true),
+    let source = Instance::Group(
+        (vec![(
+            "Department".into(),
+            Instance::Repeated(vec![
+                department(vec![
+                    person("discarded", false),
+                    person("first", true),
+                    person("not reached", true),
+                ]),
+                department(vec![person("also discarded", false)]),
             ]),
-            department(vec![person("also discarded", false)]),
-        ]),
-    )]);
+        )])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let departments = output
@@ -183,7 +189,7 @@ fn first_output_applies_filter_and_window_and_preserves_nested_positions() {
     );
     assert_eq!(
         departments[1].field("Selected"),
-        Some(&Instance::Group(Vec::new()))
+        Some(&Instance::Group((Vec::new()).into()))
     );
 }
 
@@ -219,7 +225,7 @@ fn validation_rejects_invalid_first_output_cardinality() {
             .contains("first-item output requires an iterated source")
     }));
     assert_eq!(
-        run(&without_iteration, &Instance::Group(Vec::new())),
+        run(&without_iteration, &Instance::Group((Vec::new()).into())),
         Err(EngineError::FirstOutputWithoutIteration)
     );
 }
@@ -268,7 +274,7 @@ fn non_iterating_scope_constructs_one_item_for_a_repeating_target_group() {
     };
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
 
-    let output = run(&project, &Instance::Group(Vec::new())).unwrap();
+    let output = run(&project, &Instance::Group((Vec::new()).into())).unwrap();
     let entries = output
         .field("Entry")
         .and_then(Instance::as_repeated)
@@ -294,10 +300,13 @@ fn mapped_sequence_preserves_zero_one_or_many_ordered_items() {
     ];
 
     for (people, expected) in cases {
-        let source = Instance::Group(vec![(
-            "Department".into(),
-            Instance::Repeated(vec![department(people)]),
-        )]);
+        let source = Instance::Group(
+            (vec![(
+                "Department".into(),
+                Instance::Repeated(vec![department(people)]),
+            )])
+            .into(),
+        );
         let output = run(&project, &source).unwrap();
         let departments = output
             .field("Department")
@@ -396,21 +405,23 @@ fn concatenated_mapped_sequence_preserves_segment_and_item_order() {
     };
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
     let named = |name: &str| {
-        Instance::Group(vec![(
-            "Name".into(),
-            Instance::Scalar(Value::String(name.into())),
-        )])
+        Instance::Group(
+            (vec![("Name".into(), Instance::Scalar(Value::String(name.into())))]).into(),
+        )
     };
-    let input = Instance::Group(vec![
-        (
-            "Domestic".into(),
-            Instance::Repeated(vec![named("North"), named("South")]),
-        ),
-        (
-            "International".into(),
-            Instance::Repeated(vec![named("East")]),
-        ),
-    ]);
+    let input = Instance::Group(
+        (vec![
+            (
+                "Domestic".into(),
+                Instance::Repeated(vec![named("North"), named("South")]),
+            ),
+            (
+                "International".into(),
+                Instance::Repeated(vec![named("East")]),
+            ),
+        ])
+        .into(),
+    );
 
     let output = run(&project, &input).unwrap();
     let addresses = output
@@ -537,11 +548,14 @@ fn first_output_does_not_evaluate_later_unused_bindings() {
         },
     };
     let source = Instance::Repeated(vec![
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("first".into())),
-        )]),
-        Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(2)))]),
+        Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String("first".into())),
+            )])
+            .into(),
+        ),
+        Instance::Group((vec![("Value".into(), Instance::Scalar(Value::Int(2)))]).into()),
     ]);
 
     let output = run(&project, &source).unwrap();

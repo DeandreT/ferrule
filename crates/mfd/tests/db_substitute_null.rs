@@ -26,13 +26,16 @@ impl Drop for TempDir {
 }
 
 fn row(present: &str, optional: Value) -> Instance {
-    Instance::Group(vec![
-        (
-            "Present".into(),
-            Instance::Scalar(Value::String(present.into())),
-        ),
-        ("Optional".into(), Instance::Scalar(optional)),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Present".into(),
+                Instance::Scalar(Value::String(present.into())),
+            ),
+            ("Optional".into(), Instance::Scalar(optional)),
+        ])
+        .into(),
+    )
 }
 
 fn scalar<'a>(instance: &'a Instance, field: &str) -> &'a Value {

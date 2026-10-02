@@ -231,14 +231,17 @@ fn generic_attribute_setup() -> TempDir {
 }
 
 fn item(key: &str, value: &str) -> Instance {
-    Instance::Group(vec![
-        ("Key".into(), Instance::Scalar(Value::String(key.into()))),
-        (
-            "Value".into(),
-            Instance::Scalar(Value::String(value.into())),
-        ),
-        ("Extra".into(), Instance::Scalar(Value::Null)),
-    ])
+    Instance::Group(
+        (vec![
+            ("Key".into(), Instance::Scalar(Value::String(key.into()))),
+            (
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+            ("Extra".into(), Instance::Scalar(Value::Null)),
+        ])
+        .into(),
+    )
 }
 
 #[test]
@@ -252,15 +255,21 @@ fn structured_input_filter_udf_imports_as_first_match_lookup() {
             if collection == &["Catalog", "Item"] && key == &["Key"] && value == &["Value"]
     )));
 
-    let catalog = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![item("A", "first"), item("A", "second")]),
-    )]);
+    let catalog = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![item("A", "first"), item("A", "second")]),
+        )])
+        .into(),
+    );
     for (needle, expected) in [("A", Value::String("first".into())), ("B", Value::Null)] {
-        let input = Instance::Group(vec![(
-            "Needle".into(),
-            Instance::Scalar(Value::String(needle.into())),
-        )]);
+        let input = Instance::Group(
+            (vec![(
+                "Needle".into(),
+                Instance::Scalar(Value::String(needle.into())),
+            )])
+            .into(),
+        );
         let output = engine::run_with_sources(
             &imported.project,
             &input,
@@ -336,15 +345,21 @@ fn static_catalog_filter_udf_imports_as_an_executable_named_source_lookup() {
     )));
     assert!(engine::validate(&imported.project).is_empty());
 
-    let catalog = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![item("A", "first"), item("A", "second")]),
-    )]);
+    let catalog = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![item("A", "first"), item("A", "second")]),
+        )])
+        .into(),
+    );
     for (needle, expected) in [("A", Value::String("first".into())), ("B", Value::Null)] {
-        let input = Instance::Group(vec![(
-            "Needle".into(),
-            Instance::Scalar(Value::String(needle.into())),
-        )]);
+        let input = Instance::Group(
+            (vec![(
+                "Needle".into(),
+                Instance::Scalar(Value::String(needle.into())),
+            )])
+            .into(),
+        );
         let output = engine::run_with_sources(
             &imported.project,
             &input,
@@ -371,29 +386,34 @@ fn computed_catalog_filter_imports_composite_predicate_and_value_expression() {
     assert!(engine::validate(&imported.project).is_empty());
 
     let row = |key: &str, value: &str, extra: &str| {
-        Instance::Group(vec![
-            ("Key".into(), Instance::Scalar(Value::String(key.into()))),
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            ),
-            (
-                "Extra".into(),
-                Instance::Scalar(Value::String(extra.into())),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Key".into(), Instance::Scalar(Value::String(key.into()))),
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                ),
+                (
+                    "Extra".into(),
+                    Instance::Scalar(Value::String(extra.into())),
+                ),
+            ])
+            .into(),
+        )
     };
-    let catalog = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![
-            row("A", "wrong", "inactive"),
-            row("A", "chosen", "active"),
-        ]),
-    )]);
-    let input = Instance::Group(vec![(
-        "Needle".into(),
-        Instance::Scalar(Value::String("A".into())),
-    )]);
+    let catalog = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![
+                row("A", "wrong", "inactive"),
+                row("A", "chosen", "active"),
+            ]),
+        )])
+        .into(),
+    );
+    let input = Instance::Group(
+        (vec![("Needle".into(), Instance::Scalar(Value::String("A".into())))]).into(),
+    );
     let output =
         engine::run_with_sources(&imported.project, &input, vec![("Catalog".into(), catalog)])
             .unwrap();

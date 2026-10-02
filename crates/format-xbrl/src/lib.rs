@@ -1042,7 +1042,7 @@ fn materialize(
         };
         fields.push((child.name.clone(), value));
     }
-    Ok(Instance::Group(fields))
+    Ok(Instance::Group((fields).into()))
 }
 
 fn build_row(
@@ -1096,7 +1096,7 @@ fn build_row(
                     value.map(|value| (child.name.clone(), value))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Instance::Group(fields))
+            Ok(Instance::Group((fields).into()))
         }
     }
 }
@@ -1202,12 +1202,13 @@ fn empty_instance(schema: &SchemaNode, depth: usize) -> Result<Instance, XbrlFor
             name: schema.name.clone(),
         }),
         SchemaKind::Group { children, .. } => Ok(Instance::Group(
-            children
+            (children
                 .iter()
                 .map(|child| {
                     empty_instance(child, depth + 1).map(|value| (child.name.clone(), value))
                 })
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<Vec<_>, _>>()?)
+            .into(),
         )),
     }
 }

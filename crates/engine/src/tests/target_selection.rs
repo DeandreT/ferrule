@@ -79,7 +79,7 @@ fn project() -> Project {
 }
 
 fn source() -> Instance {
-    Instance::Group(Vec::new())
+    Instance::Group((Vec::new()).into())
 }
 
 #[test]

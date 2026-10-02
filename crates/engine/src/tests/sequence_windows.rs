@@ -86,7 +86,7 @@ fn window_project(windows: Vec<SequenceWindow>) -> Project {
 fn values(windows: Vec<SequenceWindow>) -> Vec<i64> {
     let project = window_project(windows);
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
-    let output = run(&project, &Instance::Group(Vec::new())).unwrap();
+    let output = run(&project, &Instance::Group((Vec::new()).into())).unwrap();
     output
         .field("Rows")
         .and_then(Instance::as_repeated)

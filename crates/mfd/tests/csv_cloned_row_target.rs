@@ -9,10 +9,7 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn item(name: &str) -> Instance {
-    Instance::Group(vec![(
-        "Name".into(),
-        Instance::Scalar(Value::String(name.into())),
-    )])
+    Instance::Group((vec![("Name".into(), Instance::Scalar(Value::String(name.into())))]).into())
 }
 
 #[test]
@@ -33,10 +30,13 @@ fn cloned_csv_row_block_preserves_iteration_and_reducer_bindings() {
         Some(vec!["Item".into()])
     );
 
-    let source = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![item("Alpha"), item("Beta")]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![item("Alpha"), item("Beta")]),
+        )])
+        .into(),
+    );
     let target = engine::run(&imported.project, &source).unwrap();
     let rows = target.as_repeated().unwrap();
     assert_eq!(rows.len(), 3);

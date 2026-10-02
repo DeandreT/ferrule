@@ -4,7 +4,7 @@ use codegen_runtime::{ExecutionContext, Instance, RuntimeError, RuntimeParameter
 use ferrule_generated_mapping::{execute, execute_json, execute_json_with_context, execute_with_context};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let source = Instance::Group(Vec::new());
+    let source = Instance::Group((Vec::new()).into());
     assert_eq!(execute(&source)?, output(Value::Int(7), "inner-default"));
     let fallback_json = execute_json("{}")?;
     assert_eq!(codegen_runtime::parse_json(include_str!("../target-schema.json"), &fallback_json)?, output(Value::Int(7), "inner-default"));
@@ -55,8 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn output(direct: Value, nested: &str) -> Instance {
-    Instance::Group(vec![
+    Instance::Group((vec![
         ("Direct".into(), Instance::Scalar(direct)),
         ("Nested".into(), Instance::Scalar(Value::String(nested.into()))),
-    ])
+    ]).into())
 }
