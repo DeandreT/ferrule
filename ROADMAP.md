@@ -985,15 +985,21 @@ recorded separately without inferring broader runtime coverage.
   with 179 warning-free executable-profile admissions. Default export/reimport
   succeeds for 186 designs; the PDF repair draft rejects. Of those reimports,
   185 are warning-free and one retains two known fallback warnings. Native
-  preflight admits 156 designs, including 151 original executable imports.
-  The two prior optional-field and declared-default metadata defects are fixed.
-  Across 489 published artifacts, 418 retain exact bytes and 71 change (69
-  schemas and two designs). These are static checks, with no mapping or
-  native-application execution. WSDL response transport still loses two
-  required-attribute flags. Retained attribute requirements also expose an
-  existing exact-schema recovery mismatch: one optimized native export now
-  falls back to unsupported number-conversion components. That recovery fix
-  remains a separate gate; the mapping graph is unchanged.
+  preflight admits 157 designs. Optional-field and declared-default metadata
+  defects are fixed, and the optimized temperature exporter retains required
+  attribute metadata while matching its existing closed schema profile.
+  Relative to that repair, 477 of 489 artifacts retain exact bytes; twelve
+  designs add 37 scalar-function input/output naming lines, with every schema
+  unchanged. These survey checks are static. WSDL response transport still
+  loses two required-attribute flags.
+- Separate authored scalar-function native checks execute and save seven
+  profiles with zero warnings. Five saved-file imports and interpreter replays
+  are warning-free, schema-valid and exactly typed. An unused-parameter saved
+  function imports incorrectly and changes its replay result; a zero-parameter
+  design replays correctly but retains an unconnected-source warning. The
+  temperature workflow executes, saves and replays exactly but retains one
+  native warning about multiple values mapped to its Year attribute. These
+  importer and grouped-cardinality gaps remain open.
 - Earlier isolated `.mfd` survey checkpoint: 187/187 imports; 169 are warning-free in that resource profile.
   Four connected chains warn in single-project mode and validate as pipelines;
   synthetic linear three- and four-stage XML chains also import and execute.
