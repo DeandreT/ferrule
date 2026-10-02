@@ -334,6 +334,15 @@ pub(super) struct XmlSchemaComponentRead {
 pub(super) fn xml_document_wrapper<'a, 'input>(
     root: roxmltree::Node<'a, 'input>,
 ) -> Option<roxmltree::Node<'a, 'input>> {
+    root.descendants()
+        .find(|entry| is_xml_document_wrapper(entry, root))
+}
+
+/// Shared protocol identity for root inventory; the reader still selects once.
+pub(super) fn is_xml_document_wrapper(
+    entry: &roxmltree::Node<'_, '_>,
+    root: roxmltree::Node<'_, '_>,
+) -> bool {
     fn protocol_namespace(entry: roxmltree::Node<'_, '_>, root: roxmltree::Node<'_, '_>) -> bool {
         let Some(slot) = entry.attribute("ns") else {
             return true;
@@ -360,25 +369,23 @@ pub(super) fn xml_document_wrapper<'a, 'input>(
                     .is_none_or(|uri| uri.is_empty() || uri == "http://www.altova.com/mapforce")
             })
     }
-    root.descendants().find(|entry| {
-        entry.has_tag_name("entry")
-            && entry.attribute("name") == Some("document")
-            && entry.attribute("ferrule-kind").is_none()
-            && protocol_namespace(*entry, root)
-            && entry
-                .ancestors()
-                .skip(1)
-                .take_while(|ancestor| *ancestor != root)
-                .all(|ancestor| {
-                    ancestor.has_tag_name("entry")
-                        && ancestor.attribute("ferrule-kind").is_none()
-                        && match ancestor.attribute("name") {
-                            Some("FileInstance") => protocol_namespace(ancestor, root),
-                            Some("parent-context" | "compute-when") => true,
-                            _ => false,
-                        }
-                })
-    })
+    entry.has_tag_name("entry")
+        && entry.attribute("name") == Some("document")
+        && entry.attribute("ferrule-kind").is_none()
+        && protocol_namespace(*entry, root)
+        && entry
+            .ancestors()
+            .skip(1)
+            .take_while(|ancestor| *ancestor != root)
+            .all(|ancestor| {
+                ancestor.has_tag_name("entry")
+                    && ancestor.attribute("ferrule-kind").is_none()
+                    && match ancestor.attribute("name") {
+                        Some("FileInstance") => protocol_namespace(ancestor, root),
+                        Some("parent-context" | "compute-when") => true,
+                        _ => false,
+                    }
+            })
 }
 
 fn read_schema_component_resolved(
