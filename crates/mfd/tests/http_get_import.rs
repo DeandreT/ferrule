@@ -78,7 +78,7 @@ fn dtd_described_http_document_copy_preserves_present_choice_branches() {
     let xml = format_xml::to_string(&imported.project.target, &target).unwrap();
     assert_eq!(xml.matches("<Category").count(), 2, "{xml}");
     assert_eq!(xml.matches("<Open>").count(), 1, "{xml}");
-    assert_eq!(xml.matches("<Closed>").count(), 1, "{xml}");
+    assert_eq!(xml.matches("<Closed/>").count(), 1, "{xml}");
     assert!(xml.contains("<Item>One</Item>"), "{xml}");
 }
 

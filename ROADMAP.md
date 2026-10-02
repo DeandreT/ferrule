@@ -93,7 +93,7 @@ are preserved.
   XML child scopes on ordinary singular target groups can select the first
   surviving element or every surviving element; unavailable formats and complex
   schemas retain their saved mode without passive changes.
-- `.mfd` survey: all 187 local designs import. The isolated resource profile
+- `.mfd` survey: the earlier isolated checkpoint imported all 187 local designs. Its resource profile
   records 169 warning-free imports and 174 dependency-complete, engine-valid
   designs. Four connected chains warn in single-project mode and validate as
   typed pipelines. Twelve designs retain unresolved EDI-catalog dependencies;
@@ -120,8 +120,16 @@ are preserved.
   re-save without warnings; the saved designs replay through the current CLI
   with exact typed outputs. Recursive XSD exports use collision-safe named
   references, and foreign declarations share one complete artifact per namespace.
-  Optional-field, derived-type annotation and filtered-position native export
-  gates remain open. The earlier 79 matches have not been rechecked after
+  Singular optional XML occurrences and declared concrete default types now
+  survive schema export. Typed XML variables retain filtered positions and
+  copied-variable output modes. Four conditional-string text designs, a
+  parent-driven first-child projection, and an original multi-key sort design
+  validate, execute, and re-save without native warnings. Their current CLI
+  exports match the executed artifacts, and saved mappings replay with exact
+  typed output and expanded XML, allowing only schema-location differences.
+  EMPTY and attribute-only XML groups no longer acquire invalid indentation
+  text. Broader XML and native execution coverage remain open. The earlier 79
+  matches have not been rechecked after
   preview corrections.
   The single-project counts do not establish faithful behavior for warned
   connected chains; the typed pipeline path is measured separately.
@@ -338,8 +346,8 @@ are preserved.
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON/CSV/SQLite/Protocol Buffers blank-project setup, explicit native/Ferrule MFD export profiles, SQLite table introspection for named lookup sources, scope management, extra-source CRUD, named-target CRUD and canvases, deterministic compatible-field auto-connect, bounded in-memory preview, undo, and layout | Complete schema/format wizards |
 | Debugging | Static validation, runtime errors, deterministic node/scope/control/target-field traces, a bounded searchable GUI run report, post-run graph-node input/output history for direct calls, conditionals, value maps, lookups, dynamic keys, collection searches, XML mixed-content replacements, generated-sequence generator arguments, existence predicates, item-at indexes, and aggregate and generated-sequence reduction expressions/arguments, bounded source-row previews with nested row/join context, event-by-event replay of completed traces with direct links from retained trace/history/source-row entries, stage-attributed pipeline traces with stage-specific Node History/Source Rows/Replay, opt-in target-write, post-evaluation graph-node, and delivered graph-input debug hooks, and worker-backed live GUI Preview/file-Run/pipeline stepping with static target-field breakpoints, bounded typed scalar-value, innermost active-position, exact active-frame source-field, target-write value-node, exact expression-node/value, recorded consumer-pin conditions, first failing graph or reusable-function node pauses, and shallow active source-frame snapshots | Remaining connector classes, full source-row inspection, richer expression/context breakpoint predicates |
-| `.mfd` | 187 imports (169 warning-free in the isolated resource profile), 174 dependency-complete engine-valid projects, 186 best-effort exports/reimports (185 warning-free), 174 supported engine-valid round trips, persisted EDI-catalog and PDF repair dependencies, explicitly trusted/confined catalog resolution, 167/167 safe preview executions with 163 outputs, and 166 semantic round-trip matches with zero drift and one unsupported-contract skip; previous native references remain unverified here | Reference-application open/validate/execute/re-save verification, complete behavioral-reference coverage, and broader explicit extension-dependent export reporting |
-| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; all 174 dependency-complete survey designs emit in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
+| `.mfd` | Earlier isolated checkpoint: 187 imports, 169 warning-free, 174 dependency-complete engine-valid projects, 186 best-effort exports/reimports, and 166 semantic round-trip matches with zero drift. Current bounded native checks cover document wrappers, qualified/reserved fields, controlled positions, copied-variable output, parent-driven first-child presence, conditional string text, and multi-key sorting with saved-file replay | Complete native open/validate/execute/re-save coverage, remaining XML contracts, complete behavioral coverage, and broader explicit extension-dependent export reporting |
+| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, bounded schema-shaped JSON host APIs including heterogeneous scalar-union boundaries and targets, catalog-backed scalar functions including schema-guided JSON-string field projection and typed object serialization, embedded delimited and fixed-width FlexText field projection, typed failures and ordered failure rules, host runtime values and bounded typed parameters, ordered value maps, static and per-driver dynamic named inputs, dynamic source fields, cross-source lookups, expression-driven collection search, structured XML serialization and ordered mixed-content replacement, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, dynamic document sets and JSON object construction, scalar/group targets, exact whole-group copies, recursive-filter, path-hierarchy, and adjacency-tree construction, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, post-group member filters, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers; the earlier emission checkpoint covered 174 dependency-complete designs, and current generated execution covers 103 distinct designs in both languages | Compile-and-execute parity for applicable mappings, published/versioned endpoint hosts, and Java, C++, XSLT 1/2/3, and XQuery generators according to the reference product's format/feature matrix |
 
 ## Workstreams
 
@@ -967,8 +975,23 @@ Runtime support proceeds in parallel:
 
 Update these numbers with each parity increment:
 
+Import, export, and preview totals labelled as earlier describe that isolated
+checkpoint. The fresh complete static survey uses separately staged installed
+catalogs; its counts, generated execution, and bounded native checks are
+recorded separately without inferring broader runtime coverage.
+
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
-- `.mfd` import: 187/187; 169 are warning-free in the isolated resource profile.
+- Current complete static `.mfd` survey: all 187 designs import, 179 without
+  warnings and with executable-profile admission. All 187 imported graphs
+  validate, including explicitly incomplete designs. Default export/reimport
+  succeeds for 186 designs; the PDF repair draft rejects. Native preflight
+  admits 158 designs, of which 153 also pass original executable import; the
+  other five retain warned original behavior. All 489 published designs and
+  schema siblings remain byte-identical across the text-report correction.
+  These are static checks, with no mapping or native-application execution.
+  Two warning-free round trips still lose optional WSDL target fields or a
+  declared source type; their execution consequences remain unverified.
+- Earlier isolated `.mfd` survey checkpoint: 187/187 imports; 169 are warning-free in that resource profile.
   Four connected chains warn in single-project mode and validate as pipelines;
   synthetic linear three- and four-stage XML chains also import and execute.
 - `.mfd` validation: all 174 dependency-complete projects are engine-valid.
@@ -1010,6 +1033,16 @@ Update these numbers with each parity increment:
   schema-location metadata differences explicitly. Broader schema, annotation
   and export execution coverage remain open. Earlier output counts are not
   inferred from structural success.
+  Current bounded native checks additionally qualify filtered and mapped XML
+  positions, a parent-driven first-child projection, four conditional-string
+  text designs, and one original multi-key sort design. Executed export artifacts
+  match current CLI production bytes; saved-file replay retains exact typed and
+  expanded XML output, allowing only schema-location metadata differences.
+  EMPTY-aware comparisons detect invalid whitespace instead of treating it as
+  formatting. Current EMPTY serialization repairs the sort output's schema
+  validity; that original design's input still violates its declared schema.
+  Required-attribute fidelity and remaining derived-type contracts are separate
+  open gates.
 - Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample
   compatibility report and `FERRULE_SURVEY_DETAILS=1` for text diagnostics.
 - All three report-producing read-only surveys accept one explicitly selected

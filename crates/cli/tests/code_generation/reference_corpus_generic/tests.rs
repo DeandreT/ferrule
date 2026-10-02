@@ -784,3 +784,162 @@ fn generic_snapshot_resolves_exact_case_digests_and_rejects_missing_or_duplicate
     }
     snapshot.verify().unwrap();
 }
+
+fn xml_typed_target_project() -> Project {
+    let mut project = identity_project();
+    project.target = SchemaNode::group("Typed", vec![string("Text"), string("Extra")])
+        .with_alternatives(vec![
+            ir::GroupAlternative {
+                name: "Base".into(),
+                members: vec!["Text".into()],
+                required: vec![],
+                constraints: vec![],
+            },
+            ir::GroupAlternative {
+                name: "Derived".into(),
+                members: vec!["Text".into(), "Extra".into()],
+                required: vec![],
+                constraints: vec![],
+            },
+        ])
+        .unwrap();
+    project.target.xml_type_alternatives = true;
+    project.target.xml_default_type = Some("Base".into());
+    project
+}
+
+#[test]
+fn generic_admission_rejects_reachable_constant_xml_target_type_marker() {
+    let mut project = xml_typed_target_project();
+    project.graph.nodes.insert(
+        2,
+        Node::Const {
+            value: Value::String("Base".into()),
+        },
+    );
+    project.root.bindings.push(Binding {
+        target_field: ir::XML_TYPE_FIELD.into(),
+        node: 2,
+    });
+    assert!(engine::validate(&project).is_empty());
+    let program = codegen::lower(&project).unwrap();
+    admission::check_program(&program).unwrap();
+    admission::source_document(&project.source, &input(), 0).unwrap();
+    let target = engine::run(&project, &input()).unwrap();
+    assert_eq!(
+        target
+            .field(ir::XML_TYPE_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("Base".into()))
+    );
+    assert!(matches!(
+        admission::admit(&project, &input(), &[], Path::new("authored-marker.json")),
+        Err(AdmissionError::Unsupported("reserved XML metadata"))
+    ));
+}
+
+#[test]
+fn generic_admission_accepts_plain_concrete_xml_default_without_runtime_marker() {
+    let project = xml_typed_target_project();
+    assert!(engine::validate(&project).is_empty());
+    let target = engine::run(&project, &input()).unwrap();
+    assert!(target.field(ir::XML_TYPE_FIELD).is_none());
+    let admitted =
+        admission::admit(&project, &input(), &[], Path::new("authored-default.json")).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&admitted.outputs[0].json).unwrap()["Text"],
+        "self-authored é🙂 value"
+    );
+    // Scalar payloads that spell a reserved metadata name remain ordinary data.
+    let literal = Instance::Group(vec![(
+        "Text".into(),
+        Instance::Scalar(Value::String(ir::XML_TYPE_FIELD.into())),
+    )]);
+    admission::admit(&project, &literal, &[], Path::new("authored-literal.json")).unwrap();
+}
+
+#[test]
+fn generic_json_helpers_reject_nested_actual_xml_metadata_in_both_directions() {
+    let schema = SchemaNode::group("Root", vec![]);
+    for name in [
+        ir::XML_TYPE_FIELD,
+        ir::XML_SUBSTITUTION_FIELD,
+        ir::XML_MIXED_CONTENT_FIELD,
+        ir::XML_MIXED_CONTENT_VALUE_FIELD,
+    ] {
+        let metadata = Instance::Group(vec![(
+            name.into(),
+            Instance::Scalar(Value::String("authored metadata".into())),
+        )]);
+        for repeated in [
+            Instance::Repeated(vec![metadata.clone()]),
+            Instance::MappedSequence(vec![metadata.clone()]),
+        ] {
+            let value = Instance::Group(vec![("Nested".into(), repeated)]);
+            assert!(matches!(
+                admission::source_document(&schema, &value, 0),
+                Err(AdmissionError::Unsupported("reserved XML metadata"))
+            ));
+            assert!(matches!(
+                admission::target_document(&schema, &value, 0),
+                Err(AdmissionError::Unsupported("reserved XML metadata"))
+            ));
+        }
+    }
+}
+
+#[test]
+fn generic_json_helpers_retain_same_spelling_physical_and_dynamic_properties() {
+    for name in [
+        ir::XML_TYPE_FIELD,
+        ir::XML_SUBSTITUTION_FIELD,
+        ir::XML_MIXED_CONTENT_FIELD,
+        ir::XML_MIXED_CONTENT_VALUE_FIELD,
+    ] {
+        let value = Instance::Group(vec![(
+            name.into(),
+            Instance::Scalar(Value::String("ordinary JSON data".into())),
+        )]);
+        for schema in [
+            SchemaNode::group("Root", vec![string(name)]),
+            SchemaNode::group("Root", vec![])
+                .with_dynamic_fields(string("Value"))
+                .unwrap(),
+        ] {
+            assert_eq!(
+                admission::source_document(&schema, &value, 0).unwrap().1,
+                value
+            );
+            let document = admission::target_document(&schema, &value, 0).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&document).unwrap()[name],
+                "ordinary JSON data"
+            );
+        }
+        let schema = SchemaNode::group(
+            "Root",
+            vec![SchemaNode::group("Rows", vec![string(name)]).repeating()],
+        );
+        let mapped = Instance::Group(vec![(
+            "Rows".into(),
+            Instance::MappedSequence(vec![value.clone()]),
+        )]);
+        let document = admission::target_document(&schema, &mapped, 0).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&document).unwrap()["Rows"][0][name],
+            "ordinary JSON data"
+        );
+        // A retained physical numeric property keeps the existing lexical
+        // target adaptation even when its spelling matches a metadata key.
+        let schema = SchemaNode::group("Root", vec![int(name)]);
+        let value = Instance::Group(vec![(
+            name.into(),
+            Instance::Scalar(Value::String("7".into())),
+        )]);
+        let document = admission::target_document(&schema, &value, 0).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&document).unwrap()[name],
+            7
+        );
+    }
+}

@@ -132,6 +132,7 @@ fn export_roundtrips_named_base_and_derived_group_alternatives() {
     ])
     .unwrap();
     address.xml_type_alternatives = true;
+    address.xml_default_type = Some("{urn:ferrule:address}BaseAddress".into());
     let schema = SchemaNode::group("Root", vec![address]);
 
     let xsd = export(&schema).unwrap();

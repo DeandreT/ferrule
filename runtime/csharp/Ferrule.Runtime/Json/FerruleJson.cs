@@ -269,6 +269,14 @@ public static partial class FerruleJson
         RequireKind(kindElement, JsonValueKind.Object, $"schema node '{name}' kind", "object");
         var kind = RequiredString(kindElement, "kind");
         var repeating = OptionalBoolean(element, "repeating");
+        if (OptionalBoolean(element, "xml_optional") &&
+            (name.Length == 0 || name is "#text" or "element()" or "attribute()" ||
+             name.StartsWith('\u001f') || repeating ||
+             OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
+             kind is not ("scalar" or "group")))
+        {
+            throw Boundary($"Embedded JSON schema node '{name}' has invalid optional XML occurrence metadata.");
+        }
         var recursiveReference = OptionalString(element, "recursive_ref");
         var jsonUniqueItems = ReadJsonUniqueItems(name, element, repeating);
         var scalarDomain = kind switch
@@ -478,6 +486,40 @@ public static partial class FerruleJson
         {
             throw Boundary(
                 $"Embedded JSON schema node '{name}' has invalid XML type alternatives.");
+        }
+        var xmlDefaultType = element.TryGetProperty("xml_default_type", out var defaultType)
+            && defaultType.ValueKind == JsonValueKind.Null
+            ? null : OptionalString(element, "xml_default_type");
+        if (xmlDefaultType is not null)
+        {
+            var declared = alternatives.Find(alternative => alternative.Name == xmlDefaultType);
+            var restrictedTypes = new HashSet<string>(StringComparer.Ordinal);
+            if (kindElement.TryGetProperty("xml_restricted_alternatives", out var restrictionNames))
+            {
+                if (restrictionNames.ValueKind != JsonValueKind.Array)
+                {
+                    throw Boundary($"Embedded JSON schema node '{name}' has invalid XML restriction metadata.");
+                }
+                foreach (var restriction in restrictionNames.EnumerateArray())
+                {
+                    if (restriction.ValueKind != JsonValueKind.String ||
+                        restriction.GetString() is not { Length: > 0 } identity ||
+                        !restrictedTypes.Add(identity) || !alternatives.Any(type => type.Name == identity))
+                    {
+                        throw Boundary($"Embedded JSON schema node '{name}' has invalid XML restriction metadata.");
+                    }
+                }
+            }
+            if (!xmlTypeAlternatives || declared is null ||
+                OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
+                recursiveReference is not null || restrictedTypes.Contains(xmlDefaultType) ||
+                alternatives.Any(alternative => restrictedTypes.Contains(alternative.Name)
+                    ? alternative.Members.Any(member => !declared.Members.Contains(member))
+                    : declared.Members.Any(member => !alternative.Members.Contains(member))))
+            {
+                throw Boundary(
+                    $"Embedded JSON schema node '{name}' has invalid XML default type metadata.");
+            }
         }
         if (recursiveReference is not null &&
             (recursiveReference.Length == 0 || scalarDomain != JsonScalarDomain.None ||

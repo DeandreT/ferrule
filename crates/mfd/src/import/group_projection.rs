@@ -113,6 +113,27 @@ pub(super) fn classify_target_connection(
     if mapped_xml_target && connection_role.driver_port != input_key {
         return;
     }
+    if let Some(first_feed) = super::first_presence::reconstruct(
+        target,
+        target_path,
+        input_key,
+        feed,
+        copy_all_targets,
+        builder,
+    ) {
+        if let super::first_presence::Recognition::First(first_feed) = first_feed {
+            iterations.push(TargetIteration {
+                target_path: target_path.to_vec(),
+                feed: first_feed,
+                target_port: Some(input_key),
+                additional_feeds: Vec::new(),
+                output: IterationOutput::First,
+                projects_whole_group: false,
+                join: None,
+            });
+        }
+        return;
+    }
     let resolved = builder.resolve_iteration_feed(feed);
     let plain_feed = resolved.sequence_component.is_none()
         && resolved.db_where_component.is_none()
@@ -521,7 +542,7 @@ fn connected_structural_feeds(
     feeds
 }
 
-fn mapped_group_sequence(
+pub(super) fn mapped_group_sequence(
     target: &SchemaComponent,
     target_path: &[String],
     builder: &GraphBuilder<'_>,
@@ -537,7 +558,6 @@ fn mapped_group_sequence(
         || feed.has_key_grouping
         || feed.has_block_grouping
         || feed.distinct_key.is_some()
-        || feed.projects_whole_group
         || !feed.projections.is_empty()
         || feed.has_filter && feed.filter_expr.is_none() && feed.udf_filters.is_empty()
         || feed.has_sort && feed.sort_keys.is_empty()
@@ -547,8 +567,13 @@ fn mapped_group_sequence(
     let Some(source_path) = builder.iteration_source_path(feed) else {
         return false;
     };
-    if enclosing_iteration_owns_source(target, target_path, builder, &source_path)
-        && !builder.xml_type_conditions.contains_key(&feed.source_key)
+    if enclosing_iteration_owns_source(
+        target,
+        target_path,
+        builder,
+        &source_path,
+        feed.projects_whole_group,
+    ) && !builder.xml_type_conditions.contains_key(&feed.source_key)
         && !feed.has_terminal_default_first()
     {
         return false;
@@ -592,6 +617,7 @@ fn enclosing_iteration_owns_source(
     target_path: &[String],
     builder: &GraphBuilder<'_>,
     source_path: &super::source::SourcePath,
+    copied_payload: bool,
 ) -> bool {
     target.ports.iter().any(|(key, path)| {
         path.len() < target_path.len()
@@ -601,8 +627,21 @@ fn enclosing_iteration_owns_source(
                 builder
                     .iteration_source_path(&enclosing)
                     .is_some_and(|source| {
+                        let crosses_new_repetition = copied_payload
+                            && source.source == source_path.source
+                            && source_path.path.starts_with(&source.path)
+                            && builder.sources.get(source.source).is_some_and(|component| {
+                                (source.path.len() + 1..=source_path.path.len()).any(|len| {
+                                    schema_node_at(&component.schema, &source_path.path[..len])
+                                        .is_some_and(|node| node.repeating)
+                                })
+                            });
+                        // A copied payload below a fresh repeated collection
+                        // owns a distinct mapped-item context. A copy of the
+                        // already active collection still belongs to its parent.
                         source.source == source_path.source
                             && source_path.path.starts_with(&source.path)
+                            && !crosses_new_repetition
                             && schema_node_at(&target.schema, path)
                                 .is_some_and(|node| node.repeating)
                     })

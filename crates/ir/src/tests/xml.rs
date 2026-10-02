@@ -369,3 +369,138 @@ fn xml_repeating_sequences_are_group_scoped_and_serde_validated() {
     }"#;
     assert!(serde_json::from_str::<SchemaNode>(misplaced).is_err());
 }
+
+#[test]
+fn xml_declared_default_type_is_optional_exact_and_validated() {
+    let mut schema = SchemaNode::group(
+        "Record",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::String),
+            SchemaNode::scalar("Extra", ScalarType::String),
+        ],
+    )
+    .with_alternatives(vec![
+        GroupAlternative {
+            name: "{urn:ferrule:default}Base".into(),
+            members: vec!["Value".into()],
+            required: Vec::new(),
+            constraints: Vec::new(),
+        },
+        GroupAlternative {
+            name: "{urn:ferrule:default}Derived".into(),
+            members: vec!["Value".into(), "Extra".into()],
+            required: Vec::new(),
+            constraints: Vec::new(),
+        },
+    ])
+    .unwrap();
+    let legacy = serde_json::to_value(&schema).unwrap();
+    assert!(legacy.get("xml_default_type").is_none());
+    assert_eq!(
+        serde_json::from_value::<SchemaNode>(legacy.clone()).unwrap(),
+        schema
+    );
+    schema.xml_type_alternatives = true;
+    schema.xml_default_type = Some("{urn:ferrule:default}Base".into());
+    assert!(schema.metadata_is_valid());
+    let encoded = serde_json::to_value(&schema).unwrap();
+    assert_eq!(
+        serde_json::from_value::<SchemaNode>(encoded.clone()).unwrap(),
+        schema
+    );
+    let mut null_default = encoded.clone();
+    null_default["xml_default_type"] = serde_json::Value::Null;
+    assert!(
+        serde_json::from_value::<SchemaNode>(null_default)
+            .unwrap()
+            .xml_default_type
+            .is_none()
+    );
+    for identity in [
+        "",
+        "Base",
+        "{urn:other}Base",
+        "{urn:ferrule:default}Derived",
+    ] {
+        let mut invalid = encoded.clone();
+        invalid["xml_default_type"] = identity.into();
+        assert!(serde_json::from_value::<SchemaNode>(invalid.clone()).is_err());
+        let nested =
+            serde_json::json!({"name":"Root","kind":{"kind":"group","children":[invalid]}});
+        assert!(serde_json::from_value::<SchemaNode>(nested).is_err());
+    }
+    let mut invalid = encoded.clone();
+    invalid["xml_type_alternatives"] = false.into();
+    assert!(serde_json::from_value::<SchemaNode>(invalid).is_err());
+    for kind in ["scalar", "group"] {
+        let value = if kind == "scalar" {
+            serde_json::json!({"kind":"scalar","ty":"string"})
+        } else {
+            serde_json::json!({"kind":"group","children":[]})
+        };
+        assert!(
+            serde_json::from_value::<SchemaNode>(
+                serde_json::json!({"name":"Invalid","xml_default_type":"Base","kind":value})
+            )
+            .is_err()
+        );
+    }
+    let mut revised = schema.clone();
+    assert!(revised.set_alternatives(schema.alternatives().to_vec()));
+    assert!(revised.xml_default_type.is_none());
+    assert!(!revised.xml_type_alternatives);
+    assert_ne!(schema, revised);
+}
+
+#[test]
+fn xml_optional_legacy_wire_and_checked_role_invariant() {
+    let legacy = SchemaNode::scalar("Value", ScalarType::String);
+    let json = serde_json::to_string(&legacy).unwrap();
+    assert!(!json.contains("xml_optional"));
+    assert_eq!(serde_json::from_str::<SchemaNode>(&json).unwrap(), legacy);
+    let explicit_false = json.replacen("\"name\":", "\"xml_optional\":false,\"name\":", 1);
+    assert_eq!(
+        serde_json::to_string(&serde_json::from_str::<SchemaNode>(&explicit_false).unwrap())
+            .unwrap(),
+        json
+    );
+    for mut valid in [
+        legacy.clone(),
+        SchemaNode::group("Box", vec![]),
+        SchemaNode::recursive_group("Again", "Root"),
+    ] {
+        assert!(valid.set_xml_optional(true));
+        assert!(valid.xml_optional_is_valid());
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&serde_json::to_string(&valid).unwrap()).unwrap(),
+            valid
+        );
+    }
+    for mut invalid in [
+        legacy.clone().repeating(),
+        legacy.clone().attribute(),
+        SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+        SchemaNode::group("element()", vec![]),
+        SchemaNode::scalar("", ScalarType::String),
+        SchemaNode::scalar_union(
+            "Value",
+            ScalarTypeSet::new([ScalarType::String, ScalarType::Int]).unwrap(),
+        ),
+    ] {
+        assert!(!invalid.set_xml_optional(true));
+        assert!(!invalid.xml_optional);
+        invalid.xml_optional = true;
+        assert!(!invalid.metadata_is_valid());
+        assert!(
+            serde_json::from_str::<SchemaNode>(&serde_json::to_string(&invalid).unwrap()).is_err()
+        );
+    }
+    for value in ["null", "0", "\"true\"", "[]"] {
+        let invalid = json.replacen(
+            "\"name\":",
+            &format!("\"xml_optional\":{value},\"name\":"),
+            1,
+        );
+        assert!(serde_json::from_str::<SchemaNode>(&invalid).is_err());
+    }
+}

@@ -166,6 +166,23 @@ namespace, and optional XML declaration directly from the current source item.
 Imported XSD contracts expand bounded named model and attribute groups, retain
 typed scalar element/simple-content/attribute defaults, and materialize those
 defaults at the XML input boundary.
+Singular optional XML elements retain their declared occurrence through project
+serialization and XSD export. This metadata does not change the existing lenient
+instance reader or make JSON properties optional. Optional compositor wrappers
+are accepted only when their complete content can be represented exactly;
+correlated required members produce a typed schema diagnostic and retain the
+complete entry-tree fallback during best-effort import.
+Concrete declared XML default types also survive schema serialization. XML
+output omits an invented `xsi:type` when the runtime value already uses that
+declared type, while explicit type markers remain intact. Abstract, unknown,
+malformed, and overridden declarations do not infer a default from the first
+available alternative.
+Optional sequence wrappers normalize only when every supported member already
+accepts absence. Unbounded ordered choices can remove an empty branch without
+changing their nonempty member order; bounded or correlated cases still reject.
+Empty XML groups and groups containing only attributes serialize without
+indentation text inside the element. Empty numeric, boolean, and nonempty fixed
+text retain their typed conversion errors.
 Structured XML database columns reuse that typed serializer with compact output,
 so document-valued TEXT fields execute without flattening the source subtree.
 Their declared root XSD or DTD accepts portable Windows separators and safe
@@ -603,6 +620,23 @@ retain their ownership in the exported design. Structured XML string serializers
 with default indentation round-trip as native components with generated XSD
 siblings and structural source connections. Explicit compact serialization
 still uses a Ferrule extension and is rejected by the native export profile.
+Static file-backed XML iteration controls export through typed XML variables,
+preserving selected source frames and final positions. Copied variables retain
+their `First` or mapped-sequence output on reimport. A bounded `First` projection
+uses its raw parent as the structural trigger, so a parent survives even when
+none of its children pass the selection. This lowering requires direct fields
+from the selected child frame and a unique target owner; unsupported shapes
+produce a native compatibility diagnostic before publication.
+Conditional string text also lowers directly when its output count is exactly
+`exists` of the same source field, with one generated item owner and no target
+attributes or other payload. Present empty strings remain present, absent
+strings remain absent, and shared predicate consumers remain connected.
+Computed text, numeric or nil text, and ambiguous source ownership retain their
+extension dependency. The qualified `First`, conditional-text, and controlled
+XML designs have been validated, executed, and saved in isolated native tests;
+the saved designs replay with exact typed and expanded XML output, allowing
+only explicit schema-location metadata differences. These checks cover those
+designs rather than every graph accepted by static preflight.
 Declared local SQLite relations round-trip with their owning
 database connection.
 CSV components retain a printable single-byte quote character or an explicit

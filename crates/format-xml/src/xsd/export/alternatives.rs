@@ -12,6 +12,7 @@ pub(super) struct AlternativeExportPlan<'a> {
     saw_unqualified: bool,
     groups: BTreeMap<usize, String>,
     group_views: BTreeMap<usize, Vec<String>>,
+    declared_default_views: BTreeSet<usize>,
     alternatives_by_base: BTreeMap<String, BTreeSet<String>>,
     definitions: BTreeMap<String, TypeDefinition<'a>>,
     recursive_types: BTreeMap<String, String>,
@@ -72,6 +73,7 @@ impl<'a> AlternativeExportPlan<'a> {
             saw_unqualified: false,
             groups: BTreeMap::new(),
             group_views: BTreeMap::new(),
+            declared_default_views: BTreeSet::new(),
             alternatives_by_base: BTreeMap::new(),
             definitions: BTreeMap::new(),
             recursive_types: BTreeMap::new(),
@@ -223,7 +225,10 @@ impl<'a> AlternativeExportPlan<'a> {
         let view = self.group_views.get(&key)?;
         let complete = self.alternatives_by_base.get(base)?;
         let view_set = view.iter().cloned().collect::<BTreeSet<_>>();
-        (view_set != *complete).then_some(view.as_slice())
+        (view_set != *complete
+            || node.xml_default_type.is_some()
+            || view.iter().ne(complete.iter()))
+        .then_some(view.as_slice())
     }
 
     pub(super) fn write_definitions(
@@ -388,6 +393,11 @@ impl<'a> AlternativeExportPlan<'a> {
             if node.alternative_mode() == ir::GroupAlternativeMode::Inclusive {
                 return Err(unsupported(node));
             }
+            if !node.xml_repeating_choices.is_empty() || !node.xml_repeating_sequences.is_empty() {
+                return Err(XmlFormatError::UnsupportedXmlAlternativeCompositor {
+                    group: node.name.clone(),
+                });
+            }
             self.collect_group(
                 node,
                 children,
@@ -410,9 +420,26 @@ impl<'a> AlternativeExportPlan<'a> {
         restricted_alternatives: &[String],
         reserved: &BTreeSet<String>,
     ) -> Result<(), XmlFormatError> {
-        if alternatives
+        for child in children
             .iter()
-            .any(|alternative| !alternative.required.is_empty())
+            .filter(|child| !child.attribute && !child.text && child.xml_optional)
+        {
+            let profiles = alternatives
+                .iter()
+                .filter(|alternative| alternative.members.contains(&child.name))
+                .map(|alternative| alternative.required.contains(&child.name))
+                .collect::<BTreeSet<_>>();
+            if profiles.len() > 1 {
+                return Err(XmlFormatError::UnsupportedXmlAlternativeOccurrence {
+                    group: node.name.clone(),
+                    field: child.name.clone(),
+                });
+            }
+        }
+        if !node.xml_default_type_is_valid()
+            || alternatives
+                .iter()
+                .any(|alternative| !alternative.required.is_empty())
         {
             return Err(unsupported(node));
         }
@@ -463,11 +490,19 @@ impl<'a> AlternativeExportPlan<'a> {
             return Err(unsupported(node));
         }
 
+        let declared_base_index = node.xml_default_type.as_ref().and_then(|identity| {
+            alternatives
+                .iter()
+                .position(|alternative| alternative.name == *identity)
+        });
+        let concrete_base_index = declared_base_index.or(restriction_base_index);
+        let conservative_default = node.xml_type_alternatives && node.xml_default_type.is_none();
+
         // One concrete alternative still needs a distinct declared base so
         // export/reimport retains its xsi:type identity. With no observable
         // base member split in the IR, use an empty abstract base and put the
         // complete projection on the concrete derived type.
-        let common = if let Some(index) = restriction_base_index {
+        let common = if let Some(index) = concrete_base_index {
             alternatives[index]
                 .members
                 .iter()
@@ -511,7 +546,10 @@ impl<'a> AlternativeExportPlan<'a> {
             return Err(unsupported(node));
         }
 
-        let base_index = restriction_base_index.or_else(|| {
+        let base_index = concrete_base_index.or_else(|| {
+            if conservative_default {
+                return None;
+            }
             alternatives.iter().position(|alternative| {
                 alternative.members.len() == common.len()
                     && alternative
@@ -527,6 +565,7 @@ impl<'a> AlternativeExportPlan<'a> {
                     let base = self.definitions.get(local)?.base.as_ref()?;
                     let definition = self.definitions.get(base)?;
                     (definition.base.is_none()
+                        && (!conservative_default || definition.abstract_type)
                         && definition.members == common
                         && definition.required.is_empty())
                     .then(|| base.clone())
@@ -546,15 +585,38 @@ impl<'a> AlternativeExportPlan<'a> {
             .entry(base_name.clone())
             .or_default()
             .extend(identity_set);
+        let declared_base = if conservative_default && base_index.is_some() {
+            synthetic_base_name(&base_name, reserved)
+        } else {
+            base_name.clone()
+        };
+        if declared_base != base_name {
+            self.insert_definition(
+                node,
+                declared_base.clone(),
+                TypeDefinition {
+                    base: None,
+                    derivation: TypeDerivation::Extension,
+                    abstract_type: true,
+                    members: common.clone(),
+                    prohibited_attributes: Vec::new(),
+                    required: BTreeSet::new(),
+                },
+            )?;
+        }
         if define_base {
             self.insert_definition(
                 node,
                 base_name.clone(),
                 TypeDefinition {
-                    base: None,
+                    base: (declared_base != base_name).then(|| declared_base.clone()),
                     derivation: TypeDerivation::Extension,
                     abstract_type,
-                    members: common,
+                    members: if declared_base == base_name {
+                        common
+                    } else {
+                        Vec::new()
+                    },
                     prohibited_attributes: Vec::new(),
                     required: BTreeSet::new(),
                 },
@@ -613,7 +675,16 @@ impl<'a> AlternativeExportPlan<'a> {
             )?;
         }
         let key = node_key(node);
-        self.groups.insert(key, base_name);
+        if node.xml_default_type.is_some() {
+            self.declared_default_views.insert(key);
+        }
+        self.groups.insert(key, declared_base.clone());
+        if declared_base != base_name {
+            self.alternatives_by_base
+                .entry(declared_base)
+                .or_default()
+                .extend(identities.iter().map(|(_, local)| local.clone()));
+        }
         self.group_views.insert(
             key,
             alternatives
@@ -632,12 +703,91 @@ impl<'a> AlternativeExportPlan<'a> {
     ) -> Result<(), XmlFormatError> {
         if let Some(existing) = self.definitions.get(&name) {
             if existing != &definition {
-                return Err(unsupported(node));
+                let equivalent = !existing.abstract_type
+                    && !definition.abstract_type
+                    && self.extension_members(existing).is_some_and(|members| {
+                        self.extension_members(&definition).as_ref() == Some(&members)
+                    });
+                if !equivalent {
+                    return Err(unsupported(node));
+                }
+                if definition
+                    .base
+                    .as_ref()
+                    .is_none_or(|base| self.derives_from(existing, base))
+                {
+                    return Ok(());
+                }
+                if (existing.base.is_none()
+                    && definition.base.as_ref().is_some_and(|base| {
+                        self.definitions
+                            .get(base)
+                            .is_some_and(|parent| parent.abstract_type)
+                    }))
+                    || definition.base.as_ref().is_some_and(|base| {
+                        existing.base.as_ref().is_some_and(|ancestor| {
+                            self.definitions
+                                .get(base)
+                                .is_some_and(|parent| self.derives_from(parent, ancestor))
+                        })
+                    })
+                {
+                    self.definitions.insert(name, definition);
+                } else {
+                    return Err(unsupported(node));
+                }
             }
         } else {
             self.definitions.insert(name, definition);
         }
         Ok(())
+    }
+
+    fn extension_members(&self, definition: &TypeDefinition<'a>) -> Option<Vec<&'a SchemaNode>> {
+        let mut parts = Vec::new();
+        let mut current = definition;
+        let mut seen = BTreeSet::new();
+        loop {
+            if current.derivation != TypeDerivation::Extension
+                || !current.prohibited_attributes.is_empty()
+                || !current.required.is_empty()
+            {
+                return None;
+            }
+            parts.push(current.members.as_slice());
+            let Some(base) = &current.base else {
+                break;
+            };
+            if !seen.insert(base) {
+                return None;
+            }
+            current = self.definitions.get(base)?;
+        }
+        Some(
+            parts
+                .into_iter()
+                .rev()
+                .flat_map(|part| part.iter().copied())
+                .collect(),
+        )
+    }
+
+    fn derives_from(&self, definition: &TypeDefinition<'_>, ancestor: &str) -> bool {
+        let mut base = definition.base.as_deref();
+        let mut seen = BTreeSet::new();
+        while let Some(name) = base {
+            if name == ancestor {
+                return true;
+            }
+            if !seen.insert(name) {
+                return false;
+            }
+            base = self
+                .definitions
+                .get(name)
+                .and_then(|parent| parent.base.as_deref());
+        }
+        false
     }
 
     fn qualified(&self, name: &str) -> String {
@@ -649,15 +799,17 @@ impl<'a> AlternativeExportPlan<'a> {
     }
 
     fn has_restricted_views(&self) -> bool {
-        self.groups.iter().any(|(key, base)| {
-            let Some(view) = self.group_views.get(key) else {
-                return false;
-            };
-            let Some(complete) = self.alternatives_by_base.get(base) else {
-                return false;
-            };
-            view.iter().cloned().collect::<BTreeSet<_>>() != *complete
-        })
+        !self.declared_default_views.is_empty()
+            || self.groups.iter().any(|(key, base)| {
+                let Some(view) = self.group_views.get(key) else {
+                    return false;
+                };
+                let Some(complete) = self.alternatives_by_base.get(base) else {
+                    return false;
+                };
+                view.iter().cloned().collect::<BTreeSet<_>>() != *complete
+                    || view.iter().ne(complete.iter())
+            })
     }
 }
 
@@ -697,7 +849,7 @@ fn write_members(
             if definition.required.contains(&child.name) {
                 ElementOccurrence::Required
             } else {
-                ElementOccurrence::Optional
+                ElementOccurrence::Schema
             },
             root_name,
             recursive_anchors,
