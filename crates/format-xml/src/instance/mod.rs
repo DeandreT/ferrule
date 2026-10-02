@@ -106,6 +106,8 @@ pub enum XmlFormatError {
     AmbiguousRepeatingSequence { group: String, reason: String },
     #[error("element `{name}` matches no declared schema alternative")]
     NoMatchingAlternative { name: String },
+    #[error("XML root `{name}` does not support inactive type-member reads")]
+    UnsupportedInactiveRootTypeMembers { name: String },
     #[error("element `{name}` matches more than one declared schema alternative")]
     AmbiguousAlternative { name: String },
     #[error("element `{name}` has multiple expanded XML names and no retained occurrence identity")]
@@ -271,16 +273,49 @@ pub enum XmlFormatError {
     IncompatibleSoapBody { schema: String },
 }
 
+/// Explicit XML input policies. The default preserves ordinary schema reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct XmlReadOptions {
+    /// Retain declared scalar attributes outside a known explicitly selected
+    /// root type's member set. Nested nodes retain the ordinary strict policy.
+    pub allow_inactive_root_type_members: bool,
+}
+
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.
 pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
+    read_with_options(path, schema, &XmlReadOptions::default())
+}
+
+/// Reads one XML file with an explicit root-only input policy.
+pub fn read_with_options(
+    path: &Path,
+    schema: &SchemaNode,
+    options: &XmlReadOptions,
+) -> Result<Instance, XmlFormatError> {
     let text = std::fs::read_to_string(path)?;
-    from_str(&text, schema)
+    from_str_with_options(&text, schema, options)
 }
 
 /// Reads XML text into an [`Instance`] tree shaped by `schema` -- the
 /// in-memory form of [`read`] (useful where there is no filesystem, e.g.
 /// wasm).
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
+    from_str_with_options(text, schema, &XmlReadOptions::default())
+}
+
+/// Reads XML text with an explicit policy for a closed flat typed root.
+pub fn from_str_with_options(
+    text: &str,
+    schema: &SchemaNode,
+    options: &XmlReadOptions,
+) -> Result<Instance, XmlFormatError> {
+    if options.allow_inactive_root_type_members
+        && !ir::xml_inactive_root_type_members_are_supported(schema)
+    {
+        return Err(XmlFormatError::UnsupportedInactiveRootTypeMembers {
+            name: schema.name.clone(),
+        });
+    }
     validate_namespace_siblings(schema)?;
     let doc = roxmltree::Document::parse_with_options(
         text,
@@ -297,7 +332,13 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatEr
             found: expanded_node_name(&root),
         });
     }
-    read_node(&root, schema, schema, 0)
+    read_node_with_root_policy(
+        &root,
+        schema,
+        schema,
+        0,
+        options.allow_inactive_root_type_members,
+    )
 }
 
 fn read_node(
@@ -305,6 +346,16 @@ fn read_node(
     schema: &SchemaNode,
     root_schema: &SchemaNode,
     recursion_depth: usize,
+) -> Result<Instance, XmlFormatError> {
+    read_node_with_root_policy(el, schema, root_schema, recursion_depth, false)
+}
+
+fn read_node_with_root_policy(
+    el: &roxmltree::Node,
+    schema: &SchemaNode,
+    root_schema: &SchemaNode,
+    recursion_depth: usize,
+    allow_inactive_root_type_members: bool,
 ) -> Result<Instance, XmlFormatError> {
     let resolved;
     let schema = if let Some(anchor) = &schema.recursive_ref {
@@ -364,8 +415,13 @@ fn read_node(
             if alternatives.is_empty() {
                 return Ok(instance);
             }
-            let (alternative, annotation) =
-                input_group_alternative(el, schema, alternatives, &instance)?;
+            let (alternative, annotation) = input_group_alternative(
+                el,
+                schema,
+                alternatives,
+                &instance,
+                allow_inactive_root_type_members,
+            )?;
             let Instance::Group(fields) = &mut instance else {
                 unreachable!("read_group_fields always returns a group")
             };
@@ -410,6 +466,7 @@ fn input_group_alternative<'a>(
     schema: &SchemaNode,
     alternatives: &'a [ir::GroupAlternative],
     instance: &Instance,
+    allow_inactive_root_type_members: bool,
 ) -> Result<(&'a ir::GroupAlternative, Option<String>), XmlFormatError> {
     const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
     let fields = group_fields(instance);
@@ -446,7 +503,9 @@ fn input_group_alternative<'a>(
             None,
         ),
     };
-    validate_alternative_fields(schema, selected, fields)?;
+    if !allow_inactive_root_type_members || annotation.is_none() {
+        validate_alternative_fields(schema, selected, fields)?;
+    }
     Ok((selected, annotation))
 }
 

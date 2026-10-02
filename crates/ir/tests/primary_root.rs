@@ -6,6 +6,50 @@ use ir::{
     primary_root_xml_type_equals,
 };
 
+#[test]
+fn required_scalar_policy_distinguishes_absence_from_presence_and_retains_shape_errors() {
+    let root = group(
+        vec![
+            ("Null", Instance::Scalar(Value::Null)),
+            ("Empty", text("")),
+            ("Nil", Instance::Scalar(Value::xml_nil())),
+            ("Rows", Instance::Repeated(vec![text("first")])),
+        ],
+        XmlTypeOrigin::Absent,
+    );
+    for path in [&["Missing"][..], &["Missing", "Code"][..], &["Null"][..]] {
+        assert_eq!(
+            ir::primary_root_scalar_with_requirement(Some(&root), path, false),
+            Ok(Value::Null)
+        );
+        assert_eq!(
+            ir::primary_root_scalar_with_requirement(Some(&root), path, true),
+            Err(PrimaryRootError::MissingRequiredField {
+                path: path.iter().map(|name| (*name).into()).collect(),
+            })
+        );
+    }
+    assert_eq!(
+        ir::primary_root_scalar_with_requirement(Some(&root), &["Empty"], true),
+        Ok(Value::String("".into()))
+    );
+    assert_eq!(
+        ir::primary_root_scalar_with_requirement(Some(&root), &["Nil"], true),
+        Ok(Value::xml_nil())
+    );
+    assert_eq!(
+        ir::primary_root_scalar_with_requirement(Some(&root), &["Rows"], true),
+        Err(PrimaryRootError::ExpectedScalar {
+            path: vec!["Rows".into()],
+            found: "repeated"
+        })
+    );
+    assert_eq!(
+        ir::primary_root_scalar_with_requirement(None, &["Missing"], true),
+        Err(PrimaryRootError::MissingOwner)
+    );
+}
+
 fn group(fields: Vec<(&str, Instance)>, origin: XmlTypeOrigin<'_>) -> Instance {
     Instance::Group(
         InstanceGroup::from(

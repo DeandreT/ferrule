@@ -64,6 +64,26 @@ internal static partial class Program
             () => context.ResolveSourceRootField(42, ["Child"]));
     }
 
+    private static void PrimaryRootRequiredScalarPolicy()
+    {
+        var context = ScopeContext.FromSource(Group(
+            Field("Null", Scalar(FerruleValue.Null)),
+            Field("Empty", Scalar(Text(""))),
+            Field("Nil", Scalar(FerruleValue.XmlNil))));
+        foreach (var path in new[] { new[] { "Missing" }, ["Missing", "Code"], ["Null"] })
+        {
+            Equal(FerruleValue.Null, context.ResolveSourceRootField(42, path));
+            var failure = PrimaryRootFailure(FerrulePrimaryRootError.MissingRequiredField,
+                () => context.ResolveRequiredSourceRootField(42, path));
+            Equal(string.Join('/', path), string.Join('/', failure.PrimaryRoot!.Path));
+            Equal<string?>(null, failure.PrimaryRoot.Found);
+        }
+        Equal(Text(""), context.ResolveRequiredSourceRootField(42, ["Empty"]));
+        Equal(FerruleValue.XmlNil, context.ResolveRequiredSourceRootField(42, ["Nil"]));
+        PrimaryRootFailure(FerrulePrimaryRootError.ExpectedGroupAt,
+            () => context.ResolveRequiredSourceRootField(42, ["Null", "Code"]));
+    }
+
     private static void PrimaryRootNeverUnwrapsOwner()
     {
         var item = Group(Field("Code", Scalar(Text("first"))))

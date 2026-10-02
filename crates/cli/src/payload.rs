@@ -711,6 +711,7 @@ pub(crate) fn read_payload(
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
     super::validate_csv_metadata_identity(document.path, options, "input")?;
+    super::reject_inactive_root_xml_read_options(document.path, schema, options, "input")?;
     if options.local_xml_file_set {
         bail!(
             "`local_xml_file_set` requires multiple filesystem documents and is unavailable for a single payload"
@@ -800,7 +801,9 @@ pub(crate) fn read_payload(
         let text = utf8(document, "XML")?;
         return match &options.wsdl {
             Some(wsdl) => format_xml::from_wsdl_message_str(text, schema, wsdl.operation()),
-            None => format_xml::from_str(text, schema),
+            None => {
+                format_xml::from_str_with_options(text, schema, &super::xml_read_options(options))
+            }
         }
         .context("parsing XML input payload");
     }
@@ -953,6 +956,7 @@ pub(crate) fn render_payload(
     current_datetime: &str,
 ) -> anyhow::Result<(Vec<u8>, usize)> {
     super::validate_csv_metadata_identity(path, options, "output")?;
+    super::reject_inactive_root_xml_read_options(path, schema, options, "output")?;
     if options.local_xml_file_set {
         bail!("`local_xml_file_set` is input-only");
     }

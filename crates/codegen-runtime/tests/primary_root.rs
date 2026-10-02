@@ -22,6 +22,31 @@ fn failure(result: Result<Value, RuntimeError>, expected: PrimaryRootError) {
 }
 
 #[test]
+fn required_root_scalar_keeps_exact_node_path_and_nullable_legacy_reads() {
+    let source = marked(
+        vec![
+            ("Null".into(), Instance::Scalar(Value::Null)),
+            ("Empty".into(), scalar("")),
+        ],
+        XmlTypeOrigin::Absent,
+    );
+    let context = ScopeContext::new(&source);
+    for path in [&["Missing"][..], &["Missing", "Code"][..], &["Null"][..]] {
+        assert_eq!(context.source_root_field(42, path), Ok(Value::Null));
+        failure(
+            context.source_root_required_field(42, path),
+            PrimaryRootError::MissingRequiredField {
+                path: path.iter().map(|name| (*name).into()).collect(),
+            },
+        );
+    }
+    assert_eq!(
+        context.source_root_required_field(42, &["Empty"]),
+        Ok(Value::String("".into()))
+    );
+}
+
+#[test]
 fn primary_root_annotation_reads_observed_fact_instead_of_selected_writer_data() {
     for (origin, expected) in [
         (XmlTypeOrigin::Absent, false),

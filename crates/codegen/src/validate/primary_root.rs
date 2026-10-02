@@ -167,7 +167,7 @@ fn validate_source(
                     });
                 }
             }
-            Expression::SourceRootField { path } => {
+            Expression::SourceRootField { path, .. } => {
                 let borrowed = path.iter().map(String::as_str).collect::<Vec<_>>();
                 if !ir::primary_root_schema_has_scalar(&program.source, &borrowed) {
                     return Err(ProgramValidationError::InvalidPrimaryRootField {

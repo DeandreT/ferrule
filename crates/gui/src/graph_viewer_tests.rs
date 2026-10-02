@@ -1618,6 +1618,7 @@ fn primary_root_primitives_are_zero_input_visible_graph_nodes() {
             11,
             Node::SourceRootField {
                 path: vec!["Code".into()],
+                required: false,
             },
         ),
     ] {
