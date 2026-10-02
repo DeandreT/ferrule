@@ -192,20 +192,26 @@ fn use_integer_extra(dir: &TempDir) -> std::io::Result<()> {
 }
 
 fn item(code: &str, qty: i64) -> Instance {
-    Instance::Group(vec![
-        (
-            "Meta".to_string(),
-            Instance::Group(vec![(
-                "Code".to_string(),
-                Instance::Scalar(Value::String(code.to_string())),
-            )]),
-        ),
-        ("Qty".to_string(), Instance::Scalar(Value::Int(qty))),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Meta".to_string(),
+                Instance::Group(
+                    (vec![(
+                        "Code".to_string(),
+                        Instance::Scalar(Value::String(code.to_string())),
+                    )])
+                    .into(),
+                ),
+            ),
+            ("Qty".to_string(), Instance::Scalar(Value::Int(qty))),
+        ])
+        .into(),
+    )
 }
 
 fn source(items: Vec<Instance>) -> Instance {
-    Instance::Group(vec![("Item".to_string(), Instance::Repeated(items))])
+    Instance::Group((vec![("Item".to_string(), Instance::Repeated(items))]).into())
 }
 
 fn scalar<'a>(instance: &'a Instance, field: &str) -> &'a Value {

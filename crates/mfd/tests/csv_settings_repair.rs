@@ -50,10 +50,13 @@ fn design(source: &str, target: &str, source_type: &str, target_type: &str) -> S
     )
 }
 fn host() -> Instance {
-    Instance::Repeated(vec![Instance::Group(vec![
-        ("A".into(), Instance::Scalar(Value::String("data".into()))),
-        ("B".into(), Instance::Scalar(Value::String("7".into()))),
-    ])])
+    Instance::Repeated(vec![Instance::Group(
+        (vec![
+            ("A".into(), Instance::Scalar(Value::String("data".into()))),
+            ("B".into(), Instance::Scalar(Value::String("7".into()))),
+        ])
+        .into(),
+    )])
 }
 fn is_repair<T>(result: Result<T, format_csv::CsvFormatError>, cause: Cause) {
     assert!(
@@ -354,10 +357,13 @@ fn native_typed_empty_source_is_persistently_blocked_but_typed_targets_are_suppo
         ),
         Cause::TypedEmptyCells,
     );
-    let typed = Instance::Repeated(vec![Instance::Group(vec![
-        ("A".into(), Instance::Scalar(Value::String(String::new()))),
-        ("B".into(), Instance::Scalar(Value::Null)),
-    ])]);
+    let typed = Instance::Repeated(vec![Instance::Group(
+        (vec![
+            ("A".into(), Instance::Scalar(Value::String(String::new()))),
+            ("B".into(), Instance::Scalar(Value::Null)),
+        ])
+        .into(),
+    )]);
     assert!(engine::run(&reopened.project, &typed).is_ok());
     for profile in [ExportProfile::FerruleExtensions, ExportProfile::NativeMfd] {
         let output = temp

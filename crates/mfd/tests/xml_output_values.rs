@@ -177,33 +177,44 @@ fn nested_collection_find_writes_every_runtime_xml_name() -> Result<(), Box<dyn 
     };
     assert!(engine::validate(&project).is_empty());
     let metadata = |key: &str, name: &str| {
-        Instance::Group(vec![
-            field("key", key),
+        Instance::Group(
+            (vec![
+                field("key", key),
+                (
+                    "attribute".into(),
+                    Instance::Repeated(vec![Instance::Group(
+                        (vec![field("LocalName", "name"), field(XML_TEXT_FIELD, name)]).into(),
+                    )]),
+                ),
+            ])
+            .into(),
+        )
+    };
+    let source = Instance::Group(
+        (vec![
             (
-                "attribute".into(),
-                Instance::Repeated(vec![Instance::Group(vec![
-                    field("LocalName", "name"),
-                    field(XML_TEXT_FIELD, name),
-                ])]),
+                "meta".into(),
+                Instance::Group(
+                    (vec![(
+                        "field".into(),
+                        Instance::Repeated(vec![
+                            metadata("one", "First"),
+                            metadata("two", "Second"),
+                        ]),
+                    )])
+                    .into(),
+                ),
+            ),
+            (
+                "values".into(),
+                Instance::Repeated(vec![
+                    Instance::Group((vec![field("code", "one"), field("text", "alpha")]).into()),
+                    Instance::Group((vec![field("code", "two"), field("text", "beta")]).into()),
+                ]),
             ),
         ])
-    };
-    let source = Instance::Group(vec![
-        (
-            "meta".into(),
-            Instance::Group(vec![(
-                "field".into(),
-                Instance::Repeated(vec![metadata("one", "First"), metadata("two", "Second")]),
-            )]),
-        ),
-        (
-            "values".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![field("code", "one"), field("text", "alpha")]),
-                Instance::Group(vec![field("code", "two"), field("text", "beta")]),
-            ]),
-        ),
-    ]);
+        .into(),
+    );
 
     let output = engine::run(&project, &source)?;
     let xml = format_xml::to_string(&project.target, &output)?;
@@ -258,12 +269,12 @@ fn output_node_function_removes_invalid_numeric_sentinel_before_xml_write()
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let valid = Instance::Group(vec![field("Amount", "12.5")]);
+    let valid = Instance::Group((vec![field("Amount", "12.5")]).into());
     let valid_output = engine::run(&imported.project, &valid)?;
     let valid_xml = format_xml::to_string(&imported.project.target, &valid_output)?;
     assert!(valid_xml.contains("<Amount>12.5</Amount>"), "{valid_xml}");
 
-    let missing = Instance::Group(vec![field("Amount", "N/A")]);
+    let missing = Instance::Group((vec![field("Amount", "N/A")]).into());
     let missing_output = engine::run(&imported.project, &missing)?;
     assert_eq!(
         missing_output.field("Amount").and_then(Instance::as_scalar),

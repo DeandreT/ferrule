@@ -105,37 +105,49 @@ fn copy_app(document: MappingDocument) -> FerruleApp {
 
 fn source() -> Instance {
     let row = |name: &str, children: &[&str]| {
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                (
+                    "Children".into(),
+                    Instance::Repeated(
+                        children
+                            .iter()
+                            .map(|value| {
+                                Instance::Group(
+                                    (vec![(
+                                        "Value".into(),
+                                        Instance::Scalar(Value::String((*value).into())),
+                                    )])
+                                    .into(),
+                                )
+                            })
+                            .collect(),
+                    ),
+                ),
+            ])
+            .into(),
+        )
+    };
+    Instance::Group(
+        (vec![
             (
-                "Children".into(),
-                Instance::Repeated(
-                    children
-                        .iter()
-                        .map(|value| {
-                            Instance::Group(vec![(
-                                "Value".into(),
-                                Instance::Scalar(Value::String((*value).into())),
-                            )])
-                        })
-                        .collect(),
+                "Rows".into(),
+                Instance::Repeated(vec![row("B", &["b1"]), row("A", &["a1", "a2"])]),
+            ),
+            (
+                "Editable".into(),
+                Instance::Group(
+                    (vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String("source".into())),
+                    )])
+                    .into(),
                 ),
             ),
         ])
-    };
-    Instance::Group(vec![
-        (
-            "Rows".into(),
-            Instance::Repeated(vec![row("B", &["b1"]), row("A", &["a1", "a2"])]),
-        ),
-        (
-            "Editable".into(),
-            Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String("source".into())),
-            )]),
-        ),
-    ])
+        .into(),
+    )
 }
 
 fn project_state(project: &Project) -> String {
@@ -455,7 +467,7 @@ fn constructed_sibling_accepts_bindings_and_children_and_keeps_copy_output() {
             active_output(&app, &output)
                 .field("Editable")
                 .and_then(|value| value.field("Details")),
-            Some(&Instance::Group(Vec::new()))
+            Some(&Instance::Group((Vec::new()).into()))
         );
         assert_rows(&app, &["A", "B"]);
         app.undo_project();

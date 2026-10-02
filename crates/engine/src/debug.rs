@@ -94,7 +94,7 @@ impl DebugSourceFrame {
         let mut fields = Vec::new();
         if let Instance::Group(source_fields) = instance {
             for (name, value) in source_fields {
-                if name.starts_with('\u{1f}') {
+                if hidden_source_field(name) {
                     continue;
                 }
                 visible_fields += 1;
@@ -110,6 +110,12 @@ impl DebugSourceFrame {
             omitted_fields: visible_fields.saturating_sub(MAX_DEBUG_SOURCE_FIELDS),
         }
     }
+}
+
+// The historical origin spelling is ordinary data. Other existing private XML
+// fields keep their established debugger visibility policy.
+fn hidden_source_field(name: &str) -> bool {
+    name.starts_with('\u{1f}') && name != ir::XML_TYPE_ORIGIN_FIELD
 }
 
 /// The innermost active source frames at a pending target write.
@@ -627,7 +633,7 @@ pub(crate) fn before_target_write(
         .and_then(|(frame_from_inner, name)| {
             if frame_from_inner >= MAX_DEBUG_SOURCE_FRAMES
                 || name.is_empty()
-                || name.starts_with('\u{1f}')
+                || hidden_source_field(&name)
                 || name.chars().count() > MAX_DEBUG_FIELD_NAME_CHARS
             {
                 return None;
@@ -784,7 +790,7 @@ mod tests {
             &[],
             &[],
             &"é".repeat(300),
-            &Instance::Group(vec![("nested".into(), Instance::Scalar(Value::Int(1)))]),
+            &Instance::Group((vec![("nested".into(), Instance::Scalar(Value::Int(1)))]).into()),
             &fields,
         )
         .unwrap();
@@ -816,7 +822,9 @@ mod tests {
     fn source_snapshot_retains_innermost_frames_with_shallow_bounds() {
         let mut frames = (0..6)
             .map(|index| {
-                Instance::Group(vec![("index".into(), Instance::Scalar(Value::Int(index)))])
+                Instance::Group(
+                    (vec![("index".into(), Instance::Scalar(Value::Int(index)))]).into(),
+                )
             })
             .collect::<Vec<_>>();
         let mut source_fields = vec![(
@@ -837,7 +845,7 @@ mod tests {
             ir::XML_TYPE_FIELD.into(),
             Instance::Scalar(Value::String("private".into())),
         ));
-        frames[5] = Instance::Group(source_fields);
+        frames[5] = Instance::Group((source_fields).into());
         let context = frames.iter().collect::<Vec<_>>();
         let collector = Collector::default();
         before_target_write(
@@ -889,18 +897,22 @@ mod tests {
 
     #[test]
     fn source_probe_reaches_an_exact_field_outside_the_shallow_snapshot() {
-        let outer = Instance::Group(vec![(
-            "ninth".into(),
-            Instance::Scalar(Value::String("outer".into())),
-        )]);
+        let outer = Instance::Group(
+            (vec![(
+                "ninth".into(),
+                Instance::Scalar(Value::String("outer".into())),
+            )])
+            .into(),
+        );
         let inner = Instance::Group(
-            (0..8)
+            ((0..8)
                 .map(|index| (format!("field{index}"), Instance::Scalar(Value::Int(index))))
                 .chain([(
                     "ninth".into(),
                     Instance::Scalar(Value::String("inner".into())),
                 )])
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         );
         let collector = ProbingCollector {
             requested_frame: 0,
@@ -967,5 +979,117 @@ mod tests {
                 .preview,
             "outer"
         );
+    }
+
+    #[test]
+    fn ordinary_origin_spelling_is_visible_with_unknown_or_known_origin() {
+        let plain = Instance::Group(
+            vec![
+                (
+                    ir::XML_TYPE_ORIGIN_FIELD.into(),
+                    Instance::Scalar(Value::String("ordinary".into())),
+                ),
+                ("Code".into(), Instance::Scalar(Value::Int(7))),
+                (
+                    ir::XML_TYPE_FIELD.into(),
+                    Instance::Scalar(Value::String("private-selection".into())),
+                ),
+            ]
+            .into(),
+        );
+        let Instance::Group(mut known_fields) = plain.clone() else {
+            unreachable!()
+        };
+        known_fields
+            .set_xml_type_origin(ir::XmlTypeOrigin::Explicit("private-origin"))
+            .unwrap();
+        let known = Instance::Group(known_fields);
+        let expected = DebugSourceFrame::new(&plain);
+        assert_eq!(expected.preview.length, Some(2));
+        assert_eq!(expected.omitted_fields, 0);
+        assert_eq!(expected.fields.len(), 2);
+        assert_eq!(expected.fields[0].name, ir::XML_TYPE_ORIGIN_FIELD);
+        assert_eq!(
+            expected.fields[0].preview.value.as_ref().unwrap().preview,
+            "ordinary"
+        );
+        assert_eq!(DebugSourceFrame::new(&known), expected);
+        assert!(!format!("{expected:?}").contains("private-origin"));
+        assert_eq!(
+            known.xml_type_origin().unwrap(),
+            ir::XmlTypeOrigin::Explicit("private-origin")
+        );
+    }
+
+    #[test]
+    fn ordinary_origin_probe_reaches_ninth_field_without_widening_debug_budgets() {
+        for origin in [
+            ir::XmlTypeOrigin::Unknown,
+            ir::XmlTypeOrigin::Absent,
+            ir::XmlTypeOrigin::Explicit("private-origin"),
+        ] {
+            let mut fields: ir::InstanceGroup = (0..8)
+                .map(|i| (format!("data{i}"), Instance::Scalar(Value::Int(i))))
+                .chain([
+                    (
+                        ir::XML_TYPE_ORIGIN_FIELD.into(),
+                        Instance::Scalar(Value::String("é".repeat(300))),
+                    ),
+                    (
+                        ir::XML_TYPE_FIELD.into(),
+                        Instance::Scalar(Value::String("private-selection".into())),
+                    ),
+                ])
+                .collect::<Vec<_>>()
+                .into();
+            fields.set_xml_type_origin(origin).unwrap();
+            let source = Instance::Group(fields);
+            let collector = ProbingCollector {
+                requested_frame: 0,
+                requested_field: ir::XML_TYPE_ORIGIN_FIELD,
+                writes: RefCell::new(Vec::new()),
+            };
+            before_target_write(
+                Some(&collector),
+                &TraceScope::primary(),
+                TraceTargetFieldBinding::StaticChild,
+                &[],
+                &[&source],
+                "output",
+                &Instance::Scalar(Value::Null),
+                &[],
+            )
+            .unwrap();
+            let writes = collector.writes.borrow();
+            let write = &writes[0];
+            assert_eq!(write.source.frames[0].preview.length, Some(9));
+            assert_eq!(write.source.frames[0].fields.len(), 8);
+            assert_eq!(write.source.frames[0].omitted_fields, 1);
+            let probe = write.source_field_probe.as_ref().unwrap();
+            assert_eq!(probe.frame_from_inner, 0);
+            assert_eq!(probe.field, ir::XML_TYPE_ORIGIN_FIELD);
+            let value = probe.preview.as_ref().unwrap().value.as_ref().unwrap();
+            assert_eq!(value.preview.chars().count(), 160);
+            assert!(value.truncated);
+            assert!(!format!("{write:?}").contains("private-origin"));
+            drop(writes);
+            let hidden = ProbingCollector {
+                requested_frame: 0,
+                requested_field: ir::XML_TYPE_FIELD,
+                writes: RefCell::new(Vec::new()),
+            };
+            before_target_write(
+                Some(&hidden),
+                &TraceScope::primary(),
+                TraceTargetFieldBinding::StaticChild,
+                &[],
+                &[&source],
+                "output",
+                &Instance::Scalar(Value::Null),
+                &[],
+            )
+            .unwrap();
+            assert!(hidden.writes.borrow()[0].source_field_probe.is_none());
+        }
     }
 }

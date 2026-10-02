@@ -124,19 +124,25 @@ fn ordinary_constructed_generic_elements_keep_explicit_text_ports() {
             .any(|binding| binding.target_field == XML_TEXT_FIELD)
     );
 
-    let source = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            (
-                "Name".into(),
-                Instance::Scalar(Value::String("Greeting".into())),
-            ),
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String("hello".into())),
-            ),
-        ])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
+                    (
+                        "Name".into(),
+                        Instance::Scalar(Value::String("Greeting".into())),
+                    ),
+                    (
+                        "Value".into(),
+                        Instance::Scalar(Value::String("hello".into())),
+                    ),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     assert_eq!(
         engine::run(&project, &source).unwrap(),
         engine::run(&imported.project, &source).unwrap()

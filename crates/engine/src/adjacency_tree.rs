@@ -88,16 +88,19 @@ fn build_row(
         .map(|child| build_row(*child, rows, by_parent, plan, depth + 1, active))
         .collect::<Result<Vec<_>, _>>()?;
     active.pop();
-    Ok(Instance::Group(vec![
-        (
-            plan.target_key().to_string(),
-            Instance::Scalar(Value::String(row.key.clone())),
-        ),
-        (
-            plan.target_children().to_string(),
-            Instance::Repeated(children),
-        ),
-    ]))
+    Ok(Instance::Group(
+        (vec![
+            (
+                plan.target_key().to_string(),
+                Instance::Scalar(Value::String(row.key.clone())),
+            ),
+            (
+                plan.target_children().to_string(),
+                Instance::Repeated(children),
+            ),
+        ])
+        .into(),
+    ))
 }
 
 fn string_field(

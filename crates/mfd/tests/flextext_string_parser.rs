@@ -38,13 +38,16 @@ fn imports_runtime_string_parser_and_executes_each_repeated_input() -> Result<()
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![(
-        "Line".into(),
-        Instance::Repeated(vec![
-            Instance::Scalar(Value::String("Ada*#*3".into())),
-            Instance::Scalar(Value::String("Grace*#*5".into())),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Line".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("Ada*#*3".into())),
+                Instance::Scalar(Value::String("Grace*#*5".into())),
+            ]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source)?;
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 2);

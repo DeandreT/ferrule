@@ -36,7 +36,7 @@ mod tests {
         let member = dynamic_document(
             7,
             Value::String("nested/result.xml".into()),
-            Instance::Group(Vec::new()),
+            Instance::Group((Vec::new()).into()),
         )
         .expect("a non-empty string path is valid");
 
@@ -47,14 +47,18 @@ mod tests {
     #[test]
     fn rejects_non_string_and_empty_paths_with_typed_errors() {
         assert_eq!(
-            dynamic_document(8, Value::Int(3), Instance::Group(Vec::new())),
+            dynamic_document(8, Value::Int(3), Instance::Group((Vec::new()).into())),
             Err(RuntimeError::DynamicTargetPath {
                 node: 8,
                 found: "int",
             })
         );
         assert_eq!(
-            dynamic_document(9, Value::String(" \t".into()), Instance::Group(Vec::new())),
+            dynamic_document(
+                9,
+                Value::String(" \t".into()),
+                Instance::Group((Vec::new()).into())
+            ),
             Err(RuntimeError::EmptyDynamicTargetPath { node: 9 })
         );
     }

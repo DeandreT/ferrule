@@ -92,48 +92,66 @@ fn project(root_copy: bool) -> Project {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![
-        (
-            "Name".into(),
-            Instance::Scalar(Value::String("source root".into())),
-        ),
-        (
-            "Nested".into(),
-            Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String("source nested".into())),
-            )]),
-        ),
-        (
-            "Rows".into(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                (
-                    "Name".into(),
-                    Instance::Scalar(Value::String("source row".into())),
-                ),
-                (
-                    "Children".into(),
-                    Instance::Repeated(vec![
-                        Instance::Group(vec![(
-                            "Value".into(),
-                            Instance::Scalar(Value::String("first".into())),
-                        )]),
-                        Instance::Group(vec![(
-                            "Value".into(),
-                            Instance::Scalar(Value::String("second".into())),
-                        )]),
-                    ]),
-                ),
-            ])]),
-        ),
-        (
-            "Editable".into(),
-            Instance::Group(vec![(
+    Instance::Group(
+        (vec![
+            (
                 "Name".into(),
-                Instance::Scalar(Value::String("source editable".into())),
-            )]),
-        ),
-    ])
+                Instance::Scalar(Value::String("source root".into())),
+            ),
+            (
+                "Nested".into(),
+                Instance::Group(
+                    (vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String("source nested".into())),
+                    )])
+                    .into(),
+                ),
+            ),
+            (
+                "Rows".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        (
+                            "Name".into(),
+                            Instance::Scalar(Value::String("source row".into())),
+                        ),
+                        (
+                            "Children".into(),
+                            Instance::Repeated(vec![
+                                Instance::Group(
+                                    (vec![(
+                                        "Value".into(),
+                                        Instance::Scalar(Value::String("first".into())),
+                                    )])
+                                    .into(),
+                                ),
+                                Instance::Group(
+                                    (vec![(
+                                        "Value".into(),
+                                        Instance::Scalar(Value::String("second".into())),
+                                    )])
+                                    .into(),
+                                ),
+                            ]),
+                        ),
+                    ])
+                    .into(),
+                )]),
+            ),
+            (
+                "Editable".into(),
+                Instance::Group(
+                    (vec![(
+                        "Name".into(),
+                        Instance::Scalar(Value::String("source editable".into())),
+                    )])
+                    .into(),
+                ),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn outputs(project: &Project) -> engine::ExecutionOutputs {

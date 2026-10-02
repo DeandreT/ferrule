@@ -49,19 +49,22 @@ fn generated_mapping_matches_ordered_dynamic_target_semantics() {
     );
     assert_eq!(
         interpreted,
-        Instance::Group(vec![
-            (
-                "Engineering".into(),
-                Instance::Repeated(vec![
-                    person("Ada", "Manager", 1),
-                    person("Linus", "Engineer", 2),
-                ]),
-            ),
-            (
-                "Sales".into(),
-                Instance::Repeated(vec![person("Grace", "Director", 3)]),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Engineering".into(),
+                    Instance::Repeated(vec![
+                        person("Ada", "Manager", 1),
+                        person("Linus", "Engineer", 2),
+                    ]),
+                ),
+                (
+                    "Sales".into(),
+                    Instance::Repeated(vec![person("Grace", "Director", 3)]),
+                ),
+            ])
+            .into()
+        )
     );
 }
 
@@ -182,43 +185,52 @@ fn source() -> Instance {
 }
 
 fn department(name: &str, people: &[(&str, &str, f64)]) -> Instance {
-    Instance::Group(vec![
-        ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-        (
-            "Person".into(),
-            Instance::Repeated(
-                people
-                    .iter()
-                    .map(|(first, title, rank)| source_person(first, title, *rank))
-                    .collect(),
+    Instance::Group(
+        (vec![
+            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+            (
+                "Person".into(),
+                Instance::Repeated(
+                    people
+                        .iter()
+                        .map(|(first, title, rank)| source_person(first, title, *rank))
+                        .collect(),
+                ),
             ),
-        ),
-    ])
+        ])
+        .into(),
+    )
 }
 
 fn source_person(first: &str, title: &str, rank: f64) -> Instance {
-    Instance::Group(vec![
-        (
-            "First".into(),
-            Instance::Scalar(Value::String(first.into())),
-        ),
-        (
-            "Title".into(),
-            Instance::Scalar(Value::String(title.into())),
-        ),
-        ("Rank".into(), Instance::Scalar(Value::Float(rank))),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "First".into(),
+                Instance::Scalar(Value::String(first.into())),
+            ),
+            (
+                "Title".into(),
+                Instance::Scalar(Value::String(title.into())),
+            ),
+            ("Rank".into(), Instance::Scalar(Value::Float(rank))),
+        ])
+        .into(),
+    )
 }
 
 fn person(first: &str, title: &str, rank: i64) -> Instance {
-    Instance::Group(vec![
-        ("Name".into(), Instance::Scalar(Value::String(first.into()))),
-        (
-            "Details".into(),
-            Instance::Scalar(Value::String(title.into())),
-        ),
-        ("Rank".into(), Instance::Scalar(Value::Int(rank))),
-    ])
+    Instance::Group(
+        (vec![
+            ("Name".into(), Instance::Scalar(Value::String(first.into()))),
+            (
+                "Details".into(),
+                Instance::Scalar(Value::String(title.into())),
+            ),
+            ("Rank".into(), Instance::Scalar(Value::Int(rank))),
+        ])
+        .into(),
+    )
 }
 
 fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) {

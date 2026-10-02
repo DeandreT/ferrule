@@ -108,10 +108,13 @@ fn empty_typed_or_fixed_text_still_reports_conversion_errors() {
         text.text = true;
         text.fixed = fixed.map(str::to_owned);
         let schema = SchemaNode::group("Root", vec![text]);
-        let value = Instance::Group(vec![(
-            XML_TEXT_FIELD.into(),
-            Instance::Scalar(Value::String(String::new())),
-        )]);
+        let value = Instance::Group(
+            (vec![(
+                XML_TEXT_FIELD.into(),
+                Instance::Scalar(Value::String(String::new())),
+            )])
+            .into(),
+        );
         for indent in [false, true] {
             assert!(
                 format_xml::to_string_with_options(
@@ -131,10 +134,13 @@ fn empty_typed_or_fixed_text_still_reports_conversion_errors() {
         text.text = true;
         text.fixed = fixed.map(str::to_owned);
         let schema = SchemaNode::group("Root", vec![text]);
-        let value = Instance::Group(vec![(
-            XML_TEXT_FIELD.into(),
-            Instance::Scalar(Value::String(String::new())),
-        )]);
+        let value = Instance::Group(
+            (vec![(
+                XML_TEXT_FIELD.into(),
+                Instance::Scalar(Value::String(String::new())),
+            )])
+            .into(),
+        );
         assert_eq!(render(&schema, &value, true), "<Root/>");
     }
 }
@@ -145,12 +151,11 @@ fn empty_content_keeps_attribute_and_group_shape_errors() {
     attribute.attribute = true;
     let schema = SchemaNode::group("Root", vec![attribute]);
     for value in [
-        Instance::Group(vec![("Code".into(), Instance::Group(vec![]))]),
-        Instance::Group(vec![(
-            "Code".into(),
-            Instance::Scalar(Value::String("bad".into())),
-        )]),
-        Instance::Group(vec![("Other".into(), Instance::Scalar(Value::Int(1)))]),
+        Instance::Group((vec![("Code".into(), Instance::Group((vec![]).into()))]).into()),
+        Instance::Group(
+            (vec![("Code".into(), Instance::Scalar(Value::String("bad".into())))]).into(),
+        ),
+        Instance::Group((vec![("Other".into(), Instance::Scalar(Value::Int(1)))]).into()),
     ] {
         assert!(format_xml::to_string(&schema, &value).is_err());
     }

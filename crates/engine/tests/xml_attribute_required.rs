@@ -39,7 +39,7 @@ fn exact_copy_keeps_attribute_absence_empty_value_and_required_use_metadata() {
             input
         );
     }
-    let input = Instance::Group(vec![]);
+    let input = Instance::Group((vec![]).into());
     assert_eq!(engine::run(&p, &input).unwrap(), input);
 }
 #[test]

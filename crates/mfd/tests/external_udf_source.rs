@@ -205,10 +205,13 @@ fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
     assert!(!imported.warnings[0].contains("external source"));
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![(
-        "Value".to_owned(),
-        Instance::Scalar(Value::String("ordinary".to_owned())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Value".to_owned(),
+            Instance::Scalar(Value::String("ordinary".to_owned())),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source)?;
     assert_eq!(
         scalar(&output, "Value"),

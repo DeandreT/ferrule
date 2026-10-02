@@ -110,22 +110,27 @@ fn nested_identity_scope_preserves_outer_collection_frames() {
             ..Scope::default()
         },
     };
-    let input = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            (
-                "kind".into(),
-                Instance::Scalar(Value::String("Travel".into())),
-            ),
-            (
-                "Detail".into(),
-                Instance::Repeated(vec![Instance::Group(vec![(
-                    "amount".into(),
-                    Instance::Scalar(Value::Int(42)),
-                )])]),
-            ),
-        ])]),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
+                    (
+                        "kind".into(),
+                        Instance::Scalar(Value::String("Travel".into())),
+                    ),
+                    (
+                        "Detail".into(),
+                        Instance::Repeated(vec![Instance::Group(
+                            (vec![("amount".into(), Instance::Scalar(Value::Int(42)))]).into(),
+                        )]),
+                    ),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
 
     assert!(validate(&project).is_empty());
     let Ok(output) = run(&project, &input) else {

@@ -71,22 +71,31 @@ fn copy_current_source_preserves_the_complete_nested_group() {
             .repeating(),
         ],
     );
-    let source = Instance::Group(vec![
-        ("id".into(), Instance::Scalar(Value::Int(7))),
-        (
-            "items".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![(
-                    "name".into(),
-                    Instance::Scalar(Value::String("first".into())),
-                )]),
-                Instance::Group(vec![(
-                    "name".into(),
-                    Instance::Scalar(Value::String("second".into())),
-                )]),
-            ]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            ("id".into(), Instance::Scalar(Value::Int(7))),
+            (
+                "items".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![(
+                            "name".into(),
+                            Instance::Scalar(Value::String("first".into())),
+                        )])
+                        .into(),
+                    ),
+                    Instance::Group(
+                        (vec![(
+                            "name".into(),
+                            Instance::Scalar(Value::String("second".into())),
+                        )])
+                        .into(),
+                    ),
+                ]),
+            ),
+        ])
+        .into(),
+    );
     let project = Project {
         source: schema.clone(),
         target: schema,
@@ -154,7 +163,7 @@ fn runtime_project() -> Project {
 
 #[test]
 fn runtime_values_require_an_explicit_execution_context() {
-    let error = run(&runtime_project(), &Instance::Group(Vec::new())).unwrap_err();
+    let error = run(&runtime_project(), &Instance::Group((Vec::new()).into())).unwrap_err();
     assert_eq!(
         error,
         EngineError::MissingRuntimeValue(RuntimeValue::MappingFilePath)
@@ -164,7 +173,7 @@ fn runtime_values_require_an_explicit_execution_context() {
 #[test]
 fn runtime_values_distinguish_active_and_main_mapping_paths() {
     let project = runtime_project();
-    let source = Instance::Group(Vec::new());
+    let source = Instance::Group((Vec::new()).into());
     let execution = ExecutionContext::with_main_mapping_file_path(
         Path::new("/maps/library.ferrule.json"),
         Path::new("/maps/main.ferrule.json"),
@@ -193,7 +202,7 @@ fn current_datetime_is_stable_and_explicitly_supplied() {
         target_field: "now".into(),
         node: 2,
     }];
-    let source = Instance::Group(Vec::new());
+    let source = Instance::Group((Vec::new()).into());
     let without_clock = ExecutionContext::new(Path::new("/maps/main.ferrule.json"));
     assert_eq!(
         run_with_context(&project, &source, &without_clock),
@@ -280,13 +289,16 @@ fn evaluates_a_function_call_over_source_fields() {
             merge_dynamic_fields: false,
         },
     };
-    let source = Instance::Group(vec![
-        (
-            "first".into(),
-            Instance::Scalar(Value::String("Jane".into())),
-        ),
-        ("last".into(), Instance::Scalar(Value::String("Doe".into()))),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "first".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            ("last".into(), Instance::Scalar(Value::String("Doe".into()))),
+        ])
+        .into(),
+    );
 
     let target = run(&project, &source).unwrap();
     assert_eq!(
@@ -328,16 +340,22 @@ fn scalar_bindings_follow_repeating_target_shape() {
         },
     };
 
-    let source = Instance::Group(vec![(
-        "tag".into(),
-        Instance::Scalar(Value::String("reference".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "tag".into(),
+            Instance::Scalar(Value::String("reference".into())),
+        )])
+        .into(),
+    );
     assert_eq!(
         run(&project, &source),
-        Ok(Instance::Group(vec![(
-            "tag".into(),
-            Instance::Repeated(vec![Instance::Scalar(Value::String("reference".into()))]),
-        )]))
+        Ok(Instance::Group(
+            (vec![(
+                "tag".into(),
+                Instance::Repeated(vec![Instance::Scalar(Value::String("reference".into()))]),
+            )])
+            .into()
+        ))
     );
 
     project
@@ -345,11 +363,10 @@ fn scalar_bindings_follow_repeating_target_shape() {
         .nodes
         .insert(0, Node::Const { value: Value::Null });
     assert_eq!(
-        run(&project, &Instance::Group(Vec::new())),
-        Ok(Instance::Group(vec![(
-            "tag".into(),
-            Instance::Repeated(Vec::new()),
-        )]))
+        run(&project, &Instance::Group((Vec::new()).into())),
+        Ok(Instance::Group(
+            (vec![("tag".into(), Instance::Repeated(Vec::new()),)]).into()
+        ))
     );
 }
 
@@ -401,7 +418,7 @@ fn missing_source_field_is_reported() {
             merge_dynamic_fields: false,
         },
     };
-    let err = run(&project, &Instance::Group(vec![])).unwrap_err();
+    let err = run(&project, &Instance::Group((vec![]).into())).unwrap_err();
     assert_eq!(err, EngineError::MissingSourceField("missing".to_string()));
 }
 
@@ -453,7 +470,7 @@ fn self_referential_node_is_a_cycle() {
             merge_dynamic_fields: false,
         },
     };
-    let err = run(&project, &Instance::Group(vec![])).unwrap_err();
+    let err = run(&project, &Instance::Group((vec![]).into())).unwrap_err();
     assert_eq!(err, EngineError::Cycle(0));
 }
 
@@ -553,27 +570,36 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
     };
 
     let item = |id: &str, keep: bool| {
-        Instance::Group(vec![
-            ("item_id".into(), Instance::Scalar(Value::String(id.into()))),
-            ("keep".into(), Instance::Scalar(Value::Bool(keep))),
-        ])
+        Instance::Group(
+            (vec![
+                ("item_id".into(), Instance::Scalar(Value::String(id.into()))),
+                ("keep".into(), Instance::Scalar(Value::Bool(keep))),
+            ])
+            .into(),
+        )
     };
     let order = |cust: &str, items: Vec<Instance>| {
-        Instance::Group(vec![
-            ("cust".into(), Instance::Scalar(Value::String(cust.into()))),
-            ("items".into(), Instance::Repeated(items)),
-        ])
+        Instance::Group(
+            (vec![
+                ("cust".into(), Instance::Scalar(Value::String(cust.into()))),
+                ("items".into(), Instance::Repeated(items)),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "orders".into(),
-        Instance::Repeated(vec![
-            order(
-                "Jane",
-                vec![item("A", false), item("B", true), item("C", true)],
-            ),
-            order("John", vec![item("D", false), item("E", true)]),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "orders".into(),
+            Instance::Repeated(vec![
+                order(
+                    "Jane",
+                    vec![item("A", false), item("B", true), item("C", true)],
+                ),
+                order("John", vec![item("D", false), item("E", true)]),
+            ]),
+        )])
+        .into(),
+    );
 
     let target = run(&project, &source).unwrap();
     let rows = target.as_repeated().unwrap();
@@ -676,7 +702,7 @@ fn if_only_evaluates_the_taken_branch() {
             merge_dynamic_fields: false,
         },
     };
-    let target = run(&project, &Instance::Group(vec![])).unwrap();
+    let target = run(&project, &Instance::Group((vec![]).into())).unwrap();
     assert_eq!(
         target.field("out").and_then(Instance::as_scalar),
         Some(&Value::String("then".into()))
@@ -744,7 +770,7 @@ fn value_map_falls_back_to_default_on_miss() {
             merge_dynamic_fields: false,
         },
     };
-    let target = run(&project, &Instance::Group(vec![])).unwrap();
+    let target = run(&project, &Instance::Group((vec![]).into())).unwrap();
     assert_eq!(
         target.field("out").and_then(Instance::as_scalar),
         Some(&Value::String("Original".into()))
@@ -794,7 +820,7 @@ fn value_map_without_a_default_returns_null_on_miss() {
         },
     };
 
-    let target = run(&project, &Instance::Group(vec![])).unwrap();
+    let target = run(&project, &Instance::Group((vec![]).into())).unwrap();
 
     assert_eq!(
         target.field("out").and_then(Instance::as_scalar),
@@ -861,7 +887,7 @@ fn value_map_coerces_input_to_its_declared_type() {
         },
     };
 
-    let target = run(&project, &Instance::Group(vec![])).unwrap();
+    let target = run(&project, &Instance::Group((vec![]).into())).unwrap();
     assert_eq!(
         target.field("out").and_then(Instance::as_scalar),
         Some(&Value::String("January".into()))
@@ -943,8 +969,9 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
             merge_dynamic_fields: false,
         },
     };
-    let person =
-        |age: i64| Instance::Group(vec![("age".into(), Instance::Scalar(Value::Int(age)))]);
+    let person = |age: i64| {
+        Instance::Group((vec![("age".into(), Instance::Scalar(Value::Int(age)))]).into())
+    };
     let source = Instance::Repeated(vec![person(29), person(17), person(41)]);
 
     let target = run(&project, &source).unwrap();
@@ -1025,10 +1052,13 @@ fn scope_sort_and_first_window_are_stable_and_reindex_positions() {
         },
     };
     let row = |name: &str, score: i64| {
-        Instance::Group(vec![
-            ("name".into(), Instance::Scalar(Value::String(name.into()))),
-            ("score".into(), Instance::Scalar(Value::Int(score))),
-        ])
+        Instance::Group(
+            (vec![
+                ("name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("score".into(), Instance::Scalar(Value::Int(score))),
+            ])
+            .into(),
+        )
     };
     let source = Instance::Repeated(vec![
         row("low", 1),
@@ -1122,14 +1152,17 @@ fn scope_sort_uses_mixed_direction_tie_breakers() {
         },
     };
     let row = |first: &str, last: &str, score: i64| {
-        Instance::Group(vec![
-            (
-                "first".into(),
-                Instance::Scalar(Value::String(first.into())),
-            ),
-            ("last".into(), Instance::Scalar(Value::String(last.into()))),
-            ("score".into(), Instance::Scalar(Value::Int(score))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "first".into(),
+                    Instance::Scalar(Value::String(first.into())),
+                ),
+                ("last".into(), Instance::Scalar(Value::String(last.into()))),
+                ("score".into(), Instance::Scalar(Value::Int(score))),
+            ])
+            .into(),
+        )
     };
     let source = Instance::Repeated(vec![
         row("Susan", "Schmitt", 2),
@@ -1223,10 +1256,13 @@ fn scope_can_filter_in_source_order_before_sorting_survivors() {
         },
     };
     let row = |name: &str, score: i64| {
-        Instance::Group(vec![
-            ("name".into(), Instance::Scalar(Value::String(name.into()))),
-            ("score".into(), Instance::Scalar(Value::Int(score))),
-        ])
+        Instance::Group(
+            (vec![
+                ("name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("score".into(), Instance::Scalar(Value::Int(score))),
+            ])
+            .into(),
+        )
     };
     let source = Instance::Repeated(vec![row("low", 1), row("high", 5), row("middle", 3)]);
 
@@ -1300,10 +1336,13 @@ fn scope_sort_totally_orders_mixed_and_non_finite_keys() {
         },
     };
     let row = |name: String, score: Value| {
-        Instance::Group(vec![
-            ("name".into(), Instance::Scalar(Value::String(name))),
-            ("score".into(), Instance::Scalar(score)),
-        ])
+        Instance::Group(
+            (vec![
+                ("name".into(), Instance::Scalar(Value::String(name))),
+                ("score".into(), Instance::Scalar(score)),
+            ])
+            .into(),
+        )
     };
     let mut source = Vec::new();
     for index in 0..10 {
@@ -1386,15 +1425,17 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
         },
     };
     let address = |city: &str| {
-        Instance::Group(vec![(
-            "city".into(),
-            Instance::Scalar(Value::String(city.into())),
-        )])
+        Instance::Group(
+            (vec![("city".into(), Instance::Scalar(Value::String(city.into())))]).into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Address".into(),
-        Instance::Repeated(vec![address("Vienna"), address("Boston")]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Address".into(),
+            Instance::Repeated(vec![address("Vienna"), address("Boston")]),
+        )])
+        .into(),
+    );
 
     let target = run(&project, &source).unwrap();
     assert_eq!(
@@ -1475,16 +1516,16 @@ fn lookup_joins_rows_against_an_extra_source() {
     };
 
     let order = |cid: i64| {
-        Instance::Group(vec![(
-            "customer_id".into(),
-            Instance::Scalar(Value::Int(cid)),
-        )])
+        Instance::Group((vec![("customer_id".into(), Instance::Scalar(Value::Int(cid)))]).into())
     };
     let customer = |id: i64, name: &str| {
-        Instance::Group(vec![
-            ("id".into(), Instance::Scalar(Value::Int(id))),
-            ("name".into(), Instance::Scalar(Value::String(name.into()))),
-        ])
+        Instance::Group(
+            (vec![
+                ("id".into(), Instance::Scalar(Value::Int(id))),
+                ("name".into(), Instance::Scalar(Value::String(name.into()))),
+            ])
+            .into(),
+        )
     };
     let source = Instance::Repeated(vec![order(2), order(1), order(99)]);
     let customers = Instance::Repeated(vec![customer(1, "Jane"), customer(2, "John")]);
@@ -1598,46 +1639,55 @@ fn collection_find_evaluates_composite_predicates_and_values_per_item() {
         },
     };
     let person = |first: &str, title: &str, email: &str| {
-        Instance::Group(vec![
-            (
-                "first".into(),
-                Instance::Scalar(Value::String(first.into())),
-            ),
-            (
-                "title".into(),
-                Instance::Scalar(Value::String(title.into())),
-            ),
-            (
-                "email".into(),
-                Instance::Scalar(Value::String(email.into())),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "first".into(),
+                    Instance::Scalar(Value::String(first.into())),
+                ),
+                (
+                    "title".into(),
+                    Instance::Scalar(Value::String(title.into())),
+                ),
+                (
+                    "email".into(),
+                    Instance::Scalar(Value::String(email.into())),
+                ),
+            ])
+            .into(),
+        )
     };
     let department = |office: &str, people: Vec<Instance>| {
-        Instance::Group(vec![
-            (
-                "office".into(),
-                Instance::Scalar(Value::String(office.into())),
-            ),
-            ("people".into(), Instance::Repeated(people)),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "office".into(),
+                    Instance::Scalar(Value::String(office.into())),
+                ),
+                ("people".into(), Instance::Repeated(people)),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "departments".into(),
-        Instance::Repeated(vec![
-            department(
-                "Remote",
-                vec![person("Ada", "Wrong: ", "remote@example.test")],
-            ),
-            department(
-                "HQ",
-                vec![
-                    person("Grace", "Director: ", "grace@example.test"),
-                    person("Ada", "Engineer: ", "ada@example.test"),
-                ],
-            ),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "departments".into(),
+            Instance::Repeated(vec![
+                department(
+                    "Remote",
+                    vec![person("Ada", "Wrong: ", "remote@example.test")],
+                ),
+                department(
+                    "HQ",
+                    vec![
+                        person("Grace", "Director: ", "grace@example.test"),
+                        person("Ada", "Engineer: ", "ada@example.test"),
+                    ],
+                ),
+            ]),
+        )])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     assert_eq!(
@@ -1697,11 +1747,14 @@ fn scope_source_path_reaches_an_extra_source() {
         },
     };
 
-    let customers = Instance::Repeated(vec![Instance::Group(vec![(
-        "name".into(),
-        Instance::Scalar(Value::String("Jane".into())),
-    )])]);
-    let source = Instance::Group(vec![]);
+    let customers = Instance::Repeated(vec![Instance::Group(
+        (vec![(
+            "name".into(),
+            Instance::Scalar(Value::String("Jane".into())),
+        )])
+        .into(),
+    )]);
+    let source = Instance::Group((vec![]).into());
 
     let target =
         run_with_sources(&project, &source, vec![("customers".into(), customers)]).unwrap();
@@ -1721,13 +1774,16 @@ fn recursive_collect_populates_a_repeating_scalar_target() {
 
     assert_eq!(
         run(&project, &source),
-        Ok(Instance::Group(vec![(
-            "File".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("\\root\\top.txt".into())),
-                Instance::Scalar(Value::String("\\root\\child\\nested.txt".into())),
-            ]),
-        )]))
+        Ok(Instance::Group(
+            (vec![(
+                "File".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("\\root\\top.txt".into())),
+                    Instance::Scalar(Value::String("\\root\\child\\nested.txt".into())),
+                ]),
+            )])
+            .into()
+        ))
     );
 }
 
@@ -1816,25 +1872,80 @@ fn recursive_collect_project() -> Project {
 }
 
 fn directory(name: &str, files: &[&str], directories: Vec<Instance>) -> Instance {
-    Instance::Group(vec![
-        (
-            "name".into(),
-            Instance::Scalar(Value::String(name.to_string())),
-        ),
-        (
-            "file".into(),
-            Instance::Repeated(
-                files
-                    .iter()
-                    .map(|name| {
-                        Instance::Group(vec![(
-                            "name".into(),
-                            Instance::Scalar(Value::String((*name).to_string())),
-                        )])
-                    })
-                    .collect(),
+    Instance::Group(
+        (vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String(name.to_string())),
             ),
-        ),
-        ("directory".into(), Instance::Repeated(directories)),
-    ])
+            (
+                "file".into(),
+                Instance::Repeated(
+                    files
+                        .iter()
+                        .map(|name| {
+                            Instance::Group(
+                                (vec![(
+                                    "name".into(),
+                                    Instance::Scalar(Value::String((*name).to_string())),
+                                )])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
+            ("directory".into(), Instance::Repeated(directories)),
+        ])
+        .into(),
+    )
+}
+
+#[test]
+fn whole_current_copy_retains_each_group_occurrences_own_xml_origin() {
+    let schema = SchemaNode::group(
+        "Root",
+        vec![SchemaNode::group(
+            "Child",
+            vec![SchemaNode::scalar("Code", ScalarType::String)],
+        )],
+    );
+    let child = Instance::Group(
+        ir::InstanceGroup::from(vec![(
+            "Code".into(),
+            Instance::Scalar(Value::String("a".into())),
+        )])
+        .with_xml_type_origin(ir::XmlTypeOrigin::Explicit("child"))
+        .unwrap(),
+    );
+    let source = Instance::Group(
+        ir::InstanceGroup::from(vec![("Child".into(), child.clone())])
+            .with_xml_type_origin(ir::XmlTypeOrigin::Absent)
+            .unwrap(),
+    );
+    let project = Project {
+        source: schema.clone(),
+        target: schema,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: vec![],
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+        graph: Graph::default(),
+        root: Scope {
+            construction: ScopeConstruction::CopyCurrentSource,
+            ..Default::default()
+        },
+    };
+    let output = run(&project, &source).unwrap();
+    assert_eq!(output, source);
+    assert_eq!(output.xml_type_origin(), Ok(ir::XmlTypeOrigin::Absent));
+    assert_eq!(output.field("Child"), Some(&child));
+    assert_eq!(
+        output.field("Child").unwrap().xml_type_origin(),
+        Ok(ir::XmlTypeOrigin::Explicit("child"))
+    );
 }

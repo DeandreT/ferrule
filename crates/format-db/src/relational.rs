@@ -78,7 +78,7 @@ pub(super) fn read_instance(
         let rows = read_table(&conn, &plan, None)?;
         fields.push((table.name.clone(), Instance::Repeated(rows)));
     }
-    Ok(Instance::Group(fields))
+    Ok(Instance::Group((fields).into()))
 }
 
 pub(super) fn validate_schema(db_path: &Path, schema: &SchemaNode) -> Result<(), DbFormatError> {
@@ -622,7 +622,7 @@ fn read_table(
                 "relationship plan does not match the schema",
             ));
         }
-        out.push(Instance::Group(fields));
+        out.push(Instance::Group((fields).into()));
     }
     Ok(out)
 }

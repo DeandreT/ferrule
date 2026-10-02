@@ -78,16 +78,19 @@ fn write_design(directory: &Path, cast_mode: bool) -> PathBuf {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![
-        (
-            "Day".to_string(),
-            Instance::Scalar(Value::String("2031-08-17+05:45".to_string())),
-        ),
-        (
-            "Timestamp".to_string(),
-            Instance::Scalar(Value::String("2031-08-17T06:07:08.9Z".to_string())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Day".to_string(),
+                Instance::Scalar(Value::String("2031-08-17+05:45".to_string())),
+            ),
+            (
+                "Timestamp".to_string(),
+                Instance::Scalar(Value::String("2031-08-17T06:07:08.9Z".to_string())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn write_nested_design(directory: &Path) -> PathBuf {
@@ -150,30 +153,36 @@ fn write_nested_design(directory: &Path) -> PathBuf {
 }
 
 fn nested_source(values: &[&str]) -> Instance {
-    Instance::Group(vec![
-        (
-            "Day".into(),
-            Instance::Scalar(Value::String("2031-08-17+05:45".into())),
-        ),
-        (
-            "Existing".into(),
-            Instance::Scalar(Value::String("uncast".into())),
-        ),
-        (
-            "Row".into(),
-            Instance::Repeated(
-                values
-                    .iter()
-                    .map(|value| {
-                        Instance::Group(vec![(
-                            "When".into(),
-                            Instance::Scalar(Value::String((*value).into())),
-                        )])
-                    })
-                    .collect(),
+    Instance::Group(
+        (vec![
+            (
+                "Day".into(),
+                Instance::Scalar(Value::String("2031-08-17+05:45".into())),
             ),
-        ),
-    ])
+            (
+                "Existing".into(),
+                Instance::Scalar(Value::String("uncast".into())),
+            ),
+            (
+                "Row".into(),
+                Instance::Repeated(
+                    values
+                        .iter()
+                        .map(|value| {
+                            Instance::Group(
+                                (vec![(
+                                    "When".into(),
+                                    Instance::Scalar(Value::String((*value).into())),
+                                )])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn nested_cast<'a>(project: &'a mapping::Project, field: &str) -> &'a mapping::Scope {
@@ -438,27 +447,33 @@ fn cast_in_subtree_coerces_connected_datetime_leaves_and_serializes_them() {
     let round_trip = engine::run(&reimported.project, &source()).unwrap();
     assert_eq!(round_trip, output);
 
-    let null_day = Instance::Group(vec![
-        ("Day".into(), Instance::Scalar(Value::Null)),
-        (
-            "Timestamp".into(),
-            Instance::Scalar(Value::String("2031-08-17T06:07:08.9Z".into())),
-        ),
-    ]);
+    let null_day = Instance::Group(
+        (vec![
+            ("Day".into(), Instance::Scalar(Value::Null)),
+            (
+                "Timestamp".into(),
+                Instance::Scalar(Value::String("2031-08-17T06:07:08.9Z".into())),
+            ),
+        ])
+        .into(),
+    );
     assert_eq!(
         engine::run(&imported.project, &null_day).unwrap(),
         engine::run(&reimported.project, &null_day).unwrap()
     );
-    let bad_day = Instance::Group(vec![
-        (
-            "Day".into(),
-            Instance::Scalar(Value::String("2031-02-29".into())),
-        ),
-        (
-            "Timestamp".into(),
-            Instance::Scalar(Value::String("2031-08-17T06:07:08.9Z".into())),
-        ),
-    ]);
+    let bad_day = Instance::Group(
+        (vec![
+            (
+                "Day".into(),
+                Instance::Scalar(Value::String("2031-02-29".into())),
+            ),
+            (
+                "Timestamp".into(),
+                Instance::Scalar(Value::String("2031-08-17T06:07:08.9Z".into())),
+            ),
+        ])
+        .into(),
+    );
     for project in [&imported.project, &reimported.project] {
         let error = engine::run(project, &bad_day).unwrap_err().to_string();
         assert!(error.contains("coerce_datetime"), "{error}");

@@ -65,10 +65,13 @@ impl Directory {
             .files
             .into_iter()
             .map(|name| {
-                Instance::Group(vec![(
-                    name_field.to_string(),
-                    Instance::Scalar(Value::String(name)),
-                )])
+                Instance::Group(
+                    (vec![(
+                        name_field.to_string(),
+                        Instance::Scalar(Value::String(name)),
+                    )])
+                    .into(),
+                )
             })
             .collect();
         let directories = self
@@ -76,17 +79,20 @@ impl Directory {
             .into_iter()
             .map(|directory| directory.into_instance(directories_field, files_field, name_field))
             .collect();
-        Instance::Group(vec![
-            (files_field.to_string(), Instance::Repeated(files)),
-            (
-                directories_field.to_string(),
-                Instance::Repeated(directories),
-            ),
-            (
-                name_field.to_string(),
-                Instance::Scalar(Value::String(self.name)),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (files_field.to_string(), Instance::Repeated(files)),
+                (
+                    directories_field.to_string(),
+                    Instance::Repeated(directories),
+                ),
+                (
+                    name_field.to_string(),
+                    Instance::Scalar(Value::String(self.name)),
+                ),
+            ])
+            .into(),
+        )
     }
 }
 
@@ -175,10 +181,13 @@ mod tests {
     use super::*;
 
     fn source(values: impl IntoIterator<Item = Value>) -> Instance {
-        Instance::Group(vec![(
-            "Paths".to_string(),
-            Instance::Repeated(values.into_iter().map(Instance::Scalar).collect::<Vec<_>>()),
-        )])
+        Instance::Group(
+            (vec![(
+                "Paths".to_string(),
+                Instance::Repeated(values.into_iter().map(Instance::Scalar).collect::<Vec<_>>()),
+            )])
+            .into(),
+        )
     }
 
     #[test]
@@ -202,42 +211,61 @@ mod tests {
 
         assert_eq!(
             actual,
-            Ok(Instance::Group(vec![
-                (
-                    "files".to_string(),
-                    Instance::Repeated(vec![Instance::Group(vec![(
+            Ok(Instance::Group(
+                (vec![
+                    (
+                        "files".to_string(),
+                        Instance::Repeated(vec![Instance::Group(
+                            (vec![(
+                                "name".to_string(),
+                                Instance::Scalar(Value::String("a.txt".to_string())),
+                            )])
+                            .into()
+                        )]),
+                    ),
+                    (
+                        "directories".to_string(),
+                        Instance::Repeated(vec![Instance::Group(
+                            (vec![
+                                (
+                                    "files".to_string(),
+                                    Instance::Repeated(vec![
+                                        Instance::Group(
+                                            (vec![(
+                                                "name".to_string(),
+                                                Instance::Scalar(Value::String(
+                                                    "b.txt".to_string()
+                                                )),
+                                            )])
+                                            .into()
+                                        ),
+                                        Instance::Group(
+                                            (vec![(
+                                                "name".to_string(),
+                                                Instance::Scalar(Value::String(
+                                                    "b.txt".to_string()
+                                                )),
+                                            )])
+                                            .into()
+                                        ),
+                                    ]),
+                                ),
+                                ("directories".to_string(), Instance::Repeated(Vec::new())),
+                                (
+                                    "name".to_string(),
+                                    Instance::Scalar(Value::String("b".to_string())),
+                                ),
+                            ])
+                            .into()
+                        )]),
+                    ),
+                    (
                         "name".to_string(),
-                        Instance::Scalar(Value::String("a.txt".to_string())),
-                    )])]),
-                ),
-                (
-                    "directories".to_string(),
-                    Instance::Repeated(vec![Instance::Group(vec![
-                        (
-                            "files".to_string(),
-                            Instance::Repeated(vec![
-                                Instance::Group(vec![(
-                                    "name".to_string(),
-                                    Instance::Scalar(Value::String("b.txt".to_string())),
-                                )]),
-                                Instance::Group(vec![(
-                                    "name".to_string(),
-                                    Instance::Scalar(Value::String("b.txt".to_string())),
-                                )]),
-                            ]),
-                        ),
-                        ("directories".to_string(), Instance::Repeated(Vec::new())),
-                        (
-                            "name".to_string(),
-                            Instance::Scalar(Value::String("b".to_string())),
-                        ),
-                    ])]),
-                ),
-                (
-                    "name".to_string(),
-                    Instance::Scalar(Value::String("root".to_string())),
-                ),
-            ]))
+                        Instance::Scalar(Value::String("root".to_string())),
+                    ),
+                ])
+                .into()
+            ))
         );
     }
 

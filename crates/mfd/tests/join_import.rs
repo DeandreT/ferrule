@@ -64,34 +64,43 @@ fn mapping() -> &'static str {
 }
 
 fn row(first: (&str, &str), second: (&str, &str)) -> Instance {
-    Instance::Group(vec![
-        (
-            first.0.into(),
-            Instance::Scalar(Value::String(first.1.into())),
-        ),
-        (
-            second.0.into(),
-            Instance::Scalar(Value::String(second.1.into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                first.0.into(),
+                Instance::Scalar(Value::String(first.1.into())),
+            ),
+            (
+                second.0.into(),
+                Instance::Scalar(Value::String(second.1.into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn sources() -> (Instance, Instance) {
     (
-        Instance::Group(vec![(
-            "Left".into(),
-            Instance::Repeated(vec![
-                row(("Id", "A"), ("Label", "L1")),
-                row(("Id", "A"), ("Label", "L2")),
-            ]),
-        )]),
-        Instance::Group(vec![(
-            "Right".into(),
-            Instance::Repeated(vec![
-                row(("Code", "A"), ("Description", "R1")),
-                row(("Code", "A"), ("Description", "R2")),
-            ]),
-        )]),
+        Instance::Group(
+            (vec![(
+                "Left".into(),
+                Instance::Repeated(vec![
+                    row(("Id", "A"), ("Label", "L1")),
+                    row(("Id", "A"), ("Label", "L2")),
+                ]),
+            )])
+            .into(),
+        ),
+        Instance::Group(
+            (vec![(
+                "Right".into(),
+                Instance::Repeated(vec![
+                    row(("Code", "A"), ("Description", "R1")),
+                    row(("Code", "A"), ("Description", "R2")),
+                ]),
+            )])
+            .into(),
+        ),
     )
 }
 
@@ -140,34 +149,46 @@ fn aggregate_setup() -> TempDir {
 
 fn aggregate_sources() -> (Instance, Instance) {
     let left = |label: &str, weight| {
-        Instance::Group(vec![
-            ("Id".into(), Instance::Scalar(Value::String("A".into()))),
-            (
-                "Label".into(),
-                Instance::Scalar(Value::String(label.into())),
-            ),
-            ("Weight".into(), Instance::Scalar(Value::Int(weight))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Id".into(), Instance::Scalar(Value::String("A".into()))),
+                (
+                    "Label".into(),
+                    Instance::Scalar(Value::String(label.into())),
+                ),
+                ("Weight".into(), Instance::Scalar(Value::Int(weight))),
+            ])
+            .into(),
+        )
     };
     let right = |description: &str, price| {
-        Instance::Group(vec![
-            ("Code".into(), Instance::Scalar(Value::String("A".into()))),
-            (
-                "Description".into(),
-                Instance::Scalar(Value::String(description.into())),
-            ),
-            ("Price".into(), Instance::Scalar(Value::Int(price))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Code".into(), Instance::Scalar(Value::String("A".into()))),
+                (
+                    "Description".into(),
+                    Instance::Scalar(Value::String(description.into())),
+                ),
+                ("Price".into(), Instance::Scalar(Value::Int(price))),
+            ])
+            .into(),
+        )
     };
     (
-        Instance::Group(vec![(
-            "Left".into(),
-            Instance::Repeated(vec![left("L1", 2), left("L2", 3)]),
-        )]),
-        Instance::Group(vec![(
-            "Right".into(),
-            Instance::Repeated(vec![right("R1", 5), right("R2", 7)]),
-        )]),
+        Instance::Group(
+            (vec![(
+                "Left".into(),
+                Instance::Repeated(vec![left("L1", 2), left("L2", 3)]),
+            )])
+            .into(),
+        ),
+        Instance::Group(
+            (vec![(
+                "Right".into(),
+                Instance::Repeated(vec![right("R1", 5), right("R2", 7)]),
+            )])
+            .into(),
+        ),
     )
 }
 

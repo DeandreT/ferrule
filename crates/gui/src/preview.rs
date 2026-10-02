@@ -367,7 +367,7 @@ impl BreakpointSourceConditionDraft {
             return Err("Choose source frame 0, 1, 2, or 3 (0 is innermost).");
         }
         if self.field.is_empty()
-            || self.field.starts_with('\u{1f}')
+            || (self.field.starts_with('\u{1f}') && self.field != ir::XML_TYPE_ORIGIN_FIELD)
             || self.field.chars().count() > 160
         {
             return Err("Enter an immediate source field name of 1–160 characters.");
@@ -1098,5 +1098,150 @@ mod tests {
         assert!(error.to_string().contains("graph-computed"));
         assert!(error.to_string().contains("catalog"));
         Ok(())
+    }
+
+    #[test]
+    fn ordinary_origin_source_condition_preserves_existing_name_frame_and_value_bounds() {
+        let valid = BreakpointSourceConditionDraft {
+            enabled: true,
+            frame_from_inner: "0".into(),
+            field: ir::XML_TYPE_ORIGIN_FIELD.into(),
+            value_type: ScalarValueType::String,
+            text: "ordinary JSON value".into(),
+        };
+        assert_eq!(
+            valid.compile().unwrap().unwrap().probe(),
+            (0, ir::XML_TYPE_ORIGIN_FIELD.into())
+        );
+        for frame in ["0", "1", "2", "3"] {
+            let mut draft = valid.clone();
+            draft.frame_from_inner = frame.into();
+            assert_eq!(
+                draft.compile().unwrap().unwrap().probe().0,
+                frame.parse::<usize>().unwrap()
+            );
+        }
+        for frame in ["4", "-1", "00", ""] {
+            let mut draft = valid.clone();
+            draft.frame_from_inner = frame.into();
+            assert!(draft.compile().is_err());
+        }
+        for field in [
+            ir::XML_TYPE_FIELD.to_string(),
+            "\u{1f}other-private".into(),
+            "".into(),
+            "é".repeat(161),
+        ] {
+            let mut draft = valid.clone();
+            draft.field = field;
+            assert!(draft.compile().is_err());
+        }
+        let mut draft = valid.clone();
+        draft.field = "é".repeat(160);
+        assert!(draft.compile().is_ok());
+        draft.text = "é".repeat(161);
+        assert!(draft.compile().is_err());
+        draft.enabled = false;
+        assert_eq!(draft.compile().unwrap(), None);
+    }
+
+    #[test]
+    fn ordinary_origin_source_condition_matches_actual_engine_data_and_keeps_origin_private() {
+        use ir::{Instance, InstanceGroup, ScalarType, SchemaNode, Value, XmlTypeOrigin};
+        use mapping::{Binding, Graph, Node, Project, Scope};
+        use std::cell::RefCell;
+        struct Hook {
+            condition: DebugSourceCondition,
+            writes: RefCell<Vec<engine::PendingTargetWrite>>,
+        }
+        impl engine::DebugHook for Hook {
+            fn source_field_probe(&self) -> Option<(usize, String)> {
+                Some(self.condition.probe())
+            }
+            fn before_target_write(
+                &self,
+                write: &engine::PendingTargetWrite,
+            ) -> engine::DebugDecision {
+                self.writes.borrow_mut().push(write.clone());
+                engine::DebugDecision::Resume
+            }
+        }
+        let draft = BreakpointSourceConditionDraft {
+            enabled: true,
+            frame_from_inner: "0".into(),
+            field: ir::XML_TYPE_ORIGIN_FIELD.into(),
+            value_type: ScalarValueType::String,
+            text: "ordinary JSON value".into(),
+        };
+        let mut graph = Graph::default();
+        graph.nodes.insert(
+            1,
+            Node::SourceField {
+                path: vec![ir::XML_TYPE_ORIGIN_FIELD.into()],
+                frame: None,
+            },
+        );
+        let project = Project {
+            source: SchemaNode::group(
+                "Root",
+                vec![SchemaNode::scalar(
+                    ir::XML_TYPE_ORIGIN_FIELD,
+                    ScalarType::String,
+                )],
+            ),
+            target: SchemaNode::group("Out", vec![SchemaNode::scalar("Code", ScalarType::String)]),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: vec![],
+            extra_targets: vec![],
+            failure_rules: vec![],
+            user_functions: Default::default(),
+            graph,
+            root: Scope {
+                bindings: vec![Binding {
+                    target_field: "Code".into(),
+                    node: 1,
+                }],
+                ..Default::default()
+            },
+        };
+        for origin in [
+            XmlTypeOrigin::Unknown,
+            XmlTypeOrigin::Absent,
+            XmlTypeOrigin::Explicit("private-type-identity"),
+        ] {
+            let source = Instance::Group(
+                InstanceGroup::from(vec![(
+                    ir::XML_TYPE_ORIGIN_FIELD.into(),
+                    Instance::Scalar(Value::String("ordinary JSON value".into())),
+                )])
+                .with_xml_type_origin(origin)
+                .unwrap(),
+            );
+            let hook = Hook {
+                condition: draft.compile().unwrap().unwrap(),
+                writes: RefCell::new(vec![]),
+            };
+            let context = engine::ExecutionContext::new(std::path::Path::new("private.json"))
+                .with_debug_hook(&hook);
+            let output = engine::run_with_context(&project, &source, &context).unwrap();
+            assert_eq!(
+                output.field("Code"),
+                Some(&Instance::Scalar(Value::String(
+                    "ordinary JSON value".into()
+                )))
+            );
+            let writes = hook.writes.borrow();
+            assert_eq!(writes.len(), 1);
+            let write = &writes[0];
+            assert!(hook.condition.matches(write));
+            assert!(!format!("{write:?}").contains("private-type-identity"));
+            let mut identity_draft = draft.clone();
+            identity_draft.text = "private-type-identity".into();
+            assert!(!identity_draft.compile().unwrap().unwrap().matches(write));
+            assert_eq!(source.xml_type_origin(), Ok(origin));
+        }
     }
 }

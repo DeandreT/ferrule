@@ -455,7 +455,7 @@ fn read_node(
                     }
                 }
             }
-            Ok(Instance::Group(fields))
+            Ok(Instance::Group((fields).into()))
         }
     }
 }
@@ -502,7 +502,7 @@ fn read_segment(
         fields.push((element_schema.name.clone(), instance));
     }
     cursor.pos += 1;
-    Ok(Instance::Group(fields))
+    Ok(Instance::Group((fields).into()))
 }
 
 fn read_one_repeat(
@@ -547,7 +547,7 @@ fn read_one_repeat(
                     )?,
                 ));
             }
-            Ok(Instance::Group(parts))
+            Ok(Instance::Group((parts).into()))
         }
     }
 }
@@ -595,7 +595,7 @@ fn read_nested_component(
                     ))
                 })
                 .collect::<Result<Vec<_>, EdiFormatError>>()?;
-            Ok(Instance::Group(fields))
+            Ok(Instance::Group((fields).into()))
         }
     }
 }

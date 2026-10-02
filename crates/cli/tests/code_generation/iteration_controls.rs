@@ -280,16 +280,19 @@ fn controls_project() -> Project {
 
 fn controls_source(invalid_bound: bool) -> Instance {
     let row = |label: String, primary, secondary: &str, keep, divisor| {
-        Instance::Group(vec![
-            ("Label".into(), Instance::Scalar(Value::String(label))),
-            ("Primary".into(), Instance::Scalar(Value::Int(primary))),
-            (
-                "Secondary".into(),
-                Instance::Scalar(Value::String(secondary.into())),
-            ),
-            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
-            ("Divisor".into(), Instance::Scalar(Value::Int(divisor))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Label".into(), Instance::Scalar(Value::String(label))),
+                ("Primary".into(), Instance::Scalar(Value::Int(primary))),
+                (
+                    "Secondary".into(),
+                    Instance::Scalar(Value::String(secondary.into())),
+                ),
+                ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+                ("Divisor".into(), Instance::Scalar(Value::Int(divisor))),
+            ])
+            .into(),
+        )
     };
     let parent = |name: &str, bound: Value| {
         let rows = [
@@ -302,54 +305,63 @@ fn controls_source(invalid_bound: bool) -> Instance {
             ("G", 0, "q", true, 1),
             ("H", 5, "r", true, 1),
         ];
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            ("Bound".into(), Instance::Scalar(bound)),
-            (
-                "Rows".into(),
-                Instance::Repeated(
-                    rows.into_iter()
-                        .map(|(label, primary, secondary, keep, divisor)| {
-                            row(format!("{name}-{label}"), primary, secondary, keep, divisor)
-                        })
-                        .collect(),
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("Bound".into(), Instance::Scalar(bound)),
+                (
+                    "Rows".into(),
+                    Instance::Repeated(
+                        rows.into_iter()
+                            .map(|(label, primary, secondary, keep, divisor)| {
+                                row(format!("{name}-{label}"), primary, secondary, keep, divisor)
+                            })
+                            .collect(),
+                    ),
                 ),
-            ),
-        ])
+            ])
+            .into(),
+        )
     };
 
-    Instance::Group(vec![(
-        "Parents".into(),
-        Instance::Repeated(vec![
-            parent(
-                "P1",
-                if invalid_bound {
-                    Value::Bool(true)
-                } else {
-                    Value::String("1".into())
-                },
-            ),
-            parent("P2", Value::Float(2.9)),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Parents".into(),
+            Instance::Repeated(vec![
+                parent(
+                    "P1",
+                    if invalid_bound {
+                        Value::Bool(true)
+                    } else {
+                        Value::String("1".into())
+                    },
+                ),
+                parent("P2", Value::Float(2.9)),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn controls_expected() -> Instance {
     let row = |label: &str, parent_position, item_position| {
-        Instance::Group(vec![
-            (
-                "Label".into(),
-                Instance::Scalar(Value::String(label.into())),
-            ),
-            (
-                "ParentPosition".into(),
-                Instance::Scalar(Value::Int(parent_position)),
-            ),
-            (
-                "ItemPosition".into(),
-                Instance::Scalar(Value::Int(item_position)),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Label".into(),
+                    Instance::Scalar(Value::String(label.into())),
+                ),
+                (
+                    "ParentPosition".into(),
+                    Instance::Scalar(Value::Int(parent_position)),
+                ),
+                (
+                    "ItemPosition".into(),
+                    Instance::Scalar(Value::Int(item_position)),
+                ),
+            ])
+            .into(),
+        )
     };
     let rows = |parent: &str, parent_position, labels: &[&str]| {
         labels
@@ -366,43 +378,51 @@ fn controls_expected() -> Instance {
     };
     let parent = |name: &str, parent_position, window_labels: &[&str]| {
         let mapped = rows(name, parent_position, &["A", "B"]);
-        Instance::Group(vec![
-            (
-                "Parent".into(),
-                Instance::Scalar(Value::String(name.into())),
-            ),
-            (
-                "SortThenFilter".into(),
-                Instance::Repeated(rows(name, parent_position, &["H", "C", "D"])),
-            ),
-            (
-                "FilterThenSort".into(),
-                Instance::Repeated(rows(name, parent_position, &["C", "D", "B", "A"])),
-            ),
-            (
-                "Windows".into(),
-                Instance::Repeated(rows(name, parent_position, window_labels)),
-            ),
-            (
-                "First".into(),
-                row(&format!("{name}-A"), parent_position, 1),
-            ),
-            ("EmptyFirst".into(), Instance::Group(Vec::new())),
-            ("Mapped".into(), Instance::MappedSequence(mapped)),
-            (
-                "LazyFirst".into(),
-                Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(1)))]),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Parent".into(),
+                    Instance::Scalar(Value::String(name.into())),
+                ),
+                (
+                    "SortThenFilter".into(),
+                    Instance::Repeated(rows(name, parent_position, &["H", "C", "D"])),
+                ),
+                (
+                    "FilterThenSort".into(),
+                    Instance::Repeated(rows(name, parent_position, &["C", "D", "B", "A"])),
+                ),
+                (
+                    "Windows".into(),
+                    Instance::Repeated(rows(name, parent_position, window_labels)),
+                ),
+                (
+                    "First".into(),
+                    row(&format!("{name}-A"), parent_position, 1),
+                ),
+                ("EmptyFirst".into(), Instance::Group((Vec::new()).into())),
+                ("Mapped".into(), Instance::MappedSequence(mapped)),
+                (
+                    "LazyFirst".into(),
+                    Instance::Group(
+                        (vec![("Value".into(), Instance::Scalar(Value::Int(1)))]).into(),
+                    ),
+                ),
+            ])
+            .into(),
+        )
     };
 
-    Instance::Group(vec![(
-        "ParentOut".into(),
-        Instance::Repeated(vec![
-            parent("P1", 1, &["C", "D"]),
-            parent("P2", 2, &["D", "E"]),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "ParentOut".into(),
+            Instance::Repeated(vec![
+                parent("P1", 1, &["C", "D"]),
+                parent("P2", 2, &["D", "E"]),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn write_controls_project(directory: &Path) -> TestResult<PathBuf> {

@@ -119,10 +119,13 @@ fn nested_projections_keep_only_runtime_input_edges() {
         assert!(!parser.layout_descriptor().is_empty());
         assert!(!parser.path_descriptor().is_empty());
     }
-    let input = ir::Instance::Group(vec![(
-        "Raw".into(),
-        ir::Instance::Scalar(Value::String("label,7".into())),
-    )]);
+    let input = ir::Instance::Group(
+        (vec![(
+            "Raw".into(),
+            ir::Instance::Scalar(Value::String("label,7".into())),
+        )])
+        .into(),
+    );
     let output = engine::run(&project, &input).unwrap();
     assert_eq!(
         output.field("Out").unwrap().as_scalar(),

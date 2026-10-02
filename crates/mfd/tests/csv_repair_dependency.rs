@@ -108,13 +108,16 @@ fn unsupported_text_settings_persist_and_never_requalify_after_warning_clear()
             )?;
             let imported = mfd::import(&path)?;
             assert!(engine::validate(&imported.project).is_empty());
-            let host = Instance::Repeated(vec![Instance::Group(vec![
-                (
-                    "Text".into(),
-                    Instance::Scalar(Value::String("host-parsed".into())),
-                ),
-                ("Count".into(), Instance::Scalar(Value::Int(7))),
-            ])]);
+            let host = Instance::Repeated(vec![Instance::Group(
+                (vec![
+                    (
+                        "Text".into(),
+                        Instance::Scalar(Value::String("host-parsed".into())),
+                    ),
+                    ("Count".into(), Instance::Scalar(Value::Int(7))),
+                ])
+                .into(),
+            )]);
             assert!(engine::run(&imported.project, &host).is_ok());
             assert!(
                 matches!(mfd::import_with_profile(&path, &ImportOptions::default(), ImportProfile::Executable),

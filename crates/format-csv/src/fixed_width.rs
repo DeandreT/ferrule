@@ -172,7 +172,7 @@ fn parse_record(
         values.push((name.to_string(), Instance::Scalar(value)));
         offset += width;
     }
-    Ok(Instance::Group(values))
+    Ok(Instance::Group((values).into()))
 }
 
 #[cfg(test)]
@@ -210,11 +210,14 @@ mod tests {
     }
 
     fn row(name: Value, age: Value, active: Value) -> Instance {
-        Instance::Group(vec![
-            ("name".into(), Instance::Scalar(name)),
-            ("age".into(), Instance::Scalar(age)),
-            ("active".into(), Instance::Scalar(active)),
-        ])
+        Instance::Group(
+            (vec![
+                ("name".into(), Instance::Scalar(name)),
+                ("age".into(), Instance::Scalar(age)),
+                ("active".into(), Instance::Scalar(active)),
+            ])
+            .into(),
+        )
     }
 
     #[test]
@@ -324,7 +327,7 @@ mod tests {
     }
 
     fn row_one(value: Value) -> Instance {
-        Instance::Group(vec![("value".into(), Instance::Scalar(value))])
+        Instance::Group((vec![("value".into(), Instance::Scalar(value))]).into())
     }
 
     #[test]

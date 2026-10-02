@@ -318,10 +318,13 @@ fn named_binary_source_and_target_keep_exact_file_and_payload_bytes_after_editin
 -> anyhow::Result<()> {
     let directory = TestDirectory::new()?;
     let (schema, options, layout) = protobuf_boundary()?;
-    let source_value = Instance::Group(vec![
-        ("name".into(), Instance::Scalar(Value::String("Zoë".into()))),
-        ("id".into(), Instance::Scalar(Value::Int(7))),
-    ]);
+    let source_value = Instance::Group(
+        (vec![
+            ("name".into(), Instance::Scalar(Value::String("Zoë".into()))),
+            ("id".into(), Instance::Scalar(Value::Int(7))),
+        ])
+        .into(),
+    );
     let binary_bytes = format_protobuf::to_vec(&layout, "demo.Person", &source_value)?;
     let named_source_path = directory.0.join("contacts.sqlite");
     let primary_source_path = directory.0.join("driver.json");

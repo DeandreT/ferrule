@@ -159,37 +159,46 @@ fn imports_case_insensitive_pdf_references_and_table_layout() {
     ));
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![
-        (
-            "Heading".into(),
-            Instance::Scalar(Value::String("Summer stock".into())),
-        ),
-        (
-            "Plant".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![
-                    (
-                        "Name".into(),
-                        Instance::Scalar(Value::String("Basil".into())),
+    let source = Instance::Group(
+        (vec![
+            (
+                "Heading".into(),
+                Instance::Scalar(Value::String("Summer stock".into())),
+            ),
+            (
+                "Plant".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![
+                            (
+                                "Name".into(),
+                                Instance::Scalar(Value::String("Basil".into())),
+                            ),
+                            (
+                                "Quantity".into(),
+                                Instance::Scalar(Value::String("8".into())),
+                            ),
+                        ])
+                        .into(),
                     ),
-                    (
-                        "Quantity".into(),
-                        Instance::Scalar(Value::String("8".into())),
+                    Instance::Group(
+                        (vec![
+                            (
+                                "Name".into(),
+                                Instance::Scalar(Value::String("heading".into())),
+                            ),
+                            (
+                                "Quantity".into(),
+                                Instance::Scalar(Value::String("not a number".into())),
+                            ),
+                        ])
+                        .into(),
                     ),
                 ]),
-                Instance::Group(vec![
-                    (
-                        "Name".into(),
-                        Instance::Scalar(Value::String("heading".into())),
-                    ),
-                    (
-                        "Quantity".into(),
-                        Instance::Scalar(Value::String("not a number".into())),
-                    ),
-                ]),
-            ]),
-        ),
-    ]);
+            ),
+        ])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source).unwrap();
     let rows = output.as_repeated().unwrap();
     assert_eq!(rows.len(), 1);

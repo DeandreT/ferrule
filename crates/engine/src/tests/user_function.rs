@@ -86,10 +86,13 @@ fn project(
 }
 
 fn source(value: &str) -> Instance {
-    Instance::Group(vec![(
-        "value".into(),
-        Instance::Scalar(Value::String(value.into())),
-    )])
+    Instance::Group(
+        (vec![(
+            "value".into(),
+            Instance::Scalar(Value::String(value.into())),
+        )])
+        .into(),
+    )
 }
 
 fn output_value(output: &Instance) -> Option<&Value> {

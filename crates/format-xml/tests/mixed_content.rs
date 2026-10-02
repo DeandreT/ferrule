@@ -5,37 +5,43 @@ use ir::{
 };
 
 fn text_item(text: &str) -> Instance {
-    Instance::Group(vec![
-        (
-            XML_NODE_NAME_FIELD.into(),
-            Instance::Scalar(Value::String(String::new())),
-        ),
-        (
-            XML_TEXT_FIELD.into(),
-            Instance::Scalar(Value::String(text.into())),
-        ),
-        (
-            XML_MIXED_CONTENT_VALUE_FIELD.into(),
-            Instance::Scalar(Value::String(text.into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                XML_NODE_NAME_FIELD.into(),
+                Instance::Scalar(Value::String(String::new())),
+            ),
+            (
+                XML_TEXT_FIELD.into(),
+                Instance::Scalar(Value::String(text.into())),
+            ),
+            (
+                XML_MIXED_CONTENT_VALUE_FIELD.into(),
+                Instance::Scalar(Value::String(text.into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn element_item(name: &str, value: &str) -> Instance {
-    Instance::Group(vec![
-        (
-            XML_NODE_NAME_FIELD.into(),
-            Instance::Scalar(Value::String(name.into())),
-        ),
-        (
-            XML_TEXT_FIELD.into(),
-            Instance::Scalar(Value::String(value.into())),
-        ),
-        (
-            XML_MIXED_CONTENT_VALUE_FIELD.into(),
-            Instance::Scalar(Value::String(value.into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                XML_NODE_NAME_FIELD.into(),
+                Instance::Scalar(Value::String(name.into())),
+            ),
+            (
+                XML_TEXT_FIELD.into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+            (
+                XML_MIXED_CONTENT_VALUE_FIELD.into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn schema() -> SchemaNode {
@@ -51,35 +57,38 @@ fn schema() -> SchemaNode {
 
 #[test]
 fn writer_emits_repeated_mixed_children_in_recorded_order() {
-    let instance = Instance::Group(vec![
-        (
-            XML_TEXT_FIELD.into(),
-            Instance::Scalar(Value::String("Example  2014 uses  and  data.".into())),
-        ),
-        (
-            "Bold".into(),
-            Instance::Repeated(vec![Instance::Scalar(Value::String("XMLSpy".into()))]),
-        ),
-        (
-            "Italic".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("XML".into())),
-                Instance::Scalar(Value::String("EDI".into())),
-            ]),
-        ),
-        (
-            XML_MIXED_CONTENT_FIELD.into(),
-            Instance::Repeated(vec![
-                text_item("Example "),
-                element_item("Bold", "XMLSpy"),
-                text_item(" 2014 uses "),
-                element_item("Italic", "XML"),
-                text_item(" and "),
-                element_item("Italic", "EDI"),
-                text_item(" data."),
-            ]),
-        ),
-    ]);
+    let instance = Instance::Group(
+        (vec![
+            (
+                XML_TEXT_FIELD.into(),
+                Instance::Scalar(Value::String("Example  2014 uses  and  data.".into())),
+            ),
+            (
+                "Bold".into(),
+                Instance::Repeated(vec![Instance::Scalar(Value::String("XMLSpy".into()))]),
+            ),
+            (
+                "Italic".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("XML".into())),
+                    Instance::Scalar(Value::String("EDI".into())),
+                ]),
+            ),
+            (
+                XML_MIXED_CONTENT_FIELD.into(),
+                Instance::Repeated(vec![
+                    text_item("Example "),
+                    element_item("Bold", "XMLSpy"),
+                    text_item(" 2014 uses "),
+                    element_item("Italic", "XML"),
+                    text_item(" and "),
+                    element_item("Italic", "EDI"),
+                    text_item(" data."),
+                ]),
+            ),
+        ])
+        .into(),
+    );
 
     let xml = to_string(&schema(), &instance).unwrap();
     assert!(
@@ -93,16 +102,19 @@ fn writer_emits_repeated_mixed_children_in_recorded_order() {
 
 #[test]
 fn writer_rejects_unknown_mixed_child_names() {
-    let instance = Instance::Group(vec![
-        (
-            XML_TEXT_FIELD.into(),
-            Instance::Scalar(Value::String(String::new())),
-        ),
-        (
-            XML_MIXED_CONTENT_FIELD.into(),
-            Instance::Repeated(vec![element_item("Unknown", "value")]),
-        ),
-    ]);
+    let instance = Instance::Group(
+        (vec![
+            (
+                XML_TEXT_FIELD.into(),
+                Instance::Scalar(Value::String(String::new())),
+            ),
+            (
+                XML_MIXED_CONTENT_FIELD.into(),
+                Instance::Repeated(vec![element_item("Unknown", "value")]),
+            ),
+        ])
+        .into(),
+    );
 
     assert!(matches!(
         to_string(&schema(), &instance),

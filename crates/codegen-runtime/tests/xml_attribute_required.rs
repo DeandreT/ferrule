@@ -50,13 +50,18 @@ fn malformed_required_attribute_role_fails_all_public_codecs() {
     let descriptor = serde_json::to_string(&SchemaNode::group("Root", vec![code])).unwrap();
     assert!(codegen_runtime::parse_json(&descriptor, "{}").is_err());
     assert!(codegen_runtime::parse_json_bytes(&descriptor, b"{}").is_err());
-    assert!(codegen_runtime::serialize_json(&descriptor, &Instance::Group(vec![])).is_err());
-    assert!(codegen_runtime::serialize_json_bytes(&descriptor, &Instance::Group(vec![])).is_err());
+    assert!(
+        codegen_runtime::serialize_json(&descriptor, &Instance::Group((vec![]).into())).is_err()
+    );
+    assert!(
+        codegen_runtime::serialize_json_bytes(&descriptor, &Instance::Group((vec![]).into()))
+            .is_err()
+    );
     assert!(
         codegen_runtime::serialize_xml(
             1,
             &descriptor,
-            &Instance::Group(vec![]),
+            &Instance::Group((vec![]).into()),
             false,
             false,
             None

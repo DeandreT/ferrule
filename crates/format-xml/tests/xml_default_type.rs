@@ -26,10 +26,7 @@ impl Drop for Dir {
     }
 }
 fn plain() -> Instance {
-    Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String("x".into())),
-    )])
+    Instance::Group((vec![("Value".into(), Instance::Scalar(Value::String("x".into())))]).into())
 }
 fn xml_type(xml: &str) -> Option<String> {
     roxmltree::Document::parse(xml)
@@ -53,7 +50,21 @@ fn concrete_and_abstract_equal_projections_retain_different_defaults() {
     assert_eq!(concrete.xml_default_type.as_deref(), Some("A"));
     assert!(abstract_base.xml_default_type.is_none());
     let xml = "<Root><Value>x</Value></Root>";
-    assert_eq!(format_xml::from_str(xml, &concrete).unwrap(), plain());
+    let mut observed_plain = plain();
+    if let Instance::Group(fields) = &mut observed_plain {
+        fields
+            .set_xml_type_origin(ir::XmlTypeOrigin::Absent)
+            .unwrap();
+    }
+    assert_eq!(
+        format_xml::from_str(xml, &concrete).unwrap(),
+        observed_plain
+    );
+    assert_eq!(
+        observed_plain.xml_type_origin(),
+        Ok(ir::XmlTypeOrigin::Absent)
+    );
+    assert_eq!(plain().xml_type_origin(), Ok(ir::XmlTypeOrigin::Unknown));
     assert!(matches!(
         format_xml::from_str(xml, &abstract_base),
         Err(format_xml::XmlFormatError::AmbiguousAlternative { .. })
@@ -101,10 +112,13 @@ fn qualified_default_and_constructed_derived_projection_are_exact() {
         Some("{urn:ferrule:default}Base")
     );
     assert!(xml_type(&format_xml::to_string(&schema, &plain()).unwrap()).is_none());
-    let derived = Instance::Group(vec![
-        ("Value".into(), Instance::Scalar(Value::String("x".into()))),
-        ("Extra".into(), Instance::Scalar(Value::String("y".into()))),
-    ]);
+    let derived = Instance::Group(
+        (vec![
+            ("Value".into(), Instance::Scalar(Value::String("x".into()))),
+            ("Extra".into(), Instance::Scalar(Value::String("y".into()))),
+        ])
+        .into(),
+    );
     let out = format_xml::to_string(&schema, &derived).unwrap();
     let doc = roxmltree::Document::parse(&out).unwrap();
     let root = doc.root_element();
@@ -123,7 +137,11 @@ fn qualified_default_and_constructed_derived_projection_are_exact() {
             XML_TYPE_FIELD.into(),
             Instance::Scalar(Value::String("{urn:ferrule:default}Derived".into())),
         ));
+        fields
+            .set_xml_type_origin(ir::XmlTypeOrigin::Explicit("{urn:ferrule:default}Derived"))
+            .unwrap();
     }
+    assert_eq!(derived.xml_type_origin(), Ok(ir::XmlTypeOrigin::Unknown));
     assert_eq!(
         format_xml::from_str(&out, &schema).unwrap(),
         imported_derived
@@ -214,7 +232,7 @@ fn invalid_programmatic_default_rejects_at_both_xml_boundaries() {
         Err(format_xml::XmlFormatError::InvalidXmlDefaultType { .. })
     ));
     assert!(matches!(
-        format_xml::to_string(&schema, &Instance::Group(vec![])),
+        format_xml::to_string(&schema, &Instance::Group(vec![].into())),
         Err(format_xml::XmlFormatError::InvalidXmlDefaultType { .. })
     ));
     assert!(matches!(

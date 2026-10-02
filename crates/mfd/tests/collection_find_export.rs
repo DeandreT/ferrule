@@ -165,10 +165,11 @@ fn project() -> Project {
 
 fn row(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .into_iter()
             .map(|(name, value)| (name.into(), Instance::Scalar(value)))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
@@ -177,30 +178,33 @@ fn scalar_filter_roundtrip_rebuilds_collection_find_context() {
     let directory = TempDir::new();
     let design = directory.0.join("mapping.mfd");
     let project = project();
-    let source = Instance::Group(vec![
-        (
-            "Metadata".into(),
-            Instance::Repeated(vec![
-                row([
-                    ("Key", Value::String("A".into())),
-                    ("Active", Value::Bool(true)),
-                    ("Value", Value::String("alpha".into())),
+    let source = Instance::Group(
+        (vec![
+            (
+                "Metadata".into(),
+                Instance::Repeated(vec![
+                    row([
+                        ("Key", Value::String("A".into())),
+                        ("Active", Value::Bool(true)),
+                        ("Value", Value::String("alpha".into())),
+                    ]),
+                    row([
+                        ("Key", Value::String("B".into())),
+                        ("Active", Value::Bool(true)),
+                        ("Value", Value::String("bravo".into())),
+                    ]),
                 ]),
-                row([
-                    ("Key", Value::String("B".into())),
-                    ("Active", Value::Bool(true)),
-                    ("Value", Value::String("bravo".into())),
+            ),
+            (
+                "Item".into(),
+                Instance::Repeated(vec![
+                    row([("Wanted", Value::String("A".into()))]),
+                    row([("Wanted", Value::String("B".into()))]),
                 ]),
-            ]),
-        ),
-        (
-            "Item".into(),
-            Instance::Repeated(vec![
-                row([("Wanted", Value::String("A".into()))]),
-                row([("Wanted", Value::String("B".into()))]),
-            ]),
-        ),
-    ]);
+            ),
+        ])
+        .into(),
+    );
 
     assert!(mfd::export(&project, &design).unwrap().is_empty());
     let imported = mfd::import(&design).unwrap();

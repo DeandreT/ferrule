@@ -88,22 +88,22 @@ fn setup() -> TempDir {
 }
 
 fn address(lines: &[&str]) -> Instance {
-    Instance::Group(vec![(
-        "line".into(),
-        Instance::Repeated(
-            lines
-                .iter()
-                .map(|line| Instance::Scalar(Value::String((*line).into())))
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "line".into(),
+            Instance::Repeated(
+                lines
+                    .iter()
+                    .map(|line| Instance::Scalar(Value::String((*line).into())))
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn office(lines: &[&str]) -> Instance {
-    Instance::Group(vec![(
-        "Address".into(),
-        Instance::Repeated(vec![address(lines)]),
-    )])
+    Instance::Group((vec![("Address".into(), Instance::Repeated(vec![address(lines)]))]).into())
 }
 
 #[test]
@@ -129,10 +129,13 @@ fn sibling_aggregate_keeps_an_unentered_nested_collection_in_its_path() {
         }) if collection == &["Address", "line"] && value.is_empty()
     ));
 
-    let source = Instance::Group(vec![(
-        "Office".into(),
-        Instance::Repeated(vec![office(&["US", "street"]), office(&["EU", "road"])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Office".into(),
+            Instance::Repeated(vec![office(&["US", "street"]), office(&["EU", "road"])]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source).unwrap();
     let offices = output.field("Office").unwrap().as_repeated().unwrap();
     assert_eq!(

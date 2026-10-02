@@ -201,16 +201,22 @@ fn exports_and_reimports_transposed_xlsx_source() {
     assert_eq!(imported.project.source_options, project.source_options);
     assert!(engine::validate(&imported.project).is_empty());
     let source = Instance::Repeated(vec![
-        Instance::Group(vec![
-            ("Category".into(), scalar(Value::String("Hardware".into()))),
-            ("Range9".into(), scalar(Value::Int(12))),
-            ("n".into(), scalar(Value::Int(1))),
-        ]),
-        Instance::Group(vec![
-            ("Category".into(), scalar(Value::String("Software".into()))),
-            ("Range9".into(), scalar(Value::Int(18))),
-            ("n".into(), scalar(Value::Int(2))),
-        ]),
+        Instance::Group(
+            (vec![
+                ("Category".into(), scalar(Value::String("Hardware".into()))),
+                ("Range9".into(), scalar(Value::Int(12))),
+                ("n".into(), scalar(Value::Int(1))),
+            ])
+            .into(),
+        ),
+        Instance::Group(
+            (vec![
+                ("Category".into(), scalar(Value::String("Software".into()))),
+                ("Range9".into(), scalar(Value::Int(18))),
+                ("n".into(), scalar(Value::Int(2))),
+            ])
+            .into(),
+        ),
     ]);
     assert_same_execution(&project, &imported.project, &source);
 }
@@ -244,39 +250,57 @@ fn exports_and_reimports_composite_xlsx_sources() {
             "{fixture_name}"
         );
         let source = if fixture_name.ends_with("xml.mfd") {
-            Instance::Group(vec![
-                (
-                    "Branch".into(),
-                    Instance::Group(vec![
-                        ("Name".into(), scalar(Value::String("North".into()))),
-                        ("City".into(), scalar(Value::String("Seattle".into()))),
-                    ]),
-                ),
-                (
-                    "Roster".into(),
-                    Instance::Repeated(vec![Instance::Group(vec![
-                        ("First".into(), scalar(Value::String("Ada".into()))),
-                        ("Team".into(), scalar(Value::String("Platform".into()))),
-                    ])]),
-                ),
-            ])
+            Instance::Group(
+                (vec![
+                    (
+                        "Branch".into(),
+                        Instance::Group(
+                            (vec![
+                                ("Name".into(), scalar(Value::String("North".into()))),
+                                ("City".into(), scalar(Value::String("Seattle".into()))),
+                            ])
+                            .into(),
+                        ),
+                    ),
+                    (
+                        "Roster".into(),
+                        Instance::Repeated(vec![Instance::Group(
+                            (vec![
+                                ("First".into(), scalar(Value::String("Ada".into()))),
+                                ("Team".into(), scalar(Value::String("Platform".into()))),
+                            ])
+                            .into(),
+                        )]),
+                    ),
+                ])
+                .into(),
+            )
         } else {
-            Instance::Group(vec![
-                (
-                    "Info".into(),
-                    Instance::Group(vec![(
-                        "Organization".into(),
-                        scalar(Value::String("Ferrule".into())),
-                    )]),
-                ),
-                (
-                    "People".into(),
-                    Instance::Repeated(vec![Instance::Group(vec![
-                        ("Name".into(), scalar(Value::String("Ada".into()))),
-                        ("Age".into(), scalar(Value::Int(37))),
-                    ])]),
-                ),
-            ])
+            Instance::Group(
+                (vec![
+                    (
+                        "Info".into(),
+                        Instance::Group(
+                            (vec![(
+                                "Organization".into(),
+                                scalar(Value::String("Ferrule".into())),
+                            )])
+                            .into(),
+                        ),
+                    ),
+                    (
+                        "People".into(),
+                        Instance::Repeated(vec![Instance::Group(
+                            (vec![
+                                ("Name".into(), scalar(Value::String("Ada".into()))),
+                                ("Age".into(), scalar(Value::Int(37))),
+                            ])
+                            .into(),
+                        )]),
+                    ),
+                ])
+                .into(),
+            )
         };
         assert_same_execution(&project, &imported.project, &source);
     }
@@ -354,26 +378,35 @@ fn exports_and_reimports_grid_xlsx_source() {
     assert_eq!(imported.project.source_options, project.source_options);
     assert!(engine::validate(&imported.project).is_empty());
     let cell = |column: i64, value: f64| {
-        Instance::Group(vec![
-            ("value".into(), scalar(Value::Float(value))),
-            ("CellColumn".into(), scalar(Value::Int(column))),
-        ])
+        Instance::Group(
+            (vec![
+                ("value".into(), scalar(Value::Float(value))),
+                ("CellColumn".into(), scalar(Value::Int(column))),
+            ])
+            .into(),
+        )
     };
     let row = |region: f64, amount: f64| {
-        Instance::Group(vec![(
-            "Cells".into(),
-            Instance::Repeated(vec![cell(1, region), cell(2, amount)]),
-        )])
+        Instance::Group(
+            (vec![(
+                "Cells".into(),
+                Instance::Repeated(vec![cell(1, region), cell(2, amount)]),
+            )])
+            .into(),
+        )
     };
-    let source = Instance::Repeated(vec![Instance::Group(vec![
-        ("Range1".into(), scalar(Value::String("Q1".into()))),
-        ("HeaderColumn".into(), scalar(Value::Int(2))),
-        ("Year".into(), scalar(Value::String("2026".into()))),
-        (
-            "Rows".into(),
-            Instance::Repeated(vec![row(101.0, 10.5), row(202.0, 20.5)]),
-        ),
-    ])]);
+    let source = Instance::Repeated(vec![Instance::Group(
+        (vec![
+            ("Range1".into(), scalar(Value::String("Q1".into()))),
+            ("HeaderColumn".into(), scalar(Value::Int(2))),
+            ("Year".into(), scalar(Value::String("2026".into()))),
+            (
+                "Rows".into(),
+                Instance::Repeated(vec![row(101.0, 10.5), row(202.0, 20.5)]),
+            ),
+        ])
+        .into(),
+    )]);
     assert_same_execution(&project, &imported.project, &source);
 }
 

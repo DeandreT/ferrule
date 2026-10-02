@@ -35,25 +35,28 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn row(name: &str) -> Instance {
-    Instance::Group(vec![(
-        "Name".into(),
-        Instance::Scalar(Value::String(name.into())),
-    )])
+    Instance::Group((vec![("Name".into(), Instance::Scalar(Value::String(name.into())))]).into())
 }
 
 fn source_instances() -> (Instance, Instance) {
     (
-        Instance::Group(vec![
-            (
-                "RowsA".into(),
-                Instance::Repeated(vec![row("alpha-one"), row("alpha-two")]),
-            ),
-            ("RowsB".into(), Instance::Repeated(vec![row("alpha-three")])),
-        ]),
-        Instance::Group(vec![(
-            "Rows".into(),
-            Instance::Repeated(vec![row("beta-one"), row("beta-two")]),
-        )]),
+        Instance::Group(
+            (vec![
+                (
+                    "RowsA".into(),
+                    Instance::Repeated(vec![row("alpha-one"), row("alpha-two")]),
+                ),
+                ("RowsB".into(), Instance::Repeated(vec![row("alpha-three")])),
+            ])
+            .into(),
+        ),
+        Instance::Group(
+            (vec![(
+                "Rows".into(),
+                Instance::Repeated(vec![row("beta-one"), row("beta-two")]),
+            )])
+            .into(),
+        ),
     )
 }
 

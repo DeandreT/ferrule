@@ -184,7 +184,7 @@ fn scope_retirement_pointer_removal_retires_private_item_on_every_mapping_canvas
             20
         };
         let other = if item == 10 { 20 } else { 10 };
-        let source = Instance::Group(vec![]);
+        let source = Instance::Group((vec![]).into());
         let outputs = engine::run_outputs(&app.project, &source).expect("run before removal");
         assert_eq!(values(&outputs.primary), vec![1, 2, 3]);
         assert_eq!(values(&outputs.extras[0].instance), vec![1, 2, 3]);
@@ -247,7 +247,7 @@ fn scope_retirement_save_reopen_preserves_removal_and_other_sequence()
         reopened.load_project_from(&path);
         assert_eq!(encoded(&reopened), expected);
         assert!(cli::validate(&reopened.project).is_empty());
-        let outputs = engine::run_outputs(&reopened.project, &Instance::Group(vec![]))?;
+        let outputs = engine::run_outputs(&reopened.project, &Instance::Group((vec![]).into()))?;
         assert_eq!(
             values(&outputs.primary),
             if document == MappingDocument::Main {

@@ -54,66 +54,84 @@ fn adjacency_project() -> Project {
 }
 
 fn adjacency_source(root: Value, rows: &[(&str, Option<&str>)]) -> Instance {
-    Instance::Group(vec![
-        ("Root".into(), Instance::Scalar(root)),
-        (
-            "Rows".into(),
-            Instance::Repeated(
-                rows.iter()
-                    .map(|(key, parent)| {
-                        Instance::Group(vec![
-                            ("Key".into(), Instance::Scalar(Value::String((*key).into()))),
-                            (
-                                "Parent".into(),
-                                Instance::Scalar(
-                                    parent
-                                        .map(|parent| Value::String(parent.into()))
-                                        .unwrap_or(Value::Null),
-                                ),
-                            ),
-                        ])
-                    })
-                    .collect(),
+    Instance::Group(
+        (vec![
+            ("Root".into(), Instance::Scalar(root)),
+            (
+                "Rows".into(),
+                Instance::Repeated(
+                    rows.iter()
+                        .map(|(key, parent)| {
+                            Instance::Group(
+                                (vec![
+                                    ("Key".into(), Instance::Scalar(Value::String((*key).into()))),
+                                    (
+                                        "Parent".into(),
+                                        Instance::Scalar(
+                                            parent
+                                                .map(|parent| Value::String(parent.into()))
+                                                .unwrap_or(Value::Null),
+                                        ),
+                                    ),
+                                ])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
             ),
-        ),
-    ])
+        ])
+        .into(),
+    )
 }
 
 fn adjacency_expected() -> Instance {
-    Instance::Group(vec![
-        (
-            "name".into(),
-            Instance::Scalar(Value::String("Root".into())),
-        ),
-        (
-            "children".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![
-                    (
-                        "name".into(),
-                        Instance::Scalar(Value::String("Beta".into())),
-                    ),
-                    (
-                        "children".into(),
-                        Instance::Repeated(vec![Instance::Group(vec![
+    Instance::Group(
+        (vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Root".into())),
+            ),
+            (
+                "children".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![
                             (
                                 "name".into(),
-                                Instance::Scalar(Value::String("Leaf".into())),
+                                Instance::Scalar(Value::String("Beta".into())),
+                            ),
+                            (
+                                "children".into(),
+                                Instance::Repeated(vec![Instance::Group(
+                                    (vec![
+                                        (
+                                            "name".into(),
+                                            Instance::Scalar(Value::String("Leaf".into())),
+                                        ),
+                                        ("children".into(), Instance::Repeated(Vec::new())),
+                                    ])
+                                    .into(),
+                                )]),
+                            ),
+                        ])
+                        .into(),
+                    ),
+                    Instance::Group(
+                        (vec![
+                            (
+                                "name".into(),
+                                Instance::Scalar(Value::String("Alpha".into())),
                             ),
                             ("children".into(), Instance::Repeated(Vec::new())),
-                        ])]),
+                        ])
+                        .into(),
                     ),
                 ]),
-                Instance::Group(vec![
-                    (
-                        "name".into(),
-                        Instance::Scalar(Value::String("Alpha".into())),
-                    ),
-                    ("children".into(), Instance::Repeated(Vec::new())),
-                ]),
-            ]),
-        ),
-    ])
+            ),
+        ])
+        .into(),
+    )
 }
 
 #[test]

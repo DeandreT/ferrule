@@ -392,10 +392,13 @@ fn run_optional_for_purpose(
     parameters: &RuntimeParameters,
     purpose: ExecutionPurpose,
 ) -> Result<Instance, engine::EngineError> {
-    let source = Instance::Group(vec![(
-        "Dummy".into(),
-        Instance::Scalar(Value::String("source".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Dummy".into(),
+            Instance::Scalar(Value::String("source".into())),
+        )])
+        .into(),
+    );
     let context = ExecutionContext::new(Path::new("optional.mfd"))
         .with_parameters(parameters)
         .with_purpose(purpose);

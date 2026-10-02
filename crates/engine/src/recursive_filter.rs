@@ -66,7 +66,7 @@ fn filter_group<'a>(
             kept_items.as_deref().unwrap_or(&[]),
         );
     }
-    Ok(Instance::Group(output))
+    Ok(Instance::Group((output).into()))
 }
 
 /// The XML choice reader retains an ordered stream of typed child values beside

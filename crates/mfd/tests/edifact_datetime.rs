@@ -38,16 +38,19 @@ fn write_design(path: &Path) {
 }
 
 fn input() -> Instance {
-    Instance::Group(vec![
-        (
-            "Date".to_string(),
-            Instance::Scalar(Value::String("202402291305PDT".to_string())),
-        ),
-        (
-            "Format".to_string(),
-            Instance::Scalar(Value::String("303".to_string())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Date".to_string(),
+                Instance::Scalar(Value::String("202402291305PDT".to_string())),
+            ),
+            (
+                "Format".to_string(),
+                Instance::Scalar(Value::String("303".to_string())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn assert_output(project: &mapping::Project) {

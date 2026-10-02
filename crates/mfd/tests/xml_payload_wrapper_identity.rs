@@ -126,10 +126,13 @@ fn check_payloads(namespace: Option<Option<&str>>) -> TestResult {
         let input =
             format!("<{source_root}{xmlns}><FileInstance>payload</FileInstance></{source_root}>");
         let source = format_xml::from_str(&input, &project.source)?;
-        let expected = ir::Instance::Group(vec![(
-            "document".into(),
-            ir::Instance::Scalar(ir::Value::String("payload".into())),
-        )]);
+        let expected = ir::Instance::Group(
+            (vec![(
+                "document".into(),
+                ir::Instance::Scalar(ir::Value::String("payload".into())),
+            )])
+            .into(),
+        );
         assert_eq!(engine::run(&project, &source)?, expected);
         assert_eq!(engine::run(&imported.project, &source)?, expected);
     }

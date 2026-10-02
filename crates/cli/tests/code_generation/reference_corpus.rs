@@ -2346,7 +2346,7 @@ fn corpus_xlsx_cells(project: &Project, instance: &Instance) -> TestResult<Vec<I
     let header_rows =
         format_xlsx::from_bytes(&bytes, &header_schema, sheet, start_row, columns, false)?;
     let expected_header = Instance::Group(
-        children
+        (children
             .iter()
             .enumerate()
             .map(|(index, child)| {
@@ -2357,7 +2357,8 @@ fn corpus_xlsx_cells(project: &Project, instance: &Instance) -> TestResult<Vec<I
                     .clone();
                 (child.name.clone(), Instance::Scalar(Value::String(label)))
             })
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     );
     assert_eq!(
         header_rows.first(),

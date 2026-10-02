@@ -59,13 +59,16 @@ fn required_only_normalizes_and_nontrivial_predicates_validate_input_and_output(
     ));
     assert!(crate::from_str(r#"{"mode":"loose"}"#, &schema).is_ok());
 
-    let omitted = Instance::Group(vec![
-        (
-            "trigger".into(),
-            Instance::Scalar(Value::String("yes".into())),
-        ),
-        ("mode".into(), Instance::Scalar(Value::Null)),
-    ]);
+    let omitted = Instance::Group(
+        (vec![
+            (
+                "trigger".into(),
+                Instance::Scalar(Value::String("yes".into())),
+            ),
+            ("mode".into(), Instance::Scalar(Value::Null)),
+        ])
+        .into(),
+    );
     assert!(matches!(
         crate::to_string(&schema, &omitted),
         Err(JsonFormatError::DependentSchemaMismatch { .. })

@@ -269,7 +269,7 @@ fn materialize_schema(
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return Instance::Scalar(Value::Null);
     };
-    let fields = children
+    let fields: Vec<_> = children
         .iter()
         .map(|child| {
             path.push(child.name.clone());
@@ -292,7 +292,7 @@ fn materialize_schema(
             (child.name.clone(), value)
         })
         .collect();
-    Instance::Group(fields)
+    Instance::Group((fields).into())
 }
 
 /// Writes a hierarchical workbook and returns its worksheet count.
@@ -834,56 +834,78 @@ mod tests {
     }
 
     fn workbook_instance(names: &[&str]) -> Instance {
-        Instance::Group(vec![(
-            "Sheets".into(),
-            Instance::Repeated(
-                names
-                    .iter()
-                    .map(|name| {
-                        Instance::Group(vec![
-                            (
-                                "Name".into(),
-                                Instance::Scalar(Value::String((*name).into())),
-                            ),
-                            (
-                                "Summary".into(),
-                                Instance::Group(vec![
+        Instance::Group(
+            (vec![(
+                "Sheets".into(),
+                Instance::Repeated(
+                    names
+                        .iter()
+                        .map(|name| {
+                            Instance::Group(
+                                (vec![
                                     (
-                                        "Label".into(),
-                                        Instance::Scalar(Value::String("Release".into())),
+                                        "Name".into(),
+                                        Instance::Scalar(Value::String((*name).into())),
                                     ),
                                     (
-                                        "Started".into(),
-                                        Instance::Scalar(Value::String("2024-02-03".into())),
+                                        "Summary".into(),
+                                        Instance::Group(
+                                            (vec![
+                                                (
+                                                    "Label".into(),
+                                                    Instance::Scalar(Value::String(
+                                                        "Release".into(),
+                                                    )),
+                                                ),
+                                                (
+                                                    "Started".into(),
+                                                    Instance::Scalar(Value::String(
+                                                        "2024-02-03".into(),
+                                                    )),
+                                                ),
+                                            ])
+                                            .into(),
+                                        ),
                                     ),
-                                ]),
-                            ),
-                            (
-                                "People".into(),
-                                Instance::Repeated(vec![person("Ada", 8.5), person("Lin", 9.25)]),
-                            ),
-                            (
-                                "Footer".into(),
-                                Instance::Group(vec![(
-                                    "Label".into(),
-                                    Instance::Scalar(Value::String("End".into())),
-                                )]),
-                            ),
-                        ])
-                    })
-                    .collect(),
-            ),
-        )])
+                                    (
+                                        "People".into(),
+                                        Instance::Repeated(vec![
+                                            person("Ada", 8.5),
+                                            person("Lin", 9.25),
+                                        ]),
+                                    ),
+                                    (
+                                        "Footer".into(),
+                                        Instance::Group(
+                                            (vec![(
+                                                "Label".into(),
+                                                Instance::Scalar(Value::String("End".into())),
+                                            )])
+                                            .into(),
+                                        ),
+                                    ),
+                                ])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            )])
+            .into(),
+        )
     }
 
     fn person(name: &str, score: f64) -> Instance {
-        Instance::Group(vec![
-            (
-                "Display".into(),
-                Instance::Scalar(Value::String(name.into())),
-            ),
-            ("Score".into(), Instance::Scalar(Value::Float(score))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Display".into(),
+                    Instance::Scalar(Value::String(name.into())),
+                ),
+                ("Score".into(), Instance::Scalar(Value::Float(score))),
+            ])
+            .into(),
+        )
     }
 
     #[test]

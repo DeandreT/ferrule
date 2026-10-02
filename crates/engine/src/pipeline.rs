@@ -435,10 +435,13 @@ mod tests {
     }
 
     fn input(value: &str) -> Instance {
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String(value.into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            )])
+            .into(),
+        )
     }
 
     fn copy_project(ty: ScalarType) -> mapping::Project {

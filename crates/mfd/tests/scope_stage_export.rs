@@ -41,10 +41,11 @@ fn repeated_group(name: &str, children: Vec<SchemaNode>) -> SchemaNode {
 
 fn scalar_group(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .into_iter()
             .map(|(name, value)| (name.into(), Instance::Scalar(value)))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
@@ -129,13 +130,16 @@ fn nested_position_source() -> Instance {
                 .collect(),
         )
     };
-    Instance::Group(vec![(
-        "Office".into(),
-        Instance::Repeated(vec![
-            Instance::Group(vec![("Contact".into(), contacts(&["Ada", "Grace"]))]),
-            Instance::Group(vec![("Contact".into(), contacts(&["Linus"]))]),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Office".into(),
+            Instance::Repeated(vec![
+                Instance::Group((vec![("Contact".into(), contacts(&["Ada", "Grace"]))]).into()),
+                Instance::Group((vec![("Contact".into(), contacts(&["Linus"]))]).into()),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 #[test]
@@ -338,22 +342,25 @@ fn nested_concatenation_can_switch_absolute_collections_in_one_named_source()
     let project = named_source_concatenation_project();
     assert!(engine::validate(&project).is_empty());
     let primary = scalar_group([("Value", Value::String("unused".into()))]);
-    let catalog = Instance::Group(vec![
-        (
-            "Person".into(),
-            Instance::Repeated(vec![
-                scalar_group([("Name", Value::String("Ada".into()))]),
-                scalar_group([("Name", Value::String("Grace".into()))]),
-            ]),
-        ),
-        (
-            "Address".into(),
-            Instance::Repeated(vec![
-                scalar_group([("Value", Value::String("North".into()))]),
-                scalar_group([("Value", Value::String("South".into()))]),
-            ]),
-        ),
-    ]);
+    let catalog = Instance::Group(
+        (vec![
+            (
+                "Person".into(),
+                Instance::Repeated(vec![
+                    scalar_group([("Name", Value::String("Ada".into()))]),
+                    scalar_group([("Name", Value::String("Grace".into()))]),
+                ]),
+            ),
+            (
+                "Address".into(),
+                Instance::Repeated(vec![
+                    scalar_group([("Value", Value::String("North".into()))]),
+                    scalar_group([("Value", Value::String("South".into()))]),
+                ]),
+            ),
+        ])
+        .into(),
+    );
     let expected = engine::run_with_sources(
         &project,
         &primary,

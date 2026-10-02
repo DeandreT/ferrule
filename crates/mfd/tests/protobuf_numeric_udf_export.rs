@@ -139,18 +139,24 @@ message Painting { float height = 1; string name = 2; }"#;
 
 fn raw_source(first_height: f64) -> Instance {
     let painting = |name: &str, height: f64| {
-        Instance::Group(vec![
-            ("height".into(), Instance::Scalar(Value::Float(height))),
-            ("name".into(), Instance::Scalar(Value::String(name.into()))),
-        ])
+        Instance::Group(
+            (vec![
+                ("height".into(), Instance::Scalar(Value::Float(height))),
+                ("name".into(), Instance::Scalar(Value::String(name.into()))),
+            ])
+            .into(),
+        )
     };
-    Instance::Group(vec![(
-        "painting".into(),
-        Instance::Repeated(vec![
-            painting("First", first_height),
-            painting("Second", 5.08),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "painting".into(),
+            Instance::Repeated(vec![
+                painting("First", first_height),
+                painting("Second", 5.08),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn source(project: &Project) -> Instance {

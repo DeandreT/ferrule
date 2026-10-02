@@ -79,16 +79,22 @@ fn text(value: &str) -> Instance {
 }
 
 fn source(use_nil: bool) -> Instance {
-    Instance::Group(vec![(
-        "Profile".to_owned(),
-        Instance::Group(vec![
-            ("First".to_owned(), text("Ada")),
-            ("Last".to_owned(), text("Lovelace")),
-            ("Code".to_owned(), text("A-1")),
-            ("UseNil".to_owned(), Instance::Scalar(Value::Bool(use_nil))),
-            ("State".to_owned(), text("active")),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Profile".to_owned(),
+            Instance::Group(
+                (vec![
+                    ("First".to_owned(), text("Ada")),
+                    ("Last".to_owned(), text("Lovelace")),
+                    ("Code".to_owned(), text("A-1")),
+                    ("UseNil".to_owned(), Instance::Scalar(Value::Bool(use_nil))),
+                    ("State".to_owned(), text("active")),
+                ])
+                .into(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn assert_output(project: &mapping::Project) -> Result<(), Box<dyn Error>> {

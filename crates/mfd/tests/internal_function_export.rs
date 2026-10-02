@@ -243,10 +243,13 @@ fn project() -> Result<Project, Box<dyn Error>> {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![(
-        "Unused".into(),
-        Instance::Scalar(Value::String(String::new())),
-    )])
+    Instance::Group(
+        (vec![(
+            "Unused".into(),
+            Instance::Scalar(Value::String(String::new())),
+        )])
+        .into(),
+    )
 }
 
 fn assert_output(output: &Instance) {

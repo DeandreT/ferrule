@@ -127,13 +127,16 @@ fn project() -> Project {
 }
 
 fn row(street: &str, city: &str) -> Instance {
-    Instance::Group(vec![
-        (
-            "Street".into(),
-            Instance::Scalar(Value::String(street.into())),
-        ),
-        ("City".into(), Instance::Scalar(Value::String(city.into()))),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Street".into(),
+                Instance::Scalar(Value::String(street.into())),
+            ),
+            ("City".into(), Instance::Scalar(Value::String(city.into()))),
+        ])
+        .into(),
+    )
 }
 
 #[test]
@@ -141,10 +144,13 @@ fn duplicate_repeating_scalar_bindings_keep_order_in_each_concatenated_branch() 
     let directory = TempDir::new();
     let design = directory.0.join("mapping.mfd");
     let project = project();
-    let source = Instance::Group(vec![
-        ("A".into(), Instance::Repeated(vec![row("one", "two")])),
-        ("B".into(), Instance::Repeated(vec![row("three", "four")])),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            ("A".into(), Instance::Repeated(vec![row("one", "two")])),
+            ("B".into(), Instance::Repeated(vec![row("three", "four")])),
+        ])
+        .into(),
+    );
 
     assert!(mfd::export(&project, &design).unwrap().is_empty());
     let xml = std::fs::read_to_string(&design).unwrap();

@@ -107,10 +107,13 @@ fn setup(design: &str) -> TempDir {
 }
 
 fn item(quantity: i64, price: i64) -> Instance {
-    Instance::Group(vec![
-        ("Quantity".into(), Instance::Scalar(Value::Int(quantity))),
-        ("Price".into(), Instance::Scalar(Value::Int(price))),
-    ])
+    Instance::Group(
+        (vec![
+            ("Quantity".into(), Instance::Scalar(Value::Int(quantity))),
+            ("Price".into(), Instance::Scalar(Value::Int(price))),
+        ])
+        .into(),
+    )
 }
 
 #[test]
@@ -154,10 +157,13 @@ fn connected_output_parameter_becomes_an_executable_typed_target() {
     ));
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![item(2, 5), item(4, 3)]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![item(2, 5), item(4, 3)]),
+        )])
+        .into(),
+    );
     let target = engine::run(&imported.project, &source).unwrap();
     assert_eq!(
         target.field("total").and_then(Instance::as_scalar),
@@ -205,10 +211,13 @@ fn item_at_accepts_two_data_pins_and_canonical_three_pins() {
             }) if collection == &["Item"] && value == &["Price"]
         ));
 
-        let source = Instance::Group(vec![(
-            "Item".into(),
-            Instance::Repeated(vec![item(2, 5), item(4, 3)]),
-        )]);
+        let source = Instance::Group(
+            (vec![(
+                "Item".into(),
+                Instance::Repeated(vec![item(2, 5), item(4, 3)]),
+            )])
+            .into(),
+        );
         let target = engine::run(&imported.project, &source).unwrap();
         assert_eq!(
             target.field("selected").and_then(Instance::as_scalar),

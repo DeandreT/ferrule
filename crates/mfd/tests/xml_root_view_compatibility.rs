@@ -365,18 +365,21 @@ fn connected_descendants_of_unowned_root_groups_are_not_missed() -> Result<(), B
         assert!(engine::validate(&p).is_empty());
         let leaf = ir::Instance::Scalar(ir::Value::String("b".into()));
         let input = if source_side {
-            ir::Instance::Group(vec![
-                (
-                    "Code".into(),
-                    ir::Instance::Scalar(ir::Value::String("a".into())),
-                ),
-                (
-                    "Extra".into(),
-                    ir::Instance::Group(vec![("Leaf".into(), leaf)]),
-                ),
-            ])
+            ir::Instance::Group(
+                (vec![
+                    (
+                        "Code".into(),
+                        ir::Instance::Scalar(ir::Value::String("a".into())),
+                    ),
+                    (
+                        "Extra".into(),
+                        ir::Instance::Group((vec![("Leaf".into(), leaf)]).into()),
+                    ),
+                ])
+                .into(),
+            )
         } else {
-            ir::Instance::Group(vec![("Value".into(), leaf)])
+            ir::Instance::Group((vec![("Value".into(), leaf)]).into())
         };
         let output = engine::run(&p, &input)?;
         let serialized = format_xml::to_string(&p.target, &output)?;

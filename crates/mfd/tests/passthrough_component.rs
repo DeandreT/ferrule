@@ -143,10 +143,13 @@ fn four_serial_xml_stages_import_and_execute_in_graph_order() {
             );
         }
     }
-    let source = Instance::Group(vec![(
-        "Start".into(),
-        Instance::Scalar(Value::String("four stages".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Start".into(),
+            Instance::Scalar(Value::String("four stages".into())),
+        )])
+        .into(),
+    );
     let outputs = engine::run_pipeline(
         &imported.pipeline,
         &BTreeMap::from([("source".to_string(), source)]),
@@ -255,10 +258,13 @@ fn three_serial_xml_stages_import_and_execute_in_graph_order() {
             );
         }
     }
-    let source = Instance::Group(vec![(
-        "Start".into(),
-        Instance::Scalar(Value::String("through all stages".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Start".into(),
+            Instance::Scalar(Value::String("through all stages".into())),
+        )])
+        .into(),
+    );
     let outputs = engine::run_pipeline(
         &imported.pipeline,
         &BTreeMap::from([("source".to_string(), source)]),
@@ -314,14 +320,20 @@ fn three_stage_xml_binds_original_host_sources_in_later_stages() {
                 }
         }));
     }
-    let source = Instance::Group(vec![(
-        "Start".into(),
-        Instance::Scalar(Value::String("main".into())),
-    )]);
-    let supplement = Instance::Group(vec![(
-        "Addition".into(),
-        Instance::Scalar(Value::String("later host".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Start".into(),
+            Instance::Scalar(Value::String("main".into())),
+        )])
+        .into(),
+    );
+    let supplement = Instance::Group(
+        (vec![(
+            "Addition".into(),
+            Instance::Scalar(Value::String("later host".into())),
+        )])
+        .into(),
+    );
     let outputs = engine::run_pipeline(
         &imported.pipeline,
         &BTreeMap::from([("source".into(), source), ("supplement".into(), supplement)]),
@@ -416,10 +428,13 @@ fn connected_xml_passthrough_reports_unrepresented_chain() {
     assert_eq!(passthrough.path.as_deref(), Some("buffer.xml"));
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![(
-        "Value".to_string(),
-        Instance::Scalar(Value::String("passed through".to_string())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Value".to_string(),
+            Instance::Scalar(Value::String("passed through".to_string())),
+        )])
+        .into(),
+    );
     let pipeline_import = mfd::import_pipeline(&dir.0.join("mapping.mfd")).unwrap();
     assert!(
         pipeline_import.warnings.is_empty(),

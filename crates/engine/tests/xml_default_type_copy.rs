@@ -89,3 +89,31 @@ fn programmatic_and_nested_invalid_defaults_have_schema_diagnostics() {
             .any(|issue| issue.message.contains("XML default-type metadata"))
     );
 }
+
+#[test]
+fn ordinary_projection_constructs_a_target_without_source_annotation_facts() {
+    let mut p = project(schema("A"));
+    let value = 1;
+    p.graph.nodes.insert(
+        value,
+        mapping::Node::SourceField {
+            path: vec!["Value".into()],
+            frame: None,
+        },
+    );
+    p.root = Scope {
+        bindings: vec![mapping::Binding {
+            target_field: "Value".into(),
+            node: value,
+        }],
+        ..Scope::default()
+    };
+    let source = format_xml::from_str(r#"<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="B"><Value>x</Value></Root>"#, &p.source).unwrap();
+    assert_eq!(
+        source.xml_type_origin(),
+        Ok(ir::XmlTypeOrigin::Explicit("B"))
+    );
+    let output = engine::run(&p, &source).unwrap();
+    assert_eq!(output.xml_type_origin(), Ok(ir::XmlTypeOrigin::Unknown));
+    assert_eq!(output.field("Value"), source.field("Value"));
+}

@@ -4,10 +4,7 @@ use mapping::Node;
 use super::{fixture, scalar};
 
 fn row(name: &str) -> Instance {
-    Instance::Group(vec![(
-        "Name".into(),
-        Instance::Scalar(Value::String(name.into())),
-    )])
+    Instance::Group((vec![("Name".into(), Instance::Scalar(Value::String(name.into())))]).into())
 }
 
 #[test]
@@ -43,14 +40,20 @@ fn primary_scoring_and_named_secondary_frames_are_executable() {
             if path == &["Name"] && frame.as_deref() == Some(&["Beta".into(), "Rows".into()])
     ));
 
-    let primary = Instance::Group(vec![
-        ("RowsA".into(), Instance::Repeated(vec![row("a1")])),
-        ("RowsB".into(), Instance::Repeated(vec![row("a2")])),
-    ]);
-    let beta = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![row("b1"), row("b2")]),
-    )]);
+    let primary = Instance::Group(
+        (vec![
+            ("RowsA".into(), Instance::Repeated(vec![row("a1")])),
+            ("RowsB".into(), Instance::Repeated(vec![row("a2")])),
+        ])
+        .into(),
+    );
+    let beta = Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(vec![row("b1"), row("b2")]),
+        )])
+        .into(),
+    );
     let target = engine::run_with_sources(project, &primary, vec![("Beta".into(), beta)]).unwrap();
     let rows = target.field("B").and_then(Instance::as_repeated).unwrap();
     assert_eq!(
@@ -73,17 +76,18 @@ fn primary_scoring_unwraps_supported_iteration_controls() {
     assert_eq!(project.extra_sources[0].name, "Beta");
     assert_eq!(project.extra_sources[0].path, "beta.xml");
 
-    let primary = Instance::Group(vec![
-        (
-            "RowsA".into(),
-            Instance::Repeated(vec![row("second"), row("first")]),
-        ),
-        ("RowsB".into(), Instance::Repeated(Vec::new())),
-    ]);
-    let beta = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![row("secondary")]),
-    )]);
+    let primary = Instance::Group(
+        (vec![
+            (
+                "RowsA".into(),
+                Instance::Repeated(vec![row("second"), row("first")]),
+            ),
+            ("RowsB".into(), Instance::Repeated(Vec::new())),
+        ])
+        .into(),
+    );
+    let beta =
+        Instance::Group((vec![("Rows".into(), Instance::Repeated(vec![row("secondary")]))]).into());
     let target = engine::run_with_sources(project, &primary, vec![("Beta".into(), beta)]).unwrap();
     let rows = target
         .field("AOne")
@@ -107,14 +111,20 @@ fn nested_xml_file_instances_retain_executable_source_and_target_paths() {
     assert_eq!(secondary.name, "Beta");
     assert_eq!(secondary.path, "beta.xml");
 
-    let primary = Instance::Group(vec![
-        ("RowsA".into(), Instance::Repeated(vec![row("a1")])),
-        ("RowsB".into(), Instance::Repeated(vec![row("a2")])),
-    ]);
-    let beta = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![row("b1"), row("b2")]),
-    )]);
+    let primary = Instance::Group(
+        (vec![
+            ("RowsA".into(), Instance::Repeated(vec![row("a1")])),
+            ("RowsB".into(), Instance::Repeated(vec![row("a2")])),
+        ])
+        .into(),
+    );
+    let beta = Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(vec![row("b1"), row("b2")]),
+        )])
+        .into(),
+    );
     let target = engine::run_with_sources(project, &primary, vec![("Beta".into(), beta)]).unwrap();
 
     let rows = target.field("B").and_then(Instance::as_repeated).unwrap();

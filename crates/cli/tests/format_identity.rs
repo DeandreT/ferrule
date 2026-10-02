@@ -291,10 +291,13 @@ fn tabular_identity_dispatches_neutral_paths() {
     let rows = format_xlsx::read(&output_path, &project.target, None, 1, &[], true).unwrap();
     assert_eq!(
         rows,
-        vec![ir::Instance::Group(vec![(
-            "value".into(),
-            ir::Instance::Scalar(ir::Value::String("retained".into()))
-        )])]
+        vec![ir::Instance::Group(
+            (vec![(
+                "value".into(),
+                ir::Instance::Scalar(ir::Value::String("retained".into()))
+            )])
+            .into()
+        )]
     );
     std::fs::remove_dir_all(directory).unwrap();
 }

@@ -52,10 +52,13 @@ fn sparse_group_key_output_keeps_its_positional_input() -> Result<(), Box<dyn st
         Some(Node::SourceField { path, frame: None }) if path == &["Company"]
     ));
 
-    let source = Instance::Repeated(vec![Instance::Group(vec![(
-        "Company".into(),
-        Instance::Scalar(Value::String("Example Corp".into())),
-    )])]);
+    let source = Instance::Repeated(vec![Instance::Group(
+        (vec![(
+            "Company".into(),
+            Instance::Scalar(Value::String("Example Corp".into())),
+        )])
+        .into(),
+    )]);
     let output = engine::run(&imported.project, &source)?;
     assert_eq!(
         output.field("Company").and_then(Instance::as_scalar),

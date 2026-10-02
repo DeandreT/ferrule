@@ -558,10 +558,9 @@ pub(crate) fn eval_scope(
             .filter(|group| group.post_filter_match)
             .map(|group| {
                 let members = Instance::Repeated(group.members);
-                let wrapper = scope
-                    .source()
-                    .and_then(|path| path.last())
-                    .map(|segment| Instance::Group(vec![(segment.clone(), members.clone())]));
+                let wrapper = scope.source().and_then(|path| path.last()).map(|segment| {
+                    Instance::Group((vec![(segment.clone(), members.clone())]).into())
+                });
                 OwnedGroup {
                     wrapper,
                     intermediate_frames: group.intermediate_frames,
@@ -1120,7 +1119,7 @@ impl ItemEvaluator<'_> {
         if let ScopeConstruction::XmlMixedContent { elements } = &scope.construction {
             attach_xml_mixed_content(&mut fields, context.last().copied(), elements);
         }
-        Ok(Some(Instance::Group(fields)))
+        Ok(Some(Instance::Group((fields).into())))
     }
 }
 
@@ -1195,17 +1194,20 @@ fn attach_xml_mixed_content(
                 .as_scalar()
                 .map(mixed_content_text)
                 .unwrap_or_default();
-            Some(Instance::Group(vec![
-                (
-                    XML_NODE_NAME_FIELD.to_string(),
-                    Instance::Scalar(Value::String(element.target.clone())),
-                ),
-                (
-                    XML_TEXT_FIELD.to_string(),
-                    Instance::Scalar(Value::String(text)),
-                ),
-                (XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value),
-            ]))
+            Some(Instance::Group(
+                (vec![
+                    (
+                        XML_NODE_NAME_FIELD.to_string(),
+                        Instance::Scalar(Value::String(element.target.clone())),
+                    ),
+                    (
+                        XML_TEXT_FIELD.to_string(),
+                        Instance::Scalar(Value::String(text)),
+                    ),
+                    (XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value),
+                ])
+                .into(),
+            ))
         })
         .collect::<Vec<_>>();
     if !items.is_empty() {

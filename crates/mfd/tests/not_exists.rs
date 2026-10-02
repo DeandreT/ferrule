@@ -92,13 +92,16 @@ fn setup() -> Result<(TempDir, PathBuf), Box<dyn Error>> {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![
-        ("Missing".to_string(), Instance::Scalar(Value::Null)),
-        (
-            "EmptyText".to_string(),
-            Instance::Scalar(Value::String(String::new())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("Missing".to_string(), Instance::Scalar(Value::Null)),
+            (
+                "EmptyText".to_string(),
+                Instance::Scalar(Value::String(String::new())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn assert_result(result: &Instance) {

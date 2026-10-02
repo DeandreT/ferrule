@@ -128,27 +128,33 @@ fn boundaries_validate_present_triggers_and_normalized_output()
         ));
     }
 
-    let valid = Instance::Group(vec![
-        (
-            "Trigger".into(),
-            Instance::Scalar(Value::String("value".into())),
-        ),
-        (
-            "Guard".into(),
-            Instance::Scalar(Value::String("accepted".into())),
-        ),
-    ]);
+    let valid = Instance::Group(
+        (vec![
+            (
+                "Trigger".into(),
+                Instance::Scalar(Value::String("value".into())),
+            ),
+            (
+                "Guard".into(),
+                Instance::Scalar(Value::String("accepted".into())),
+            ),
+        ])
+        .into(),
+    );
     assert_eq!(
         serialize_json_bytes(&schema, &valid)?,
         b"{\n  \"Trigger\": \"value\",\n  \"Guard\": \"accepted\"\n}\n",
     );
-    let omitted = Instance::Group(vec![
-        (
-            "Trigger".into(),
-            Instance::Scalar(Value::String("value".into())),
-        ),
-        ("Guard".into(), Instance::Scalar(Value::Null)),
-    ]);
+    let omitted = Instance::Group(
+        (vec![
+            (
+                "Trigger".into(),
+                Instance::Scalar(Value::String("value".into())),
+            ),
+            ("Guard".into(), Instance::Scalar(Value::Null)),
+        ])
+        .into(),
+    );
     assert!(matches!(
         serialize_json(&schema, &omitted),
         Err(JsonBoundaryError::InvalidOutput { ref message })

@@ -64,13 +64,19 @@ fn imports_executes_and_round_trips_nested_json_string_serializer() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let input = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            ("Count".into(), Instance::Scalar(Value::Int(4))),
-            ("Label".into(), Instance::Scalar(Value::String("A".into()))),
-        ])]),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
+                    ("Count".into(), Instance::Scalar(Value::Int(4))),
+                    ("Label".into(), Instance::Scalar(Value::String("A".into()))),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &input).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 1);

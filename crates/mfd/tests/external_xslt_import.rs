@@ -86,16 +86,26 @@ fn imports_executes_and_roundtrips_external_xslt_aggregate() -> Result<(), Box<d
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let input = Instance::Group(vec![(
-        "Items".into(),
-        Instance::Group(vec![(
-            "Item".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![("Cost".into(), Instance::Scalar(Value::Int(5)))]),
-                Instance::Group(vec![("Cost".into(), Instance::Scalar(Value::Int(7)))]),
-            ]),
-        )]),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Items".into(),
+            Instance::Group(
+                (vec![(
+                    "Item".into(),
+                    Instance::Repeated(vec![
+                        Instance::Group(
+                            (vec![("Cost".into(), Instance::Scalar(Value::Int(5)))]).into(),
+                        ),
+                        Instance::Group(
+                            (vec![("Cost".into(), Instance::Scalar(Value::Int(7)))]).into(),
+                        ),
+                    ]),
+                )])
+                .into(),
+            ),
+        )])
+        .into(),
+    );
     assert_total(&engine::run(&imported.project, &input)?, 12);
 
     let export_path = dir.0.join("roundtrip.mfd");

@@ -77,10 +77,13 @@ fn configured_read_and_write_reject_before_open_parse_or_truncate() {
 
 #[test]
 fn ordinary_legacy_and_configured_csv_controls_keep_exact_bytes() {
-    let rows = vec![Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String("café".into())),
-    )])];
+    let rows = vec![Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("café".into())),
+        )])
+        .into(),
+    )];
     assert_eq!(
         format_csv::to_string(&schema(), &rows, None, true).unwrap(),
         "Value\ncafé\n"

@@ -84,44 +84,56 @@ fn xlsx_input_maps_to_xlsx_output_with_project_layout_options() {
     project.target_options.xlsx_columns = vec![1, 3];
 
     let source_rows = vec![
-        Instance::Group(vec![
-            (
-                "first_name".into(),
-                Instance::Scalar(Value::String("Jane".into())),
-            ),
-            (
-                "last_name".into(),
-                Instance::Scalar(Value::String("Doe".into())),
-            ),
-            ("age".into(), Instance::Scalar(Value::Int(29))),
-        ]),
-        Instance::Group(vec![
-            (
-                "first_name".into(),
-                Instance::Scalar(Value::String("John".into())),
-            ),
-            (
-                "last_name".into(),
-                Instance::Scalar(Value::String("Smith".into())),
-            ),
-            ("age".into(), Instance::Scalar(Value::Int(41))),
-        ]),
+        Instance::Group(
+            (vec![
+                (
+                    "first_name".into(),
+                    Instance::Scalar(Value::String("Jane".into())),
+                ),
+                (
+                    "last_name".into(),
+                    Instance::Scalar(Value::String("Doe".into())),
+                ),
+                ("age".into(), Instance::Scalar(Value::Int(29))),
+            ])
+            .into(),
+        ),
+        Instance::Group(
+            (vec![
+                (
+                    "first_name".into(),
+                    Instance::Scalar(Value::String("John".into())),
+                ),
+                (
+                    "last_name".into(),
+                    Instance::Scalar(Value::String("Smith".into())),
+                ),
+                ("age".into(), Instance::Scalar(Value::Int(41))),
+            ])
+            .into(),
+        ),
     ];
     let expected = vec![
-        Instance::Group(vec![
-            (
-                "full_name".into(),
-                Instance::Scalar(Value::String("Jane Doe".into())),
-            ),
-            ("age_next_year".into(), Instance::Scalar(Value::Int(30))),
-        ]),
-        Instance::Group(vec![
-            (
-                "full_name".into(),
-                Instance::Scalar(Value::String("John Smith".into())),
-            ),
-            ("age_next_year".into(), Instance::Scalar(Value::Int(42))),
-        ]),
+        Instance::Group(
+            (vec![
+                (
+                    "full_name".into(),
+                    Instance::Scalar(Value::String("Jane Doe".into())),
+                ),
+                ("age_next_year".into(), Instance::Scalar(Value::Int(30))),
+            ])
+            .into(),
+        ),
+        Instance::Group(
+            (vec![
+                (
+                    "full_name".into(),
+                    Instance::Scalar(Value::String("John Smith".into())),
+                ),
+                ("age_next_year".into(), Instance::Scalar(Value::Int(42))),
+            ])
+            .into(),
+        ),
     ];
 
     let tag = format!("xlsx_{}", std::process::id());
@@ -233,18 +245,22 @@ fn imported_transposed_xlsx_source_executes_to_csv() {
         ],
     );
     let populated = |left: &str, middle: &str, right: &str| {
-        Instance::Group(vec![
-            ("A".into(), Instance::Scalar(Value::String(left.into()))),
-            ("B".into(), Instance::Scalar(Value::String(middle.into()))),
-            ("C".into(), Instance::Scalar(Value::String(right.into()))),
-        ])
+        Instance::Group(
+            (vec![
+                ("A".into(), Instance::Scalar(Value::String(left.into()))),
+                ("B".into(), Instance::Scalar(Value::String(middle.into()))),
+                ("C".into(), Instance::Scalar(Value::String(right.into()))),
+            ])
+            .into(),
+        )
     };
     let empty = || {
         Instance::Group(
-            ["A", "B", "C"]
+            (["A", "B", "C"]
                 .into_iter()
                 .map(|field| (field.into(), Instance::Scalar(Value::Null)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         )
     };
     let rows = vec![
@@ -634,28 +650,37 @@ fn grid_xlsx_source_maps_headers_and_matrix_rows_to_nested_json_and_xml() {
 
     let text = |value: &str| Instance::Scalar(Value::String(value.into()));
     let sale = |region: &str, amount: &str| {
-        Instance::Group(vec![
-            ("Region".into(), text(region)),
-            ("Amount".into(), text(amount)),
-        ])
+        Instance::Group(
+            (vec![
+                ("Region".into(), text(region)),
+                ("Amount".into(), text(amount)),
+            ])
+            .into(),
+        )
     };
     let period = |month: &str, west: &str, east: &str| {
-        Instance::Group(vec![
-            ("Month".into(), text(month)),
-            ("Year".into(), text("2025")),
-            (
-                "Sale".into(),
-                Instance::Repeated(vec![sale("West", west), sale("East", east)]),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Month".into(), text(month)),
+                ("Year".into(), text("2025")),
+                (
+                    "Sale".into(),
+                    Instance::Repeated(vec![sale("West", west), sale("East", east)]),
+                ),
+            ])
+            .into(),
+        )
     };
-    let expected = Instance::Group(vec![(
-        "Period".into(),
-        Instance::Repeated(vec![
-            period("January", "10", "30"),
-            period("February", "20", "40"),
-        ]),
-    )]);
+    let expected = Instance::Group(
+        (vec![(
+            "Period".into(),
+            Instance::Repeated(vec![
+                period("January", "10", "30"),
+                period("February", "20", "40"),
+            ]),
+        )])
+        .into(),
+    );
 
     let tag = format!("xlsx_grid_source_{}", std::process::id());
     let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
@@ -875,13 +900,16 @@ fn sqlite_input_produces_the_same_adults_csv() {
     ));
     let _ = std::fs::remove_file(&db_path);
     let person = |name: &str, age: i64| {
-        ir::Instance::Group(vec![
-            (
-                "name".into(),
-                ir::Instance::Scalar(ir::Value::String(name.into())),
-            ),
-            ("age".into(), ir::Instance::Scalar(ir::Value::Int(age))),
-        ])
+        ir::Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    ir::Instance::Scalar(ir::Value::String(name.into())),
+                ),
+                ("age".into(), ir::Instance::Scalar(ir::Value::Int(age))),
+            ])
+            .into(),
+        )
     };
     format_db::write(
         &db_path,
@@ -930,10 +958,13 @@ fn composite_sqlite_input_iterates_a_selected_table() {
         vec![SchemaNode::scalar("department", ScalarType::String)],
     );
     let department = |id, name: &str| {
-        Instance::Group(vec![
-            ("id".into(), Instance::Scalar(Value::Int(id))),
-            ("name".into(), Instance::Scalar(Value::String(name.into()))),
-        ])
+        Instance::Group(
+            (vec![
+                ("id".into(), Instance::Scalar(Value::Int(id))),
+                ("name".into(), Instance::Scalar(Value::String(name.into()))),
+            ])
+            .into(),
+        )
     };
     let db_path = std::env::temp_dir().join(format!(
         "ferrule_cli_composite_source_{}.db",

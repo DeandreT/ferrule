@@ -171,13 +171,15 @@ fn mapping(language: &str, library: &str, function: &str) -> String {
 }
 
 fn input(value: Value) -> Instance {
-    Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            "Amount".into(),
-            Instance::Scalar(value),
-        )])]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![("Amount".into(), Instance::Scalar(value))]).into(),
+            )]),
+        )])
+        .into(),
+    )
 }
 
 fn import_clean(path: &Path) -> Result<mfd::Imported, Box<dyn Error>> {
