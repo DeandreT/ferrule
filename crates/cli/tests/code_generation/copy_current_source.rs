@@ -6,6 +6,7 @@ fn copy_schema(name: &str) -> SchemaNode {
         name,
         vec![
             int("Id"),
+            string(ir::XML_TYPE_ORIGIN_FIELD),
             string("Missing"),
             string("Nil").nillable(),
             SchemaNode::group("Empty", vec![string("Note")]),
@@ -35,32 +36,85 @@ fn copy_project() -> Project {
 }
 
 fn copy_source() -> Instance {
-    Instance::Group(vec![
-        ("Id".into(), Instance::Scalar(Value::Int(7))),
-        ("Missing".into(), Instance::Scalar(Value::Null)),
-        ("Nil".into(), Instance::Scalar(Value::xml_nil())),
-        ("Empty".into(), Instance::Group(Vec::new())),
-        (
-            "Items".into(),
-            Instance::MappedSequence(vec![
-                Instance::Group(vec![(
-                    "Name".into(),
-                    Instance::Scalar(Value::String("first".into())),
-                )]),
-                Instance::Group(vec![(
-                    "Name".into(),
-                    Instance::Scalar(Value::String("second".into())),
-                )]),
-            ]),
-        ),
-    ])
+    let value = Instance::Group(
+        (vec![
+            ("Id".into(), Instance::Scalar(Value::Int(7))),
+            (
+                ir::XML_TYPE_ORIGIN_FIELD.into(),
+                Instance::Scalar(Value::String("ordinary JSON value".into())),
+            ),
+            ("Missing".into(), Instance::Scalar(Value::Null)),
+            ("Nil".into(), Instance::Scalar(Value::xml_nil())),
+            ("Empty".into(), Instance::Group((Vec::new()).into())),
+            (
+                "Items".into(),
+                Instance::MappedSequence(vec![
+                    Instance::Group(
+                        (vec![(
+                            "Name".into(),
+                            Instance::Scalar(Value::String("first".into())),
+                        )])
+                        .into(),
+                    ),
+                    Instance::Group(
+                        (vec![(
+                            "Name".into(),
+                            Instance::Scalar(Value::String("second".into())),
+                        )])
+                        .into(),
+                    ),
+                ]),
+            ),
+        ])
+        .into(),
+    );
+    let Instance::Group(mut fields) = value else {
+        unreachable!()
+    };
+    for (name, value) in fields.iter_mut() {
+        if name == "Empty" {
+            let Instance::Group(child) = value else {
+                unreachable!()
+            };
+            child
+                .set_xml_type_origin(ir::XmlTypeOrigin::Explicit("empty"))
+                .unwrap();
+        }
+        if name == "Items" {
+            let Instance::MappedSequence(items) = value else {
+                unreachable!()
+            };
+            for (index, item) in items.iter_mut().enumerate() {
+                let Instance::Group(child) = item else {
+                    unreachable!()
+                };
+                child
+                    .set_xml_type_origin(if index == 0 {
+                        ir::XmlTypeOrigin::Explicit("first")
+                    } else {
+                        ir::XmlTypeOrigin::Absent
+                    })
+                    .unwrap();
+            }
+        }
+    }
+    fields
+        .set_xml_type_origin(ir::XmlTypeOrigin::Absent)
+        .unwrap();
+    Instance::Group(fields)
 }
 
 #[test]
 fn copy_current_source_matches_engine_and_generated_backends() -> TestResult<()> {
     let project = copy_project();
     let source = copy_source();
-    assert_eq!(engine::run(&project, &source)?, source);
+    let copied = engine::run(&project, &source)?;
+    assert_eq!(copied, source);
+    assert_eq!(copied.xml_type_origin(), Ok(ir::XmlTypeOrigin::Absent));
+    assert_eq!(
+        copied.field("Empty").unwrap().xml_type_origin(),
+        Ok(ir::XmlTypeOrigin::Explicit("empty"))
+    );
     assert_eq!(
         engine::run(&project, &Instance::Scalar(Value::String("wrong".into()))),
         Err(engine::EngineError::CopyCurrentSourceRequiresGroup { found: "scalar" })

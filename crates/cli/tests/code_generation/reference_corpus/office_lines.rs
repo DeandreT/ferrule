@@ -551,7 +551,7 @@ fn detached_call(function: &str, values: Vec<Value>) -> TestResult<Value> {
             ..Scope::default()
         },
     };
-    let output = engine::run(&oracle, &Instance::Group(Vec::new()))?;
+    let output = engine::run(&oracle, &Instance::Group((Vec::new()).into()))?;
     Ok(output
         .field("rendered")
         .and_then(Instance::as_scalar)

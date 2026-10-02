@@ -191,7 +191,7 @@ fn saved_keyless_unused_scalar_declarations_preserve_order_and_typed_calls_twice
     ] {
         let dir = Directory::new();
         let p = project(ty, value.clone());
-        let input = Instance::Group(vec![("Value".into(), Instance::Scalar(value))]);
+        let input = Instance::Group((vec![("Value".into(), Instance::Scalar(value))]).into());
         let expected = engine::run(&p, &input).unwrap();
         let path = export(&p, &dir);
         std::fs::write(
@@ -241,10 +241,13 @@ fn saved_keyless_unused_nested_callee_keeps_full_signature() {
     .unwrap();
     let restored = strict(&path);
     assert_interface(&restored, ScalarType::String);
-    let input = Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String("kept".into())),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("kept".into())),
+        )])
+        .into(),
+    );
     assert_eq!(
         engine::run(&restored, &input).unwrap(),
         engine::run(&p, &input).unwrap()

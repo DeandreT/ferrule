@@ -543,13 +543,15 @@ fn vertical_collage_text_groups_keep_nested_records_open_across_pages() {
 
 #[test]
 fn recursive_content_keeps_non_null_scalar_values() {
-    let empty = Instance::Group(vec![(
-        "Nested".into(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::Null),
-        )])]),
-    )]);
+    let empty = Instance::Group(
+        (vec![(
+            "Nested".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![("Value".into(), Instance::Scalar(Value::Null))]).into(),
+            )]),
+        )])
+        .into(),
+    );
     assert!(!instance_has_content(&empty));
 
     for value in [

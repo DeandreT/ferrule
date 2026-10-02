@@ -117,40 +117,46 @@ fn repeating_compositor_projects_each_named_member_as_a_repetition() {
     );
     assert_eq!(from_str(&rendered, &schema).unwrap(), instance);
 
-    let ambiguous = Instance::Group(vec![
-        (
-            "Date".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("first".into())),
-                Instance::Scalar(Value::String("second".into())),
-            ]),
-        ),
-        (
-            "Note".into(),
-            Instance::Repeated(vec![Instance::Scalar(Value::String("memo".into()))]),
-        ),
-    ]);
+    let ambiguous = Instance::Group(
+        (vec![
+            (
+                "Date".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("first".into())),
+                    Instance::Scalar(Value::String("second".into())),
+                ]),
+            ),
+            (
+                "Note".into(),
+                Instance::Repeated(vec![Instance::Scalar(Value::String("memo".into()))]),
+            ),
+        ])
+        .into(),
+    );
     assert!(matches!(
         to_string(&schema, &ambiguous),
         Err(XmlFormatError::AmbiguousRepeatingSequence { .. })
     ));
 
-    let paired = Instance::Group(vec![
-        (
-            "Date".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("first".into())),
-                Instance::Scalar(Value::String("second".into())),
-            ]),
-        ),
-        (
-            "Note".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("one".into())),
-                Instance::Scalar(Value::String("two".into())),
-            ]),
-        ),
-    ]);
+    let paired = Instance::Group(
+        (vec![
+            (
+                "Date".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("first".into())),
+                    Instance::Scalar(Value::String("second".into())),
+                ]),
+            ),
+            (
+                "Note".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("one".into())),
+                    Instance::Scalar(Value::String("two".into())),
+                ]),
+            ),
+        ])
+        .into(),
+    );
     let paired = to_string(&schema, &paired).unwrap();
     let (Some(first_date), Some(first_note), Some(second_date), Some(second_note)) = (
         paired.find("<Date>first</Date>"),
@@ -162,19 +168,22 @@ fn repeating_compositor_projects_each_named_member_as_a_repetition() {
     };
     assert!(first_date < first_note && first_note < second_date && second_date < second_note);
 
-    let ambiguous_single_cycle = Instance::Group(vec![
-        (
-            "Date".into(),
-            Instance::Repeated(vec![Instance::Scalar(Value::String("first".into()))]),
-        ),
-        (
-            "Note".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("one".into())),
-                Instance::Scalar(Value::String("two".into())),
-            ]),
-        ),
-    ]);
+    let ambiguous_single_cycle = Instance::Group(
+        (vec![
+            (
+                "Date".into(),
+                Instance::Repeated(vec![Instance::Scalar(Value::String("first".into()))]),
+            ),
+            (
+                "Note".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("one".into())),
+                    Instance::Scalar(Value::String("two".into())),
+                ]),
+            ),
+        ])
+        .into(),
+    );
     assert!(matches!(
         to_string(&schema, &ambiguous_single_cycle),
         Err(XmlFormatError::AmbiguousRepeatingSequence { .. })
@@ -202,22 +211,25 @@ fn required_repeating_member_reconstructs_one_item_per_outer_cycle() {
     let schema = import(&path).unwrap();
     std::fs::remove_file(path).unwrap();
 
-    let instance = Instance::Group(vec![
-        (
-            "Date".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("first".into())),
-                Instance::Scalar(Value::String("second".into())),
-            ]),
-        ),
-        (
-            "Tag".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("a".into())),
-                Instance::Scalar(Value::String("b".into())),
-            ]),
-        ),
-    ]);
+    let instance = Instance::Group(
+        (vec![
+            (
+                "Date".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("first".into())),
+                    Instance::Scalar(Value::String("second".into())),
+                ]),
+            ),
+            (
+                "Tag".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("a".into())),
+                    Instance::Scalar(Value::String("b".into())),
+                ]),
+            ),
+        ])
+        .into(),
+    );
     let rendered = to_string(&schema, &instance).unwrap();
     assert!(
         rendered.find("<Date>first</Date>") < rendered.find("<Tag>a</Tag>")
@@ -230,13 +242,16 @@ fn required_repeating_member_reconstructs_one_item_per_outer_cycle() {
             .contains("<xs:element name=\"Tag\" type=\"xs:string\" maxOccurs=\"unbounded\"/>")
     );
 
-    let missing_required = Instance::Group(vec![
-        (
-            "Date".into(),
-            Instance::Repeated(vec![Instance::Scalar(Value::String("first".into()))]),
-        ),
-        ("Tag".into(), Instance::Repeated(Vec::new())),
-    ]);
+    let missing_required = Instance::Group(
+        (vec![
+            (
+                "Date".into(),
+                Instance::Repeated(vec![Instance::Scalar(Value::String("first".into()))]),
+            ),
+            ("Tag".into(), Instance::Repeated(Vec::new())),
+        ])
+        .into(),
+    );
     assert!(matches!(
         to_string(&schema, &missing_required),
         Err(XmlFormatError::AmbiguousRepeatingSequence { .. })
@@ -264,13 +279,16 @@ fn sparse_unanchored_repeating_sequence_omits_absent_members() {
     let schema = import(&path).unwrap();
     std::fs::remove_file(path).unwrap();
 
-    let instance = Instance::Group(vec![(
-        "Entry".into(),
-        Instance::Repeated(vec![
-            Instance::Scalar(Value::String("first".into())),
-            Instance::Scalar(Value::String("second".into())),
-        ]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            "Entry".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("first".into())),
+                Instance::Scalar(Value::String("second".into())),
+            ]),
+        )])
+        .into(),
+    );
     let rendered = to_string(&schema, &instance).unwrap();
     assert!(!rendered.contains("Trailer"), "{rendered}");
     assert!(
@@ -3532,13 +3550,19 @@ fn rejects_qualified_content_at_a_local_wildcard_runtime_boundary()
         } if name == "Foreign" && namespace == "urn:qualified"
     ));
 
-    let instance = Instance::Group(vec![(
-        XML_ELEMENTS_FIELD.to_string(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            XML_LOCAL_NAME_FIELD.to_string(),
-            Instance::Scalar(Value::String("q:Foreign".to_string())),
-        )])]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            XML_ELEMENTS_FIELD.to_string(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![(
+                    XML_LOCAL_NAME_FIELD.to_string(),
+                    Instance::Scalar(Value::String("q:Foreign".to_string())),
+                )])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     let error = match to_string(&schema, &instance) {
         Ok(_) => {
             return Err(std::io::Error::other(
@@ -3821,13 +3845,19 @@ fn rejects_qualified_runtime_attribute_wildcard_names() -> Result<(), Box<dyn st
         }
     ));
 
-    let instance = Instance::Group(vec![(
-        XML_ATTRIBUTES_FIELD.to_string(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            XML_LOCAL_NAME_FIELD.to_string(),
-            Instance::Scalar(Value::String("q:token".to_string())),
-        )])]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            XML_ATTRIBUTES_FIELD.to_string(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![(
+                    XML_LOCAL_NAME_FIELD.to_string(),
+                    Instance::Scalar(Value::String("q:token".to_string())),
+                )])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     let error = match to_string(&schema, &instance) {
         Ok(_) => {
             return Err(std::io::Error::other(
@@ -3845,21 +3875,27 @@ fn rejects_qualified_runtime_attribute_wildcard_names() -> Result<(), Box<dyn st
     ));
 
     let attribute = || {
-        Instance::Group(vec![
-            (
-                XML_LOCAL_NAME_FIELD.to_string(),
-                Instance::Scalar(Value::String("token".to_string())),
-            ),
-            (
-                XML_TEXT_FIELD.to_string(),
-                Instance::Scalar(Value::String("value".to_string())),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    XML_LOCAL_NAME_FIELD.to_string(),
+                    Instance::Scalar(Value::String("token".to_string())),
+                ),
+                (
+                    XML_TEXT_FIELD.to_string(),
+                    Instance::Scalar(Value::String("value".to_string())),
+                ),
+            ])
+            .into(),
+        )
     };
-    let duplicate = Instance::Group(vec![(
-        XML_ATTRIBUTES_FIELD.to_string(),
-        Instance::Repeated(vec![attribute(), attribute()]),
-    )]);
+    let duplicate = Instance::Group(
+        (vec![(
+            XML_ATTRIBUTES_FIELD.to_string(),
+            Instance::Repeated(vec![attribute(), attribute()]),
+        )])
+        .into(),
+    );
     let error = match to_string(&schema, &duplicate) {
         Ok(_) => {
             return Err(

@@ -86,10 +86,11 @@ fn rejects_oversized_and_excessively_nested_schemas() {
 
 fn group(fields: Vec<(&str, Instance)>) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .into_iter()
             .map(|(name, value)| (name.to_string(), value))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
@@ -455,7 +456,7 @@ fn proto3_optional_preserves_scalar_and_message_presence() {
         ("implicit_count", scalar(Value::Int(0))),
         ("label", scalar(Value::String(String::new()))),
         ("state", scalar(Value::Int(0))),
-        ("child", Instance::Group(vec![])),
+        ("child", Instance::Group((vec![]).into())),
     ]);
     assert_eq!(
         encode(&layout, "Root", &present_defaults),

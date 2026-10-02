@@ -93,10 +93,13 @@ fn binding_node<'a>(project: &'a mapping::Project, field: &str) -> &'a Node {
 }
 
 fn source(relative: &str) -> Instance {
-    Instance::Group(vec![(
-        "Relative".to_string(),
-        Instance::Scalar(Value::String(relative.to_string())),
-    )])
+    Instance::Group(
+        (vec![(
+            "Relative".to_string(),
+            Instance::Scalar(Value::String(relative.to_string())),
+        )])
+        .into(),
+    )
 }
 
 fn assert_output(output: &Instance) {

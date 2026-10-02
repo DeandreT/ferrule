@@ -176,20 +176,23 @@ fn project(layout: PdfLayout) -> Project {
 }
 
 fn expected_output() -> Instance {
-    Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(
-            ["Alpha", "Beta", "Gamma", "Delta"]
-                .into_iter()
-                .map(|text| {
-                    Instance::Group(vec![(
-                        "Text".into(),
-                        Instance::Scalar(Value::String(text.into())),
-                    )])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(
+                ["Alpha", "Beta", "Gamma", "Delta"]
+                    .into_iter()
+                    .map(|text| {
+                        Instance::Group(
+                            (vec![("Text".into(), Instance::Scalar(Value::String(text.into())))])
+                                .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn assert_exact_layout_bits(layout: &PdfLayout) {

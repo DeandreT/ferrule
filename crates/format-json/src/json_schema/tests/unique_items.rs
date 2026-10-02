@@ -404,7 +404,7 @@ fn native_boundaries_reject_programmatically_bypassed_private_unique_items() {
 
     for result in [
         crate::from_str("{}", &schema).map(|_| ()),
-        crate::to_string(&schema, &Instance::Group(Vec::new())).map(|_| ()),
+        crate::to_string(&schema, &Instance::Group((Vec::new()).into())).map(|_| ()),
     ] {
         assert!(matches!(
             result,

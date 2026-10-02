@@ -130,14 +130,20 @@ fn imports_inline_fixed_width_string_parser_and_executes_per_source_row()
     assert!(engine::validate(&imported.project).is_empty());
 
     let source = Instance::Repeated(vec![
-        Instance::Group(vec![(
-            "Raw".into(),
-            Instance::Scalar(Value::String("007Ada___".into())),
-        )]),
-        Instance::Group(vec![(
-            "Raw".into(),
-            Instance::Scalar(Value::String("012Grace".into())),
-        )]),
+        Instance::Group(
+            (vec![(
+                "Raw".into(),
+                Instance::Scalar(Value::String("007Ada___".into())),
+            )])
+            .into(),
+        ),
+        Instance::Group(
+            (vec![(
+                "Raw".into(),
+                Instance::Scalar(Value::String("012Grace".into())),
+            )])
+            .into(),
+        ),
     ]);
     let output = engine::run(&imported.project, &source)?;
     let rows = output.as_repeated().unwrap();

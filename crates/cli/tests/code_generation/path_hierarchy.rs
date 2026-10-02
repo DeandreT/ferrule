@@ -46,46 +46,64 @@ fn hierarchy_project() -> Project {
 }
 
 fn hierarchy_source(paths: impl IntoIterator<Item = Value>) -> Instance {
-    Instance::Group(vec![(
-        "File".into(),
-        Instance::Repeated(paths.into_iter().map(Instance::Scalar).collect()),
-    )])
+    Instance::Group(
+        (vec![(
+            "File".into(),
+            Instance::Repeated(paths.into_iter().map(Instance::Scalar).collect()),
+        )])
+        .into(),
+    )
 }
 
 fn hierarchy_expected() -> Instance {
-    Instance::Group(vec![
-        (
-            "file".into(),
-            Instance::Repeated(vec![Instance::Group(vec![(
+    Instance::Group(
+        (vec![
+            (
+                "file".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![(
+                        "name".into(),
+                        Instance::Scalar(Value::String("a.txt".into())),
+                    )])
+                    .into(),
+                )]),
+            ),
+            (
+                "directory".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        (
+                            "file".into(),
+                            Instance::Repeated(vec![
+                                Instance::Group(
+                                    (vec![(
+                                        "name".into(),
+                                        Instance::Scalar(Value::String("b.txt".into())),
+                                    )])
+                                    .into(),
+                                ),
+                                Instance::Group(
+                                    (vec![(
+                                        "name".into(),
+                                        Instance::Scalar(Value::String("b.txt".into())),
+                                    )])
+                                    .into(),
+                                ),
+                            ]),
+                        ),
+                        ("directory".into(), Instance::Repeated(Vec::new())),
+                        ("name".into(), Instance::Scalar(Value::String("b".into()))),
+                    ])
+                    .into(),
+                )]),
+            ),
+            (
                 "name".into(),
-                Instance::Scalar(Value::String("a.txt".into())),
-            )])]),
-        ),
-        (
-            "directory".into(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                (
-                    "file".into(),
-                    Instance::Repeated(vec![
-                        Instance::Group(vec![(
-                            "name".into(),
-                            Instance::Scalar(Value::String("b.txt".into())),
-                        )]),
-                        Instance::Group(vec![(
-                            "name".into(),
-                            Instance::Scalar(Value::String("b.txt".into())),
-                        )]),
-                    ]),
-                ),
-                ("directory".into(), Instance::Repeated(Vec::new())),
-                ("name".into(), Instance::Scalar(Value::String("b".into()))),
-            ])]),
-        ),
-        (
-            "name".into(),
-            Instance::Scalar(Value::String("root".into())),
-        ),
-    ])
+                Instance::Scalar(Value::String("root".into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 #[test]

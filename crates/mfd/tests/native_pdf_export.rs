@@ -291,20 +291,23 @@ fn one_named_page_group_maps_two_pages_through_two_strict_native_cycles()
         })],
     )?;
     let pdf = two_page_pdf("Alpha", "Beta");
-    let expected = Instance::Group(vec![(
-        "Page".into(),
-        Instance::Repeated(
-            ["Alpha", "Beta"]
-                .into_iter()
-                .map(|text| {
-                    Instance::Group(vec![(
-                        "Text".into(),
-                        Instance::Scalar(Value::String(text.into())),
-                    )])
-                })
-                .collect(),
-        ),
-    )]);
+    let expected = Instance::Group(
+        (vec![(
+            "Page".into(),
+            Instance::Repeated(
+                ["Alpha", "Beta"]
+                    .into_iter()
+                    .map(|text| {
+                        Instance::Group(
+                            (vec![("Text".into(), Instance::Scalar(Value::String(text.into())))])
+                                .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    );
     let mut current = grouped_project(layout);
     for cycle in 0..=2 {
         let source = format_pdf::from_bytes(&pdf, current.source_options.pdf.as_ref().unwrap())?;

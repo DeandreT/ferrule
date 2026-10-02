@@ -40,15 +40,18 @@ fn direct_property_name_constraints_execute_and_roundtrip() -> Result<(), JsonFo
             if property == "invalid"
     ));
 
-    let invalid_output = Instance::Group(vec![(
-        "invalid".into(),
-        Instance::Scalar(Value::String("x".into())),
-    )]);
+    let invalid_output = Instance::Group(
+        (vec![(
+            "invalid".into(),
+            Instance::Scalar(Value::String("x".into())),
+        )])
+        .into(),
+    );
     assert!(matches!(
         crate::to_string(&schema, &invalid_output),
         Err(JsonFormatError::InvalidPropertyName { .. })
     ));
-    let omitted = Instance::Group(vec![("invalid".into(), Instance::Scalar(Value::Null))]);
+    let omitted = Instance::Group((vec![("invalid".into(), Instance::Scalar(Value::Null))]).into());
     assert!(crate::to_string(&schema, &omitted).is_ok());
 
     let rendered: serde_json::Value = serde_json::from_str(&export(&schema))?;
@@ -300,10 +303,13 @@ fn pattern_property_name_exclusions_execute_compose_and_roundtrip() -> Result<()
     assert!(crate::from_str(r#"{"public":1}"#, &schema).is_ok());
     assert!(crate::from_str(r#"{"private-token":1}"#, &schema).is_err());
     assert!(crate::from_str(r#"{"token-internal":1}"#, &schema).is_err());
-    let invalid_output = Instance::Group(vec![(
-        "private-token".to_string(),
-        Instance::Scalar(Value::String("1".to_string())),
-    )]);
+    let invalid_output = Instance::Group(
+        (vec![(
+            "private-token".to_string(),
+            Instance::Scalar(Value::String("1".to_string())),
+        )])
+        .into(),
+    );
     assert!(matches!(
         crate::to_string(&schema, &invalid_output),
         Err(JsonFormatError::InvalidPropertyName { .. })

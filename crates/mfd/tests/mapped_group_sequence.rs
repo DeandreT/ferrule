@@ -764,7 +764,7 @@ fn nested_first_output_roundtrips_controls_and_compacted_position() {
     );
     assert_eq!(
         departments[1].field("Selected"),
-        Some(&Instance::Group(Vec::new()))
+        Some(&Instance::Group((Vec::new()).into()))
     );
 
     let dir = TempDir::new();

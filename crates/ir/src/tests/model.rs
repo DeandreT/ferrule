@@ -2,10 +2,13 @@ use crate::*;
 
 #[test]
 fn document_members_validate_paths_and_keep_schema_traversal_transparent() {
-    let value = Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String("first".into())),
-    )]);
+    let value = Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("first".into())),
+        )])
+        .into(),
+    );
     assert!(DocumentMember::new("", value.clone()).is_none());
     assert!(DocumentMember::new("nested.xml", Instance::DocumentSet(Vec::new())).is_none());
     assert!(DocumentMember::new_source("first.xml", "", value.clone()).is_none());
@@ -24,7 +27,7 @@ fn document_members_validate_paths_and_keep_schema_traversal_transparent() {
     let Some(source) = DocumentMember::new_source(
         "first.xml",
         "/inputs/first.xml",
-        Instance::Group(Vec::new()),
+        Instance::Group((Vec::new()).into()),
     ) else {
         panic!("valid source document member")
     };
@@ -39,19 +42,22 @@ fn document_members_validate_paths_and_keep_schema_traversal_transparent() {
 
 #[test]
 fn group_field_lookup_and_scalar_extraction() {
-    let instance = Instance::Group(vec![
-        (
-            "name".to_string(),
-            Instance::Scalar(Value::String("Jane".into())),
-        ),
-        (
-            "tags".to_string(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("a".into())),
-                Instance::Scalar(Value::String("b".into())),
-            ]),
-        ),
-    ]);
+    let instance = Instance::Group(
+        (vec![
+            (
+                "name".to_string(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            (
+                "tags".to_string(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("a".into())),
+                    Instance::Scalar(Value::String("b".into())),
+                ]),
+            ),
+        ])
+        .into(),
+    );
 
     assert_eq!(
         instance.field("name").and_then(Instance::as_scalar),
@@ -71,8 +77,8 @@ fn group_field_lookup_and_scalar_extraction() {
 #[test]
 fn mapped_sequence_roundtrips_without_becoming_schema_repetition() {
     let instance = Instance::MappedSequence(vec![
-        Instance::Group(Vec::new()),
-        Instance::Group(Vec::new()),
+        Instance::Group((Vec::new()).into()),
+        Instance::Group((Vec::new()).into()),
     ]);
     let encoded = serde_json::to_string(&instance).unwrap();
     let decoded: Instance = serde_json::from_str(&encoded).unwrap();

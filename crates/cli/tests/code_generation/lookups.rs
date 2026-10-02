@@ -109,91 +109,102 @@ fn lookup_project() -> Project {
 
 fn lookup_source() -> Instance {
     let row = |label: &str, integer: i64, float: f64| {
-        Instance::Group(vec![
-            (
-                "Label".into(),
-                Instance::Scalar(Value::String(label.into())),
-            ),
-            (
-                "IntegerNeedle".into(),
-                Instance::Scalar(Value::Int(integer)),
-            ),
-            ("FloatNeedle".into(), Instance::Scalar(Value::Float(float))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Label".into(),
+                    Instance::Scalar(Value::String(label.into())),
+                ),
+                (
+                    "IntegerNeedle".into(),
+                    Instance::Scalar(Value::Int(integer)),
+                ),
+                ("FloatNeedle".into(), Instance::Scalar(Value::Float(float))),
+            ])
+            .into(),
+        )
     };
     let catalog = |key: Option<Value>, value: Option<&str>| {
         let mut fields = Vec::new();
         if let Some(key) = key {
             fields.push((
                 "Identity".into(),
-                Instance::Group(vec![("Code".into(), Instance::Scalar(key))]),
+                Instance::Group((vec![("Code".into(), Instance::Scalar(key))]).into()),
             ));
         }
         if let Some(value) = value {
             fields.push((
                 "Payload".into(),
-                Instance::Group(vec![(
-                    "Text".into(),
-                    Instance::Scalar(Value::String(value.into())),
-                )]),
+                Instance::Group(
+                    (vec![("Text".into(), Instance::Scalar(Value::String(value.into())))]).into(),
+                ),
             ));
         }
-        Instance::Group(fields)
+        Instance::Group((fields).into())
     };
 
-    Instance::Group(vec![
-        (
-            "Row".into(),
-            Instance::Repeated(vec![
-                row("numeric-tags", 1, 1.0),
-                row("missing-value", 2, 2.0),
-                row("after-missing-key", 3, 3.0),
-                row("miss", 99, 99.0),
-            ]),
-        ),
-        (
-            "Catalog".into(),
-            Instance::Repeated(vec![
-                catalog(None, Some("missing-key-must-be-skipped")),
-                catalog(Some(Value::Int(1)), Some("first-integer")),
-                catalog(Some(Value::Int(1)), Some("second-integer")),
-                catalog(Some(Value::Float(1.0)), Some("float")),
-                catalog(Some(Value::Int(2)), None),
-                catalog(Some(Value::Int(2)), Some("must-not-continue")),
-                catalog(Some(Value::Int(3)), Some("after-missing-key")),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Row".into(),
+                Instance::Repeated(vec![
+                    row("numeric-tags", 1, 1.0),
+                    row("missing-value", 2, 2.0),
+                    row("after-missing-key", 3, 3.0),
+                    row("miss", 99, 99.0),
+                ]),
+            ),
+            (
+                "Catalog".into(),
+                Instance::Repeated(vec![
+                    catalog(None, Some("missing-key-must-be-skipped")),
+                    catalog(Some(Value::Int(1)), Some("first-integer")),
+                    catalog(Some(Value::Int(1)), Some("second-integer")),
+                    catalog(Some(Value::Float(1.0)), Some("float")),
+                    catalog(Some(Value::Int(2)), None),
+                    catalog(Some(Value::Int(2)), Some("must-not-continue")),
+                    catalog(Some(Value::Int(3)), Some("after-missing-key")),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn lookup_expected() -> Instance {
     let row = |label: &str, integer: Value, float: Value| {
-        Instance::Group(vec![
-            (
-                "Label".into(),
-                Instance::Scalar(Value::String(label.into())),
-            ),
-            ("IntegerMatch".into(), Instance::Scalar(integer)),
-            ("FloatMatch".into(), Instance::Scalar(float)),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Label".into(),
+                    Instance::Scalar(Value::String(label.into())),
+                ),
+                ("IntegerMatch".into(), Instance::Scalar(integer)),
+                ("FloatMatch".into(), Instance::Scalar(float)),
+            ])
+            .into(),
+        )
     };
-    Instance::Group(vec![(
-        "Result".into(),
-        Instance::Repeated(vec![
-            row(
-                "numeric-tags",
-                Value::String("first-integer".into()),
-                Value::String("float".into()),
-            ),
-            row("missing-value", Value::Null, Value::Null),
-            row(
-                "after-missing-key",
-                Value::String("after-missing-key".into()),
-                Value::Null,
-            ),
-            row("miss", Value::Null, Value::Null),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Result".into(),
+            Instance::Repeated(vec![
+                row(
+                    "numeric-tags",
+                    Value::String("first-integer".into()),
+                    Value::String("float".into()),
+                ),
+                row("missing-value", Value::Null, Value::Null),
+                row(
+                    "after-missing-key",
+                    Value::String("after-missing-key".into()),
+                    Value::Null,
+                ),
+                row("miss", Value::Null, Value::Null),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 #[test]

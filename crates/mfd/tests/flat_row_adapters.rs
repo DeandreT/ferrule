@@ -170,10 +170,9 @@ fn exact_numeric_target_adapter_converts_before_strict_csv_write()
     )?;
     assert_eq!(std::fs::read_to_string(output_path)?, "Count\n4\n");
 
-    let lossy = Instance::Repeated(vec![Instance::Group(vec![(
-        "Count".into(),
-        Instance::Scalar(Value::Float(4.5)),
-    )])]);
+    let lossy = Instance::Repeated(vec![Instance::Group(
+        (vec![("Count".into(), Instance::Scalar(Value::Float(4.5)))]).into(),
+    )]);
     let lossy_output = engine::run(&imported.project, &lossy)?;
     let lossy_rows = lossy_output
         .as_repeated()

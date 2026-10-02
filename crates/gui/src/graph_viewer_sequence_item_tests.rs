@@ -112,7 +112,7 @@ fn outputs(project: &Project) -> engine::ExecutionOutputs {
         issues.is_empty(),
         "valid generated-item fixture: {issues:?}"
     );
-    engine::run_outputs(project, &Instance::Group(Vec::new())).expect("generated outputs")
+    engine::run_outputs(project, &Instance::Group((Vec::new()).into())).expect("generated outputs")
 }
 
 fn context() -> egui::Context {
@@ -899,39 +899,43 @@ fn repaired_physical_outputs(project: &Project, named: bool, to_function: bool) 
     }
     let issues = engine::validate(&executable);
     assert!(issues.is_empty(), "repaired physical mapping: {issues:?}");
-    let source = Instance::Group(vec![
-        (
-            "Input".into(),
-            Instance::Scalar(Value::String("physical".into())),
-        ),
-        (
-            "Other".into(),
-            Instance::Scalar(Value::String("other".into())),
-        ),
-        (
-            "Records".into(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                (
-                    "Input".into(),
-                    Instance::Scalar(Value::String("framed".into())),
-                ),
-                (
-                    "Other".into(),
-                    Instance::Scalar(Value::String("other framed".into())),
-                ),
-            ])]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "Input".into(),
+                Instance::Scalar(Value::String("physical".into())),
+            ),
+            (
+                "Other".into(),
+                Instance::Scalar(Value::String("other".into())),
+            ),
+            (
+                "Records".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        (
+                            "Input".into(),
+                            Instance::Scalar(Value::String("framed".into())),
+                        ),
+                        (
+                            "Other".into(),
+                            Instance::Scalar(Value::String("other framed".into())),
+                        ),
+                    ])
+                    .into(),
+                )]),
+            ),
+        ])
+        .into(),
+    );
     let output = engine::run_outputs(&executable, &source).expect("physical mapping output");
     let rows = Instance::Repeated(vec![
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("a".into())),
-        )]),
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("b".into())),
-        )]),
+        Instance::Group(
+            (vec![("Value".into(), Instance::Scalar(Value::String("a".into())))]).into(),
+        ),
+        Instance::Group(
+            (vec![("Value".into(), Instance::Scalar(Value::String("b".into())))]).into(),
+        ),
     ]);
     for (index, instance) in std::iter::once(&output.primary)
         .chain(output.extras.iter().map(|output| &output.instance))

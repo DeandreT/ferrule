@@ -10,8 +10,13 @@
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
+mod instance_group;
 mod scalar_lexical;
 mod schema;
+mod xml_type_origin;
+
+pub use instance_group::InstanceGroup;
+pub use xml_type_origin::{XmlTypeOrigin, XmlTypeOriginError};
 
 pub use scalar_lexical::parse_exact_decimal_i64;
 
@@ -38,10 +43,14 @@ pub use schema::{
 /// Instance-field name used for an XML element's simple text content.
 pub const XML_TEXT_FIELD: &str = "#text";
 
-/// Reserved instance-group field carrying one validated expanded `xsi:type`
-/// QName. XML readers and writers preserve it as format metadata; it is not
-/// an ordinary schema child.
+/// Reserved instance-group field carrying the selected XML type alternative.
+/// Readers may infer this identity from content; writers use it to select the
+/// output type. It does not prove that the source had an `xsi:type` attribute.
 pub const XML_TYPE_FIELD: &str = "\u{1f}ferrule-xml-type";
+
+/// Historical origin-marker spelling, retained for ordinary-data compatibility.
+/// A field with this name is ordinary data and never supplies XML origin facts.
+pub const XML_TYPE_ORIGIN_FIELD: &str = "\u{1f}ferrule-xml-type-origin";
 
 /// Reserved instance-group field carrying the selected expanded element QName
 /// for one XSD substitution-group occurrence.
@@ -3367,7 +3376,7 @@ fn effective_required_fields(
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Instance {
     Scalar(Value),
-    Group(Vec<(String, Instance)>),
+    Group(InstanceGroup),
     Repeated(Vec<Instance>),
     /// Ordered documents. Each member retains a portable path and may also
     /// retain its resolved source location while its value remains an ordinary

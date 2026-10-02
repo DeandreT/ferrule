@@ -245,7 +245,7 @@ fn rows_from_range(
                     .map(|value| ((*name).to_string(), Instance::Scalar(value)))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        rows.push(Instance::Group(values));
+        rows.push(Instance::Group((values).into()));
     }
     Ok(rows)
 }
@@ -321,7 +321,7 @@ pub fn from_bytes_transposed(
                 Ok((field.name.to_string(), Instance::Scalar(value)))
             })
             .collect::<Result<Vec<_>, XlsxFormatError>>()?;
-        records.push(Instance::Group(values));
+        records.push(Instance::Group((values).into()));
     }
     Ok(records)
 }
@@ -760,22 +760,28 @@ mod tests {
 
     fn rows() -> Vec<Instance> {
         vec![
-            Instance::Group(vec![
-                (
-                    "month".into(),
-                    Instance::Scalar(Value::String("Jan".into())),
-                ),
-                ("amount".into(), Instance::Scalar(Value::Float(12.5))),
-                ("closed".into(), Instance::Scalar(Value::Bool(true))),
-            ]),
-            Instance::Group(vec![
-                (
-                    "month".into(),
-                    Instance::Scalar(Value::String("Feb".into())),
-                ),
-                ("amount".into(), Instance::Scalar(Value::Null)),
-                ("closed".into(), Instance::Scalar(Value::Bool(false))),
-            ]),
+            Instance::Group(
+                (vec![
+                    (
+                        "month".into(),
+                        Instance::Scalar(Value::String("Jan".into())),
+                    ),
+                    ("amount".into(), Instance::Scalar(Value::Float(12.5))),
+                    ("closed".into(), Instance::Scalar(Value::Bool(true))),
+                ])
+                .into(),
+            ),
+            Instance::Group(
+                (vec![
+                    (
+                        "month".into(),
+                        Instance::Scalar(Value::String("Feb".into())),
+                    ),
+                    ("amount".into(), Instance::Scalar(Value::Null)),
+                    ("closed".into(), Instance::Scalar(Value::Bool(false))),
+                ])
+                .into(),
+            ),
         ]
     }
 
@@ -859,16 +865,19 @@ mod tests {
         assert_eq!(actual.len(), 2);
         assert_eq!(
             actual[0],
-            Instance::Group(vec![
-                (
-                    "left".into(),
-                    Instance::Scalar(Value::String("left".into())),
-                ),
-                (
-                    "right".into(),
-                    Instance::Scalar(Value::String("right".into())),
-                ),
-            ])
+            Instance::Group(
+                (vec![
+                    (
+                        "left".into(),
+                        Instance::Scalar(Value::String("left".into())),
+                    ),
+                    (
+                        "right".into(),
+                        Instance::Scalar(Value::String("right".into())),
+                    ),
+                ])
+                .into()
+            )
         );
     }
 
@@ -915,10 +924,13 @@ mod tests {
     #[test]
     fn byte_writer_rejects_lossy_and_non_finite_numbers() {
         let int_schema = SchemaNode::group("rows", vec![SchemaNode::scalar("id", ScalarType::Int)]);
-        let lossy = vec![Instance::Group(vec![(
-            "id".into(),
-            Instance::Scalar(Value::Int(MAX_EXACT_F64_INTEGER + 1)),
-        )])];
+        let lossy = vec![Instance::Group(
+            (vec![(
+                "id".into(),
+                Instance::Scalar(Value::Int(MAX_EXACT_F64_INTEGER + 1)),
+            )])
+            .into(),
+        )];
         let error = to_bytes(&int_schema, &lossy, None, 1, &[], false).unwrap_err();
         assert!(matches!(error, XlsxFormatError::ValueType { field, .. } if field == "id"));
 
@@ -926,10 +938,13 @@ mod tests {
             "rows",
             vec![SchemaNode::scalar("amount", ScalarType::Float)],
         );
-        let non_finite = vec![Instance::Group(vec![(
-            "amount".into(),
-            Instance::Scalar(Value::Float(f64::INFINITY)),
-        )])];
+        let non_finite = vec![Instance::Group(
+            (vec![(
+                "amount".into(),
+                Instance::Scalar(Value::Float(f64::INFINITY)),
+            )])
+            .into(),
+        )];
         let error = to_bytes(&float_schema, &non_finite, None, 1, &[], false).unwrap_err();
         assert!(matches!(error, XlsxFormatError::ValueType { field, .. } if field == "amount"));
     }
@@ -944,25 +959,31 @@ mod tests {
                 SchemaNode::scalar("active", ScalarType::Bool),
             ],
         );
-        let rows = vec![Instance::Group(vec![
-            ("id".into(), Instance::Scalar(Value::String(" 42 ".into()))),
-            (
-                "amount".into(),
-                Instance::Scalar(Value::String("12.5".into())),
-            ),
-            ("active".into(), Instance::Scalar(Value::String("1".into()))),
-        ])];
+        let rows = vec![Instance::Group(
+            (vec![
+                ("id".into(), Instance::Scalar(Value::String(" 42 ".into()))),
+                (
+                    "amount".into(),
+                    Instance::Scalar(Value::String("12.5".into())),
+                ),
+                ("active".into(), Instance::Scalar(Value::String("1".into()))),
+            ])
+            .into(),
+        )];
 
         let bytes = to_bytes(&schema, &rows, None, 1, &[], false).unwrap();
         let actual = from_bytes(&bytes, &schema, None, 1, &[], false).unwrap();
 
         assert_eq!(
             actual,
-            vec![Instance::Group(vec![
-                ("id".into(), Instance::Scalar(Value::Int(42))),
-                ("amount".into(), Instance::Scalar(Value::Float(12.5))),
-                ("active".into(), Instance::Scalar(Value::Bool(true))),
-            ])]
+            vec![Instance::Group(
+                (vec![
+                    ("id".into(), Instance::Scalar(Value::Int(42))),
+                    ("amount".into(), Instance::Scalar(Value::Float(12.5))),
+                    ("active".into(), Instance::Scalar(Value::Bool(true))),
+                ])
+                .into()
+            )]
         );
     }
 
@@ -1053,24 +1074,30 @@ mod tests {
         assert_eq!(
             actual,
             vec![
-                Instance::Group(vec![
-                    ("n".into(), Instance::Scalar(Value::Int(2))),
-                    (
-                        "month".into(),
-                        Instance::Scalar(Value::String("Jan".into())),
-                    ),
-                    ("amount".into(), Instance::Scalar(Value::Float(12.5))),
-                    ("closed".into(), Instance::Scalar(Value::Bool(true))),
-                ]),
-                Instance::Group(vec![
-                    ("n".into(), Instance::Scalar(Value::Int(4))),
-                    (
-                        "month".into(),
-                        Instance::Scalar(Value::String("Mar".into())),
-                    ),
-                    ("amount".into(), Instance::Scalar(Value::Float(8.0))),
-                    ("closed".into(), Instance::Scalar(Value::Bool(false))),
-                ]),
+                Instance::Group(
+                    (vec![
+                        ("n".into(), Instance::Scalar(Value::Int(2))),
+                        (
+                            "month".into(),
+                            Instance::Scalar(Value::String("Jan".into())),
+                        ),
+                        ("amount".into(), Instance::Scalar(Value::Float(12.5))),
+                        ("closed".into(), Instance::Scalar(Value::Bool(true))),
+                    ])
+                    .into()
+                ),
+                Instance::Group(
+                    (vec![
+                        ("n".into(), Instance::Scalar(Value::Int(4))),
+                        (
+                            "month".into(),
+                            Instance::Scalar(Value::String("Mar".into())),
+                        ),
+                        ("amount".into(), Instance::Scalar(Value::Float(8.0))),
+                        ("closed".into(), Instance::Scalar(Value::Bool(false))),
+                    ])
+                    .into()
+                ),
             ]
         );
     }
@@ -1097,13 +1124,16 @@ mod tests {
         std::fs::remove_file(path).ok();
         assert_eq!(
             actual,
-            vec![Instance::Group(vec![
-                (
-                    "label".into(),
-                    Instance::Scalar(Value::String("first".into())),
-                ),
-                ("value".into(), Instance::Scalar(Value::Int(7))),
-            ])]
+            vec![Instance::Group(
+                (vec![
+                    (
+                        "label".into(),
+                        Instance::Scalar(Value::String("first".into())),
+                    ),
+                    ("value".into(), Instance::Scalar(Value::Int(7))),
+                ])
+                .into()
+            )]
         );
     }
 
@@ -1288,53 +1318,70 @@ mod tests {
 
         assert_eq!(
             actual,
-            Instance::Group(vec![
-                (
-                    "Company".into(),
-                    Instance::Scalar(Value::String("Example Ltd".into())),
-                ),
-                (
-                    "Office".into(),
-                    Instance::Repeated(vec![Instance::Group(vec![
-                        (
-                            "Name".into(),
-                            Instance::Scalar(Value::String("West".into())),
-                        ),
-                        (
-                            "Address".into(),
-                            Instance::Group(vec![
+            Instance::Group(
+                (vec![
+                    (
+                        "Company".into(),
+                        Instance::Scalar(Value::String("Example Ltd".into())),
+                    ),
+                    (
+                        "Office".into(),
+                        Instance::Repeated(vec![Instance::Group(
+                            (vec![
                                 (
-                                    "Street".into(),
-                                    Instance::Scalar(Value::String("Main Street".into())),
+                                    "Name".into(),
+                                    Instance::Scalar(Value::String("West".into())),
                                 ),
-                                ("City".into(), Instance::Scalar(Value::Null)),
-                            ]),
-                        ),
-                    ])]),
-                ),
-                (
-                    "Staff".into(),
-                    Instance::Repeated(vec![
-                        Instance::Group(vec![
-                            (
-                                "First".into(),
-                                Instance::Scalar(Value::String("Ada".into())),
+                                (
+                                    "Address".into(),
+                                    Instance::Group(
+                                        (vec![
+                                            (
+                                                "Street".into(),
+                                                Instance::Scalar(Value::String(
+                                                    "Main Street".into()
+                                                )),
+                                            ),
+                                            ("City".into(), Instance::Scalar(Value::Null)),
+                                        ])
+                                        .into()
+                                    ),
+                                ),
+                            ])
+                            .into()
+                        )]),
+                    ),
+                    (
+                        "Staff".into(),
+                        Instance::Repeated(vec![
+                            Instance::Group(
+                                (vec![
+                                    (
+                                        "First".into(),
+                                        Instance::Scalar(Value::String("Ada".into())),
+                                    ),
+                                    ("Extension".into(), Instance::Scalar(Value::Int(41))),
+                                    ("Active".into(), Instance::Scalar(Value::Bool(true))),
+                                ])
+                                .into()
                             ),
-                            ("Extension".into(), Instance::Scalar(Value::Int(41))),
-                            ("Active".into(), Instance::Scalar(Value::Bool(true))),
-                        ]),
-                        Instance::Group(vec![
-                            (
-                                "First".into(),
-                                Instance::Scalar(Value::String("Lin".into())),
+                            Instance::Group(
+                                (vec![
+                                    (
+                                        "First".into(),
+                                        Instance::Scalar(Value::String("Lin".into())),
+                                    ),
+                                    ("Extension".into(), Instance::Scalar(Value::Int(7))),
+                                    ("Active".into(), Instance::Scalar(Value::Bool(false))),
+                                ])
+                                .into()
                             ),
-                            ("Extension".into(), Instance::Scalar(Value::Int(7))),
-                            ("Active".into(), Instance::Scalar(Value::Bool(false))),
                         ]),
-                    ]),
-                ),
-                ("Unmapped".into(), Instance::Scalar(Value::Null)),
-            ])
+                    ),
+                    ("Unmapped".into(), Instance::Scalar(Value::Null)),
+                ])
+                .into()
+            )
         );
 
         let path = temp_file("composite");

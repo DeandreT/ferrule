@@ -123,47 +123,63 @@ fn extra_target_project() -> Project {
 }
 
 fn source(fail_extra: bool) -> Instance {
-    Instance::Group(vec![
-        (
-            "Name".into(),
-            Instance::Scalar(Value::String("primary".into())),
-        ),
-        (
-            "FailExtra".into(),
-            Instance::Scalar(Value::Bool(fail_extra)),
-        ),
-        (
-            "Rows".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(3)))]),
-                Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(5)))]),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Name".into(),
+                Instance::Scalar(Value::String("primary".into())),
+            ),
+            (
+                "FailExtra".into(),
+                Instance::Scalar(Value::Bool(fail_extra)),
+            ),
+            (
+                "Rows".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![("Value".into(), Instance::Scalar(Value::Int(3)))]).into(),
+                    ),
+                    Instance::Group(
+                        (vec![("Value".into(), Instance::Scalar(Value::Int(5)))]).into(),
+                    ),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn primary_expected() -> Instance {
-    Instance::Group(vec![(
-        "PrimaryName".into(),
-        Instance::Scalar(Value::String("primary".into())),
-    )])
+    Instance::Group(
+        (vec![(
+            "PrimaryName".into(),
+            Instance::Scalar(Value::String("primary".into())),
+        )])
+        .into(),
+    )
 }
 
 fn audit_expected() -> Instance {
-    Instance::Group(vec![(
-        "AuditRow".into(),
-        Instance::Repeated(vec![
-            Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(3)))]),
-            Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(5)))]),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "AuditRow".into(),
+            Instance::Repeated(vec![
+                Instance::Group((vec![("Value".into(), Instance::Scalar(Value::Int(3)))]).into()),
+                Instance::Group((vec![("Value".into(), Instance::Scalar(Value::Int(5)))]).into()),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn late_expected() -> Instance {
-    Instance::Group(vec![(
-        "Status".into(),
-        Instance::Scalar(Value::String("safe-extra".into())),
-    )])
+    Instance::Group(
+        (vec![(
+            "Status".into(),
+            Instance::Scalar(Value::String("safe-extra".into())),
+        )])
+        .into(),
+    )
 }
 
 #[test]

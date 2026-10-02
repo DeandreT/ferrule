@@ -198,10 +198,13 @@ mod tests {
         let document = |path: &str, value: &str| {
             DocumentMember::new(
                 path,
-                Instance::Group(vec![(
-                    "items".into(),
-                    Instance::Repeated(vec![Instance::Scalar(Value::String(value.into()))]),
-                )]),
+                Instance::Group(
+                    (vec![(
+                        "items".into(),
+                        Instance::Repeated(vec![Instance::Scalar(Value::String(value.into()))]),
+                    )])
+                    .into(),
+                ),
             )
         };
         let Some(first) = document("a.xml", "a") else {
@@ -235,13 +238,17 @@ mod tests {
     #[test]
     fn walks_named_descendants_across_an_unnamed_repeating_root() {
         let child = |value: &str| {
-            Instance::Group(vec![(
-                "value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            )])
+            Instance::Group(
+                (vec![(
+                    "value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                )])
+                .into(),
+            )
         };
-        let parent =
-            |children| Instance::Group(vec![("children".into(), Instance::Repeated(children))]);
+        let parent = |children| {
+            Instance::Group((vec![("children".into(), Instance::Repeated(children))]).into())
+        };
         let source = Instance::Repeated(vec![
             parent(vec![child("a"), child("b")]),
             parent(vec![child("c")]),

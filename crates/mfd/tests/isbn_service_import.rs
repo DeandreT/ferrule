@@ -60,13 +60,19 @@ fn isbn_service_calls_lower_to_local_checked_conversion() -> Result<(), Box<dyn 
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let input = Instance::Group(vec![(
-        "Book".into(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            "ISBN10".into(),
-            Instance::Scalar(Value::String("0-7645-4964-2".into())),
-        )])]),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Book".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![(
+                    "ISBN10".into(),
+                    Instance::Scalar(Value::String("0-7645-4964-2".into())),
+                )])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &input)?;
     let Some(book) = output
         .field("Book")

@@ -126,13 +126,16 @@ fn build_row(
         })
         .collect::<Result<Vec<_>, _>>()?;
     active.pop();
-    Ok(Instance::Group(vec![
-        (
-            target_key.to_string(),
-            Instance::Scalar(Value::String(row.key.clone())),
-        ),
-        (target_children.to_string(), Instance::Repeated(children)),
-    ]))
+    Ok(Instance::Group(
+        (vec![
+            (
+                target_key.to_string(),
+                Instance::Scalar(Value::String(row.key.clone())),
+            ),
+            (target_children.to_string(), Instance::Repeated(children)),
+        ])
+        .into(),
+    ))
 }
 
 fn string_field(
@@ -184,30 +187,36 @@ mod tests {
     use super::*;
 
     fn rows(values: &[(&str, Option<&str>)]) -> Instance {
-        Instance::Group(vec![(
-            "Rows".to_string(),
-            Instance::Repeated(
-                values
-                    .iter()
-                    .map(|(key, parent)| {
-                        Instance::Group(vec![
-                            (
-                                "Key".to_string(),
-                                Instance::Scalar(Value::String((*key).to_string())),
-                            ),
-                            (
-                                "Parent".to_string(),
-                                Instance::Scalar(
-                                    parent
-                                        .map(|parent| Value::String(parent.to_string()))
-                                        .unwrap_or(Value::Null),
-                                ),
-                            ),
-                        ])
-                    })
-                    .collect(),
-            ),
-        )])
+        Instance::Group(
+            (vec![(
+                "Rows".to_string(),
+                Instance::Repeated(
+                    values
+                        .iter()
+                        .map(|(key, parent)| {
+                            Instance::Group(
+                                (vec![
+                                    (
+                                        "Key".to_string(),
+                                        Instance::Scalar(Value::String((*key).to_string())),
+                                    ),
+                                    (
+                                        "Parent".to_string(),
+                                        Instance::Scalar(
+                                            parent
+                                                .map(|parent| Value::String(parent.to_string()))
+                                                .unwrap_or(Value::Null),
+                                        ),
+                                    ),
+                                ])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            )])
+            .into(),
+        )
     }
 
     #[test]
@@ -232,40 +241,57 @@ mod tests {
         );
         assert_eq!(
             actual,
-            Ok(Instance::Group(vec![
-                (
-                    "name".to_string(),
-                    Instance::Scalar(Value::String("Root".to_string())),
-                ),
-                (
-                    "children".to_string(),
-                    Instance::Repeated(vec![
-                        Instance::Group(vec![
-                            (
-                                "name".to_string(),
-                                Instance::Scalar(Value::String("Beta".to_string())),
-                            ),
-                            (
-                                "children".to_string(),
-                                Instance::Repeated(vec![Instance::Group(vec![
+            Ok(Instance::Group(
+                (vec![
+                    (
+                        "name".to_string(),
+                        Instance::Scalar(Value::String("Root".to_string())),
+                    ),
+                    (
+                        "children".to_string(),
+                        Instance::Repeated(vec![
+                            Instance::Group(
+                                (vec![
                                     (
                                         "name".to_string(),
-                                        Instance::Scalar(Value::String("Leaf".to_string())),
+                                        Instance::Scalar(Value::String("Beta".to_string())),
+                                    ),
+                                    (
+                                        "children".to_string(),
+                                        Instance::Repeated(vec![Instance::Group(
+                                            (vec![
+                                                (
+                                                    "name".to_string(),
+                                                    Instance::Scalar(Value::String(
+                                                        "Leaf".to_string()
+                                                    )),
+                                                ),
+                                                (
+                                                    "children".to_string(),
+                                                    Instance::Repeated(Vec::new())
+                                                ),
+                                            ])
+                                            .into()
+                                        )]),
+                                    ),
+                                ])
+                                .into()
+                            ),
+                            Instance::Group(
+                                (vec![
+                                    (
+                                        "name".to_string(),
+                                        Instance::Scalar(Value::String("Alpha".to_string())),
                                     ),
                                     ("children".to_string(), Instance::Repeated(Vec::new())),
-                                ])]),
+                                ])
+                                .into()
                             ),
                         ]),
-                        Instance::Group(vec![
-                            (
-                                "name".to_string(),
-                                Instance::Scalar(Value::String("Alpha".to_string())),
-                            ),
-                            ("children".to_string(), Instance::Repeated(Vec::new())),
-                        ]),
-                    ]),
-                ),
-            ]))
+                    ),
+                ])
+                .into()
+            ))
         );
     }
 

@@ -120,22 +120,28 @@ fn group_by_partitions_iterated_items() {
         },
     };
     let row = |month: &str, temp: f64| {
-        Instance::Group(vec![
-            (
-                "month".into(),
-                Instance::Scalar(Value::String(month.into())),
-            ),
-            ("temp".into(), Instance::Scalar(Value::Float(temp))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "month".into(),
+                    Instance::Scalar(Value::String(month.into())),
+                ),
+                ("temp".into(), Instance::Scalar(Value::Float(temp))),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![
-            row("2024-01", 2.0),
-            row("2024-07", 22.0),
-            row("2025-01", 4.0),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![
+                row("2024-01", 2.0),
+                row("2024-07", 22.0),
+                row("2025-01", 4.0),
+            ]),
+        )])
+        .into(),
+    );
 
     let target = run(&project, &source).unwrap();
     let years = target
@@ -250,26 +256,32 @@ fn filter_removes_candidates_before_grouping() {
         },
     };
     let item = |category: &str, label: &str| {
-        Instance::Group(vec![
-            (
-                "category".into(),
-                Instance::Scalar(Value::String(category.into())),
-            ),
-            (
-                "label".into(),
-                Instance::Scalar(Value::String(label.into())),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "category".into(),
+                    Instance::Scalar(Value::String(category.into())),
+                ),
+                (
+                    "label".into(),
+                    Instance::Scalar(Value::String(label.into())),
+                ),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![
-            item("A", "skip"),
-            item("B", "second"),
-            item("A", "first"),
-            item("B", "fourth"),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![
+                item("A", "skip"),
+                item("B", "second"),
+                item("A", "first"),
+                item("B", "fourth"),
+            ]),
+        )])
+        .into(),
+    );
 
     let target = run(&project, &source).unwrap();
     let rows = target.field("Row").and_then(Instance::as_repeated).unwrap();
@@ -409,34 +421,48 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
         },
     };
     let item = |category: &str| {
-        Instance::Group(vec![(
-            "Category".into(),
-            Instance::Scalar(Value::String(category.into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Category".into(),
+                Instance::Scalar(Value::String(category.into())),
+            )])
+            .into(),
+        )
     };
     let order = |id: &str, categories: &[&str]| {
-        Instance::Group(vec![
-            ("Id".into(), Instance::Scalar(Value::String(id.into()))),
-            (
-                "Item".into(),
-                Instance::Repeated((0..5).map(|_| item("outer")).collect()),
-            ),
-            (
-                "Items".into(),
-                Instance::Group(vec![(
+        Instance::Group(
+            (vec![
+                ("Id".into(), Instance::Scalar(Value::String(id.into()))),
+                (
                     "Item".into(),
-                    Instance::Repeated(categories.iter().map(|value| item(value)).collect()),
-                )]),
-            ),
-        ])
+                    Instance::Repeated((0..5).map(|_| item("outer")).collect()),
+                ),
+                (
+                    "Items".into(),
+                    Instance::Group(
+                        (vec![(
+                            "Item".into(),
+                            Instance::Repeated(
+                                categories.iter().map(|value| item(value)).collect(),
+                            ),
+                        )])
+                        .into(),
+                    ),
+                ),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Order".into(),
-        Instance::Repeated(vec![
-            order("O-1", &["A", "A", "B"]),
-            order("O-2", &["A", "C"]),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Order".into(),
+            Instance::Repeated(vec![
+                order("O-1", &["A", "A", "B"]),
+                order("O-2", &["A", "C"]),
+            ]),
+        )])
+        .into(),
+    );
 
     let target = run(&project, &source).unwrap();
     let orders = target
@@ -540,22 +566,28 @@ fn empty_path_child_iteration_selects_each_grouped_member_frame() {
         },
     };
     let member = |department: &str, name: &str| {
-        Instance::Group(vec![
-            (
-                "Department".into(),
-                Instance::Scalar(Value::String(department.into())),
-            ),
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Department".into(),
+                    Instance::Scalar(Value::String(department.into())),
+                ),
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Staff".into(),
-        Instance::Repeated(vec![
-            member("Engineering", "Ada"),
-            member("Engineering", "Lin"),
-            member("Support", "Grace"),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Staff".into(),
+            Instance::Repeated(vec![
+                member("Engineering", "Ada"),
+                member("Engineering", "Lin"),
+                member("Support", "Grace"),
+            ]),
+        )])
+        .into(),
+    );
 
     let target = run(&project, &source).unwrap();
     let departments = target
@@ -733,24 +765,27 @@ fn aggregates_reduce_collections_in_context() {
         },
     };
     let item = |price: f64| {
-        Instance::Group(vec![(
-            "Price".into(),
-            Instance::Scalar(Value::Float(price)),
-        )])
+        Instance::Group((vec![("Price".into(), Instance::Scalar(Value::Float(price)))]).into())
     };
     let order = |id: &str, items: Vec<Instance>| {
-        Instance::Group(vec![
-            ("Id".into(), Instance::Scalar(Value::String(id.into()))),
-            ("Item".into(), Instance::Repeated(items)),
-        ])
+        Instance::Group(
+            (vec![
+                ("Id".into(), Instance::Scalar(Value::String(id.into()))),
+                ("Item".into(), Instance::Repeated(items)),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Order".into(),
-        Instance::Repeated(vec![
-            order("A", vec![item(1.5), item(2.5)]),
-            order("B", vec![]),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Order".into(),
+            Instance::Repeated(vec![
+                order("A", vec![item(1.5), item(2.5)]),
+                order("B", vec![]),
+            ]),
+        )])
+        .into(),
+    );
 
     let target = run(&project, &source).unwrap();
     assert_eq!(
@@ -931,15 +966,17 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
         issue.message == "sequence item must reference an unframed empty-path source field"
     }));
     let row = |text: &str| {
-        Instance::Group(vec![(
-            "Text".into(),
-            Instance::Scalar(Value::String(text.into())),
-        )])
+        Instance::Group(
+            (vec![("Text".into(), Instance::Scalar(Value::String(text.into())))]).into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![row("a,b,c"), row("d,e")]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![row("a,b,c"), row("d,e")]),
+        )])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
@@ -1029,7 +1066,7 @@ fn tokenizers_handle_empty_and_unicode_inputs() {
             ..Scope::default()
         },
     };
-    let output = run(&project, &Instance::Group(Vec::new())).unwrap();
+    let output = run(&project, &Instance::Group((Vec::new()).into())).unwrap();
     assert!(output.as_repeated().is_some_and(<[Instance]>::is_empty));
     let mut missing_parameter = project.clone();
     missing_parameter.graph.nodes.insert(
@@ -1042,7 +1079,7 @@ fn tokenizers_handle_empty_and_unicode_inputs() {
         .graph
         .nodes
         .insert(1, Node::Const { value: Value::Null });
-    let output = run(&missing_parameter, &Instance::Group(Vec::new())).unwrap();
+    let output = run(&missing_parameter, &Instance::Group((Vec::new()).into())).unwrap();
     assert!(output.as_repeated().is_some_and(<[Instance]>::is_empty));
 }
 
@@ -1252,16 +1289,22 @@ fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
         },
     };
     let row = |name: &str, from: i64, to: i64| {
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            ("From".into(), Instance::Scalar(Value::Int(from))),
-            ("To".into(), Instance::Scalar(Value::Int(to))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("From".into(), Instance::Scalar(Value::Int(from))),
+                ("To".into(), Instance::Scalar(Value::Int(to))),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![row("A", 2, 4), row("B", 4, 2), row("C", 7, 7)]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![row("A", 2, 4), row("B", 4, 2), row("C", 7, 7)]),
+        )])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
@@ -1389,21 +1432,26 @@ fn filtered_positions_compact_across_intermediate_repeating_levels() {
         },
     };
     let contact = |last: &str| {
-        Instance::Group(vec![(
-            "Last".into(),
-            Instance::Scalar(Value::String(last.into())),
-        )])
+        Instance::Group(
+            (vec![("Last".into(), Instance::Scalar(Value::String(last.into())))]).into(),
+        )
     };
     let office = |last_names: &[&str]| {
-        Instance::Group(vec![(
-            "Contact".into(),
-            Instance::Repeated(last_names.iter().map(|last| contact(last)).collect()),
-        )])
+        Instance::Group(
+            (vec![(
+                "Contact".into(),
+                Instance::Repeated(last_names.iter().map(|last| contact(last)).collect()),
+            )])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Office".into(),
-        Instance::Repeated(vec![office(&["Able", "North"]), office(&["Young", "West"])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Office".into(),
+            Instance::Repeated(vec![office(&["Able", "North"]), office(&["Young", "West"])]),
+        )])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
@@ -1449,15 +1497,25 @@ fn uncontrolled_multi_hop_positions_remain_relative_to_their_source_parent() {
         },
     };
     let office = |count| {
-        Instance::Group(vec![(
-            "Contact".into(),
-            Instance::Repeated((0..count).map(|_| Instance::Group(Vec::new())).collect()),
-        )])
+        Instance::Group(
+            (vec![(
+                "Contact".into(),
+                Instance::Repeated(
+                    (0..count)
+                        .map(|_| Instance::Group((Vec::new()).into()))
+                        .collect(),
+                ),
+            )])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Office".into(),
-        Instance::Repeated(vec![office(2), office(1)]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Office".into(),
+            Instance::Repeated(vec![office(2), office(1)]),
+        )])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let positions = output
@@ -1514,21 +1572,30 @@ fn aggregate_flattens_nested_repeating_collection_paths() {
         },
     };
     let contact = |first: &str| {
-        Instance::Group(vec![(
-            "First".into(),
-            Instance::Scalar(Value::String(first.into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "First".into(),
+                Instance::Scalar(Value::String(first.into())),
+            )])
+            .into(),
+        )
     };
     let office = |first_names: &[&str]| {
-        Instance::Group(vec![(
-            "Contact".into(),
-            Instance::Repeated(first_names.iter().map(|first| contact(first)).collect()),
-        )])
+        Instance::Group(
+            (vec![(
+                "Contact".into(),
+                Instance::Repeated(first_names.iter().map(|first| contact(first)).collect()),
+            )])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Office".into(),
-        Instance::Repeated(vec![office(&["Ana", "Bo"]), office(&["Cy"])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Office".into(),
+            Instance::Repeated(vec![office(&["Ana", "Bo"]), office(&["Cy"])]),
+        )])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     assert_eq!(

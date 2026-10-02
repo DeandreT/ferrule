@@ -14,7 +14,7 @@ fn json_presence_and_schema_required_sets_ignore_valid_xml_attribute_use() {
         );
     }
     assert_eq!(
-        format_json::to_string(&schema, &Instance::Group(vec![])).unwrap(),
+        format_json::to_string(&schema, &Instance::Group((vec![]).into())).unwrap(),
         "{}\n"
     );
 }
@@ -28,7 +28,7 @@ fn programmatic_invalid_attribute_use_is_rejected_in_nested_json_boundaries() {
         Err(format_json::JsonFormatError::InvalidXmlAttributeRequired { .. })
     ));
     assert!(matches!(
-        format_json::to_string(&schema, &Instance::Group(vec![])),
+        format_json::to_string(&schema, &Instance::Group((vec![]).into())),
         Err(format_json::JsonFormatError::InvalidXmlAttributeRequired { .. })
     ));
 }

@@ -172,35 +172,47 @@ fn writes_contexts_and_namespace_qualified_facts() -> Result<(), Box<dyn std::er
     );
     row.repeating = true;
     let schema = SchemaNode::group("xbrl", vec![row]);
-    let instance = Instance::Group(vec![(
-        "rows".to_string(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            (
-                "identifier".to_string(),
-                Instance::Group(vec![
+    let instance = Instance::Group(
+        (vec![(
+            "rows".to_string(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
                     (
-                        "scheme".to_string(),
-                        Instance::Scalar(Value::String("urn:entity".to_string())),
+                        "identifier".to_string(),
+                        Instance::Group(
+                            (vec![
+                                (
+                                    "scheme".to_string(),
+                                    Instance::Scalar(Value::String("urn:entity".to_string())),
+                                ),
+                                (
+                                    XML_TEXT_FIELD.to_string(),
+                                    Instance::Scalar(Value::String("Example".to_string())),
+                                ),
+                            ])
+                            .into(),
+                        ),
                     ),
                     (
-                        XML_TEXT_FIELD.to_string(),
-                        Instance::Scalar(Value::String("Example".to_string())),
+                        "period".to_string(),
+                        Instance::Group(
+                            (vec![(
+                                "instant".to_string(),
+                                Instance::Scalar(Value::String("2026-06-30".to_string())),
+                            )])
+                            .into(),
+                        ),
                     ),
-                ]),
-            ),
-            (
-                "period".to_string(),
-                Instance::Group(vec![(
-                    "instant".to_string(),
-                    Instance::Scalar(Value::String("2026-06-30".to_string())),
-                )]),
-            ),
-            (
-                "Status".to_string(),
-                Instance::Scalar(Value::String("filed".to_string())),
-            ),
-        ])]),
-    )]);
+                    (
+                        "Status".to_string(),
+                        Instance::Scalar(Value::String("filed".to_string())),
+                    ),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     let options = XbrlBoundaryOptions::external_target("taxonomy/report.xsd", None)?
         .with_namespace_bindings(vec![
             XbrlNamespaceBinding::new(vec!["rows".to_string(), "identifier".to_string()], XBRLI)?,
@@ -257,42 +269,62 @@ fn writes_only_the_direct_explicit_dimension_owner() -> Result<(), Box<dyn std::
     );
     row.repeating = true;
     let schema = SchemaNode::group("xbrl", vec![row]);
-    let instance = Instance::Group(vec![(
-        "rows".into(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            (
-                "identifier".into(),
-                Instance::Group(vec![
+    let instance = Instance::Group(
+        (vec![(
+            "rows".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
                     (
-                        "scheme".into(),
-                        Instance::Scalar(Value::String("urn:entity".into())),
+                        "identifier".into(),
+                        Instance::Group(
+                            (vec![
+                                (
+                                    "scheme".into(),
+                                    Instance::Scalar(Value::String("urn:entity".into())),
+                                ),
+                                (
+                                    XML_TEXT_FIELD.into(),
+                                    Instance::Scalar(Value::String("Example".into())),
+                                ),
+                            ])
+                            .into(),
+                        ),
                     ),
                     (
-                        XML_TEXT_FIELD.into(),
-                        Instance::Scalar(Value::String("Example".into())),
+                        "period".into(),
+                        Instance::Group(
+                            (vec![(
+                                "instant".into(),
+                                Instance::Scalar(Value::String("2026-06-30".into())),
+                            )])
+                            .into(),
+                        ),
                     ),
-                ]),
-            ),
-            (
-                "period".into(),
-                Instance::Group(vec![(
-                    "instant".into(),
-                    Instance::Scalar(Value::String("2026-06-30".into())),
-                )]),
-            ),
-            (
-                "contextWrapper".into(),
-                Instance::Group(vec![(
-                    "RegionAxis".into(),
-                    Instance::Group(vec![(
-                        "explicitMember".into(),
-                        Instance::Scalar(Value::String("{urn:members}RegionMember".into())),
-                    )]),
-                )]),
-            ),
-            ("Amount".into(), Instance::Scalar(Value::String("5".into()))),
-        ])]),
-    )]);
+                    (
+                        "contextWrapper".into(),
+                        Instance::Group(
+                            (vec![(
+                                "RegionAxis".into(),
+                                Instance::Group(
+                                    (vec![(
+                                        "explicitMember".into(),
+                                        Instance::Scalar(Value::String(
+                                            "{urn:members}RegionMember".into(),
+                                        )),
+                                    )])
+                                    .into(),
+                                ),
+                            )])
+                            .into(),
+                        ),
+                    ),
+                    ("Amount".into(), Instance::Scalar(Value::String("5".into()))),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     let options = XbrlBoundaryOptions::external_target("taxonomy.xsd", None)?
         .with_namespace_bindings(vec![
             XbrlNamespaceBinding::new(vec!["rows".into(), "identifier".into()], XBRLI)?,
@@ -413,82 +445,112 @@ fn writes_class_specific_numeric_defaults_and_leaves_unbound_facts_unnumbered()
         ],
     );
     let scalar = |value: &str| Instance::Scalar(Value::String(value.into()));
-    let default_value = |value: &str| Instance::Group(vec![("decimals".into(), scalar(value))]);
+    let default_value =
+        |value: &str| Instance::Group((vec![("decimals".into(), scalar(value))]).into());
     let direct_unit_value = |id: &str, measure: &str| {
-        Instance::Group(vec![
-            ("id".into(), scalar(id)),
-            ("measure".into(), scalar(measure)),
-        ])
+        Instance::Group(
+            (vec![
+                ("id".into(), scalar(id)),
+                ("measure".into(), scalar(measure)),
+            ])
+            .into(),
+        )
     };
-    let instance = Instance::Group(vec![
-        (
-            "defaults".into(),
-            Instance::Group(vec![
-                ("monetaryItemType".into(), default_value("-2")),
-                ("numericItemType".into(), default_value("-3")),
-                ("sharesItemType".into(), default_value("0")),
-                ("perShareItemType".into(), default_value("-4")),
-            ]),
-        ),
-        (
-            "unit".into(),
-            direct_unit_value("", "{http://www.xbrl.org/2003/iso4217}USD"),
-        ),
-        (
-            "unit".into(),
-            direct_unit_value("pure", "{http://www.xbrl.org/2003/instance}pure"),
-        ),
-        (
-            "unit".into(),
-            direct_unit_value("", "{http://www.xbrl.org/2003/instance}shares"),
-        ),
-        (
-            "unit".into(),
-            Instance::Group(vec![
-                ("id".into(), scalar("")),
-                (
-                    "divide".into(),
-                    Instance::Group(vec![
+    let instance = Instance::Group(
+        (vec![
+            (
+                "defaults".into(),
+                Instance::Group(
+                    (vec![
+                        ("monetaryItemType".into(), default_value("-2")),
+                        ("numericItemType".into(), default_value("-3")),
+                        ("sharesItemType".into(), default_value("0")),
+                        ("perShareItemType".into(), default_value("-4")),
+                    ])
+                    .into(),
+                ),
+            ),
+            (
+                "unit".into(),
+                direct_unit_value("", "{http://www.xbrl.org/2003/iso4217}USD"),
+            ),
+            (
+                "unit".into(),
+                direct_unit_value("pure", "{http://www.xbrl.org/2003/instance}pure"),
+            ),
+            (
+                "unit".into(),
+                direct_unit_value("", "{http://www.xbrl.org/2003/instance}shares"),
+            ),
+            (
+                "unit".into(),
+                Instance::Group(
+                    (vec![
+                        ("id".into(), scalar("")),
                         (
-                            "unitNumerator".into(),
-                            Instance::Group(vec![(
-                                "measure".into(),
-                                scalar("{http://www.xbrl.org/2003/iso4217}USD"),
-                            )]),
+                            "divide".into(),
+                            Instance::Group(
+                                (vec![
+                                    (
+                                        "unitNumerator".into(),
+                                        Instance::Group(
+                                            (vec![(
+                                                "measure".into(),
+                                                scalar("{http://www.xbrl.org/2003/iso4217}USD"),
+                                            )])
+                                            .into(),
+                                        ),
+                                    ),
+                                    (
+                                        "unitDenominator".into(),
+                                        Instance::Group(
+                                            (vec![(
+                                                "measure".into(),
+                                                scalar("{http://www.xbrl.org/2003/instance}shares"),
+                                            )])
+                                            .into(),
+                                        ),
+                                    ),
+                                ])
+                                .into(),
+                            ),
+                        ),
+                    ])
+                    .into(),
+                ),
+            ),
+            (
+                "rows".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        (
+                            "identifier".into(),
+                            Instance::Group(
+                                (vec![
+                                    ("scheme".into(), scalar("urn:entity")),
+                                    (XML_TEXT_FIELD.into(), scalar("Example")),
+                                ])
+                                .into(),
+                            ),
                         ),
                         (
-                            "unitDenominator".into(),
-                            Instance::Group(vec![(
-                                "measure".into(),
-                                scalar("{http://www.xbrl.org/2003/instance}shares"),
-                            )]),
+                            "period".into(),
+                            Instance::Group(
+                                (vec![("instant".into(), scalar("2026-06-30"))]).into(),
+                            ),
                         ),
-                    ]),
-                ),
-            ]),
-        ),
-        (
-            "rows".into(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                (
-                    "identifier".into(),
-                    Instance::Group(vec![
-                        ("scheme".into(), scalar("urn:entity")),
-                        (XML_TEXT_FIELD.into(), scalar("Example")),
-                    ]),
-                ),
-                (
-                    "period".into(),
-                    Instance::Group(vec![("instant".into(), scalar("2026-06-30"))]),
-                ),
-                ("Amount".into(), scalar("100.00")),
-                ("Ratio".into(), scalar("0.125")),
-                ("ShareCount".into(), scalar("42")),
-                ("EPS".into(), scalar("2.50")),
-                ("Label".into(), scalar("reported")),
-            ])]),
-        ),
-    ]);
+                        ("Amount".into(), scalar("100.00")),
+                        ("Ratio".into(), scalar("0.125")),
+                        ("ShareCount".into(), scalar("42")),
+                        ("EPS".into(), scalar("2.50")),
+                        ("Label".into(), scalar("reported")),
+                    ])
+                    .into(),
+                )]),
+            ),
+        ])
+        .into(),
+    );
     let fact_paths = [
         ("Amount", XbrlFactType::Monetary),
         ("Ratio", XbrlFactType::Numeric),
@@ -553,15 +615,21 @@ fn derives_per_share_unit_from_one_currency_measure() -> Result<(), Box<dyn std:
             vec![SchemaNode::scalar("measure", ScalarType::String)],
         )],
     );
-    let instance = Instance::Group(vec![(
-        "unit".into(),
-        Instance::Group(vec![(
-            "measure".into(),
-            Instance::Scalar(Value::String(
-                "{http://www.xbrl.org/2003/iso4217}USD".into(),
-            )),
-        )]),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            "unit".into(),
+            Instance::Group(
+                (vec![(
+                    "measure".into(),
+                    Instance::Scalar(Value::String(
+                        "{http://www.xbrl.org/2003/iso4217}USD".into(),
+                    )),
+                )])
+                .into(),
+            ),
+        )])
+        .into(),
+    );
     let namespaces = BTreeMap::from([(vec!["unit".into()], XBRLI.to_string())]);
     let fact_types = BTreeMap::from([(vec!["rows".into(), "EPS".into()], XbrlFactType::PerShare)]);
 
@@ -620,43 +688,63 @@ fn writes_xbrli_named_row_wrappers_and_prunes_fact_empty_rows()
     );
     let scalar = |value: &str| Instance::Scalar(Value::String(value.into()));
     let row = |amount: Value| {
-        Instance::Group(vec![
+        Instance::Group(
+            (vec![
+                (
+                    "identifier".into(),
+                    Instance::Group(
+                        (vec![
+                            ("scheme".into(), scalar("urn:entity")),
+                            (XML_TEXT_FIELD.into(), scalar("Example")),
+                        ])
+                        .into(),
+                    ),
+                ),
+                (
+                    "period".into(),
+                    Instance::Group(
+                        (vec![
+                            (
+                                "period".into(),
+                                Instance::Group(
+                                    (vec![("instant".into(), scalar("2026-06-30"))]).into(),
+                                ),
+                            ),
+                            ("Amount".into(), Instance::Scalar(amount)),
+                            ("footnote".into(), scalar("structural note")),
+                        ])
+                        .into(),
+                    ),
+                ),
+            ])
+            .into(),
+        )
+    };
+    let instance = Instance::Group(
+        (vec![
             (
-                "identifier".into(),
-                Instance::Group(vec![
-                    ("scheme".into(), scalar("urn:entity")),
-                    (XML_TEXT_FIELD.into(), scalar("Example")),
-                ]),
+                "unit".into(),
+                Instance::Group(
+                    (vec![(
+                        "measure".into(),
+                        scalar("{http://www.xbrl.org/2003/iso4217}USD"),
+                    )])
+                    .into(),
+                ),
             ),
             (
-                "period".into(),
-                Instance::Group(vec![
-                    (
-                        "period".into(),
-                        Instance::Group(vec![("instant".into(), scalar("2026-06-30"))]),
-                    ),
-                    ("Amount".into(), Instance::Scalar(amount)),
-                    ("footnote".into(), scalar("structural note")),
-                ]),
+                "Report".into(),
+                Instance::Group(
+                    (vec![(
+                        "identifier".into(),
+                        Instance::Repeated(vec![row(Value::Null), row(Value::Float(42.0))]),
+                    )])
+                    .into(),
+                ),
             ),
         ])
-    };
-    let instance = Instance::Group(vec![
-        (
-            "unit".into(),
-            Instance::Group(vec![(
-                "measure".into(),
-                scalar("{http://www.xbrl.org/2003/iso4217}USD"),
-            )]),
-        ),
-        (
-            "Report".into(),
-            Instance::Group(vec![(
-                "identifier".into(),
-                Instance::Repeated(vec![row(Value::Null), row(Value::Float(42.0))]),
-            )]),
-        ),
-    ]);
+        .into(),
+    );
     let row_path = vec!["Report".into(), "identifier".into()];
     let fact_path = vec![
         "Report".into(),

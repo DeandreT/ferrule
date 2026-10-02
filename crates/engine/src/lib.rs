@@ -685,7 +685,7 @@ fn evaluate_run<R>(
     evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
 ) -> Result<R, EngineError> {
     let runtime_frame = Instance::Group(
-        execution
+        (execution
             .into_iter()
             .flat_map(|execution| {
                 [
@@ -712,9 +712,10 @@ fn evaluate_run<R>(
                         )
                     })
             }))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     );
-    let extras_frame = Instance::Group(extras);
+    let extras_frame = Instance::Group((extras).into());
     let context = [&runtime_frame, &extras_frame, source];
     let first_failure_reported = Cell::new(false);
     let program = eval_expr::EvalProgram::new(

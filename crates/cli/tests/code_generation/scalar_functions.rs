@@ -531,187 +531,194 @@ fn scalar_function_project() -> Project {
 }
 
 fn source(mode: ErrorMode) -> Instance {
-    Instance::Group(vec![(
-        "FailType".into(),
-        Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Type))),
-    )])
+    Instance::Group(
+        (vec![(
+            "FailType".into(),
+            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Type))),
+        )])
+        .into(),
+    )
 }
 
 fn values(fields: Vec<(&str, Value)>) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .into_iter()
             .map(|(name, value)| (name.into(), Instance::Scalar(value)))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
 fn expected() -> Instance {
-    Instance::Group(vec![
-        (
-            "Concat".into(),
-            values(vec![
-                ("Empty", Value::String(String::new())),
-                ("Mixed", Value::String("false-71.25|done".into())),
-            ]),
-        ),
-        (
-            "Case".into(),
-            values(vec![
-                ("Upper", Value::String("ALPHA BETA É".into())),
-                ("Lower", Value::String("mixed é".into())),
-            ]),
-        ),
-        (
-            "FormatNumber".into(),
-            values(vec![
-                ("Grouped", Value::String("12,345.68".into())),
-                ("Negative", Value::String("[12.5]".into())),
-                ("Percent", Value::String("12.6%".into())),
-                ("Custom", Value::String("1.234,50".into())),
-                (
-                    "ExactInteger",
-                    Value::String("-9,223,372,036,854,775,808".into()),
-                ),
-            ]),
-        ),
-        (
-            "InteropScalar".into(),
-            values(vec![
-                ("Boolean", Value::Bool(true)),
-                ("Positive", Value::Float(2.5)),
-                ("Floor", Value::Float(-3.0)),
-                ("Date", Value::String("10 Nov 2004 +01:00".into())),
-                (
-                    "Datetime",
-                    Value::String("DECEMBER 01, 2010 03:02:39 pm GMT+01:00".into()),
-                ),
-                ("Time", Value::String("09:53:00.125Z".into())),
-            ]),
-        ),
-        (
-            "Whitespace".into(),
-            values(vec![
-                (
-                    "Normalized",
-                    Value::String("alpha beta\u{000b}gamma\u{00a0} delta".into()),
-                ),
-                ("Left", Value::String("\u{000b}\u{00a0}left \t".into())),
-                ("Right", Value::String(" \t right\u{00a0}\u{000b}".into())),
-            ]),
-        ),
-        (
-            "Length".into(),
-            values(vec![
-                ("Unicode", Value::Int(5)),
-                ("Null", Value::Int(0)),
-                ("Nil", Value::Int(0)),
-            ]),
-        ),
-        (
-            "Split".into(),
-            values(vec![
-                ("BeforeEmpty", Value::String(String::new())),
-                ("AfterEmpty", Value::String("alpha".into())),
-                ("BeforeMiss", Value::String(String::new())),
-                ("AfterMiss", Value::String(String::new())),
-                ("BeforeUnicode", Value::String("head".into())),
-                ("AfterUnicode", Value::String("tail🙂end".into())),
-            ]),
-        ),
-        (
-            "String".into(),
-            values(vec![
-                ("Null", Value::String(String::new())),
-                ("Nil", Value::String(String::new())),
-                ("Bool", Value::String("false".into())),
-                ("Int", Value::String("-42".into())),
-            ]),
-        ),
-        (
-            "Missing".into(),
-            values(vec![
-                ("Null", Value::String("fallback-null".into())),
-                ("Nil", Value::String("fallback-nil".into())),
-                ("Empty", Value::String(String::new())),
-                ("Int", Value::Int(0)),
-                ("XmlNil", Value::xml_nil()),
-            ]),
-        ),
-        (
-            "Nil".into(),
-            values(vec![
-                ("Nil", Value::Bool(true)),
-                ("Null", Value::Bool(false)),
-                ("Empty", Value::Bool(false)),
-            ]),
-        ),
-        (
-            "Paths".into(),
-            values(vec![
-                ("MixedFolder", Value::String("one/two\\".into())),
-                ("MixedName", Value::String("file.xml".into())),
-                ("Extension", Value::String(".gz".into())),
-                ("UrlFolder", Value::String("https://example.test/a/".into())),
-                ("DriveFolder", Value::String("C:\\work\\data\\".into())),
-                (
-                    "MixedBase",
-                    Value::String("C:/work\\data/reports/out.xml".into()),
-                ),
-                (
-                    "MixedPath",
-                    Value::String("/var/data\\reports\\out.xml".into()),
-                ),
-                ("Windows", Value::String("C:\\work\\reports/out.xml".into())),
-                (
-                    "Url",
-                    Value::String("https://example.test/config.xml".into()),
-                ),
-                ("Drive", Value::String("D:\\data\\config.xml".into())),
-                ("Parent", Value::String("C:\\work\\out.xml".into())),
-            ]),
-        ),
-        (
-            "Temporal".into(),
-            values(vec![
-                ("Year", Value::Int(1)),
-                ("Month", Value::Int(3)),
-                ("Day", Value::Int(1)),
-                ("Weekday", Value::Int(6)),
-                ("Hour", Value::Int(0)),
-                ("Minute", Value::Int(59)),
-                ("Time", Value::String("09:30:02.5+05:00".into())),
-                (
-                    "Composed",
-                    Value::String("2024-02-29T09:08:07.125+05:30".into()),
-                ),
-                (
-                    "Parts",
-                    Value::String("2024-02-29T09:08:07.1255+05:30".into()),
-                ),
-                ("Coerced", Value::String("2031-08-17T00:00:00+05:45".into())),
-                ("ParsedDate", Value::String("2004-11-10+01:00".into())),
-                (
-                    "ParsedDatetime",
-                    Value::String("2010-12-01T15:02:39+01:00".into()),
-                ),
-                ("ParsedTime", Value::String("09:53:00".into())),
-                (
-                    "AddedDatetime",
-                    Value::String("2024-03-02T01:00:01Z".into()),
-                ),
-                (
-                    "EdifactDatetime",
-                    Value::String("2024-02-29T13:05:00-09:00".into()),
-                ),
-                ("Null", Value::Null),
-            ]),
-        ),
-        (
-            "Errors".into(),
-            values(vec![("Type", Value::String("safe-type".into()))]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Concat".into(),
+                values(vec![
+                    ("Empty", Value::String(String::new())),
+                    ("Mixed", Value::String("false-71.25|done".into())),
+                ]),
+            ),
+            (
+                "Case".into(),
+                values(vec![
+                    ("Upper", Value::String("ALPHA BETA É".into())),
+                    ("Lower", Value::String("mixed é".into())),
+                ]),
+            ),
+            (
+                "FormatNumber".into(),
+                values(vec![
+                    ("Grouped", Value::String("12,345.68".into())),
+                    ("Negative", Value::String("[12.5]".into())),
+                    ("Percent", Value::String("12.6%".into())),
+                    ("Custom", Value::String("1.234,50".into())),
+                    (
+                        "ExactInteger",
+                        Value::String("-9,223,372,036,854,775,808".into()),
+                    ),
+                ]),
+            ),
+            (
+                "InteropScalar".into(),
+                values(vec![
+                    ("Boolean", Value::Bool(true)),
+                    ("Positive", Value::Float(2.5)),
+                    ("Floor", Value::Float(-3.0)),
+                    ("Date", Value::String("10 Nov 2004 +01:00".into())),
+                    (
+                        "Datetime",
+                        Value::String("DECEMBER 01, 2010 03:02:39 pm GMT+01:00".into()),
+                    ),
+                    ("Time", Value::String("09:53:00.125Z".into())),
+                ]),
+            ),
+            (
+                "Whitespace".into(),
+                values(vec![
+                    (
+                        "Normalized",
+                        Value::String("alpha beta\u{000b}gamma\u{00a0} delta".into()),
+                    ),
+                    ("Left", Value::String("\u{000b}\u{00a0}left \t".into())),
+                    ("Right", Value::String(" \t right\u{00a0}\u{000b}".into())),
+                ]),
+            ),
+            (
+                "Length".into(),
+                values(vec![
+                    ("Unicode", Value::Int(5)),
+                    ("Null", Value::Int(0)),
+                    ("Nil", Value::Int(0)),
+                ]),
+            ),
+            (
+                "Split".into(),
+                values(vec![
+                    ("BeforeEmpty", Value::String(String::new())),
+                    ("AfterEmpty", Value::String("alpha".into())),
+                    ("BeforeMiss", Value::String(String::new())),
+                    ("AfterMiss", Value::String(String::new())),
+                    ("BeforeUnicode", Value::String("head".into())),
+                    ("AfterUnicode", Value::String("tail🙂end".into())),
+                ]),
+            ),
+            (
+                "String".into(),
+                values(vec![
+                    ("Null", Value::String(String::new())),
+                    ("Nil", Value::String(String::new())),
+                    ("Bool", Value::String("false".into())),
+                    ("Int", Value::String("-42".into())),
+                ]),
+            ),
+            (
+                "Missing".into(),
+                values(vec![
+                    ("Null", Value::String("fallback-null".into())),
+                    ("Nil", Value::String("fallback-nil".into())),
+                    ("Empty", Value::String(String::new())),
+                    ("Int", Value::Int(0)),
+                    ("XmlNil", Value::xml_nil()),
+                ]),
+            ),
+            (
+                "Nil".into(),
+                values(vec![
+                    ("Nil", Value::Bool(true)),
+                    ("Null", Value::Bool(false)),
+                    ("Empty", Value::Bool(false)),
+                ]),
+            ),
+            (
+                "Paths".into(),
+                values(vec![
+                    ("MixedFolder", Value::String("one/two\\".into())),
+                    ("MixedName", Value::String("file.xml".into())),
+                    ("Extension", Value::String(".gz".into())),
+                    ("UrlFolder", Value::String("https://example.test/a/".into())),
+                    ("DriveFolder", Value::String("C:\\work\\data\\".into())),
+                    (
+                        "MixedBase",
+                        Value::String("C:/work\\data/reports/out.xml".into()),
+                    ),
+                    (
+                        "MixedPath",
+                        Value::String("/var/data\\reports\\out.xml".into()),
+                    ),
+                    ("Windows", Value::String("C:\\work\\reports/out.xml".into())),
+                    (
+                        "Url",
+                        Value::String("https://example.test/config.xml".into()),
+                    ),
+                    ("Drive", Value::String("D:\\data\\config.xml".into())),
+                    ("Parent", Value::String("C:\\work\\out.xml".into())),
+                ]),
+            ),
+            (
+                "Temporal".into(),
+                values(vec![
+                    ("Year", Value::Int(1)),
+                    ("Month", Value::Int(3)),
+                    ("Day", Value::Int(1)),
+                    ("Weekday", Value::Int(6)),
+                    ("Hour", Value::Int(0)),
+                    ("Minute", Value::Int(59)),
+                    ("Time", Value::String("09:30:02.5+05:00".into())),
+                    (
+                        "Composed",
+                        Value::String("2024-02-29T09:08:07.125+05:30".into()),
+                    ),
+                    (
+                        "Parts",
+                        Value::String("2024-02-29T09:08:07.1255+05:30".into()),
+                    ),
+                    ("Coerced", Value::String("2031-08-17T00:00:00+05:45".into())),
+                    ("ParsedDate", Value::String("2004-11-10+01:00".into())),
+                    (
+                        "ParsedDatetime",
+                        Value::String("2010-12-01T15:02:39+01:00".into()),
+                    ),
+                    ("ParsedTime", Value::String("09:53:00".into())),
+                    (
+                        "AddedDatetime",
+                        Value::String("2024-03-02T01:00:01Z".into()),
+                    ),
+                    (
+                        "EdifactDatetime",
+                        Value::String("2024-02-29T13:05:00-09:00".into()),
+                    ),
+                    ("Null", Value::Null),
+                ]),
+            ),
+            (
+                "Errors".into(),
+                values(vec![("Type", Value::String("safe-type".into()))]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 #[test]

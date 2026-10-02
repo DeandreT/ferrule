@@ -392,47 +392,53 @@ mod tests {
     #[test]
     fn group_field_order_is_semantic_free_but_sequence_order_is_not() {
         let scalar = |value| Instance::Scalar(Value::Int(value));
-        let expected = Instance::Group(vec![
-            (
-                "nested".into(),
-                Instance::Group(vec![
-                    ("first".into(), scalar(1)),
-                    ("second".into(), scalar(2)),
-                ]),
-            ),
-            (
-                "items".into(),
-                Instance::Repeated(vec![scalar(3), scalar(4)]),
-            ),
-        ]);
-        let reordered = Instance::Group(vec![
-            (
-                "items".into(),
-                Instance::Repeated(vec![scalar(3), scalar(4)]),
-            ),
-            (
-                "nested".into(),
-                Instance::Group(vec![
-                    ("second".into(), scalar(2)),
-                    ("first".into(), scalar(1)),
-                ]),
-            ),
-        ]);
+        let expected = Instance::Group(
+            (vec![
+                (
+                    "nested".into(),
+                    Instance::Group(
+                        (vec![("first".into(), scalar(1)), ("second".into(), scalar(2))]).into(),
+                    ),
+                ),
+                (
+                    "items".into(),
+                    Instance::Repeated(vec![scalar(3), scalar(4)]),
+                ),
+            ])
+            .into(),
+        );
+        let reordered = Instance::Group(
+            (vec![
+                (
+                    "items".into(),
+                    Instance::Repeated(vec![scalar(3), scalar(4)]),
+                ),
+                (
+                    "nested".into(),
+                    Instance::Group(
+                        (vec![("second".into(), scalar(2)), ("first".into(), scalar(1))]).into(),
+                    ),
+                ),
+            ])
+            .into(),
+        );
         assert!(instances_semantically_equal(&expected, &reordered));
 
-        let reordered_items = Instance::Group(vec![
-            (
-                "items".into(),
-                Instance::Repeated(vec![scalar(4), scalar(3)]),
-            ),
-            (
-                "nested".into(),
-                Instance::Group(vec![
-                    ("second".into(), scalar(2)),
-                    ("first".into(), scalar(1)),
-                ]),
-            ),
-        ]);
+        let reordered_items = Instance::Group(
+            (vec![
+                (
+                    "items".into(),
+                    Instance::Repeated(vec![scalar(4), scalar(3)]),
+                ),
+                (
+                    "nested".into(),
+                    Instance::Group(
+                        (vec![("second".into(), scalar(2)), ("first".into(), scalar(1))]).into(),
+                    ),
+                ),
+            ])
+            .into(),
+        );
         assert!(!instances_semantically_equal(&expected, &reordered_items));
         assert!(
             first_instance_difference(&expected, &reordered_items)
@@ -442,14 +448,20 @@ mod tests {
 
     #[test]
     fn duplicate_group_names_retain_positional_comparison() {
-        let expected = Instance::Group(vec![
-            ("value".into(), Instance::Scalar(Value::Int(1))),
-            ("value".into(), Instance::Scalar(Value::Int(2))),
-        ]);
-        let reordered = Instance::Group(vec![
-            ("value".into(), Instance::Scalar(Value::Int(2))),
-            ("value".into(), Instance::Scalar(Value::Int(1))),
-        ]);
+        let expected = Instance::Group(
+            (vec![
+                ("value".into(), Instance::Scalar(Value::Int(1))),
+                ("value".into(), Instance::Scalar(Value::Int(2))),
+            ])
+            .into(),
+        );
+        let reordered = Instance::Group(
+            (vec![
+                ("value".into(), Instance::Scalar(Value::Int(2))),
+                ("value".into(), Instance::Scalar(Value::Int(1))),
+            ])
+            .into(),
+        );
 
         assert!(!instances_semantically_equal(&expected, &reordered));
     }

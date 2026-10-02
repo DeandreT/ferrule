@@ -71,7 +71,7 @@ pub fn from_str(
     let mut state = ParseState::default();
     let fields = parse_command(layout.command(), text, layout.root_name(), 1, &mut state)?;
     state.add_nodes(1)?;
-    Ok(Instance::Group(fields))
+    Ok(Instance::Group((fields).into()))
 }
 
 /// Writes one structured-text document after fully validating and rendering it.
@@ -189,7 +189,7 @@ fn parse_command(
                 state,
             )?);
             state.add_nodes(1)?;
-            Ok(vec![(name.clone(), Instance::Group(fields))])
+            Ok(vec![(name.clone(), Instance::Group((fields).into()))])
         }
         FlexCommand::SplitMany {
             name,
@@ -205,7 +205,7 @@ fn parse_command(
                 let fields = parse_command(child, chunk, &item_path, depth + 1, state)?;
                 if !fields.is_empty() {
                     state.add_nodes(1)?;
-                    items.push(Instance::Group(fields));
+                    items.push(Instance::Group((fields).into()));
                 }
             }
             state.add_nodes(1)?;
@@ -299,7 +299,7 @@ fn parse_command(
                 return Ok(Vec::new());
             }
             state.add_nodes(1)?;
-            Ok(vec![(name.clone(), Instance::Group(fields))])
+            Ok(vec![(name.clone(), Instance::Group((fields).into()))])
         }
     }
 }
@@ -571,7 +571,7 @@ fn parse_fixed_record(
         offset += width;
     }
     state.add_nodes(fields.len() + 1)?;
-    Ok(Instance::Group(values))
+    Ok(Instance::Group((values).into()))
 }
 
 fn parse_delimited(
@@ -687,7 +687,7 @@ fn parse_delimited_record(
         })
         .collect::<Result<Vec<_>, FlexTextError>>()?;
     state.add_nodes(fields.len() + 1)?;
-    Ok(Instance::Group(values))
+    Ok(Instance::Group((values).into()))
 }
 
 fn render_command(

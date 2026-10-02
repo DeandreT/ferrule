@@ -57,10 +57,13 @@ fn project(output_path: u32) -> Project {
 }
 
 fn member(path: &str, value: &str) -> DocumentMember {
-    let instance = Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String(value.into())),
-    )]);
+    let instance = Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String(value.into())),
+        )])
+        .into(),
+    );
     DocumentMember::new(path, instance).unwrap_or_else(|| panic!("valid member {path}"))
 }
 

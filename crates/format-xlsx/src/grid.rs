@@ -306,10 +306,11 @@ fn empty_instance(schema: &SchemaNode) -> Instance {
     match &schema.kind {
         SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Instance::Scalar(Value::Null),
         SchemaKind::Group { children, .. } => Instance::Group(
-            children
+            (children
                 .iter()
                 .map(|child| (child.name.clone(), empty_instance(child)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         ),
     }
 }
@@ -319,10 +320,11 @@ fn empty_group_instance(schema: &SchemaNode) -> Result<Instance, XlsxFormatError
         return Err(XlsxFormatError::GridRootSchema);
     };
     Ok(Instance::Group(
-        children
+        (children
             .iter()
             .map(|child| (child.name.clone(), empty_instance(child)))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     ))
 }
 
@@ -434,40 +436,52 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(index, value)| {
-                Instance::Group(vec![
-                    (
-                        "Value".into(),
-                        if value.is_empty() {
-                            scalar(Value::Null)
-                        } else {
-                            scalar(Value::String(value.to_string()))
-                        },
-                    ),
-                    ("Column".into(), scalar(Value::Int((index + 1) as i64))),
-                ])
+                Instance::Group(
+                    (vec![
+                        (
+                            "Value".into(),
+                            if value.is_empty() {
+                                scalar(Value::Null)
+                            } else {
+                                scalar(Value::String(value.to_string()))
+                            },
+                        ),
+                        ("Column".into(), scalar(Value::Int((index + 1) as i64))),
+                    ])
+                    .into(),
+                )
             })
             .collect()
     }
 
     fn expected_record(header: &str, column: i64) -> Instance {
-        Instance::Group(vec![
-            ("Year".into(), scalar(Value::String("2026".into()))),
-            ("Header".into(), scalar(Value::String(header.to_string()))),
-            ("HeaderColumn".into(), scalar(Value::Int(column))),
-            (
-                "Rows".into(),
-                Instance::Repeated(vec![
-                    Instance::Group(vec![(
-                        "Cells".into(),
-                        Instance::Repeated(expected_cells("West", "10", "30")),
-                    )]),
-                    Instance::Group(vec![(
-                        "Cells".into(),
-                        Instance::Repeated(expected_cells("East", "11", "31")),
-                    )]),
-                ]),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Year".into(), scalar(Value::String("2026".into()))),
+                ("Header".into(), scalar(Value::String(header.to_string()))),
+                ("HeaderColumn".into(), scalar(Value::Int(column))),
+                (
+                    "Rows".into(),
+                    Instance::Repeated(vec![
+                        Instance::Group(
+                            (vec![(
+                                "Cells".into(),
+                                Instance::Repeated(expected_cells("West", "10", "30")),
+                            )])
+                            .into(),
+                        ),
+                        Instance::Group(
+                            (vec![(
+                                "Cells".into(),
+                                Instance::Repeated(expected_cells("East", "11", "31")),
+                            )])
+                            .into(),
+                        ),
+                    ]),
+                ),
+            ])
+            .into(),
+        )
     }
 
     #[test]

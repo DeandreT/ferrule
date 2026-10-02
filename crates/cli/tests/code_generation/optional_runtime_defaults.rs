@@ -140,14 +140,17 @@ fn optional_project() -> Project {
 fn optional_runtime_defaults_match_interpreter_in_generated_rust_and_csharp() -> TestResult<()> {
     let project = optional_project();
     assert!(engine::validate(&project).is_empty());
-    let source = Instance::Group(Vec::new());
-    let fallback = Instance::Group(vec![
-        ("Direct".into(), Instance::Scalar(Value::Int(7))),
-        (
-            "Nested".into(),
-            Instance::Scalar(Value::String("inner-default".into())),
-        ),
-    ]);
+    let source = Instance::Group((Vec::new()).into());
+    let fallback = Instance::Group(
+        (vec![
+            ("Direct".into(), Instance::Scalar(Value::Int(7))),
+            (
+                "Nested".into(),
+                Instance::Scalar(Value::String("inner-default".into())),
+            ),
+        ])
+        .into(),
+    );
     assert_eq!(engine::run(&project, &source)?, fallback);
     let mut supplied = engine::RuntimeParameters::new();
     supplied.insert("control", Value::String(" 42 ".into()))?;
@@ -156,13 +159,16 @@ fn optional_runtime_defaults_match_interpreter_in_generated_rust_and_csharp() ->
         engine::ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&supplied);
     assert_eq!(
         engine::run_with_context(&project, &source, &context)?,
-        Instance::Group(vec![
-            ("Direct".into(), Instance::Scalar(Value::Int(42))),
-            (
-                "Nested".into(),
-                Instance::Scalar(Value::String("host".into()))
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Direct".into(), Instance::Scalar(Value::Int(42))),
+                (
+                    "Nested".into(),
+                    Instance::Scalar(Value::String("host".into()))
+                ),
+            ])
+            .into()
+        )
     );
     let mut lazy = engine::RuntimeParameters::new();
     lazy.insert("explode_default", Value::Bool(true))?;

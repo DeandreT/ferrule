@@ -28,7 +28,7 @@ fn execute(types: [ScalarType; 2], value: Value) -> Result<Value, EngineError> {
             ..Scope::default()
         },
     };
-    run(&project, &Instance::Group(Vec::new()))?
+    run(&project, &Instance::Group((Vec::new()).into()))?
         .field("value")
         .and_then(Instance::as_scalar)
         .cloned()
@@ -58,7 +58,7 @@ fn execute_scalar_scope(types: [ScalarType; 2], value: Value) -> Result<Value, E
             ..Scope::default()
         },
     };
-    run(&project, &Instance::Group(Vec::new()))?
+    run(&project, &Instance::Group((Vec::new()).into()))?
         .as_scalar()
         .cloned()
         .ok_or_else(|| EngineError::MissingSourceField("target".into()))

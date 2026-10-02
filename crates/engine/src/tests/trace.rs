@@ -101,20 +101,26 @@ fn trace_records_post_order_values_with_iteration_positions() -> Result<(), Box<
         failure_rules: Vec::new(),
         user_functions: Default::default(),
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(
-            ["first", "second"]
-                .into_iter()
-                .map(|value| {
-                    Instance::Group(vec![(
-                        "Value".into(),
-                        Instance::Scalar(Value::String(value.into())),
-                    )])
-                })
-                .collect(),
-        ),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(
+                ["first", "second"]
+                    .into_iter()
+                    .map(|value| {
+                        Instance::Group(
+                            (vec![(
+                                "Value".into(),
+                                Instance::Scalar(Value::String(value.into())),
+                            )])
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    );
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
 
@@ -304,7 +310,7 @@ fn trace_records_generated_control_decisions_without_target_instances() -> Resul
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
 
-    run_with_context(&project, &Instance::Group(Vec::new()), &execution)?;
+    run_with_context(&project, &Instance::Group((Vec::new()).into()), &execution)?;
 
     let events = collector.0.into_inner();
     let control_scope = |scope: &crate::TraceScope| {
@@ -454,18 +460,21 @@ fn trace_identifies_join_candidates_and_their_tuple_positions() -> Result<(), Bo
         user_functions: Default::default(),
     };
     let row = |name: &str, value: i64| {
-        Instance::Group(vec![(name.into(), Instance::Scalar(Value::Int(value)))])
+        Instance::Group((vec![(name.into(), Instance::Scalar(Value::Int(value)))]).into())
     };
-    let source = Instance::Group(vec![
-        (
-            "Left".into(),
-            Instance::Repeated(vec![row("Id", 1), row("Id", 2)]),
-        ),
-        (
-            "Right".into(),
-            Instance::Repeated(vec![row("LeftId", 2), row("LeftId", 1)]),
-        ),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "Left".into(),
+                Instance::Repeated(vec![row("Id", 1), row("Id", 2)]),
+            ),
+            (
+                "Right".into(),
+                Instance::Repeated(vec![row("LeftId", 2), row("LeftId", 1)]),
+            ),
+        ])
+        .into(),
+    );
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
 
@@ -585,18 +594,20 @@ fn aggregate_inputs_keep_item_positions_and_parent_argument_order() -> Result<()
         ],
     );
     let row = |text: &str| {
-        Instance::Group(vec![(
-            "Text".into(),
-            Instance::Scalar(Value::String(text.into())),
-        )])
+        Instance::Group(
+            (vec![("Text".into(), Instance::Scalar(Value::String(text.into())))]).into(),
+        )
     };
-    let source = Instance::Group(vec![
-        (
-            "Separator".into(),
-            Instance::Scalar(Value::String("|".into())),
-        ),
-        ("Row".into(), Instance::Repeated(vec![row("a"), row("b")])),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "Separator".into(),
+                Instance::Scalar(Value::String("|".into())),
+            ),
+            ("Row".into(), Instance::Repeated(vec![row("a"), row("b")])),
+        ])
+        .into(),
+    );
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
     let output = run_with_context(&project, &source, &execution)?;
@@ -645,13 +656,16 @@ fn aggregate_inputs_keep_item_positions_and_parent_argument_order() -> Result<()
     };
     *value = vec!["Text".into()];
     *expression = None;
-    let empty_source = Instance::Group(vec![
-        (
-            "Separator".into(),
-            Instance::Scalar(Value::String("|".into())),
-        ),
-        ("Row".into(), Instance::Repeated(Vec::new())),
-    ]);
+    let empty_source = Instance::Group(
+        (vec![
+            (
+                "Separator".into(),
+                Instance::Scalar(Value::String("|".into())),
+            ),
+            ("Row".into(), Instance::Repeated(Vec::new())),
+        ])
+        .into(),
+    );
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
     let output = run_with_context(&project, &empty_source, &execution)?;
@@ -738,20 +752,26 @@ fn join_aggregate_inputs_keep_tuple_positions_and_parent_argument() -> Result<()
         ],
     );
     let a = |text: &str| {
-        Instance::Group(vec![
-            ("Id".into(), Instance::Scalar(Value::Int(1))),
-            ("Text".into(), Instance::Scalar(Value::String(text.into()))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Id".into(), Instance::Scalar(Value::Int(1))),
+                ("Text".into(), Instance::Scalar(Value::String(text.into()))),
+            ])
+            .into(),
+        )
     };
-    let b = || Instance::Group(vec![("AId".into(), Instance::Scalar(Value::Int(1)))]);
-    let source = Instance::Group(vec![
-        (
-            "Separator".into(),
-            Instance::Scalar(Value::String("|".into())),
-        ),
-        ("A".into(), Instance::Repeated(vec![a("a"), a("b")])),
-        ("B".into(), Instance::Repeated(vec![b(), b()])),
-    ]);
+    let b = || Instance::Group((vec![("AId".into(), Instance::Scalar(Value::Int(1)))]).into());
+    let source = Instance::Group(
+        (vec![
+            (
+                "Separator".into(),
+                Instance::Scalar(Value::String("|".into())),
+            ),
+            ("A".into(), Instance::Repeated(vec![a("a"), a("b")])),
+            ("B".into(), Instance::Repeated(vec![b(), b()])),
+        ])
+        .into(),
+    );
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
     let output = run_with_context(&project, &source, &execution)?;
@@ -901,15 +921,21 @@ fn failed_aggregate_expression_emits_no_input_or_parent_argument() {
         ],
     );
     let row = |fail, text: &str| {
-        Instance::Group(vec![
-            ("Fail".into(), Instance::Scalar(Value::Bool(fail))),
-            ("Text".into(), Instance::Scalar(Value::String(text.into()))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Fail".into(), Instance::Scalar(Value::Bool(fail))),
+                ("Text".into(), Instance::Scalar(Value::String(text.into()))),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![row(false, "a"), row(true, "b")]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![row(false, "a"), row(true, "b")]),
+        )])
+        .into(),
+    );
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
     let error = run_with_context(&project, &source, &execution)
@@ -985,7 +1011,7 @@ fn input_trace_records_only_the_taken_conditional_branch() -> Result<(), Box<dyn
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
 
-    run_with_context(&project, &Instance::Group(Vec::new()), &execution)?;
+    run_with_context(&project, &Instance::Group((Vec::new()).into()), &execution)?;
 
     let events = collector.0.into_inner();
     assert_eq!(
@@ -1081,7 +1107,7 @@ fn target_field_trace_preserves_depth_first_write_order_and_scalar_states()
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
 
-    run_with_context(&project, &Instance::Group(Vec::new()), &execution)?;
+    run_with_context(&project, &Instance::Group((Vec::new()).into()), &execution)?;
 
     let writes = collector
         .0
@@ -1171,7 +1197,7 @@ fn target_field_trace_bounds_dynamic_keys_and_omits_rejected_writes() -> Result<
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
 
-    let error = run_with_context(&project, &Instance::Group(Vec::new()), &execution)
+    let error = run_with_context(&project, &Instance::Group((Vec::new()).into()), &execution)
         .expect_err("the duplicate dynamic field must fail");
     assert!(matches!(
         error,
@@ -1252,7 +1278,7 @@ fn target_field_trace_records_dynamic_children_after_their_content() -> Result<(
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
 
-    run_with_context(&project, &Instance::Group(Vec::new()), &execution)?;
+    run_with_context(&project, &Instance::Group((Vec::new()).into()), &execution)?;
 
     let writes = collector
         .0

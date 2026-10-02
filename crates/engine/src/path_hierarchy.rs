@@ -65,10 +65,13 @@ impl Directory {
             .files
             .into_iter()
             .map(|name| {
-                Instance::Group(vec![(
-                    plan.name().to_string(),
-                    Instance::Scalar(Value::String(name)),
-                )])
+                Instance::Group(
+                    (vec![(
+                        plan.name().to_string(),
+                        Instance::Scalar(Value::String(name)),
+                    )])
+                    .into(),
+                )
             })
             .collect();
         let directories = self
@@ -76,17 +79,20 @@ impl Directory {
             .into_iter()
             .map(|directory| directory.into_instance(plan))
             .collect();
-        Instance::Group(vec![
-            (plan.files().to_string(), Instance::Repeated(files)),
-            (
-                plan.directories().to_string(),
-                Instance::Repeated(directories),
-            ),
-            (
-                plan.name().to_string(),
-                Instance::Scalar(Value::String(self.name)),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (plan.files().to_string(), Instance::Repeated(files)),
+                (
+                    plan.directories().to_string(),
+                    Instance::Repeated(directories),
+                ),
+                (
+                    plan.name().to_string(),
+                    Instance::Scalar(Value::String(self.name)),
+                ),
+            ])
+            .into(),
+        )
     }
 }
 

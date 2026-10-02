@@ -146,6 +146,13 @@ public static class FerruleRecursiveFilter
             {
                 continue;
             }
+            if (replacement is null)
+            {
+                // No data in this unrelated occurrence changed: retain its own
+                // and its nested occurrences' facts through an exact clone.
+                rebuilt.Add(CloneInstance(entry));
+                continue;
+            }
             rebuilt.Add(group.RebuildFields(group.Fields.Select(field =>
                 new FerruleField(
                     field.Name,
@@ -249,7 +256,7 @@ public static class FerruleRecursiveFilter
     private static FerruleInstance CloneInstance(FerruleInstance instance) => instance switch
     {
         FerruleScalar scalar => new FerruleScalar(scalar.Value),
-        FerruleGroup group => group.RebuildFields(group.Fields.Select(field =>
+        FerruleGroup group => group.CloneFields(group.Fields.Select(field =>
             new FerruleField(field.Name, CloneInstance(field.Value)))),
         FerruleRepeated repeated => new FerruleRepeated(repeated.Items.Select(CloneInstance)),
         FerruleMappedSequence mapped => new FerruleMappedSequence(mapped.Items.Select(CloneInstance)),

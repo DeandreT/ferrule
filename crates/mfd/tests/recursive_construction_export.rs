@@ -221,25 +221,31 @@ fn project() -> Project {
 }
 
 fn directory(name: &str, files: &[&str], directories: Vec<Instance>) -> Instance {
-    Instance::Group(vec![
-        (
-            "name".into(),
-            Instance::Scalar(Value::String(name.to_string())),
-        ),
-        (
-            "file".into(),
-            Instance::Repeated(
-                files
-                    .iter()
-                    .map(|name| {
-                        Instance::Group(vec![(
-                            "name".into(),
-                            Instance::Scalar(Value::String((*name).to_string())),
-                        )])
-                    })
-                    .collect(),
+    Instance::Group(
+        (vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String(name.to_string())),
             ),
-        ),
-        ("directory".into(), Instance::Repeated(directories)),
-    ])
+            (
+                "file".into(),
+                Instance::Repeated(
+                    files
+                        .iter()
+                        .map(|name| {
+                            Instance::Group(
+                                (vec![(
+                                    "name".into(),
+                                    Instance::Scalar(Value::String((*name).to_string())),
+                                )])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
+            ("directory".into(), Instance::Repeated(directories)),
+        ])
+        .into(),
+    )
 }

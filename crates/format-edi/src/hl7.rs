@@ -436,58 +436,77 @@ mod tests {
                 ),
             ],
         );
-        let instance = Instance::Group(vec![
-            (
-                "MSH".into(),
-                Instance::Group(vec![
-                    ("MSH-1".into(), Instance::Scalar(Value::String("|".into()))),
-                    (
-                        "MSH-2".into(),
-                        Instance::Scalar(Value::String("^~\\&".into())),
-                    ),
-                    (
-                        "MSH-3".into(),
-                        Instance::Scalar(Value::String("SEND|APP^~\\&".into())),
-                    ),
-                ]),
-            ),
-            (
-                "PID".into(),
-                Instance::Group(vec![
-                    ("PID-1".into(), Instance::Scalar(Value::Int(1))),
-                    ("PID-2".into(), Instance::Scalar(Value::Null)),
-                    (
-                        "PID-3".into(),
-                        Instance::Repeated(vec![
-                            Instance::Scalar(Value::String("A".into())),
-                            Instance::Scalar(Value::String("B".into())),
-                        ]),
-                    ),
-                    (
-                        "PID-4".into(),
-                        Instance::Group(vec![
+        let instance = Instance::Group(
+            (vec![
+                (
+                    "MSH".into(),
+                    Instance::Group(
+                        (vec![
+                            ("MSH-1".into(), Instance::Scalar(Value::String("|".into()))),
                             (
-                                "CX-1".into(),
-                                Instance::Group(vec![
-                                    (
-                                        "Part-1".into(),
-                                        Instance::Scalar(Value::String("Family&Prefix".into())),
-                                    ),
-                                    (
-                                        "Part-2".into(),
-                                        Instance::Scalar(Value::String("Given".into())),
-                                    ),
+                                "MSH-2".into(),
+                                Instance::Scalar(Value::String("^~\\&".into())),
+                            ),
+                            (
+                                "MSH-3".into(),
+                                Instance::Scalar(Value::String("SEND|APP^~\\&".into())),
+                            ),
+                        ])
+                        .into(),
+                    ),
+                ),
+                (
+                    "PID".into(),
+                    Instance::Group(
+                        (vec![
+                            ("PID-1".into(), Instance::Scalar(Value::Int(1))),
+                            ("PID-2".into(), Instance::Scalar(Value::Null)),
+                            (
+                                "PID-3".into(),
+                                Instance::Repeated(vec![
+                                    Instance::Scalar(Value::String("A".into())),
+                                    Instance::Scalar(Value::String("B".into())),
                                 ]),
                             ),
                             (
-                                "CX-2".into(),
-                                Instance::Scalar(Value::String("AUTH".into())),
+                                "PID-4".into(),
+                                Instance::Group(
+                                    (vec![
+                                        (
+                                            "CX-1".into(),
+                                            Instance::Group(
+                                                (vec![
+                                                    (
+                                                        "Part-1".into(),
+                                                        Instance::Scalar(Value::String(
+                                                            "Family&Prefix".into(),
+                                                        )),
+                                                    ),
+                                                    (
+                                                        "Part-2".into(),
+                                                        Instance::Scalar(Value::String(
+                                                            "Given".into(),
+                                                        )),
+                                                    ),
+                                                ])
+                                                .into(),
+                                            ),
+                                        ),
+                                        (
+                                            "CX-2".into(),
+                                            Instance::Scalar(Value::String("AUTH".into())),
+                                        ),
+                                    ])
+                                    .into(),
+                                ),
                             ),
-                        ]),
+                        ])
+                        .into(),
                     ),
-                ]),
-            ),
-        ]);
+                ),
+            ])
+            .into(),
+        );
         let path = std::env::temp_dir().join(format!(
             "ferrule_hl7_write_{}_{}.hl7",
             std::process::id(),
@@ -519,13 +538,19 @@ mod tests {
                 ],
             )],
         );
-        let instance = Instance::Group(vec![(
-            "MSH".into(),
-            Instance::Group(vec![
-                ("MSH-1".into(), Instance::Scalar(Value::String("*".into()))),
-                ("MSH-2".into(), Instance::Scalar(Value::Null)),
-            ]),
-        )]);
+        let instance = Instance::Group(
+            (vec![(
+                "MSH".into(),
+                Instance::Group(
+                    (vec![
+                        ("MSH-1".into(), Instance::Scalar(Value::String("*".into()))),
+                        ("MSH-2".into(), Instance::Scalar(Value::Null)),
+                    ])
+                    .into(),
+                ),
+            )])
+            .into(),
+        );
         let path =
             std::env::temp_dir().join(format!("ferrule_hl7_separator_{}.hl7", std::process::id()));
         assert!(matches!(

@@ -114,13 +114,15 @@ fn target_descendant_rule_inlines_nested_scalar_udf_and_uses_fraction_digits() {
         imported.project.graph.nodes.get(&amount.node)
     );
 
-    let source = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            "Raw".into(),
-            Instance::Scalar(Value::Float(1.235)),
-        )])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![("Raw".into(), Instance::Scalar(Value::Float(1.235)))]).into(),
+            )]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source).unwrap();
     let items = output.field("Item").unwrap().as_repeated().unwrap();
     assert_eq!(
@@ -199,13 +201,15 @@ fn target_descendant_rule_treats_the_csv_row_block_as_transparent() {
     let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    let source = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            "Raw".into(),
-            Instance::Scalar(Value::String("9".into())),
-        )])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![("Raw".into(), Instance::Scalar(Value::String("9".into())))]).into(),
+            )]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source).unwrap();
     let rows = output.as_repeated().unwrap();
     assert_eq!(
@@ -235,13 +239,15 @@ fn move_node_function_design_into_package(
 }
 
 fn decimal_source(value: f64) -> Instance {
-    Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            "Raw".into(),
-            Instance::Scalar(Value::Float(value)),
-        )])]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![("Raw".into(), Instance::Scalar(Value::Float(value)))]).into(),
+            )]),
+        )])
+        .into(),
+    )
 }
 
 fn sequence_items(instance: &Instance) -> Option<&[Instance]> {

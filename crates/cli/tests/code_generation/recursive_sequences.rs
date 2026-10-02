@@ -129,24 +129,30 @@ fn recursive_project() -> Project {
 }
 
 fn directory(name: &str, files: &[&str], children: Vec<Instance>) -> Instance {
-    Instance::Group(vec![
-        ("name".into(), Instance::Scalar(Value::String(name.into()))),
-        (
-            "file".into(),
-            Instance::Repeated(
-                files
-                    .iter()
-                    .map(|file| {
-                        Instance::Group(vec![(
-                            "name".into(),
-                            Instance::Scalar(Value::String((*file).into())),
-                        )])
-                    })
-                    .collect(),
+    Instance::Group(
+        (vec![
+            ("name".into(), Instance::Scalar(Value::String(name.into()))),
+            (
+                "file".into(),
+                Instance::Repeated(
+                    files
+                        .iter()
+                        .map(|file| {
+                            Instance::Group(
+                                (vec![(
+                                    "name".into(),
+                                    Instance::Scalar(Value::String((*file).into())),
+                                )])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
             ),
-        ),
-        ("directory".into(), Instance::Repeated(children)),
-    ])
+            ("directory".into(), Instance::Repeated(children)),
+        ])
+        .into(),
+    )
 }
 
 fn recursive_source() -> Instance {
@@ -158,21 +164,24 @@ fn recursive_source() -> Instance {
 }
 
 fn recursive_expected() -> Instance {
-    Instance::Group(vec![
-        (
-            "Picked".into(),
-            Instance::Scalar(Value::String("\\root\\second.txt".into())),
-        ),
-        ("Found".into(), Instance::Scalar(Value::Bool(true))),
-        (
-            "File".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("\\root\\top.txt".into())),
+    Instance::Group(
+        (vec![
+            (
+                "Picked".into(),
                 Instance::Scalar(Value::String("\\root\\second.txt".into())),
-                Instance::Scalar(Value::String("\\root\\child\\nested.txt".into())),
-            ]),
-        ),
-    ])
+            ),
+            ("Found".into(), Instance::Scalar(Value::Bool(true))),
+            (
+                "File".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("\\root\\top.txt".into())),
+                    Instance::Scalar(Value::String("\\root\\second.txt".into())),
+                    Instance::Scalar(Value::String("\\root\\child\\nested.txt".into())),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn recursive_deep_source() -> Instance {

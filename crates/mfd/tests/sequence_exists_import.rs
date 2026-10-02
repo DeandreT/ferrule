@@ -78,10 +78,11 @@ fn setup(mfd: &str) -> TempDir {
 
 fn record(fields: &[(&str, Value)]) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .iter()
             .map(|(name, value)| ((*name).into(), Instance::Scalar(value.clone())))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 
@@ -101,29 +102,32 @@ fn imports_filtered_token_existence_and_sibling_scalar_lookup() {
     );
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![
-        (
-            "Tool".into(),
-            Instance::Repeated(vec![
-                record(&[("Code", Value::String("AA".into()))]),
-                record(&[("Code", Value::String("BB".into()))]),
-                record(&[("Code", Value::String("ZZ".into()))]),
-            ]),
-        ),
-        (
-            "MissionKit".into(),
-            Instance::Repeated(vec![
-                record(&[
-                    ("Edition", Value::String("Basic".into())),
-                    ("ToolCodes", Value::String("ZZ".into())),
+    let source = Instance::Group(
+        (vec![
+            (
+                "Tool".into(),
+                Instance::Repeated(vec![
+                    record(&[("Code", Value::String("AA".into()))]),
+                    record(&[("Code", Value::String("BB".into()))]),
+                    record(&[("Code", Value::String("ZZ".into()))]),
                 ]),
-                record(&[
-                    ("Edition", Value::String("Enterprise".into())),
-                    ("ToolCodes", Value::String("AABB".into())),
+            ),
+            (
+                "MissionKit".into(),
+                Instance::Repeated(vec![
+                    record(&[
+                        ("Edition", Value::String("Basic".into())),
+                        ("ToolCodes", Value::String("ZZ".into())),
+                    ]),
+                    record(&[
+                        ("Edition", Value::String("Enterprise".into())),
+                        ("ToolCodes", Value::String("AABB".into())),
+                    ]),
                 ]),
-            ]),
-        ),
-    ]);
+            ),
+        ])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 3);
@@ -157,13 +161,16 @@ fn imports_repeating_source_existence_as_a_collection_reducer() {
     }));
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![(
-        "Tool".into(),
-        Instance::Repeated(vec![
-            record(&[("Code", Value::String("AA".into()))]),
-            record(&[("Code", Value::String("BB".into()))]),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Tool".into(),
+            Instance::Repeated(vec![
+                record(&[("Code", Value::String("AA".into()))]),
+                record(&[("Code", Value::String("BB".into()))]),
+            ]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 2);

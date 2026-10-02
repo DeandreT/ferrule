@@ -106,11 +106,12 @@ fn assert_output(fx: &Fixture, expected: Option<&str>, repair_inputs: bool) {
         ..crate::new_mapping::blank_project()
     };
     assert!(engine::validate(&project).is_empty());
-    let result = engine::run(&project, &Instance::Group(Vec::new())).unwrap();
+    let result = engine::run(&project, &Instance::Group((Vec::new()).into())).unwrap();
     let expected = Instance::Group(
-        expected
+        (expected
             .map(|value| vec![("out".into(), Instance::Scalar(Value::String(value.into())))])
-            .unwrap_or_default(),
+            .unwrap_or_default())
+        .into(),
     );
     assert_eq!(result, expected);
 }
@@ -850,20 +851,26 @@ fn assert_aggregate_output(fx: &Fixture, joined: bool) {
         ..crate::new_mapping::blank_project()
     };
     assert!(engine::validate(&project).is_empty());
-    let source = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(
-            ["a", "b"]
-                .into_iter()
-                .map(|value| {
-                    Instance::Group(vec![(
-                        "Value".into(),
-                        Instance::Scalar(Value::String(value.into())),
-                    )])
-                })
-                .collect(),
-        ),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(
+                ["a", "b"]
+                    .into_iter()
+                    .map(|value| {
+                        Instance::Group(
+                            (vec![(
+                                "Value".into(),
+                                Instance::Scalar(Value::String(value.into())),
+                            )])
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    );
     let expected = if joined {
         Value::String("a,b".into())
     } else {
@@ -871,7 +878,7 @@ fn assert_aggregate_output(fx: &Fixture, joined: bool) {
     };
     assert_eq!(
         engine::run(&project, &source).unwrap(),
-        Instance::Group(vec![("out".into(), Instance::Scalar(expected))])
+        Instance::Group((vec![("out".into(), Instance::Scalar(expected))]).into())
     );
 }
 

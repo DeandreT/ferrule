@@ -225,35 +225,47 @@ enum Failure {
 
 fn aggregate_source(failure: Failure) -> Instance {
     let contact = |first: &str| {
-        Instance::Group(vec![(
-            "First".into(),
-            Instance::Scalar(Value::String(first.into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "First".into(),
+                Instance::Scalar(Value::String(first.into())),
+            )])
+            .into(),
+        )
     };
     let office = |names: &[&str]| {
-        Instance::Group(vec![(
-            "Contacts".into(),
-            Instance::Repeated(names.iter().map(|name| contact(name)).collect()),
-        )])
+        Instance::Group(
+            (vec![(
+                "Contacts".into(),
+                Instance::Repeated(names.iter().map(|name| contact(name)).collect()),
+            )])
+            .into(),
+        )
     };
     let item = |amount: Value, label: Value, factor, divisor| {
-        Instance::Group(vec![
-            ("Amount".into(), Instance::Scalar(amount)),
-            ("Label".into(), Instance::Scalar(label)),
-            ("Factor".into(), Instance::Scalar(Value::Int(factor))),
-            ("Divisor".into(), Instance::Scalar(Value::Int(divisor))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Amount".into(), Instance::Scalar(amount)),
+                ("Label".into(), Instance::Scalar(label)),
+                ("Factor".into(), Instance::Scalar(Value::Int(factor))),
+                ("Divisor".into(), Instance::Scalar(Value::Int(divisor))),
+            ])
+            .into(),
+        )
     };
     let order = |separator: &str, pick: f64, items: Vec<Instance>| {
-        Instance::Group(vec![
-            (
-                "Separator".into(),
-                Instance::Scalar(Value::String(separator.into())),
-            ),
-            ("Pick".into(), Instance::Scalar(Value::Float(pick))),
-            ("Items".into(), Instance::Repeated(items)),
-            ("EmptyItems".into(), Instance::Repeated(Vec::new())),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Separator".into(),
+                    Instance::Scalar(Value::String(separator.into())),
+                ),
+                ("Pick".into(), Instance::Scalar(Value::Float(pick))),
+                ("Items".into(), Instance::Repeated(items)),
+                ("EmptyItems".into(), Instance::Repeated(Vec::new())),
+            ])
+            .into(),
+        )
     };
 
     let orders = match failure {
@@ -312,63 +324,70 @@ fn aggregate_source(failure: Failure) -> Instance {
         )],
     };
 
-    Instance::Group(vec![
-        (
-            "Offices".into(),
-            Instance::Repeated(vec![office(&["Ada", "Lin"]), office(&["Sam"])]),
-        ),
-        ("Orders".into(), Instance::Repeated(orders)),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Offices".into(),
+                Instance::Repeated(vec![office(&["Ada", "Lin"]), office(&["Sam"])]),
+            ),
+            ("Orders".into(), Instance::Repeated(orders)),
+        ])
+        .into(),
+    )
 }
 
 fn aggregate_expected() -> Instance {
     let order = |values: Vec<(&str, Value)>| {
         Instance::Group(
-            values
+            (values
                 .into_iter()
                 .map(|(name, value)| (name.into(), Instance::Scalar(value)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         )
     };
-    Instance::Group(vec![
-        (
-            "AllContacts".into(),
-            Instance::Scalar(Value::String("Ada,Lin,Sam".into())),
-        ),
-        (
-            "OrderOut".into(),
-            Instance::Repeated(vec![
-                order(vec![
-                    ("Count", Value::Int(4)),
-                    ("Sum", Value::Float(12.5)),
-                    ("Average", Value::Float(6.25)),
-                    ("Minimum", Value::Float(2.5)),
-                    ("Maximum", Value::Int(10)),
-                    ("Joined", Value::String("A||B".into())),
-                    ("Picked", Value::xml_nil()),
-                    ("Computed", Value::Int(40)),
-                    ("EvaluatedCount", Value::Int(4)),
-                    ("EmptyCount", Value::Int(0)),
-                    ("EmptySum", Value::Int(0)),
-                    ("EmptyAverage", Value::Null),
+    Instance::Group(
+        (vec![
+            (
+                "AllContacts".into(),
+                Instance::Scalar(Value::String("Ada,Lin,Sam".into())),
+            ),
+            (
+                "OrderOut".into(),
+                Instance::Repeated(vec![
+                    order(vec![
+                        ("Count", Value::Int(4)),
+                        ("Sum", Value::Float(12.5)),
+                        ("Average", Value::Float(6.25)),
+                        ("Minimum", Value::Float(2.5)),
+                        ("Maximum", Value::Int(10)),
+                        ("Joined", Value::String("A||B".into())),
+                        ("Picked", Value::xml_nil()),
+                        ("Computed", Value::Int(40)),
+                        ("EvaluatedCount", Value::Int(4)),
+                        ("EmptyCount", Value::Int(0)),
+                        ("EmptySum", Value::Int(0)),
+                        ("EmptyAverage", Value::Null),
+                    ]),
+                    order(vec![
+                        ("Count", Value::Int(2)),
+                        ("Sum", Value::Float(10.0)),
+                        ("Average", Value::Float(5.0)),
+                        ("Minimum", Value::Float(4.0)),
+                        ("Maximum", Value::Int(6)),
+                        ("Joined", Value::String("X~Y".into())),
+                        ("Picked", Value::String("Y".into())),
+                        ("Computed", Value::Int(3)),
+                        ("EvaluatedCount", Value::Int(2)),
+                        ("EmptyCount", Value::Int(0)),
+                        ("EmptySum", Value::Int(0)),
+                        ("EmptyAverage", Value::Null),
+                    ]),
                 ]),
-                order(vec![
-                    ("Count", Value::Int(2)),
-                    ("Sum", Value::Float(10.0)),
-                    ("Average", Value::Float(5.0)),
-                    ("Minimum", Value::Float(4.0)),
-                    ("Maximum", Value::Int(6)),
-                    ("Joined", Value::String("X~Y".into())),
-                    ("Picked", Value::String("Y".into())),
-                    ("Computed", Value::Int(3)),
-                    ("EvaluatedCount", Value::Int(2)),
-                    ("EmptyCount", Value::Int(0)),
-                    ("EmptySum", Value::Int(0)),
-                    ("EmptyAverage", Value::Null),
-                ]),
-            ]),
-        ),
-    ])
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn write_aggregate_project(directory: &Path) -> TestResult<PathBuf> {

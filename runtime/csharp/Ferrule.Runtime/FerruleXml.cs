@@ -1205,7 +1205,8 @@ public static class FerruleXml
         {
             foreach (var field in group.Fields)
             {
-                if (!(schema.Alternatives.Count != 0 && field.Name == XmlTypeField) &&
+                if (!(schema.Alternatives.Count != 0 &&
+                      field.Name == XmlTypeField) &&
                     !(schema.RepeatingChoices.Count != 0 &&
                       field.Name == XmlMixedContentField) &&
                     !schema.Children.Any(child => child.Name == field.Name))

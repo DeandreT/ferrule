@@ -153,10 +153,13 @@ fn canvas_node(snarl: &Snarl<CanvasNode>, id: NodeId) -> egui_snarl::NodeId {
 }
 
 fn input(value: &str) -> Instance {
-    Instance::Group(vec![(
-        "Name".to_owned(),
-        Instance::Scalar(Value::String(value.to_owned())),
-    )])
+    Instance::Group(
+        (vec![(
+            "Name".to_owned(),
+            Instance::Scalar(Value::String(value.to_owned())),
+        )])
+        .into(),
+    )
 }
 
 fn assert_result(project: &Project, input_value: &str, expected: &str) {

@@ -252,7 +252,7 @@ pub(super) fn read_group_fields(
                             XML_TEXT_FIELD.to_string(),
                             Instance::Scalar(Value::String(attribute.value().to_string())),
                         ));
-                    Ok(Instance::Group(fields))
+                    Ok(Instance::Group((fields).into()))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             fields.push((child.name.clone(), Instance::Repeated(items)));
@@ -303,7 +303,7 @@ pub(super) fn read_group_fields(
             Instance::Repeated(mixed_content_items(element, children, &fields, mixed)),
         ));
     }
-    Ok(Instance::Group(fields))
+    Ok(Instance::Group((fields).into()))
 }
 
 fn attribute_matches_schema(attribute: &roxmltree::Attribute<'_, '_>, schema: &SchemaNode) -> bool {
@@ -444,7 +444,7 @@ fn mixed_content_items(
                 ));
             }
             fields.push((XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value));
-            Some(Instance::Group(fields))
+            Some(Instance::Group((fields).into()))
         })
         .collect()
 }

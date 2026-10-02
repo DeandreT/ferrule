@@ -1485,7 +1485,7 @@ fn generated_reference_manifests_resolve_only_contained_outputs() -> Result<(), 
 #[test]
 fn dynamic_document_paths_reject_escape_duplicates_and_ancestor_overlap() {
     let member = |path: &str| {
-        ir::DocumentMember::new(path, Instance::Group(Vec::new()))
+        ir::DocumentMember::new(path, Instance::Group((Vec::new()).into()))
             .unwrap_or_else(|| panic!("valid test member path: {path}"))
     };
     assert!(validate_document_paths(&[member("nested/a.xml"), member("b.xml")]).is_ok());

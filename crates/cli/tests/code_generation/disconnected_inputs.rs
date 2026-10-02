@@ -103,20 +103,26 @@ fn disconnected_project() -> Project {
 }
 
 fn source(check_direct: bool) -> Instance {
-    Instance::Group(vec![(
-        "CheckDirect".into(),
-        Instance::Scalar(Value::Bool(check_direct)),
-    )])
+    Instance::Group(
+        (vec![(
+            "CheckDirect".into(),
+            Instance::Scalar(Value::Bool(check_direct)),
+        )])
+        .into(),
+    )
 }
 
 fn expected() -> Instance {
-    Instance::Group(vec![
-        ("Present".into(), Instance::Scalar(Value::Bool(false))),
-        (
-            "Label".into(),
-            Instance::Scalar(Value::String("fallback".into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("Present".into(), Instance::Scalar(Value::Bool(false))),
+            (
+                "Label".into(),
+                Instance::Scalar(Value::String("fallback".into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 #[test]

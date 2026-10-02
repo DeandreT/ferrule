@@ -141,26 +141,32 @@ fn temporary_project_path() -> PathBuf {
 }
 
 fn source(rows: &[(&str, &str, i64)]) -> Instance {
-    Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(
-            rows.iter()
-                .map(|(first, last, score)| {
-                    Instance::Group(vec![
-                        (
-                            "First".into(),
-                            Instance::Scalar(Value::String((*first).into())),
-                        ),
-                        (
-                            "Last".into(),
-                            Instance::Scalar(Value::String((*last).into())),
-                        ),
-                        ("Score".into(), Instance::Scalar(Value::Int(*score))),
-                    ])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(
+                rows.iter()
+                    .map(|(first, last, score)| {
+                        Instance::Group(
+                            (vec![
+                                (
+                                    "First".into(),
+                                    Instance::Scalar(Value::String((*first).into())),
+                                ),
+                                (
+                                    "Last".into(),
+                                    Instance::Scalar(Value::String((*last).into())),
+                                ),
+                                ("Score".into(), Instance::Scalar(Value::Int(*score))),
+                            ])
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn tied_source() -> Instance {

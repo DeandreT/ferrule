@@ -70,10 +70,13 @@ fn first_graph_failure_hook_precedes_filter_error_and_preserves_or_cancels_it() 
         ),
     ]);
     project.root.filter = Some(2);
-    let source = Instance::Group(vec![(
-        "input".into(),
-        Instance::Scalar(Value::String("source value".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "input".into(),
+            Instance::Scalar(Value::String("source value".into())),
+        )])
+        .into(),
+    );
     for decision in [DebugDecision::Resume, DebugDecision::Cancel] {
         let hook = FailureHook {
             decision,
@@ -198,10 +201,13 @@ fn start_paused_run() -> PausedRun {
             .with_debug_hook(&hook);
         let result = run_with_context(
             &two_field_project(),
-            &Instance::Group(vec![(
-                "input".into(),
-                Instance::Scalar(Value::String("source value".into())),
-            )]),
+            &Instance::Group(
+                (vec![(
+                    "input".into(),
+                    Instance::Scalar(Value::String("source value".into())),
+                )])
+                .into(),
+            ),
             &execution,
         );
         let _ = result_tx.send((result, collector.0.into_inner()));
@@ -261,10 +267,13 @@ fn debug_hook_pauses_before_insertion_and_resumes_without_changing_trace() {
     let (output, events) = result.recv_timeout(Duration::from_secs(5)).unwrap();
     assert_eq!(
         output.unwrap(),
-        Instance::Group(vec![
-            ("first".into(), Instance::Scalar(Value::String("A".into()))),
-            ("second".into(), Instance::Scalar(Value::String("B".into()))),
-        ])
+        Instance::Group(
+            (vec![
+                ("first".into(), Instance::Scalar(Value::String("A".into()))),
+                ("second".into(), Instance::Scalar(Value::String("B".into()))),
+            ])
+            .into()
+        )
     );
     assert_eq!(
         events
@@ -327,10 +336,13 @@ impl DebugHook for ExpressionHook {
 #[test]
 fn graph_node_callback_is_typed_and_cancelable_before_a_target_write() {
     let project = two_field_project();
-    let source = Instance::Group(vec![(
-        "input".into(),
-        Instance::Scalar(Value::String("source value".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "input".into(),
+            Instance::Scalar(Value::String("source value".into())),
+        )])
+        .into(),
+    );
     let hook = ExpressionHook {
         values: RefCell::new(Vec::new()),
         cancel_on_node: Some(0),
@@ -388,10 +400,13 @@ fn graph_node_callback_runs_for_filter_that_produces_no_write() {
         }],
         ..Scope::default()
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![Instance::Group(vec![])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![Instance::Group((vec![]).into())]),
+        )])
+        .into(),
+    );
     let hook = ExpressionHook {
         values: RefCell::new(Vec::new()),
         cancel_on_node: Some(0),
@@ -426,10 +441,13 @@ fn graph_node_callback_cancels_during_pre_target_failure_rule() {
         selection: FailureSelection::WhenTrue { predicate: 2 },
         message: None,
     });
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![Instance::Group(vec![])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![Instance::Group((vec![]).into())]),
+        )])
+        .into(),
+    );
     let hook = ExpressionHook {
         values: RefCell::new(Vec::new()),
         cancel_on_node: Some(2),
@@ -463,10 +481,13 @@ fn uninterested_debug_hook_skips_node_snapshots() {
         }
     }
 
-    let source = Instance::Group(vec![(
-        "input".into(),
-        Instance::Scalar(Value::String("source value".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "input".into(),
+            Instance::Scalar(Value::String("source value".into())),
+        )])
+        .into(),
+    );
     let hook = WriteOnlyHook;
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_debug_hook(&hook);
     let output = run_with_context(&two_field_project(), &source, &execution).unwrap();
@@ -535,10 +556,13 @@ fn pin_hook_distinguishes_equal_values_across_consumer_pins_and_cancels_before_w
     .into();
     project.root.bindings[0].node = 2;
     project.root.bindings[1].node = 3;
-    let source = Instance::Group(vec![(
-        "input".into(),
-        Instance::Scalar(Value::String("source".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "input".into(),
+            Instance::Scalar(Value::String("source".into())),
+        )])
+        .into(),
+    );
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((2, 1)),
@@ -617,10 +641,13 @@ fn pin_hook_skips_untaken_if_branch() {
     .into();
     project.root.bindings.truncate(1);
     project.root.bindings[0].node = 3;
-    let source = Instance::Group(vec![(
-        "input".into(),
-        Instance::Scalar(Value::String("source".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "input".into(),
+            Instance::Scalar(Value::String("source".into())),
+        )])
+        .into(),
+    );
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((3, 2)),
@@ -680,10 +707,13 @@ fn pin_hook_cancels_filter_before_any_target_write() {
         }],
         ..Scope::default()
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![Instance::Group(vec![])]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![Instance::Group((vec![]).into())]),
+        )])
+        .into(),
+    );
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((2, 1)),
@@ -754,22 +784,28 @@ fn collection_find_project() -> Project {
 }
 
 fn collection_find_source(rows: &[(bool, &str)]) -> Instance {
-    Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(
-            rows.iter()
-                .map(|(matches, value)| {
-                    Instance::Group(vec![
-                        ("Match".into(), Instance::Scalar(Value::Bool(*matches))),
-                        (
-                            "Value".into(),
-                            Instance::Scalar(Value::String((*value).into())),
-                        ),
-                    ])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(
+                rows.iter()
+                    .map(|(matches, value)| {
+                        Instance::Group(
+                            (vec![
+                                ("Match".into(), Instance::Scalar(Value::Bool(*matches))),
+                                (
+                                    "Value".into(),
+                                    Instance::Scalar(Value::String((*value).into())),
+                                ),
+                            ])
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 #[test]
@@ -1031,10 +1067,13 @@ fn xml_mixed_content_delivers_only_selected_replacement_pins_in_document_order()
         ]
     );
 
-    let fallback = Instance::Group(vec![(
-        ir::XML_TEXT_FIELD.into(),
-        Instance::Scalar(Value::String("plain".into())),
-    )]);
+    let fallback = Instance::Group(
+        (vec![(
+            ir::XML_TEXT_FIELD.into(),
+            Instance::Scalar(Value::String("plain".into())),
+        )])
+        .into(),
+    );
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     let output = run_with_context(&project, &fallback, &execution).unwrap();
@@ -1214,7 +1253,7 @@ fn sequence_exists_pin_project(to: Value) -> Project {
 #[test]
 fn sequence_exists_predicate_pin_uses_visible_index_and_stops_after_first_match() {
     let project = sequence_exists_pin_project(Value::Int(3));
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     let output = run_with_context(&project, &source, &execution).unwrap();
@@ -1286,7 +1325,7 @@ fn sequence_exists_predicate_pin_follows_two_tokenizer_inputs() {
         },
     );
     let trace = Collector::default();
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     let output = run_with_context(&project, &source, &execution).unwrap();
     assert_eq!(
@@ -1313,7 +1352,7 @@ fn sequence_exists_predicate_pin_follows_two_tokenizer_inputs() {
 
 #[test]
 fn sequence_exists_predicate_pin_is_absent_for_empty_or_null_sequence() {
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     for to in [Value::Int(0), Value::Null] {
         let project = sequence_exists_pin_project(to);
         let trace = Collector::default();
@@ -1346,7 +1385,7 @@ fn sequence_exists_predicate_pin_is_absent_for_empty_or_null_sequence() {
 #[test]
 fn sequence_exists_predicate_pin_cancel_precedes_target_write() {
     let project = sequence_exists_pin_project(Value::Int(3));
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((5, 1)),
@@ -1393,7 +1432,7 @@ fn sequence_exists_non_boolean_predicate_keeps_typed_error_after_delivery() {
             value: Value::String("wrong".into()),
         },
     );
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     assert!(matches!(
@@ -1487,7 +1526,7 @@ fn sequence_aggregate_expression_project(with_predicate: bool) -> Project {
 #[test]
 fn sequence_aggregate_expression_pin_skips_rejected_items_and_keeps_raw_positions() {
     let project = sequence_aggregate_expression_project(true);
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     let output = run_with_context(&project, &source, &execution).unwrap();
@@ -1532,7 +1571,7 @@ fn sequence_aggregate_expression_pin_skips_rejected_items_and_keeps_raw_position
 #[test]
 fn sequence_aggregate_expression_pin_shifts_when_predicate_is_absent() {
     let project = sequence_aggregate_expression_project(false);
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     let output = run_with_context(&project, &source, &execution).unwrap();
@@ -1601,7 +1640,7 @@ fn sequence_aggregate_parent_arg_pin_follows_items_in_parent_context() {
     for (with_predicate, expected_arg_index) in [(true, 3), (false, 2)] {
         let mut project = sequence_aggregate_expression_project(with_predicate);
         add_constant_sequence_aggregate_arg(&mut project);
-        let source = Instance::Group(vec![]);
+        let source = Instance::Group((vec![]).into());
         let trace = Collector::default();
         let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
         let output = run_with_context(&project, &source, &execution).unwrap();
@@ -1640,7 +1679,7 @@ fn sequence_aggregate_parent_arg_pin_follows_items_in_parent_context() {
 fn sequence_aggregate_parent_arg_pin_can_cancel_before_target_write() {
     let mut project = sequence_aggregate_expression_project(true);
     add_constant_sequence_aggregate_arg(&mut project);
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((7, 3)),
@@ -1683,7 +1722,7 @@ fn sequence_aggregate_parent_arg_pin_can_cancel_before_target_write() {
 fn sequence_aggregate_failed_parent_arg_has_no_delivery_or_target_write() {
     let mut project = sequence_aggregate_expression_project(true);
     add_missing_sequence_aggregate_arg(&mut project);
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     assert!(matches!(
@@ -1718,7 +1757,7 @@ fn sequence_aggregate_failed_parent_arg_has_no_delivery_or_target_write() {
 fn sequence_aggregate_predicate_pin_cancel_skips_expression_and_parent_arg() {
     let mut project = sequence_aggregate_expression_project(true);
     add_missing_sequence_aggregate_arg(&mut project);
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((7, 1)),
@@ -1766,7 +1805,7 @@ fn sequence_aggregate_non_boolean_predicate_retains_typed_error() {
             value: Value::String("wrong".into()),
         },
     );
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     assert!(matches!(
@@ -1803,7 +1842,7 @@ fn sequence_aggregate_non_boolean_predicate_retains_typed_error() {
 fn sequence_aggregate_expression_pin_cancel_skips_parent_arg_and_target_write() {
     let mut project = sequence_aggregate_expression_project(true);
     add_missing_sequence_aggregate_arg(&mut project);
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((7, 2)),
@@ -1858,7 +1897,7 @@ fn sequence_aggregate_failed_expression_delivers_no_pin_or_parent_arg() {
             preview: None,
         },
     );
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     assert!(matches!(
@@ -1902,7 +1941,7 @@ fn generate_arguments_follow_optional_from_pin_order_and_null_short_circuit() {
         panic!("generated range");
     };
     *from = Some(6);
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     let output = run_with_context(&project, &source, &execution).unwrap();
@@ -1991,7 +2030,7 @@ fn generator_input_cancel_skips_later_argument_and_predicate() {
         panic!("generated range");
     };
     *from = Some(6);
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((5, 0)),
@@ -2054,7 +2093,7 @@ fn regex_generator_optional_flags_delivery_can_short_circuit_predicate() {
             predicate: 4,
         },
     );
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     let output = run_with_context(&project, &source, &execution).unwrap();
@@ -2127,7 +2166,7 @@ fn sequence_item_at_pin_project() -> Project {
 #[test]
 fn sequence_item_at_generator_then_index_pins_use_parent_context() {
     let mut project = sequence_item_at_pin_project();
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     let output = run_with_context(&project, &source, &execution).unwrap();
@@ -2197,7 +2236,7 @@ fn sequence_item_at_generator_then_index_pins_use_parent_context() {
 #[test]
 fn sequence_item_at_index_can_cancel_after_generator_before_target_write() {
     let project = sequence_item_at_pin_project();
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let hook = PinHook {
         inputs: RefCell::new(Vec::new()),
         cancel_at: Some((7, 1)),
@@ -2245,7 +2284,7 @@ fn sequence_item_at_failed_index_has_no_delivery() {
             preview: None,
         },
     );
-    let source = Instance::Group(vec![]);
+    let source = Instance::Group((vec![]).into());
     let trace = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&trace);
     assert!(matches!(

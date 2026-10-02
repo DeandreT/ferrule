@@ -25,10 +25,7 @@ impl Drop for TempDir {
 }
 
 fn source(value: f64) -> Instance {
-    Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::Float(value)),
-    )])
+    Instance::Group((vec![("Value".into(), Instance::Scalar(Value::Float(value)))]).into())
 }
 
 fn label(project: &mapping::Project, value: f64) -> Result<Value, Box<dyn std::error::Error>> {

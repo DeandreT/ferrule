@@ -74,18 +74,21 @@ fn generated_xml_text_preserves_carriage_returns_and_matches_interpreter() -> Te
                 &simple
             };
             let parsed = format_xml::from_str(xml, schema)?;
-            let expected = Instance::Group(vec![
-                ("id".into(), Instance::Scalar(Value::String(value.into()))),
-                (
-                    if name.starts_with("Plain") {
-                        "Value"
-                    } else {
-                        "#text"
-                    }
-                    .into(),
-                    Instance::Scalar(Value::String(value.into())),
-                ),
-            ]);
+            let expected = Instance::Group(
+                (vec![
+                    ("id".into(), Instance::Scalar(Value::String(value.into()))),
+                    (
+                        if name.starts_with("Plain") {
+                            "Value"
+                        } else {
+                            "#text"
+                        }
+                        .into(),
+                        Instance::Scalar(Value::String(value.into())),
+                    ),
+                ])
+                .into(),
+            );
             assert_eq!(parsed, expected, "{name}: {xml}");
         }
         cases.push(serde_json::json!({

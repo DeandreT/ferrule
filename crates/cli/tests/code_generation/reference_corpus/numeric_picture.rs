@@ -340,7 +340,7 @@ fn formatter_oracle(picture: &Value) -> Project {
 
 fn format_value(oracle: &mut Project, value: Value) -> TestResult<Value> {
     oracle.graph.nodes.insert(0, Node::Const { value });
-    let output = engine::run(oracle, &Instance::Group(Vec::new()))?;
+    let output = engine::run(oracle, &Instance::Group((Vec::new()).into()))?;
     Ok(output
         .field("formatted")
         .and_then(Instance::as_scalar)

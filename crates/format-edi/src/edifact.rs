@@ -291,47 +291,68 @@ mod tests {
                 segment("BGM", vec![scalar("F1001", ScalarType::String)]),
             ],
         );
-        let instance = Instance::Group(vec![
-            (
-                "UNB".into(),
-                Instance::Group(vec![
-                    (
-                        "S002".into(),
-                        Instance::Group(vec![(
-                            "F0004".into(),
-                            Instance::Scalar(Value::String("MFGB".into())),
-                        )]),
+        let instance = Instance::Group(
+            (vec![
+                (
+                    "UNB".into(),
+                    Instance::Group(
+                        (vec![
+                            (
+                                "S002".into(),
+                                Instance::Group(
+                                    (vec![(
+                                        "F0004".into(),
+                                        Instance::Scalar(Value::String("MFGB".into())),
+                                    )])
+                                    .into(),
+                                ),
+                            ),
+                            (
+                                "S003".into(),
+                                Instance::Group(
+                                    (vec![(
+                                        "F0010".into(),
+                                        Instance::Scalar(Value::String("ID".into())),
+                                    )])
+                                    .into(),
+                                ),
+                            ),
+                        ])
+                        .into(),
                     ),
-                    (
-                        "S003".into(),
-                        Instance::Group(vec![(
-                            "F0010".into(),
-                            Instance::Scalar(Value::String("ID".into())),
-                        )]),
+                ),
+                (
+                    "UNH".into(),
+                    Instance::Group(
+                        (vec![(
+                            "S009".into(),
+                            Instance::Group(
+                                (vec![
+                                    ("F0052".into(), Instance::Scalar(Value::String("D".into()))),
+                                    (
+                                        "F0054".into(),
+                                        Instance::Scalar(Value::String("24A".into())),
+                                    ),
+                                ])
+                                .into(),
+                            ),
+                        )])
+                        .into(),
                     ),
-                ]),
-            ),
-            (
-                "UNH".into(),
-                Instance::Group(vec![(
-                    "S009".into(),
-                    Instance::Group(vec![
-                        ("F0052".into(), Instance::Scalar(Value::String("D".into()))),
-                        (
-                            "F0054".into(),
-                            Instance::Scalar(Value::String("24A".into())),
-                        ),
-                    ]),
-                )]),
-            ),
-            (
-                "BGM".into(),
-                Instance::Group(vec![(
-                    "F1001".into(),
-                    Instance::Scalar(Value::String("order".into())),
-                )]),
-            ),
-        ]);
+                ),
+                (
+                    "BGM".into(),
+                    Instance::Group(
+                        (vec![(
+                            "F1001".into(),
+                            Instance::Scalar(Value::String("order".into())),
+                        )])
+                        .into(),
+                    ),
+                ),
+            ])
+            .into(),
+        );
         let path = write_temp("autocomplete", "previous");
 
         write_with_autocomplete(
@@ -505,31 +526,39 @@ mod tests {
         ));
         std::fs::remove_file(&path).unwrap();
 
-        let instance = Instance::Group(vec![
-            ("UNB".into(), Instance::Group(Vec::new())),
-            (
-                "MEA".into(),
-                Instance::Group(vec![(
-                    "01".into(),
-                    Instance::Scalar(Value::Float(f64::INFINITY)),
-                )]),
-            ),
-        ]);
+        let instance = Instance::Group(
+            (vec![
+                ("UNB".into(), Instance::Group((Vec::new()).into())),
+                (
+                    "MEA".into(),
+                    Instance::Group(
+                        (vec![("01".into(), Instance::Scalar(Value::Float(f64::INFINITY)))]).into(),
+                    ),
+                ),
+            ])
+            .into(),
+        );
         assert!(matches!(
             write(&path, &schema, &instance),
             Err(EdiFormatError::NonFiniteFloat { ref element }) if element == "01"
         ));
 
-        let incompatible = Instance::Group(vec![
-            ("UNB".into(), Instance::Group(Vec::new())),
-            (
-                "MEA".into(),
-                Instance::Group(vec![(
-                    "01".into(),
-                    Instance::Scalar(Value::String("not a number".into())),
-                )]),
-            ),
-        ]);
+        let incompatible = Instance::Group(
+            (vec![
+                ("UNB".into(), Instance::Group((Vec::new()).into())),
+                (
+                    "MEA".into(),
+                    Instance::Group(
+                        (vec![(
+                            "01".into(),
+                            Instance::Scalar(Value::String("not a number".into())),
+                        )])
+                        .into(),
+                    ),
+                ),
+            ])
+            .into(),
+        );
         assert!(matches!(
             write(&path, &schema, &incompatible),
             Err(EdiFormatError::ValueType {
@@ -553,10 +582,13 @@ mod tests {
                 ),
             ],
         );
-        let instance = Instance::Group(vec![
-            ("UNB".into(), Instance::Group(Vec::new())),
-            ("QTY".into(), Instance::Group(Vec::new())),
-        ]);
+        let instance = Instance::Group(
+            (vec![
+                ("UNB".into(), Instance::Group((Vec::new()).into())),
+                ("QTY".into(), Instance::Group((Vec::new()).into())),
+            ])
+            .into(),
+        );
         let path = std::env::temp_dir().join(format!(
             "ferrule_edifact_fixed_lexical_{}",
             std::process::id()
@@ -597,13 +629,16 @@ mod tests {
                 ),
             ],
         );
-        let instance = Instance::Group(vec![
-            ("UNB".into(), Instance::Group(Vec::new())),
-            (
-                "QTY".into(),
-                Instance::Group(vec![("01".into(), Instance::Scalar(Value::Int(2)))]),
-            ),
-        ]);
+        let instance = Instance::Group(
+            (vec![
+                ("UNB".into(), Instance::Group((Vec::new()).into())),
+                (
+                    "QTY".into(),
+                    Instance::Group((vec![("01".into(), Instance::Scalar(Value::Int(2)))]).into()),
+                ),
+            ])
+            .into(),
+        );
         let path = write_temp("fixed_mismatch_preserves_destination", "sentinel");
 
         assert!(matches!(
@@ -649,10 +684,13 @@ mod tests {
             }) if name == "EDIFACT"
         ));
 
-        let wrong_scalar = Instance::Group(vec![(
-            "UNB".into(),
-            Instance::Group(vec![("01".into(), Instance::Group(Vec::new()))]),
-        )]);
+        let wrong_scalar = Instance::Group(
+            (vec![(
+                "UNB".into(),
+                Instance::Group((vec![("01".into(), Instance::Group((Vec::new()).into()))]).into()),
+            )])
+            .into(),
+        );
         assert!(matches!(
             write_segments(&schema, &wrong_scalar, &WRITE_OPTIONS),
             Err(EdiFormatError::InstanceShape {
@@ -662,10 +700,13 @@ mod tests {
             }) if name == "01"
         ));
 
-        let mapped_scalar = Instance::Group(vec![(
-            "UNB".into(),
-            Instance::Group(vec![("01".into(), Instance::MappedSequence(Vec::new()))]),
-        )]);
+        let mapped_scalar = Instance::Group(
+            (vec![(
+                "UNB".into(),
+                Instance::Group((vec![("01".into(), Instance::MappedSequence(Vec::new()))]).into()),
+            )])
+            .into(),
+        );
         assert!(matches!(
             write_segments(&schema, &mapped_scalar, &WRITE_OPTIONS),
             Err(EdiFormatError::InstanceShape {
@@ -675,10 +716,13 @@ mod tests {
             }) if name == "01"
         ));
 
-        let repeated_non_repeating = Instance::Group(vec![(
-            "UNB".into(),
-            Instance::Repeated(vec![Instance::Group(Vec::new())]),
-        )]);
+        let repeated_non_repeating = Instance::Group(
+            (vec![(
+                "UNB".into(),
+                Instance::Repeated(vec![Instance::Group((Vec::new()).into())]),
+            )])
+            .into(),
+        );
         assert!(matches!(
             write_segments(&schema, &repeated_non_repeating, &WRITE_OPTIONS),
             Err(EdiFormatError::InstanceShape {
@@ -689,7 +733,7 @@ mod tests {
         ));
 
         let non_repeated_repeating =
-            Instance::Group(vec![("Line".into(), Instance::Group(Vec::new()))]);
+            Instance::Group((vec![("Line".into(), Instance::Group((Vec::new()).into()))]).into());
         assert!(matches!(
             write_segments(&schema, &non_repeated_repeating, &WRITE_OPTIONS),
             Err(EdiFormatError::InstanceShape {
@@ -703,7 +747,8 @@ mod tests {
     #[test]
     fn writer_rejects_unexpected_and_duplicate_fields() {
         let schema = validation_schema();
-        let unexpected = Instance::Group(vec![("UNZ".into(), Instance::Group(Vec::new()))]);
+        let unexpected =
+            Instance::Group((vec![("UNZ".into(), Instance::Group((Vec::new()).into()))]).into());
         assert!(matches!(
             write_segments(&schema, &unexpected, &WRITE_OPTIONS),
             Err(EdiFormatError::UnexpectedField {
@@ -712,10 +757,13 @@ mod tests {
             }) if group == "EDIFACT" && field == "UNZ"
         ));
 
-        let duplicate = Instance::Group(vec![
-            ("UNB".into(), Instance::Group(Vec::new())),
-            ("UNB".into(), Instance::Group(Vec::new())),
-        ]);
+        let duplicate = Instance::Group(
+            (vec![
+                ("UNB".into(), Instance::Group((Vec::new()).into())),
+                ("UNB".into(), Instance::Group((Vec::new()).into())),
+            ])
+            .into(),
+        );
         assert!(matches!(
             write_segments(&schema, &duplicate, &WRITE_OPTIONS),
             Err(EdiFormatError::DuplicateField {
@@ -728,10 +776,13 @@ mod tests {
     #[test]
     fn validation_failure_does_not_truncate_an_existing_destination() {
         let path = write_temp("shape_preserves_destination", "sentinel");
-        let malformed = Instance::Group(vec![(
-            "UNB".into(),
-            Instance::Repeated(vec![Instance::Group(Vec::new())]),
-        )]);
+        let malformed = Instance::Group(
+            (vec![(
+                "UNB".into(),
+                Instance::Repeated(vec![Instance::Group((Vec::new()).into())]),
+            )])
+            .into(),
+        );
 
         assert!(matches!(
             write(&path, &validation_schema(), &malformed),

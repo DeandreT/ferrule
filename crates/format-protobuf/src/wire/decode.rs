@@ -242,7 +242,7 @@ fn materialize_message(
             }
         }
     }
-    Ok(Instance::Group(fields))
+    Ok(Instance::Group((fields).into()))
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]

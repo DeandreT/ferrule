@@ -157,21 +157,27 @@ fn lookup_project() -> Project {
 
 fn lookup_source() -> Instance {
     let row = |edition: &str, codes: &str| {
-        Instance::Group(vec![
-            (
-                "Edition".into(),
-                Instance::Scalar(Value::String(edition.into())),
-            ),
-            (
-                "ToolCodes".into(),
-                Instance::Scalar(Value::String(codes.into())),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                (
+                    "Edition".into(),
+                    Instance::Scalar(Value::String(edition.into())),
+                ),
+                (
+                    "ToolCodes".into(),
+                    Instance::Scalar(Value::String(codes.into())),
+                ),
+            ])
+            .into(),
+        )
     };
-    Instance::Group(vec![(
-        "MissionKit".into(),
-        Instance::Repeated(vec![row("Basic", "ZZ"), row("Enterprise", "AABB")]),
-    )])
+    Instance::Group(
+        (vec![(
+            "MissionKit".into(),
+            Instance::Repeated(vec![row("Basic", "ZZ"), row("Enterprise", "AABB")]),
+        )])
+        .into(),
+    )
 }
 
 #[test]
@@ -243,10 +249,13 @@ fn sequence_exists_exports_filter_chain_and_generated_position_context() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![(
-        "Unused".into(),
-        Instance::Scalar(Value::String("ignored".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Unused".into(),
+            Instance::Scalar(Value::String("ignored".into())),
+        )])
+        .into(),
+    );
     let target = engine::run(&imported.project, &source).unwrap();
     assert_eq!(
         target.field("Result").and_then(Instance::as_scalar),

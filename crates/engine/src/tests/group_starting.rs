@@ -4,14 +4,17 @@ use mapping::{AggregateOp, Binding, Graph, Node, Project, Scope};
 use super::{EngineError, run};
 
 fn row(kind: &str, value: &str, keep: bool) -> Instance {
-    Instance::Group(vec![
-        ("Kind".into(), Instance::Scalar(Value::String(kind.into()))),
-        (
-            "Value".into(),
-            Instance::Scalar(Value::String(value.into())),
-        ),
-        ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
-    ])
+    Instance::Group(
+        (vec![
+            ("Kind".into(), Instance::Scalar(Value::String(kind.into()))),
+            (
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+        ])
+        .into(),
+    )
 }
 
 fn project() -> Project {
@@ -135,17 +138,20 @@ fn project() -> Project {
 
 #[test]
 fn group_starting_with_partitions_filtered_items_in_source_order() {
-    let source = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![
-            row("L", "A", true),
-            row("H", "B", false),
-            row("L", "C", true),
-            row("H", "D", true),
-            row("H", "E", true),
-            row("L", "F", true),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(vec![
+                row("L", "A", true),
+                row("H", "B", false),
+                row("L", "C", true),
+                row("H", "D", true),
+                row("H", "E", true),
+                row("L", "F", true),
+            ]),
+        )])
+        .into(),
+    );
     let output = run(&project(), &source).unwrap();
     let groups = output
         .field("Group")
@@ -176,10 +182,9 @@ fn group_starting_with_partitions_filtered_items_in_source_order() {
 fn group_starting_with_requires_a_boolean_predicate() {
     let mut project = project();
     project.root.children[0].group_starting_with = Some(0);
-    let source = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![row("H", "A", true)]),
-    )]);
+    let source = Instance::Group(
+        (vec![("Rows".into(), Instance::Repeated(vec![row("H", "A", true)]))]).into(),
+    );
     assert!(matches!(
         run(&project, &source),
         Err(EngineError::NotABool { node: 0, .. })
@@ -192,17 +197,20 @@ fn post_group_filter_retains_a_group_when_any_member_matches() {
     let scope = &mut project.root.children[0];
     scope.filter = None;
     scope.post_group_filter = Some(7);
-    let source = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![
-            row("L", "A", false),
-            row("H", "B", false),
-            row("L", "C", true),
-            row("H", "D", false),
-            row("H", "E", true),
-            row("L", "F", false),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(vec![
+                row("L", "A", false),
+                row("H", "B", false),
+                row("L", "C", true),
+                row("H", "D", false),
+                row("H", "E", true),
+                row("L", "F", false),
+            ]),
+        )])
+        .into(),
+    );
 
     let output = run(&project, &source).unwrap();
     let groups = output

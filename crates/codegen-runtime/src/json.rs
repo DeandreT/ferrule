@@ -438,13 +438,16 @@ mod tests {
         let parsed = parse_json(&schema, r#"{"Name":"sample","Count":3}"#);
         assert_eq!(
             parsed,
-            Ok(Instance::Group(vec![
-                (
-                    "Name".into(),
-                    Instance::Scalar(Value::String("sample".into()))
-                ),
-                ("Count".into(), Instance::Scalar(Value::Int(3))),
-            ]))
+            Ok(Instance::Group(
+                (vec![
+                    (
+                        "Name".into(),
+                        Instance::Scalar(Value::String("sample".into()))
+                    ),
+                    ("Count".into(), Instance::Scalar(Value::Int(3))),
+                ])
+                .into()
+            ))
         );
         let rendered = parsed.and_then(|instance| serialize_json(&schema, &instance));
         assert_eq!(
@@ -496,8 +499,8 @@ mod tests {
         assert_eq!(
             parse_json(&encoded, r#"[{"Count":5},{"Count":8}]"#),
             Ok(Instance::Repeated(vec![
-                Instance::Group(vec![("Count".into(), Instance::Scalar(Value::Int(5)))]),
-                Instance::Group(vec![("Count".into(), Instance::Scalar(Value::Int(8)))]),
+                Instance::Group((vec![("Count".into(), Instance::Scalar(Value::Int(5)))]).into()),
+                Instance::Group((vec![("Count".into(), Instance::Scalar(Value::Int(8)))]).into()),
             ]))
         );
         assert!(matches!(
@@ -507,10 +510,9 @@ mod tests {
         ));
         assert_eq!(
             parse_json(&encoded, r#"{"Count":5}"#),
-            Ok(Instance::Group(vec![(
-                "Count".into(),
-                Instance::Scalar(Value::Int(5)),
-            )]))
+            Ok(Instance::Group(
+                (vec![("Count".into(), Instance::Scalar(Value::Int(5)),)]).into()
+            ))
         );
     }
 
@@ -645,13 +647,16 @@ mod tests {
         );
         assert_eq!(
             parsed,
-            Ok(Instance::Group(vec![
-                (
-                    "Name".into(),
-                    Instance::Scalar(Value::String("café".into()))
-                ),
-                ("Count".into(), Instance::Scalar(Value::Int(3))),
-            ]))
+            Ok(Instance::Group(
+                (vec![
+                    (
+                        "Name".into(),
+                        Instance::Scalar(Value::String("café".into()))
+                    ),
+                    ("Count".into(), Instance::Scalar(Value::Int(3))),
+                ])
+                .into()
+            ))
         );
         let rendered = parsed.and_then(|instance| serialize_json_bytes(&schema, &instance));
         assert_eq!(
@@ -687,13 +692,16 @@ mod tests {
         ));
         assert!(parse_json(&encoded, r#"{"Id":7,"Note":null}"#).is_ok());
 
-        let missing = Instance::Group(vec![
-            ("Id".into(), Instance::Scalar(Value::Null)),
-            (
-                "Note".into(),
-                Instance::Scalar(Value::String("present".into())),
-            ),
-        ]);
+        let missing = Instance::Group(
+            (vec![
+                ("Id".into(), Instance::Scalar(Value::Null)),
+                (
+                    "Note".into(),
+                    Instance::Scalar(Value::String("present".into())),
+                ),
+            ])
+            .into(),
+        );
         assert!(matches!(
             serialize_json(&encoded, &missing),
             Err(JsonBoundaryError::InvalidOutput { ref message })
@@ -729,16 +737,19 @@ mod tests {
         let parsed = parse_json(&encoded, r#"{"Value":7,"Items":["A",8]}"#);
         assert_eq!(
             parsed,
-            Ok(Instance::Group(vec![
-                ("Value".into(), Instance::Scalar(Value::Int(7))),
-                (
-                    "Items".into(),
-                    Instance::Repeated(vec![
-                        Instance::Scalar(Value::String("A".into())),
-                        Instance::Scalar(Value::Int(8)),
-                    ]),
-                ),
-            ]))
+            Ok(Instance::Group(
+                (vec![
+                    ("Value".into(), Instance::Scalar(Value::Int(7))),
+                    (
+                        "Items".into(),
+                        Instance::Repeated(vec![
+                            Instance::Scalar(Value::String("A".into())),
+                            Instance::Scalar(Value::Int(8)),
+                        ]),
+                    ),
+                ])
+                .into()
+            ))
         );
         let rendered = parsed.and_then(|instance| serialize_json(&encoded, &instance));
         assert_eq!(

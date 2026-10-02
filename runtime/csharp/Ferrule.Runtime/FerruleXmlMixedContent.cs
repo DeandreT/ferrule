@@ -114,6 +114,8 @@ public static class FerruleXmlMixedContent
         return FerruleValue.FromString(output.ToString());
     }
 
+    // No-op returns transfer the exact unchanged output. An actual attachment
+    // constructs a new occurrence with Unknown origin and retained child facts.
     public static FerruleGroup Preserve(
         ScopeContext context,
         FerruleGroup output,

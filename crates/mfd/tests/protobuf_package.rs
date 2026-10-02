@@ -139,13 +139,19 @@ fn relocated_package_resolves_windows_parent_path_and_embeds_import_graph()
 
     std::fs::remove_dir_all(relocated.join("schemas"))?;
     let layout = embedded_layout(protobuf);
-    let source = Instance::Group(vec![(
-        "value".into(),
-        Instance::Group(vec![(
-            "text".into(),
-            Instance::Scalar(Value::String("portable".into())),
-        )]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "value".into(),
+            Instance::Group(
+                (vec![(
+                    "text".into(),
+                    Instance::Scalar(Value::String("portable".into())),
+                )])
+                .into(),
+            ),
+        )])
+        .into(),
+    );
     let bytes = format_protobuf::to_vec(&layout, &protobuf.root_message, &source)?;
     let decoded = format_protobuf::from_slice(&layout, &protobuf.root_message, &bytes)?;
     let output = engine::run(&imported.project, &decoded)?;

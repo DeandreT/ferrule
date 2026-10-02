@@ -321,37 +321,56 @@ fn absent_edi_composites_do_not_emit_empty_cloned_occurrences()
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![
-            Instance::Group(vec![
-                (
-                    "C1".into(),
-                    Instance::Group(vec![(
-                        "Code".into(),
-                        Instance::Scalar(Value::String("A".into())),
-                    )]),
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![
+                Instance::Group(
+                    (vec![
+                        (
+                            "C1".into(),
+                            Instance::Group(
+                                (vec![(
+                                    "Code".into(),
+                                    Instance::Scalar(Value::String("A".into())),
+                                )])
+                                .into(),
+                            ),
+                        ),
+                        (
+                            "C2".into(),
+                            Instance::Group(
+                                (vec![("Code".into(), Instance::Scalar(Value::Null))]).into(),
+                            ),
+                        ),
+                    ])
+                    .into(),
                 ),
-                (
-                    "C2".into(),
-                    Instance::Group(vec![("Code".into(), Instance::Scalar(Value::Null))]),
+                Instance::Group(
+                    (vec![
+                        (
+                            "C1".into(),
+                            Instance::Group(
+                                (vec![("Code".into(), Instance::Scalar(Value::Null))]).into(),
+                            ),
+                        ),
+                        (
+                            "C2".into(),
+                            Instance::Group(
+                                (vec![(
+                                    "Code".into(),
+                                    Instance::Scalar(Value::String("B".into())),
+                                )])
+                                .into(),
+                            ),
+                        ),
+                    ])
+                    .into(),
                 ),
             ]),
-            Instance::Group(vec![
-                (
-                    "C1".into(),
-                    Instance::Group(vec![("Code".into(), Instance::Scalar(Value::Null))]),
-                ),
-                (
-                    "C2".into(),
-                    Instance::Group(vec![(
-                        "Code".into(),
-                        Instance::Scalar(Value::String("B".into())),
-                    )]),
-                ),
-            ]),
-        ]),
-    )]);
+        )])
+        .into(),
+    );
 
     let target = engine::run(&imported.project, &source)?;
     let stations = target

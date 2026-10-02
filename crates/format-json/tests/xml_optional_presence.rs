@@ -27,5 +27,8 @@ fn xml_occurrence_metadata_does_not_change_json_presence_or_exact_fixed_points()
     }
     let absent = format_json::from_str("{}", &new).unwrap();
     assert_eq!(absent.field("Value"), Some(&Instance::Scalar(Value::Null)));
-    assert_eq!(absent.field("Maybe"), Some(&Instance::Group(vec![])));
+    assert_eq!(
+        absent.field("Maybe"),
+        Some(&Instance::Group((vec![]).into()))
+    );
 }

@@ -719,13 +719,16 @@ mod tests {
 
     #[test]
     fn text_io_roundtrips_with_headers() {
-        let row = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("Jane".into())),
-            ),
-            ("age".into(), Instance::Scalar(Value::Int(29))),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("Jane".into())),
+                ),
+                ("age".into(), Instance::Scalar(Value::Int(29))),
+            ])
+            .into(),
+        );
 
         let text = to_string(&schema(), std::slice::from_ref(&row), None, true).unwrap();
         let read_back = from_str(&text, &schema(), None, true).unwrap();
@@ -736,13 +739,16 @@ mod tests {
 
     #[test]
     fn utf8_bom_writer_matches_file_and_memory_and_validates_before_write() {
-        let row = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("café, Inc".into())),
-            ),
-            ("age".into(), Instance::Scalar(Value::Int(29))),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("café, Inc".into())),
+                ),
+                ("age".into(), Instance::Scalar(Value::Int(29))),
+            ])
+            .into(),
+        );
         let options = CsvWriteOptions {
             utf8_bom: true,
             ..CsvWriteOptions::default()
@@ -796,13 +802,16 @@ mod tests {
 
     #[test]
     fn custom_quote_roundtrips_delimiters_and_escaped_quotes() {
-        let row = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("O'Neil, Jr.".into())),
-            ),
-            ("age".into(), Instance::Scalar(Value::Int(29))),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("O'Neil, Jr.".into())),
+                ),
+                ("age".into(), Instance::Scalar(Value::Int(29))),
+            ])
+            .into(),
+        );
         let text = to_string_with_quote(
             &schema(),
             std::slice::from_ref(&row),
@@ -834,13 +843,16 @@ mod tests {
 
     #[test]
     fn disabled_quoting_rejects_ambiguous_output_before_writing() {
-        let row = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("Jane; Jr.".into())),
-            ),
-            ("age".into(), Instance::Scalar(Value::Int(29))),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("Jane; Jr.".into())),
+                ),
+                ("age".into(), Instance::Scalar(Value::Int(29))),
+            ])
+            .into(),
+        );
         assert!(matches!(
             to_string_with_dialect(&schema(), &[row], Some(';'), None, true, true),
             Err(CsvFormatError::UnquotedFieldBoundary { field, .. }) if field == "name"
@@ -895,33 +907,42 @@ mod tests {
         assert_eq!(
             rows,
             vec![
-                Instance::Group(vec![
-                    (
-                        "name".into(),
-                        Instance::Scalar(Value::String("Jane".into())),
-                    ),
-                    ("age".into(), Instance::Scalar(Value::Int(29))),
-                ]),
-                Instance::Group(vec![
-                    (
-                        "name".into(),
-                        Instance::Scalar(Value::String("John".into())),
-                    ),
-                    ("age".into(), Instance::Scalar(Value::Null)),
-                ]),
+                Instance::Group(
+                    (vec![
+                        (
+                            "name".into(),
+                            Instance::Scalar(Value::String("Jane".into())),
+                        ),
+                        ("age".into(), Instance::Scalar(Value::Int(29))),
+                    ])
+                    .into()
+                ),
+                Instance::Group(
+                    (vec![
+                        (
+                            "name".into(),
+                            Instance::Scalar(Value::String("John".into())),
+                        ),
+                        ("age".into(), Instance::Scalar(Value::Null)),
+                    ])
+                    .into()
+                ),
             ]
         );
     }
 
     #[test]
     fn text_io_roundtrips_without_headers() {
-        let row = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("Jane".into())),
-            ),
-            ("age".into(), Instance::Scalar(Value::Int(29))),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("Jane".into())),
+                ),
+                ("age".into(), Instance::Scalar(Value::Int(29))),
+            ])
+            .into(),
+        );
 
         let text = to_string(&schema(), std::slice::from_ref(&row), None, false).unwrap();
         let read_back = from_str(&text, &schema(), None, false).unwrap();
@@ -932,13 +953,16 @@ mod tests {
 
     #[test]
     fn text_io_roundtrips_a_custom_delimiter_and_quoted_value() {
-        let row = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("Jane;Doe".into())),
-            ),
-            ("age".into(), Instance::Scalar(Value::Int(29))),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("Jane;Doe".into())),
+                ),
+                ("age".into(), Instance::Scalar(Value::Int(29))),
+            ])
+            .into(),
+        );
 
         let text = to_string(&schema(), std::slice::from_ref(&row), Some(';'), true).unwrap();
         let read_back = from_str(&text, &schema(), Some(';'), true).unwrap();
@@ -955,16 +979,19 @@ mod tests {
             std::process::id()
         ));
         std::fs::write(&path, "existing output\n").unwrap();
-        let row = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("Jane".into())),
-            ),
-            (
-                "age".into(),
-                Instance::Scalar(Value::String("not a number".into())),
-            ),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("Jane".into())),
+                ),
+                (
+                    "age".into(),
+                    Instance::Scalar(Value::String("not a number".into())),
+                ),
+            ])
+            .into(),
+        );
 
         let error = write(&path, &schema(), &[row], None, true).unwrap_err();
         let unchanged = std::fs::read_to_string(&path).unwrap();
@@ -1031,23 +1058,29 @@ mod tests {
             "ferrule_format_csv_test_bad_fields_{}.csv",
             std::process::id()
         ));
-        let missing = Instance::Group(vec![(
-            "name".into(),
-            Instance::Scalar(Value::String("Jane".into())),
-        )]);
+        let missing = Instance::Group(
+            (vec![(
+                "name".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            )])
+            .into(),
+        );
         let error = write(&path, &schema(), &[missing], None, false).unwrap_err();
         assert!(matches!(
             error,
             CsvFormatError::MissingField { row: 0, field } if field == "age"
         ));
 
-        let nested = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("Jane".into())),
-            ),
-            ("age".into(), Instance::Group(Vec::new())),
-        ]);
+        let nested = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("Jane".into())),
+                ),
+                ("age".into(), Instance::Group((Vec::new()).into())),
+            ])
+            .into(),
+        );
         let error = write(&path, &schema(), &[nested], None, false).unwrap_err();
         assert!(matches!(
             error,
@@ -1059,13 +1092,16 @@ mod tests {
             } if field == "age"
         ));
 
-        let mapped = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("Jane".into())),
-            ),
-            ("age".into(), Instance::MappedSequence(Vec::new())),
-        ]);
+        let mapped = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("Jane".into())),
+                ),
+                ("age".into(), Instance::MappedSequence(Vec::new())),
+            ])
+            .into(),
+        );
         let error = write(&path, &schema(), &[mapped], None, false).unwrap_err();
         assert!(matches!(
             error,
@@ -1095,10 +1131,11 @@ mod tests {
             ],
         );
         let row = Instance::Group(
-            ["text", "integer", "number", "boolean"]
+            (["text", "integer", "number", "boolean"]
                 .into_iter()
                 .map(|name| (name.to_string(), Instance::Scalar(Value::Null)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         );
 
         write(&path, &schema, std::slice::from_ref(&row), None, true).unwrap();
@@ -1120,21 +1157,30 @@ mod tests {
         assert_eq!(
             from_str("1,false\n0,true\n", &schema, None, false).unwrap(),
             vec![
-                Instance::Group(vec![
-                    ("left".into(), Instance::Scalar(Value::Bool(true))),
-                    ("right".into(), Instance::Scalar(Value::Bool(false))),
-                ]),
-                Instance::Group(vec![
-                    ("left".into(), Instance::Scalar(Value::Bool(false))),
-                    ("right".into(), Instance::Scalar(Value::Bool(true))),
-                ]),
+                Instance::Group(
+                    (vec![
+                        ("left".into(), Instance::Scalar(Value::Bool(true))),
+                        ("right".into(), Instance::Scalar(Value::Bool(false))),
+                    ])
+                    .into()
+                ),
+                Instance::Group(
+                    (vec![
+                        ("left".into(), Instance::Scalar(Value::Bool(false))),
+                        ("right".into(), Instance::Scalar(Value::Bool(true))),
+                    ])
+                    .into()
+                ),
             ]
         );
 
-        let row = Instance::Group(vec![
-            ("left".into(), Instance::Scalar(Value::String(" 1 ".into()))),
-            ("right".into(), Instance::Scalar(Value::String("0".into()))),
-        ]);
+        let row = Instance::Group(
+            (vec![
+                ("left".into(), Instance::Scalar(Value::String(" 1 ".into()))),
+                ("right".into(), Instance::Scalar(Value::String("0".into()))),
+            ])
+            .into(),
+        );
         assert_eq!(
             to_string(&schema, &[row], None, false).unwrap(),
             "true,false\n"

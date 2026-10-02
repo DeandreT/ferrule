@@ -408,30 +408,32 @@ fn manual_output(project: &Project, rows: &[Instance]) -> Instance {
                             let mut person_fields = fields(project, person, row);
                             let first_items = match expression(project, *to, row, 0) {
                                 Value::Int(0) => vec![],
-                                Value::Int(1) => vec![Instance::Group(fields(project, first, row))],
+                                Value::Int(1) => {
+                                    vec![Instance::Group((fields(project, first, row)).into())]
+                                }
                                 _ => panic!("bounded optional singleton range"),
                             };
                             person_fields.push((
                                 first.target_field.clone(),
                                 Instance::MappedSequence(first_items),
                             ));
-                            Instance::Group(person_fields)
+                            Instance::Group((person_fields).into())
                         })
                         .collect();
                     department_fields
                         .push((person.target_field.clone(), Instance::Repeated(people)));
-                    Instance::Group(department_fields)
+                    Instance::Group((department_fields).into())
                 })
                 .collect();
             office_fields.push((
                 department.target_field.clone(),
                 Instance::Repeated(departments),
             ));
-            Instance::Group(office_fields)
+            Instance::Group((office_fields).into())
         })
         .collect();
     root_fields.push((office.target_field.clone(), Instance::Repeated(offices)));
-    Instance::Group(root_fields)
+    Instance::Group((root_fields).into())
 }
 
 fn negative(

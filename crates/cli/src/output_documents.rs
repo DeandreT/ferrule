@@ -888,10 +888,13 @@ mod tests {
             "Record",
             vec![SchemaNode::scalar("Value", ScalarType::String)],
         );
-        let instance = Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("replacement".into())),
-        )]);
+        let instance = Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String("replacement".into())),
+            )])
+            .into(),
+        );
         let options = FormatOptions {
             json_document: true,
             ..FormatOptions::default()
@@ -919,10 +922,13 @@ mod tests {
             "Record",
             vec![SchemaNode::scalar("Value", ScalarType::String)],
         );
-        let instance = Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("value".into())),
-        )]);
+        let instance = Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String("value".into())),
+            )])
+            .into(),
+        );
         let options = FormatOptions {
             json_document: true,
             ..FormatOptions::default()

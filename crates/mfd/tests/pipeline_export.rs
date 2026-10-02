@@ -447,10 +447,13 @@ fn execute(pipeline: &mapping::Pipeline) -> engine::PipelineOutputs {
         pipeline,
         &BTreeMap::from([(
             name.clone(),
-            Instance::Group(vec![(
-                "Start".into(),
-                Instance::Scalar(Value::String("serial value".into())),
-            )]),
+            Instance::Group(
+                (vec![(
+                    "Start".into(),
+                    Instance::Scalar(Value::String("serial value".into())),
+                )])
+                .into(),
+            ),
         )]),
     )
     .unwrap()
@@ -466,17 +469,23 @@ fn late_named_inputs(pipeline: &mapping::Pipeline) -> BTreeMap<String, Instance>
     BTreeMap::from([
         (
             primary.clone(),
-            Instance::Group(vec![(
-                "Start".into(),
-                Instance::Scalar(Value::String("serial value".into())),
-            )]),
+            Instance::Group(
+                (vec![(
+                    "Start".into(),
+                    Instance::Scalar(Value::String("serial value".into())),
+                )])
+                .into(),
+            ),
         ),
         (
             catalog.clone(),
-            Instance::Group(vec![(
-                "Item".into(),
-                Instance::Scalar(Value::String("host value".into())),
-            )]),
+            Instance::Group(
+                (vec![(
+                    "Item".into(),
+                    Instance::Scalar(Value::String("host value".into())),
+                )])
+                .into(),
+            ),
         ),
     ])
 }
@@ -488,16 +497,19 @@ fn repeated_host_inputs(pipeline: &mapping::Pipeline) -> BTreeMap<String, Instan
     };
     inputs.insert(
         catalog.clone(),
-        Instance::Group(vec![
-            (
-                "Item".into(),
-                Instance::Scalar(Value::String("host item".into())),
-            ),
-            (
-                "Other".into(),
-                Instance::Scalar(Value::String("host other".into())),
-            ),
-        ]),
+        Instance::Group(
+            (vec![
+                (
+                    "Item".into(),
+                    Instance::Scalar(Value::String("host item".into())),
+                ),
+                (
+                    "Other".into(),
+                    Instance::Scalar(Value::String("host other".into())),
+                ),
+            ])
+            .into(),
+        ),
     );
     inputs
 }
@@ -980,20 +992,26 @@ fn repeated_xml_rows_write_header_and_quoted_csv_after_pipeline_roundtrip() {
     let PipelineInput::Host { name } = &imported.pipeline.stages[0].source else {
         panic!("first stage must read a host source");
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(
-            ["alpha;beta", "say \"hi\""]
-                .into_iter()
-                .map(|value| {
-                    Instance::Group(vec![(
-                        "Value".into(),
-                        Instance::Scalar(Value::String(value.into())),
-                    )])
-                })
-                .collect(),
-        ),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(
+                ["alpha;beta", "say \"hi\""]
+                    .into_iter()
+                    .map(|value| {
+                        Instance::Group(
+                            (vec![(
+                                "Value".into(),
+                                Instance::Scalar(Value::String(value.into())),
+                            )])
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    );
     let input = BTreeMap::from([(name.clone(), source.clone())]);
     let original_outputs = engine::run_pipeline(&imported.pipeline, &input).unwrap();
     let final_stage = &imported.pipeline.stages[1];
@@ -1672,7 +1690,7 @@ fn xlsx_instance_by_named_fields(instance: &Instance) -> Instance {
                 .map(|(name, value)| (name.clone(), xlsx_instance_by_named_fields(value)))
                 .collect::<Vec<_>>();
             fields.sort_by(|left, right| left.0.cmp(&right.0));
-            Instance::Group(fields)
+            Instance::Group((fields).into())
         }
         Instance::Repeated(items) => {
             Instance::Repeated(items.iter().map(xlsx_instance_by_named_fields).collect())
@@ -4166,16 +4184,19 @@ fn earlier_xml_result_feeds_final_named_input_and_round_trips_natively() {
     };
     let hosts = BTreeMap::from([(
         name.clone(),
-        Instance::Group(vec![
-            (
-                "Start".into(),
-                Instance::Scalar(Value::String("main value".into())),
-            ),
-            (
-                "Shadow".into(),
-                Instance::Scalar(Value::String("side value".into())),
-            ),
-        ]),
+        Instance::Group(
+            (vec![
+                (
+                    "Start".into(),
+                    Instance::Scalar(Value::String("main value".into())),
+                ),
+                (
+                    "Shadow".into(),
+                    Instance::Scalar(Value::String("side value".into())),
+                ),
+            ])
+            .into(),
+        ),
     )]);
     let before = engine::run_pipeline(&original.pipeline, &hosts).unwrap();
     assert_eq!(
@@ -4331,10 +4352,13 @@ fn nonadjacent_xml_result_feeds_final_named_input_in_four_stage_chain() {
         };
         let hosts = BTreeMap::from([(
             name.clone(),
-            Instance::Group(vec![(
-                "Start".into(),
-                Instance::Scalar(Value::String("four-stage value".into())),
-            )]),
+            Instance::Group(
+                (vec![(
+                    "Start".into(),
+                    Instance::Scalar(Value::String("four-stage value".into())),
+                )])
+                .into(),
+            ),
         )]);
         let before = engine::run_pipeline(&imported.pipeline, &hosts).unwrap();
         let final_before = &before.stage("mfd-stage-4").unwrap().primary;

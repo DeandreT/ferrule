@@ -124,10 +124,13 @@ fn saved_repairs_block_file_and_payload_paths_in_run_and_preview() {
         let project =
             mapping::project_file::decode_str(&std::fs::read_to_string(&saved).unwrap()).unwrap();
         assert!(engine::validate(&project).is_empty());
-        let typed = Instance::Repeated(vec![Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("data".into())),
-        )])]);
+        let typed = Instance::Repeated(vec![Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String("data".into())),
+            )])
+            .into(),
+        )]);
         assert!(
             engine::run(&project, &typed).is_ok(),
             "typed input does not perform CSV byte I/O"

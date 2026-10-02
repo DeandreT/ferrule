@@ -260,10 +260,9 @@ mod tests {
         let schema = SchemaNode::group("Root", vec![any]);
         let encoded = serde_json::to_string(&schema)?;
         let nested = format!("{}0{}", "[".repeat(127), "]".repeat(127));
-        let instance = Instance::Group(vec![(
-            "Payload".into(),
-            Instance::Scalar(Value::String(nested)),
-        )]);
+        let instance = Instance::Group(
+            (vec![("Payload".into(), Instance::Scalar(Value::String(nested)))]).into(),
+        );
         let native = format_json::to_string(&schema, &instance)?;
         // The arbitrary JSON leaf was valid at its own parse boundary. One
         // enclosing target object creates 128 containers in the final output.

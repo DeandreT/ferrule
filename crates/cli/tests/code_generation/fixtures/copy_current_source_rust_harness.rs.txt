@@ -1,9 +1,35 @@
-use codegen_runtime::{Instance, RuntimeError, Value, field, group, scalar};
+use codegen_runtime::{Instance, RuntimeError, Value, field, group, scalar, XmlTypeOrigin};
 use ferrule_generated_mapping::execute;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = copy_source();
-    assert_eq!(execute(&source)?, source);
+    let output=execute(&source)?;
+    assert_eq!(output, source);
+    assert_eq!(output.xml_type_origin(),Ok(XmlTypeOrigin::Absent));
+    assert_eq!(output.field("Empty").unwrap().xml_type_origin(),Ok(XmlTypeOrigin::Explicit("empty")));
+    let Instance::MappedSequence(items)=output.field("Items").unwrap() else {unreachable!()};
+    assert_eq!(items[0].xml_type_origin(),Ok(XmlTypeOrigin::Explicit("first")));
+    assert_eq!(items[1].xml_type_origin(),Ok(XmlTypeOrigin::Absent));
+    let input=r#"{"Id":7,"\u001fferrule-xml-type-origin":"ordinary JSON value","Empty":{},"Items":[{"Name":"first"},{"Name":"second"}]}"#;
+    let text=ferrule_generated_mapping::execute_json(input)?;
+    let bytes=ferrule_generated_mapping::execute_json_bytes(input.as_bytes())?;
+    let expected = r#"{
+  "Id": 7,
+  "\u001fferrule-xml-type-origin": "ordinary JSON value",
+  "Empty": {},
+  "Items": [
+    {
+      "Name": "first"
+    },
+    {
+      "Name": "second"
+    }
+  ]
+}
+"#;
+    assert_eq!(text, expected);
+    assert_eq!(bytes, expected.as_bytes());
+    assert_eq!(bytes, text.as_bytes());
     assert_eq!(
         execute(&scalar(Value::String("wrong".into()))),
         Err(RuntimeError::CopyCurrentSourceRequiresGroup { found: "scalar" }),
@@ -12,8 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn copy_source() -> Instance {
-    group([
+    let value=group([
         field("Id", scalar(Value::Int(7))),
+        field("\u{1f}ferrule-xml-type-origin", scalar(Value::String("ordinary JSON value".into()))),
         field("Missing", scalar(Value::Null)),
         field("Nil", scalar(Value::xml_nil())),
         field("Empty", group(Vec::new())),
@@ -24,5 +51,21 @@ fn copy_source() -> Instance {
                 group([field("Name", scalar(Value::String("second".into())))]),
             ]),
         ),
-    ])
+    ]);
+    let Instance::Group(mut fields)=value else {unreachable!()};
+    for (name,value) in fields.iter_mut() {
+        if name=="Empty" {
+            let Instance::Group(child)=value else {unreachable!()};
+            child.set_xml_type_origin(XmlTypeOrigin::Explicit("empty")).unwrap();
+        }
+        if name=="Items" {
+            let Instance::MappedSequence(items)=value else {unreachable!()};
+            for (index,item) in items.iter_mut().enumerate() {
+                let Instance::Group(child)=item else {unreachable!()};
+                child.set_xml_type_origin(if index==0 {XmlTypeOrigin::Explicit("first")} else {XmlTypeOrigin::Absent}).unwrap();
+            }
+        }
+    }
+    fields.set_xml_type_origin(XmlTypeOrigin::Absent).unwrap();
+    Instance::Group(fields)
 }

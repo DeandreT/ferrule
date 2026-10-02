@@ -38,10 +38,11 @@ fn scalar(value: Value) -> Instance {
 
 fn group(fields: Vec<(&str, Instance)>) -> Instance {
     Instance::Group(
-        fields
+        (fields
             .into_iter()
             .map(|(name, value)| (name.to_string(), value))
-            .collect(),
+            .collect::<Vec<_>>())
+        .into(),
     )
 }
 

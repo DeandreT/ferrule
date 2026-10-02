@@ -307,7 +307,10 @@ fn first_empty_candidates_remain_a_present_empty_group_for_each_empty_cause() {
         let source = format_xml::from_str(input, &p.source).unwrap();
         let output = engine::run(&p, &source).unwrap();
         for item in output.field("Department").unwrap().as_repeated().unwrap() {
-            assert_eq!(item.field("Selected"), Some(&Instance::Group(vec![])));
+            assert_eq!(
+                item.field("Selected"),
+                Some(&Instance::Group((vec![]).into()))
+            );
         }
         let written = format_xml::to_string(&p.target, &output).unwrap();
         assert!(written.contains("<Selected"));

@@ -680,7 +680,7 @@ fn read_node_with_patterns(
                         out.push((child.name.clone(), missing_instance(child)));
                     }
                 }
-                return Ok(Instance::Group(out));
+                return Ok(Instance::Group((out).into()));
             }
             let mut out = Vec::with_capacity(children.len());
             for child in children {
@@ -720,7 +720,7 @@ fn read_node_with_patterns(
                     }
                 }
             }
-            Ok(Instance::Group(out))
+            Ok(Instance::Group((out).into()))
         }
     }
 }
@@ -736,7 +736,7 @@ fn missing_instance(schema: &SchemaNode) -> Instance {
             SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
                 Instance::Scalar(Value::Null)
             }
-            SchemaKind::Group { .. } => Instance::Group(Vec::new()),
+            SchemaKind::Group { .. } => Instance::Group((Vec::new()).into()),
         }
     }
 }
@@ -1591,7 +1591,7 @@ mod tests {
             Err(JsonFormatError::MissingRecursiveAnchor { .. })
         ));
         assert!(matches!(
-            to_string(&missing, &Instance::Group(Vec::new())),
+            to_string(&missing, &Instance::Group((Vec::new()).into())),
             Err(JsonFormatError::MissingRecursiveAnchor { .. })
         ));
 
@@ -1626,7 +1626,7 @@ mod tests {
             Err(JsonFormatError::InvalidRecursiveReference { .. })
         ));
         assert!(matches!(
-            to_string(&constrained, &Instance::Group(Vec::new())),
+            to_string(&constrained, &Instance::Group((Vec::new()).into())),
             Err(JsonFormatError::InvalidRecursiveReference { .. })
         ));
     }
@@ -1635,10 +1635,10 @@ mod tests {
     fn recursive_json_reads_and_writes_are_depth_bounded() {
         let schema = SchemaNode::group("node", vec![SchemaNode::recursive_group("node", "node")]);
         let mut value = serde_json::json!({});
-        let mut instance = Instance::Group(Vec::new());
+        let mut instance = Instance::Group((Vec::new()).into());
         for _ in 0..=MAX_JSON_RECURSION_DEPTH {
             value = serde_json::json!({"node": value});
-            instance = Instance::Group(vec![("node".into(), instance)]);
+            instance = Instance::Group((vec![("node".into(), instance)]).into());
         }
         assert!(matches!(
             from_str(&value.to_string(), &schema),
@@ -1846,16 +1846,19 @@ mod tests {
         );
         assert_eq!(write_node(&schema, &instance).unwrap(), value);
 
-        let duplicate = Instance::Group(vec![
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("first".into())),
-            ),
-            (
-                "name".into(),
-                Instance::Scalar(Value::String("second".into())),
-            ),
-        ]);
+        let duplicate = Instance::Group(
+            (vec![
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("first".into())),
+                ),
+                (
+                    "name".into(),
+                    Instance::Scalar(Value::String("second".into())),
+                ),
+            ])
+            .into(),
+        );
         assert!(matches!(
             write_node(&schema, &duplicate),
             Err(JsonFormatError::DuplicateProperty { ref property, .. }) if property == "name"
@@ -1883,10 +1886,10 @@ mod tests {
         assert!(matches!(
             write_node(
                 &schema,
-                &Instance::Group(vec![(
+                &Instance::Group((vec![(
                     "other".into(),
                     Instance::Scalar(Value::Int(1)),
-                )]),
+                )]).into()),
             ),
             Err(JsonFormatError::UnmatchedPatternProperty { ref property, .. })
                 if property == "other"
@@ -1894,7 +1897,7 @@ mod tests {
         assert_eq!(
             write_node(
                 &schema,
-                &Instance::Group(vec![("other".into(), Instance::Scalar(Value::Null),)]),
+                &Instance::Group((vec![("other".into(), Instance::Scalar(Value::Null),)]).into()),
             )?,
             serde_json::json!({})
         );
@@ -2024,10 +2027,9 @@ mod tests {
         assert!(matches!(
             write_node(
                 &incomparable,
-                &Instance::Group(vec![(
-                    "ID".into(),
-                    Instance::Scalar(Value::String("3".into()))
-                )])
+                &Instance::Group(
+                    (vec![("ID".into(), Instance::Scalar(Value::String("3".into())))]).into()
+                )
             ),
             Err(JsonFormatError::AmbiguousAlternative { .. })
         ));
@@ -2086,21 +2088,27 @@ mod tests {
     #[test]
     fn text_io_roundtrips_nested_repeating_groups() {
         let tag = |v: &str, w: f64| {
-            Instance::Group(vec![
-                ("Value".into(), Instance::Scalar(Value::String(v.into()))),
-                ("Weight".into(), Instance::Scalar(Value::Float(w))),
-            ])
+            Instance::Group(
+                (vec![
+                    ("Value".into(), Instance::Scalar(Value::String(v.into()))),
+                    ("Weight".into(), Instance::Scalar(Value::Float(w))),
+                ])
+                .into(),
+            )
         };
-        let instance = Instance::Group(vec![
-            (
-                "Name".into(),
-                Instance::Scalar(Value::String("Jane".into())),
-            ),
-            (
-                "Tag".into(),
-                Instance::Repeated(vec![tag("a", 1.5), tag("b", 2.0)]),
-            ),
-        ]);
+        let instance = Instance::Group(
+            (vec![
+                (
+                    "Name".into(),
+                    Instance::Scalar(Value::String("Jane".into())),
+                ),
+                (
+                    "Tag".into(),
+                    Instance::Repeated(vec![tag("a", 1.5), tag("b", 2.0)]),
+                ),
+            ])
+            .into(),
+        );
 
         let text = to_string(&schema(), &instance).unwrap();
         let read_back = from_str(&text, &schema()).unwrap();
@@ -2221,14 +2229,20 @@ mod tests {
     fn to_string_preserves_flat_rows_for_a_non_repeating_root() {
         let schema = SchemaNode::group("Row", vec![SchemaNode::scalar("Name", ScalarType::String)]);
         let rows = Instance::Repeated(vec![
-            Instance::Group(vec![(
-                "Name".into(),
-                Instance::Scalar(Value::String("first".into())),
-            )]),
-            Instance::Group(vec![(
-                "Name".into(),
-                Instance::Scalar(Value::String("second".into())),
-            )]),
+            Instance::Group(
+                (vec![(
+                    "Name".into(),
+                    Instance::Scalar(Value::String("first".into())),
+                )])
+                .into(),
+            ),
+            Instance::Group(
+                (vec![(
+                    "Name".into(),
+                    Instance::Scalar(Value::String("second".into())),
+                )])
+                .into(),
+            ),
         ]);
 
         let text = to_string(&schema, &rows).unwrap();
@@ -2275,7 +2289,10 @@ mod tests {
 
         let instance = read(&path, &schema).unwrap();
         assert_eq!(instance.field("Nick"), Some(&Instance::Scalar(Value::Null)));
-        assert_eq!(instance.field("Extra"), Some(&Instance::Group(vec![])));
+        assert_eq!(
+            instance.field("Extra"),
+            Some(&Instance::Group((vec![]).into()))
+        );
 
         // Writing the Null back omits the key instead of emitting `null`.
         write(&path, &schema, &instance).unwrap();
@@ -2351,7 +2368,7 @@ mod tests {
 
         for field in ["Object", "Items"] {
             let instance =
-                Instance::Group(vec![(field.to_string(), Instance::Scalar(Value::Null))]);
+                Instance::Group((vec![(field.to_string(), Instance::Scalar(Value::Null))]).into());
             let error = write_node(&schema, &instance).unwrap_err();
             assert!(matches!(
                 error,
@@ -2568,7 +2585,7 @@ mod tests {
 
         let wrong_shape = write_node(
             &SchemaNode::scalar("Field", ScalarType::Bool),
-            &Instance::Group(Vec::new()),
+            &Instance::Group((Vec::new()).into()),
         )
         .unwrap_err();
         assert!(matches!(
@@ -2599,8 +2616,9 @@ mod tests {
         let scalar = SchemaNode::scalar("Field", ScalarType::String);
         let root = SchemaNode::group("Root", vec![scalar.clone()]);
         let item = |value: &str| Instance::Scalar(Value::String(value.into()));
-        let field =
-            |items| Instance::Group(vec![("Field".into(), Instance::MappedSequence(items))]);
+        let field = |items| {
+            Instance::Group((vec![("Field".into(), Instance::MappedSequence(items))]).into())
+        };
 
         let omitted: serde_json::Value = serde_json::from_str(&to_string(&root, &field(vec![]))?)?;
         assert_eq!(omitted, serde_json::json!({}));

@@ -74,7 +74,10 @@ fn absent_groups_remain_absent_while_present_empty_groups_round_trip() {
     .unwrap();
     assert!(instance.field("Left").is_some());
     assert!(instance.field("Right").is_none());
-    assert_eq!(instance.field("Flag"), Some(&Instance::Group(Vec::new())));
+    assert_eq!(
+        instance.field("Flag"),
+        Some(&Instance::Group((Vec::new()).into()))
+    );
 
     let xml = to_string(&schema, &instance).unwrap();
     assert!(xml.contains("<Left>"), "{xml}");
@@ -182,19 +185,22 @@ fn fixed_attribute_writes_preserve_lexical_form_after_typed_validation() {
         Some("Record"),
     )
     .unwrap();
-    let lexical_instance = Instance::Group(vec![(
-        "code".to_string(),
-        Instance::Scalar(Value::String("007".to_string())),
-    )]);
+    let lexical_instance = Instance::Group(
+        (vec![(
+            "code".to_string(),
+            Instance::Scalar(Value::String("007".to_string())),
+        )])
+        .into(),
+    );
     let lexical_xml = to_string(&lexical_schema, &lexical_instance).unwrap();
     assert!(lexical_xml.contains(r#"code="007""#), "{lexical_xml}");
     assert!(matches!(
         to_string(
             &lexical_schema,
-            &Instance::Group(vec![(
+            &Instance::Group((vec![(
                 "code".to_string(),
                 Instance::Scalar(Value::String("7".to_string())),
-            )]),
+            )]).into()),
         ),
         Err(crate::XmlFormatError::FixedValue { name, .. }) if name == "code"
     ));
@@ -204,7 +210,7 @@ fn fixed_attribute_writes_preserve_lexical_form_after_typed_validation() {
         vec![SchemaNode::scalar_fixed("code", ScalarType::Int, "007").attribute()],
     );
     let typed_instance =
-        Instance::Group(vec![("code".to_string(), Instance::Scalar(Value::Int(7)))]);
+        Instance::Group((vec![("code".to_string(), Instance::Scalar(Value::Int(7)))]).into());
     let typed_xml = to_string(&typed_schema, &typed_instance).unwrap();
     assert!(typed_xml.contains(r#"code="007""#), "{typed_xml}");
 }

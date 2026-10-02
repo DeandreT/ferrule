@@ -194,15 +194,21 @@ fn core_structure_variable_passes_a_once_computed_aggregate_into_each_row()
     }));
 
     let user = |name: &str| {
-        Instance::Group(vec![(
-            "Name".to_string(),
-            Instance::Scalar(Value::String(name.to_string())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Name".to_string(),
+                Instance::Scalar(Value::String(name.to_string())),
+            )])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "User".to_string(),
-        Instance::Repeated(vec![user("Ada"), user("Grace"), user("Katherine")]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "User".to_string(),
+            Instance::Repeated(vec![user("Ada"), user("Grace"), user("Katherine")]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source)?;
     let rows = output
         .field("Row")
@@ -276,42 +282,49 @@ fn filtered_cross_source_aggregate_lowers_to_an_inner_join()
 
     let record = |fields: Vec<(&str, Value)>| {
         Instance::Group(
-            fields
+            (fields
                 .into_iter()
                 .map(|(name, value)| (name.to_string(), Instance::Scalar(value)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         )
     };
-    let source = Instance::Group(vec![(
-        "Line".into(),
-        Instance::Repeated(vec![
-            record(vec![
-                ("Sku", Value::String("A".into())),
-                ("Quantity", Value::Int(2)),
+    let source = Instance::Group(
+        (vec![(
+            "Line".into(),
+            Instance::Repeated(vec![
+                record(vec![
+                    ("Sku", Value::String("A".into())),
+                    ("Quantity", Value::Int(2)),
+                ]),
+                record(vec![
+                    ("Sku", Value::String("B".into())),
+                    ("Quantity", Value::Int(3)),
+                ]),
             ]),
-            record(vec![
-                ("Sku", Value::String("B".into())),
-                ("Quantity", Value::Int(3)),
+        )])
+        .into(),
+    );
+    let catalog = Instance::Group(
+        (vec![(
+            "Product".into(),
+            Instance::Repeated(vec![
+                record(vec![
+                    ("Sku", Value::String("A".into())),
+                    ("Price", Value::Float(10.0)),
+                ]),
+                record(vec![
+                    ("Sku", Value::String("B".into())),
+                    ("Price", Value::Float(5.0)),
+                ]),
+                record(vec![
+                    ("Sku", Value::String("C".into())),
+                    ("Price", Value::Float(7.0)),
+                ]),
             ]),
-        ]),
-    )]);
-    let catalog = Instance::Group(vec![(
-        "Product".into(),
-        Instance::Repeated(vec![
-            record(vec![
-                ("Sku", Value::String("A".into())),
-                ("Price", Value::Float(10.0)),
-            ]),
-            record(vec![
-                ("Sku", Value::String("B".into())),
-                ("Price", Value::Float(5.0)),
-            ]),
-            record(vec![
-                ("Sku", Value::String("C".into())),
-                ("Price", Value::Float(7.0)),
-            ]),
-        ]),
-    )]);
+        )])
+        .into(),
+    );
     let catalog_name = imported.project.extra_sources[0].name.clone();
     let output = engine::run_with_sources(
         &imported.project,
@@ -392,38 +405,45 @@ fn filtered_cross_source_aggregate_does_not_broaden_an_enclosing_item_frame()
 
     let record = |fields: Vec<(&str, Value)>| {
         Instance::Group(
-            fields
+            (fields
                 .into_iter()
                 .map(|(name, value)| (name.to_string(), Instance::Scalar(value)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         )
     };
-    let source = Instance::Group(vec![(
-        "Line".into(),
-        Instance::Repeated(vec![
-            record(vec![
-                ("Sku", Value::String("A".into())),
-                ("Quantity", Value::Int(2)),
+    let source = Instance::Group(
+        (vec![(
+            "Line".into(),
+            Instance::Repeated(vec![
+                record(vec![
+                    ("Sku", Value::String("A".into())),
+                    ("Quantity", Value::Int(2)),
+                ]),
+                record(vec![
+                    ("Sku", Value::String("B".into())),
+                    ("Quantity", Value::Int(3)),
+                ]),
             ]),
-            record(vec![
-                ("Sku", Value::String("B".into())),
-                ("Quantity", Value::Int(3)),
+        )])
+        .into(),
+    );
+    let catalog = Instance::Group(
+        (vec![(
+            "Product".into(),
+            Instance::Repeated(vec![
+                record(vec![
+                    ("Sku", Value::String("A".into())),
+                    ("Price", Value::Float(10.0)),
+                ]),
+                record(vec![
+                    ("Sku", Value::String("B".into())),
+                    ("Price", Value::Float(5.0)),
+                ]),
             ]),
-        ]),
-    )]);
-    let catalog = Instance::Group(vec![(
-        "Product".into(),
-        Instance::Repeated(vec![
-            record(vec![
-                ("Sku", Value::String("A".into())),
-                ("Price", Value::Float(10.0)),
-            ]),
-            record(vec![
-                ("Sku", Value::String("B".into())),
-                ("Price", Value::Float(5.0)),
-            ]),
-        ]),
-    )]);
+        )])
+        .into(),
+    );
     let catalog_name = imported.project.extra_sources[0].name.clone();
     let output =
         engine::run_with_sources(&imported.project, &source, vec![(catalog_name, catalog)])?;

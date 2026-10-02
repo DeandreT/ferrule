@@ -606,13 +606,19 @@ mod tests {
 
         assert_eq!(
             source,
-            Instance::Group(vec![(
-                "parameters".into(),
-                Instance::Group(vec![(
-                    "city".into(),
-                    Instance::Scalar(Value::String("Boston".into())),
-                )]),
-            )])
+            Instance::Group(
+                (vec![(
+                    "parameters".into(),
+                    Instance::Group(
+                        (vec![(
+                            "city".into(),
+                            Instance::Scalar(Value::String("Boston".into())),
+                        )])
+                        .into()
+                    ),
+                )])
+                .into()
+            )
         );
         Ok(())
     }
@@ -838,14 +844,22 @@ mod tests {
         project.target_options.xbrl =
             Some(XbrlBoundaryOptions::external_target("taxonomy.xsd", None)?);
         assert_eq!(
-            serialize_target(&project, &Instance::Group(Vec::new()), DataFormat::Xml),
+            serialize_target(
+                &project,
+                &Instance::Group((Vec::new()).into()),
+                DataFormat::Xml
+            ),
             Err(RuntimeError::XbrlFormatRequired {
                 side: DataSide::Target,
             })
         );
         project.target_options.xbrl = None;
         assert_eq!(
-            serialize_target(&project, &Instance::Group(Vec::new()), DataFormat::Xbrl),
+            serialize_target(
+                &project,
+                &Instance::Group((Vec::new()).into()),
+                DataFormat::Xbrl
+            ),
             Err(RuntimeError::XbrlBoundaryRequired {
                 side: DataSide::Target,
             })

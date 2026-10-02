@@ -45,13 +45,19 @@ impl DynamicSourceLoader for FixtureLoader {
             "second.xml" => "beta",
             other => return Err(format!("unexpected path {other}")),
         };
-        Ok(Arc::new(Instance::Group(vec![(
-            "Item".into(),
-            Instance::Repeated(vec![Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            )])]),
-        )])))
+        Ok(Arc::new(Instance::Group(
+            (vec![(
+                "Item".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String(value.into())),
+                    )])
+                    .into(),
+                )]),
+            )])
+            .into(),
+        )))
     }
 }
 
@@ -126,13 +132,16 @@ fn project() -> Project {
 }
 
 fn primary_instance() -> Instance {
-    Instance::Group(vec![(
-        "File".into(),
-        Instance::Repeated(vec![
-            Instance::Scalar(Value::String("first.xml".into())),
-            Instance::Scalar(Value::String("second.xml".into())),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "File".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("first.xml".into())),
+                Instance::Scalar(Value::String("second.xml".into())),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 #[test]

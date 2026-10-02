@@ -40,7 +40,7 @@ fn write_design(path: &Path, name: &str, library: &str) {
 fn run(project: &mapping::Project) -> Instance {
     let execution = engine::ExecutionContext::new(Path::new("/maps/main.ferrule.json"))
         .with_current_datetime("2026-07-12T12:01:02.345-07:00");
-    engine::run_with_context(project, &Instance::Group(Vec::new()), &execution).unwrap()
+    engine::run_with_context(project, &Instance::Group((Vec::new()).into()), &execution).unwrap()
 }
 
 fn assert_now(output: &Instance) {

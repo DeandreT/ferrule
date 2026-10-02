@@ -42,6 +42,7 @@ public sealed class FerruleGroup : FerruleInstance
     private readonly IReadOnlyList<FerruleField> _fields;
     private readonly Dictionary<string, FerruleInstance> _fieldsByName;
     private readonly bool _schemaDeclarations;
+    private readonly FerruleXmlTypeOrigin? _origin;
 
     public FerruleGroup(IEnumerable<FerruleField> fields)
         : this(fields, schemaDeclarations: false)
@@ -56,11 +57,26 @@ public sealed class FerruleGroup : FerruleInstance
     internal FerruleGroup RebuildFields(IEnumerable<FerruleField> fields) =>
         new(fields, _schemaDeclarations);
 
-    private FerruleGroup(IEnumerable<FerruleField> fields, bool schemaDeclarations)
+    internal FerruleGroup CloneFields(IEnumerable<FerruleField> fields) =>
+        new(fields, _schemaDeclarations, _origin);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public FerruleXmlTypeOrigin XmlTypeOrigin => _origin ?? FerruleXmlTypeOrigin.Unknown;
+
+    /// <summary>Attach an actual-reader fact at a trusted host boundary.</summary>
+    public FerruleGroup WithXmlTypeOrigin(FerruleXmlTypeOrigin origin)
+    {
+        ArgumentNullException.ThrowIfNull(origin);
+        return new(_fields, _schemaDeclarations, origin);
+    }
+
+    private FerruleGroup(IEnumerable<FerruleField> fields, bool schemaDeclarations,
+        FerruleXmlTypeOrigin? origin = null)
     {
         ArgumentNullException.ThrowIfNull(fields);
         var ordered = new List<FerruleField>();
         _schemaDeclarations = schemaDeclarations;
+        _origin = origin?.Kind == FerruleXmlTypeOriginKind.Unknown ? null : origin;
         _fieldsByName = new Dictionary<string, FerruleInstance>(StringComparer.Ordinal);
         foreach (var field in fields)
         {

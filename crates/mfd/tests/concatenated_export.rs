@@ -41,20 +41,23 @@ fn source_schema() -> SchemaNode {
 }
 
 fn source_instance() -> Instance {
-    Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(
-            ["Alpha", "Beta"]
-                .into_iter()
-                .map(|name| {
-                    Instance::Group(vec![(
-                        "Name".into(),
-                        Instance::Scalar(Value::String(name.into())),
-                    )])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(
+                ["Alpha", "Beta"]
+                    .into_iter()
+                    .map(|name| {
+                        Instance::Group(
+                            (vec![("Name".into(), Instance::Scalar(Value::String(name.into())))])
+                                .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn graph() -> Graph {
@@ -403,69 +406,87 @@ fn unconditioned_mapped_sequence_source() -> Instance {
             names
                 .iter()
                 .map(|name| {
-                    Instance::Group(vec![(
-                        "Name".into(),
-                        Instance::Scalar(Value::String((*name).into())),
-                    )])
+                    Instance::Group(
+                        (vec![(
+                            "Name".into(),
+                            Instance::Scalar(Value::String((*name).into())),
+                        )])
+                        .into(),
+                    )
                 })
                 .collect(),
         )
     };
-    Instance::Group(vec![
-        ("Primary".into(), rows(&["Alpha", "Beta"])),
-        ("Secondary".into(), rows(&["Gamma"])),
-    ])
+    Instance::Group(
+        (vec![
+            ("Primary".into(), rows(&["Alpha", "Beta"])),
+            ("Secondary".into(), rows(&["Gamma"])),
+        ])
+        .into(),
+    )
 }
 
 fn conditioned_source_instance() -> Instance {
     let address = |name: &str, type_name: &str, field: &str, value: &str| {
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            (
-                "State".into(),
-                Instance::Scalar(if field == "State" {
-                    Value::String(value.into())
-                } else {
-                    Value::Null
-                }),
-            ),
-            (
-                "Postcode".into(),
-                Instance::Scalar(if field == "Postcode" {
-                    Value::String(value.into())
-                } else {
-                    Value::Null
-                }),
-            ),
-            (
-                XML_TYPE_FIELD.into(),
-                Instance::Scalar(Value::String(type_name.into())),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                (
+                    "State".into(),
+                    Instance::Scalar(if field == "State" {
+                        Value::String(value.into())
+                    } else {
+                        Value::Null
+                    }),
+                ),
+                (
+                    "Postcode".into(),
+                    Instance::Scalar(if field == "Postcode" {
+                        Value::String(value.into())
+                    } else {
+                        Value::Null
+                    }),
+                ),
+                (
+                    XML_TYPE_FIELD.into(),
+                    Instance::Scalar(Value::String(type_name.into())),
+                ),
+            ])
+            .into(),
+        )
     };
-    Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![
-            Instance::Group(vec![(
-                "Address".into(),
-                address(
-                    "West",
-                    "{urn:ferrule:conditioned-concat}Domestic",
-                    "State",
-                    "CA",
+    Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![
+                Instance::Group(
+                    (vec![(
+                        "Address".into(),
+                        address(
+                            "West",
+                            "{urn:ferrule:conditioned-concat}Domestic",
+                            "State",
+                            "CA",
+                        ),
+                    )])
+                    .into(),
                 ),
-            )]),
-            Instance::Group(vec![(
-                "Address".into(),
-                address(
-                    "North",
-                    "{urn:ferrule:conditioned-concat}International",
-                    "Postcode",
-                    "N1",
+                Instance::Group(
+                    (vec![(
+                        "Address".into(),
+                        address(
+                            "North",
+                            "{urn:ferrule:conditioned-concat}International",
+                            "Postcode",
+                            "N1",
+                        ),
+                    )])
+                    .into(),
                 ),
-            )]),
-        ]),
-    )])
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn conditioned_plain_target_project() -> Project {
@@ -604,23 +625,29 @@ fn forwarded_type_marker_project() -> Project {
 }
 
 fn conditioned_plain_source_instance() -> Instance {
-    Instance::Group(vec![(
-        "Address".into(),
-        Instance::Group(vec![
-            (
-                "Name".into(),
-                Instance::Scalar(Value::String("West".into())),
+    Instance::Group(
+        (vec![(
+            "Address".into(),
+            Instance::Group(
+                (vec![
+                    (
+                        "Name".into(),
+                        Instance::Scalar(Value::String("West".into())),
+                    ),
+                    ("State".into(), Instance::Scalar(Value::String("CA".into()))),
+                    ("Postcode".into(), Instance::Scalar(Value::Null)),
+                    (
+                        XML_TYPE_FIELD.into(),
+                        Instance::Scalar(Value::String(
+                            "{urn:ferrule:conditioned-concat}Domestic".into(),
+                        )),
+                    ),
+                ])
+                .into(),
             ),
-            ("State".into(), Instance::Scalar(Value::String("CA".into()))),
-            ("Postcode".into(), Instance::Scalar(Value::Null)),
-            (
-                XML_TYPE_FIELD.into(),
-                Instance::Scalar(Value::String(
-                    "{urn:ferrule:conditioned-concat}Domestic".into(),
-                )),
-            ),
-        ]),
-    )])
+        )])
+        .into(),
+    )
 }
 
 fn conditioned_repeating_filter_project() -> Project {

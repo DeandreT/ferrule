@@ -82,7 +82,7 @@ fn tokenize_exists(input: &str, needle: &str) -> Project {
 }
 
 fn output(project: &Project) -> Result<Value, EngineError> {
-    let target = run(project, &Instance::Group(Vec::new()))?;
+    let target = run(project, &Instance::Group((Vec::new()).into()))?;
     target
         .field("result")
         .and_then(Instance::as_scalar)

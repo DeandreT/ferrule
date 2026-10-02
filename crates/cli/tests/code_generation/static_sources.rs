@@ -130,79 +130,94 @@ fn static_source_project() -> Project {
 }
 
 fn primary_source() -> Instance {
-    Instance::Group(vec![(
-        "Order".into(),
-        Instance::Repeated(vec![order("A"), order("missing"), order("B")]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Order".into(),
+            Instance::Repeated(vec![order("A"), order("missing"), order("B")]),
+        )])
+        .into(),
+    )
 }
 
 fn order(sku: &str) -> Instance {
-    Instance::Group(vec![(
-        "Sku".into(),
-        Instance::Scalar(Value::String(sku.into())),
-    )])
+    Instance::Group((vec![("Sku".into(), Instance::Scalar(Value::String(sku.into())))]).into())
 }
 
 fn catalog_source() -> Instance {
-    Instance::Group(vec![(
-        "CatalogRow".into(),
-        Instance::Repeated(vec![catalog_row("A", "Alpha"), catalog_row("B", "Beta")]),
-    )])
+    Instance::Group(
+        (vec![(
+            "CatalogRow".into(),
+            Instance::Repeated(vec![catalog_row("A", "Alpha"), catalog_row("B", "Beta")]),
+        )])
+        .into(),
+    )
 }
 
 fn catalog_row(sku: &str, label: &str) -> Instance {
-    Instance::Group(vec![
-        ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
-        (
-            "Label".into(),
-            Instance::Scalar(Value::String(label.into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
+            (
+                "Label".into(),
+                Instance::Scalar(Value::String(label.into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn labels_source() -> Instance {
-    Instance::Group(vec![(
-        "LabelRow".into(),
-        Instance::Repeated(vec![label_row("first"), label_row("second")]),
-    )])
+    Instance::Group(
+        (vec![(
+            "LabelRow".into(),
+            Instance::Repeated(vec![label_row("first"), label_row("second")]),
+        )])
+        .into(),
+    )
 }
 
 fn label_row(text: &str) -> Instance {
-    Instance::Group(vec![(
-        "Text".into(),
-        Instance::Scalar(Value::String(text.into())),
-    )])
+    Instance::Group((vec![("Text".into(), Instance::Scalar(Value::String(text.into())))]).into())
 }
 
 fn expected_primary() -> Instance {
     let result = |sku: &str, label: Value| {
-        Instance::Group(vec![
-            ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
-            ("CatalogLabel".into(), Instance::Scalar(label)),
-        ])
+        Instance::Group(
+            (vec![
+                ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
+                ("CatalogLabel".into(), Instance::Scalar(label)),
+            ])
+            .into(),
+        )
     };
-    Instance::Group(vec![
-        ("CatalogCount".into(), Instance::Scalar(Value::Int(2))),
-        (
-            "Result".into(),
-            Instance::Repeated(vec![
-                result("A", Value::String("Alpha".into())),
-                result("missing", Value::Null),
-                result("B", Value::String("Beta".into())),
-            ]),
-        ),
-        (
-            "ReferenceLabel".into(),
-            Instance::Repeated(vec![label_row("first"), label_row("second")]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("CatalogCount".into(), Instance::Scalar(Value::Int(2))),
+            (
+                "Result".into(),
+                Instance::Repeated(vec![
+                    result("A", Value::String("Alpha".into())),
+                    result("missing", Value::Null),
+                    result("B", Value::String("Beta".into())),
+                ]),
+            ),
+            (
+                "ReferenceLabel".into(),
+                Instance::Repeated(vec![label_row("first"), label_row("second")]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn expected_audit() -> Instance {
-    Instance::Group(vec![(
-        "FirstCatalogLabel".into(),
-        Instance::Scalar(Value::String("Alpha".into())),
-    )])
+    Instance::Group(
+        (vec![(
+            "FirstCatalogLabel".into(),
+            Instance::Scalar(Value::String("Alpha".into())),
+        )])
+        .into(),
+    )
 }
 
 fn engine_sources() -> Vec<(String, Instance)> {

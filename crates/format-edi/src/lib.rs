@@ -680,16 +680,20 @@ mod tests {
 
     #[test]
     fn implied_decimals_scale_every_repeated_value_once() {
-        let mut instance = Instance::Group(vec![(
-            "Rows".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![(
-                    "Amount".into(),
-                    Instance::Scalar(Value::Float(72_345.0)),
-                )]),
-                Instance::Group(vec![("Amount".into(), Instance::Scalar(Value::Null))]),
-            ]),
-        )]);
+        let mut instance = Instance::Group(
+            (vec![(
+                "Rows".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![("Amount".into(), Instance::Scalar(Value::Float(72_345.0)))]).into(),
+                    ),
+                    Instance::Group(
+                        (vec![("Amount".into(), Instance::Scalar(Value::Null))]).into(),
+                    ),
+                ]),
+            )])
+            .into(),
+        );
         let format = EdiImpliedDecimal::new(vec!["Rows".into(), "Amount".into()], 3).unwrap();
 
         apply_implied_decimals(&mut instance, std::slice::from_ref(&format)).unwrap();
@@ -706,43 +710,49 @@ mod tests {
 
     #[test]
     fn output_lexical_formats_compact_dates_and_times_across_repetition() {
-        let mut instance = Instance::Group(vec![(
-            "Rows".into(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                (
-                    "Date".into(),
-                    Instance::Scalar(Value::String("2004-04-30-09:00".into())),
-                ),
-                (
-                    "Time".into(),
-                    Instance::Scalar(Value::String("17:42:00.120-09:00".into())),
-                ),
-                (
-                    "ShortDate".into(),
-                    Instance::Scalar(Value::String("2026-07-18Z".into())),
-                ),
-                (
-                    "ShortTime".into(),
-                    Instance::Scalar(Value::String("12:34:00Z".into())),
-                ),
-                (
-                    "Decimal".into(),
-                    Instance::Scalar(Value::Float(1.35_f64 / 7.5_f64)),
-                ),
-                (
-                    "DecimalCode".into(),
-                    Instance::Scalar(Value::String("01".into())),
-                ),
-                (
-                    "DecimalFraction".into(),
-                    Instance::Scalar(Value::String(".09".into())),
-                ),
-                (
-                    "DecimalArtifact".into(),
-                    Instance::Scalar(Value::String("0.18000000000000002".into())),
-                ),
-            ])]),
-        )]);
+        let mut instance = Instance::Group(
+            (vec![(
+                "Rows".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        (
+                            "Date".into(),
+                            Instance::Scalar(Value::String("2004-04-30-09:00".into())),
+                        ),
+                        (
+                            "Time".into(),
+                            Instance::Scalar(Value::String("17:42:00.120-09:00".into())),
+                        ),
+                        (
+                            "ShortDate".into(),
+                            Instance::Scalar(Value::String("2026-07-18Z".into())),
+                        ),
+                        (
+                            "ShortTime".into(),
+                            Instance::Scalar(Value::String("12:34:00Z".into())),
+                        ),
+                        (
+                            "Decimal".into(),
+                            Instance::Scalar(Value::Float(1.35_f64 / 7.5_f64)),
+                        ),
+                        (
+                            "DecimalCode".into(),
+                            Instance::Scalar(Value::String("01".into())),
+                        ),
+                        (
+                            "DecimalFraction".into(),
+                            Instance::Scalar(Value::String(".09".into())),
+                        ),
+                        (
+                            "DecimalArtifact".into(),
+                            Instance::Scalar(Value::String("0.18000000000000002".into())),
+                        ),
+                    ])
+                    .into(),
+                )]),
+            )])
+            .into(),
+        );
         let formats = [
             EdiLexicalFormat::new(
                 vec!["Rows".into(), "Date".into()],
@@ -842,18 +852,24 @@ mod tests {
             },
         )
         .unwrap();
-        let mut lossy = Instance::Group(vec![(
-            "Time".into(),
-            Instance::Scalar(Value::String("17:42:01".into())),
-        )]);
+        let mut lossy = Instance::Group(
+            (vec![(
+                "Time".into(),
+                Instance::Scalar(Value::String("17:42:01".into())),
+            )])
+            .into(),
+        );
         assert!(matches!(
             apply_output_lexical_formats(&mut lossy, std::slice::from_ref(&format)),
             Err(EdiFormatError::LexicalFormatValue { .. })
         ));
-        let mut valid = Instance::Group(vec![(
-            "Time".into(),
-            Instance::Scalar(Value::String("17:42:00".into())),
-        )]);
+        let mut valid = Instance::Group(
+            (vec![(
+                "Time".into(),
+                Instance::Scalar(Value::String("17:42:00".into())),
+            )])
+            .into(),
+        );
         assert!(matches!(
             apply_output_lexical_formats(&mut valid, &[format.clone(), format]),
             Err(EdiFormatError::InvalidLexicalFormatLayout { .. })
@@ -864,10 +880,9 @@ mod tests {
             EdiLexicalKind::Decimal { max_chars: 4 },
         )
         .unwrap();
-        let mut over_precise = Instance::Group(vec![(
-            "Amount".into(),
-            Instance::Scalar(Value::Float(1.234_567)),
-        )]);
+        let mut over_precise = Instance::Group(
+            (vec![("Amount".into(), Instance::Scalar(Value::Float(1.234_567)))]).into(),
+        );
         assert!(matches!(
             apply_output_lexical_formats(&mut over_precise, &[decimal]),
             Err(EdiFormatError::LexicalFormatValue { .. })
@@ -879,10 +894,13 @@ mod tests {
         )
         .unwrap();
         for lexical in ["1.234567", "00001"] {
-            let mut significant_lexical = Instance::Group(vec![(
-                "Amount".into(),
-                Instance::Scalar(Value::String(lexical.into())),
-            )]);
+            let mut significant_lexical = Instance::Group(
+                (vec![(
+                    "Amount".into(),
+                    Instance::Scalar(Value::String(lexical.into())),
+                )])
+                .into(),
+            );
             assert!(matches!(
                 apply_output_lexical_formats(
                     &mut significant_lexical,

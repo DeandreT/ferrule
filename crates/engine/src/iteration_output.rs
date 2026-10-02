@@ -35,6 +35,6 @@ pub(super) fn finalize_scope_output(
         IterationOutput::First => Ok(produced
             .into_iter()
             .next()
-            .unwrap_or_else(|| Instance::Group(Vec::new()))),
+            .unwrap_or_else(|| Instance::Group((Vec::new()).into()))),
     }
 }

@@ -66,15 +66,21 @@ fn imports_executes_and_round_trips_a_connected_json_string_parser() {
     assert!(imported.project.extra_sources.is_empty());
     assert!(engine::validate(&imported.project).is_empty());
 
-    let input = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![Instance::Group(vec![(
-            "Payload".into(),
-            Instance::Scalar(Value::String(
-                r#"{"Shares":7,"Leaves":{"Total":3.5}}"#.into(),
-            )),
-        )])]),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![(
+                    "Payload".into(),
+                    Instance::Scalar(Value::String(
+                        r#"{"Shares":7,"Leaves":{"Total":3.5}}"#.into(),
+                    )),
+                )])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &input).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 1);
@@ -205,10 +211,13 @@ fn missing_string_parser_schema_provenance_survives_without_changing_execution()
     let bare_schema: ir::SchemaNode = serde_json::from_value(descriptor).unwrap();
     assert_eq!(runtime_schema, bare_schema);
 
-    let input = Instance::Group(vec![(
-        "Payload".into(),
-        Instance::Scalar(Value::String(r#"{"Value":"kept"}"#.into())),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Payload".into(),
+            Instance::Scalar(Value::String(r#"{"Value":"kept"}"#.into())),
+        )])
+        .into(),
+    );
     let expected = engine::run(original, &input).unwrap();
     assert_eq!(engine::run(&stored, &input).unwrap(), expected);
     let lowered = codegen::lower(&stored).unwrap();

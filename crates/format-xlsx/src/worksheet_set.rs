@@ -232,10 +232,11 @@ fn empty_instance(schema: &SchemaNode) -> Instance {
     match &schema.kind {
         SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Instance::Scalar(Value::Null),
         SchemaKind::Group { children, .. } => Instance::Group(
-            children
+            (children
                 .iter()
                 .map(|child| (child.name.clone(), empty_instance(child)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         ),
     }
 }
@@ -243,10 +244,11 @@ fn empty_instance(schema: &SchemaNode) -> Instance {
 fn empty_group_instance(schema: &SchemaNode) -> Result<Instance, XlsxFormatError> {
     match &schema.kind {
         SchemaKind::Group { children, .. } => Ok(Instance::Group(
-            children
+            (children
                 .iter()
                 .map(|child| (child.name.clone(), empty_instance(child)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         )),
         SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
             Err(XlsxFormatError::WorksheetSetRootSchema)

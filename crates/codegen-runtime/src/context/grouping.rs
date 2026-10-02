@@ -359,8 +359,9 @@ impl<'a> GroupedItems<'a> {
                         .map(|identity| identity.path().to_vec())
                         .unwrap_or_default();
                     let members = Instance::Repeated(group.members);
-                    let wrapper = wrapper_name
-                        .map(|name| Instance::Group(vec![(name.to_string(), members.clone())]));
+                    let wrapper = wrapper_name.map(|name| {
+                        Instance::Group((vec![(name.to_string(), members.clone())]).into())
+                    });
                     let prefix_len = group.first.frames.len().saturating_sub(1);
                     Some(OwnedGroup {
                         prefix: group.first.frames[..prefix_len].to_vec(),

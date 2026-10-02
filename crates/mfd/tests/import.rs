@@ -88,10 +88,13 @@ fn zero_input_create_guid_imports_and_executes() {
     assert!(engine::validate(&imported.project).is_empty());
     let output = engine::run(
         &imported.project,
-        &Instance::Group(vec![(
-            "Seed".into(),
-            Instance::Scalar(Value::String("unused".into())),
-        )]),
+        &Instance::Group(
+            (vec![(
+                "Seed".into(),
+                Instance::Scalar(Value::String("unused".into())),
+            )])
+            .into(),
+        ),
     )
     .unwrap();
     let Value::String(guid) = scalar(&output, "Guid") else {
@@ -170,11 +173,14 @@ fn target_node_defaults_fill_missing_connected_and_unconnected_scalars() {
 
     let missing = engine::run(
         &imported.project,
-        &Instance::Group(vec![
-            ("Value".into(), Instance::Scalar(Value::Null)),
-            ("SourceDefault".into(), Instance::Scalar(Value::Null)),
-            ("Maybe".into(), Instance::Scalar(Value::Null)),
-        ]),
+        &Instance::Group(
+            (vec![
+                ("Value".into(), Instance::Scalar(Value::Null)),
+                ("SourceDefault".into(), Instance::Scalar(Value::Null)),
+                ("Maybe".into(), Instance::Scalar(Value::Null)),
+            ])
+            .into(),
+        ),
     )
     .unwrap();
     assert_eq!(
@@ -195,20 +201,23 @@ fn target_node_defaults_fill_missing_connected_and_unconnected_scalars() {
 
     let present = engine::run(
         &imported.project,
-        &Instance::Group(vec![
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String("provided".into())),
-            ),
-            (
-                "SourceDefault".into(),
-                Instance::Scalar(Value::String("also-provided".into())),
-            ),
-            (
-                "Maybe".into(),
-                Instance::Scalar(Value::String("present".into())),
-            ),
-        ]),
+        &Instance::Group(
+            (vec![
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String("provided".into())),
+                ),
+                (
+                    "SourceDefault".into(),
+                    Instance::Scalar(Value::String("also-provided".into())),
+                ),
+                (
+                    "Maybe".into(),
+                    Instance::Scalar(Value::String("present".into())),
+                ),
+            ])
+            .into(),
+        ),
     )
     .unwrap();
     assert_eq!(
@@ -273,21 +282,27 @@ fn structural_filter_false_output_inverts_the_iteration_predicate() {
     let imported = mfd::import(&mapping).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let item = |keep, value: &str| {
-        Instance::Group(vec![
-            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                ),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![
-            item(true, "kept-by-true"),
-            item(false, "false-branch"),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![
+                item(true, "kept-by-true"),
+                item(false, "false-branch"),
+            ]),
+        )])
+        .into(),
+    );
     let output = engine::run(&imported.project, &source).unwrap();
     let items = output
         .field("Item")
@@ -347,28 +362,37 @@ fn filtered_structural_ancestor_constrains_nested_target_iteration() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let contact = |value: &str| {
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String(value.into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            )])
+            .into(),
+        )
     };
     let office = |keep, values: &[&str]| {
-        Instance::Group(vec![
-            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
-            (
-                "Contact".into(),
-                Instance::Repeated(values.iter().map(|value| contact(value)).collect()),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+                (
+                    "Contact".into(),
+                    Instance::Repeated(values.iter().map(|value| contact(value)).collect()),
+                ),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Office".into(),
-        Instance::Repeated(vec![
-            office(false, &["A"]),
-            office(true, &["B", "C"]),
-            office(false, &["D"]),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Office".into(),
+            Instance::Repeated(vec![
+                office(false, &["A"]),
+                office(true, &["B", "C"]),
+                office(false, &["D"]),
+            ]),
+        )])
+        .into(),
+    );
 
     let output = engine::run(&imported.project, &source).unwrap();
     let values = output

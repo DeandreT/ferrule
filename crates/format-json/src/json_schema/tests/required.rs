@@ -36,13 +36,16 @@ fn ordinary_required_properties_distinguish_absence_from_explicit_null()
         serde_json::json!({"id": 7, "note": null})
     );
 
-    let missing_output = Instance::Group(vec![
-        ("id".into(), Instance::Scalar(Value::Null)),
-        (
-            "note".into(),
-            Instance::Scalar(Value::String("present".into())),
-        ),
-    ]);
+    let missing_output = Instance::Group(
+        (vec![
+            ("id".into(), Instance::Scalar(Value::Null)),
+            (
+                "note".into(),
+                Instance::Scalar(Value::String("present".into())),
+            ),
+        ])
+        .into(),
+    );
     assert!(matches!(
         crate::to_string(&schema, &missing_output),
         Err(JsonFormatError::MissingRequiredProperty { ref property, .. })

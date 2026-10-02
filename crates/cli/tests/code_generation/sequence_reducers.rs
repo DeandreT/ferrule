@@ -529,68 +529,74 @@ fn reducer_project() -> Project {
 }
 
 fn reducer_source(mode: ErrorMode) -> Instance {
-    Instance::Group(vec![
-        (
-            "Words".into(),
-            Instance::Scalar(Value::String("alpha,beta,gamma".into())),
-        ),
-        ("Index".into(), Instance::Scalar(Value::Int(2))),
-        (
-            "FailNonBool".into(),
-            Instance::Scalar(Value::Bool(mode == ErrorMode::NonBool)),
-        ),
-        (
-            "FailEmptyIndex".into(),
-            Instance::Scalar(Value::Bool(mode == ErrorMode::EmptyIndex)),
-        ),
-        (
-            "FailExistsSequence".into(),
-            Instance::Scalar(Value::Bool(mode == ErrorMode::ExistsSequence)),
-        ),
-        (
-            "FailItemAtSequence".into(),
-            Instance::Scalar(Value::Bool(mode == ErrorMode::ItemAtSequence)),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Words".into(),
+                Instance::Scalar(Value::String("alpha,beta,gamma".into())),
+            ),
+            ("Index".into(), Instance::Scalar(Value::Int(2))),
+            (
+                "FailNonBool".into(),
+                Instance::Scalar(Value::Bool(mode == ErrorMode::NonBool)),
+            ),
+            (
+                "FailEmptyIndex".into(),
+                Instance::Scalar(Value::Bool(mode == ErrorMode::EmptyIndex)),
+            ),
+            (
+                "FailExistsSequence".into(),
+                Instance::Scalar(Value::Bool(mode == ErrorMode::ExistsSequence)),
+            ),
+            (
+                "FailItemAtSequence".into(),
+                Instance::Scalar(Value::Bool(mode == ErrorMode::ItemAtSequence)),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn reducer_expected() -> Instance {
-    Instance::Group(vec![
-        ("ExistsTrue".into(), Instance::Scalar(Value::Bool(true))),
-        ("ExistsFalse".into(), Instance::Scalar(Value::Bool(false))),
-        ("ExistsPosition".into(), Instance::Scalar(Value::Bool(true))),
-        (
-            "ExistsShortCircuit".into(),
-            Instance::Scalar(Value::Bool(true)),
-        ),
-        (
-            "NullSkipsPredicate".into(),
-            Instance::Scalar(Value::Bool(false)),
-        ),
-        (
-            "EmptySkipsPredicate".into(),
-            Instance::Scalar(Value::Bool(false)),
-        ),
-        ("ItemAtOne".into(), Instance::Scalar(Value::Int(3))),
-        ("ItemAtOutOfRange".into(), Instance::Scalar(Value::Null)),
-        (
-            "ItemAtParentIndex".into(),
-            Instance::Scalar(Value::String("beta".into())),
-        ),
-        ("NonBoolProbe".into(), Instance::Scalar(Value::Bool(true))),
-        (
-            "EmptyIndexProbe".into(),
-            Instance::Scalar(Value::String("safe".into())),
-        ),
-        (
-            "ExistsSequenceProbe".into(),
-            Instance::Scalar(Value::Bool(true)),
-        ),
-        (
-            "ItemAtSequenceProbe".into(),
-            Instance::Scalar(Value::String("safe".into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("ExistsTrue".into(), Instance::Scalar(Value::Bool(true))),
+            ("ExistsFalse".into(), Instance::Scalar(Value::Bool(false))),
+            ("ExistsPosition".into(), Instance::Scalar(Value::Bool(true))),
+            (
+                "ExistsShortCircuit".into(),
+                Instance::Scalar(Value::Bool(true)),
+            ),
+            (
+                "NullSkipsPredicate".into(),
+                Instance::Scalar(Value::Bool(false)),
+            ),
+            (
+                "EmptySkipsPredicate".into(),
+                Instance::Scalar(Value::Bool(false)),
+            ),
+            ("ItemAtOne".into(), Instance::Scalar(Value::Int(3))),
+            ("ItemAtOutOfRange".into(), Instance::Scalar(Value::Null)),
+            (
+                "ItemAtParentIndex".into(),
+                Instance::Scalar(Value::String("beta".into())),
+            ),
+            ("NonBoolProbe".into(), Instance::Scalar(Value::Bool(true))),
+            (
+                "EmptyIndexProbe".into(),
+                Instance::Scalar(Value::String("safe".into())),
+            ),
+            (
+                "ExistsSequenceProbe".into(),
+                Instance::Scalar(Value::Bool(true)),
+            ),
+            (
+                "ItemAtSequenceProbe".into(),
+                Instance::Scalar(Value::String("safe".into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn write_reducer_project(directory: &Path) -> TestResult<PathBuf> {

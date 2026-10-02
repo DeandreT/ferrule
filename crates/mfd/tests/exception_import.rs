@@ -31,17 +31,20 @@ impl Drop for TempDir {
 }
 
 fn expense(allowed: bool, description: &str) -> Instance {
-    Instance::Group(vec![
-        ("Allowed".into(), Instance::Scalar(Value::Bool(allowed))),
-        (
-            "Description".into(),
-            Instance::Scalar(Value::String(description.into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("Allowed".into(), Instance::Scalar(Value::Bool(allowed))),
+            (
+                "Description".into(),
+                Instance::Scalar(Value::String(description.into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn expenses(items: Vec<Instance>) -> Instance {
-    Instance::Group(vec![("Expense".into(), Instance::Repeated(items))])
+    Instance::Group((vec![("Expense".into(), Instance::Repeated(items))]).into())
 }
 
 fn import_variant(tag: &str, transform: impl FnOnce(String) -> String) -> mfd::Imported {

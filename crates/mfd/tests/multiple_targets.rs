@@ -66,10 +66,13 @@ fn every_connected_target_imports_and_executes() -> Result<(), Box<dyn std::erro
     assert_eq!(second.path.as_deref(), Some("second.xml"));
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String("shared".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("shared".into())),
+        )])
+        .into(),
+    );
     let outputs = engine::run_outputs(&imported.project, &source)?;
     assert_eq!(
         outputs.primary.field("Value").and_then(Instance::as_scalar),
@@ -160,10 +163,13 @@ fn exports_reimports_and_executes_independent_xml_targets() -> Result<(), Box<dy
     assert_eq!(secondary.schema.name, "Secondary");
     assert_eq!(secondary.path.as_deref(), Some("secondary.xml"));
 
-    let source = Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String("shared".into())),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("shared".into())),
+        )])
+        .into(),
+    );
     let outputs = engine::run_outputs(&imported.project, &source)?;
     assert_eq!(
         outputs.primary.field("Value").and_then(Instance::as_scalar),

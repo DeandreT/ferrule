@@ -38,26 +38,32 @@ fn scalar<'a>(instance: &'a Instance, name: &str) -> Option<&'a Value> {
 
 fn protobuf_directory() -> Instance {
     let record = |code, label: &str, rank| {
-        Instance::Group(vec![
-            ("code".into(), Instance::Scalar(Value::Int(code))),
-            (
-                "label".into(),
-                Instance::Scalar(Value::String(label.into())),
-            ),
-            ("rank".into(), Instance::Scalar(Value::Int(rank))),
-            ("notes".into(), Instance::Repeated(Vec::new())),
-        ])
+        Instance::Group(
+            (vec![
+                ("code".into(), Instance::Scalar(Value::Int(code))),
+                (
+                    "label".into(),
+                    Instance::Scalar(Value::String(label.into())),
+                ),
+                ("rank".into(), Instance::Scalar(Value::Int(rank))),
+                ("notes".into(), Instance::Repeated(Vec::new())),
+            ])
+            .into(),
+        )
     };
-    Instance::Group(vec![
-        (
-            "title".into(),
-            Instance::Scalar(Value::String("Imported".into())),
-        ),
-        (
-            "records".into(),
-            Instance::Repeated(vec![record(4, "Four", 1), record(8, "Eight", 0)]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "title".into(),
+                Instance::Scalar(Value::String("Imported".into())),
+            ),
+            (
+                "records".into(),
+                Instance::Repeated(vec![record(4, "Four", 1), record(8, "Eight", 0)]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn embedded_layout(options: &ProtobufOptions) -> format_protobuf::Layout {
@@ -187,25 +193,31 @@ enum Status { STATUS_UNSPECIFIED = 0; READY = 1; }
         std::fs::remove_dir_all(temp.0.join(directory)).unwrap();
     }
     let layout = embedded_layout(options);
-    let input = Instance::Group(vec![
-        (
-            "record".to_string(),
-            Instance::Group(vec![
-                (
-                    "name".to_string(),
-                    Instance::Scalar(Value::String("portable".to_string())),
+    let input = Instance::Group(
+        (vec![
+            (
+                "record".to_string(),
+                Instance::Group(
+                    (vec![
+                        (
+                            "name".to_string(),
+                            Instance::Scalar(Value::String("portable".to_string())),
+                        ),
+                        (
+                            "status".to_string(),
+                            Instance::Scalar(Value::String("READY".to_string())),
+                        ),
+                    ])
+                    .into(),
                 ),
-                (
-                    "status".to_string(),
-                    Instance::Scalar(Value::String("READY".to_string())),
-                ),
-            ]),
-        ),
-        (
-            "status".to_string(),
-            Instance::Scalar(Value::String("READY".to_string())),
-        ),
-    ]);
+            ),
+            (
+                "status".to_string(),
+                Instance::Scalar(Value::String("READY".to_string())),
+            ),
+        ])
+        .into(),
+    );
     let bytes = format_protobuf::to_vec(&layout, &options.root_message, &input).unwrap();
     let decoded = format_protobuf::from_slice(&layout, &options.root_message, &bytes).unwrap();
     let output = engine::run(&imported.project, &decoded).unwrap();

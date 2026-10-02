@@ -140,24 +140,30 @@ fn directory_schema() -> SchemaNode {
 }
 
 fn directory(name: &str, files: &[&str], children: Vec<Instance>) -> Instance {
-    Instance::Group(vec![
-        ("name".into(), Instance::Scalar(Value::String(name.into()))),
-        (
-            "file".into(),
-            Instance::Repeated(
-                files
-                    .iter()
-                    .map(|name| {
-                        Instance::Group(vec![(
-                            "name".into(),
-                            Instance::Scalar(Value::String((*name).into())),
-                        )])
-                    })
-                    .collect(),
+    Instance::Group(
+        (vec![
+            ("name".into(), Instance::Scalar(Value::String(name.into()))),
+            (
+                "file".into(),
+                Instance::Repeated(
+                    files
+                        .iter()
+                        .map(|name| {
+                            Instance::Group(
+                                (vec![(
+                                    "name".into(),
+                                    Instance::Scalar(Value::String((*name).into())),
+                                )])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
             ),
-        ),
-        ("directory".into(), Instance::Repeated(children)),
-    ])
+            ("directory".into(), Instance::Repeated(children)),
+        ])
+        .into(),
+    )
 }
 
 fn with_ordered_content(mut directory: Instance, order: &[&str]) -> Instance {
@@ -185,17 +191,20 @@ fn with_ordered_content(mut directory: Instance, order: &[&str]) -> Instance {
                 .and_then(|values| values.get(index))
                 .expect("ordered XML item has a visible child")
                 .clone();
-            Instance::Group(vec![
-                (
-                    XML_NODE_NAME_FIELD.into(),
-                    Instance::Scalar(Value::String((*name).into())),
-                ),
-                (
-                    XML_TEXT_FIELD.into(),
-                    Instance::Scalar(Value::String(String::new())),
-                ),
-                (XML_MIXED_CONTENT_VALUE_FIELD.into(), value),
-            ])
+            Instance::Group(
+                (vec![
+                    (
+                        XML_NODE_NAME_FIELD.into(),
+                        Instance::Scalar(Value::String((*name).into())),
+                    ),
+                    (
+                        XML_TEXT_FIELD.into(),
+                        Instance::Scalar(Value::String(String::new())),
+                    ),
+                    (XML_MIXED_CONTENT_VALUE_FIELD.into(), value),
+                ])
+                .into(),
+            )
         })
         .collect();
     fields.push((XML_MIXED_CONTENT_FIELD.into(), Instance::Repeated(ordered)));

@@ -21,13 +21,19 @@ impl DynamicSourceLoader for FixtureLoader {
             "second.xml" => "beta",
             other => return Err(format!("unexpected path {other}")),
         };
-        Ok(Arc::new(Instance::Group(vec![(
-            "Item".into(),
-            Instance::Repeated(vec![Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            )])]),
-        )])))
+        Ok(Arc::new(Instance::Group(
+            (vec![(
+                "Item".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String(value.into())),
+                    )])
+                    .into(),
+                )]),
+            )])
+            .into(),
+        )))
     }
 }
 
@@ -118,13 +124,16 @@ fn dynamic_sources_keep_each_loaded_document_in_its_driver_context() {
     let project = dynamic_project();
     let issues = validate(&project);
     assert!(issues.is_empty(), "{issues:?}");
-    let source = Instance::Group(vec![(
-        "File".into(),
-        Instance::Repeated(vec![
-            Instance::Scalar(Value::String("first.xml".into())),
-            Instance::Scalar(Value::String("second.xml".into())),
-        ]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "File".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("first.xml".into())),
+                Instance::Scalar(Value::String("second.xml".into())),
+            ]),
+        )])
+        .into(),
+    );
     let execution = ExecutionContext::new(Path::new("mapping.ferrule.json"))
         .with_dynamic_source_loader(&FixtureLoader);
 
@@ -132,26 +141,32 @@ fn dynamic_sources_keep_each_loaded_document_in_its_driver_context() {
     assert_eq!(
         output.field("Row"),
         Some(&Instance::Repeated(vec![
-            Instance::Group(vec![
-                (
-                    "Path".into(),
-                    Instance::Scalar(Value::String("first.xml".into())),
-                ),
-                (
-                    "Value".into(),
-                    Instance::Scalar(Value::String("alpha".into())),
-                ),
-            ]),
-            Instance::Group(vec![
-                (
-                    "Path".into(),
-                    Instance::Scalar(Value::String("second.xml".into())),
-                ),
-                (
-                    "Value".into(),
-                    Instance::Scalar(Value::String("beta".into())),
-                ),
-            ]),
+            Instance::Group(
+                (vec![
+                    (
+                        "Path".into(),
+                        Instance::Scalar(Value::String("first.xml".into())),
+                    ),
+                    (
+                        "Value".into(),
+                        Instance::Scalar(Value::String("alpha".into())),
+                    ),
+                ])
+                .into()
+            ),
+            Instance::Group(
+                (vec![
+                    (
+                        "Path".into(),
+                        Instance::Scalar(Value::String("second.xml".into())),
+                    ),
+                    (
+                        "Value".into(),
+                        Instance::Scalar(Value::String("beta".into())),
+                    ),
+                ])
+                .into()
+            ),
         ]))
     );
 }
@@ -159,10 +174,13 @@ fn dynamic_sources_keep_each_loaded_document_in_its_driver_context() {
 #[test]
 fn dynamic_sources_require_a_host_loader() {
     let project = dynamic_project();
-    let source = Instance::Group(vec![(
-        "File".into(),
-        Instance::Repeated(vec![Instance::Scalar(Value::String("first.xml".into()))]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "File".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::String("first.xml".into()))]),
+        )])
+        .into(),
+    );
     assert_eq!(
         super::run(&project, &source),
         Err(EngineError::MissingDynamicSourceLoader {
@@ -381,13 +399,16 @@ fn dynamic_paths_allow_driver_fields_and_reducer_private_items() {
             use_private_dynamic_join(&mut project);
         }
         assert!(validate(&project).is_empty(), "{:#?}", validate(&project));
-        let source = Instance::Group(vec![(
-            "File".into(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::String("first.xml".into())),
-                Instance::Scalar(Value::String("second.xml".into())),
-            ]),
-        )]);
+        let source = Instance::Group(
+            (vec![(
+                "File".into(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("first.xml".into())),
+                    Instance::Scalar(Value::String("second.xml".into())),
+                ]),
+            )])
+            .into(),
+        );
         let context = ExecutionContext::new(Path::new("mapping.ferrule.json"))
             .with_dynamic_source_loader(&FixtureLoader);
         let output = run_with_context(&project, &source, &context)

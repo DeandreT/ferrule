@@ -10,7 +10,7 @@ fn field(name: &str, value: Instance) -> (String, Instance) {
 }
 
 fn group(fields: impl IntoIterator<Item = (String, Instance)>) -> Instance {
-    Instance::Group(fields.into_iter().collect())
+    Instance::Group((fields.into_iter().collect::<Vec<_>>()).into())
 }
 
 fn scalar(value: Value) -> Instance {

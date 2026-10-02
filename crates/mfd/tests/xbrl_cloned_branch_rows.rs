@@ -97,23 +97,32 @@ fn scalar(value: &str) -> Instance {
 }
 
 fn source_instance() -> Instance {
-    Instance::Group(vec![
-        (
-            "Duration".to_string(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                ("Start".to_string(), scalar("2026-01-01")),
-                ("End".to_string(), scalar("2026-03-31")),
-                ("Label".to_string(), scalar("duration")),
-            ])]),
-        ),
-        (
-            "Instant".to_string(),
-            Instance::Repeated(vec![Instance::Group(vec![
-                ("At".to_string(), scalar("2026-03-31")),
-                ("Label".to_string(), scalar("instant")),
-            ])]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Duration".to_string(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        ("Start".to_string(), scalar("2026-01-01")),
+                        ("End".to_string(), scalar("2026-03-31")),
+                        ("Label".to_string(), scalar("duration")),
+                    ])
+                    .into(),
+                )]),
+            ),
+            (
+                "Instant".to_string(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![
+                        ("At".to_string(), scalar("2026-03-31")),
+                        ("Label".to_string(), scalar("instant")),
+                    ])
+                    .into(),
+                )]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn field<'a>(instance: &'a Instance, name: &str) -> Option<&'a Instance> {

@@ -68,6 +68,8 @@ pub fn xml_mixed_content(
 
 /// Attaches the current source's ordered mixed-content stream to a constructed
 /// target group, substituting mapped target occurrences in source order.
+/// An unchanged output is transferred exactly when no stream can be attached;
+/// attaching or rebuilding fields invalidates that output's owning origin fact.
 pub fn preserve_xml_mixed_content(
     context: &ScopeContext<'_>,
     mut output: Instance,
@@ -105,17 +107,20 @@ pub fn preserve_xml_mixed_content(
                 .as_scalar()
                 .map(mixed_content_text)
                 .unwrap_or_default();
-            Some(Instance::Group(vec![
-                (
-                    XML_NODE_NAME_FIELD.to_string(),
-                    Instance::Scalar(Value::String(element.target.to_string())),
-                ),
-                (
-                    XML_TEXT_FIELD.to_string(),
-                    Instance::Scalar(Value::String(text)),
-                ),
-                (XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value),
-            ]))
+            Some(Instance::Group(
+                (vec![
+                    (
+                        XML_NODE_NAME_FIELD.to_string(),
+                        Instance::Scalar(Value::String(element.target.to_string())),
+                    ),
+                    (
+                        XML_TEXT_FIELD.to_string(),
+                        Instance::Scalar(Value::String(text)),
+                    ),
+                    (XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value),
+                ])
+                .into(),
+            ))
         })
         .collect::<Vec<_>>();
     if !items.is_empty() {

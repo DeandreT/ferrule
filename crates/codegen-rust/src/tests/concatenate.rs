@@ -167,21 +167,27 @@ fn project(output: MappingIterationOutput) -> Project {
 
 fn source() -> Instance {
     fn row(name: &str, rank: i64) -> Instance {
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            ("Rank".into(), Instance::Scalar(Value::Int(rank))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("Rank".into(), Instance::Scalar(Value::Int(rank))),
+            ])
+            .into(),
+        )
     }
-    Instance::Group(vec![
-        (
-            "Domestic".into(),
-            Instance::Repeated(vec![row("North", 1), row("South", 3), row("West", 2)]),
-        ),
-        (
-            "International".into(),
-            Instance::Repeated(vec![row("East", 8), row("Central", 4)]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Domestic".into(),
+                Instance::Repeated(vec![row("North", 1), row("South", 3), row("West", 2)]),
+            ),
+            (
+                "International".into(),
+                Instance::Repeated(vec![row("East", 8), row("Central", 4)]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn options(runtime_dependency: RuntimeDependency) -> Options {

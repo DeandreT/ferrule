@@ -47,10 +47,13 @@ fn three_output_project(node: Node) -> Project {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![(
-        "input".to_string(),
-        Instance::Scalar(Value::String("source value".to_string())),
-    )])
+    Instance::Group(
+        (vec![(
+            "input".to_string(),
+            Instance::Scalar(Value::String("source value".to_string())),
+        )])
+        .into(),
+    )
 }
 
 fn outputs(project: &Project) -> engine::ExecutionOutputs {
@@ -400,24 +403,30 @@ fn row_source_schema() -> SchemaNode {
 }
 
 fn rows_source() -> Instance {
-    Instance::Group(vec![(
-        "Rows".to_string(),
-        Instance::Repeated(
-            [2, 1]
-                .map(|b| {
-                    Instance::Group(vec![
-                        (
-                            "input".to_string(),
-                            Instance::Scalar(Value::String("first.xml".to_string())),
-                        ),
-                        ("a".to_string(), Instance::Scalar(Value::Int(0))),
-                        ("b".to_string(), Instance::Scalar(Value::Int(b))),
-                    ])
-                })
-                .into_iter()
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Rows".to_string(),
+            Instance::Repeated(
+                [2, 1]
+                    .map(|b| {
+                        Instance::Group(
+                            (vec![
+                                (
+                                    "input".to_string(),
+                                    Instance::Scalar(Value::String("first.xml".to_string())),
+                                ),
+                                ("a".to_string(), Instance::Scalar(Value::Int(0))),
+                                ("b".to_string(), Instance::Scalar(Value::Int(b))),
+                            ])
+                            .into(),
+                        )
+                    })
+                    .into_iter()
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 #[test]
@@ -459,10 +468,9 @@ fn secondary_sort_key_remains_owned_when_also_bound_to_the_active_target() {
         Instance::Repeated(
             [1, 2]
                 .map(|value| {
-                    Instance::Group(vec![(
-                        "value".to_string(),
-                        Instance::Scalar(Value::Int(value)),
-                    )])
+                    Instance::Group(
+                        (vec![("value".to_string(), Instance::Scalar(Value::Int(value)))]).into(),
+                    )
                 })
                 .into_iter()
                 .collect()
@@ -515,17 +523,23 @@ fn dynamic_document_output_path_remains_owned_by_the_named_target() {
         source: vec!["Rows".to_string()],
         output_path: 88,
     };
-    let input = Instance::Group(vec![(
-        "Rows".to_string(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            (
-                "input".to_string(),
-                Instance::Scalar(Value::String("first.xml".to_string())),
-            ),
-            ("a".to_string(), Instance::Scalar(Value::Int(0))),
-            ("b".to_string(), Instance::Scalar(Value::Int(1))),
-        ])]),
-    )]);
+    let input = Instance::Group(
+        (vec![(
+            "Rows".to_string(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
+                    (
+                        "input".to_string(),
+                        Instance::Scalar(Value::String("first.xml".to_string())),
+                    ),
+                    ("a".to_string(), Instance::Scalar(Value::Int(0))),
+                    ("b".to_string(), Instance::Scalar(Value::Int(1))),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    );
     assert_valid(&project);
     let before = engine::run_outputs(&project, &input).expect("named document output");
     let Instance::DocumentSet(documents) = &before.extras[0].instance else {
@@ -712,13 +726,19 @@ impl engine::DynamicSourceLoader for FixtureLoader {
         if source != "document" || path != "first.xml" {
             return Err(format!("unexpected source {source} or path {path}"));
         }
-        Ok(std::sync::Arc::new(Instance::Group(vec![(
-            "Item".to_string(),
-            Instance::Repeated(vec![Instance::Group(vec![(
-                "value".to_string(),
-                Instance::Scalar(Value::String("loaded value".to_string())),
-            )])]),
-        )])))
+        Ok(std::sync::Arc::new(Instance::Group(
+            (vec![(
+                "Item".to_string(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![(
+                        "value".to_string(),
+                        Instance::Scalar(Value::String("loaded value".to_string())),
+                    )])
+                    .into(),
+                )]),
+            )])
+            .into(),
+        )))
     }
 }
 

@@ -157,7 +157,10 @@ fn ordinary(value: &Instance) -> bool {
         Instance::DocumentSet(_) => false,
         Instance::Scalar(Value::XmlNil(_)) => false,
         Instance::Scalar(_) => true,
-        Instance::Group(fields) => fields.iter().all(|(_, value)| ordinary(value)),
+        Instance::Group(fields) => {
+            fields.xml_type_origin() == ir::XmlTypeOrigin::Unknown
+                && fields.iter().all(|(_, value)| ordinary(value))
+        }
         Instance::Repeated(items) | Instance::MappedSequence(items) => items.iter().all(ordinary),
     }
 }

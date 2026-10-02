@@ -33,27 +33,33 @@ fn write(path: &Path, contents: &str) {
 }
 
 fn input() -> Instance {
-    Instance::Group(vec![(
-        "Person".into(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            ("active".into(), Instance::Scalar(Value::Bool(true))),
-            (
-                "Name".into(),
-                Instance::Scalar(Value::String("A & B".into())),
-            ),
-            (
-                "Code".into(),
-                Instance::Scalar(Value::String("external".into())),
-            ),
-            (
-                "Tag".into(),
-                Instance::Repeated(vec![
-                    Instance::Scalar(Value::String("x".into())),
-                    Instance::Scalar(Value::String("y".into())),
-                ]),
-            ),
-        ])]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Person".into(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
+                    ("active".into(), Instance::Scalar(Value::Bool(true))),
+                    (
+                        "Name".into(),
+                        Instance::Scalar(Value::String("A & B".into())),
+                    ),
+                    (
+                        "Code".into(),
+                        Instance::Scalar(Value::String("external".into())),
+                    ),
+                    (
+                        "Tag".into(),
+                        Instance::Repeated(vec![
+                            Instance::Scalar(Value::String("x".into())),
+                            Instance::Scalar(Value::String("y".into())),
+                        ]),
+                    ),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    )
 }
 
 fn payload(output: &Instance) -> &str {

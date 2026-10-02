@@ -47,7 +47,7 @@ fn whole_group_copy_preserves_optional_absence_empty_and_nil() {
         let xml = format_xml::to_string(&p.target, &out).unwrap();
         assert_eq!(format_xml::from_str(&xml, &p.target).unwrap(), input);
     }
-    let input = Instance::Group(vec![]);
+    let input = Instance::Group((vec![]).into());
     assert_eq!(engine::run(&p, &input).unwrap(), input);
 }
 #[test]
@@ -85,6 +85,6 @@ fn copy_shape_validation_retains_nested_occurrence_identity() {
     p.target = p.source.clone();
     p.source.xml_optional = true;
     assert!(engine::validate(&p).is_empty());
-    let input = Instance::Group(vec![]);
+    let input = Instance::Group((vec![]).into());
     assert_eq!(engine::run(&p, &input).unwrap(), input);
 }

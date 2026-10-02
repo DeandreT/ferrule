@@ -92,17 +92,22 @@ fn active_scope(app: &FerruleApp) -> &Scope {
 }
 
 fn source(values: &[i64]) -> Instance {
-    Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(
-            values
-                .iter()
-                .map(|value| {
-                    Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(*value)))])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(
+                values
+                    .iter()
+                    .map(|value| {
+                        Instance::Group(
+                            (vec![("Value".into(), Instance::Scalar(Value::Int(*value)))]).into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn source_json(values: &[i64]) -> Vec<u8> {

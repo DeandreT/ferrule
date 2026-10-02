@@ -110,15 +110,21 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
 fn source_instance() -> Instance {
     let scalar = |value: &str| Instance::Scalar(Value::String(value.to_string()));
-    Instance::Group(vec![(
-        "Record".to_string(),
-        Instance::Repeated(vec![Instance::Group(vec![
-            ("Entity".to_string(), scalar("Example Corp")),
-            ("Scheme".to_string(), scalar("urn:ferrule:test:entity")),
-            ("Instant".to_string(), scalar("2026-06-30")),
-            ("Label".to_string(), scalar("reported")),
-        ])]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Record".to_string(),
+            Instance::Repeated(vec![Instance::Group(
+                (vec![
+                    ("Entity".to_string(), scalar("Example Corp")),
+                    ("Scheme".to_string(), scalar("urn:ferrule:test:entity")),
+                    ("Instant".to_string(), scalar("2026-06-30")),
+                    ("Label".to_string(), scalar("reported")),
+                ])
+                .into(),
+            )]),
+        )])
+        .into(),
+    )
 }
 
 #[test]

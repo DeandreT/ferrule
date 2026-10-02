@@ -332,125 +332,146 @@ fn collection_find_project() -> Project {
 }
 
 fn primary_source(fail_non_bool: bool) -> Instance {
-    Instance::Group(vec![
-        (
-            "Needle".into(),
-            Instance::Scalar(Value::String("Ada".into())),
-        ),
-        ("Suffix".into(), Instance::Scalar(Value::String("!".into()))),
-        (
-            "FailNonBool".into(),
-            Instance::Scalar(Value::Bool(fail_non_bool)),
-        ),
-        (
-            "Departments".into(),
-            Instance::Repeated(vec![
-                department(
-                    "Remote",
-                    vec![
-                        person("Ada", "Wrong: ", "remote@example.test", Value::Null),
-                        person("Lin", "Lead: ", "lin@example.test", Value::xml_nil()),
-                    ],
-                ),
-                department(
-                    "HQ",
-                    vec![
-                        person(
-                            "Grace",
-                            "Director: ",
-                            "grace@example.test",
-                            Value::Bool(false),
-                        ),
-                        person("Ada", "Engineer: ", "ada@example.test", Value::Bool(true)),
-                    ],
-                ),
-            ]),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Needle".into(),
+                Instance::Scalar(Value::String("Ada".into())),
+            ),
+            ("Suffix".into(), Instance::Scalar(Value::String("!".into()))),
+            (
+                "FailNonBool".into(),
+                Instance::Scalar(Value::Bool(fail_non_bool)),
+            ),
+            (
+                "Departments".into(),
+                Instance::Repeated(vec![
+                    department(
+                        "Remote",
+                        vec![
+                            person("Ada", "Wrong: ", "remote@example.test", Value::Null),
+                            person("Lin", "Lead: ", "lin@example.test", Value::xml_nil()),
+                        ],
+                    ),
+                    department(
+                        "HQ",
+                        vec![
+                            person(
+                                "Grace",
+                                "Director: ",
+                                "grace@example.test",
+                                Value::Bool(false),
+                            ),
+                            person("Ada", "Engineer: ", "ada@example.test", Value::Bool(true)),
+                        ],
+                    ),
+                ]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn primary_without_departments() -> Instance {
-    Instance::Group(vec![
-        (
-            "Needle".into(),
-            Instance::Scalar(Value::String("Ada".into())),
-        ),
-        ("Suffix".into(), Instance::Scalar(Value::String("!".into()))),
-        ("FailNonBool".into(), Instance::Scalar(Value::Bool(false))),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Needle".into(),
+                Instance::Scalar(Value::String("Ada".into())),
+            ),
+            ("Suffix".into(), Instance::Scalar(Value::String("!".into()))),
+            ("FailNonBool".into(), Instance::Scalar(Value::Bool(false))),
+        ])
+        .into(),
+    )
 }
 
 fn department(office: &str, people: Vec<Instance>) -> Instance {
-    Instance::Group(vec![
-        (
-            "Office".into(),
-            Instance::Scalar(Value::String(office.into())),
-        ),
-        ("People".into(), Instance::Repeated(people)),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Office".into(),
+                Instance::Scalar(Value::String(office.into())),
+            ),
+            ("People".into(), Instance::Repeated(people)),
+        ])
+        .into(),
+    )
 }
 
 fn person(first: &str, title: &str, email: &str, decision: Value) -> Instance {
-    Instance::Group(vec![
-        (
-            "First".into(),
-            Instance::Scalar(Value::String(first.into())),
-        ),
-        (
-            "Title".into(),
-            Instance::Scalar(Value::String(title.into())),
-        ),
-        (
-            "Email".into(),
-            Instance::Scalar(Value::String(email.into())),
-        ),
-        ("Decision".into(), Instance::Scalar(decision)),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "First".into(),
+                Instance::Scalar(Value::String(first.into())),
+            ),
+            (
+                "Title".into(),
+                Instance::Scalar(Value::String(title.into())),
+            ),
+            (
+                "Email".into(),
+                Instance::Scalar(Value::String(email.into())),
+            ),
+            ("Decision".into(), Instance::Scalar(decision)),
+        ])
+        .into(),
+    )
 }
 
 fn catalog_source() -> Instance {
-    Instance::Group(vec![(
-        "Items".into(),
-        Instance::Repeated(vec![
-            catalog_item("Ada", "catalog-A"),
-            catalog_item("Ada", "catalog-second"),
-            catalog_item("Grace", "catalog-G"),
-        ]),
-    )])
+    Instance::Group(
+        (vec![(
+            "Items".into(),
+            Instance::Repeated(vec![
+                catalog_item("Ada", "catalog-A"),
+                catalog_item("Ada", "catalog-second"),
+                catalog_item("Grace", "catalog-G"),
+            ]),
+        )])
+        .into(),
+    )
 }
 
 fn catalog_item(key: &str, label: &str) -> Instance {
-    Instance::Group(vec![
-        ("Key".into(), Instance::Scalar(Value::String(key.into()))),
-        (
-            "Label".into(),
-            Instance::Scalar(Value::String(label.into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("Key".into(), Instance::Scalar(Value::String(key.into()))),
+            (
+                "Label".into(),
+                Instance::Scalar(Value::String(label.into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn expected() -> Instance {
-    Instance::Group(vec![
-        (
-            "Details".into(),
-            Instance::Scalar(Value::String("Engineer: ada@example.test!".into())),
-        ),
-        ("DepartmentPosition".into(), Instance::Scalar(Value::Int(2))),
-        ("PersonPosition".into(), Instance::Scalar(Value::Int(2))),
-        (
-            "CatalogValue".into(),
-            Instance::Scalar(Value::String("catalog-A!".into())),
-        ),
-        (
-            "NullableDecision".into(),
-            Instance::Scalar(Value::String("ada@example.test".into())),
-        ),
-        ("LazyMiss".into(), Instance::Scalar(Value::Null)),
-        (
-            "NonBoolProbe".into(),
-            Instance::Scalar(Value::String("safe".into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Details".into(),
+                Instance::Scalar(Value::String("Engineer: ada@example.test!".into())),
+            ),
+            ("DepartmentPosition".into(), Instance::Scalar(Value::Int(2))),
+            ("PersonPosition".into(), Instance::Scalar(Value::Int(2))),
+            (
+                "CatalogValue".into(),
+                Instance::Scalar(Value::String("catalog-A!".into())),
+            ),
+            (
+                "NullableDecision".into(),
+                Instance::Scalar(Value::String("ada@example.test".into())),
+            ),
+            ("LazyMiss".into(), Instance::Scalar(Value::Null)),
+            (
+                "NonBoolProbe".into(),
+                Instance::Scalar(Value::String("safe".into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn engine_sources() -> Vec<(String, Instance)> {

@@ -1170,13 +1170,19 @@ SV3*AD:D4341*450~
             })
             .collect();
         let schema = SchemaNode::group("X12", vec![SchemaNode::group("ISA", isa_elements)]);
-        let instance = Instance::Group(vec![(
-            "ISA".into(),
-            Instance::Group(vec![
-                ("11".into(), Instance::Scalar(Value::String("U".into()))),
-                ("12".into(), Instance::Scalar(Value::String("00501".into()))),
-            ]),
-        )]);
+        let instance = Instance::Group(
+            (vec![(
+                "ISA".into(),
+                Instance::Group(
+                    (vec![
+                        ("11".into(), Instance::Scalar(Value::String("U".into()))),
+                        ("12".into(), Instance::Scalar(Value::String("00501".into()))),
+                    ])
+                    .into(),
+                ),
+            )])
+            .into(),
+        );
         let path = std::env::temp_dir().join(format!(
             "ferrule_x12_fixed_envelope_conflict_{}.edi",
             std::process::id()
@@ -1548,13 +1554,15 @@ IEA*1*000000001~
                 ],
             )],
         );
-        let instance = Instance::Group(vec![(
-            "BEG".into(),
-            Instance::Group(vec![(
-                "03".into(),
-                Instance::Scalar(Value::String("PO1".into())),
-            )]),
-        )]);
+        let instance = Instance::Group(
+            (vec![(
+                "BEG".into(),
+                Instance::Group(
+                    (vec![("03".into(), Instance::Scalar(Value::String("PO1".into())))]).into(),
+                ),
+            )])
+            .into(),
+        );
 
         let out_path = std::env::temp_dir().join(format!(
             "ferrule_x12_fixed_write_{}.edi",

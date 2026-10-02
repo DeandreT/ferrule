@@ -27,7 +27,7 @@ pub(super) fn evaluate(pages: &[Page], layout: &PdfLayout) -> Result<Instance, P
         &mut fields,
         &mut budget,
     )?;
-    Ok(Instance::Group(fields))
+    Ok(Instance::Group((fields).into()))
 }
 
 fn evaluate_global_commands(
@@ -278,7 +278,7 @@ fn evaluate_commands(
                 budget.nodes(2)?;
                 fields.push((
                     group.name.clone(),
-                    Instance::Repeated(vec![Instance::Group(children)]),
+                    Instance::Repeated(vec![Instance::Group((children).into())]),
                 ));
             }
             PdfCommand::EdgeRows(rows) => {
@@ -508,7 +508,7 @@ fn evaluate_text_groups(
                     fields,
                     vec![(
                         name.clone(),
-                        Instance::Repeated(vec![Instance::Group(produced)]),
+                        Instance::Repeated(vec![Instance::Group((produced).into())]),
                     )],
                 )?;
             }

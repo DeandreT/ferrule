@@ -108,7 +108,7 @@ fn output_values(output: &Instance, field: &str) -> Vec<Value> {
 
 fn run_valid(project: &Project) -> ExecutionOutputs {
     assert!(validate(project).is_empty(), "{:#?}", validate(project));
-    run_outputs(project, &Instance::Group(Vec::new())).unwrap()
+    run_outputs(project, &Instance::Group((Vec::new()).into())).unwrap()
 }
 
 #[test]
@@ -746,13 +746,16 @@ fn ordinary_absolute_and_frame_pinned_fields_keep_source_resolution() {
         );
         project.root.children[0].bindings[0].node = 50;
         assert!(validate(&project).is_empty(), "{:#?}", validate(&project));
-        let source = Instance::Group(vec![(
-            "Items".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![("N".into(), Instance::Scalar(Value::Int(99)))]),
-                Instance::Group(vec![("N".into(), Instance::Scalar(Value::Int(100)))]),
-            ]),
-        )]);
+        let source = Instance::Group(
+            (vec![(
+                "Items".into(),
+                Instance::Repeated(vec![
+                    Instance::Group((vec![("N".into(), Instance::Scalar(Value::Int(99)))]).into()),
+                    Instance::Group((vec![("N".into(), Instance::Scalar(Value::Int(100)))]).into()),
+                ]),
+            )])
+            .into(),
+        );
         let uniterated = if pinned { Value::Null } else { Value::Int(99) };
         assert_eq!(
             output_values(&run_outputs(&project, &source).unwrap().primary, "Value"),

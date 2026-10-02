@@ -253,20 +253,25 @@ mod tests {
 
     #[test]
     fn reports_all_length_and_code_violations_across_repetition() {
-        let instance = Instance::Group(vec![(
-            "Rows".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![(
-                    "Code".into(),
-                    Instance::Scalar(Value::String("A".into())),
-                )]),
-                Instance::Group(vec![(
-                    "Code".into(),
-                    Instance::Scalar(Value::String("LONG".into())),
-                )]),
-                Instance::Group(vec![("Code".into(), Instance::Scalar(Value::Null))]),
-            ]),
-        )]);
+        let instance = Instance::Group(
+            (vec![(
+                "Rows".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![("Code".into(), Instance::Scalar(Value::String("A".into())))]).into(),
+                    ),
+                    Instance::Group(
+                        (vec![(
+                            "Code".into(),
+                            Instance::Scalar(Value::String("LONG".into())),
+                        )])
+                        .into(),
+                    ),
+                    Instance::Group((vec![("Code".into(), Instance::Scalar(Value::Null))]).into()),
+                ]),
+            )])
+            .into(),
+        );
         let Some(constraint) = EdiValueConstraint::new(
             vec!["Rows".into(), "Code".into()],
             2,
@@ -291,14 +296,15 @@ mod tests {
         else {
             panic!("valid constraint");
         };
-        let instance = Instance::Group(vec![("Group".into(), Instance::Group(Vec::new()))]);
+        let instance =
+            Instance::Group((vec![("Group".into(), Instance::Group((Vec::new()).into()))]).into());
         assert!(matches!(
             validate_values(&instance, std::slice::from_ref(&constraint)),
             Err(EdiFormatError::InvalidValueConstraintLayout { reason, .. })
                 if reason == "path ends at a group"
         ));
         assert!(matches!(
-            validate_values(&Instance::Group(Vec::new()), &[constraint.clone(), constraint]),
+            validate_values(&Instance::Group((Vec::new()).into()), &[constraint.clone(), constraint]),
             Err(EdiFormatError::InvalidValueConstraintLayout { reason, .. })
                 if reason == "duplicate path"
         ));

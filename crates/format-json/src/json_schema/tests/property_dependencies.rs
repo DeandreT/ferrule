@@ -42,24 +42,30 @@ fn direct_dependencies_execute_on_distinct_input_and_normalized_output_propertie
         .is_ok()
     );
 
-    let omitted = Instance::Group(vec![
-        (
-            "trigger".into(),
-            Instance::Scalar(Value::String("yes".into())),
-        ),
-        ("required".into(), Instance::Scalar(Value::Null)),
-    ]);
+    let omitted = Instance::Group(
+        (vec![
+            (
+                "trigger".into(),
+                Instance::Scalar(Value::String("yes".into())),
+            ),
+            ("required".into(), Instance::Scalar(Value::Null)),
+        ])
+        .into(),
+    );
     assert!(matches!(
         crate::to_string(&schema, &omitted),
         Err(JsonFormatError::MissingDependentProperty { .. })
     ));
-    let explicit_null = Instance::Group(vec![
-        (
-            "trigger".into(),
-            Instance::Scalar(Value::String("yes".into())),
-        ),
-        ("required".into(), Instance::Scalar(Value::json_null())),
-    ]);
+    let explicit_null = Instance::Group(
+        (vec![
+            (
+                "trigger".into(),
+                Instance::Scalar(Value::String("yes".into())),
+            ),
+            ("required".into(), Instance::Scalar(Value::json_null())),
+        ])
+        .into(),
+    );
     assert!(crate::to_string(&schema, &explicit_null).is_ok());
 
     let rendered: serde_json::Value = serde_json::from_str(&export(&schema))?;

@@ -126,10 +126,7 @@ fn embedded_schema_preserves_adjacent_float_range_and_allowed_value_boundaries()
 fn embedded_schema_preserves_float_alternatives_and_nested_predicates() {
     let (low, high) = adjacent_values();
     let group = |value| {
-        Instance::Group(vec![(
-            "Amount".into(),
-            Instance::Scalar(Value::Float(value)),
-        )])
+        Instance::Group((vec![("Amount".into(), Instance::Scalar(Value::Float(value)))]).into())
     };
     for (value, other, accepted, rejected) in [
         (high, low, "1e-307", "1.0000000000000001e-307"),
@@ -198,10 +195,13 @@ fn embedded_schema_preserves_float_alternatives_and_nested_predicates() {
         )
         .unwrap();
         let triggered = |value| {
-            Instance::Group(vec![
-                ("Trigger".into(), Instance::Scalar(Value::Bool(true))),
-                ("Amount".into(), Instance::Scalar(Value::Float(value))),
-            ])
+            Instance::Group(
+                (vec![
+                    ("Trigger".into(), Instance::Scalar(Value::Bool(true))),
+                    ("Amount".into(), Instance::Scalar(Value::Float(value))),
+                ])
+                .into(),
+            )
         };
         check_case(
             dependent,

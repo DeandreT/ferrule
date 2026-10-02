@@ -256,13 +256,16 @@ fn nested_nil_udf_project() -> Project {
 }
 
 fn udf_source(use_nil: bool, value: &str) -> Instance {
-    Instance::Group(vec![
-        ("UseNil".into(), Instance::Scalar(Value::Bool(use_nil))),
-        (
-            "Value".into(),
-            Instance::Scalar(Value::String(value.into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            ("UseNil".into(), Instance::Scalar(Value::Bool(use_nil))),
+            (
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 fn assert_udf_results(project: &Project) -> Result<(), Box<dyn Error>> {

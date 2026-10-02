@@ -81,17 +81,20 @@ fn setup() -> TempDir {
 }
 
 fn reading(bucket: &str, value: f64) -> Instance {
-    Instance::Group(vec![
-        (
-            "Bucket".into(),
-            Instance::Scalar(Value::String(bucket.into())),
-        ),
-        ("Value".into(), Instance::Scalar(Value::Float(value))),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Bucket".into(),
+                Instance::Scalar(Value::String(bucket.into())),
+            ),
+            ("Value".into(), Instance::Scalar(Value::Float(value))),
+        ])
+        .into(),
+    )
 }
 
 fn source(items: Vec<Instance>) -> Instance {
-    Instance::Group(vec![("Reading".into(), Instance::Repeated(items))])
+    Instance::Group((vec![("Reading".into(), Instance::Repeated(items))]).into())
 }
 
 fn scalar<'a>(instance: &'a Instance, field: &str) -> &'a Value {

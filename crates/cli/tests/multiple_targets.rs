@@ -162,10 +162,13 @@ fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
         ]
     );
     assert!(!stored_primary.exists());
-    let expected = Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::String("shared".into())),
-    )]);
+    let expected = Instance::Group(
+        (vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("shared".into())),
+        )])
+        .into(),
+    );
     assert_eq!(
         format_xml::read(&outcome.output_path, &document("First"))?,
         expected
@@ -275,10 +278,13 @@ fn selected_target_avoids_colliding_unselected_destination()
     assert_eq!(outcome.artifacts, outcome.extra_outputs);
     assert_eq!(
         format_xml::read(&shared_path, &document("Second"))?,
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("selected".into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String("selected".into())),
+            )])
+            .into()
+        )
     );
     Ok(())
 }
@@ -311,10 +317,13 @@ fn run_subcommand_accepts_primary_target_selector() -> Result<(), Box<dyn std::e
     );
     assert_eq!(
         format_xml::read(&shared_path, &document("First"))?,
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("primary".into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String("primary".into())),
+            )])
+            .into()
+        )
     );
     Ok(())
 }
@@ -341,10 +350,13 @@ fn selected_filesystem_target_does_not_load_unselected_static_source()
     assert_eq!(selected.output_path, selected_path);
     assert_eq!(
         format_xml::read(&selected_path, &document("Primary"))?,
-        Instance::Group(vec![(
-            "Value".into(),
-            Instance::Scalar(Value::String("selected".into())),
-        )])
+        Instance::Group(
+            (vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String("selected".into())),
+            )])
+            .into()
+        )
     );
 
     let error = cli::run_project_with_paths(&project_path, Some(&input_path), None)

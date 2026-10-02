@@ -163,26 +163,35 @@ fn named_protobuf_creation_preserves_imports_through_history_save_reopen_and_exe
             .iter()
             .map(|file| (file.path.as_str(), file.source.as_str())),
     )?;
-    let address = Instance::Group(vec![(
-        "city".into(),
-        Instance::Scalar(Value::String("München".into())),
-    )]);
-    let source = Instance::Group(vec![
-        (
-            "name".into(),
-            Instance::Scalar(Value::String("Café".into())),
-        ),
-        ("count".into(), Instance::Scalar(Value::Int(2))),
-        ("address".into(), address.clone()),
-    ]);
-    let expected = Instance::Group(vec![
-        (
-            "label".into(),
-            Instance::Scalar(Value::String("Café".into())),
-        ),
-        ("count".into(), Instance::Scalar(Value::Int(2))),
-        ("address".into(), address),
-    ]);
+    let address = Instance::Group(
+        (vec![(
+            "city".into(),
+            Instance::Scalar(Value::String("München".into())),
+        )])
+        .into(),
+    );
+    let source = Instance::Group(
+        (vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Café".into())),
+            ),
+            ("count".into(), Instance::Scalar(Value::Int(2))),
+            ("address".into(), address.clone()),
+        ])
+        .into(),
+    );
+    let expected = Instance::Group(
+        (vec![
+            (
+                "label".into(),
+                Instance::Scalar(Value::String("Café".into())),
+            ),
+            ("count".into(), Instance::Scalar(Value::Int(2))),
+            ("address".into(), address),
+        ])
+        .into(),
+    );
     let input_bytes = format_protobuf::to_vec(&layout, "demo.Person", &source)?;
     let output_bytes = format_protobuf::to_vec(&layout, "demo.Snapshot", &expected)?;
     std::fs::write(&source_path, &input_bytes)?;

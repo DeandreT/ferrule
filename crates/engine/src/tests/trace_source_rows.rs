@@ -50,20 +50,23 @@ fn project(source: SchemaNode, target: SchemaNode, graph: Graph, root: Scope) ->
 
 #[test]
 fn source_row_previews_are_bounded_and_preserve_scalar_states() {
-    let source = Instance::Group(vec![
-        (
-            "é".repeat(100),
-            Instance::Scalar(Value::String("🦀".repeat(200))),
-        ),
-        ("Missing".into(), Instance::Scalar(Value::Null)),
-        ("JsonNull".into(), Instance::Scalar(Value::json_null())),
-        ("XmlNil".into(), Instance::Scalar(Value::xml_nil())),
-        ("Children".into(), Instance::Repeated(Vec::new())),
-        ("Nested".into(), Instance::Group(Vec::new())),
-        ("Flag".into(), Instance::Scalar(Value::Bool(true))),
-        ("Count".into(), Instance::Scalar(Value::Int(3))),
-        ("Omitted".into(), Instance::Scalar(Value::Int(4))),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "é".repeat(100),
+                Instance::Scalar(Value::String("🦀".repeat(200))),
+            ),
+            ("Missing".into(), Instance::Scalar(Value::Null)),
+            ("JsonNull".into(), Instance::Scalar(Value::json_null())),
+            ("XmlNil".into(), Instance::Scalar(Value::xml_nil())),
+            ("Children".into(), Instance::Repeated(Vec::new())),
+            ("Nested".into(), Instance::Group((Vec::new()).into())),
+            ("Flag".into(), Instance::Scalar(Value::Bool(true))),
+            ("Count".into(), Instance::Scalar(Value::Int(3))),
+            ("Omitted".into(), Instance::Scalar(Value::Int(4))),
+        ])
+        .into(),
+    );
 
     let row = TraceSourceRow::new(&source);
 
@@ -109,42 +112,48 @@ fn source_row_previews_are_bounded_and_preserve_scalar_states() {
 
 #[test]
 fn structural_snapshots_preserve_nested_order_scalar_states_and_document_paths() {
-    let source = Instance::Group(vec![
-        (
-            "Nested".into(),
-            Instance::Group(vec![
-                (
-                    "Text".into(),
-                    Instance::Scalar(Value::String("café".into())),
+    let source = Instance::Group(
+        (vec![
+            (
+                "Nested".into(),
+                Instance::Group(
+                    (vec![
+                        (
+                            "Text".into(),
+                            Instance::Scalar(Value::String("café".into())),
+                        ),
+                        (
+                            "Items".into(),
+                            Instance::MappedSequence(vec![
+                                Instance::Scalar(Value::Null),
+                                Instance::Scalar(Value::json_null()),
+                                Instance::Scalar(Value::xml_nil()),
+                                Instance::Scalar(Value::Int(7)),
+                            ]),
+                        ),
+                    ])
+                    .into(),
                 ),
-                (
-                    "Items".into(),
-                    Instance::MappedSequence(vec![
-                        Instance::Scalar(Value::Null),
-                        Instance::Scalar(Value::json_null()),
-                        Instance::Scalar(Value::xml_nil()),
-                        Instance::Scalar(Value::Int(7)),
-                    ]),
-                ),
-            ]),
-        ),
-        (
-            "Documents".into(),
-            Instance::DocumentSet(vec![
-                DocumentMember::new_source(
-                    "one.xml",
-                    "/host/one.xml",
-                    Instance::Scalar(Value::Bool(true)),
-                )
-                .unwrap(),
-                DocumentMember::new("two.xml", Instance::Group(Vec::new())).unwrap(),
-            ]),
-        ),
-        (
-            "Repeated".into(),
-            Instance::Repeated(vec![Instance::Scalar(Value::Int(2))]),
-        ),
-    ]);
+            ),
+            (
+                "Documents".into(),
+                Instance::DocumentSet(vec![
+                    DocumentMember::new_source(
+                        "one.xml",
+                        "/host/one.xml",
+                        Instance::Scalar(Value::Bool(true)),
+                    )
+                    .unwrap(),
+                    DocumentMember::new("two.xml", Instance::Group((Vec::new()).into())).unwrap(),
+                ]),
+            ),
+            (
+                "Repeated".into(),
+                Instance::Repeated(vec![Instance::Scalar(Value::Int(2))]),
+            ),
+        ])
+        .into(),
+    );
     let row = TraceSourceRow::new(&source);
     let tree = row.structure.unwrap();
     assert_eq!(tree.kind, TraceOutputKind::Group);
@@ -208,9 +217,10 @@ fn structural_snapshots_bound_depth_nodes_children_and_shared_unicode_text() {
             return Instance::Scalar(Value::String("🦀".repeat(200)));
         }
         Instance::Group(
-            (0..10)
+            ((0..10)
                 .map(|index| (format!("{index}{}", "é".repeat(100)), wide(depth - 1)))
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         )
     }
     let source = wide(3);
@@ -224,7 +234,7 @@ fn structural_snapshots_bound_depth_nodes_children_and_shared_unicode_text() {
 
     let mut deep = Instance::Scalar(Value::String("unreachable".into()));
     for _ in 0..32 {
-        deep = Instance::Group(vec![("Next".into(), deep)]);
+        deep = Instance::Group((vec![("Next".into(), deep)]).into());
     }
     let tree = TraceSourceRow::new(&deep).structure.unwrap();
     assert_eq!(metrics(&tree).2, 8);
@@ -236,10 +246,9 @@ fn structural_snapshots_bound_depth_nodes_children_and_shared_unicode_text() {
     assert_eq!(last.omitted_children, 1);
     assert!(last.value.is_none());
 
-    let flat = TraceSourceRow::new(&Instance::Group(vec![(
-        "Value".into(),
-        Instance::Scalar(Value::Int(1)),
-    )]));
+    let flat = TraceSourceRow::new(&Instance::Group(
+        (vec![("Value".into(), Instance::Scalar(Value::Int(1)))]).into(),
+    ));
     assert!(
         flat.structure.is_none(),
         "flat legacy rows need no duplicate tree"
@@ -307,16 +316,22 @@ fn source_candidates_include_rows_before_filters_and_sorting() -> Result<(), Box
         },
     );
     let row = |name: &str, keep| {
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
-            ("Nested".into(), Instance::Group(Vec::new())),
-        ])
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+                ("Nested".into(), Instance::Group((Vec::new()).into())),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(vec![row("dropped", false), row("kept", true)]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(vec![row("dropped", false), row("kept", true)]),
+        )])
+        .into(),
+    );
     let collector = Collector::default();
     let execution = ExecutionContext::new(Path::new("mapping.json")).with_trace_sink(&collector);
 
@@ -450,10 +465,13 @@ fn dynamic_document_candidates_preview_each_member_with_its_path() -> Result<(),
     let member = |path: &str, value: &str| {
         DocumentMember::new(
             path,
-            Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            )]),
+            Instance::Group(
+                (vec![(
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                )])
+                .into(),
+            ),
         )
         .expect("valid document member")
     };
@@ -506,4 +524,38 @@ fn dynamic_document_candidates_preview_each_member_with_its_path() -> Result<(),
         Some("B")
     );
     Ok(())
+}
+
+#[test]
+fn private_origin_does_not_change_trace_fields_or_budgets_but_equal_key_data_remains() {
+    let fields = vec![
+        (
+            ir::XML_TYPE_ORIGIN_FIELD.into(),
+            Instance::Scalar(Value::String("ordinary JSON value".into())),
+        ),
+        (
+            "Nested".into(),
+            Instance::Group(
+                vec![("Code".into(), Instance::Scalar(Value::String("a".into())))].into(),
+            ),
+        ),
+    ];
+    let plain = Instance::Group(fields.clone().into());
+    let known = Instance::Group(
+        ir::InstanceGroup::from(fields)
+            .with_xml_type_origin(ir::XmlTypeOrigin::Explicit("private-derived-identity"))
+            .unwrap(),
+    );
+    assert_eq!(TraceSourceRow::new(&plain), TraceSourceRow::new(&known));
+    let row = TraceSourceRow::new(&known);
+    assert_eq!(row.fields[0].name, ir::XML_TYPE_ORIGIN_FIELD);
+    assert!(
+        row.fields[0]
+            .value
+            .as_ref()
+            .unwrap()
+            .preview
+            .contains("ordinary JSON value")
+    );
+    assert!(!format!("{row:?}").contains("private-derived-identity"));
 }

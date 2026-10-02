@@ -83,10 +83,13 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
     let document = |path: &str, value: &str| {
         DocumentMember::new(
             path,
-            Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            )]),
+            Instance::Group(
+                (vec![(
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                )])
+                .into(),
+            ),
         )
         .ok_or("invalid document member")
     };
@@ -196,18 +199,24 @@ fn nested_current_and_restarted_collection_sources_roundtrip_distinctly()
     };
     assert!(engine::validate(&project).is_empty());
     let row = |name: &str, value: &str| {
-        Instance::Group(vec![
-            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-            (
-                "Value".into(),
-                Instance::Scalar(Value::String(value.into())),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                ),
+            ])
+            .into(),
+        )
     };
-    let source = Instance::Group(vec![(
-        "Item".into(),
-        Instance::Repeated(vec![row("first.xml", "A"), row("second.xml", "B")]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Item".into(),
+            Instance::Repeated(vec![row("first.xml", "A"), row("second.xml", "B")]),
+        )])
+        .into(),
+    );
     let expected = engine::run(&project, &source)?;
 
     let directory = TempDir::new()?;

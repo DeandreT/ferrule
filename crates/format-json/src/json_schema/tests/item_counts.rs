@@ -377,7 +377,7 @@ fn optional_positive_minimum_preserves_absence_but_rejects_present_empty() {
   "required":["Rows"]
 }"#,
     );
-    let output = Instance::Group(vec![("Rows".into(), Instance::Repeated(Vec::new()))]);
+    let output = Instance::Group((vec![("Rows".into(), Instance::Repeated(Vec::new()))]).into());
     assert!(matches!(
         crate::to_string(&required, &output),
         Err(JsonFormatError::MissingRequiredProperty { .. })

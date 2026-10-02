@@ -6,7 +6,7 @@ var output = (FerruleGroup)GeneratedMapping.Execute(source);
 
 Assert(!ReferenceEquals(source, output));
 Assert(output.Fields.Select(field => field.Name).SequenceEqual(
-    new[] { "Id", "Missing", "Nil", "Empty", "Items" }));
+    new[] { "Id", "Missing", "Nil", "Empty", "Items", "\u001fferrule-xml-type-origin" }));
 Assert(((FerruleScalar)output.Fields[0].Value).Value == FerruleValue.FromInt64(7));
 Assert(((FerruleScalar)output.Fields[1].Value).Value == FerruleValue.Null);
 Assert(((FerruleScalar)output.Fields[2].Value).Value == FerruleValue.XmlNil);
@@ -16,18 +16,28 @@ Assert(items.Items.Count == 2);
 Assert(!ReferenceEquals(source.Fields[4].Value, items));
 Assert(ItemName(items.Items[0]) == "first");
 Assert(ItemName(items.Items[1]) == "second");
+Assert(output.XmlTypeOrigin.Kind==FerruleXmlTypeOriginKind.Absent);
+Assert(((FerruleGroup)output.Fields[3].Value).XmlTypeOrigin.Identity=="empty");
+Assert(((FerruleGroup)items.Items[0]).XmlTypeOrigin.Identity=="first");
+Assert(((FerruleGroup)items.Items[1]).XmlTypeOrigin.Kind==FerruleXmlTypeOriginKind.Absent);
+const string input="""{"Id":7,"\u001fferrule-xml-type-origin":"ordinary JSON value","Empty":{},"Items":[{"Name":"first"},{"Name":"second"}]}""";
+using var textJson=System.Text.Json.JsonDocument.Parse(GeneratedMapping.ExecuteJson(input));
+using var bytesJson=System.Text.Json.JsonDocument.Parse(GeneratedMapping.ExecuteJsonBytes(System.Text.Encoding.UTF8.GetBytes(input)));
+Assert(textJson.RootElement.GetProperty("\u001fferrule-xml-type-origin").GetString()=="ordinary JSON value");
+Assert(bytesJson.RootElement.GetProperty("\u001fferrule-xml-type-origin").GetString()=="ordinary JSON value");
+Assert(textJson.RootElement.EnumerateObject().Count()==4);
 
 var error = Error(() => GeneratedMapping.Execute(
     new FerruleScalar(FerruleValue.FromString("wrong"))));
 Assert(error.Error == FerruleRuntimeError.CopyCurrentSourceRequiresGroup);
 Assert(error.Detail == "scalar");
 
-static FerruleGroup CopySource() => new(new FerruleField[]
+static FerruleGroup CopySource() => new FerruleGroup(new FerruleField[]
 {
     new("Id", new FerruleScalar(FerruleValue.FromInt64(7))),
     new("Missing", new FerruleScalar(FerruleValue.Null)),
     new("Nil", new FerruleScalar(FerruleValue.XmlNil)),
-    new("Empty", new FerruleGroup(Array.Empty<FerruleField>())),
+    new("Empty", new FerruleGroup(Array.Empty<FerruleField>()).WithXmlTypeOrigin(FerruleXmlTypeOrigin.Explicit("empty"))),
     new(
         "Items",
         new FerruleMappedSequence(new FerruleInstance[]
@@ -35,13 +45,14 @@ static FerruleGroup CopySource() => new(new FerruleField[]
             new FerruleGroup(new FerruleField[]
             {
                 new("Name", new FerruleScalar(FerruleValue.FromString("first"))),
-            }),
+            }).WithXmlTypeOrigin(FerruleXmlTypeOrigin.Explicit("first")),
             new FerruleGroup(new FerruleField[]
             {
                 new("Name", new FerruleScalar(FerruleValue.FromString("second"))),
-            }),
+            }).WithXmlTypeOrigin(FerruleXmlTypeOrigin.Absent),
         })),
-});
+    new("\u001fferrule-xml-type-origin",new FerruleScalar(FerruleValue.FromString("ordinary JSON value"))),
+}).WithXmlTypeOrigin(FerruleXmlTypeOrigin.Absent);
 
 static string ItemName(FerruleInstance instance) =>
     ((FerruleScalar)((FerruleGroup)instance).Fields[0].Value).Value.StringValue;

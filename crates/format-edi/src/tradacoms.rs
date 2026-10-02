@@ -300,28 +300,42 @@ mod tests {
                 SchemaNode::group("END", vec![SchemaNode::scalar("Count", ScalarType::Int)]),
             ],
         );
-        let instance = Instance::Group(vec![
-            (
-                "STX".into(),
-                Instance::Group(vec![
-                    (
-                        "Syntax".into(),
-                        Instance::Group(vec![
-                            ("Code".into(), Instance::Scalar(Value::String("ANA".into()))),
-                            ("Version".into(), Instance::Scalar(Value::Int(1))),
-                        ]),
+        let instance = Instance::Group(
+            (vec![
+                (
+                    "STX".into(),
+                    Instance::Group(
+                        (vec![
+                            (
+                                "Syntax".into(),
+                                Instance::Group(
+                                    (vec![
+                                        (
+                                            "Code".into(),
+                                            Instance::Scalar(Value::String("ANA".into())),
+                                        ),
+                                        ("Version".into(), Instance::Scalar(Value::Int(1))),
+                                    ])
+                                    .into(),
+                                ),
+                            ),
+                            (
+                                "Sender".into(),
+                                Instance::Scalar(Value::String("A+B=C?'".into())),
+                            ),
+                        ])
+                        .into(),
                     ),
-                    (
-                        "Sender".into(),
-                        Instance::Scalar(Value::String("A+B=C?'".into())),
+                ),
+                (
+                    "END".into(),
+                    Instance::Group(
+                        (vec![("Count".into(), Instance::Scalar(Value::Int(1)))]).into(),
                     ),
-                ]),
-            ),
-            (
-                "END".into(),
-                Instance::Group(vec![("Count".into(), Instance::Scalar(Value::Int(1)))]),
-            ),
-        ]);
+                ),
+            ])
+            .into(),
+        );
         let path = std::env::temp_dir().join(format!(
             "ferrule_tradacoms_write_{}.edi",
             std::process::id()

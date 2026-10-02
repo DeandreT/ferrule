@@ -107,16 +107,19 @@ fn duplicate_source_annotations_keep_both_physical_columns_executable() {
     let output = engine::run(project, &Instance::Repeated(rows)).unwrap();
     assert_eq!(
         output,
-        Instance::Repeated(vec![Instance::Group(vec![
-            (
-                "PrimaryPhone".into(),
-                Instance::Scalar(Value::String("555-0100".into())),
-            ),
-            (
-                "SecondaryPhone".into(),
-                Instance::Scalar(Value::String("555-0199".into())),
-            ),
-        ])])
+        Instance::Repeated(vec![Instance::Group(
+            (vec![
+                (
+                    "PrimaryPhone".into(),
+                    Instance::Scalar(Value::String("555-0100".into())),
+                ),
+                (
+                    "SecondaryPhone".into(),
+                    Instance::Scalar(Value::String("555-0199".into())),
+                ),
+            ])
+            .into()
+        )])
     );
 }
 
@@ -271,46 +274,58 @@ fn imports_fixed_record_and_table_as_a_composite_xml_source() {
     }));
     assert!(engine::validate(project).is_empty());
 
-    let source = Instance::Group(vec![
-        (
-            "Branch".into(),
-            Instance::Group(vec![
-                (
-                    "Name".into(),
-                    Instance::Scalar(Value::String("North".into())),
+    let source = Instance::Group(
+        (vec![
+            (
+                "Branch".into(),
+                Instance::Group(
+                    (vec![
+                        (
+                            "Name".into(),
+                            Instance::Scalar(Value::String("North".into())),
+                        ),
+                        (
+                            "City".into(),
+                            Instance::Scalar(Value::String("Seattle".into())),
+                        ),
+                    ])
+                    .into(),
                 ),
-                (
-                    "City".into(),
-                    Instance::Scalar(Value::String("Seattle".into())),
-                ),
-            ]),
-        ),
-        (
-            "Roster".into(),
-            Instance::Repeated(vec![
-                Instance::Group(vec![
-                    (
-                        "First".into(),
-                        Instance::Scalar(Value::String("Ada".into())),
+            ),
+            (
+                "Roster".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(
+                        (vec![
+                            (
+                                "First".into(),
+                                Instance::Scalar(Value::String("Ada".into())),
+                            ),
+                            (
+                                "Team".into(),
+                                Instance::Scalar(Value::String("Platform".into())),
+                            ),
+                        ])
+                        .into(),
                     ),
-                    (
-                        "Team".into(),
-                        Instance::Scalar(Value::String("Platform".into())),
+                    Instance::Group(
+                        (vec![
+                            (
+                                "First".into(),
+                                Instance::Scalar(Value::String("Lin".into())),
+                            ),
+                            (
+                                "Team".into(),
+                                Instance::Scalar(Value::String("Data".into())),
+                            ),
+                        ])
+                        .into(),
                     ),
                 ]),
-                Instance::Group(vec![
-                    (
-                        "First".into(),
-                        Instance::Scalar(Value::String("Lin".into())),
-                    ),
-                    (
-                        "Team".into(),
-                        Instance::Scalar(Value::String("Data".into())),
-                    ),
-                ]),
-            ]),
-        ),
-    ]);
+            ),
+        ])
+        .into(),
+    );
     let output = engine::run(project, &source).unwrap();
     let branches = output
         .field("Branch")
@@ -522,31 +537,40 @@ fn imported_worksheet_grid_executes_header_and_nested_cell_frames() {
 
     let scalar = |value| Instance::Scalar(value);
     let sale = |region: f64, amount: f64| {
-        Instance::Group(vec![
-            ("Region".into(), scalar(Value::Float(region))),
-            ("Amount".into(), scalar(Value::Float(amount))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Region".into(), scalar(Value::Float(region))),
+                ("Amount".into(), scalar(Value::Float(amount))),
+            ])
+            .into(),
+        )
     };
     let period = |month: &str, column: i64, first: f64, second: f64| {
-        Instance::Group(vec![
-            ("Month".into(), scalar(Value::String(month.into()))),
-            ("Column".into(), scalar(Value::Int(column))),
-            ("Year".into(), scalar(Value::String("2026".into()))),
-            (
-                "Sale".into(),
-                Instance::Repeated(vec![sale(101.0, first), sale(202.0, second)]),
-            ),
-        ])
+        Instance::Group(
+            (vec![
+                ("Month".into(), scalar(Value::String(month.into()))),
+                ("Column".into(), scalar(Value::Int(column))),
+                ("Year".into(), scalar(Value::String("2026".into()))),
+                (
+                    "Sale".into(),
+                    Instance::Repeated(vec![sale(101.0, first), sale(202.0, second)]),
+                ),
+            ])
+            .into(),
+        )
     };
     assert_eq!(
         actual,
-        Instance::Group(vec![(
-            "Period".into(),
-            Instance::Repeated(vec![
-                period("Q1", 2, 10.5, 30.5),
-                period("Q2", 3, 20.5, 40.5),
-            ]),
-        )])
+        Instance::Group(
+            (vec![(
+                "Period".into(),
+                Instance::Repeated(vec![
+                    period("Q1", 2, 10.5, 30.5),
+                    period("Q2", 3, 20.5, 40.5),
+                ]),
+            )])
+            .into()
+        )
     );
 }
 

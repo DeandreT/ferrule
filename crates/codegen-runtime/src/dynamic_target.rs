@@ -39,7 +39,7 @@ pub fn merge_dynamic_fragments(fragments: Vec<Instance>) -> Result<Instance, Run
             insert_dynamic_field(&mut merged, &[], name, value)?;
         }
     }
-    Ok(Instance::Group(merged))
+    Ok(Instance::Group((merged).into()))
 }
 
 #[cfg(test)]

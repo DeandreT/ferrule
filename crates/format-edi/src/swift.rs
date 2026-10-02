@@ -66,18 +66,22 @@ pub fn from_bytes(
             std::slice::from_ref(&message_type),
             &parsed,
         );
-        messages.push(Instance::Group(vec![
-            (
-                "Application Header".into(),
-                Instance::Group(vec![(direction.into(), Instance::Group(Vec::new()))]),
-            ),
-            (message_type, selected),
-        ]));
+        messages.push(Instance::Group(
+            (vec![
+                (
+                    "Application Header".into(),
+                    Instance::Group(
+                        (vec![(direction.into(), Instance::Group((Vec::new()).into()))]).into(),
+                    ),
+                ),
+                (message_type, selected),
+            ])
+            .into(),
+        ));
     }
-    Ok(Instance::Group(vec![(
-        "Message".into(),
-        Instance::Repeated(messages),
-    )]))
+    Ok(Instance::Group(
+        (vec![("Message".into(), Instance::Repeated(messages))]).into(),
+    ))
 }
 
 fn scalar_union_name(schema: &SchemaNode) -> Option<&str> {
@@ -409,14 +413,15 @@ fn build_node(schema: &SchemaNode, path: &[String], parsed: &ParsedFields) -> In
     match &schema.kind {
         SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Instance::Scalar(Value::Null),
         SchemaKind::Group { children, .. } => Instance::Group(
-            children
+            (children
                 .iter()
                 .map(|child| {
                     let mut child_path = path.to_vec();
                     child_path.push(child.name.clone());
                     (child.name.clone(), build_node(child, &child_path, parsed))
                 })
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         ),
     }
 }
@@ -430,7 +435,7 @@ fn build_field_value(schema: &SchemaNode, captures: &[FieldCapture], path: &[Str
                 .map_or(Value::Null, |(_, value)| value.clone()),
         ),
         SchemaKind::Group { children, .. } => Instance::Group(
-            children
+            (children
                 .iter()
                 .map(|child| {
                     let mut child_path = path.to_vec();
@@ -440,7 +445,8 @@ fn build_field_value(schema: &SchemaNode, captures: &[FieldCapture], path: &[Str
                         build_field_value(child, captures, &child_path),
                     )
                 })
-                .collect(),
+                .collect::<Vec<_>>())
+            .into(),
         ),
     }
 }

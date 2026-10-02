@@ -62,20 +62,26 @@ fn inspector_app(document: MappingDocument) -> FerruleApp {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(
-            ["first", "second"]
-                .into_iter()
-                .map(|value| {
-                    Instance::Group(vec![(
-                        "Value".into(),
-                        Instance::Scalar(Value::String(value.into())),
-                    )])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(
+                ["first", "second"]
+                    .into_iter()
+                    .map(|value| {
+                        Instance::Group(
+                            (vec![(
+                                "Value".into(),
+                                Instance::Scalar(Value::String(value.into())),
+                            )])
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn active_scope(app: &FerruleApp) -> &Scope {

@@ -97,16 +97,21 @@ fn project(block_size: Value) -> Project {
 }
 
 fn source() -> Instance {
-    Instance::Group(vec![(
-        "Row".into(),
-        Instance::Repeated(
-            (1..=5)
-                .map(|value| {
-                    Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(value)))])
-                })
-                .collect(),
-        ),
-    )])
+    Instance::Group(
+        (vec![(
+            "Row".into(),
+            Instance::Repeated(
+                (1..=5)
+                    .map(|value| {
+                        Instance::Group(
+                            (vec![("Value".into(), Instance::Scalar(Value::Int(value)))]).into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )])
+        .into(),
+    )
 }
 
 fn scalar(instance: &Instance, field: &str) -> Value {

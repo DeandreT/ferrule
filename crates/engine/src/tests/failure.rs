@@ -7,10 +7,13 @@ use mapping::{
 use crate::{EngineError, run, validate};
 
 fn row(code: &str, valid: bool) -> Instance {
-    Instance::Group(vec![
-        ("Code".into(), Instance::Scalar(Value::String(code.into()))),
-        ("Valid".into(), Instance::Scalar(Value::Bool(valid))),
-    ])
+    Instance::Group(
+        (vec![
+            ("Code".into(), Instance::Scalar(Value::String(code.into()))),
+            ("Valid".into(), Instance::Scalar(Value::Bool(valid))),
+        ])
+        .into(),
+    )
 }
 
 fn rows_project(
@@ -89,10 +92,13 @@ fn false_branch_raises_with_message_from_the_first_matching_item() {
             ),
         ],
     );
-    let source = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![row("A", true), row("B", false), row("C", false)]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(vec![row("A", true), row("B", false), row("C", false)]),
+        )])
+        .into(),
+    );
 
     let issues = validate(&project);
     assert!(issues.is_empty(), "{issues:#?}");
@@ -174,10 +180,13 @@ fn rule_and_item_order_short_circuit_later_messages() {
         selection: FailureSelection::All,
         message: Some(999),
     });
-    let source = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![row("first", false), row("second", false)]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(vec![row("first", false), row("second", false)]),
+        )])
+        .into(),
+    );
 
     assert_eq!(
         run(&project, &source),
@@ -255,7 +264,7 @@ fn generated_sequence_message_uses_its_owned_item_context() {
     let issues = validate(&project);
     assert!(issues.is_empty(), "{issues:#?}");
     assert_eq!(
-        run(&project, &Instance::Group(Vec::new())),
+        run(&project, &Instance::Group((Vec::new()).into())),
         Err(EngineError::MappingFailure {
             rule: 1,
             message: Some("2".into()),
@@ -290,10 +299,13 @@ fn selection_predicate_must_be_boolean() {
             },
         )],
     );
-    let source = Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(vec![row("not-bool", true)]),
-    )]);
+    let source = Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(vec![row("not-bool", true)]),
+        )])
+        .into(),
+    );
 
     assert_eq!(
         run(&project, &source),

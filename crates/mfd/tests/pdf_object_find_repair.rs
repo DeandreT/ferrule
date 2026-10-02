@@ -55,13 +55,19 @@ fn object_finder_preserves_repair_ports_but_blocks_execution_and_export_after_re
         assert!(engine::validate(&imported.project).is_empty());
         let row = imported.project.source.child("Row").unwrap();
         assert!(row.repeating && row.child("Value").is_some());
-        let source = Instance::Group(vec![(
-            "Row".into(),
-            Instance::Repeated(vec![Instance::Group(vec![(
-                "Value".into(),
-                Instance::Scalar(Value::String("host-parsed".into())),
-            )])]),
-        )]);
+        let source = Instance::Group(
+            (vec![(
+                "Row".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    (vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String("host-parsed".into())),
+                    )])
+                    .into(),
+                )]),
+            )])
+            .into(),
+        );
         assert!(
             engine::run(&imported.project, &source).is_ok(),
             "intentional typed host input remains usable"

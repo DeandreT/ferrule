@@ -86,7 +86,7 @@ fn generated_sequence_item_at_is_one_based() {
     let project = generated_item(2);
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
     assert_eq!(
-        output(&project, &Instance::Group(Vec::new())),
+        output(&project, &Instance::Group((Vec::new()).into())),
         Ok(Value::Int(3))
     );
 }
@@ -145,13 +145,16 @@ fn generated_sequence_item_at_evaluates_index_in_parent_context() {
         ],
         4,
     );
-    let source = Instance::Group(vec![
-        (
-            "Words".into(),
-            Instance::Scalar(Value::String("alpha beta gamma".into())),
-        ),
-        ("Index".into(), Instance::Scalar(Value::Int(2))),
-    ]);
+    let source = Instance::Group(
+        (vec![
+            (
+                "Words".into(),
+                Instance::Scalar(Value::String("alpha beta gamma".into())),
+            ),
+            ("Index".into(), Instance::Scalar(Value::Int(2))),
+        ])
+        .into(),
+    );
 
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
     assert_eq!(output(&project, &source), Ok(Value::String("beta".into())));
@@ -167,7 +170,7 @@ fn generated_sequence_item_at_returns_null_out_of_range() {
         },
     );
     assert_eq!(
-        output(&project, &Instance::Group(Vec::new())),
+        output(&project, &Instance::Group((Vec::new()).into())),
         Ok(Value::Null)
     );
 
@@ -178,7 +181,7 @@ fn generated_sequence_item_at_returns_null_out_of_range() {
         },
     );
     assert_eq!(
-        output(&project, &Instance::Group(Vec::new())),
+        output(&project, &Instance::Group((Vec::new()).into())),
         Ok(Value::Null)
     );
 }

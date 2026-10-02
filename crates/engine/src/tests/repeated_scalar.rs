@@ -59,7 +59,7 @@ fn repeated_scalar_bindings_concatenate_non_null_values_in_order() {
     };
 
     assert!(validate(&project).is_empty());
-    let output = run(&project, &Instance::Group(Vec::new())).unwrap();
+    let output = run(&project, &Instance::Group((Vec::new()).into())).unwrap();
     assert_eq!(
         output.field("line"),
         Some(&Instance::Repeated(vec![

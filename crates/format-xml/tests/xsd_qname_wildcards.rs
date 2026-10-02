@@ -110,10 +110,13 @@ fn same_local_strict_wildcard_names_preserve_exact_occurrence_identity()
     assert!(output.find(PAYLOAD) < output.find(BETA));
     assert_eq!(from_str(&output, &schema)?, instance);
 
-    let constructed = Instance::Group(vec![(
-        "Note".into(),
-        Instance::Repeated(vec![Instance::Scalar(Value::String("unknown".into()))]),
-    )]);
+    let constructed = Instance::Group(
+        (vec![(
+            "Note".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::String("unknown".into()))]),
+        )])
+        .into(),
+    );
     assert!(matches!(
         to_string(&schema, &constructed),
         Err(XmlFormatError::AmbiguousXmlName { name }) if name == "Note"

@@ -119,48 +119,51 @@ fn value_map_project() -> Project {
 }
 
 fn expected_output() -> Instance {
-    Instance::Group(vec![
-        (
-            "Duplicate".into(),
-            Instance::Scalar(Value::String("first".into())),
-        ),
-        (
-            "Default".into(),
-            Instance::Scalar(Value::String("fallback".into())),
-        ),
-        ("NoDefault".into(), Instance::Scalar(Value::Null)),
-        (
-            "FloatString".into(),
-            Instance::Scalar(Value::String("float-string".into())),
-        ),
-        ("Int".into(), Instance::Scalar(Value::String("int".into()))),
-        (
-            "Float".into(),
-            Instance::Scalar(Value::String("float".into())),
-        ),
-        (
-            "Bool".into(),
-            Instance::Scalar(Value::String("bool".into())),
-        ),
-        (
-            "Failed".into(),
-            Instance::Scalar(Value::String("retained".into())),
-        ),
-        (
-            "Null".into(),
-            Instance::Scalar(Value::String("null".into())),
-        ),
-        (
-            "XmlNil".into(),
-            Instance::Scalar(Value::String("xml-nil".into())),
-        ),
-    ])
+    Instance::Group(
+        (vec![
+            (
+                "Duplicate".into(),
+                Instance::Scalar(Value::String("first".into())),
+            ),
+            (
+                "Default".into(),
+                Instance::Scalar(Value::String("fallback".into())),
+            ),
+            ("NoDefault".into(), Instance::Scalar(Value::Null)),
+            (
+                "FloatString".into(),
+                Instance::Scalar(Value::String("float-string".into())),
+            ),
+            ("Int".into(), Instance::Scalar(Value::String("int".into()))),
+            (
+                "Float".into(),
+                Instance::Scalar(Value::String("float".into())),
+            ),
+            (
+                "Bool".into(),
+                Instance::Scalar(Value::String("bool".into())),
+            ),
+            (
+                "Failed".into(),
+                Instance::Scalar(Value::String("retained".into())),
+            ),
+            (
+                "Null".into(),
+                Instance::Scalar(Value::String("null".into())),
+            ),
+            (
+                "XmlNil".into(),
+                Instance::Scalar(Value::String("xml-nil".into())),
+            ),
+        ])
+        .into(),
+    )
 }
 
 #[test]
 fn value_maps_match_engine_and_generated_backends() -> TestResult<()> {
     let project = value_map_project();
-    let source = Instance::Group(Vec::new());
+    let source = Instance::Group((Vec::new()).into());
     assert_eq!(engine::run(&project, &source)?, expected_output());
 
     let directory = TempDir::new("value_maps")?;

@@ -2,26 +2,32 @@ use std::path::Path;
 
 fn protobuf_directory() -> ir::Instance {
     let record = |code, label: &str, rank| {
-        ir::Instance::Group(vec![
-            ("code".into(), ir::Instance::Scalar(ir::Value::Int(code))),
-            (
-                "label".into(),
-                ir::Instance::Scalar(ir::Value::String(label.into())),
-            ),
-            ("rank".into(), ir::Instance::Scalar(ir::Value::Int(rank))),
-            ("notes".into(), ir::Instance::Repeated(Vec::new())),
-        ])
+        ir::Instance::Group(
+            (vec![
+                ("code".into(), ir::Instance::Scalar(ir::Value::Int(code))),
+                (
+                    "label".into(),
+                    ir::Instance::Scalar(ir::Value::String(label.into())),
+                ),
+                ("rank".into(), ir::Instance::Scalar(ir::Value::Int(rank))),
+                ("notes".into(), ir::Instance::Repeated(Vec::new())),
+            ])
+            .into(),
+        )
     };
-    ir::Instance::Group(vec![
-        (
-            "title".into(),
-            ir::Instance::Scalar(ir::Value::String("Imported".into())),
-        ),
-        (
-            "records".into(),
-            ir::Instance::Repeated(vec![record(4, "Four", 1), record(8, "Eight", 0)]),
-        ),
-    ])
+    ir::Instance::Group(
+        (vec![
+            (
+                "title".into(),
+                ir::Instance::Scalar(ir::Value::String("Imported".into())),
+            ),
+            (
+                "records".into(),
+                ir::Instance::Repeated(vec![record(4, "Four", 1), record(8, "Eight", 0)]),
+            ),
+        ])
+        .into(),
+    )
 }
 
 #[test]

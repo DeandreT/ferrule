@@ -101,29 +101,35 @@ fn project(target: SchemaNode) -> Project {
 }
 
 fn department(name: &str, people: &[(&str, &str)]) -> Instance {
-    Instance::Group(vec![
-        ("Name".into(), Instance::Scalar(Value::String(name.into()))),
-        (
-            "Person".into(),
-            Instance::Repeated(
-                people
-                    .iter()
-                    .map(|(first, title)| {
-                        Instance::Group(vec![
-                            (
-                                "First".into(),
-                                Instance::Scalar(Value::String((*first).into())),
-                            ),
-                            (
-                                "Title".into(),
-                                Instance::Scalar(Value::String((*title).into())),
-                            ),
-                        ])
-                    })
-                    .collect(),
+    Instance::Group(
+        (vec![
+            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+            (
+                "Person".into(),
+                Instance::Repeated(
+                    people
+                        .iter()
+                        .map(|(first, title)| {
+                            Instance::Group(
+                                (vec![
+                                    (
+                                        "First".into(),
+                                        Instance::Scalar(Value::String((*first).into())),
+                                    ),
+                                    (
+                                        "Title".into(),
+                                        Instance::Scalar(Value::String((*title).into())),
+                                    ),
+                                ])
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
             ),
-        ),
-    ])
+        ])
+        .into(),
+    )
 }
 
 #[test]
@@ -205,10 +211,13 @@ fn merges_computed_scalar_fragments_into_one_open_object() {
     };
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
     let item = |size: &str, count: i64| {
-        Instance::Group(vec![
-            ("Size".into(), Instance::Scalar(Value::String(size.into()))),
-            ("Count".into(), Instance::Scalar(Value::Int(count))),
-        ])
+        Instance::Group(
+            (vec![
+                ("Size".into(), Instance::Scalar(Value::String(size.into()))),
+                ("Count".into(), Instance::Scalar(Value::Int(count))),
+            ])
+            .into(),
+        )
     };
 
     let output = run(

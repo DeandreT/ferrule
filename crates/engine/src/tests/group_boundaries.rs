@@ -10,14 +10,17 @@ enum Mode {
 }
 
 fn row(kind: &str, value: &str, end: Value) -> Instance {
-    Instance::Group(vec![
-        ("Kind".into(), Instance::Scalar(Value::String(kind.into()))),
-        (
-            "Value".into(),
-            Instance::Scalar(Value::String(value.into())),
-        ),
-        ("End".into(), Instance::Scalar(end)),
-    ])
+    Instance::Group(
+        (vec![
+            ("Kind".into(), Instance::Scalar(Value::String(kind.into()))),
+            (
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+            ("End".into(), Instance::Scalar(end)),
+        ])
+        .into(),
+    )
 }
 
 fn project(mode: Mode) -> Project {
@@ -131,10 +134,13 @@ fn project(mode: Mode) -> Project {
 }
 
 fn source(rows: impl IntoIterator<Item = Instance>) -> Instance {
-    Instance::Group(vec![(
-        "Rows".into(),
-        Instance::Repeated(rows.into_iter().collect()),
-    )])
+    Instance::Group(
+        (vec![(
+            "Rows".into(),
+            Instance::Repeated(rows.into_iter().collect()),
+        )])
+        .into(),
+    )
 }
 
 fn groups(output: &Instance) -> &[Instance] {
