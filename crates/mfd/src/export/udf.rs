@@ -479,11 +479,12 @@ fn render_definition(
             components,
             "\t\t\t\t<component name=\"{}\" library=\"core\" uid=\"{}\" kind=\"6\">\n\
              \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{output}\"/></targets>\n\
-             \t\t\t\t\t<data><input datatype=\"{}\"/></data>\n\
+             \t\t\t\t\t<data><input datatype=\"{}\"/><parameter usageKind=\"input\" name=\"{}\"/></data>\n\
              \t\t\t\t</component>\n",
             xml_escape(&parameter.name),
             port.component_id,
-            scalar_type_name(parameter.ty)
+            scalar_type_name(parameter.ty),
+            xml_escape(&parameter.name)
         );
     }
 
@@ -610,11 +611,12 @@ fn render_definition(
         components,
         "\t\t\t\t<component name=\"{}\" library=\"core\" uid=\"{}\" kind=\"7\">\n\
          \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{result_input}\"/></sources>\n\
-         \t\t\t\t\t<data><output datatype=\"{}\"/></data>\n\
+         \t\t\t\t\t<data><output datatype=\"{}\"/><parameter usageKind=\"output\" name=\"{}\"/></data>\n\
          \t\t\t\t</component>\n",
         xml_escape(&function.output_name),
         interface.output_component_id,
-        scalar_type_name(function.output_type)
+        scalar_type_name(function.output_type),
+        xml_escape(&function.output_name)
     );
 
     let _ = write!(

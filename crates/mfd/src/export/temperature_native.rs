@@ -509,8 +509,8 @@ fn group_boundary(project: &Project) -> bool {
             .child("YearlyStats")
             .and_then(|row| row.child("Year"))
             .is_some_and(|node| node.attribute)
-        || project.source != group_source_schema()
-        || project.target != group_target_schema()
+        || !schema_matches_required_use(&project.source, &group_source_schema())
+        || !schema_matches_required_use(&project.target, &group_target_schema())
     {
         return false;
     }
@@ -542,6 +542,23 @@ fn group_boundary(project: &Project) -> bool {
             .iter()
             .find(|b| b.target_field == "Year")
             .is_some_and(|b| Some(b.node) == row.group_by)
+}
+
+// Required-use decorates an already matched ordinary attribute. Keep every other
+// schema field exact, and preserve the original schema for artifact rendering.
+fn schema_matches_required_use(actual: &SchemaNode, expected: &SchemaNode) -> bool {
+    fn clear_required_use(node: &mut SchemaNode) -> bool {
+        if !node.xml_attribute_required_is_valid() {
+            return false;
+        }
+        node.xml_attribute_required = false;
+        if let SchemaKind::Group { children, .. } = &mut node.kind {
+            return children.iter_mut().all(clear_required_use);
+        }
+        true
+    }
+    let mut compared = actual.clone();
+    clear_required_use(&mut compared) && compared == *expected
 }
 
 fn fields(schema: &SchemaNode, paths: &[(&[&str], ScalarType)]) -> bool {

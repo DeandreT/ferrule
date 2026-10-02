@@ -91,8 +91,12 @@ fn compatible_scalar_udf_exports_and_reimports_as_a_definition() {
     let xml = std::fs::read_to_string(&path).unwrap();
     assert!(xml.contains("name=\"normalize-name\" library=\"customer\""));
     assert!(xml.contains("kind=\"19\""));
-    assert!(xml.contains("<data><input datatype=\"string\"/></data>"));
-    assert!(xml.contains("<data><output datatype=\"string\"/></data>"));
+    assert!(xml.contains(
+        "<data><input datatype=\"string\"/><parameter usageKind=\"input\" name=\"Full\"/></data>"
+    ));
+    assert!(xml.contains(
+        "<data><output datatype=\"string\"/><parameter usageKind=\"output\" name=\"Normalized\"/></data>"
+    ));
 
     let reimported = mfd::import(&path).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
