@@ -1481,6 +1481,8 @@ fn import_resolved(
     let mut skipped_libraries: Vec<String> = Vec::new();
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
+    let mut root_view_diagnostics = Vec::new();
+    let mut unsupported_root_view_role = false;
     let mut xml_boundary_witnesses = Vec::new();
     let mut fallback_xml_source_outputs = BTreeSet::new();
     let mut fallback_xml_target_inputs = BTreeSet::new();
@@ -1499,13 +1501,25 @@ fn import_resolved(
             match library {
                 "xml" => {
                     let root_view_findings = root_view_inventory.inspect(component);
+                    let root_view_role = root_view_inventory
+                        .diagnostic_role(component, !root_view_findings.is_empty());
                     match read_schema_component_in_package_with_provenance(
                         &component,
                         resources,
+                        root_view_role,
                         &mut warnings,
                     ) {
                         Some(read) => {
                             let sc = read.component;
+                            xml_root_view::evidence(
+                                &root_view_findings,
+                                Some(&sc.schema),
+                                &mut root_view_diagnostics,
+                            );
+                            if root_view_role.is_some() && read.no_port_warning_index.is_some() {
+                                unsupported_root_view_role = true;
+                                continue;
+                            }
                             xml_root_view::warn(
                                 root_view_findings,
                                 Some(&sc.schema),
@@ -1549,6 +1563,11 @@ fn import_resolved(
                             }
                         }
                         None => {
+                            xml_root_view::evidence(
+                                &root_view_findings,
+                                None,
+                                &mut root_view_diagnostics,
+                            );
                             xml_root_view::warn(root_view_findings, None, &mut warnings);
                             warnings.push(format!("skipped xml component `{name}`"));
                         }
@@ -1863,6 +1882,12 @@ fn import_resolved(
                 }
             }
         }
+    }
+    if unsupported_root_view_role {
+        return Err(MfdError::UnsupportedImport(format!(
+            "connected XML document-root direction was recovered for a zero-port first-entry projection; root-view ownership and condition/construction remain unsupported; no project is published: {}",
+            root_view_diagnostics.join(" | ")
+        )));
     }
     let user_functions = udf_registry.user_functions();
     // UDF-owned static catalogs are secondary to ordinary mapping sources.

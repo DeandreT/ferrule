@@ -290,7 +290,8 @@ pub(super) fn read_schema_component(
     mfd_path: &Path,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    read_schema_component_resolved(component, mfd_path, None, warnings).map(|read| read.component)
+    read_schema_component_resolved(component, mfd_path, None, None, warnings)
+        .map(|read| read.component)
 }
 
 pub(super) fn read_schema_component_in_package(
@@ -302,6 +303,7 @@ pub(super) fn read_schema_component_in_package(
         component,
         resources.mapping_path(),
         Some(resources),
+        None,
         warnings,
     )
     .map(|read| read.component)
@@ -310,12 +312,14 @@ pub(super) fn read_schema_component_in_package(
 pub(super) fn read_schema_component_in_package_with_provenance(
     component: &roxmltree::Node,
     resources: &ResourceResolver,
+    root_view_is_source: Option<bool>,
     warnings: &mut Vec<String>,
 ) -> Option<XmlSchemaComponentRead> {
     read_schema_component_resolved(
         component,
         resources.mapping_path(),
         Some(resources),
+        root_view_is_source,
         warnings,
     )
 }
@@ -392,6 +396,7 @@ fn read_schema_component_resolved(
     component: &roxmltree::Node,
     mfd_path: &Path,
     resources: Option<&ResourceResolver>,
+    root_view_is_source: Option<bool>,
     warnings: &mut Vec<String>,
 ) -> Option<XmlSchemaComponentRead> {
     let name = component.attribute("name").unwrap_or_default().to_string();
@@ -432,10 +437,18 @@ fn read_schema_component_resolved(
     let input_ancestors = input_port_ancestors(&entry, &input_keys);
     let no_port_warning_index = (out_count == 0 && in_count == 0).then(|| {
         let index = warnings.len();
-        warnings.push(format!("component `{name}` has no connected ports"));
+        warnings.push(if root_view_is_source.is_some() {
+            format!("component `{name}` has connected root-view ports outside its first-entry projection; diagnostic direction is retained without lowering those ports")
+        } else {
+            format!("component `{name}` has no connected ports")
+        });
         index
     });
-    let is_source = out_count >= in_count;
+    let is_source = if out_count == 0 && in_count == 0 {
+        root_view_is_source.unwrap_or(true)
+    } else {
+        out_count >= in_count
+    };
     let has_typed_entry_schema = entry.attribute("ferrule-kind").is_some();
     let typed_entry_schema = has_typed_entry_schema
         .then(|| typed_xml_entry_tree_schema(&entry))
