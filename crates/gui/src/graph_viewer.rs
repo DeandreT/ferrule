@@ -1104,8 +1104,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::SourceRootXmlTypeEquals { .. }) => {
                         "Primary XML annotation equality".to_string()
                     }
-                    Some(Node::SourceRootField { path }) => {
-                        compact_graph_title(&format!("Primary field: {}", path.join("/")))
+                    Some(Node::SourceRootField { path, required }) => {
+                        let title = if *required {
+                            "Required primary field"
+                        } else {
+                            "Primary field"
+                        };
+                        compact_graph_title(&format!("{title}: {}", path.join("/")))
                     }
                     Some(Node::Position { collection }) if collection.is_empty() => {
                         "Position".to_string()
@@ -1792,9 +1797,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     ui.label("immutable primary XML annotation");
                     ui.label(canonical_expanded_type.as_str());
                 }
-                Node::SourceRootField { path } => {
-                    ui.label("immutable primary source field");
+                Node::SourceRootField { path, required } => {
+                    ui.label(if *required {
+                        "required primary source field"
+                    } else {
+                        "immutable primary source field"
+                    });
                     ui.label(path.join("/"));
+                    if *required {
+                        ui.small("A missing value stops execution when this field is read.");
+                    }
                 }
                 Node::SourceDocumentPath => {
                     ui.label("current source document path");

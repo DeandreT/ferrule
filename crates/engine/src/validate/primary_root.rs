@@ -30,7 +30,7 @@ pub(super) fn validate_primary_root_primitives(
                 Node::SourceRootXmlTypeEquals {
                     canonical_expanded_type,
                 } => ir::primary_root_schema_has_type(&project.source, canonical_expanded_type),
-                Node::SourceRootField { path } => ir::primary_root_schema_has_scalar(
+                Node::SourceRootField { path, .. } => ir::primary_root_schema_has_scalar(
                     &project.source,
                     &path.iter().map(String::as_str).collect::<Vec<_>>(),
                 ),

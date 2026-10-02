@@ -308,6 +308,10 @@ pub struct FormatOptions {
     /// to carry an `.xml` extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub xml_document: bool,
+    /// XML input: retain declared flat-root attributes outside the explicitly
+    /// selected type's member set. This requires one closed typed XML document.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub xml_allow_inactive_root_type_members: bool,
     /// WSDL operation and message identity retained for canonical kind-17
     /// request, response, or fault component export. Runtime I/O remains XML.
     #[serde(default, skip_serializing_if = "Option::is_none")]

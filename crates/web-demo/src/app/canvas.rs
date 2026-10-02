@@ -149,7 +149,14 @@ fn node_title(node: &Node) -> String {
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),
         Node::SourceRootXmlTypeEquals { .. } => "primary XML annotation equality".to_string(),
-        Node::SourceRootField { path } => format!("primary field · {}", path.join("/")),
+        Node::SourceRootField { path, required } => {
+            let title = if *required {
+                "required primary field"
+            } else {
+                "primary field"
+            };
+            format!("{title} · {}", path.join("/"))
+        }
         Node::Position { collection } => format!("position · {}", collection.join("/")),
         Node::JoinField {
             join,

@@ -1040,10 +1040,14 @@ fn render_expression(
             "context.source_root_xml_type_equals({id}, {})",
             rust_string(canonical_expanded_type)
         ),
-        Expression::SourceRootField { path } => format!(
-            "context.source_root_field({id}, &[{}])",
-            render_string_path(path)
-        ),
+        Expression::SourceRootField { path, required } => {
+            let reader = if *required {
+                "source_root_required_field"
+            } else {
+                "source_root_field"
+            };
+            format!("context.{reader}({id}, &[{}])", render_string_path(path))
+        }
         Expression::DynamicSourceField { object, frame, key } => {
             let object = render_string_path(object);
             let frame = frame.as_ref().map_or_else(

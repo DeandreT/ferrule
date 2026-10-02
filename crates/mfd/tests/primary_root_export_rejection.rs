@@ -81,6 +81,7 @@ fn unqualified_new_primitives_reject_native_export_before_any_publication() {
         },
         Node::SourceRootField {
             path: vec!["Code".into()],
+            required: false,
         },
     ] {
         let mut candidate = baseline.clone();

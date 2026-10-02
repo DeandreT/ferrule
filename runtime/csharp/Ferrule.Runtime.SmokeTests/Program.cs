@@ -11,6 +11,7 @@ internal static partial class Program
             ("primary root annotation states", PrimaryRootAnnotationStates),
             ("primary root unknown and identity errors", PrimaryRootUnknownAndIdentityErrors),
             ("primary root scalar shapes", PrimaryRootScalarShapes),
+            ("primary root required scalar policy", PrimaryRootRequiredScalarPolicy),
             ("primary root never unwraps owner", PrimaryRootNeverUnwrapsOwner),
             ("primary root duplicates and limits", PrimaryRootDuplicatesAndLimits),
             ("primary root owner collisions", PrimaryRootOwnerCollisions),
