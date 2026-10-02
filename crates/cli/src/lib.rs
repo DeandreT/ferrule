@@ -956,6 +956,7 @@ fn write_output(
     current_datetime: &str,
 ) -> anyhow::Result<usize> {
     validate_csv_metadata_identity(path, options, "output")?;
+    reject_inactive_root_xml_read_options(path, schema, options, "output")?;
     if options.local_xml_file_set && !options.xml_document {
         bail!("`local_xml_file_set` requires `xml_document` for output");
     }
@@ -1191,6 +1192,7 @@ fn read_instance(
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
     validate_csv_metadata_identity(path, options, "input")?;
+    reject_inactive_root_xml_read_options(path, schema, options, "input")?;
     if options.local_xml_file_set && !options.xml_document {
         bail!("`local_xml_file_set` requires `xml_document` for input");
     }
@@ -1294,7 +1296,7 @@ fn read_instance(
             return format_xml::read_wsdl_message(path, schema, wsdl.operation())
                 .with_context(|| format!("reading WSDL message input {}", path.display()));
         }
-        return format_xml::read(path, schema)
+        return format_xml::read_with_options(path, schema, &xml_read_options(options))
             .with_context(|| format!("reading XML input {}", path.display()));
     }
 
@@ -1892,6 +1894,39 @@ fn json5_selected(path: &Path, options: &FormatOptions) -> anyhow::Result<bool> 
         bail!("JSON5 cannot be combined with JSON Lines");
     }
     Ok(selected)
+}
+
+fn reject_inactive_root_xml_read_options(
+    path: &Path,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    side: &str,
+) -> anyhow::Result<()> {
+    if !options.xml_allow_inactive_root_type_members {
+        return Ok(());
+    }
+    let accepted_options = FormatOptions {
+        xml_document: true,
+        xml_allow_inactive_root_type_members: true,
+        ..Default::default()
+    };
+    if side != "input"
+        || !options.xml_document
+        || *options != accepted_options
+        || http_url(path).is_some()
+        || !ir::xml_inactive_root_type_members_are_supported(schema)
+    {
+        bail!(
+            "`xml_allow_inactive_root_type_members` requires a closed flat typed local XML input with no other format options"
+        );
+    }
+    Ok(())
+}
+
+fn xml_read_options(options: &FormatOptions) -> format_xml::XmlReadOptions {
+    format_xml::XmlReadOptions {
+        allow_inactive_root_type_members: options.xml_allow_inactive_root_type_members,
+    }
 }
 
 fn reject_xml_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {

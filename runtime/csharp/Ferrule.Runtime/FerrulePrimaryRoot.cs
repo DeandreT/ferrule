@@ -7,6 +7,7 @@ public enum FerrulePrimaryRootError
 {
     MissingOwner, ExpectedGroup, UnknownXmlTypeOrigin, InvalidTypeIdentity,
     InvalidScalarPath, FieldLimit, DuplicateField, ExpectedGroupAt, ExpectedScalar,
+    MissingRequiredField,
 }
 
 /// <summary>Structured failure reading the exact immutable primary source owner.</summary>
@@ -72,6 +73,15 @@ public static class FerrulePrimaryRoot
         }
         if (current is FerruleScalar scalar) return scalar.Value;
         throw Failure(FerrulePrimaryRootError.ExpectedScalar, node, path, InstanceKind(current));
+    }
+
+    public static FerruleValue RequiredScalar(FerruleInstance? root,
+        IReadOnlyList<string> path, uint? node = null)
+    {
+        var value = Scalar(root, path, node);
+        if (value.Kind == FerruleValueKind.Null)
+            throw Failure(FerrulePrimaryRootError.MissingRequiredField, node, path);
+        return value;
     }
 
     public static bool TypeIdentityIsValid(string? identity)
@@ -164,6 +174,7 @@ public static class FerrulePrimaryRoot
             FerrulePrimaryRootError.FieldLimit => "primary root path group exceeds its field limit",
             FerrulePrimaryRootError.DuplicateField => $"primary root path `{at}` has duplicate fields",
             FerrulePrimaryRootError.ExpectedGroupAt => $"primary root path `{at}` must traverse a group, found {found}",
+            FerrulePrimaryRootError.MissingRequiredField => $"primary root path `{at}` is required but has no value",
             FerrulePrimaryRootError.ExpectedScalar => $"primary root path `{at}` must end at a scalar, found {found}",
             _ => throw new InvalidOperationException("Unknown primary-root failure."),
         };

@@ -40,3 +40,33 @@ also counts toward that limit. Unknown versions, invalid metadata, and
 non-finite values produce typed errors. NaN and infinity cannot be saved as
 JSON values without losing their identity; saving rejects them instead of
 turning them into null. Failed encoding occurs before file publication.
+
+
+## Primary XML root reads
+
+`SourceRootXmlTypeEquals` compares the input root's actual `xsi:type` annotation
+against one canonical expanded type name. An inferred schema alternative or a
+writer's type marker does not establish that annotation. `SourceRootField` reads
+one scalar path from the immutable primary input root, without falling back to
+a repeated item, ancestor frame, or named input.
+
+`SourceRootField.required` defaults to `false` and is omitted when false, so
+existing projects retain their nullable reads. With `required: true`, a missing
+or null field produces a typed `MissingRequiredField` error containing the node
+and field path. Empty strings and XML nil remain present values. This policy is
+explicit and independent of the schema's required-attribute metadata. A field
+inside an unselected conditional branch is not read and cannot raise this error.
+Generated Rust and C# mappings retain the same lazy behavior and error details.
+The editors identify required primary fields and keep these nodes read-only.
+
+The source format option `xml_allow_inactive_root_type_members` is also false
+by default. With `xml_document: true`, it permits declared scalar attributes
+outside a known explicitly selected root type's member set to remain available.
+It supports only a singular closed local XML document with explicit namespaces,
+1–32 flat attributes, a concrete default type, and 2–32 type alternatives. It
+rejects targets, remote inputs, and other format-option combinations. Unknown or
+malformed type annotations and ordinary scalar validation remain errors; absent
+annotations retain their absence. Required-value failures are controlled by the
+mapping's reads rather than this input policy. File and payload entry points
+apply the same policy. These root expression nodes remain outside public `.mfd`
+import and export admission.

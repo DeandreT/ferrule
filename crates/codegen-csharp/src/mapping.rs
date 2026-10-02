@@ -87,10 +87,13 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                     literal::string(canonical_expanded_type)
                 ));
             }
-            Expression::SourceRootField { path } => {
-                output.push_str(&format!(
-                    " =>\n        context.ResolveSourceRootField({node}U, "
-                ));
+            Expression::SourceRootField { path, required } => {
+                let reader = if *required {
+                    "ResolveRequiredSourceRootField"
+                } else {
+                    "ResolveSourceRootField"
+                };
+                output.push_str(&format!(" =>\n        context.{reader}({node}U, "));
                 render_path(path, &mut output);
                 output.push_str(");\n");
             }
