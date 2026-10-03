@@ -992,6 +992,7 @@ impl ItemEvaluator<'_> {
                 &binding.target_field,
                 &value,
                 &fields,
+                program.primary_source(),
             )?;
             insert_static_binding(&mut fields, binding.target_field.clone(), value, repeating)?;
             record_target_field(
@@ -1031,6 +1032,7 @@ impl ItemEvaluator<'_> {
                 &key,
                 &value,
                 &fields,
+                program.primary_source(),
             )?;
             dynamic_target::insert_dynamic_target_field(&mut fields, key, value, target)?;
             record_target_field(
@@ -1067,6 +1069,7 @@ impl ItemEvaluator<'_> {
                 &child.target_field,
                 &child_instance,
                 &fields,
+                program.primary_source(),
             )?;
             insert_target_field(&mut fields, child.target_field.clone(), child_instance)?;
             record_target_field(
@@ -1105,6 +1108,7 @@ impl ItemEvaluator<'_> {
                 &key,
                 &child_instance,
                 &fields,
+                program.primary_source(),
             )?;
             dynamic_target::insert_dynamic_target_field(&mut fields, key, child_instance, target)?;
             record_target_field(

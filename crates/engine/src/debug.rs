@@ -118,11 +118,67 @@ fn hidden_source_field(name: &str) -> bool {
     name.starts_with('\u{1f}') && name != ir::XML_TYPE_ORIGIN_FIELD
 }
 
+/// A bounded piece of actual XML annotation text, never an ordinary data field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DebugAnnotationText {
+    pub preview: String,
+    pub truncated: bool,
+}
+
+impl DebugAnnotationText {
+    fn new(text: &str) -> Self {
+        let (preview, truncated) = bounded_name(text);
+        Self { preview, truncated }
+    }
+}
+
+/// The annotation fact on the exact immutable primary owner, kept separate from
+/// active frame fields and from the selected XML writer type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DebugPrimaryRootOrigin {
+    NotGroup {
+        kind: TraceOutputKind,
+    },
+    Unknown,
+    Absent,
+    Explicit {
+        identity: DebugAnnotationText,
+    },
+    ExplicitPadded {
+        literal: DebugAnnotationText,
+        resolved_identity: DebugAnnotationText,
+    },
+}
+
+impl DebugPrimaryRootOrigin {
+    fn new(root: &Instance) -> Self {
+        match root.xml_type_origin() {
+            Err(_) => Self::NotGroup {
+                kind: TraceOutputKind::of(root),
+            },
+            Ok(ir::XmlTypeOrigin::Unknown) => Self::Unknown,
+            Ok(ir::XmlTypeOrigin::Absent) => Self::Absent,
+            Ok(ir::XmlTypeOrigin::Explicit(identity)) => Self::Explicit {
+                identity: DebugAnnotationText::new(identity),
+            },
+            Ok(ir::XmlTypeOrigin::ExplicitPadded {
+                literal,
+                resolved_identity,
+            }) => Self::ExplicitPadded {
+                literal: DebugAnnotationText::new(literal),
+                resolved_identity: DebugAnnotationText::new(resolved_identity),
+            },
+        }
+    }
+}
+
 /// The innermost active source frames at a pending target write.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DebugSourceContext {
     pub frames: Vec<DebugSourceFrame>,
     pub omitted_outer_frames: usize,
+    /// None when the evaluator has no primary owner, including isolated functions.
+    pub primary_root_origin: Option<DebugPrimaryRootOrigin>,
 }
 
 /// An exact immediate source-field lookup requested by a debug host. Unlike
@@ -143,7 +199,13 @@ impl DebugSourceContext {
                 .map(|frame| DebugSourceFrame::new(frame))
                 .collect(),
             omitted_outer_frames,
+            primary_root_origin: None,
         }
+    }
+
+    fn with_primary_root(mut self, root: Option<&Instance>) -> Self {
+        self.primary_root_origin = root.map(DebugPrimaryRootOrigin::new);
+        self
     }
 }
 
@@ -405,11 +467,13 @@ pub(crate) fn after_node_value(
     value: &Value,
     positions: &[PositionFrame],
     context: &[&Instance],
+    primary_source: Option<&Instance>,
 ) -> Result<(), EngineError> {
     let Some(hook) = hook.filter(|hook| hook.wants_node_values()) else {
         return Ok(());
     };
-    let snapshot = node_value_snapshot(node, value, positions, context);
+    let mut snapshot = node_value_snapshot(node, value, positions, context);
+    snapshot.source = snapshot.source.with_primary_root(primary_source);
     match hook.after_node_value(&snapshot) {
         DebugDecision::Resume => Ok(()),
         DebugDecision::Cancel => Err(EngineError::DebugCancelled),
@@ -442,6 +506,7 @@ pub(crate) fn after_function_node_value(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn after_node_input(
     hook: Option<&dyn DebugHook>,
     consumer: NodeId,
@@ -450,11 +515,13 @@ pub(crate) fn after_node_input(
     value: &Value,
     positions: &[PositionFrame],
     context: &[&Instance],
+    primary_source: Option<&Instance>,
 ) -> Result<(), EngineError> {
     let Some(hook) = hook.filter(|hook| hook.wants_node_inputs()) else {
         return Ok(());
     };
-    let delivered = node_value_snapshot(input, value, positions, context);
+    let mut delivered = node_value_snapshot(input, value, positions, context);
+    delivered.source = delivered.source.with_primary_root(primary_source);
     let snapshot = PendingNodeInput {
         consumer,
         input: delivered.node,
@@ -508,6 +575,7 @@ pub(crate) fn after_node_failure(
     error: &EngineError,
     positions: &[PositionFrame],
     context: &[&Instance],
+    primary_source: Option<&Instance>,
 ) -> Result<(), EngineError> {
     if first_failure_reported.get() || matches!(error, EngineError::DebugCancelled) {
         return Ok(());
@@ -516,7 +584,8 @@ pub(crate) fn after_node_failure(
         return Ok(());
     };
     first_failure_reported.set(true);
-    let evaluated = node_value_snapshot(node, &Value::Null, positions, context);
+    let mut evaluated = node_value_snapshot(node, &Value::Null, positions, context);
+    evaluated.source = evaluated.source.with_primary_root(primary_source);
     let failure = PendingNodeFailure {
         node,
         error: DebugErrorPreview::new(error),
@@ -623,6 +692,7 @@ pub(crate) fn before_target_write(
     field: &str,
     pending: &Instance,
     draft: &[(String, Instance)],
+    primary_source: Option<&Instance>,
 ) -> Result<(), EngineError> {
     let Some(hook) = hook else {
         return Ok(());
@@ -653,7 +723,7 @@ pub(crate) fn before_target_write(
     let write = PendingTargetWrite {
         scope: scope.clone(),
         positions: trace_positions(positions),
-        source: DebugSourceContext::new(context),
+        source: DebugSourceContext::new(context).with_primary_root(primary_source),
         source_field_probe,
         field,
         field_truncated,
@@ -730,6 +800,7 @@ mod tests {
             &Value::String("é".repeat(300)),
             &positions,
             &context,
+            None,
         )
         .unwrap();
         let nodes = collector.0.borrow();
@@ -792,6 +863,7 @@ mod tests {
             &"é".repeat(300),
             &Instance::Group((vec![("nested".into(), Instance::Scalar(Value::Int(1)))]).into()),
             &fields,
+            None,
         )
         .unwrap();
 
@@ -857,6 +929,7 @@ mod tests {
             "output",
             &Instance::Scalar(Value::Null),
             &[],
+            None,
         )
         .unwrap();
 
@@ -928,6 +1001,7 @@ mod tests {
             "output",
             &Instance::Scalar(Value::Null),
             &[],
+            None,
         )
         .unwrap();
         let writes = collector.writes.borrow();
@@ -963,6 +1037,7 @@ mod tests {
             "output",
             &Instance::Scalar(Value::Null),
             &[],
+            None,
         )
         .unwrap();
         let outer_writes = outer_collector.writes.borrow();
@@ -1058,6 +1133,7 @@ mod tests {
                 "output",
                 &Instance::Scalar(Value::Null),
                 &[],
+                None,
             )
             .unwrap();
             let writes = collector.writes.borrow();
@@ -1087,6 +1163,7 @@ mod tests {
                 "output",
                 &Instance::Scalar(Value::Null),
                 &[],
+                None,
             )
             .unwrap();
             assert!(hidden.writes.borrow()[0].source_field_probe.is_none());

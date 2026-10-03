@@ -618,6 +618,13 @@ impl FerruleApp {
                 }
             });
         });
+        super::primary_xml_input::show(
+            ui,
+            &self.project.source,
+            self.project.source_path.as_deref(),
+            &mut self.project.source_options,
+            editing_enabled,
+        );
         show_schema_search_input(ui, "source_schema_search", &mut self.source_schema_explorer);
         let source_matches = self
             .source_schema_explorer
@@ -894,6 +901,7 @@ impl FerruleApp {
         ui.separator();
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
+        let primary_root_bindings = crate::primary_root_authoring::available(&self.project);
         egui::ScrollArea::both()
             .id_salt(("scope_editor_scroll", active_target))
             .show(ui, |ui| {
@@ -922,7 +930,10 @@ impl FerruleApp {
                                 &self.project.graph,
                                 &source_paths,
                                 &target_fields,
-                                nested,
+                                crate::scope_editor::ScopeEditorOwner {
+                                    nested,
+                                    primary_root_bindings: false,
+                                },
                                 output_profile,
                             );
                         }
@@ -945,7 +956,10 @@ impl FerruleApp {
                                 &self.project.graph,
                                 &source_paths,
                                 &target_fields,
-                                nested,
+                                crate::scope_editor::ScopeEditorOwner {
+                                    nested,
+                                    primary_root_bindings,
+                                },
                                 output_profile,
                             );
                         }
@@ -1047,6 +1061,7 @@ impl FerruleApp {
             self.project.target_path.as_deref(),
             &self.project.target_options,
         );
+        let primary_root_authoring = crate::primary_root_authoring::available(&self.project);
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = source_blocks(&self.project.source);
             let target_blocks = target_blocks(&self.project.target);
@@ -1063,6 +1078,7 @@ impl FerruleApp {
             let mut viewer = GraphViewer {
                 graph: &mut self.project.graph,
                 root_scope: &mut self.project.root,
+                primary_root_authoring,
                 extra_targets: &self.project.extra_targets,
                 inactive_target_scopes: &[],
                 project_references: crate::graph_viewer::ProjectGraphReferences::new(

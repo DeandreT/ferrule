@@ -47,6 +47,7 @@ mod pipeline;
 mod position;
 mod preflight;
 mod protobuf;
+pub(crate) mod qualified_root_view;
 mod recursive;
 mod schema;
 mod scope;
@@ -302,6 +303,9 @@ struct PreparedExport {
 }
 
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
+    if let Some(prepared) = qualified_root_view::prepare_export(project, path)? {
+        return Ok(prepared);
+    }
     let mut warnings = Vec::new();
 
     preflight::validate(project)?;

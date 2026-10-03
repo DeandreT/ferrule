@@ -267,6 +267,7 @@ fn connect_target(
         }
     };
     let mut viewer = GraphViewer {
+        primary_root_authoring: false,
         graph: &mut project.graph,
         root_scope,
         extra_targets,

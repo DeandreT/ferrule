@@ -114,6 +114,7 @@ fn with_function_viewer<R>(
     let mut viewer = GraphViewer {
         graph: &mut definition.body,
         root_scope: &mut root,
+        primary_root_authoring: false,
         extra_targets: &[],
         inactive_target_scopes: &[],
         project_references: Default::default(),

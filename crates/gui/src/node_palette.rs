@@ -30,6 +30,8 @@ pub(super) fn aggregate_node(function: AggregateOp, arg: Option<NodeId>) -> Node
 pub(super) enum NodeTemplate {
     Constant,
     SourceField,
+    SourceRootField,
+    SourceRootXmlTypeEquals,
     Position,
     HostInput,
     HostInputDefault,
@@ -83,7 +85,7 @@ struct PaletteEntry {
     template: NodeTemplate,
 }
 
-const STRUCTURAL_ENTRIES: [PaletteEntry; 16] = [
+const STRUCTURAL_ENTRIES: [PaletteEntry; 18] = [
     PaletteEntry {
         category: Category::Input,
         label: "Constant",
@@ -97,6 +99,20 @@ const STRUCTURAL_ENTRIES: [PaletteEntry; 16] = [
         keywords: "source input field path",
         documentation: "Reads one source field using an editable path.",
         template: NodeTemplate::SourceField,
+    },
+    PaletteEntry {
+        category: Category::Input,
+        label: "Primary source field",
+        keywords: "root exact source field required XML",
+        documentation: "Reads one field from the primary source root. Its required setting is checked only when the field is evaluated.",
+        template: NodeTemplate::SourceRootField,
+    },
+    PaletteEntry {
+        category: Category::Input,
+        label: "Primary XML type comparison",
+        keywords: "root XML type annotation condition equality",
+        documentation: "Compares the XML type annotation actually read on the primary source root with one declared type.",
+        template: NodeTemplate::SourceRootXmlTypeEquals,
     },
     PaletteEntry {
         category: Category::Input,
@@ -218,7 +234,11 @@ impl PaletteState {
     }
 }
 
-pub(super) fn show(ui: &mut Ui) -> Option<NodeTemplate> {
+pub(super) fn show_available(
+    ui: &mut Ui,
+    root_fields: bool,
+    root_types: bool,
+) -> Option<NodeTemplate> {
     let state_id = ui.id().with("node_palette");
     let frame = ui.ctx().cumulative_frame_nr();
     let mut state = ui
@@ -244,7 +264,14 @@ pub(super) fn show(ui: &mut Ui) -> Option<NodeTemplate> {
         search.request_focus();
     }
 
-    let matches = matching_entries(&state.query);
+    let matches = matching_entries(&state.query)
+        .into_iter()
+        .filter(|entry| match entry.template {
+            NodeTemplate::SourceRootField => root_fields,
+            NodeTemplate::SourceRootXmlTypeEquals => root_types,
+            _ => true,
+        })
+        .collect::<Vec<_>>();
     if search.changed() {
         state.selected = 0;
     }
@@ -531,5 +558,44 @@ mod tests {
         assert_eq!(state.selected, 0);
         state.move_selection(1, 0);
         assert_eq!(state.selected, 0);
+    }
+
+    #[test]
+    fn keyboard_root_creation_choices_follow_the_active_canvas_policy() {
+        for (query, expected) in [
+            ("Primary source field", NodeTemplate::SourceRootField),
+            (
+                "Primary XML type comparison",
+                NodeTemplate::SourceRootXmlTypeEquals,
+            ),
+        ] {
+            for allowed in [false, true] {
+                let context = egui::Context::default();
+                let mut selected = None;
+                let mut run = |events| {
+                    let _ = context.run_ui(
+                        egui::RawInput {
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| selected = show_available(ui, allowed, allowed),
+                    );
+                };
+                run(Vec::new());
+                run(vec![egui::Event::Text(query.into())]);
+                run(vec![egui::Event::Key {
+                    key: Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }]);
+                assert_eq!(
+                    selected,
+                    allowed.then_some(expected),
+                    "{query}: allowed={allowed}"
+                );
+            }
+        }
     }
 }

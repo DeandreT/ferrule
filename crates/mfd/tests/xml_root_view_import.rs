@@ -253,21 +253,59 @@ fn ordinary_root_and_disconnected_view_remain_executable() -> Result<(), Box<dyn
     let unused = format!(
         r#"<entry name="Root">{TYPE_CONDITION}<entry name="Code" type="attribute" outkey="250"/></entry>"#
     );
-    for (name, source, feeds) in [
-        ("ordinary", ordinary.clone(), FEEDS.to_string()),
+    let plain = directory.write(
+        "plain.mfd",
+        &mapping(&ordinary, &root("", false), "", FEEDS),
+    )?;
+    let baseline =
+        mfd::import_with_profile(&plain, &ImportOptions::default(), ImportProfile::Executable)?;
+    for (name, source, target, feeds) in [
+        (
+            "ordinary",
+            ordinary.clone(),
+            root("", false),
+            FEEDS.to_string(),
+        ),
         (
             "unused",
             format!("{ordinary}{unused}"),
+            root("", false),
+            format!(r#"{FEEDS}<vertex vertexkey="250"><edges/></vertex>"#),
+        ),
+        (
+            "unused-explicit-base-mode",
+            format!(
+                "{}{unused}",
+                ordinary.replace(
+                    r#"<entry name="Root">"#,
+                    r#"<entry name="Root" displayselectionmode="all">"#,
+                )
+            ),
+            root("", false).replace(
+                r#"<entry name="Root">"#,
+                r#"<entry name="Root" displayselectionmode="all">"#,
+            ),
             format!(r#"{FEEDS}<vertex vertexkey="250"><edges/></vertex>"#),
         ),
     ] {
         let path = directory.write(
             &format!("{name}.mfd"),
-            &mapping(&source, &root("", false), "", &feeds),
+            &mapping(&source, &target, "", &feeds),
         )?;
-        let outcome =
-            mfd::import_with_profile(&path, &ImportOptions::default(), ImportProfile::Executable)?;
-        assert!(outcome.report.executable && outcome.imported.warnings.is_empty());
+        for profile in [ImportProfile::BestEffort, ImportProfile::Executable] {
+            let outcome = mfd::import_with_profile(&path, &ImportOptions::default(), profile)?;
+            assert!(outcome.report.executable, "{name}: {:?}", outcome.report);
+            assert!(
+                outcome.imported.warnings.is_empty(),
+                "{name}: {:?}",
+                outcome.imported.warnings
+            );
+            assert_eq!(
+                serde_json::to_value(&outcome.imported.project)?,
+                serde_json::to_value(&baseline.imported.project)?,
+                "{name}: disconnected view must retain the ordinary project",
+            );
+        }
     }
     Ok(())
 }
@@ -284,25 +322,34 @@ fn ordinary_nested_child_view_retains_existing_xml_output() -> Result<(), Box<dy
     let feeds =
         r#"<vertex vertexkey="10"><edges><edge vertexkey="20" edgekey="1"/></edges></vertex>"#;
     let path = directory.write("child.mfd", &mapping(&source, target, "", feeds))?;
-    let outcome =
-        mfd::import_with_profile(&path, &ImportOptions::default(), ImportProfile::Executable)?;
-    assert!(
-        outcome.imported.warnings.is_empty(),
-        "{:?}",
-        outcome.imported.warnings
-    );
-    let input = format_xml::from_str(
-        r#"<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Address xsi:type="Derived" Code="a" Extra="b"/></Root>"#,
-        &outcome.imported.project.source,
-    )?;
-    let output = engine::run(&outcome.imported.project, &input)?;
-    let xml = format_xml::to_string(&outcome.imported.project.target, &output)?;
-    assert!(
-        xml.contains("xsi:type=\"Derived\"") && xml.contains("Extra=\"b\""),
-        "{xml}"
-    );
-    let readback = format_xml::from_str(&xml, &outcome.imported.project.target)?;
-    assert_eq!(input, readback);
+    let mut baseline = None;
+    for profile in [ImportProfile::BestEffort, ImportProfile::Executable] {
+        let outcome = mfd::import_with_profile(&path, &ImportOptions::default(), profile)?;
+        assert!(outcome.report.executable, "{:?}", outcome.report);
+        assert!(
+            outcome.imported.warnings.is_empty(),
+            "{:?}",
+            outcome.imported.warnings
+        );
+        let serialized = serde_json::to_value(&outcome.imported.project)?;
+        if let Some(baseline) = &baseline {
+            assert_eq!(&serialized, baseline);
+        } else {
+            baseline = Some(serialized);
+        }
+        let input = format_xml::from_str(
+            r#"<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Address xsi:type="Derived" Code="a" Extra="b"/></Root>"#,
+            &outcome.imported.project.source,
+        )?;
+        let output = engine::run(&outcome.imported.project, &input)?;
+        let xml = format_xml::to_string(&outcome.imported.project.target, &output)?;
+        assert!(
+            xml.contains("xsi:type=\"Derived\"") && xml.contains("Extra=\"b\""),
+            "{xml}"
+        );
+        let readback = format_xml::from_str(&xml, &outcome.imported.project.target)?;
+        assert_eq!(input, readback);
+    }
     Ok(())
 }
 

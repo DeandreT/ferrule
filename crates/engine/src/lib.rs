@@ -39,10 +39,11 @@ use context::{runtime_field, runtime_parameter_field};
 use eval_scope::eval_scope;
 
 pub use debug::{
-    DebugDecision, DebugDraftField, DebugErrorPreview, DebugHook, DebugInstancePreview,
-    DebugScopeDraft, DebugSourceContext, DebugSourceFieldProbe, DebugSourceFrame,
-    PendingFunctionNodeFailure, PendingFunctionNodeInput, PendingFunctionNodeValue,
-    PendingNodeFailure, PendingNodeInput, PendingNodeValue, PendingTargetWrite,
+    DebugAnnotationText, DebugDecision, DebugDraftField, DebugErrorPreview, DebugHook,
+    DebugInstancePreview, DebugPrimaryRootOrigin, DebugScopeDraft, DebugSourceContext,
+    DebugSourceFieldProbe, DebugSourceFrame, PendingFunctionNodeFailure, PendingFunctionNodeInput,
+    PendingFunctionNodeValue, PendingNodeFailure, PendingNodeInput, PendingNodeValue,
+    PendingTargetWrite,
 };
 pub use pipeline::{
     PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue, run_pipeline,
