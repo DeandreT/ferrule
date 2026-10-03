@@ -127,6 +127,7 @@ fn xml(project: &Project, output: &Instance) -> Result<String, format_xml::XmlFo
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         },
     )
 }

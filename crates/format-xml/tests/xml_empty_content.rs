@@ -33,6 +33,7 @@ fn render(schema: &SchemaNode, value: &Instance, indent: bool) -> String {
             declaration: false,
             indent,
             default_namespace: None,
+            schema_hints: None,
         },
     )
     .unwrap()

@@ -18,7 +18,7 @@ use options::{
     validate_csv_dialect_options, validate_external_source_options, validate_idoc_native_options,
     validate_inactive_root_xml_read_options, validate_json5_options,
     validate_structured_edi_options, validate_target_options, validate_wsdl_options,
-    validate_xbrl_options, validate_xlsx_options,
+    validate_xbrl_options, validate_xlsx_options, validate_xml_schema_hint_options,
 };
 use schema::{display_path, source_path_matches, validate_schema};
 use scope::{ScopeSchemas, validate_scope};
@@ -145,6 +145,12 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         );
     }
     let source_options_start = issues.len();
+    validate_xml_schema_hint_options(
+        "source format options",
+        &project.source_options,
+        false,
+        &mut issues,
+    );
     validate_inactive_root_xml_read_options(
         "source format options",
         &project.source_options,
@@ -361,6 +367,12 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
                 "extra source name is duplicated",
             ));
         }
+        validate_xml_schema_hint_options(
+            &format!("{location} format options"),
+            &source.options,
+            false,
+            &mut issues,
+        );
         validate_inactive_root_xml_read_options(
             &format!("{location} format options"),
             &source.options,
