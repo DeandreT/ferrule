@@ -227,6 +227,7 @@ fn show_endpoint_proxy_label(
 pub struct GraphViewer<'a> {
     pub graph: &'a mut Graph,
     pub root_scope: &'a mut Scope,
+    pub(crate) primary_root_authoring: bool,
     pub extra_targets: &'a [NamedTarget],
     pub(crate) inactive_target_scopes: &'a [InactiveTargetScope<'a>],
     pub(crate) project_references: ProjectGraphReferences<'a>,
@@ -507,6 +508,41 @@ impl GraphViewer<'_> {
                     frame: None,
                 },
             ),
+            NodeTemplate::SourceRootField => {
+                if !self.primary_root_authoring {
+                    return Err("Primary root fields are available on the supported primary mapping canvas.".into());
+                }
+                let path = self
+                    .source_paths
+                    .first_primary_root_field()
+                    .ok_or_else(|| {
+                        "No supported primary root scalar field is available.".to_string()
+                    })?;
+                self.insert(
+                    snarl,
+                    pos,
+                    Node::SourceRootField {
+                        path,
+                        required: false,
+                    },
+                )
+            }
+            NodeTemplate::SourceRootXmlTypeEquals => {
+                if !self.primary_root_authoring {
+                    return Err("Primary XML comparisons are available on the supported primary mapping canvas.".into());
+                }
+                let canonical_expanded_type = self
+                    .source_paths
+                    .first_primary_root_type()
+                    .ok_or_else(|| "No supported primary XML type is available.".to_string())?;
+                self.insert(
+                    snarl,
+                    pos,
+                    Node::SourceRootXmlTypeEquals {
+                        canonical_expanded_type,
+                    },
+                )
+            }
             NodeTemplate::Position => self.insert(
                 snarl,
                 pos,
@@ -754,6 +790,48 @@ impl GraphViewer<'_> {
             }
         }
         false
+    }
+
+    fn check_primary_root_input(&self, from: NodeId, to: NodeId) -> Result<(), String> {
+        if !crate::primary_root_authoring::has_dependency(self.graph, from) {
+            return Ok(());
+        }
+        crate::primary_root_authoring::check_binding(
+            self.graph,
+            from,
+            self.primary_root_authoring,
+        )?;
+        // The graph is shared by every target. Adding a root input to an
+        // ordinary expression can also affect its existing downstream owners.
+        let mut pending = vec![to];
+        let mut affected = std::collections::BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if !affected.insert(id) {
+                continue;
+            }
+            let Some(node) = self.graph.nodes.get(&id) else {
+                continue;
+            };
+            if !matches!(
+                node,
+                Node::Call { .. } | Node::If { .. } | Node::ValueMap { .. }
+            ) {
+                return Err(format!(
+                    "Primary root expressions cannot feed mapping node {id}, which changes evaluation ownership"
+                ));
+            }
+            let owners = self.blocking_references_to(id);
+            if !owners.is_empty() {
+                return Err(format!(
+                    "Primary root expressions cannot feed mapping node {id}, used by {}",
+                    owners.join(", ")
+                ));
+            }
+            pending.extend(self.graph.nodes.iter().filter_map(|(&consumer, node)| {
+                node.dependencies().contains(&id).then_some(consumer)
+            }));
+        }
+        Ok(())
     }
 
     fn input_at(&self, node_id: NodeId, idx: usize) -> Option<NodeId> {
@@ -1794,16 +1872,18 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Node::SourceRootXmlTypeEquals {
                     canonical_expanded_type,
                 } => {
-                    ui.label("immutable primary XML annotation");
-                    ui.label(canonical_expanded_type.as_str());
+                    ui.label("Primary source XML type");
+                    ui.add_enabled_ui(self.primary_root_authoring, |ui| {
+                        self.source_paths
+                            .show_primary_root_type_picker(ui, canonical_expanded_type);
+                    });
                 }
                 Node::SourceRootField { path, required } => {
-                    ui.label(if *required {
-                        "required primary source field"
-                    } else {
-                        "immutable primary source field"
+                    ui.label("Primary source field");
+                    ui.add_enabled_ui(self.primary_root_authoring, |ui| {
+                        self.source_paths.show_primary_root_field_picker(ui, path);
+                        ui.checkbox(required, "Require a value when read");
                     });
-                    ui.label(path.join("/"));
                     if *required {
                         ui.small("A missing value stops execution when this field is read.");
                     }
@@ -2257,6 +2337,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         &target_leaf.chain,
                         &target_leaf.field,
                     )?;
+                    crate::primary_root_authoring::check_binding(
+                        self.graph,
+                        from_id,
+                        self.primary_root_authoring && target_leaf.chain.is_empty(),
+                    )?;
                     let displaced = self.binding_node(&target_leaf);
                     self.set_binding(&target_leaf, from_id);
                     Ok(displaced)
@@ -2287,6 +2372,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             "connection from mapping node {from_id} to {to_id} would create a cycle"
                         ));
                     }
+                    self.check_primary_root_input(from_id, to_id)?;
                     let displaced = self.input_at(to_id, to.id.input);
                     if !self.set_input(to_id, to.id.input, from_id) {
                         return Err(format!(
@@ -2368,7 +2454,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn show_graph_menu(&mut self, pos: egui::Pos2, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) {
-        if let Some(template) = node_palette::show(ui) {
+        if let Some(template) = node_palette::show_available(
+            ui,
+            self.primary_root_authoring && self.source_paths.first_primary_root_field().is_some(),
+            self.primary_root_authoring && self.source_paths.first_primary_root_type().is_some(),
+        ) {
             self.error = self.insert_palette_node(snarl, pos, template).err();
             ui.close();
         }

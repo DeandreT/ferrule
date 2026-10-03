@@ -751,6 +751,7 @@ mod tests {
             source: engine::DebugSourceContext {
                 frames: Vec::new(),
                 omitted_outer_frames: 0,
+                primary_root_origin: None,
             },
             source_field_probe: None,
             field: "value".into(),
@@ -872,6 +873,7 @@ mod tests {
             source: engine::DebugSourceContext {
                 frames: Vec::new(),
                 omitted_outer_frames: 0,
+                primary_root_origin: None,
             },
         };
         assert!(condition.matches(&input));
@@ -920,6 +922,7 @@ mod tests {
         let source = engine::DebugSourceContext {
             frames: Vec::new(),
             omitted_outer_frames: 0,
+            primary_root_origin: None,
         };
         let graph_input = engine::PendingNodeInput {
             consumer: 2,
@@ -1146,7 +1149,8 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_origin_source_condition_matches_actual_engine_data_and_keeps_origin_private() {
+    fn ordinary_origin_source_condition_matches_actual_engine_data_and_keeps_origin_out_of_frames()
+    {
         use ir::{Instance, InstanceGroup, ScalarType, SchemaNode, Value, XmlTypeOrigin};
         use mapping::{Binding, Graph, Node, Project, Scope};
         use std::cell::RefCell;
@@ -1237,7 +1241,20 @@ mod tests {
             assert_eq!(writes.len(), 1);
             let write = &writes[0];
             assert!(hook.condition.matches(write));
-            assert!(!format!("{write:?}").contains("private-type-identity"));
+            assert!(!format!("{:?}", write.source.frames).contains("private-type-identity"));
+            assert!(!format!("{:?}", write.source_field_probe).contains("private-type-identity"));
+            match (origin, &write.source.primary_root_origin) {
+                (XmlTypeOrigin::Unknown, Some(engine::DebugPrimaryRootOrigin::Unknown))
+                | (XmlTypeOrigin::Absent, Some(engine::DebugPrimaryRootOrigin::Absent)) => {}
+                (
+                    XmlTypeOrigin::Explicit(value),
+                    Some(engine::DebugPrimaryRootOrigin::Explicit { identity }),
+                ) => {
+                    assert_eq!(identity.preview, value);
+                    assert!(!identity.truncated);
+                }
+                other => panic!("primary annotation debug fact mismatch: {other:?}"),
+            }
             let mut identity_draft = draft.clone();
             identity_draft.text = "private-type-identity".into();
             assert!(!identity_draft.compile().unwrap().unwrap().matches(write));

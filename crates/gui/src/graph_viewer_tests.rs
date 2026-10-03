@@ -62,6 +62,7 @@ impl Fixture {
         GraphViewer {
             graph: &mut self.graph,
             root_scope: &mut self.root_scope,
+            primary_root_authoring: false,
             extra_targets: &[],
             inactive_target_scopes: &[],
             project_references: Default::default(),
@@ -241,6 +242,7 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
         let mut viewer = GraphViewer {
             graph: &mut fx.graph,
             root_scope: &mut fx.root_scope,
+            primary_root_authoring: false,
             extra_targets: &[],
             inactive_target_scopes: &[],
             project_references: Default::default(),
@@ -360,6 +362,7 @@ fn lookup_node_width_stabilizes_across_repaints() {
                 let mut viewer = GraphViewer {
                     graph: &mut fx.graph,
                     root_scope: &mut fx.root_scope,
+                    primary_root_authoring: false,
                     extra_targets: &[],
                     inactive_target_scopes: &[],
                     project_references: Default::default(),
@@ -527,6 +530,7 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
     let mut viewer = GraphViewer {
         graph: &mut graph,
         root_scope: &mut root_scope,
+        primary_root_authoring: false,
         extra_targets: &[],
         inactive_target_scopes: &[],
         project_references: Default::default(),
@@ -1054,6 +1058,8 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
                 .unwrap_or_default(),
             NodeTemplate::Constant
             | NodeTemplate::SourceField
+            | NodeTemplate::SourceRootField
+            | NodeTemplate::SourceRootXmlTypeEquals
             | NodeTemplate::Position
             | NodeTemplate::HostInput
             | NodeTemplate::Aggregate(_) => 0,
@@ -1064,6 +1070,8 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
         match (template, node) {
             (NodeTemplate::Constant, Node::Const { value: Value::Null })
             | (NodeTemplate::SourceField, Node::SourceField { .. })
+            | (NodeTemplate::SourceRootField, Node::SourceRootField { .. })
+            | (NodeTemplate::SourceRootXmlTypeEquals, Node::SourceRootXmlTypeEquals { .. })
             | (NodeTemplate::Position, Node::Position { .. })
             | (NodeTemplate::HostInput, Node::RuntimeParameter { .. })
             | (NodeTemplate::HostInputDefault, Node::RuntimeParameterDefault { .. })
@@ -1087,7 +1095,12 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
         }
     }
 
-    for template in node_palette::templates() {
+    for template in node_palette::templates().filter(|template| {
+        !matches!(
+            template,
+            NodeTemplate::SourceRootField | NodeTemplate::SourceRootXmlTypeEquals
+        )
+    }) {
         let mut fx = fixture();
         let mut snarl = std::mem::take(&mut fx.snarl);
         let graph_before = fx.graph.nodes.len();
@@ -1634,4 +1647,207 @@ fn primary_root_primitives_are_zero_input_visible_graph_nodes() {
         "Primary XML annotation equality"
     );
     assert_eq!(viewer.title(&CanvasNode::Graph(11)), "Primary field: Code");
+}
+
+#[test]
+fn root_palette_creation_is_valid_atomic_and_rejected_on_other_canvases() {
+    for template in [
+        NodeTemplate::SourceRootField,
+        NodeTemplate::SourceRootXmlTypeEquals,
+    ] {
+        let mut fx = fixture();
+        fx.source_paths =
+            SourcePathCatalog::new(&crate::primary_root_authoring::test_schema(), &[]);
+        let mut snarl = std::mem::take(&mut fx.snarl);
+        let before = serde_json::to_value(&fx.graph).unwrap();
+        assert!(
+            fx.viewer()
+                .insert_palette_node(&mut snarl, egui::pos2(1.0, 1.0), template)
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&fx.graph).unwrap(), before);
+        let count = fx.graph.nodes.len();
+        let (id, snarl_id) = {
+            let mut viewer = fx.viewer();
+            viewer.primary_root_authoring = true;
+            viewer
+                .insert_palette_node(&mut snarl, egui::pos2(1.0, 1.0), template)
+                .unwrap()
+        };
+        assert_eq!(fx.graph.nodes.len(), count + 1);
+        assert_eq!(snarl[snarl_id], CanvasNode::Graph(id));
+        assert_eq!(GraphViewer::input_count(&fx.graph.nodes[&id]), 0);
+        assert!(node_inputs(&fx.graph.nodes[&id]).is_empty());
+        match &fx.graph.nodes[&id] {
+            Node::SourceRootField { path, required } => {
+                assert_eq!(path, &["Code"]);
+                assert!(!required);
+            }
+            Node::SourceRootXmlTypeEquals {
+                canonical_expanded_type,
+            } => assert_eq!(canonical_expanded_type, "Base"),
+            other => panic!("wrong created root primitive: {other:?}"),
+        }
+        let serialized = serde_json::to_vec(&fx.graph).unwrap();
+        let restored: Graph = serde_json::from_slice(&serialized).unwrap();
+        assert_eq!(serde_json::to_vec(&restored).unwrap(), serialized);
+    }
+}
+
+fn root_editor_frame(
+    fx: &mut Fixture,
+    snarl: &mut Snarl<CanvasNode>,
+    context: &egui::Context,
+    allowed: bool,
+    events: Vec<egui::Event>,
+) -> egui::FullOutput {
+    let pin = snarl.out_pin(OutPinId {
+        node: fx.call,
+        output: 0,
+    });
+    context.run_ui(
+        egui::RawInput {
+            time: Some(context.cumulative_frame_nr() as f64 / 10.0),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1000.0, 900.0),
+            )),
+            events,
+            ..Default::default()
+        },
+        |ui| {
+            let mut viewer = fx.viewer();
+            viewer.primary_root_authoring = allowed;
+            viewer.show_output(&pin, ui, snarl);
+        },
+    )
+}
+fn root_editor_click(
+    fx: &mut Fixture,
+    snarl: &mut Snarl<CanvasNode>,
+    context: &egui::Context,
+    allowed: bool,
+    label: &str,
+    last: bool,
+) {
+    fn collect(shape: &egui::epaint::Shape, label: &str, out: &mut Vec<egui::Pos2>) {
+        match shape {
+            egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+                out.push(text.visual_bounding_rect().center())
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    collect(shape, label, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut output = root_editor_frame(fx, snarl, context, allowed, Vec::new());
+    for _ in 0..3 {
+        output = root_editor_frame(fx, snarl, context, allowed, Vec::new());
+    }
+    let mut positions = Vec::new();
+    for shape in &output.shapes {
+        collect(&shape.shape, label, &mut positions);
+    }
+    let pos = *if last {
+        positions.last()
+    } else {
+        positions.first()
+    }
+    .unwrap_or_else(|| panic!("missing root control {label:?}"));
+    for pressed in [true, false] {
+        let _ = root_editor_frame(
+            fx,
+            snarl,
+            context,
+            allowed,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+    }
+}
+
+#[test]
+fn pointer_root_editor_changes_path_required_and_exact_namespaced_type() {
+    let mut fx = fixture();
+    fx.source_paths = SourcePathCatalog::new(&crate::primary_root_authoring::test_schema(), &[]);
+    fx.graph.nodes.insert(
+        0,
+        Node::SourceRootField {
+            path: vec!["Code".into()],
+            required: false,
+        },
+    );
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    root_editor_click(&mut fx, &mut snarl, &context, true, "Code", false);
+    root_editor_click(&mut fx, &mut snarl, &context, true, "Extra", true);
+    root_editor_click(
+        &mut fx,
+        &mut snarl,
+        &context,
+        true,
+        "Require a value when read",
+        false,
+    );
+    assert!(
+        matches!(&fx.graph.nodes[&0], Node::SourceRootField { path, required: true } if path == &["Extra"])
+    );
+    fx.graph.nodes.insert(
+        0,
+        Node::SourceRootXmlTypeEquals {
+            canonical_expanded_type: "Base".into(),
+        },
+    );
+    root_editor_click(&mut fx, &mut snarl, &context, true, "Base", false);
+    root_editor_click(
+        &mut fx,
+        &mut snarl,
+        &context,
+        true,
+        "{urn:root}Derived",
+        true,
+    );
+    assert!(
+        matches!(&fx.graph.nodes[&0], Node::SourceRootXmlTypeEquals { canonical_expanded_type } if canonical_expanded_type == "{urn:root}Derived")
+    );
+    assert!(snarl.wires().next().is_none());
+}
+
+#[test]
+fn locked_root_editor_preserves_invalid_imported_path_and_policy() {
+    let mut fx = fixture();
+    fx.source_paths = SourcePathCatalog::new(&crate::primary_root_authoring::test_schema(), &[]);
+    fx.graph.nodes.insert(
+        0,
+        Node::SourceRootField {
+            path: vec!["LegacyMissing".into()],
+            required: false,
+        },
+    );
+    let before = serde_json::to_value(&fx.graph).unwrap();
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    root_editor_click(
+        &mut fx,
+        &mut snarl,
+        &context,
+        false,
+        "Require a value when read",
+        false,
+    );
+    assert_eq!(serde_json::to_value(&fx.graph).unwrap(), before);
+    let _ = root_editor_frame(&mut fx, &mut snarl, &context, true, Vec::new());
+    assert_eq!(serde_json::to_value(&fx.graph).unwrap(), before);
 }

@@ -179,6 +179,7 @@ impl GraphViewer<'_> {
         let mut planner = GraphViewer {
             graph: &mut graph,
             root_scope: &mut scope,
+            primary_root_authoring: false,
             extra_targets: self.extra_targets,
             inactive_target_scopes: self.inactive_target_scopes,
             project_references: self.project_references,
