@@ -27,6 +27,25 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         ));
     }
 
+    let reader_diagnostics: Vec<_> =
+        std::iter::once(("source format options".to_string(), &project.source_options))
+            .chain(project.extra_sources.iter().map(|source| {
+                (
+                    format!("extra source `{}` format options", source.name),
+                    &source.options,
+                )
+            }))
+            .filter(|(_, options)| options.xml_root_view_read_policy)
+            .map(|(location, _)| Diagnostic::Validation {
+                location,
+                message: "code generation does not support observed XML root-view input adapters"
+                    .into(),
+            })
+            .collect();
+    if !reader_diagnostics.is_empty() {
+        return Err(LowerError::new(reader_diagnostics));
+    }
+
     let mut hint_diagnostics = Vec::new();
     for (location, options) in
         std::iter::once(("target format options".to_string(), &project.target_options)).chain(

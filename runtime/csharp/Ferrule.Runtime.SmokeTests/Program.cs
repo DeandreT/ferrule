@@ -8,6 +8,9 @@ internal static partial class Program
     {
         var tests = new (string Name, Action Run)[]
         {
+            ("root-view padded facts and exact clone", RootViewPaddedFactsAndClone),
+            ("root-view padded constructor refusals", RootViewPaddedConstructorRefusals),
+            ("root-view JSON ordinary data and Unknown", RootViewPaddedJsonData),
             ("primary root annotation states", PrimaryRootAnnotationStates),
             ("primary root unknown and identity errors", PrimaryRootUnknownAndIdentityErrors),
             ("primary root scalar shapes", PrimaryRootScalarShapes),

@@ -14,6 +14,22 @@ use super::{
 };
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    if project.source_options.xml_root_view_read_policy
+        || project.target_options.xml_root_view_read_policy
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| source.options.xml_root_view_read_policy)
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| target.options.xml_root_view_read_policy)
+    {
+        return Err(MfdError::Unsupported(
+            "observed XML root-view input policy has no admitted .mfd representation".into(),
+        ));
+    }
+
     if project.source_options.xml_schema_hints.is_some()
         || project.target_options.xml_schema_hints.is_some()
         || project

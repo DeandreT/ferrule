@@ -1908,19 +1908,23 @@ fn reject_inactive_root_xml_read_options(
     options: &FormatOptions,
     side: &str,
 ) -> anyhow::Result<()> {
-    if !options.xml_allow_inactive_root_type_members {
+    if !options.xml_allow_inactive_root_type_members && !options.xml_root_view_read_policy {
         return Ok(());
     }
     let accepted_options = FormatOptions {
         xml_document: true,
         xml_allow_inactive_root_type_members: true,
+        xml_root_view_read_policy: options.xml_root_view_read_policy,
         ..Default::default()
     };
     if side != "input"
         || !options.xml_document
+        || !options.xml_allow_inactive_root_type_members
         || *options != accepted_options
         || http_url(path).is_some()
         || !ir::xml_inactive_root_type_members_are_supported(schema)
+        || (options.xml_root_view_read_policy
+            && !ir::xml_root_view_read_policy_is_supported(schema))
     {
         bail!(
             "`xml_allow_inactive_root_type_members` requires a closed flat typed local XML input with no other format options"
@@ -1932,6 +1936,7 @@ fn reject_inactive_root_xml_read_options(
 fn xml_read_options(options: &FormatOptions) -> format_xml::XmlReadOptions {
     format_xml::XmlReadOptions {
         allow_inactive_root_type_members: options.xml_allow_inactive_root_type_members,
+        root_view_policy: options.xml_root_view_read_policy,
     }
 }
 

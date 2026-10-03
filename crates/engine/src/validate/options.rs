@@ -11,12 +11,13 @@ pub(super) fn validate_inactive_root_xml_read_options(
     source_side: bool,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    if !options.xml_allow_inactive_root_type_members {
+    if !options.xml_allow_inactive_root_type_members && !options.xml_root_view_read_policy {
         return;
     }
     let accepted_options = FormatOptions {
         xml_document: true,
         xml_allow_inactive_root_type_members: true,
+        xml_root_view_read_policy: options.xml_root_view_read_policy,
         ..Default::default()
     };
     let remote = path.is_some_and(|path| {
@@ -26,9 +27,12 @@ pub(super) fn validate_inactive_root_xml_read_options(
     });
     if !source_side
         || !options.xml_document
+        || !options.xml_allow_inactive_root_type_members
         || *options != accepted_options
         || remote
         || !ir::xml_inactive_root_type_members_are_supported(schema)
+        || (options.xml_root_view_read_policy
+            && !ir::xml_root_view_read_policy_is_supported(schema))
     {
         issues.push(ValidationIssue::new(
             location,
