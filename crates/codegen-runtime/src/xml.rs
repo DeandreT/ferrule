@@ -30,6 +30,7 @@ pub fn serialize_xml(
         declaration,
         indent,
         default_namespace: namespace.map(str::to_owned),
+        schema_hints: None,
     };
     let xml = format_xml::to_string_with_options(&schema, instance, &options)
         .map_err(|source| error(node, source.to_string()))?;
@@ -95,6 +96,7 @@ mod tests {
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         };
         for bytes in [1024 * 1024 + 1, MAX_EMBEDDED_XML_SCHEMA_BYTES] {
             let mut schema = base.clone();

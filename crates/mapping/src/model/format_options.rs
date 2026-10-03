@@ -308,6 +308,10 @@ pub struct FormatOptions {
     /// to carry an `.xml` extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub xml_document: bool,
+    /// Target-only explicit lexical XML schema-location hints. They are emitted
+    /// on the document root without opening or resolving any schema location.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xml_schema_hints: Option<ir::XmlSchemaHints>,
     /// XML input: retain declared flat-root attributes outside the explicitly
     /// selected type's member set. This requires one closed typed XML document.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
@@ -446,4 +450,24 @@ pub struct FormatOptions {
     /// other XLSX layout option.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xlsx_hierarchical: Option<XlsxHierarchicalLayout>,
+}
+
+impl FormatOptions {
+    /// Validates the deliberately bounded, target-only XML hint profile.
+    pub fn validate_xml_schema_hint_options(&self, output: bool) -> Result<(), String> {
+        let Some(hints) = &self.xml_schema_hints else {
+            return Ok(());
+        };
+        // Establish the token/pair bounds before constructing the comparison profile.
+        hints.validate().map_err(|error| error.to_string())?;
+        let accepted = Self {
+            xml_document: true,
+            xml_schema_hints: Some(hints.clone()),
+            ..Default::default()
+        };
+        if !output || *self != accepted {
+            return Err("`xml_schema_hints` requires an XML target with `xml_document` and no other format options".into());
+        }
+        Ok(())
+    }
 }

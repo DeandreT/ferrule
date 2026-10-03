@@ -35,7 +35,8 @@ fn public_string_bytes_and_xml_codecs_keep_lenient_required_attribute_presence()
                     &format_xml::XmlWriteOptions {
                         declaration: false,
                         indent: false,
-                        default_namespace: None
+                        default_namespace: None,
+                        schema_hints: None,
                     }
                 )
                 .unwrap()

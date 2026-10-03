@@ -110,6 +110,7 @@ pub(super) fn validate_target_options(
     options: &FormatOptions,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    validate_xml_schema_hint_options(location, options, true, issues);
     validate_json5_options(location, options, issues);
     validate_structured_edi_options(location, options, issues);
     validate_xbrl_options(location, options, XbrlBoundaryMode::ExternalTarget, issues);
@@ -614,6 +615,17 @@ pub(super) fn validate_wsdl_options(
             location,
             "a WSDL message cannot be combined with another format identity",
         ));
+    }
+}
+
+pub(super) fn validate_xml_schema_hint_options(
+    location: &str,
+    options: &FormatOptions,
+    output: bool,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if let Err(message) = options.validate_xml_schema_hint_options(output) {
+        issues.push(ValidationIssue::new(location, message));
     }
 }
 

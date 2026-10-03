@@ -27,6 +27,27 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         ));
     }
 
+    let mut hint_diagnostics = Vec::new();
+    for (location, options) in
+        std::iter::once(("target format options".to_string(), &project.target_options)).chain(
+            project.extra_targets.iter().map(|target| {
+                (
+                    format!("extra target `{}` format options", target.name),
+                    &target.options,
+                )
+            }),
+        )
+    {
+        if options.xml_schema_hints.is_some() {
+            hint_diagnostics.push(Diagnostic::Validation {
+                location,
+                message: "code generation does not support XML schema hints".into(),
+            });
+        }
+    }
+    if !hint_diagnostics.is_empty() {
+        return Err(LowerError::new(hint_diagnostics));
+    }
     let mut diagnostics = Vec::new();
     let mut roots = Vec::new();
     let extra_sources = project

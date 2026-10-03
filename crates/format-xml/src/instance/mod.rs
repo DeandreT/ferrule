@@ -1,4 +1,5 @@
 mod generic;
+mod schema_hints;
 mod soap;
 
 pub use soap::{from_wsdl_message_str, read_wsdl_message};
@@ -25,6 +26,10 @@ const MAX_XML_NODES: u32 = 1_000_000;
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {
+    #[error("invalid XML schema hints: {0}")]
+    InvalidSchemaHints(ir::XmlSchemaHintsError),
+    #[error("XML schema hints conflict with the root attributes: {0}")]
+    SchemaHintCollision(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("xml parse error: {0}")]
@@ -766,12 +771,25 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
     Ok(())
 }
 
+/// Writes XML with explicit document-output options.
+pub fn write_with_options(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &XmlWriteOptions,
+) -> Result<(), XmlFormatError> {
+    let text = to_string_with_options(schema, instance, options)?;
+    std::fs::write(path, text)?;
+    Ok(())
+}
+
 /// Controls document-level details when rendering an XML instance in memory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XmlWriteOptions {
     pub declaration: bool,
     pub indent: bool,
     pub default_namespace: Option<String>,
+    pub schema_hints: Option<ir::XmlSchemaHints>,
 }
 
 impl Default for XmlWriteOptions {
@@ -780,6 +798,7 @@ impl Default for XmlWriteOptions {
             declaration: true,
             indent: true,
             default_namespace: None,
+            schema_hints: None,
         }
     }
 }
@@ -799,6 +818,11 @@ pub fn to_string_with_options(
     options: &XmlWriteOptions,
 ) -> Result<String, XmlFormatError> {
     validate_namespace_siblings(schema)?;
+    if let Some(hints) = &options.schema_hints {
+        hints
+            .validate()
+            .map_err(XmlFormatError::InvalidSchemaHints)?;
+    }
     let cursor = Cursor::new(Vec::new());
     let mut writer = if options.indent {
         Writer::new_with_indent(cursor, b' ', 2)
@@ -822,6 +846,7 @@ pub fn to_string_with_options(
             recursion_depth: 0,
             inherited_namespace: None,
             legacy_root_namespace: options.default_namespace.as_deref(),
+            schema_hints: options.schema_hints.as_ref(),
         },
     )?;
     let bytes = writer.into_inner().into_inner();
@@ -919,6 +944,7 @@ pub(super) struct NodeWriteContext<'a> {
     pub(super) recursion_depth: usize,
     pub(super) inherited_namespace: Option<&'a str>,
     pub(super) legacy_root_namespace: Option<&'a str>,
+    pub(super) schema_hints: Option<&'a ir::XmlSchemaHints>,
 }
 
 fn write_node<W: std::io::Write>(
@@ -933,6 +959,7 @@ fn write_node<W: std::io::Write>(
         recursion_depth,
         inherited_namespace,
         legacy_root_namespace,
+        schema_hints,
     } = context;
     let resolved;
     let schema = if let Some(anchor) = &schema.recursive_ref {
@@ -993,7 +1020,7 @@ fn write_node<W: std::io::Write>(
                 item,
                 recursion_depth,
                 inherited_namespace,
-                None,
+                (None, None),
             )?;
         }
         return Ok(());
@@ -1010,7 +1037,7 @@ fn write_node<W: std::io::Write>(
                 item,
                 recursion_depth,
                 inherited_namespace,
-                None,
+                (None, None),
             )?;
         }
         return Ok(());
@@ -1030,7 +1057,10 @@ fn write_node<W: std::io::Write>(
         instance,
         recursion_depth,
         inherited_namespace,
-        is_root.then_some(legacy_root_namespace).flatten(),
+        (
+            is_root.then_some(legacy_root_namespace).flatten(),
+            is_root.then_some(schema_hints).flatten(),
+        ),
     )
 }
 
@@ -1041,8 +1071,9 @@ fn write_single_node<W: std::io::Write>(
     instance: &Instance,
     recursion_depth: usize,
     inherited_namespace: Option<&str>,
-    legacy_namespace: Option<&str>,
+    document_options: (Option<&str>, Option<&ir::XmlSchemaHints>),
 ) -> Result<(), XmlFormatError> {
+    let (legacy_namespace, schema_hints) = document_options;
     if !schema.xml_name_alternatives.is_empty() {
         return Err(XmlFormatError::AmbiguousXmlName {
             name: schema.name.clone(),
@@ -1066,11 +1097,13 @@ fn write_single_node<W: std::io::Write>(
                 push_element_namespace(&mut start, default_namespace, namespace_changed);
                 start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
                 start.push_attribute(("xsi:nil", "true"));
+                schema_hints::push_root_hints(&mut start, schema_hints)?;
                 writer.write_event(Event::Empty(start))?;
                 return Ok(());
             }
             let mut start = BytesStart::new(schema.name.clone());
             push_element_namespace(&mut start, default_namespace, namespace_changed);
+            schema_hints::push_root_hints(&mut start, schema_hints)?;
             writer.write_event(Event::Start(start))?;
             let text = format_schema_scalar(schema, *ty, value)?;
             writer.write_event(Event::Text(xml_text(&text)))?;
@@ -1159,6 +1192,7 @@ fn write_single_node<W: std::io::Write>(
                     }
                 }
             }
+            schema_hints::push_root_hints(&mut start, schema_hints)?;
             // The selected type determines whether indentation text is allowed.
             let mut selected_children = children.iter().filter(|child| {
                 selected.is_none_or(|alternative| alternative.members.contains(&child.name))
@@ -1292,6 +1326,7 @@ fn write_group_child<W: std::io::Write>(
             recursion_depth: recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
             inherited_namespace,
             legacy_root_namespace: None,
+            schema_hints: None,
         },
     )
 }
@@ -1511,7 +1546,7 @@ fn write_sequence_item<W: std::io::Write>(
         item,
         child_depth,
         inherited_namespace,
-        None,
+        (None, None),
     )
 }
 
@@ -1699,7 +1734,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                 child_instance,
                 child_depth,
                 inherited_namespace,
-                None,
+                (None, None),
             )?;
         }
         ends_with_element = true;
