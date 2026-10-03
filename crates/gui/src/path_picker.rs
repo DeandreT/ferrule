@@ -31,6 +31,8 @@ pub struct SourcePathCatalog {
     root_scope_paths: Vec<PathChoice>,
     scope_paths: Vec<PathChoice>,
     collections: Vec<CollectionChoice>,
+    primary_root_fields: Vec<PathChoice>,
+    primary_root_types: Vec<String>,
 }
 
 impl SourcePathCatalog {
@@ -45,6 +47,25 @@ impl SourcePathCatalog {
         add_scope_paths(source, &[], &mut root_scope_paths);
         add_item_context(source, &mut entries, &mut scope_paths);
         add_repeating_contexts(source, &mut entries, &mut scope_paths);
+
+        let primary_root_fields = entries[&Vec::new()]
+            .value_paths
+            .iter()
+            .filter(|path| {
+                let borrowed = path.iter().map(String::as_str).collect::<Vec<_>>();
+                ir::primary_root_schema_has_scalar(source, &borrowed)
+            })
+            .map(|path| PathChoice {
+                path: path.clone(),
+                label: path.join(" / "),
+            })
+            .collect();
+        let primary_root_types = source
+            .alternatives()
+            .iter()
+            .filter(|alternative| ir::primary_root_schema_has_type(source, &alternative.name))
+            .map(|alternative| alternative.name.clone())
+            .collect();
 
         for extra in extras {
             let prefix = vec![extra.name.clone()];
@@ -92,6 +113,56 @@ impl SourcePathCatalog {
             root_scope_paths,
             scope_paths,
             collections,
+            primary_root_fields,
+            primary_root_types,
+        }
+    }
+
+    pub(crate) fn first_primary_root_field(&self) -> Option<Vec<String>> {
+        self.primary_root_fields
+            .first()
+            .map(|choice| choice.path.clone())
+    }
+
+    pub(crate) fn first_primary_root_type(&self) -> Option<String> {
+        self.primary_root_types.first().cloned()
+    }
+
+    pub(crate) fn show_primary_root_field_picker(&self, ui: &mut Ui, path: &mut Vec<String>) {
+        let choices = self.primary_root_fields.iter().collect::<Vec<_>>();
+        show_path_picker(
+            ui,
+            ui.id().with("primary_root_field"),
+            path,
+            &choices,
+            value_label,
+        );
+        if !self
+            .primary_root_fields
+            .iter()
+            .any(|choice| choice.path == *path)
+        {
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                "Choose a supported primary source field.",
+            );
+        }
+    }
+
+    pub(crate) fn show_primary_root_type_picker(&self, ui: &mut Ui, identity: &mut String) {
+        egui::ComboBox::from_id_salt(ui.id().with("primary_root_type"))
+            .selected_text(identity.as_str())
+            .width(170.0)
+            .show_ui(ui, |ui| {
+                for choice in &self.primary_root_types {
+                    ui.selectable_value(identity, choice.clone(), choice);
+                }
+            });
+        if !self.primary_root_types.contains(identity) {
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                "Choose a declared primary XML type.",
+            );
         }
     }
 
@@ -454,5 +525,41 @@ mod tests {
 
         assert!(has_collection(&catalog, &["rows"]));
         assert!(has_value(&catalog, &["rows"], &["value"]));
+    }
+}
+
+#[cfg(test)]
+mod primary_root_tests {
+    use super::*;
+
+    #[test]
+    fn primary_catalog_excludes_named_scalar_paths_and_keeps_canonical_namespaces() {
+        let source = crate::primary_root_authoring::test_schema();
+        let extra = mapping::NamedSource {
+            name: "Other".into(),
+            path: "other.xml".into(),
+            schema: source.clone(),
+            options: Default::default(),
+            dynamic_path: None,
+        };
+        let catalog = SourcePathCatalog::new(&source, &[extra]);
+        assert_eq!(
+            catalog
+                .primary_root_fields
+                .iter()
+                .map(|choice| choice.path.clone())
+                .collect::<Vec<_>>(),
+            vec![vec!["Code".to_owned()], vec!["Extra".to_owned()]]
+        );
+        assert_eq!(catalog.primary_root_types, ["Base", "{urn:root}Derived"]);
+    }
+
+    #[test]
+    fn unsupported_owner_has_no_root_creation_choices() {
+        let mut source = crate::primary_root_authoring::test_schema();
+        source.repeating = true;
+        let catalog = SourcePathCatalog::new(&source, &[]);
+        assert!(catalog.first_primary_root_field().is_none());
+        assert!(catalog.first_primary_root_type().is_none());
     }
 }
