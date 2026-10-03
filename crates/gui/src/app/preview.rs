@@ -1636,6 +1636,7 @@ pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, deb
                         }
                     }
                     ui.separator();
+                    show_primary_root_origin(ui, write.source.primary_root_origin.as_ref());
                     ui.strong("Active source frames (outer to inner)");
                     if write.source.omitted_outer_frames > 0 {
                         ui.weak(format!(
@@ -1838,6 +1839,7 @@ fn show_live_expression_context(
     position_paths_truncated: bool,
     source: &engine::DebugSourceContext,
 ) {
+    show_primary_root_origin(ui, source.primary_root_origin.as_ref());
     if omitted_outer_positions > 0 {
         ui.weak(format!(
             "{} outer position(s) omitted",
@@ -1917,5 +1919,119 @@ fn format_preview_bytes(bytes: usize) -> String {
         format!("{:.1} KiB", bytes / KIB)
     } else {
         format!("{} B", bytes as u64)
+    }
+}
+
+fn annotation_text(value: &engine::DebugAnnotationText) -> String {
+    format!(
+        "{}{}",
+        value.preview,
+        if value.truncated { "…" } else { "" }
+    )
+}
+
+fn show_primary_root_origin(ui: &mut egui::Ui, origin: Option<&engine::DebugPrimaryRootOrigin>) {
+    use engine::DebugPrimaryRootOrigin;
+    let Some(origin) = origin else {
+        return;
+    };
+    ui.strong("Primary source XML annotation");
+    match origin {
+        DebugPrimaryRootOrigin::NotGroup { kind } => {
+            ui.weak(format!(
+                "The primary source is {kind:?}, not a document group."
+            ));
+        }
+        DebugPrimaryRootOrigin::Unknown => {
+            ui.weak("No actual XML annotation was retained for this source.");
+        }
+        DebugPrimaryRootOrigin::Absent => {
+            ui.weak("The XML root had no type annotation.");
+        }
+        DebugPrimaryRootOrigin::Explicit { identity } => {
+            ui.monospace(format!("Type: {}", annotation_text(identity)));
+        }
+        DebugPrimaryRootOrigin::ExplicitPadded {
+            literal,
+            resolved_identity,
+        } => {
+            ui.monospace(format!("Annotation text: {:?}", annotation_text(literal)));
+            ui.monospace(format!(
+                "Resolved type: {}",
+                annotation_text(resolved_identity)
+            ));
+            ui.weak("The padded annotation does not select a type view.");
+        }
+    }
+}
+
+#[cfg(test)]
+mod root_annotation_render_tests {
+    use super::*;
+    use engine::{DebugAnnotationText, DebugPrimaryRootOrigin};
+
+    fn render(origin: Option<&DebugPrimaryRootOrigin>) -> String {
+        fn collect(shape: &egui::epaint::Shape, texts: &mut Vec<String>) {
+            match shape {
+                egui::epaint::Shape::Text(text) => texts.push(text.galley.text().to_owned()),
+                egui::epaint::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collect(shape, texts);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let context = egui::Context::default();
+        let output = context.run_ui(Default::default(), |ui| {
+            show_primary_root_origin(ui, origin)
+        });
+        let mut texts = Vec::new();
+        for shape in output.shapes {
+            collect(&shape.shape, &mut texts);
+        }
+        texts.join("\n")
+    }
+
+    #[test]
+    fn annotation_panel_distinguishes_absence_unknown_explicit_and_padded_facts() {
+        let unknown = render(Some(&DebugPrimaryRootOrigin::Unknown));
+        let absent = render(Some(&DebugPrimaryRootOrigin::Absent));
+        let explicit = render(Some(&DebugPrimaryRootOrigin::Explicit {
+            identity: DebugAnnotationText {
+                preview: "{urn:root}Derived".into(),
+                truncated: false,
+            },
+        }));
+        let padded = render(Some(&DebugPrimaryRootOrigin::ExplicitPadded {
+            literal: DebugAnnotationText {
+                preview: "  t:Derived\t".into(),
+                truncated: false,
+            },
+            resolved_identity: DebugAnnotationText {
+                preview: "{urn:root}Derived".into(),
+                truncated: false,
+            },
+        }));
+        assert!(unknown.contains("No actual XML annotation was retained"));
+        assert!(absent.contains("had no type annotation"));
+        assert!(explicit.contains("Type: {urn:root}Derived"));
+        assert!(padded.contains("Annotation text: \"  t:Derived\\t\""));
+        assert!(padded.contains("Resolved type: {urn:root}Derived"));
+        assert!(padded.contains("does not select a type view"));
+        assert!(render(None).is_empty());
+    }
+
+    #[test]
+    fn bounded_annotation_panel_marks_truncation_without_changing_the_snapshot() {
+        let fact = DebugPrimaryRootOrigin::Explicit {
+            identity: DebugAnnotationText {
+                preview: "é".repeat(160),
+                truncated: true,
+            },
+        };
+        let before = fact.clone();
+        assert!(render(Some(&fact)).contains(&format!("{}…", "é".repeat(160))));
+        assert_eq!(fact, before);
     }
 }

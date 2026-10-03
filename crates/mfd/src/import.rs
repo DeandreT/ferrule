@@ -1481,6 +1481,23 @@ fn import_resolved(
     let mut skipped_libraries: Vec<String> = Vec::new();
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
+    if matches!(selection, StageSelection::Ordinary)
+        && let Some((project, key)) =
+            crate::export::qualified_root_view::import_project(&text, structure, resources)?
+    {
+        let source_components = vec![SourceIdentity {
+            name: project.source.name.clone(),
+            key,
+        }];
+        return Ok(LoweredStage {
+            imported: Imported {
+                project,
+                warnings: Vec::new(),
+                mapping_path: path.to_path_buf(),
+            },
+            source_components,
+        });
+    }
     let mut root_view_diagnostics = Vec::new();
     let mut unsupported_root_view_role = false;
     let mut xml_boundary_witnesses = Vec::new();

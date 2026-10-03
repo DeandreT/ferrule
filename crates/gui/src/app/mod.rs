@@ -65,6 +65,7 @@ mod pipeline_editor_ui;
 mod pipeline_ui;
 #[path = "preview.rs"]
 mod preview_ui;
+mod primary_xml_input;
 #[path = "run.rs"]
 mod run_ui;
 mod scope_retirement;
@@ -1534,3 +1535,6 @@ mod scope_retirement_tests;
 
 #[cfg(test)]
 mod xml_output_controls_tests;
+
+#[cfg(test)]
+mod primary_root_authoring_tests;

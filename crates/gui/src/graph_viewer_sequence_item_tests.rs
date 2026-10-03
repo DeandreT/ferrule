@@ -162,6 +162,7 @@ fn frame(
             let mut viewer = GraphViewer {
                 graph: &mut project.graph,
                 root_scope: &mut *root_scope,
+                primary_root_authoring: false,
                 extra_targets,
                 inactive_target_scopes: &inactive,
                 project_references: ProjectGraphReferences::new(
@@ -798,6 +799,7 @@ fn connect_physical_source_attempt(
     };
     let mut function_output = REUSE_CALL;
     let mut viewer = GraphViewer {
+        primary_root_authoring: false,
         graph: &mut project.graph,
         root_scope,
         extra_targets,
