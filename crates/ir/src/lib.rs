@@ -14,7 +14,12 @@ mod instance_group;
 mod primary_root;
 mod scalar_lexical;
 mod schema;
+mod xml_schema_hints;
 mod xml_type_origin;
+pub use xml_schema_hints::{
+    MAX_XML_SCHEMA_HINT_PAIRS, MAX_XML_SCHEMA_HINT_TOKEN_BYTES, XmlSchemaHints,
+    XmlSchemaHintsError, XmlSchemaLocation,
+};
 
 pub use instance_group::InstanceGroup;
 pub use primary_root::{

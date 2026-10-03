@@ -353,6 +353,7 @@ pub(super) fn assert_case(
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         },
     )?;
     let xml_roundtrip = format_xml::from_str(&xml, &project.target)?;

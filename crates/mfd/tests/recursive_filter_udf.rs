@@ -173,6 +173,7 @@ fn output_xml(project: &Project, output: &Instance) -> Result<String, Box<dyn st
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         },
     )?)
 }

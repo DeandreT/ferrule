@@ -35,6 +35,7 @@ fn compact_xml(
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         },
     )?)
 }
