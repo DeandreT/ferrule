@@ -777,6 +777,7 @@ fn run_case(
                 declaration: false,
                 indent: false,
                 default_namespace: None,
+                schema_hints: None,
             },
         )?;
         let native_xml_roundtrip = format_xml::from_str(&native_xml, &project.target)?;
@@ -813,6 +814,7 @@ fn run_case(
                 declaration: false,
                 indent: false,
                 default_namespace: None,
+                schema_hints: None,
             },
         )?)
     } else {
@@ -3120,6 +3122,7 @@ fn run_multi_target_case(
         declaration: false,
         indent: false,
         default_namespace: None,
+        schema_hints: None,
     };
     let expected_outputs = [
         ("", &project.target, &primary_json_schema, &expected.primary),
@@ -3470,6 +3473,7 @@ fn run_xml_nil_case(
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         },
     )?;
     assert_eq!(
@@ -3848,6 +3852,7 @@ fn run_failure_rule_case(
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         },
     )?;
     let expected_outputs = vec![CorpusTargetOutput {
@@ -4203,6 +4208,7 @@ fn run_dynamic_source_case(
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         },
     )?;
     let expected_outputs = vec![CorpusTargetOutput {
@@ -4609,6 +4615,7 @@ fn run_file_set_case(
         declaration: false,
         indent: false,
         default_namespace: None,
+        schema_hints: None,
     };
     let expected_outputs = if dynamic_output {
         let Instance::DocumentSet(expected_members) = &expected else {

@@ -11,5 +11,5 @@ pub use file_set::{LocalFileSetError, LocalFileSetLimits, LocalXmlFileSet, read_
 pub use instance::{
     XmlFormatError, XmlReadOptions, XmlWriteOptions, from_str, from_str_with_options,
     from_wsdl_message_str, read, read_with_options, read_wsdl_message, to_string,
-    to_string_with_options, write,
+    to_string_with_options, write, write_with_options,
 };

@@ -620,6 +620,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                         + usize::from(child_schema.recursive_ref.is_some()),
                     inherited_namespace: element_namespace,
                     legacy_root_namespace: None,
+                    schema_hints: None,
                 },
             )?;
         }

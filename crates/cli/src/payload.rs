@@ -710,6 +710,9 @@ pub(crate) fn read_payload(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    options
+        .validate_xml_schema_hint_options(false)
+        .map_err(anyhow::Error::msg)?;
     super::validate_csv_metadata_identity(document.path, options, "input")?;
     super::reject_inactive_root_xml_read_options(document.path, schema, options, "input")?;
     if options.local_xml_file_set {
@@ -955,6 +958,9 @@ pub(crate) fn render_payload(
     options: &FormatOptions,
     current_datetime: &str,
 ) -> anyhow::Result<(Vec<u8>, usize)> {
+    options
+        .validate_xml_schema_hint_options(true)
+        .map_err(anyhow::Error::msg)?;
     super::validate_csv_metadata_identity(path, options, "output")?;
     super::reject_inactive_root_xml_read_options(path, schema, options, "output")?;
     if options.local_xml_file_set {
@@ -1007,9 +1013,13 @@ pub(crate) fn render_payload(
     }
     if options.xml_document {
         reject_xml_conflicts(options, "output")?;
-        return format_xml::to_string(schema, instance)
-            .map(|text| (text.into_bytes(), 1))
-            .context("rendering XML output payload");
+        return format_xml::to_string_with_options(
+            schema,
+            instance,
+            &super::xml_write_options(options),
+        )
+        .map(|text| (text.into_bytes(), 1))
+        .context("rendering XML output payload");
     }
     if options.json_document || options.json5 || options.json_lines {
         reject_json_conflicts(options, "output")?;
@@ -1052,9 +1062,11 @@ pub(crate) fn render_payload(
             Ok((text.into_bytes(), rows.len()))
         }
         "xlsx" => render_xlsx_payload(schema, instance, options),
-        "xml" => format_xml::to_string(schema, instance)
-            .map(|text| (text.into_bytes(), 1))
-            .context("rendering XML output payload"),
+        "xml" => {
+            format_xml::to_string_with_options(schema, instance, &super::xml_write_options(options))
+                .map(|text| (text.into_bytes(), 1))
+                .context("rendering XML output payload")
+        }
         "json" | "json5" | "jsonl" | "ndjson" => {
             let lines =
                 options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");

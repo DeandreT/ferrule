@@ -955,6 +955,9 @@ fn write_output(
     options: &FormatOptions,
     current_datetime: &str,
 ) -> anyhow::Result<usize> {
+    options
+        .validate_xml_schema_hint_options(true)
+        .map_err(anyhow::Error::msg)?;
     validate_csv_metadata_identity(path, options, "output")?;
     reject_inactive_root_xml_read_options(path, schema, options, "output")?;
     if options.local_xml_file_set && !options.xml_document {
@@ -1009,7 +1012,7 @@ fn write_output(
     }
     if options.xml_document {
         reject_xml_conflicts(options, "output")?;
-        format_xml::write(path, schema, instance)
+        format_xml::write_with_options(path, schema, instance, &xml_write_options(options))
             .with_context(|| format!("writing XML output {}", path.display()))?;
         return Ok(1);
     }
@@ -1113,7 +1116,7 @@ fn write_output(
             Ok(rows.len())
         }
         "xml" => {
-            format_xml::write(path, schema, instance)
+            format_xml::write_with_options(path, schema, instance, &xml_write_options(options))
                 .with_context(|| format!("writing output {}", path.display()))?;
             Ok(1)
         }
@@ -1191,6 +1194,9 @@ fn read_instance(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    options
+        .validate_xml_schema_hint_options(false)
+        .map_err(anyhow::Error::msg)?;
     validate_csv_metadata_identity(path, options, "input")?;
     reject_inactive_root_xml_read_options(path, schema, options, "input")?;
     if options.local_xml_file_set && !options.xml_document {
@@ -2230,4 +2236,11 @@ fn is_recognized_instance_extension(extension: &str) -> bool {
             | "pdf"
             | "xbrl"
     )
+}
+
+fn xml_write_options(options: &FormatOptions) -> format_xml::XmlWriteOptions {
+    format_xml::XmlWriteOptions {
+        schema_hints: options.xml_schema_hints.clone(),
+        ..Default::default()
+    }
 }

@@ -46,6 +46,7 @@ fn write(schema: &SchemaNode, value: &Instance, indent: bool) -> String {
             declaration: false,
             indent,
             default_namespace: None,
+            schema_hints: None,
         },
     )
     .unwrap()
@@ -229,6 +230,7 @@ fn explicit_selection_is_order_independent_and_does_not_admit_foreign_fields() {
                         declaration: false,
                         indent,
                         default_namespace: None,
+                        schema_hints: None,
                     }
                 )
                 .is_err()

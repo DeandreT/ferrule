@@ -128,6 +128,7 @@ fn generated_xml_serialization_keeps_origin_separate_from_selected_identity() {
                 declaration: false,
                 indent: false,
                 default_namespace: None,
+                schema_hints: None,
             },
         )
         .unwrap();

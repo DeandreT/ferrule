@@ -368,6 +368,7 @@ fn eval_expr_inner(
                 declaration: *declaration,
                 indent: *indent,
                 default_namespace: namespace.clone(),
+                schema_hints: None,
             };
             format_xml::to_string_with_options(schema, instance, &options)
                 .map(Value::String)
