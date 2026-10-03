@@ -4,7 +4,7 @@ mod soap;
 
 pub use soap::{from_wsdl_message_str, read_wsdl_message};
 
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 use std::path::Path;
 
 use ir::{
@@ -23,9 +23,18 @@ use generic::{
 
 const MAX_XML_RECURSION_DEPTH: usize = 64;
 const MAX_XML_NODES: u32 = 1_000_000;
+const MAX_ROOT_VIEW_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {
+    #[error("observed XML root-view input requires UTF-8 declaration encoding")]
+    RootViewEncoding,
+    #[error("unsupported observed XML root-view read policy for `{name}`")]
+    UnsupportedRootViewReadPolicy { name: String },
+    #[error("observed XML root-view document exceeds {limit} bytes")]
+    RootViewDocumentLimit { limit: usize },
+    #[error("observed flat XML root `{name}` contains unproved content")]
+    RootViewContent { name: String },
     #[error("invalid XML schema hints: {0}")]
     InvalidSchemaHints(ir::XmlSchemaHintsError),
     #[error("XML schema hints conflict with the root attributes: {0}")]
@@ -284,6 +293,8 @@ pub struct XmlReadOptions {
     /// Retain declared scalar attributes outside a known explicitly selected
     /// root type's member set. Nested nodes retain the ordinary strict policy.
     pub allow_inactive_root_type_members: bool,
+    /// Bounded observed flat String root annotation/nil behavior, source-only.
+    pub root_view_policy: bool,
 }
 
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.
@@ -297,7 +308,21 @@ pub fn read_with_options(
     schema: &SchemaNode,
     options: &XmlReadOptions,
 ) -> Result<Instance, XmlFormatError> {
-    let text = std::fs::read_to_string(path)?;
+    let text = if options.root_view_policy {
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)?
+            .take(MAX_ROOT_VIEW_DOCUMENT_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > MAX_ROOT_VIEW_DOCUMENT_BYTES {
+            return Err(XmlFormatError::RootViewDocumentLimit {
+                limit: MAX_ROOT_VIEW_DOCUMENT_BYTES,
+            });
+        }
+        String::from_utf8(bytes)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+    } else {
+        std::fs::read_to_string(path)?
+    };
     from_str_with_options(&text, schema, options)
 }
 
@@ -314,12 +339,28 @@ pub fn from_str_with_options(
     schema: &SchemaNode,
     options: &XmlReadOptions,
 ) -> Result<Instance, XmlFormatError> {
+    if options.root_view_policy
+        && (!options.allow_inactive_root_type_members
+            || !ir::xml_root_view_read_policy_is_supported(schema))
+    {
+        return Err(XmlFormatError::UnsupportedRootViewReadPolicy {
+            name: schema.name.clone(),
+        });
+    }
+    if options.root_view_policy && text.len() > MAX_ROOT_VIEW_DOCUMENT_BYTES {
+        return Err(XmlFormatError::RootViewDocumentLimit {
+            limit: MAX_ROOT_VIEW_DOCUMENT_BYTES,
+        });
+    }
     if options.allow_inactive_root_type_members
         && !ir::xml_inactive_root_type_members_are_supported(schema)
     {
         return Err(XmlFormatError::UnsupportedInactiveRootTypeMembers {
             name: schema.name.clone(),
         });
+    }
+    if options.root_view_policy {
+        validate_root_view_encoding(text)?;
     }
     validate_namespace_siblings(schema)?;
     let doc = roxmltree::Document::parse_with_options(
@@ -343,6 +384,7 @@ pub fn from_str_with_options(
         schema,
         0,
         options.allow_inactive_root_type_members,
+        options.root_view_policy,
     )
 }
 
@@ -352,7 +394,7 @@ fn read_node(
     root_schema: &SchemaNode,
     recursion_depth: usize,
 ) -> Result<Instance, XmlFormatError> {
-    read_node_with_root_policy(el, schema, root_schema, recursion_depth, false)
+    read_node_with_root_policy(el, schema, root_schema, recursion_depth, false, false)
 }
 
 fn read_node_with_root_policy(
@@ -361,6 +403,7 @@ fn read_node_with_root_policy(
     root_schema: &SchemaNode,
     recursion_depth: usize,
     allow_inactive_root_type_members: bool,
+    root_view_policy: bool,
 ) -> Result<Instance, XmlFormatError> {
     let resolved;
     let schema = if let Some(anchor) = &schema.recursive_ref {
@@ -377,7 +420,12 @@ fn read_node_with_root_policy(
     if schema.name == XML_ELEMENTS_FIELD {
         return read_generic_element(el, schema, root_schema, recursion_depth);
     }
-    let xml_nil = has_xml_nil(el, schema)?;
+    let xml_nil = if root_view_policy {
+        validate_root_view_content(el, schema)?;
+        false // The proved flat root retains attributes even for observed true nil.
+    } else {
+        has_xml_nil(el, schema)?
+    };
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
             if xml_nil {
@@ -418,6 +466,9 @@ fn read_node_with_root_policy(
             };
             validate_singular_xml_choices(schema, fields)?;
             if alternatives.is_empty() {
+                return Ok(instance);
+            }
+            if root_view_policy && attach_inactive_root_annotation(el, schema, &mut instance)? {
                 return Ok(instance);
             }
             let (alternative, annotation) = input_group_alternative(
@@ -464,6 +515,124 @@ fn read_node_with_root_policy(
             Ok(instance)
         }
     }
+}
+
+fn validate_root_view_encoding(text: &str) -> Result<(), XmlFormatError> {
+    let mut reader = quick_xml::Reader::from_str(text);
+    let first = reader
+        .read_event()
+        .map_err(|_| XmlFormatError::RootViewEncoding)?;
+    if let Event::Decl(declaration) = first
+        && let Some(encoding) = declaration.encoding()
+        && !encoding.is_ok_and(|value| value.eq_ignore_ascii_case(b"UTF-8"))
+    {
+        return Err(XmlFormatError::RootViewEncoding);
+    }
+    Ok(())
+}
+
+fn validate_root_view_content(
+    element: &roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+) -> Result<(), XmlFormatError> {
+    const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+    if let Some(value) = element.attribute((XSI, "nil")) {
+        // Only true/false are in this observed profile; ordinary XML 1/0 stays ordinary.
+        if !matches!(value, "true" | "false") {
+            return Err(XmlFormatError::InvalidXmlNil {
+                name: schema.name.clone(),
+                value: value.to_owned(),
+            });
+        }
+    }
+    if element.children().any(|child| {
+        child.is_element()
+            || (child.is_text()
+                && child.text().is_some_and(|text| {
+                    !text
+                        .chars()
+                        .all(|ch| matches!(ch, ' ' | '\t' | '\r' | '\n'))
+                }))
+    }) {
+        return Err(XmlFormatError::RootViewContent {
+            name: schema.name.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn attach_inactive_root_annotation(
+    element: &roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+    instance: &mut Instance,
+) -> Result<bool, XmlFormatError> {
+    const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+    let Some(literal) = element.attribute((XSI, "type")) else {
+        return Ok(false);
+    };
+    let invalid = || XmlFormatError::InvalidXmlType {
+        name: schema.name.clone(),
+        value: literal.to_owned(),
+    };
+    if literal.len() > ir::MAX_PRIMARY_ROOT_IDENTITY_BYTES {
+        return Err(invalid());
+    }
+    let core = literal.trim_matches([' ', '\t', '\r', '\n']);
+    if core.is_empty() || core.chars().any(char::is_whitespace) {
+        return Err(invalid());
+    }
+    match core.split_once(':') {
+        Some((prefix, local))
+            if ir::primary_root_ncname_is_valid(prefix)
+                && ir::primary_root_ncname_is_valid(local) => {}
+        Some(_) => return Err(invalid()),
+        None if ir::primary_root_ncname_is_valid(core) => {}
+        None => return Err(invalid()),
+    }
+    let (prefix, local) = core
+        .split_once(':')
+        .map_or((None, core), |(prefix, local)| (Some(prefix), local));
+    if let Some(namespace) = element.lookup_namespace_uri(prefix)
+        && !namespace.is_empty()
+        && namespace
+            .len()
+            .checked_add(local.len())
+            .and_then(|bytes| bytes.checked_add(2))
+            .is_none_or(|bytes| bytes > ir::MAX_PRIMARY_ROOT_IDENTITY_BYTES)
+    {
+        return Err(invalid());
+    }
+    let resolved = expand_xml_qname(element, schema, core)?;
+    if !ir::primary_root_type_identity_is_valid(&resolved) {
+        return Err(invalid());
+    }
+    let padded = core.len() != literal.len();
+    if !padded
+        && schema
+            .alternatives()
+            .iter()
+            .any(|alternative| alternative.name == resolved)
+    {
+        return Ok(false);
+    }
+    let origin = if padded {
+        ir::XmlTypeOrigin::ExplicitPadded {
+            literal,
+            resolved_identity: &resolved,
+        }
+    } else {
+        ir::XmlTypeOrigin::Explicit(&resolved)
+    };
+    let Instance::Group(fields) = instance else {
+        unreachable!("flat group reader")
+    };
+    fields
+        .set_xml_type_origin(origin)
+        .map_err(|source| XmlFormatError::InvalidXmlTypeOrigin {
+            name: schema.name.clone(),
+            source,
+        })?;
+    Ok(true)
 }
 
 fn input_group_alternative<'a>(

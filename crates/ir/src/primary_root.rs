@@ -94,6 +94,16 @@ pub fn primary_root_xml_type_equals(
     match fields.xml_type_origin() {
         XmlTypeOrigin::Unknown => Err(PrimaryRootError::UnknownXmlTypeOrigin),
         XmlTypeOrigin::Absent => Ok(false),
+        XmlTypeOrigin::ExplicitPadded {
+            literal,
+            resolved_identity,
+        } => {
+            if primary_root_padded_type_origin_is_valid(literal, resolved_identity) {
+                Ok(false)
+            } else {
+                Err(PrimaryRootError::InvalidTypeIdentity)
+            }
+        }
         XmlTypeOrigin::Explicit(observed) => {
             if !primary_root_type_identity_is_valid(observed) {
                 return Err(PrimaryRootError::InvalidTypeIdentity);
@@ -400,4 +410,58 @@ fn instance_kind(value: &Instance) -> &'static str {
 
 fn ncname_start(ch: char) -> bool {
     matches!(ch, 'A'..='Z' | '_' | 'a'..='z' | '\u{c0}'..='\u{d6}' | '\u{d8}'..='\u{f6}' | '\u{f8}'..='\u{2ff}' | '\u{370}'..='\u{37d}' | '\u{37f}'..='\u{1fff}' | '\u{200c}'..='\u{200d}' | '\u{2070}'..='\u{218f}' | '\u{2c00}'..='\u{2fef}' | '\u{3001}'..='\u{d7ff}' | '\u{f900}'..='\u{fdcf}' | '\u{fdf0}'..='\u{fffd}' | '\u{10000}'..='\u{effff}')
+}
+
+/// Validate a bounded actual padded QName and its independent canonical result.
+/// Namespace binding itself belongs to the owning reader or trusted host.
+pub fn primary_root_padded_type_origin_is_valid(literal: &str, resolved_identity: &str) -> bool {
+    if literal.len() > MAX_PRIMARY_ROOT_IDENTITY_BYTES
+        || !primary_root_type_identity_is_valid(resolved_identity)
+    {
+        return false;
+    }
+    let core = literal.trim_matches([' ', '\t', '\r', '\n']);
+    if core.len() == literal.len() || core.is_empty() || core.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let (prefixed, local) = match core.split_once(':') {
+        Some((prefix, local))
+            if primary_root_ncname_is_valid(prefix) && primary_root_ncname_is_valid(local) =>
+        {
+            (true, local)
+        }
+        Some(_) => return false,
+        None if primary_root_ncname_is_valid(core) => (false, core),
+        None => return false,
+    };
+    let resolved_local = if let Some(namespace) = resolved_identity.strip_prefix('{') {
+        namespace
+            .split_once('}')
+            .map(|(_, local)| local)
+            .unwrap_or("")
+    } else {
+        if prefixed {
+            return false;
+        }
+        resolved_identity
+    };
+    local == resolved_local
+}
+
+/// Narrow String-only physical attribute lane for observed root-view reads.
+pub fn xml_root_view_read_policy_is_supported(schema: &SchemaNode) -> bool {
+    if !xml_inactive_root_type_members_are_supported(schema) {
+        return false;
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return false;
+    };
+    children.iter().all(|child| {
+        matches!(
+            child.kind,
+            SchemaKind::Scalar {
+                ty: crate::ScalarType::String
+            }
+        ) && child.fixed.is_none()
+    })
 }

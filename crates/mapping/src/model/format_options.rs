@@ -316,6 +316,10 @@ pub struct FormatOptions {
     /// selected type's member set. This requires one closed typed XML document.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub xml_allow_inactive_root_type_members: bool,
+    /// Source-only observed flat String root-view annotation/nil policy.
+    /// Requires XML document identity and the explicit inactive-member option.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub xml_root_view_read_policy: bool,
     /// WSDL operation and message identity retained for canonical kind-17
     /// request, response, or fault component export. Runtime I/O remains XML.
     #[serde(default, skip_serializing_if = "Option::is_none")]
