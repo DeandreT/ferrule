@@ -14,6 +14,21 @@ use super::{
 };
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    if project.source_options.xml_schema_hints.is_some()
+        || project.target_options.xml_schema_hints.is_some()
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| source.options.xml_schema_hints.is_some())
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| target.options.xml_schema_hints.is_some())
+    {
+        return Err(MfdError::Unsupported(
+            "explicit XML schema hints cannot be preserved in .mfd export".into(),
+        ));
+    }
     json_parser::validate_provenance(&project.graph)?;
     validate_csv_metadata_identity(&project.source_path, &project.source_options, "source")?;
     validate_csv_metadata_identity(&project.target_path, &project.target_options, "target")?;

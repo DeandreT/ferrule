@@ -69,6 +69,7 @@ fn xml(project: &Project, instance: &Instance) -> Result<String, Box<dyn Error>>
             declaration: false,
             indent: false,
             default_namespace: None,
+            schema_hints: None,
         },
     )?)
 }
