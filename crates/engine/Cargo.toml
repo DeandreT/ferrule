@@ -13,3 +13,6 @@ functions = { workspace = true }
 format-xml = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
