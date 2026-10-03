@@ -12,6 +12,12 @@ pub enum XmlTypeOrigin<'a> {
     Absent,
     /// The reader observed and resolved an actual `xsi:type` attribute.
     Explicit(&'a str),
+    /// Actual outer XML whitespace is retained separately from QName resolution.
+    /// This annotation is inactive even when the core resolves to a known type.
+    ExplicitPadded {
+        literal: &'a str,
+        resolved_identity: &'a str,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
