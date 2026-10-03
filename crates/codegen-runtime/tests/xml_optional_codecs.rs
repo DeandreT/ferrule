@@ -38,7 +38,8 @@ fn public_string_and_bytes_codecs_preserve_optional_xml_host_fixed_points() {
                     &format_xml::XmlWriteOptions {
                         declaration: false,
                         indent: false,
-                        default_namespace: None
+                        default_namespace: None,
+                        schema_hints: None,
                     }
                 )
                 .unwrap()
