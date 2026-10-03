@@ -26,6 +26,10 @@ pub struct InstanceGroup {
 enum KnownXmlTypeOrigin {
     Absent,
     Explicit(String),
+    ExplicitPadded {
+        literal: String,
+        resolved_identity: String,
+    },
 }
 
 impl InstanceGroup {
@@ -51,6 +55,16 @@ impl InstanceGroup {
                 Some(Box::new(KnownXmlTypeOrigin::Explicit(identity.to_owned())))
             }
             XmlTypeOrigin::Explicit(_) => return Err(XmlTypeOriginError::InvalidPayload),
+            XmlTypeOrigin::ExplicitPadded {
+                literal,
+                resolved_identity,
+            } if crate::primary_root_padded_type_origin_is_valid(literal, resolved_identity) => {
+                Some(Box::new(KnownXmlTypeOrigin::ExplicitPadded {
+                    literal: literal.to_owned(),
+                    resolved_identity: resolved_identity.to_owned(),
+                }))
+            }
+            XmlTypeOrigin::ExplicitPadded { .. } => return Err(XmlTypeOriginError::InvalidPayload),
         };
         Ok(())
     }
@@ -61,6 +75,13 @@ impl InstanceGroup {
             None => XmlTypeOrigin::Unknown,
             Some(KnownXmlTypeOrigin::Absent) => XmlTypeOrigin::Absent,
             Some(KnownXmlTypeOrigin::Explicit(identity)) => XmlTypeOrigin::Explicit(identity),
+            Some(KnownXmlTypeOrigin::ExplicitPadded {
+                literal,
+                resolved_identity,
+            }) => XmlTypeOrigin::ExplicitPadded {
+                literal,
+                resolved_identity,
+            },
         }
     }
 

@@ -35,6 +35,7 @@ fn schema() -> SchemaNode {
 fn options() -> XmlReadOptions {
     XmlReadOptions {
         allow_inactive_root_type_members: true,
+        ..Default::default()
     }
 }
 

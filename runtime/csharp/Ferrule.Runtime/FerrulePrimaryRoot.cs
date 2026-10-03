@@ -42,6 +42,12 @@ public static class FerrulePrimaryRoot
         if (origin.Kind == FerruleXmlTypeOriginKind.Unknown)
             throw Failure(FerrulePrimaryRootError.UnknownXmlTypeOrigin, node);
         if (origin.Kind == FerruleXmlTypeOriginKind.Absent) return false;
+        if (origin.Kind == FerruleXmlTypeOriginKind.ExplicitPadded)
+        {
+            if (!PaddedTypeOriginIsValid(origin.Literal, origin.Identity))
+                throw Failure(FerrulePrimaryRootError.InvalidTypeIdentity, node);
+            return false;
+        }
         if (!TypeIdentityIsValid(origin.Identity))
             throw Failure(FerrulePrimaryRootError.InvalidTypeIdentity, node);
         return string.Equals(origin.Identity, identity, StringComparison.Ordinal);
@@ -99,6 +105,26 @@ public static class FerrulePrimaryRoot
             local = identity[(end + 1)..];
         }
         return NcNameIsValid(local);
+    }
+
+    public static bool PaddedTypeOriginIsValid(string? literal, string? resolvedIdentity)
+    {
+        if (!BoundedUnicode(literal, MaximumIdentityBytes) || !TypeIdentityIsValid(resolvedIdentity)) return false;
+        var core = literal!.Trim(' ', '\t', '\r', '\n');
+        if (core.Length == literal.Length || core.Length == 0) return false;
+        foreach (var rune in core.EnumerateRunes()) if (Rune.IsWhiteSpace(rune)) return false;
+        var colon = core.IndexOf(':');
+        var local = core;
+        if (colon >= 0)
+        {
+            if (!NcNameIsValid(core[..colon]) || !NcNameIsValid(core[(colon + 1)..])) return false;
+            local = core[(colon + 1)..];
+            if (resolvedIdentity![0] != '{') return false;
+        }
+        else if (!NcNameIsValid(core)) return false;
+        var resolvedLocal = resolvedIdentity![0] == '{'
+            ? resolvedIdentity[(resolvedIdentity.IndexOf('}') + 1)..] : resolvedIdentity;
+        return string.Equals(local, resolvedLocal, StringComparison.Ordinal);
     }
 
     public static bool NcNameIsValid(string? name)
