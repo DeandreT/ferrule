@@ -63,6 +63,10 @@ impl<'a> EvalProgram<'a> {
         self.primary_source = Some(source);
         self
     }
+
+    pub(super) fn primary_source(self) -> Option<&'a Instance> {
+        self.primary_source
+    }
 }
 
 pub(crate) fn eval_expr(
@@ -81,6 +85,7 @@ pub(crate) fn eval_expr(
             error,
             positions,
             context,
+            program.primary_source,
         )?;
     }
     result
@@ -508,7 +513,14 @@ fn eval_expr_inner(
     in_progress.remove(&node_id);
     if let Ok(value) = &result {
         record_node_value(program.trace_sink, node_id, positions, value);
-        crate::debug::after_node_value(program.debug_hook, node_id, value, positions, context)?;
+        crate::debug::after_node_value(
+            program.debug_hook,
+            node_id,
+            value,
+            positions,
+            context,
+            program.primary_source,
+        )?;
     }
     result
 }
@@ -539,6 +551,7 @@ pub(super) fn eval_node_input(
         &value,
         positions,
         context,
+        program.primary_source,
     )?;
     Ok(value)
 }

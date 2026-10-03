@@ -181,7 +181,22 @@ fn set_grouping_mode(scope: &mut Scope, mode: GroupingMode, first_node: Option<N
 }
 
 fn first_node_id(graph: &Graph) -> Option<NodeId> {
-    graph.nodes.keys().next().copied()
+    binding_node_ids(graph, false).next()
+}
+
+fn binding_node_ids(
+    graph: &Graph,
+    primary_root_binding: bool,
+) -> impl Iterator<Item = NodeId> + '_ {
+    let unavailable =
+        (!primary_root_binding).then(|| crate::primary_root_authoring::dependent_nodes(graph));
+    graph.nodes.iter().filter_map(move |(&id, node)| {
+        (!matches!(node, mapping::Node::Unconnected)
+            && unavailable
+                .as_ref()
+                .is_none_or(|nodes| !nodes.contains(&id)))
+        .then_some(id)
+    })
 }
 
 fn generated_sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
@@ -552,6 +567,12 @@ fn show_scope_node(
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct ScopeEditorOwner {
+    pub nested: bool,
+    pub primary_root_bindings: bool,
+}
+
 /// Edits `scope`'s sequence controls and bindings.
 pub(crate) fn show_scope_editor(
     ui: &mut Ui,
@@ -559,7 +580,7 @@ pub(crate) fn show_scope_editor(
     graph: &Graph,
     source_paths: &SourcePathCatalog,
     target_fields: &[String],
-    nested: bool,
+    owner: ScopeEditorOwner,
     output_profile: ScopeOutputProfile,
 ) {
     let first_node = first_node_id(graph);
@@ -631,7 +652,7 @@ pub(crate) fn show_scope_editor(
             if let Some(source) = scope.source_mut() {
                 ui.horizontal(|ui| {
                     ui.label("  path:");
-                    source_paths.show_scope_picker(ui, "scope_source_path", source, nested);
+                    source_paths.show_scope_picker(ui, "scope_source_path", source, owner.nested);
                 });
             }
         }
@@ -747,6 +768,12 @@ pub(crate) fn show_scope_editor(
         window_controls::show(ui, scope, graph);
     }
 
+    // Controls can change the owner in this UI frame; check the edited scope
+    // again before offering root expressions for a new or replacement binding.
+    let primary_root_binding = owner.primary_root_bindings
+        && !owner.nested
+        && crate::primary_root_authoring::flat_binding_scope(scope);
+    let first_binding_node = binding_node_ids(graph, primary_root_binding).next();
     ui.separator();
     ui.add_enabled_ui(!whole_group_copy, |ui| {
         ui.label("bindings (target field -> graph node):");
@@ -766,7 +793,13 @@ pub(crate) fn show_scope_editor(
                         }
                     });
                 ui.label("->");
-                node_picker(ui, format!("binding_{i}"), &mut binding.node, graph);
+                binding_node_picker(
+                    ui,
+                    format!("binding_{i}"),
+                    &mut binding.node,
+                    graph,
+                    primary_root_binding,
+                );
                 if ui
                     .small_button("x")
                     .on_hover_text("Remove binding")
@@ -790,16 +823,16 @@ pub(crate) fn show_scope_editor(
             .cloned();
         if ui
             .add_enabled(
-                first_node.is_some() && next_target.is_some(),
+                first_binding_node.is_some() && next_target.is_some(),
                 egui::Button::new("+ binding").small(),
             )
-            .on_disabled_hover_text(if first_node.is_none() {
-                "Add a graph node before creating a binding"
+            .on_disabled_hover_text(if first_binding_node.is_none() {
+                "Add a graph expression available to this target before creating a binding"
             } else {
                 "Every scalar target field already has a binding"
             })
             .clicked()
-            && let (Some(node), Some(target_field)) = (first_node, next_target)
+            && let (Some(node), Some(target_field)) = (first_binding_node, next_target)
         {
             scope.bindings.push(Binding { target_field, node });
         }
@@ -812,6 +845,16 @@ fn node_picker(
     node_id: &mut NodeId,
     graph: &Graph,
 ) {
+    binding_node_picker(ui, id_salt, node_id, graph, false);
+}
+
+fn binding_node_picker(
+    ui: &mut Ui,
+    id_salt: impl std::hash::Hash + std::fmt::Debug,
+    node_id: &mut NodeId,
+    graph: &Graph,
+    primary_root_binding: bool,
+) {
     let current_label = graph.nodes.get(node_id).map_or_else(
         || "<missing>".to_string(),
         |node| format!("{node_id}: {}", node_label(node)),
@@ -819,12 +862,24 @@ fn node_picker(
     egui::ComboBox::from_id_salt(id_salt)
         .selected_text(current_label)
         .show_ui(ui, |ui| {
+            let unavailable = (!primary_root_binding)
+                .then(|| crate::primary_root_authoring::dependent_nodes(graph));
             for (&id, node) in &graph.nodes {
                 if matches!(node, mapping::Node::Unconnected) {
                     continue;
                 }
                 let label = format!("{id}: {}", node_label(node));
-                ui.selectable_value(node_id, id, label);
+                let allowed = unavailable.as_ref().is_none_or(|nodes| !nodes.contains(&id));
+                let response = ui
+                    .add_enabled_ui(allowed, |ui| {
+                        ui.selectable_value(node_id, id, label)
+                    })
+                    .inner;
+                if !allowed {
+                    response.on_disabled_hover_text(
+                        "Primary root expressions can only feed static fields on the flat primary target root",
+                    );
+                }
             }
         });
 }
@@ -915,6 +970,10 @@ fn display_path(path: &[String]) -> String {
         path.join("/")
     }
 }
+
+#[cfg(test)]
+#[path = "scope_editor/primary_root_tests.rs"]
+mod primary_root_tests;
 
 #[cfg(test)]
 mod tests {

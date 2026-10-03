@@ -1,4 +1,7 @@
 use super::*;
+
+#[path = "graph_viewer_shared_target_tests/primary_root_connections.rs"]
+mod primary_root_connection_tests;
 use crate::canvas::{source_blocks, target_blocks};
 use crate::canvas_endpoints::EndpointScrollState;
 use egui_snarl::OutPinId;
@@ -84,6 +87,7 @@ fn edit_named_target<R>(
     let mut viewer = GraphViewer {
         graph: &mut project.graph,
         root_scope: &mut target.root,
+        primary_root_authoring: false,
         extra_targets: &[],
         inactive_target_scopes: &inactive_target_scopes,
         project_references: ProjectGraphReferences::new(

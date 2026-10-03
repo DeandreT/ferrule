@@ -26,6 +26,7 @@ mod pipeline_edit;
 mod pipeline_run;
 mod preferences;
 mod preview;
+mod primary_root_authoring;
 mod project_state;
 mod run_report;
 mod schema_scalar;

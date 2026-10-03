@@ -82,6 +82,7 @@ fn wheel_scrolls_endpoint_under_pointer_and_routes_hidden_wires_to_edge_proxies(
         let mut viewer = GraphViewer {
             graph: &mut graph,
             root_scope: &mut root_scope,
+            primary_root_authoring: false,
             extra_targets: &[],
             inactive_target_scopes: &[],
             project_references: Default::default(),
@@ -124,6 +125,7 @@ fn wheel_scrolls_endpoint_under_pointer_and_routes_hidden_wires_to_edge_proxies(
         let mut viewer = GraphViewer {
             graph: &mut graph,
             root_scope: &mut root_scope,
+            primary_root_authoring: false,
             extra_targets: &[],
             inactive_target_scopes: &[],
             project_references: Default::default(),

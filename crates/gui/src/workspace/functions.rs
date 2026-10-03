@@ -414,6 +414,7 @@ impl FerruleApp {
             let mut viewer = GraphViewer {
                 graph: &mut self.project.graph,
                 root_scope: &mut target.root,
+                primary_root_authoring: false,
                 extra_targets: &[],
                 inactive_target_scopes: &inactive_target_scopes,
                 project_references: crate::graph_viewer::ProjectGraphReferences::new(
@@ -540,6 +541,7 @@ impl FerruleApp {
             let mut viewer = GraphViewer {
                 graph: &mut function.body,
                 root_scope: &mut root,
+                primary_root_authoring: false,
                 extra_targets: &[],
                 inactive_target_scopes: &[],
                 project_references: Default::default(),
