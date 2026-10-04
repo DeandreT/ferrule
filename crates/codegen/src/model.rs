@@ -423,11 +423,19 @@ pub struct Program {
     pub extra_targets: Vec<NamedTargetProgram>,
 }
 
-/// Explicit primary XML reader and writer policies carried through lowering.
-/// Named or dynamic document adapters require separate admission evidence.
+/// One primary XML reader and ordered static document output policies.
+/// Named inputs and dynamic document sets remain outside this adapter profile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XmlBoundaryProgram {
     pub input: XmlInputPolicy,
+    pub output: XmlOutputPolicy,
+    /// Exact primary-then-extra ownership; policies never select targets by lookup.
+    pub extra_outputs: Vec<NamedXmlOutputPolicy>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamedXmlOutputPolicy {
+    pub name: String,
     pub output: XmlOutputPolicy,
 }
 

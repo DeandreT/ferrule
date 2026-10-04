@@ -215,6 +215,7 @@ fn document_boundary_program() -> Program {
             root_view_policy: true,
         },
         output: crate::XmlOutputPolicy::default(),
+        extra_outputs: Vec::new(),
     });
     program
 }
@@ -257,7 +258,7 @@ fn xml_document_boundary_rejects_named_outputs_and_invalid_literal_policy() {
     assert_eq!(
         validate_program(&named),
         Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "named XML document inputs and outputs require separate adapter support".into(),
+            reason: "named XML document inputs and observed root-view outputs require separate adapter support".into(),
         })
     );
     for namespace in [String::new(), "x".repeat(4097)] {
