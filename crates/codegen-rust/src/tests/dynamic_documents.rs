@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ir::{DocumentMember, Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
+use super::host_target::GeneratedHostCommand;
 use crate::{Options, RuntimeDependency, emit};
 
 #[test]
@@ -35,8 +36,7 @@ fn generated_mapping_matches_dynamic_document_interpreter_output() {
     let run = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(directory.path())
-        .env("CARGO_TARGET_DIR", directory.path().join("target"))
-        .output()
+        .generated_host_output(directory.path())
         .expect("generated Rust project starts");
     assert!(
         run.status.success(),
