@@ -25,6 +25,9 @@ fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
 }
 
 pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
+    if program.xml_output_mode()? == Some(codegen::XmlOutputMode::DynamicPrimaryDocuments) {
+        return render_dynamic_documents(program);
+    }
     let Some(policy) = &program.xml_boundary else {
         return Ok(String::new());
     };
@@ -163,4 +166,134 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         ));
     }
     Ok(output)
+}
+
+// This branch has no named inputs or outputs. The checked neutral mode owns
+// admission; eager mapping completes before the document-list counters run.
+fn render_dynamic_documents(program: &Program) -> Result<String, EmitError> {
+    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
+        codegen::ProgramValidationError::InvalidXmlBoundary {
+            reason: "dynamic XML document mode requires a boundary".into(),
+        }
+    })?;
+    let source = codegen::serialize_embedded_schema(
+        &program.source,
+        codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
+    )?;
+    let target = codegen::serialize_embedded_schema(
+        &program.target,
+        codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
+    )?;
+    let mut output = format!(
+        "\nconst SOURCE_XML_SCHEMA: &str = {};\nconst TARGET_XML_SCHEMA: &str = {};\n",
+        rust_string(&source),
+        rust_string(&target)
+    );
+    output.push_str("\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct XmlDocumentOutput { pub path: String, pub document: String }\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct XmlBytesDocumentOutput { pub path: String, pub document: Vec<u8> }\n\n");
+    let arguments = output_arguments(&policy.output)?;
+    for bytes in [false, true] {
+        let stem = if bytes {
+            "execute_xml_bytes_documents"
+        } else {
+            "execute_xml_documents"
+        };
+        let source_type = if bytes { "&[u8]" } else { "&str" };
+        let parser = if bytes {
+            "parse_structured_xml_bytes"
+        } else {
+            "parse_structured_xml"
+        };
+        let dto = if bytes {
+            "XmlBytesDocumentOutput"
+        } else {
+            "XmlDocumentOutput"
+        };
+        let helper = if bytes {
+            "serialize_xml_bytes_document_members"
+        } else {
+            "serialize_xml_document_members"
+        };
+        for context in [false, true] {
+            let suffix = if context { "_with_context" } else { "" };
+            let context_arg = if context {
+                ", execution: &codegen_runtime::ExecutionContext<'_>"
+            } else {
+                ""
+            };
+            let context_call = if context { ", execution" } else { "" };
+            let execute = if context {
+                "execute_outputs_with_context"
+            } else {
+                "execute_outputs"
+            };
+            output.push_str(&format!("pub fn {stem}{suffix}(source: {source_type}{context_arg}) -> Result<Vec<{dto}>, codegen_runtime::XmlDocumentExecutionError> {{\n    let parsed = codegen_runtime::{parser}(SOURCE_XML_SCHEMA, source).map_err(codegen_runtime::XmlDocumentExecutionError::from)?;\n    let mapped = {execute}(&parsed{context_call}).map_err(codegen_runtime::XmlBoundaryError::from).map_err(codegen_runtime::XmlDocumentExecutionError::from)?;\n    {helper}(mapped)\n}}\n\n"));
+        }
+        output.push_str(&format!("fn {helper}(mapped: ExecutionOutputs) -> Result<Vec<{dto}>, codegen_runtime::XmlDocumentExecutionError> {{\n    if !mapped.extras.is_empty() {{\n        return Err(codegen_runtime::XmlDocumentExecutionError::alignment(\"dynamic XML documents require no named mapped outputs\"));\n    }}\n    let Instance::DocumentSet(members) = mapped.primary else {{\n        return Err(codegen_runtime::XmlDocumentExecutionError::alignment(\"dynamic XML documents require a primary document set\"));\n    }};\n    let mut budget = codegen_runtime::XmlDocumentSetBudget::new(members.len())?;\n    let mut outputs = Vec::with_capacity(members.len());\n    for (index, member) in members.into_iter().enumerate() {{\n        let xml = codegen_runtime::serialize_xml_document(TARGET_XML_SCHEMA, member.value(), {arguments}).map_err(|error| codegen_runtime::XmlDocumentExecutionError::serialization(index, member.path(), error))?;\n        budget.charge(index, member.path(), xml.len())?;\n        outputs.push({dto} {{ path: member.path().to_owned(), document: {} }});\n    }}\n    Ok(outputs)\n}}\n\n", if bytes { "xml.into_bytes()" } else { "xml" }));
+    }
+    Ok(output)
+}
+
+#[cfg(test)]
+mod dynamic_document_tests {
+    use super::*;
+
+    fn dynamic_program() -> Program {
+        let project: ::mapping::Project = serde_json::from_str(include_str!(
+            "../../codegen/src/tests/fixtures/dynamic_primary_xml_documents.json"
+        ))
+        .unwrap();
+        codegen::lower(&project).unwrap()
+    }
+
+    #[test]
+    fn dynamic_document_mode_emits_four_owned_list_apis_without_single_document_adapters() {
+        let program = dynamic_program();
+        assert_eq!(
+            program.xml_output_mode().unwrap(),
+            Some(codegen::XmlOutputMode::DynamicPrimaryDocuments)
+        );
+        let source = render(&program).unwrap();
+        let functions: Vec<_> = source
+            .lines()
+            .filter_map(|line| {
+                line.strip_prefix("pub fn ")
+                    .map(|rest| rest.split('(').next().unwrap())
+            })
+            .collect();
+        assert_eq!(
+            functions,
+            [
+                "execute_xml_documents",
+                "execute_xml_documents_with_context",
+                "execute_xml_bytes_documents",
+                "execute_xml_bytes_documents_with_context",
+            ]
+        );
+        assert!(
+            source.contains(
+                "pub struct XmlDocumentOutput { pub path: String, pub document: String }"
+            )
+        );
+        assert!(source.contains(
+            "pub struct XmlBytesDocumentOutput { pub path: String, pub document: Vec<u8> }"
+        ));
+        assert!(!source.contains("pub fn execute_xml("));
+        assert!(!source.contains("pub fn execute_xml_outputs("));
+    }
+
+    #[test]
+    fn invalid_hand_built_dynamic_boundary_refuses_before_rendering_while_core_only_emits_no_xml() {
+        let mut program = dynamic_program();
+        let policy = program.xml_boundary.as_mut().unwrap();
+        policy.extra_outputs.push(codegen::NamedXmlOutputPolicy {
+            name: "undeclared".into(),
+            output: policy.output.clone(),
+        });
+        assert!(matches!(
+            render(&program),
+            Err(EmitError::InvalidProgram(_))
+        ));
+        program.xml_boundary = None;
+        assert!(render(&program).unwrap().is_empty());
+    }
 }

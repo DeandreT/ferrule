@@ -36,7 +36,7 @@ pub use model::{
     ScalarTargetDomain, ScopeSequence, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
     SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter, UserFunctionProgram,
     XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile, XmlMixedContentElement,
-    XmlMixedContentReplacement, XmlOutputPolicy,
+    XmlMixedContentReplacement, XmlOutputMode, XmlOutputPolicy,
 };
 pub use validate::{
     GroupingExpressionRole, JoinKeySide, ProgramValidationError, RecursiveSequencePathRole,
