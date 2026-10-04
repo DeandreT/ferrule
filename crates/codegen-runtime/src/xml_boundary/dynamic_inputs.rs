@@ -31,6 +31,11 @@ pub struct XmlDynamicSourcePolicy {
 // Matching text from an external host cannot arm or recover the product channel.
 const PRODUCT_REFUSAL: &str = "generated XML input adapter refused a dynamic document";
 
+enum XmlDynamicSourcePolicies {
+    Single(XmlDynamicSourcePolicy),
+    Multiple(Box<[XmlDynamicSourcePolicy]>),
+}
+
 /// One execution's dynamic byte admission and product-error recovery channel.
 ///
 /// Create a fresh adapter for each execution. After any failed load, including
@@ -42,7 +47,7 @@ const PRODUCT_REFUSAL: &str = "generated XML input adapter refused a dynamic doc
 /// Generated entry points already abort and recover immediately on failure.
 pub struct XmlDynamicSourceAdapter<'a> {
     loader: &'a dyn DynamicXmlSourceLoader,
-    policy: XmlDynamicSourcePolicy,
+    policies: XmlDynamicSourcePolicies,
     budget: RefCell<XmlInputSetBudget>,
     ordinal: Cell<u64>,
     failure: RefCell<Option<(XmlExecutionError, usize)>>,
@@ -56,10 +61,41 @@ impl<'a> XmlDynamicSourceAdapter<'a> {
     ) -> Self {
         Self {
             loader,
-            policy,
+            policies: XmlDynamicSourcePolicies::Single(policy),
             budget: RefCell::new(budget),
             ordinal: Cell::new(0),
             failure: RefCell::new(None),
+        }
+    }
+
+    /// Creates one execution adapter from trusted validated declaration metadata.
+    /// The caller must supply validated declarations with unique exact source
+    /// names and their original indices and schemas.
+    /// This adapter owns the table; all sources share one budget and ordinal.
+    /// As with `new`, a failed load makes the complete adapter terminal.
+    pub fn for_sources(
+        loader: &'a dyn DynamicXmlSourceLoader,
+        policies: Vec<XmlDynamicSourcePolicy>,
+        budget: XmlInputSetBudget,
+    ) -> Self {
+        Self {
+            loader,
+            policies: XmlDynamicSourcePolicies::Multiple(policies.into_boxed_slice()),
+            budget: RefCell::new(budget),
+            ordinal: Cell::new(0),
+            failure: RefCell::new(None),
+        }
+    }
+
+    fn policy(&self, source: &str) -> Option<XmlDynamicSourcePolicy> {
+        match &self.policies {
+            XmlDynamicSourcePolicies::Single(policy) => {
+                (source == policy.source).then_some(*policy)
+            }
+            XmlDynamicSourcePolicies::Multiple(policies) => policies
+                .iter()
+                .find(|policy| source == policy.source)
+                .copied(),
         }
     }
 
@@ -115,16 +151,16 @@ impl<'a> XmlDynamicSourceAdapter<'a> {
 
 impl DynamicSourceLoader for XmlDynamicSourceAdapter<'_> {
     fn load(&self, source: &str, path: &str) -> Result<Instance, String> {
-        if source != self.policy.source {
+        let Some(policy) = self.policy(source) else {
             return Err(format!("undeclared dynamic XML source {source:?}"));
-        }
+        };
         let owner = XmlInputSource::Named {
-            index: self.policy.declaration_index,
-            name: self.policy.source,
+            index: policy.declaration_index,
+            name: policy.source,
         };
         let mut request = XmlDynamicInputRequest {
-            declaration_index: self.policy.declaration_index,
-            source: self.policy.source,
+            declaration_index: policy.declaration_index,
+            source: policy.source,
             path: path.to_owned(),
             ordinal: self.ordinal.get().saturating_add(1),
             callback_invoked: false,
@@ -144,7 +180,7 @@ impl DynamicSourceLoader for XmlDynamicSourceAdapter<'_> {
         if let Err(error) = charge {
             return Err(self.refuse(request, error.into_boundary()));
         }
-        super::parse_structured_xml_bytes(self.policy.schema, &document)
+        super::parse_structured_xml_bytes(policy.schema, &document)
             .map_err(|error| self.refuse(request, error))
     }
 }
@@ -368,5 +404,283 @@ mod tests {
             ));
             // error still owns the original live marker. No further load or retry.
         }
+    }
+}
+
+#[cfg(test)]
+mod multiple_source_tests {
+    use super::*;
+    use crate::{XmlBoundaryErrorKind, XmlInputSetResourceError};
+    use ir::Value;
+    use std::error::Error;
+
+    const FLOAT_SCHEMA: &str = r#"{"name":"Catalog","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"group","children":[{"name":"Amount","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"scalar","ty":"float"}}]}}"#;
+    const INT_SCHEMA: &str = r#"{"name":"Catalog","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"group","children":[{"name":"Amount","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"scalar","ty":"int"}}]}}"#;
+    const DOCUMENT: &[u8] = b"<Catalog><Amount>7</Amount></Catalog>";
+
+    struct Loader {
+        invalid_beta: bool,
+        calls: RefCell<Vec<(String, String)>>,
+    }
+    impl DynamicXmlSourceLoader for Loader {
+        fn load(&self, source: &str, path: &str) -> Result<Vec<u8>, String> {
+            self.calls.borrow_mut().push((source.into(), path.into()));
+            Ok(if self.invalid_beta && source == "beta" {
+                vec![0xff]
+            } else {
+                DOCUMENT.to_vec()
+            })
+        }
+    }
+    fn policies() -> Vec<XmlDynamicSourcePolicy> {
+        vec![
+            XmlDynamicSourcePolicy {
+                declaration_index: 1,
+                source: "alpha",
+                schema: FLOAT_SCHEMA,
+            },
+            XmlDynamicSourcePolicy {
+                declaration_index: 3,
+                source: "beta",
+                schema: INT_SCHEMA,
+            },
+        ]
+    }
+    fn amount(instance: Instance) -> Value {
+        let Instance::Group(fields) = instance else {
+            panic!("Catalog group")
+        };
+        let Instance::Scalar(value) = &fields.iter().find(|(name, _)| name == "Amount").unwrap().1
+        else {
+            panic!("Amount scalar")
+        };
+        value.clone()
+    }
+    fn beta_failure(adapter: &XmlDynamicSourceAdapter<'_>, message: String) -> XmlExecutionError {
+        adapter.recover(RuntimeError::DynamicSourceLoad {
+            source: "beta",
+            path: "same.xml".into(),
+            message,
+        })
+    }
+    fn assert_beta_request(error: &XmlExecutionError, callback: bool) {
+        assert_eq!(
+            error.input,
+            Some(XmlInputSource::Named {
+                index: 3,
+                name: "beta"
+            })
+        );
+        assert!(error.output.is_none());
+        let request = error.request.as_ref().unwrap();
+        assert_eq!(
+            (
+                request.declaration_index,
+                request.source,
+                request.path.as_str(),
+                request.ordinal,
+                request.callback_invoked
+            ),
+            (3, "beta", "same.xml", 2, callback)
+        );
+        assert!(std::ptr::eq(
+            error
+                .source()
+                .unwrap()
+                .downcast_ref::<XmlBoundaryError>()
+                .unwrap(),
+            error.boundary.as_ref()
+        ));
+    }
+
+    #[test]
+    fn exact_source_dispatch_uses_distinct_schemas_for_the_same_logical_path() {
+        let host = Loader {
+            invalid_beta: false,
+            calls: RefCell::default(),
+        };
+        let adapter = XmlDynamicSourceAdapter::for_sources(
+            &host,
+            policies(),
+            XmlInputSetBudget::new(3).unwrap(),
+        );
+        assert_eq!(
+            amount(DynamicSourceLoader::load(&adapter, "alpha", "same.xml").unwrap()),
+            Value::Float(7.0)
+        );
+        assert_eq!(
+            amount(DynamicSourceLoader::load(&adapter, "beta", "same.xml").unwrap()),
+            Value::Int(7)
+        );
+        assert_eq!(
+            *host.calls.borrow(),
+            [
+                ("alpha".into(), "same.xml".into()),
+                ("beta".into(), "same.xml".into())
+            ]
+        );
+        assert_eq!(adapter.ordinal.get(), 2);
+    }
+
+    #[test]
+    fn a_second_source_product_failure_restores_only_its_original_owner_and_cause() {
+        let host = Loader {
+            invalid_beta: true,
+            calls: RefCell::default(),
+        };
+        let adapter = XmlDynamicSourceAdapter::for_sources(
+            &host,
+            policies(),
+            XmlInputSetBudget::new(3).unwrap(),
+        );
+        DynamicSourceLoader::load(&adapter, "alpha", "same.xml").unwrap();
+        let original = DynamicSourceLoader::load(&adapter, "beta", "same.xml").unwrap_err();
+        let error = beta_failure(&adapter, original);
+        assert_beta_request(&error, true);
+        assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Utf8);
+        assert!(error.boundary.source().unwrap().is::<std::str::Utf8Error>());
+        assert_eq!(host.calls.borrow().len(), 2);
+        // This execution is terminal after the first failed load; no retry.
+    }
+
+    #[test]
+    fn source_dispatch_is_exact_and_unknown_names_invoke_no_callback() {
+        let host = Loader {
+            invalid_beta: false,
+            calls: RefCell::default(),
+        };
+        let adapter = XmlDynamicSourceAdapter::for_sources(
+            &host,
+            policies(),
+            XmlInputSetBudget::new(3).unwrap(),
+        );
+        let message = DynamicSourceLoader::load(&adapter, "Alpha", "same.xml").unwrap_err();
+        let error = adapter.recover(RuntimeError::DynamicSourceLoad {
+            source: "Alpha",
+            path: "same.xml".into(),
+            message,
+        });
+        assert!(host.calls.borrow().is_empty());
+        assert_eq!(adapter.ordinal.get(), 0);
+        assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Mapping);
+        assert!(error.input.is_none() && error.output.is_none() && error.request.is_none());
+        assert!(error.boundary.source().unwrap().is::<RuntimeError>());
+        // This failed helper is not reused for a second load.
+    }
+
+    #[test]
+    fn same_path_under_another_source_cannot_recover_the_original_live_beta_marker() {
+        let host = Loader {
+            invalid_beta: true,
+            calls: RefCell::default(),
+        };
+        let adapter = XmlDynamicSourceAdapter::for_sources(
+            &host,
+            policies(),
+            XmlInputSetBudget::new(3).unwrap(),
+        );
+        DynamicSourceLoader::load(&adapter, "alpha", "same.xml").unwrap();
+        let original = DynamicSourceLoader::load(&adapter, "beta", "same.xml").unwrap_err();
+        let marker = original.as_ptr() as usize;
+        let error = adapter.recover(RuntimeError::DynamicSourceLoad {
+            source: "alpha",
+            path: "same.xml".into(),
+            message: original,
+        });
+        assert!(error.input.is_none() && error.output.is_none() && error.request.is_none());
+        assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Mapping);
+        let RuntimeError::DynamicSourceLoad {
+            source,
+            path,
+            message,
+        } = error
+            .boundary
+            .source()
+            .unwrap()
+            .downcast_ref::<RuntimeError>()
+            .unwrap()
+        else {
+            panic!("original typed load cause")
+        };
+        assert_eq!(
+            (*source, path.as_str(), message.as_ptr() as usize),
+            ("alpha", "same.xml", marker)
+        );
+        let armed = adapter.failure.borrow();
+        let (failure, saved_marker) = armed.as_ref().unwrap();
+        assert_eq!(*saved_marker, marker);
+        assert_beta_request(failure, true);
+        assert_eq!(host.calls.borrow().len(), 2);
+        // The unowned Mapping keeps the original marker live; no retry or later load.
+    }
+
+    #[test]
+    fn both_sources_share_the_count_reservation_before_the_second_callback() {
+        // Counter-only threshold setup; this is not an actual 4095-document load.
+        let host = Loader {
+            invalid_beta: false,
+            calls: RefCell::default(),
+        };
+        let adapter = XmlDynamicSourceAdapter::for_sources(
+            &host,
+            policies(),
+            XmlInputSetBudget::new(4095).unwrap(),
+        );
+        DynamicSourceLoader::load(&adapter, "alpha", "same.xml").unwrap();
+        let original = DynamicSourceLoader::load(&adapter, "beta", "same.xml").unwrap_err();
+        let error = beta_failure(&adapter, original);
+        assert_beta_request(&error, false);
+        assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Input);
+        let cause = error
+            .boundary
+            .source()
+            .unwrap()
+            .downcast_ref::<XmlInputSetResourceError>()
+            .unwrap();
+        assert_eq!(
+            (cause.resource, cause.observed_count, cause.limit),
+            ("xml_input_artifact_count", 4097, 4096)
+        );
+        assert_eq!(host.calls.borrow().len(), 1);
+        assert_eq!(adapter.ordinal.get(), 1);
+    }
+
+    #[test]
+    fn both_sources_share_the_original_byte_counter_and_second_source_refusal() {
+        // Counter-only threshold setup; each actual fixture document stays tiny.
+        let host = Loader {
+            invalid_beta: false,
+            calls: RefCell::default(),
+        };
+        let mut budget = XmlInputSetBudget::new(3).unwrap();
+        budget
+            .charge(
+                XmlInputSource::Primary,
+                (super::super::MAX_XML_INPUT_SET_BYTES as usize) - DOCUMENT.len(),
+            )
+            .unwrap();
+        let adapter = XmlDynamicSourceAdapter::for_sources(&host, policies(), budget);
+        DynamicSourceLoader::load(&adapter, "alpha", "same.xml").unwrap();
+        let original = DynamicSourceLoader::load(&adapter, "beta", "same.xml").unwrap_err();
+        let error = beta_failure(&adapter, original);
+        assert_beta_request(&error, true);
+        assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Input);
+        assert_eq!((error.boundary.bytes, error.boundary.limit), (None, None));
+        let cause = error
+            .boundary
+            .source()
+            .unwrap()
+            .downcast_ref::<XmlInputSetResourceError>()
+            .unwrap();
+        assert_eq!(
+            (cause.resource, cause.observed_count, cause.limit),
+            (
+                "xml_input_set_utf8_bytes",
+                super::super::MAX_XML_INPUT_SET_BYTES + DOCUMENT.len() as u64,
+                super::super::MAX_XML_INPUT_SET_BYTES
+            )
+        );
+        assert_eq!(host.calls.borrow().len(), 2);
+        // A refused byte charge commits no excess; recovery ended this execution.
     }
 }

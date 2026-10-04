@@ -390,8 +390,8 @@ with only `xml_document=true`. Each input has its own closed embedded schema.
 Each primary or static named target must likewise have XML identity and can
 retain its own literal XML schema hints.
 The source reader flags `xml_allow_inactive_root_type_members` and
-`xml_root_view_read_policy` remain false. One dynamic source can use the separate
-loader methods below; document sets do not receive these XML adapters. Derived-type alternatives,
+`xml_root_view_read_policy` remain false. Per-driver dynamic sources can use the
+separate loader methods below; document sets do not receive these XML adapters. Derived-type alternatives,
 runtime-named fields, generic or mixed-content elements, recursive schemas,
 fixed/default values and JSON-only constraints are outside this input profile.
 
@@ -522,17 +522,17 @@ its existing eight single-input methods and original observed parser; it does
 not gain the new with-sources APIs. Observed flags with named inputs remain
 strict refusals.
 
-An unproved ordinary input, unsupported format or schema, more than one dynamic
-source, or excessive declared count omits the entire optional XML adapter,
+An unproved ordinary input, unsupported format or schema, or excessive declared
+count omits the entire optional XML adapter,
 while preserving otherwise supported typed/JSON core generation. Valid literal
 output hints remain optional metadata during that fallback. Generation never
 silently drops a named input or output.
 
 ### Dynamic XML Input Loader
 
-An admitted `Structured` project with one dynamic named source adds eight loader
-methods. The input list contains every declared static source and excludes the
-dynamic source. Requests begin only when evaluation reaches a dynamic scope;
+An admitted `Structured` project with one or more dynamic named sources adds eight
+loader methods. The input list contains every declared static source and excludes
+all dynamic sources. Requests begin only when evaluation reaches a dynamic scope;
 that scope loads its driver documents eagerly before target projection. These
 methods return the primary document or the complete output set:
 
@@ -559,6 +559,12 @@ bytes are parsed against that dynamic
 source's embedded closed schema, with the same per-document parser and
 materialization limits as other `Structured` inputs.
 
+Each request selects the exact named source's embedded schema and original
+position in the complete source declaration list. Identical logical paths under
+different source names retain distinct schema and error owners. Scopes and
+targets determine source callback order; each reached source scope retains its
+own driver order. One request ordinal spans all sources and targets in the run.
+
 Initial name and document-shape checks, all primary/static document sizes,
 combined original bytes and initial parsing finish before any loader callback.
 The live input budget starts with primary and supplied static documents. Before each
@@ -567,7 +573,7 @@ separately. A rejected reservation invokes no host callback. A host failure
 consumes its reserved slot but charges no document bytes. Returned documents
 are checked against 64 MiB before their original bytes are charged to the shared
 256 MiB budget, then decoded and parsed. One budget covers the entire execution,
-including requests needed by different targets. Output limits remain separate.
+including requests needed by different sources and targets. Output limits remain separate.
 
 These methods retain `XmlExecutionError` / `FerruleXmlExecutionException`.
 Only this adapter's product-input refusals add `request` / `Request`, containing
@@ -652,9 +658,9 @@ Hand-built code-generation programs must also provide
 `XmlBoundaryProgram.extra_inputs`: `Vec::new()` for zero named inputs, otherwise
 one `NamedXmlInputPolicy` per named source in exact declaration order, with its
 exact name and a `Structured` input policy (both observed flags false). The
-corresponding schema stays in `Program.extra_sources`, including the dynamic
-declaration when present. Missing, reordered or surplus policies, more than one
-dynamic source and observed named policies reject before emission. Existing
+corresponding schemas stay in `Program.extra_sources`, including every dynamic
+declaration when present. Missing, reordered or surplus policies and observed
+named policies reject before emission. Existing
 `RootView` programs use an empty `extra_inputs` vector.
 
 `XmlBoundaryProgram.extra_outputs` remains required:
