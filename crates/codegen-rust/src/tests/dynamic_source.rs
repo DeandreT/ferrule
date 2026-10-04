@@ -295,8 +295,7 @@ fn main() {
     let result = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
-        .output()
+        .generated_host_output(output.path())
         .expect("generated Rust harness starts");
     assert!(
         result.status.success(),
@@ -407,8 +406,7 @@ fn main() {
     let result = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
-        .output()
+        .generated_host_output(output.path())
         .expect("generated Rust harness starts");
     assert!(
         result.status.success(),

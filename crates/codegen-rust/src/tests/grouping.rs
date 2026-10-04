@@ -230,7 +230,7 @@ fn main() {
     let status = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .status()
+        .generated_host_status(output.path())
         .expect("run generated grouping package");
     assert!(status.success());
 }
@@ -296,7 +296,7 @@ fn main() {
     let status = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .status()
+        .generated_host_status(output.path())
         .expect("run generated post-group filter package");
     assert!(status.success());
 }

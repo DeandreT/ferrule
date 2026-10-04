@@ -161,7 +161,7 @@ fn main() {
     let status = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .status()
+        .generated_host_status(output.path())
         .expect("run generated mixed-content package");
     assert!(status.success());
 }
@@ -298,7 +298,7 @@ fn main() {
     let status = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .status()
+        .generated_host_status(output.path())
         .expect("run generated target mixed-content package");
     assert!(status.success());
 }
