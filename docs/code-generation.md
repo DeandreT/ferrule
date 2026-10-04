@@ -370,6 +370,8 @@ Supported primary XML mappings expose XML document entry points:
 
 These entry points parse the source XML using the embedded source schema,
 execute the generated mapping, and return one serialized primary target.
+For admitted static named targets, they evaluate and serialize the complete
+output set before selecting its primary document.
 JSON entry points continue to parse JSON; they do not reconstruct an XML type
 annotation that was absent from their input.
 
@@ -382,10 +384,12 @@ supported. Absent scalars remain Null, absent groups remain omitted, present
 empty groups remain present, and repeated fields retain every matching item.
 Singular fields select their first matching occurrence.
 
-Both source and target options must be defaults with only `xml_document=true`.
+Source options must be defaults with only `xml_document=true`. Each primary
+or static named target must likewise have XML identity and can retain its own
+literal XML schema hints.
 The source reader flags `xml_allow_inactive_root_type_members` and
-`xml_root_view_read_policy` remain false. Named or dynamic inputs and named
-outputs do not receive these XML adapters. Derived-type alternatives,
+`xml_root_view_read_policy` remain false. Named or dynamic inputs do not
+receive these XML adapters. Derived-type alternatives,
 runtime-named fields, generic or mixed-content elements, recursive schemas,
 fixed/default values and JSON-only constraints are outside this input profile.
 
@@ -403,6 +407,52 @@ without XML entry points. Embedded schema validation still runs before emission:
 successful lowering alone does not guarantee that an artifact tree can be
 produced. An observed root-view policy remains a separate strict request and
 does not fall back to `Structured`.
+
+### Static Named Output Sets
+
+An admitted ordinary XML mapping can return its primary document and every
+static named target in declaration order:
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| XML text | `execute_xml_outputs` | `GeneratedMapping.ExecuteXmlOutputs` |
+| UTF-8 bytes | `execute_xml_bytes_outputs` | `GeneratedMapping.ExecuteXmlBytesOutputs` |
+| XML text with execution context | `execute_xml_outputs_with_context` | `GeneratedMapping.ExecuteXmlOutputs(source, executionContext)` |
+| UTF-8 bytes with execution context | `execute_xml_bytes_outputs_with_context` | `GeneratedMapping.ExecuteXmlBytesOutputs(source, executionContext)` |
+
+String calls return `XmlExecutionOutputs`; byte calls return
+`XmlBytesExecutionOutputs`. Each contains a primary document and ordered
+`NamedXmlOutput` or `NamedXmlBytesOutput` entries with a target name and document.
+Zero named targets produce an empty extras collection. The host owns any file
+publication; generated APIs neither resolve stored target paths nor open
+schema-hint locations.
+
+Input is parsed once, and all typed targets are mapped once before any target
+is serialized. Each document uses its own embedded target schema and output
+policy. Parsing, mapping, or serialization failure returns no output set.
+An unsuitable ordinary target omits the whole optional XML adapter while
+preserving otherwise supported typed/JSON core generation, including when
+other XML targets retain literal hints. Observed root-view named boundaries
+remain strict refusals.
+
+Set APIs return `codegen_runtime::XmlOutputSetError` in Rust and throw
+`FerruleXmlOutputSetException` in C#. The wrapper retains the original typed
+XML boundary error. Serialization failures identify the primary target or
+the named target's zero-based extra index and exact declared name. Input and
+mapping failures have no inferred target owner. The existing singular APIs
+retain their signatures and unwrap the original boundary error.
+
+Sets permit at most 4,096 artifacts including primary, with at most 256 MiB
+of combined serialized UTF-8. The 64 MiB limit still applies independently to
+each document. Set-limit failures have kind `Output` and a typed resource
+cause (`xml_output_artifact_count` or `xml_output_set_utf8_bytes`) with its
+observed count and limit; per-document byte fields remain unset. These counters
+do not bound eager typed-target allocations or peak process memory.
+
+Hand-built code-generation programs must provide `XmlBoundaryProgram.extra_outputs`:
+an empty vector for one output, or one exact named policy per declared target
+in declaration order. Model validation rejects missing, reordered or surplus
+policies before emission.
 
 ### Observed Root-View Input
 

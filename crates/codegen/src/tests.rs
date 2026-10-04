@@ -32,6 +32,7 @@ mod structured_xml_transport;
 mod user_functions;
 mod xml_document_boundary;
 mod xml_mixed_content;
+mod xml_output_sets;
 mod xml_serialize;
 
 fn scalar(name: &str) -> SchemaNode {
