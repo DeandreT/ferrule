@@ -32,7 +32,6 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     // Existing core-only generation survives an unproved ordinary schema.
     let ordinary_xml_input = !project.source_options.xml_allow_inactive_root_type_members
         && !primary_xml
-        && project.extra_sources.is_empty()
         && project.source_options
             == (mapping::FormatOptions {
                 xml_document: true,
@@ -42,6 +41,16 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     // Literal hints belong to the optional XML adapter. An unsuitable named
     // output removes that whole adapter without obstructing typed/JSON core.
     let ordinary_xml = ordinary_xml_input
+        && project.extra_sources.len() < 4096
+        && project.extra_sources.iter().all(|source| {
+            source.dynamic_path.is_none()
+                && source.options
+                    == (mapping::FormatOptions {
+                        xml_document: true,
+                        ..Default::default()
+                    })
+                && ir::xml_structured_document_input_is_supported(&source.schema)
+        })
         && xml_document_output_options(&project.target_options)
         && project
             .extra_targets
@@ -57,6 +66,24 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
                 .into(),
         })
         .collect();
+    for (location, options) in
+        std::iter::once(("source format options".to_owned(), &project.source_options)).chain(
+            project.extra_sources.iter().map(|source| {
+                (
+                    format!("extra source `{}` format options", source.name),
+                    &source.options,
+                )
+            }),
+        )
+    {
+        if options.xml_allow_inactive_root_type_members != options.xml_root_view_read_policy {
+            reader_diagnostics.push(Diagnostic::Validation {
+                location,
+                message: "generated XML input policy has incompatible observed profile flags"
+                    .into(),
+            });
+        }
+    }
     if primary_xml && (!project.extra_sources.is_empty() || !project.extra_targets.is_empty()) {
         reader_diagnostics.push(Diagnostic::Validation {
             location: "source format options".into(),
@@ -176,6 +203,19 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
                     .xml_allow_inactive_root_type_members,
                 root_view_policy: primary_xml,
             },
+            extra_inputs: project
+                .extra_sources
+                .iter()
+                .map(|source| crate::NamedXmlInputPolicy {
+                    name: source.name.clone(),
+                    input: crate::XmlInputPolicy {
+                        allow_inactive_root_type_members: source
+                            .options
+                            .xml_allow_inactive_root_type_members,
+                        root_view_policy: source.options.xml_root_view_read_policy,
+                    },
+                })
+                .collect(),
             output: crate::XmlOutputPolicy {
                 schema_hints: project.target_options.xml_schema_hints.clone(),
                 ..Default::default()

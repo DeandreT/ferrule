@@ -1,0 +1,236 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+if (args.Length != 4) throw new InvalidOperationException("cases descriptors exact-project-path variant");
+using var cases = JsonDocument.Parse(File.ReadAllText(args[0]));
+using var descriptors = JsonDocument.Parse(File.ReadAllText(args[1]));
+var context = new FerruleExecutionContext(args[2], args[2], "2026-10-04T00:00:00Z", null);
+var utf8 = new UTF8Encoding(false, true);
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var caseName = test.GetProperty("case").GetString()!;
+    var primary = Bytes(test.GetProperty("primary"));
+    var pairs = test.GetProperty("inputs").EnumerateArray().ToArray();
+    var bytes = pairs.Select(input => Bytes(input.GetProperty("bytes"))).ToArray();
+    var primaryText = TryText(primary);
+    var texts = bytes.Select(TryText).ToArray();
+    var byteInputs = pairs.Select((input, index) => new NamedXmlBytesInput(input.GetProperty("name").GetString()!, bytes[index])).ToArray();
+    void Emit(string api, object result) => Console.WriteLine(JsonSerializer.Serialize(new { @case = caseName, api, result }));
+    if (primaryText is not null && texts.All(text => text is not null))
+    {
+        var inputs = pairs.Select((input, index) => new NamedXmlInput(input.GetProperty("name").GetString()!, texts[index]!)).ToArray();
+        Emit("xml-outputs-sources", SourceOutputs(() => GeneratedMapping.ExecuteXmlOutputsWithSources(primaryText, inputs)));
+        Emit("xml-outputs-sources-context", SourceOutputs(() => GeneratedMapping.ExecuteXmlOutputsWithSources(primaryText, inputs, context)));
+        Emit("xml-sources", SourceSingular(() => GeneratedMapping.ExecuteXmlWithSources(primaryText, inputs)));
+        Emit("xml-sources-context", SourceSingular(() => GeneratedMapping.ExecuteXmlWithSources(primaryText, inputs, context)));
+    }
+    Emit("bytes-outputs-sources", SourceOutputs(() => Text(GeneratedMapping.ExecuteXmlBytesOutputsWithSources(primary, byteInputs))));
+    Emit("bytes-outputs-sources-context", SourceOutputs(() => Text(GeneratedMapping.ExecuteXmlBytesOutputsWithSources(primary, byteInputs, context))));
+    Emit("bytes-sources", SourceSingular(() => utf8.GetString(GeneratedMapping.ExecuteXmlBytesWithSources(primary, byteInputs))));
+    Emit("bytes-sources-context", SourceSingular(() => utf8.GetString(GeneratedMapping.ExecuteXmlBytesWithSources(primary, byteInputs, context))));
+    if (primaryText is not null)
+    {
+        Emit("xml-outputs", Outputs(() => GeneratedMapping.ExecuteXmlOutputs(primaryText)));
+        Emit("xml-outputs-context", Outputs(() => GeneratedMapping.ExecuteXmlOutputs(primaryText, context)));
+        Emit("xml", Singular(() => GeneratedMapping.ExecuteXml(primaryText)));
+        Emit("xml-context", Singular(() => GeneratedMapping.ExecuteXml(primaryText, context)));
+    }
+    Emit("bytes-outputs", Outputs(() => Text(GeneratedMapping.ExecuteXmlBytesOutputs(primary))));
+    Emit("bytes-outputs-context", Outputs(() => Text(GeneratedMapping.ExecuteXmlBytesOutputs(primary, context))));
+    Emit("bytes", Singular(() => utf8.GetString(GeneratedMapping.ExecuteXmlBytes(primary))));
+    Emit("bytes-context", Singular(() => utf8.GetString(GeneratedMapping.ExecuteXmlBytes(primary, context))));
+    if (!test.GetProperty("diagnostics").GetBoolean()) continue;
+    var parsed = new List<FerruleInstance?>();
+    foreach (var (input, index) in new[] { primary }.Concat(bytes).Select((input, index) => (input, index)))
+    {
+        var owner = index == 0 ? "primary" : pairs[index - 1].GetProperty("schema").GetString()!;
+        var descriptor = descriptors.RootElement.GetProperty(owner).GetString()!;
+        var api = index == 0 ? "source-primary" : $"source-{index - 1}";
+        if (TryText(input) is string text)
+        {
+            try { Emit(api, new { kind = "ok", snapshot = Snapshot(FerruleXml.ParseStructuredEmbedded(descriptor, text)) }); }
+            catch (FerruleXmlBoundaryException error) { Emit(api, Boundary(error)); }
+        }
+        try
+        {
+            var value = FerruleXml.ParseStructuredEmbeddedBytes(descriptor, input);
+            Emit(api + "-bytes", new { kind = "ok", snapshot = Snapshot(value) });
+            parsed.Add(value);
+        }
+        catch (FerruleXmlBoundaryException error) { Emit(api + "-bytes", Boundary(error)); parsed.Add(null); }
+    }
+    foreach (var withContext in new[] { false, true })
+    {
+        var api = withContext ? "typed-outputs-context" : "typed-outputs";
+        if (parsed.Any(input => input is null)) { Emit(api, new { kind = "blocked_input", attempted = false }); continue; }
+        var inputs = pairs.Select((input, index) => new NamedInput(input.GetProperty("name").GetString()!, parsed[index + 1]!)).ToArray();
+        try
+        {
+            var mapped = withContext ? GeneratedMapping.ExecuteOutputsWithSources(parsed[0]!, inputs, context)
+                : GeneratedMapping.ExecuteOutputsWithSources(parsed[0]!, inputs);
+            Emit(api, new { kind = "ok", primary = Snapshot(mapped.Primary),
+                extras = mapped.Extras.Select(target => new { name = target.Name, instance = Snapshot(target.Instance) }).ToArray() });
+        }
+        catch (FerruleRuntimeException error)
+        { Emit(api, Boundary(new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Mapping, error.Message, error))); }
+    }
+}
+if (args[3] == "base")
+{
+    void Emit(string name, object result) => Console.WriteLine(JsonSerializer.Serialize(new { @case = name, api = "csharp-host-shape", result }));
+    var nominal = "<Input><Value>2.5</Value><NeedContext>false</NeedContext></Input>";
+    var rates = "<Rates xmlns=\"urn:rates\" Revision=\"3\"><Factor>4</Factor></Rates>";
+    Emit("primary-invalid-unicode", HostShape(() => GeneratedMapping.ExecuteXmlOutputsWithSources("\ud800",
+        new NamedXmlInput[] { new("rates", rates), new("labels", "<Labels/>") })));
+    Emit("named-invalid-unicode-before-primary-parse", HostShape(() => GeneratedMapping.ExecuteXmlOutputsWithSources("<Input>",
+        new NamedXmlInput[] { new("rates", "\udc00"), new("labels", "<Labels/>") })));
+    Emit("later-null-before-size", HostShape(() => GeneratedMapping.ExecuteXmlOutputsWithSources(new string('a', 64 * 1024 * 1024 + 1),
+        new NamedXmlInput[] { new("rates", rates), new("labels", null!) })));
+    Emit("unknown-before-null", HostShape(() => GeneratedMapping.ExecuteXmlOutputsWithSources(nominal,
+        new NamedXmlInput[] { new("rates", rates), new("unknown", null!) })));
+    Emit("duplicate-before-null", HostShape(() => GeneratedMapping.ExecuteXmlOutputsWithSources(nominal,
+        new NamedXmlInput[] { new("rates", rates), new("rates", null!) })));
+    Emit("missing-before-null", HostShape(() => GeneratedMapping.ExecuteXmlOutputsWithSources(nominal,
+        new NamedXmlInput[] { new("rates", null!) })));
+}
+
+static byte[] Bytes(JsonElement value) => value.EnumerateArray().Select(item => item.GetByte()).ToArray();
+static string? TryText(byte[] bytes)
+{
+    try { return new UTF8Encoding(false, true).GetString(bytes); }
+    catch (DecoderFallbackException) { return null; }
+}
+static Dictionary<string, object?> OwnedError(FerruleXmlExecutionException error)
+{
+    var result = Boundary(error.Boundary);
+    result["input"] = error.Input is null ? null : new { kind = error.Input.Kind.ToString(), index = error.Input.Index, name = error.Input.Name };
+    result["output"] = error.Output is null ? null : new { kind = error.Output.Kind.ToString(), index = error.Output.Index, name = error.Output.Name };
+    result["boundary_preserved"] = ReferenceEquals(error.Boundary, error.InnerException);
+    return result;
+}
+static object SourceOutputs(Func<XmlExecutionOutputs> run)
+{
+    try
+    {
+        var output = run();
+        return new { kind = "ok", primary = Document(output.Primary), extras = output.Extras.Select(target => new { name = target.Name, physical = Physical(target.Document), xml = target.Document }).ToArray() };
+    }
+    catch (FerruleXmlExecutionException error) { return OwnedError(error); }
+}
+static object SourceSingular(Func<string> run)
+{
+    try { return new { kind = "ok", primary = Document(run()) }; }
+    catch (FerruleXmlExecutionException error) { return OwnedError(error); }
+}
+static object HostShape(Func<XmlExecutionOutputs> run)
+{
+    try { return SourceOutputs(run); }
+    catch (ArgumentNullException error) { return new { kind = "ArgumentNull", type = error.GetType().FullName, parameter = error.ParamName, no_output = true }; }
+}
+
+static XmlExecutionOutputs Text(XmlBytesExecutionOutputs output)
+{
+    var utf8 = new UTF8Encoding(false, true);
+    return new XmlExecutionOutputs(utf8.GetString(output.Primary), output.Extras.Select(target => new NamedXmlOutput(target.Name, utf8.GetString(target.Document))).ToArray());
+}
+static object Document(string xml) => new { physical = Physical(xml), xml };
+static object Outputs(Func<XmlExecutionOutputs> run)
+{
+    try
+    {
+        var output = run();
+        return new { kind = "ok", primary = Document(output.Primary),
+            extras = output.Extras.Select(target => new { name = target.Name, physical = Physical(target.Document), xml = target.Document }).ToArray() };
+    }
+    catch (FerruleXmlOutputSetException error)
+    {
+        var result = Boundary(error.Boundary);
+        result["target"] = error.Target is null ? null : new { kind = error.Target.Kind.ToString(), index = error.Target.Index, name = error.Target.Name };
+        result["boundary_preserved"] = ReferenceEquals(error.Boundary, error.InnerException);
+        return result;
+    }
+}
+static object Singular(Func<string> run)
+{
+    try { return new { kind = "ok", primary = Document(run()) }; }
+    catch (FerruleXmlBoundaryException error) { return Boundary(error); }
+}
+static Dictionary<string, object?> Boundary(FerruleXmlBoundaryException error)
+{
+    FerruleRuntimeException? runtime = null;
+    var innerSources = new List<object>();
+    object? resource = null;
+    for (var current = error.InnerException; current is not null; current = current.InnerException)
+    {
+        innerSources.Add(new { type = current.GetType().FullName, detail = current.Message });
+        if (current is FerruleRuntimeException typed) runtime = typed;
+        if (current is FerruleXmlOutputSetResourceException cause)
+            resource = new { resource = cause.Resource, observed_count = cause.ObservedCount, limit = cause.Limit };
+        if (current is FerruleXmlInputSetResourceException inputCause)
+            resource = new { resource = inputCause.Resource, observed_count = inputCause.ObservedCount, limit = inputCause.Limit };
+    }
+    object? nameError = runtime is not null && (runtime.Error is FerruleRuntimeError.MissingNamedSource or FerruleRuntimeError.DuplicateNamedSource or FerruleRuntimeError.UnexpectedNamedSource)
+        ? new { kind = runtime.Error.ToString(), name = runtime.Detail } : null;
+    return new Dictionary<string, object?> {
+        ["kind"] = error.Kind.ToString(), ["detail"] = error.Detail,
+        ["function"] = runtime?.Function, ["found"] = runtime?.FoundKind?.ToString(),
+        ["runtime_value"] = runtime?.RuntimeValue?.ToString(), ["runtime_error"] = runtime?.Error.ToString(),
+        ["boundary_bytes"] = error.Bytes, ["boundary_limit"] = error.Limit,
+        ["inner_sources"] = innerSources, ["resource"] = resource, ["name_error"] = nameError, ["no_output"] = true,
+    };
+}
+static object Physical(string xml)
+{
+    using var text = new StringReader(xml);
+    using var reader = XmlReader.Create(text, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+    var root = XDocument.Load(reader).Root ?? throw new InvalidOperationException("output root");
+    return Element(root);
+}
+static object Element(XElement node)
+{
+    var children = node.Elements().Select(Element).ToArray();
+    return new {
+        name = node.Name.LocalName, @namespace = node.Name.NamespaceName,
+        text = children.Length == 0 ? string.Concat(node.Nodes().OfType<XText>().Select(text => text.Value)) : null,
+        attributes = node.Attributes().Where(attribute => !attribute.IsNamespaceDeclaration)
+            .OrderBy(attribute => attribute.Name.NamespaceName, StringComparer.Ordinal).ThenBy(attribute => attribute.Name.LocalName, StringComparer.Ordinal)
+            .Select(attribute => new { name = attribute.Name.LocalName, @namespace = attribute.Name.NamespaceName, value = attribute.Value }).ToArray(),
+        children,
+    };
+}
+
+static object Snapshot(FerruleInstance input) => input switch
+{
+    FerruleScalar scalar => Scalar(scalar.Value),
+    FerruleGroup group => new { kind = "Group", xml_type_origin = Origin(group.XmlTypeOrigin),
+        fields = group.Fields.Select(field => new { name = field.Name, instance = Snapshot(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(Snapshot).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(Snapshot).ToArray() },
+    _ => throw new InvalidOperationException("unexpected closed fixture instance variant"),
+};
+
+static object Origin(FerruleXmlTypeOrigin origin) => origin.Kind switch
+{
+    FerruleXmlTypeOriginKind.Unknown => new { kind = "Unknown" },
+    FerruleXmlTypeOriginKind.Absent => new { kind = "Absent" },
+    FerruleXmlTypeOriginKind.Explicit => new { kind = "Explicit", identity = origin.Identity },
+    FerruleXmlTypeOriginKind.ExplicitPadded => new { kind = "ExplicitPadded", literal = origin.Literal, resolved_identity = origin.Identity },
+    _ => throw new InvalidOperationException("unexpected XML type origin"),
+};
+
+static object Scalar(FerruleValue value) => value.Kind switch
+{
+    FerruleValueKind.Null => new { kind = "Scalar", tag = "Null" },
+    FerruleValueKind.JsonNull => new { kind = "Scalar", tag = "JsonNull" },
+    FerruleValueKind.XmlNil => new { kind = "Scalar", tag = "XmlNil" },
+    FerruleValueKind.Bool => new { kind = "Scalar", tag = "Bool", value = value.BooleanValue },
+    FerruleValueKind.Int64 => new { kind = "Scalar", tag = "Int", value = value.Int64Value },
+    FerruleValueKind.Double => new { kind = "Scalar", tag = "Float", bits_hex = BitConverter.DoubleToUInt64Bits(value.DoubleValue).ToString("x16", CultureInfo.InvariantCulture) },
+    FerruleValueKind.String => new { kind = "Scalar", tag = "String", value = value.StringValue },
+    _ => throw new InvalidOperationException("unexpected scalar tag"),
+};
