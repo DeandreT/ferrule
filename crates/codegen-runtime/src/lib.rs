@@ -67,9 +67,10 @@ pub use user_function::adapt_user_function_value;
 pub use value_map::value_map;
 pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize_xml};
 pub use xml_boundary::{
-    MAX_XML_DOCUMENT_BYTES, MAX_XML_HINT_DESCRIPTOR_BYTES, XmlBoundaryError, XmlBoundaryErrorKind,
-    parse_structured_xml, parse_structured_xml_bytes, parse_xml, parse_xml_bytes,
-    serialize_xml_document,
+    MAX_XML_DOCUMENT_BYTES, MAX_XML_HINT_DESCRIPTOR_BYTES, MAX_XML_OUTPUT_ARTIFACTS,
+    MAX_XML_OUTPUT_SET_BYTES, XmlBoundaryError, XmlBoundaryErrorKind, XmlOutputSetBudget,
+    XmlOutputSetError, XmlOutputSetResourceError, XmlOutputTarget, parse_structured_xml,
+    parse_structured_xml_bytes, parse_xml, parse_xml_bytes, serialize_xml_document,
 };
 pub use xml_mixed_content::{
     XmlMixedContentElement, XmlMixedContentReplacement, preserve_xml_mixed_content,

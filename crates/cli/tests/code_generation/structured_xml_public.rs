@@ -1,8 +1,7 @@
 use super::*;
 use std::collections::BTreeSet;
 
-#[path = "fixtures/structured_xml_snapshot.rs.txt"]
-mod snapshot;
+use super::structured_xml_snapshot as snapshot;
 
 // Keep failed generated libraries and hosts available for diagnosis.
 struct RegressionDirectory {

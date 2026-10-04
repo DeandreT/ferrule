@@ -887,6 +887,9 @@ Runtime support proceeds in parallel:
   from the existing observed `RootView` profile: untouched published libraries,
   all string/byte/context APIs, complete typed values and XML occurrences,
   conservative schema/parser refusals, and independent resource-count edges.
+  Static named XML output sets need independent ordered per-target schemas and
+  policies, complete-set failure behavior, singular API compatibility, and
+  combined serialized-byte/artifact admission checks.
   Eager DOM/Instance processing still needs measured peak-memory coverage;
   resource acceptance limits do not qualify streaming or a hard RSS budget.
 - Implement Java, C++, XSLT 1.0/2.0/3.0, and XQuery backends according to the

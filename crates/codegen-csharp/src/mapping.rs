@@ -54,6 +54,10 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     let mut output = String::from(
         "namespace Ferrule.Generated;\n\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\npublic sealed record NamedJsonInput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesInput(\n    string Name,\n    byte[] Document);\n\npublic sealed record NamedJsonOutput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesOutput(\n    string Name,\n    byte[] Document);\n\npublic sealed record JsonExecutionOutputs(\n    string Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonOutput> Extras);\n\npublic sealed record JsonBytesExecutionOutputs(\n    byte[] Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesOutput> Extras);\n\npublic static class GeneratedMapping\n{\n",
     );
+    let type_position = output
+        .find("public static class GeneratedMapping")
+        .expect("generated mapping header");
+    output.insert_str(type_position, xml_api::render_types(program));
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     render_json_entry_points(program, &mut output)?;
     xml_api::render(program, &mut output)?;
