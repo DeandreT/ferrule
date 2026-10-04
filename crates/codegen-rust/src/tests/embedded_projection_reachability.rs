@@ -194,9 +194,8 @@ fn main() {
     let run = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(directory.path())
-        .env("CARGO_TARGET_DIR", directory.path().join("target"))
         .env("RUSTFLAGS", "-D warnings")
-        .output()
+        .generated_host_output(directory.path())
         .unwrap();
     assert!(
         run.status.success(),

@@ -426,8 +426,7 @@ fn source_with_sequence(
     let result = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
-        .output()
+        .generated_host_output(output.path())
         .unwrap();
     assert!(
         result.status.success(),

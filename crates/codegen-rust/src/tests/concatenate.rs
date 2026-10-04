@@ -249,9 +249,8 @@ fn main() {
     let run = Command::new("cargo")
         .args(["run", "--quiet"])
         .env("EXPECTED_OUTPUT", format!("{expected:?}"))
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
         .current_dir(output.path())
-        .output()
+        .generated_host_output(output.path())
         .expect("generated package starts");
     assert!(
         run.status.success(),
