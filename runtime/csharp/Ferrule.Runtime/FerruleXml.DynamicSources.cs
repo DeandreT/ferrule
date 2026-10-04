@@ -22,7 +22,8 @@ public sealed record FerruleXmlDynamicSourcePolicy(int DeclarationIndex, string 
 public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
 {
     private readonly IFerruleDynamicXmlSourceLoader _loader;
-    private readonly FerruleXmlDynamicSourcePolicy _policy;
+    private readonly FerruleXmlDynamicSourcePolicy? _policy;
+    private readonly FerruleXmlDynamicSourcePolicy[]? _policies;
     private readonly FerruleXmlInputSetBudget _budget;
     private ulong _ordinal;
     private FerruleXmlExecutionException? _failure;
@@ -36,6 +37,35 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
         ArgumentNullException.ThrowIfNull(budget);
         _loader = loader;
         _policy = policy;
+        _budget = budget;
+    }
+
+    /// <summary>Owns trusted validated declaration policies for one execution.</summary>
+    /// <remarks>The caller must supply validated declarations with unique exact
+    /// source names and their original indices and schemas. All sources share one
+    /// budget, ordinal and first-failure channel.
+    /// As with the single-policy constructor, any failed load is terminal.</remarks>
+    public static FerruleXmlDynamicSourceAdapter ForSources(IFerruleDynamicXmlSourceLoader loader,
+        IReadOnlyList<FerruleXmlDynamicSourcePolicy> sourcePolicies, FerruleXmlInputSetBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(loader);
+        ArgumentNullException.ThrowIfNull(sourcePolicies);
+        ArgumentNullException.ThrowIfNull(budget);
+        var policies = new FerruleXmlDynamicSourcePolicy[sourcePolicies.Count];
+        for (var index = 0; index < policies.Length; index++)
+        {
+            var policy = sourcePolicies[index];
+            ArgumentNullException.ThrowIfNull(policy);
+            policies[index] = policy;
+        }
+        return new FerruleXmlDynamicSourceAdapter(loader, policies, budget, true);
+    }
+
+    private FerruleXmlDynamicSourceAdapter(IFerruleDynamicXmlSourceLoader loader,
+        FerruleXmlDynamicSourcePolicy[] policies, FerruleXmlInputSetBudget budget, bool _)
+    {
+        _loader = loader;
+        _policies = policies;
         _budget = budget;
     }
 
@@ -73,11 +103,23 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
 
     public FerruleInstance Load(string sourceName, string logicalPath)
     {
-        if (!string.Equals(sourceName, _policy.Source, StringComparison.Ordinal))
+        var policy = _policy;
+        if (policy is null)
+        {
+            foreach (var candidate in _policies!)
+            {
+                if (string.Equals(sourceName, candidate.Source, StringComparison.Ordinal))
+                {
+                    policy = candidate;
+                    break;
+                }
+            }
+        }
+        if (policy is null || !string.Equals(sourceName, policy.Source, StringComparison.Ordinal))
             throw new InvalidOperationException($"undeclared dynamic XML source '{sourceName}'");
-        var owner = FerruleXmlInputSource.Named(_policy.DeclarationIndex, _policy.Source);
+        var owner = FerruleXmlInputSource.Named(policy.DeclarationIndex, policy.Source);
         var ordinal = _ordinal == ulong.MaxValue ? ulong.MaxValue : _ordinal + 1;
-        var request = new FerruleXmlDynamicInputRequest(_policy.DeclarationIndex, _policy.Source,
+        var request = new FerruleXmlDynamicInputRequest(policy.DeclarationIndex, policy.Source,
             logicalPath, ordinal, false);
         try { _budget.Reserve(owner); }
         catch (FerruleXmlExecutionException error) { throw Refuse(request, error.Boundary); }
@@ -90,7 +132,7 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
         {
             FerruleXmlInputSetBudget.RequireDocumentSize(owner, document.LongLength);
             _budget.Charge(owner, document.LongLength);
-            return FerruleXml.ParseStructuredEmbeddedBytes(_policy.Schema, document);
+            return FerruleXml.ParseStructuredEmbeddedBytes(policy.Schema, document);
         }
         catch (FerruleXmlExecutionException error) { throw Refuse(request, error.Boundary); }
         catch (FerruleXmlBoundaryException error) { throw Refuse(request, error); }

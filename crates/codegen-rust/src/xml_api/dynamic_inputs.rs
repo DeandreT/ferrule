@@ -4,12 +4,13 @@ use crate::rust_string;
 use codegen::Program;
 
 pub(super) fn render(program: &Program) -> String {
-    let Some((dynamic_index, dynamic)) = program
+    let dynamic_sources = program
         .extra_sources
         .iter()
         .enumerate()
-        .find(|(_, source)| source.dynamic.is_some())
-    else {
+        .filter(|(_, source)| source.dynamic.is_some())
+        .collect::<Vec<_>>();
+    let Some((dynamic_index, dynamic)) = dynamic_sources.first().copied() else {
         return String::new();
     };
     let static_sources = program
@@ -18,7 +19,21 @@ pub(super) fn render(program: &Program) -> String {
         .enumerate()
         .filter(|(_, source)| source.dynamic.is_none())
         .collect::<Vec<_>>();
-    let dynamic_name = rust_string(&dynamic.name);
+    let adapter = if dynamic_sources.len() == 1 {
+        format!(
+            "    let adapter = codegen_runtime::XmlDynamicSourceAdapter::new(loader,\n        codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {dynamic_index}, source: {}, schema: EXTRA_XML_INPUT_SCHEMA_{dynamic_index} }}, budget);\n",
+            rust_string(&dynamic.name)
+        )
+    } else {
+        let mut adapter = String::from(
+            "    let adapter = codegen_runtime::XmlDynamicSourceAdapter::for_sources(loader, vec![\n",
+        );
+        for (index, source) in dynamic_sources {
+            adapter.push_str(&format!("        codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {index}, source: {}, schema: EXTRA_XML_INPUT_SCHEMA_{index} }},\n", rust_string(&source.name)));
+        }
+        adapter.push_str("    ], budget);\n");
+        adapter
+    };
     let mut output = String::from("pub use codegen_runtime::DynamicXmlSourceLoader;\n\n");
     for bytes in [false, true] {
         let (stem, dto, source_type, scalar_type, result_type, parser, serializer) = if bytes {
@@ -86,9 +101,7 @@ pub(super) fn render(program: &Program) -> String {
                 ));
             }
             output.push_str(&format!(r#"    ];
-    let adapter = codegen_runtime::XmlDynamicSourceAdapter::new(loader,
-        codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {dynamic_index}, source: {dynamic_name}, schema: EXTRA_XML_INPUT_SCHEMA_{dynamic_index} }}, budget);
-    let mapped = {execute}(&parsed, &parsed_inputs{context_call}, &adapter).map_err(|error| adapter.recover(error))?;
+{adapter}    let mapped = {execute}(&parsed, &parsed_inputs{context_call}, &adapter).map_err(|error| adapter.recover(error))?;
     {serializer}(mapped).map_err(codegen_runtime::XmlExecutionError::from)
 }}
 

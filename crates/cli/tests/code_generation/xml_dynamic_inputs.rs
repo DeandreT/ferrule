@@ -31,20 +31,36 @@ impl Drop for RegressionDirectory {
     }
 }
 struct NativeLoader<'a> {
-    schema: &'a SchemaNode,
+    sources: Vec<(&'a str, &'a SchemaNode)>,
     directory: &'a Path,
     calls: RefCell<Vec<(String, String)>>,
 }
 impl engine::DynamicSourceLoader for NativeLoader<'_> {
     fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String> {
-        assert_eq!(source, "catalog");
+        let (_, schema) = self
+            .sources
+            .iter()
+            .find(|(name, _)| *name == source)
+            .expect("one declared dynamic source");
         assert!(matches!(path, "a.xml" | "b.xml"));
         self.calls.borrow_mut().push((source.into(), path.into()));
         let document = std::fs::read_to_string(self.directory.join(path))
             .map_err(|error| error.to_string())?;
-        format_xml::from_str(&document, self.schema)
-            .map(Arc::new)
-            .map_err(|error| error.to_string())
+        let instance =
+            format_xml::from_str(&document, schema).map_err(|error| error.to_string())?;
+        if self.sources.len() == 2 {
+            for row in repeated_field(&instance, "Row") {
+                assert!(
+                    matches!(
+                        (source, group_field(row, "Amount")),
+                        ("alpha", Instance::Scalar(Value::Float(_)))
+                            | ("beta", Instance::Scalar(Value::Int(_)))
+                    ),
+                    "source-specific parsed numeric tag under the same logical path"
+                );
+            }
+        }
+        Ok(Arc::new(instance))
     }
 }
 fn recorded(command: &mut Command, directory: &Path, name: &str) -> io::Result<Output> {
@@ -63,11 +79,32 @@ fn recorded(command: &mut Command, directory: &Path, name: &str) -> io::Result<O
     )?;
     Ok(output)
 }
-fn exercise(language: &str) -> TestResult<()> {
-    let mut directory = RegressionDirectory::new(language)?;
-    let project: Project = serde_json::from_str(include_str!(
-        "../../../codegen/src/tests/fixtures/dynamic_named_xml_input_mixed.json"
-    ))?;
+fn group_field<'a>(instance: &'a Instance, name: &str) -> &'a Instance {
+    let Instance::Group(fields) = instance else {
+        panic!("typed group")
+    };
+    &fields
+        .iter()
+        .find(|(field, _)| field == name)
+        .expect("complete named field")
+        .1
+}
+fn repeated_field<'a>(instance: &'a Instance, name: &str) -> &'a [Instance] {
+    let Instance::Repeated(rows) = group_field(instance, name) else {
+        panic!("complete repeated field")
+    };
+    rows
+}
+fn exercise(language: &str, multiple: bool) -> TestResult<()> {
+    let mode = if multiple { "multiple" } else { "single" };
+    let mut directory = RegressionDirectory::new(&format!("{language}_{mode}"))?;
+    let project: Project = serde_json::from_str(if multiple {
+        include_str!(
+            "../../../codegen/src/tests/fixtures/multiple_dynamic_named_xml_input_mixed.json"
+        )
+    } else {
+        include_str!("../../../codegen/src/tests/fixtures/dynamic_named_xml_input_mixed.json")
+    })?;
     assert!(engine::validate(&project).is_empty());
     let lowered = codegen::lower(&project)?;
     let boundary = lowered
@@ -78,9 +115,16 @@ fn exercise(language: &str) -> TestResult<()> {
         boundary.input.profile(),
         Some(codegen::XmlInputProfile::Structured)
     );
-    assert_eq!(boundary.extra_inputs.len(), 3);
-    assert_eq!(project.extra_sources[1].name, "catalog");
+    assert_eq!(boundary.extra_inputs.len(), if multiple { 4 } else { 3 });
+    assert_eq!(
+        project.extra_sources[1].name,
+        if multiple { "alpha" } else { "catalog" }
+    );
     assert!(lowered.extra_sources[1].dynamic.is_some());
+    if multiple {
+        assert_eq!(project.extra_sources[3].name, "beta");
+        assert!(lowered.extra_sources[3].dynamic.is_some());
+    }
     for (name, document) in [
         (
             "primary.xml",
@@ -94,8 +138,22 @@ fn exercise(language: &str) -> TestResult<()> {
             "labels.xml",
             include_str!("fixtures/xml_dynamic_inputs/labels.xml"),
         ),
-        ("a.xml", include_str!("fixtures/xml_dynamic_inputs/a.xml")),
-        ("b.xml", include_str!("fixtures/xml_dynamic_inputs/b.xml")),
+        (
+            "a.xml",
+            if multiple {
+                include_str!("fixtures/xml_dynamic_inputs/multiple-a.xml")
+            } else {
+                include_str!("fixtures/xml_dynamic_inputs/a.xml")
+            },
+        ),
+        (
+            "b.xml",
+            if multiple {
+                include_str!("fixtures/xml_dynamic_inputs/multiple-b.xml")
+            } else {
+                include_str!("fixtures/xml_dynamic_inputs/b.xml")
+            },
+        ),
     ] {
         std::fs::write(directory.path.join(name), document)?;
     }
@@ -123,6 +181,11 @@ fn exercise(language: &str) -> TestResult<()> {
     let unchanged = artifact_files(&generated)?;
     let host = directory.path.join("host");
     std::fs::create_dir_all(host.join("src"))?;
+    let package = if multiple {
+        "ferrule-xml-multiple-dynamic-input-regression-host"
+    } else {
+        "ferrule-xml-dynamic-input-regression-host"
+    };
     let output = if language == "rust" {
         std::fs::write(
             host.join("src/main.rs"),
@@ -131,7 +194,7 @@ fn exercise(language: &str) -> TestResult<()> {
         std::fs::write(
             host.join("Cargo.toml"),
             format!(
-                "[package]\nname=\"ferrule-xml-dynamic-input-regression-host\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nferrule-generated-mapping={{path={generated:?}}}\ncodegen-runtime={{path={runtime:?}}}\nserde_json=\"1\"\n"
+                "[package]\nname={package:?}\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nferrule-generated-mapping={{path={generated:?}}}\ncodegen-runtime={{path={runtime:?}}}\nserde_json=\"1\"\n"
             ),
         )?;
         let target = match std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
@@ -160,10 +223,10 @@ fn exercise(language: &str) -> TestResult<()> {
             String::from_utf8_lossy(&result.stderr)
         );
         let binary = target
-            .join("debug/ferrule-xml-dynamic-input-regression-host")
+            .join(format!("debug/{package}"))
             .with_extension(std::env::consts::EXE_EXTENSION);
         let mut run = Command::new(binary);
-        run.arg(&directory.path).current_dir(&host);
+        run.arg(&directory.path).arg(mode).current_dir(&host);
         recorded(&mut run, &directory.path, "host")?
     } else {
         std::fs::write(
@@ -200,6 +263,7 @@ fn exercise(language: &str) -> TestResult<()> {
         let mut run = dotnet_command(&directory.path);
         run.arg(artifacts.join("bin/Host/release/Host.dll"))
             .arg(&directory.path)
+            .arg(mode)
             .current_dir(&directory.path)
             .env("DOTNET_PROCESSOR_COUNT", "2");
         recorded(&mut run, &directory.path, "host")?
@@ -242,52 +306,72 @@ fn exercise(language: &str) -> TestResult<()> {
         })
         .collect::<TestResult<Vec<_>>>()?;
     let loader = NativeLoader {
-        schema: &project.extra_sources[1].schema,
+        sources: project
+            .extra_sources
+            .iter()
+            .filter(|source| source.dynamic_path.is_some())
+            .map(|source| (source.name.as_str(), &source.schema))
+            .collect(),
         directory: &directory.path,
         calls: RefCell::default(),
     };
     let execution = engine::ExecutionContext::new(&path).with_dynamic_source_loader(&loader);
     let native =
         engine::run_outputs_with_sources_and_context(&project, &primary, inputs, &execution)?;
-    let Instance::Group(result) = &native.primary else {
-        panic!("complete target group")
+    let line_names: &[&str] = if multiple {
+        &["AlphaLine", "BetaLine"]
+    } else {
+        &["Line"]
     };
-    let Instance::Repeated(lines) = &result
-        .iter()
-        .find(|(name, _)| name == "Line")
-        .expect("Line")
-        .1
-    else {
-        panic!("all target rows")
-    };
-    assert_eq!(
-        lines.len(),
-        5,
-        "two first-document rows, one second-document row, repeated first document"
-    );
-    let driver_ids = lines
-        .iter()
-        .map(|line| {
-            let Instance::Group(fields) = line else {
-                panic!("Line group")
-            };
-            fields
+    for name in line_names {
+        let lines = repeated_field(&native.primary, name);
+        assert_eq!(
+            lines.len(),
+            5,
+            "two first-document rows, one second-document row, repeated first document"
+        );
+        let driver_ids = lines
+            .iter()
+            .map(|line| group_field(line, "DriverId").clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            driver_ids,
+            [10, 10, 20, 30, 30].map(|id| Instance::Scalar(Value::Int(id)))
+        );
+        if multiple {
+            let amounts = lines
                 .iter()
-                .find(|(name, _)| name == "DriverId")
-                .expect("DriverId")
-                .1
-                .clone()
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        driver_ids,
-        [10, 10, 20, 30, 30].map(|id| Instance::Scalar(Value::Int(id)))
-    );
-    let calls = json!([
-        ["catalog", "a.xml"],
-        ["catalog", "b.xml"],
-        ["catalog", "a.xml"]
-    ]);
+                .map(|line| group_field(line, "Amount").clone())
+                .collect::<Vec<_>>();
+            let expected = if *name == "AlphaLine" {
+                [9007199254740992.0, 9.0, 8.0, 9007199254740992.0, 9.0]
+                    .map(|value| Instance::Scalar(Value::Float(value)))
+            } else {
+                [9007199254740993, 9, 8, 9007199254740993, 9]
+                    .map(|value| Instance::Scalar(Value::Int(value)))
+            };
+            assert_eq!(
+                amounts, expected,
+                "same bytes and path use distinct Float/Int schemas; precision makes dispatch observable"
+            );
+        }
+    }
+    let calls = if multiple {
+        json!([
+            ["alpha", "a.xml"],
+            ["alpha", "b.xml"],
+            ["alpha", "a.xml"],
+            ["beta", "a.xml"],
+            ["beta", "b.xml"],
+            ["beta", "a.xml"]
+        ])
+    } else {
+        json!([
+            ["catalog", "a.xml"],
+            ["catalog", "b.xml"],
+            ["catalog", "a.xml"]
+        ])
+    };
     assert_eq!(
         json!(loader.calls.borrow().clone()),
         calls,
@@ -325,12 +409,16 @@ fn exercise(language: &str) -> TestResult<()> {
             }
         }
     }
-    assert_eq!(
-        rows[8],
+    let refusal = if multiple {
+        json!({"api":8,"kind":"Utf8","input_index":3,"source":"beta","path":"b.xml",
+        "ordinal":5,"callback_invoked":true,"boundary_identity":true,"typed_cause":true,"no_output":true,
+        "calls":[["alpha","a.xml"],["alpha","b.xml"],["alpha","a.xml"],["beta","a.xml"],["beta","b.xml"]]})
+    } else {
         json!({"api":8,"kind":"Utf8","input_index":1,"source":"catalog","path":"b.xml",
         "ordinal":2,"callback_invoked":true,"boundary_identity":true,"typed_cause":true,"no_output":true,
         "calls":[["catalog","a.xml"],["catalog","b.xml"]]})
-    );
+    };
+    assert_eq!(rows[8], refusal);
     directory.complete = true;
     Ok(())
 }
@@ -338,10 +426,21 @@ fn exercise(language: &str) -> TestResult<()> {
 #[test]
 fn generated_rust_dynamic_xml_loader_preserves_outputs_and_original_product_refusal()
 -> TestResult<()> {
-    exercise("rust")
+    exercise("rust", false)
 }
 #[test]
 fn generated_csharp_dynamic_xml_loader_preserves_outputs_and_original_product_refusal()
 -> TestResult<()> {
-    exercise("csharp")
+    exercise("csharp", false)
+}
+
+#[test]
+fn generated_rust_multiple_dynamic_xml_loaders_preserve_source_schemas_and_original_product_refusal()
+-> TestResult<()> {
+    exercise("rust", true)
+}
+#[test]
+fn generated_csharp_multiple_dynamic_xml_loaders_preserve_source_schemas_and_original_product_refusal()
+-> TestResult<()> {
+    exercise("csharp", true)
 }
