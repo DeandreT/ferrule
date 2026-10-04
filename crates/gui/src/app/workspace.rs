@@ -1235,7 +1235,23 @@ impl FerruleApp {
             }
             if !self.status.is_empty() {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(&self.status);
+                    ui.shrink_clip_rect(ui.available_rect_before_wrap());
+                    let response = ui.add(
+                        egui::Label::new(&self.status)
+                            .truncate()
+                            .show_tooltip_when_elided(false),
+                    );
+                    let tooltip_width = ui.ctx().global_style().spacing.tooltip_width.min(
+                        (ui.ctx().content_rect().width()
+                            - egui::Frame::popup(ui.style()).total_margin().sum().x)
+                            .max(0.0),
+                    );
+                    let _ = egui::Tooltip::for_enabled(&response)
+                        .width(tooltip_width)
+                        .show(|ui| {
+                            ui.set_max_width(tooltip_width);
+                            ui.add(egui::Label::new(&self.status).wrap());
+                        });
                 });
             }
         });
