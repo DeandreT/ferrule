@@ -17,6 +17,12 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
             rust_string(&descriptor)
         ));
     }
+    let static_sources = program
+        .extra_sources
+        .iter()
+        .enumerate()
+        .filter(|(_, source)| source.dynamic.is_none())
+        .collect::<Vec<_>>();
     for bytes in [false, true] {
         let stem = if bytes {
             "execute_xml_bytes"
@@ -62,17 +68,17 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
                 "execute_outputs_with_sources"
             };
             output.push_str(&format!("pub fn {name}(source: {source_type}, inputs: &[{dto}<'_>]{context_arg}) -> Result<{result_type}, codegen_runtime::XmlExecutionError> {{\n    let _count = codegen_runtime::XmlInputSetBudget::new(inputs.len().saturating_add(1))?;\n    let supplied_names: Vec<&str> = inputs.iter().map(|input| input.name).collect();\n    let _indices = codegen_runtime::xml_input_indices(EXTRA_SOURCE_NAMES, &supplied_names)?;\n    let mut sizes = Vec::with_capacity(EXTRA_SOURCE_NAMES.len() + 1);\n    sizes.push((codegen_runtime::XmlInputSource::Primary, source.len()));\n"));
-            for (index, input) in program.extra_sources.iter().enumerate() {
+            for (static_index, (index, input)) in static_sources.iter().enumerate() {
                 let name = rust_string(&input.name);
-                output.push_str(&format!("    sizes.push((codegen_runtime::XmlInputSource::Named {{ index: {index}, name: {name} }}, inputs[_indices[{index}]].document.len()));\n"));
+                output.push_str(&format!("    sizes.push((codegen_runtime::XmlInputSource::Named {{ index: {index}, name: {name} }}, inputs[_indices[{static_index}]].document.len()));\n"));
             }
             output.push_str(&format!("    codegen_runtime::preflight_xml_input_sizes(&sizes)?;\n    let parsed = codegen_runtime::{parser}(SOURCE_XML_SCHEMA, source).map_err(|error| codegen_runtime::XmlExecutionError::input(codegen_runtime::XmlInputSource::Primary, error))?;\n"));
-            for (index, input) in program.extra_sources.iter().enumerate() {
+            for (static_index, (index, input)) in static_sources.iter().enumerate() {
                 let name = rust_string(&input.name);
-                output.push_str(&format!("    let parsed_input_{index} = codegen_runtime::{parser}(EXTRA_XML_INPUT_SCHEMA_{index}, inputs[_indices[{index}]].document).map_err(|error| codegen_runtime::XmlExecutionError::input(codegen_runtime::XmlInputSource::Named {{ index: {index}, name: {name} }}, error))?;\n"));
+                output.push_str(&format!("    let parsed_input_{index} = codegen_runtime::{parser}(EXTRA_XML_INPUT_SCHEMA_{index}, inputs[_indices[{static_index}]].document).map_err(|error| codegen_runtime::XmlExecutionError::input(codegen_runtime::XmlInputSource::Named {{ index: {index}, name: {name} }}, error))?;\n"));
             }
             output.push_str("    let parsed_inputs: Vec<NamedInput<'_>> = vec![\n");
-            for (index, input) in program.extra_sources.iter().enumerate() {
+            for (index, input) in &static_sources {
                 output.push_str(&format!(
                     "        NamedInput {{ name: {}, instance: &parsed_input_{index} }},\n",
                     rust_string(&input.name)

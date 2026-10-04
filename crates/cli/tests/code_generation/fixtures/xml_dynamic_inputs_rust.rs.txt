@@ -1,0 +1,80 @@
+use codegen_runtime::{DynamicXmlSourceLoader, ExecutionContext, XmlBoundaryErrorKind, XmlInputSource};
+use ferrule_generated_mapping as generated;
+use serde_json::json;
+use std::cell::RefCell;
+use std::error::Error;
+use std::path::{Path, PathBuf};
+
+struct Host {
+    directory: PathBuf,
+    invalid_second: bool,
+    calls: RefCell<Vec<(String, String)>>,
+}
+impl DynamicXmlSourceLoader for Host {
+    fn load(&self, source: &str, path: &str) -> Result<Vec<u8>, String> {
+        assert_eq!(source, "catalog");
+        assert!(matches!(path, "a.xml" | "b.xml"));
+        self.calls.borrow_mut().push((source.into(), path.into()));
+        if self.invalid_second && path == "b.xml" {
+            Ok(vec![0xff])
+        } else {
+            std::fs::read(self.directory.join(path)).map_err(|error| error.to_string())
+        }
+    }
+}
+fn text(outputs: generated::XmlBytesExecutionOutputs) -> generated::XmlExecutionOutputs {
+    generated::XmlExecutionOutputs {
+        primary: String::from_utf8(outputs.primary).unwrap(),
+        extras: outputs.extras.into_iter().map(|extra| generated::NamedXmlOutput {
+            name: extra.name, document: String::from_utf8(extra.document).unwrap(),
+        }).collect(),
+    }
+}
+fn main() -> Result<(), Box<dyn Error>> {
+    let directory = PathBuf::from(std::env::args().nth(1).expect("fixture directory"));
+    let primary = std::fs::read(directory.join("primary.xml"))?;
+    let rates = std::fs::read(directory.join("rates.xml"))?;
+    let labels = std::fs::read(directory.join("labels.xml"))?;
+    // Supplied order differs from the original static declaration indices 0 and 2.
+    let inputs = [
+        generated::NamedXmlBytesInput { name: "labels", document: &labels },
+        generated::NamedXmlBytesInput { name: "rates", document: &rates },
+    ];
+    let texts = [
+        generated::NamedXmlInput { name: "labels", document: std::str::from_utf8(&labels)? },
+        generated::NamedXmlInput { name: "rates", document: std::str::from_utf8(&rates)? },
+    ];
+    let primary_text = std::str::from_utf8(&primary)?;
+    let execution = ExecutionContext::new(Path::new("fixture.json"));
+    for api in 0..8 {
+        let host = Host { directory: directory.clone(), invalid_second: false, calls: RefCell::default() };
+        let outputs = match api {
+            0 => generated::execute_xml_outputs_with_sources_and_dynamic_source_loader(primary_text, &texts, &host)?,
+            1 => generated::execute_xml_outputs_with_sources_context_and_dynamic_source_loader(primary_text, &texts, &execution, &host)?,
+            2 => generated::XmlExecutionOutputs { primary: generated::execute_xml_with_sources_and_dynamic_source_loader(primary_text, &texts, &host)?, extras: vec![] },
+            3 => generated::XmlExecutionOutputs { primary: generated::execute_xml_with_sources_context_and_dynamic_source_loader(primary_text, &texts, &execution, &host)?, extras: vec![] },
+            4 => text(generated::execute_xml_bytes_outputs_with_sources_and_dynamic_source_loader(&primary, &inputs, &host)?),
+            5 => text(generated::execute_xml_bytes_outputs_with_sources_context_and_dynamic_source_loader(&primary, &inputs, &execution, &host)?),
+            6 => generated::XmlExecutionOutputs { primary: String::from_utf8(generated::execute_xml_bytes_with_sources_and_dynamic_source_loader(&primary, &inputs, &host)?)?, extras: vec![] },
+            _ => generated::XmlExecutionOutputs { primary: String::from_utf8(generated::execute_xml_bytes_with_sources_context_and_dynamic_source_loader(&primary, &inputs, &execution, &host)?)?, extras: vec![] },
+        };
+        println!("{}", json!({"api":api,"kind":"ok","primary":outputs.primary,
+            "extras":outputs.extras.into_iter().map(|extra|json!({"name":extra.name,"document":extra.document})).collect::<Vec<_>>(),
+            "calls":host.calls.borrow().clone()}));
+    }
+    let host = Host { directory, invalid_second: true, calls: RefCell::default() };
+    let error = generated::execute_xml_bytes_outputs_with_sources_and_dynamic_source_loader(&primary, &inputs, &host).unwrap_err();
+    assert_eq!(error.input, Some(XmlInputSource::Named { index: 1, name: "catalog" }));
+    assert!(error.output.is_none());
+    assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Utf8);
+    assert_eq!((error.boundary.bytes, error.boundary.limit), (None, None));
+    let request = error.request.as_ref().expect("original dynamic product request");
+    assert_eq!((request.declaration_index, request.source, request.path.as_str(), request.ordinal, request.callback_invoked), (1, "catalog", "b.xml", 2, true));
+    assert!(std::ptr::eq(error.source().unwrap().downcast_ref::<codegen_runtime::XmlBoundaryError>().unwrap(), error.boundary.as_ref()));
+    let cause = error.boundary.source().unwrap().downcast_ref::<std::str::Utf8Error>().expect("typed original UTF-8 cause");
+    assert_eq!((cause.valid_up_to(), cause.error_len()), (0, Some(1)));
+    println!("{}", json!({"api":8,"kind":"Utf8","input_index":1,"source":"catalog","path":"b.xml",
+        "ordinal":2,"callback_invoked":true,"boundary_identity":true,"typed_cause":true,
+        "no_output":true,"calls":host.calls.borrow().clone()}));
+    Ok(())
+}

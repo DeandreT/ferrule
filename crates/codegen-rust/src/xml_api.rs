@@ -1,3 +1,4 @@
+mod dynamic_inputs;
 mod named_inputs;
 
 use crate::{EmitError, rust_string};
@@ -62,6 +63,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     output.push_str("\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct NamedXmlOutput { pub name: &'static str, pub document: String }\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct XmlExecutionOutputs { pub primary: String, pub extras: Vec<NamedXmlOutput> }\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct NamedXmlBytesOutput { pub name: &'static str, pub document: Vec<u8> }\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct XmlBytesExecutionOutputs { pub primary: Vec<u8>, pub extras: Vec<NamedXmlBytesOutput> }\n\n");
     if policy.input.profile() == Some(codegen::XmlInputProfile::Structured) {
         output.push_str(&named_inputs::render(program)?);
+        output.push_str(&dynamic_inputs::render(program));
     }
     for bytes in [false, true] {
         let stem = if bytes {
