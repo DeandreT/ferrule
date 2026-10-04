@@ -1,0 +1,50 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Text;
+using System.Text.Json;
+
+if (args.Length != 5) throw new ArgumentException("case JSON source-schema target-schema project-path");
+var label=args[0];
+var utf8=new UTF8Encoding(false,true);
+var input=utf8.GetString(File.ReadAllBytes(args[1]));
+var sourceSchema=File.ReadAllText(args[2]);
+var targetSchema=File.ReadAllText(args[3]);
+var context=new FerruleExecutionContext(args[4],args[4],"2026-10-03T00:00:00Z",null);
+void Emit(string api,object result)=>Console.WriteLine(JsonSerializer.Serialize(new { @case=label,api,result }));
+object Error(FerruleRuntimeException error)=>new {kind="error",category=error.Error.ToString(),function=error.Function,found=error.FoundKind?.ToString(),node=error.Node,detail=error.Message};
+void Run(string api,Func<string> action)
+{
+    try { Emit(api,new {kind="ok",json=action()}); }
+    catch(FerruleRuntimeException error) {Emit(api,Error(error));}
+}
+Run("json",()=>GeneratedMapping.ExecuteJson(input));
+Run("json-context",()=>GeneratedMapping.ExecuteJson(input,context));
+Run("bytes",()=>utf8.GetString(GeneratedMapping.ExecuteJsonBytes(utf8.GetBytes(input))));
+Run("bytes-context",()=>utf8.GetString(GeneratedMapping.ExecuteJsonBytes(utf8.GetBytes(input),context)));
+try
+{
+    var source=FerruleJson.ParseEmbedded(sourceSchema,input);
+    FerruleInstance? Field(FerruleInstance item,string name)=>item is FerruleGroup group&&group.TryGetField(name,out var field)?field:null;
+    string Tag(FerruleInstance? value)=>value is FerruleScalar scalar?scalar.Value.Kind switch {FerruleValueKind.Int64=>"Int",FerruleValueKind.Double=>"Float",FerruleValueKind.Null=>"Null",_=>"Other"}:value is null?"Missing":"Other";
+    long? Quantity(FerruleInstance? value)=>value is FerruleScalar scalar&&scalar.Value.Kind==FerruleValueKind.Int64?scalar.Value.Int64Value:null;
+    string? PriceBits(FerruleInstance? value)=>value is FerruleScalar scalar&&scalar.Value.Kind==FerruleValueKind.Double?BitConverter.DoubleToInt64Bits(scalar.Value.DoubleValue).ToString("x16",System.Globalization.CultureInfo.InvariantCulture):null;
+    var collection=Field(source,"Items");
+    var rows=collection is not null?Field(collection,"item") as FerruleRepeated:null;
+    Emit("consumed-json-fields",new {count=rows?.Items.Count,fields=rows?.Items.Select(row=>new {quantity_tag=Tag(Field(row,"quantity")),quantity_value=Quantity(Field(row,"quantity")),price_tag=Tag(Field(row,"price")),price_f64_bits=PriceBits(Field(row,"price"))})});
+    void Typed(string api,Func<FerruleInstance> action)
+    {
+        try
+        {
+            var output=action();var total=Field(output,"total") as FerruleScalar;
+            if(total is null) {Emit(api,new {kind="missing-total"});return;}
+            var tag=total.Value.Kind switch {FerruleValueKind.Int64=>"Int",FerruleValueKind.Double=>"Float",_=>"unexpected"};
+            long? integer=total.Value.Kind==FerruleValueKind.Int64?total.Value.Int64Value:null;
+            string? bits=total.Value.Kind==FerruleValueKind.Double?BitConverter.DoubleToInt64Bits(total.Value.DoubleValue).ToString("x16",System.Globalization.CultureInfo.InvariantCulture):null;
+            Emit(api,new {kind=tag=="unexpected"?"unexpected-target-tag":"ok",json=FerruleJson.SerializeEmbedded(targetSchema,output),target_tag=tag,target_int=integer,target_f64_bits=bits});
+        }
+        catch(FerruleRuntimeException error){Emit(api,Error(error));}
+    }
+    Typed("typed-json",()=>GeneratedMapping.Execute(source));
+    Typed("typed-json-context",()=>GeneratedMapping.Execute(source,context));
+}
+catch(FerruleRuntimeException error){Emit("typed-json-source-parse",Error(error));}
