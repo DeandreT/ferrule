@@ -68,8 +68,12 @@ mod sequence_reducers;
 mod static_sources;
 #[path = "code_generation/structured_xml_public.rs"]
 mod structured_xml_public;
+#[path = "code_generation/fixtures/structured_xml_snapshot.rs.txt"]
+mod structured_xml_snapshot;
 #[path = "code_generation/value_maps.rs"]
 mod value_maps;
+#[path = "code_generation/xml_output_sets.rs"]
+mod xml_output_sets;
 #[path = "code_generation/xml_text.rs"]
 mod xml_text;
 
@@ -703,7 +707,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 61,
+            files_written: 68,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -752,6 +756,13 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleUserFunctions.cs",
             "Runtime/FerruleValue.cs",
             "Runtime/FerruleValueMaps.cs",
+            "Runtime/FerruleXml.Boundary.cs",
+            "Runtime/FerruleXml.Input.Structured.cs",
+            "Runtime/FerruleXml.Input.StructuredProjection.cs",
+            "Runtime/FerruleXml.Input.StructuredSchema.cs",
+            "Runtime/FerruleXml.Input.cs",
+            "Runtime/FerruleXml.Output.cs",
+            "Runtime/FerruleXml.OutputSet.cs",
             "Runtime/FerruleXml.cs",
             "Runtime/FerruleXmlMixedContent.cs",
             "Runtime/FerruleXmlTypeOrigin.cs",

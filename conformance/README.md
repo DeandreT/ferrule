@@ -122,6 +122,8 @@ independent gates:
 | Direct readers | Rust/C# string and byte calls, complete scalar tags/Int payloads/Float bits, ordered repetitions and Group type origins; namespace, nil, missing/empty and strict lexical failures |
 | Resource limits | Independent physical/result counts, logical bytes, projection work, raw reservation slots, namespace references/registry bytes and parser work; typed resource units/count/limit and no result |
 | Published libraries | Untouched public generation, compiler outcomes, all four XML APIs, fixed-context versus missing-context behavior, every physical mapped output occurrence and existing JSON cardinality refusals |
+| Static XML output sets | All four set APIs and singular compatibility; complete primary/named typed values and physical XML; two-extra declaration order, independent schemas/hints/namespaces, mapping-before-serialization failure order, target-aware typed causes and no partial returned set |
+| XML output-set limits | Exact combined UTF-8 byte and artifact-count edges, including primary; distinct per-document limits, checked counters and typed resource causes; eager materialization remains separate from admission |
 | Memory | Fresh-process phase/peak measurements of eager DOM, Instance and output processing; acceptance counters do not imply streaming or an RSS limit |
 
 The [generated XML boundary](../docs/code-generation.md#xml-host-boundary)

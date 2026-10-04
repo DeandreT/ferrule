@@ -1,0 +1,416 @@
+{
+  "source": {
+    "name": "Batch",
+    "repeating": false,
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "BatchId",
+          "repeating": false,
+          "attribute": true,
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "AuditFactor",
+          "repeating": false,
+          "attribute": false,
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "float"
+          }
+        },
+        {
+          "name": "Item",
+          "repeating": true,
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Code",
+                "repeating": false,
+                "attribute": true,
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Quantity",
+                "repeating": false,
+                "attribute": false,
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Amount",
+                "repeating": false,
+                "attribute": false,
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "Enabled",
+                "repeating": false,
+                "attribute": false,
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Invoice",
+    "repeating": false,
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "BatchId",
+          "repeating": false,
+          "attribute": true,
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Total",
+          "repeating": false,
+          "attribute": false,
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "float"
+          }
+        },
+        {
+          "name": "Line",
+          "repeating": true,
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Code",
+                "repeating": false,
+                "attribute": true,
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Quantity",
+                "repeating": false,
+                "attribute": false,
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Amount",
+                "repeating": false,
+                "attribute": false,
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "Enabled",
+                "repeating": false,
+                "attribute": false,
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "source_path": "../inputs/nominal.xml",
+  "target_path": "invoice.xml",
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true
+  },
+  "extra_sources": [],
+  "extra_targets": [
+    {
+      "name": "Audit",
+      "path": "audit.xml",
+      "schema": {
+        "name": "AuditReport",
+        "repeating": false,
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "BatchId",
+              "repeating": false,
+              "attribute": false,
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ItemCount",
+              "repeating": false,
+              "attribute": false,
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "Total",
+              "repeating": false,
+              "attribute": false,
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Accepted",
+              "repeating": false,
+              "attribute": false,
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      },
+      "root": {
+        "target_field": "AuditReport",
+        "bindings": [
+          {
+            "target_field": "BatchId",
+            "node": 0
+          },
+          {
+            "target_field": "ItemCount",
+            "node": 4
+          },
+          {
+            "target_field": "Total",
+            "node": 7
+          },
+          {
+            "target_field": "Accepted",
+            "node": 8
+          }
+        ],
+        "children": []
+      }
+    }
+  ],
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "path": [
+          "BatchId"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "Code"
+        ],
+        "frame": [
+          "Item"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "Quantity"
+        ],
+        "frame": [
+          "Item"
+        ]
+      },
+      "3": {
+        "kind": "aggregate",
+        "function": "sum",
+        "collection": [
+          "Item"
+        ],
+        "value": [
+          "Amount"
+        ]
+      },
+      "4": {
+        "kind": "aggregate",
+        "function": "count",
+        "collection": [
+          "Item"
+        ],
+        "value": []
+      },
+      "5": {
+        "kind": "source_field",
+        "path": [
+          "Enabled"
+        ],
+        "frame": [
+          "Item"
+        ]
+      },
+      "6": {
+        "kind": "source_field",
+        "path": [
+          "AuditFactor"
+        ]
+      },
+      "7": {
+        "kind": "call",
+        "function": "multiply",
+        "args": [
+          3,
+          6
+        ]
+      },
+      "8": {
+        "kind": "const",
+        "value": true
+      },
+      "9": {
+        "kind": "source_field",
+        "path": [
+          "Amount"
+        ],
+        "frame": [
+          "Item"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "Invoice",
+    "bindings": [
+      {
+        "target_field": "BatchId",
+        "node": 0
+      },
+      {
+        "target_field": "Total",
+        "node": 3
+      }
+    ],
+    "children": [
+      {
+        "target_field": "Line",
+        "bindings": [
+          {
+            "target_field": "Code",
+            "node": 1
+          },
+          {
+            "target_field": "Quantity",
+            "node": 2
+          },
+          {
+            "target_field": "Amount",
+            "node": 9
+          },
+          {
+            "target_field": "Enabled",
+            "node": 5
+          }
+        ],
+        "children": [],
+        "source": [
+          "Item"
+        ]
+      }
+    ]
+  }
+}

@@ -171,7 +171,7 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     children.iter().find_map(unsupported_schema_feature)
 }
 
-/// Each admitted document adapter owns one primary source and output policy.
+/// Each admitted document adapter owns one primary source and every output policy.
 pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramValidationError> {
     let Some(policy) = &program.xml_boundary else {
         return Ok(());
@@ -195,42 +195,91 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             ));
         }
     }
-    if !program.extra_sources.is_empty() || !program.extra_targets.is_empty() {
+    if !program.extra_sources.is_empty()
+        || (policy.input.profile() == Some(crate::XmlInputProfile::RootView)
+            && (!program.extra_targets.is_empty() || !policy.extra_outputs.is_empty()))
+    {
         return Err(reject(
-            "named XML document inputs and outputs require separate adapter support",
+            "named XML document inputs and observed root-view outputs require separate adapter support",
         ));
     }
-    if program.root.iteration.is_some() || program.root.repeating {
+    if program.extra_targets.len() >= 4096 {
         return Err(reject(
-            "XML document output requires one non-iterating primary root",
+            "XML document output sets permit at most 4096 artifacts including primary",
+        ));
+    }
+    if policy.extra_outputs.len() != program.extra_targets.len()
+        || policy
+            .extra_outputs
+            .iter()
+            .zip(&program.extra_targets)
+            .any(|(output, target)| output.name != target.name)
+        || policy
+            .extra_outputs
+            .iter()
+            .map(|output| output.name.as_str())
+            .collect::<BTreeSet<_>>()
+            .len()
+            != policy.extra_outputs.len()
+    {
+        return Err(reject(
+            "XML output policies must own every named target in exact declaration order",
         ));
     }
     if !input_namespace_identity_supported(&program.source) {
         return Err(reject("XML input schema namespace is invalid or too large"));
     }
-    if !document_namespace_metadata_supported(&program.target, true) {
-        return Err(reject(
-            "unsupported XML namespace declaration metadata in document schema",
-        ));
-    }
-    if !document_schema_names_supported(&program.target, true) {
-        return Err(reject(
-            "XML document schema requires local NCNames and canonical type identities",
-        ));
-    }
-    if document_schema_has_supplementary_name(&program.source, true)
-        || (policy.output.schema_hints.is_some()
-            && document_schema_has_supplementary_name(&program.target, false))
-    {
+    if document_schema_has_supplementary_name(&program.source, true) {
         return Err(reject(
             "supplementary XML names are unsupported by the generated input and hinted-output parsers",
         ));
     }
-    if program.target.repeating || unsupported_schema_feature(&program.target).is_some() {
+    validate_document_output(&program.target, &program.root, &policy.output)?;
+    for (target, output) in program.extra_targets.iter().zip(&policy.extra_outputs) {
+        validate_document_output(&target.target, &target.root, &output.output).map_err(
+            |error| match error {
+                ProgramValidationError::InvalidXmlBoundary { reason } => {
+                    reject(&format!("named XML output `{}`: {reason}", target.name))
+                }
+                error => error,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_document_output(
+    target: &SchemaNode,
+    root: &crate::TargetScope,
+    output: &crate::XmlOutputPolicy,
+) -> Result<(), ProgramValidationError> {
+    let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
+        reason: reason.to_owned(),
+    };
+    if root.iteration.is_some() || root.repeating {
+        return Err(reject(
+            "XML document output requires one non-iterating primary root",
+        ));
+    }
+    if !document_namespace_metadata_supported(target, true) {
+        return Err(reject(
+            "unsupported XML namespace declaration metadata in document schema",
+        ));
+    }
+    if !document_schema_names_supported(target, true) {
+        return Err(reject(
+            "XML document schema requires local NCNames and canonical type identities",
+        ));
+    }
+    if output.schema_hints.is_some() && document_schema_has_supplementary_name(target, false) {
+        return Err(reject(
+            "supplementary XML names are unsupported by the generated input and hinted-output parsers",
+        ));
+    }
+    if target.repeating || unsupported_schema_feature(target).is_some() {
         return Err(reject("unsupported XML document target schema"));
     }
-    if policy
-        .output
+    if output
         .default_namespace
         .as_ref()
         .is_some_and(|uri| uri.is_empty() || uri.len() > ir::MAX_PRIMARY_ROOT_IDENTITY_BYTES)
@@ -239,15 +288,14 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             "default XML namespace must be nonempty and at most 4096 UTF-8 bytes",
         ));
     }
-    if policy
-        .output
+    if output
         .schema_hints
         .as_ref()
         .is_some_and(|hints| hints.validate().is_err())
     {
         return Err(reject("invalid literal XML schema hints"));
     }
-    if policy.output.default_namespace.as_ref().is_some_and(|uri| {
+    if output.default_namespace.as_ref().is_some_and(|uri| {
         !uri.chars().all(|character| {
             matches!(character as u32, 0x9 | 0xA | 0xD | 0x20..=0xD7FF | 0xE000..=0xFFFD | 0x10000..=0x10FFFF)
         })
@@ -256,21 +304,19 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             "default XML namespace must contain XML 1.0 characters",
         ));
     }
-    let schema_root_namespace = match &program.target.xml_namespace {
+    let schema_root_namespace = match &target.xml_namespace {
         Some(ir::XmlNamespace::Qualified(uri)) => Some(uri.as_str()),
         _ => None,
     };
-    if [
-        policy.output.default_namespace.as_deref(),
-        schema_root_namespace,
-    ]
-    .into_iter()
-    .any(|uri| {
-        matches!(
-            uri,
-            Some("http://www.w3.org/XML/1998/namespace" | "http://www.w3.org/2000/xmlns/")
-        )
-    }) {
+    if [output.default_namespace.as_deref(), schema_root_namespace]
+        .into_iter()
+        .any(|uri| {
+            matches!(
+                uri,
+                Some("http://www.w3.org/XML/1998/namespace" | "http://www.w3.org/2000/xmlns/")
+            )
+        })
+    {
         return Err(reject(
             "reserved XML namespace cannot be the default namespace",
         ));

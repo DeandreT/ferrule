@@ -31,10 +31,10 @@ pub use model::{
     DynamicDocumentIteration, DynamicSourceProgram, DynamicTargetBinding, DynamicTargetChild,
     Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
     FlexTextFieldProfile, GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan,
-    IterationSource, NamedSourceProgram, NamedTargetProgram, Program, RuntimeValue,
-    SUPPORTED_SCALAR_CALLS, ScalarFunction, ScalarTargetDomain, ScopeSequence, SequenceWindow,
-    SortFilterOrder, SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope,
-    UserFunctionParameter, UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy,
+    IterationSource, NamedSourceProgram, NamedTargetProgram, NamedXmlOutputPolicy, Program,
+    RuntimeValue, SUPPORTED_SCALAR_CALLS, ScalarFunction, ScalarTargetDomain, ScopeSequence,
+    SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration, TargetConstruction,
+    TargetScope, UserFunctionParameter, UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy,
     XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputPolicy,
 };
 pub use validate::{
