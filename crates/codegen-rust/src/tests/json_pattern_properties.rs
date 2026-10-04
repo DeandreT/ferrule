@@ -28,6 +28,7 @@ fn program() -> Result<Program, Box<dyn std::error::Error>> {
         SchemaNode::scalar("*", ScalarType::String),
     )?;
     Ok(Program {
+        xml_boundary: None,
         source,
         extra_sources: Vec::new(),
         target,

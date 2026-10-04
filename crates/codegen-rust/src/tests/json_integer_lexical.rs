@@ -12,6 +12,7 @@ fn program() -> Program {
         .with_json_multiple_of(multiples)
         .unwrap();
     Program {
+        xml_boundary: None,
         source: SchemaNode::scalar("Source", ScalarType::String),
         extra_sources: Vec::new(),
         target,

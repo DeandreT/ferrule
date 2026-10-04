@@ -54,6 +54,7 @@ fn emitted_package_enforces_closed_objects_and_preserves_dynamic_fields()
         })
         .ok_or("test target accepts selected dynamic fields")?;
     let program = Program {
+        xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {
             name: "Config".into(),

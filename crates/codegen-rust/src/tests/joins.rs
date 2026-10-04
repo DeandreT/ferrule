@@ -89,6 +89,7 @@ fn join_program() -> Program {
     };
 
     Program {
+        xml_boundary: None,
         source: SchemaNode::group(
             "Source",
             vec![a, SchemaNode::scalar("Separator", ScalarType::String)],

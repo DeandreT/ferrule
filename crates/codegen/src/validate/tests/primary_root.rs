@@ -205,3 +205,155 @@ fn primary_root_rejects_host_default_expression_ownership() {
         Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 2 })
     );
 }
+
+fn document_boundary_program() -> Program {
+    let mut program = root_program();
+    program.source = serde_json::from_str(r#"{"name":"Root","xml_namespace":{"kind":"unqualified"},"xml_type_alternatives":true,"xml_default_type":"Base","kind":{"kind":"group","children":[{"name":"Code","xml_namespace":{"kind":"unqualified"},"attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"Extra","xml_namespace":{"kind":"unqualified"},"attribute":true,"xml_attribute_required":true,"kind":{"kind":"scalar","ty":"string"}}],"alternatives":[{"name":"Base","members":["Code"]},{"name":"Derived","members":["Code","Extra"]}]}}"#).unwrap();
+    program.xml_boundary = Some(crate::XmlBoundaryProgram {
+        input: crate::XmlInputPolicy {
+            allow_inactive_root_type_members: true,
+            root_view_policy: true,
+        },
+        output: crate::XmlOutputPolicy::default(),
+    });
+    program
+}
+
+#[test]
+fn xml_document_boundary_requires_explicit_primary_flat_string_reader() {
+    let valid = document_boundary_program();
+    assert_eq!(validate_program(&valid), Ok(()));
+    let mut flags = valid.clone();
+    flags.xml_boundary.as_mut().unwrap().input.root_view_policy = false;
+    let mut numeric = valid.clone();
+    if let ir::SchemaKind::Group { children, .. } = &mut numeric.source.kind {
+        children[0].kind = ir::SchemaKind::Scalar {
+            ty: ScalarType::Int,
+        };
+    }
+    let mut element = valid.clone();
+    if let ir::SchemaKind::Group { children, .. } = &mut element.source.kind {
+        children[0].attribute = false;
+    }
+    for invalid in [flags, numeric, element] {
+        assert_eq!(
+            validate_program(&invalid),
+            Err(ProgramValidationError::InvalidXmlBoundary {
+                reason: "requires the closed observed primary XML root input policy".into(),
+            })
+        );
+    }
+}
+
+#[test]
+fn xml_document_boundary_rejects_named_outputs_and_invalid_literal_policy() {
+    let valid = document_boundary_program();
+    let mut named = valid.clone();
+    named.extra_targets.push(NamedTargetProgram {
+        name: "other".into(),
+        target: valid.target.clone(),
+        root: valid.root.clone(),
+    });
+    assert_eq!(
+        validate_program(&named),
+        Err(ProgramValidationError::InvalidXmlBoundary {
+            reason: "named XML document inputs and outputs require separate adapter support".into(),
+        })
+    );
+    for namespace in [String::new(), "x".repeat(4097)] {
+        let mut invalid = valid.clone();
+        invalid
+            .xml_boundary
+            .as_mut()
+            .unwrap()
+            .output
+            .default_namespace = Some(namespace);
+        assert_eq!(
+            validate_program(&invalid),
+            Err(ProgramValidationError::InvalidXmlBoundary {
+                reason: "default XML namespace must be nonempty and at most 4096 UTF-8 bytes"
+                    .into(),
+            })
+        );
+    }
+    let mut hints = valid;
+    hints.xml_boundary.as_mut().unwrap().output.schema_hints = Some(ir::XmlSchemaHints::default());
+    assert_eq!(
+        validate_program(&hints),
+        Err(ProgramValidationError::InvalidXmlBoundary {
+            reason: "invalid literal XML schema hints".into(),
+        })
+    );
+}
+
+#[test]
+fn xml_document_boundary_rejects_forbidden_default_namespace_characters() {
+    let mut program = document_boundary_program();
+    program
+        .xml_boundary
+        .as_mut()
+        .unwrap()
+        .output
+        .default_namespace = Some("\0".into());
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidXmlBoundary {
+            reason: "default XML namespace must contain XML 1.0 characters".into(),
+        })
+    );
+}
+
+#[test]
+fn xml_document_boundary_rejects_reserved_default_namespace_with_or_without_hints() {
+    for namespace in [
+        "http://www.w3.org/XML/1998/namespace",
+        "http://www.w3.org/2000/xmlns/",
+    ] {
+        for with_hints in [false, true] {
+            let mut program = document_boundary_program();
+            let output = &mut program.xml_boundary.as_mut().unwrap().output;
+            output.default_namespace = Some(namespace.into());
+            if with_hints {
+                output.schema_hints = Some(ir::XmlSchemaHints {
+                    no_namespace_location: Some("literal.xsd".into()),
+                    locations: vec![],
+                });
+            }
+            assert_eq!(
+                validate_program(&program),
+                Err(ProgramValidationError::InvalidXmlBoundary {
+                    reason: "reserved XML namespace cannot be the default namespace".into()
+                })
+            );
+        }
+    }
+}
+
+#[test]
+fn xml_document_boundary_rejects_reserved_schema_root_namespace() {
+    for namespace in [
+        "http://www.w3.org/XML/1998/namespace",
+        "http://www.w3.org/2000/xmlns/",
+    ] {
+        for with_hints in [false, true] {
+            let mut program = document_boundary_program();
+            program.target.xml_namespace = Some(ir::XmlNamespace::Qualified(
+                ir::XmlNamespaceUri::new(namespace).unwrap(),
+            ));
+            let output = &mut program.xml_boundary.as_mut().unwrap().output;
+            output.default_namespace = None;
+            if with_hints {
+                output.schema_hints = Some(ir::XmlSchemaHints {
+                    no_namespace_location: Some("literal.xsd".into()),
+                    locations: vec![],
+                });
+            }
+            assert_eq!(
+                validate_program(&program),
+                Err(ProgramValidationError::InvalidXmlBoundary {
+                    reason: "reserved XML namespace cannot be the default namespace".into()
+                })
+            );
+        }
+    }
+}

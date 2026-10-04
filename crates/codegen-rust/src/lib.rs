@@ -17,6 +17,7 @@ use ir::{ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 mod failure;
+mod xml_api;
 
 /// How a generated Cargo project locates ferrule's small Rust runtime.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -285,6 +286,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
          }\n\n",
     );
     source.push_str(&render_json_api(program)?);
+    source.push_str(&xml_api::render(program)?);
 
     let input_names = program
         .extra_sources

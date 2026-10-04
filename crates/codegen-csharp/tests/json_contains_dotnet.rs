@@ -159,6 +159,7 @@ fn program() -> Result<Program, &'static str> {
     let target = SchemaNode::group("Target", vec![target_codes]);
 
     Ok(Program {
+        xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {
             name: "Config".into(),

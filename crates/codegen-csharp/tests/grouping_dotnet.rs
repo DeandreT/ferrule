@@ -98,6 +98,7 @@ fn fixture() -> Program {
     )
     .repeating();
     Program {
+        xml_boundary: None,
         source: SchemaNode::group("Source", Vec::new()),
         extra_sources: Vec::new(),
         target: SchemaNode::group("Target", vec![group]),

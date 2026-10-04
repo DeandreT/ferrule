@@ -14,6 +14,7 @@ fn named_source_program() -> Program {
         ],
     );
     Program {
+        xml_boundary: None,
         source: SchemaNode::group(
             "Source",
             vec![

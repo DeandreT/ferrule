@@ -82,6 +82,17 @@ pub(crate) use canvas_build::{
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 pub(super) const LAYOUT_VERSION: u32 = 3;
 
+fn history_shortcuts() -> [egui::KeyboardShortcut; 3] {
+    [
+        egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z),
+        egui::KeyboardShortcut::new(
+            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+            egui::Key::Z,
+        ),
+        egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Y),
+    ]
+}
+
 struct CanvasDocumentState {
     snarl: Snarl<CanvasNode>,
     node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
@@ -908,7 +919,13 @@ impl FerruleApp {
             Some(&snapshot.state.layout),
         ));
         self.selected_scope.clear();
-        self.observed_editor = snapshot;
+        // Rebuilding can materialize graph nodes in previously unvisited canvases.
+        // That layout change belongs to this restore, not a new undo transaction.
+        self.observed_editor = editor_snapshot(
+            &self.project,
+            &self.main_canvas.snarl,
+            &self.mapping_workspace,
+        );
         self.pending_history = None;
     }
 
@@ -929,6 +946,22 @@ impl FerruleApp {
         let label = next.label().to_string();
         self.restore_history_snapshot(next.into_snapshot());
         self.status = format!("redid {label}");
+    }
+
+    fn handle_history_shortcuts(&mut self, context: &egui::Context, editing_enabled: bool) {
+        if !editing_enabled {
+            return;
+        }
+        let [undo, redo, redo_secondary] = history_shortcuts();
+        // Logical modifier matching permits extra Shift, so redo must consume
+        // Command+Shift+Z before the less specific Command+Z undo shortcut.
+        if context.input_mut(|input| {
+            input.consume_shortcut(&redo) || input.consume_shortcut(&redo_secondary)
+        }) {
+            self.redo_project();
+        } else if context.input_mut(|input| input.consume_shortcut(&undo)) {
+            self.undo_project();
+        }
     }
 
     /// Returns the action when it can run immediately. Dirty projects queue
@@ -1047,7 +1080,9 @@ impl FerruleApp {
                 let fingerprint = project_fingerprint(&self.project);
                 let mut diagnostics = validation
                     .into_iter()
-                    .map(|issue| Diagnostic::validation_with_fingerprint(issue, &fingerprint))
+                    .map(|issue| {
+                        Diagnostic::validation_with_fingerprint(&self.project, issue, &fingerprint)
+                    })
                     .collect::<Vec<_>>();
                 diagnostics.extend(layout_warning.map(|warning| {
                     Diagnostic::warning(format!("using default canvas layout: {warning}"))
@@ -1106,7 +1141,9 @@ impl FerruleApp {
         let mut diagnostics = outcome
             .validation_issues
             .into_iter()
-            .map(|issue| Diagnostic::validation_with_fingerprint(issue, &fingerprint))
+            .map(|issue| {
+                Diagnostic::validation_with_fingerprint(&self.project, issue, &fingerprint)
+            })
             .collect::<Vec<_>>();
         diagnostics.extend(outcome.layout_warning.map(Diagnostic::warning));
         if diagnostics.is_empty() {
@@ -1299,11 +1336,9 @@ impl FerruleApp {
                         .cloned()
                         .map(|message| Diagnostic::import_warning(message, &imported.mapping_path))
                         .collect::<Vec<_>>();
-                    diagnostics.extend(
-                        validation.into_iter().map(|issue| {
-                            Diagnostic::validation_with_fingerprint(issue, &fingerprint)
-                        }),
-                    );
+                    diagnostics.extend(validation.into_iter().map(|issue| {
+                        Diagnostic::validation_with_fingerprint(&self.project, issue, &fingerprint)
+                    }));
                     if diagnostics.is_empty() {
                         self.diagnostics.clear();
                     } else {
@@ -1373,12 +1408,7 @@ impl eframe::App for FerruleApp {
             && self.pending_preview.is_none()
             && self.pending_file_run.is_none()
             && self.pending_pipeline_run.is_none();
-        let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
-        let redo_shortcut = egui::KeyboardShortcut::new(
-            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
-            egui::Key::Z,
-        );
-        let redo_secondary = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Y);
+        let [undo_shortcut, redo_shortcut, _] = history_shortcuts();
         let coalesce_history_change = ui.ctx().input(|input| {
             input.pointer.primary_down()
                 || input.events.iter().any(|event| {
@@ -1392,22 +1422,7 @@ impl eframe::App for FerruleApp {
                     )
                 })
         });
-        if project_editing_enabled
-            && ui
-                .ctx()
-                .input_mut(|input| input.consume_shortcut(&undo_shortcut))
-        {
-            self.undo_project();
-        } else if project_editing_enabled
-            && (ui
-                .ctx()
-                .input_mut(|input| input.consume_shortcut(&redo_shortcut))
-                || ui
-                    .ctx()
-                    .input_mut(|input| input.consume_shortcut(&redo_secondary)))
-        {
-            self.redo_project();
-        }
+        self.handle_history_shortcuts(ui.ctx(), project_editing_enabled);
         if self.pending_dialog.is_some() {
             // Keep polling even without input events.
             ui.ctx()
@@ -1538,3 +1553,6 @@ mod xml_output_controls_tests;
 
 #[cfg(test)]
 mod primary_root_authoring_tests;
+
+#[cfg(test)]
+mod target_xml_type_tests;

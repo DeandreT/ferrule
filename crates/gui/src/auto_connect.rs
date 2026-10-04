@@ -56,6 +56,9 @@ pub fn plan_auto_connect(
     let mut plan = AutoConnectPlan::default();
 
     for target in targets {
+        if target.field == ir::XML_TYPE_FIELD {
+            continue;
+        }
         let Some(relative_parent) = target.chain.strip_prefix(selected_target_chain) else {
             continue;
         };

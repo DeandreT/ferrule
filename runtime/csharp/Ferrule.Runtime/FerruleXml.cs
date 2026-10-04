@@ -102,7 +102,7 @@ public sealed partial class ScopeContext
 }
 
 /// <summary>Bounded package-free XML serialization for generated mappings.</summary>
-public static class FerruleXml
+public static partial class FerruleXml
 {
     public const int MaximumEmbeddedSchemaBytes = 8 * 1024 * 1024;
     public const int MaximumOutputBytes = 64 * 1024 * 1024;
@@ -148,7 +148,19 @@ public static class FerruleXml
         FerruleInstance instance,
         bool declaration,
         bool indent,
-        string? defaultNamespace)
+        string? defaultNamespace) =>
+        SerializeCore(node, schemaJson, instance, declaration, indent, defaultNamespace,
+            schemaHintsJson: null, documentBoundary: false);
+
+    private static FerruleValue SerializeCore(
+        uint node,
+        string schemaJson,
+        FerruleInstance instance,
+        bool declaration,
+        bool indent,
+        string? defaultNamespace,
+        string? schemaHintsJson,
+        bool documentBoundary)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(instance);
@@ -166,13 +178,13 @@ public static class FerruleXml
             using var document = JsonDocument.Parse(
                 schemaJson,
                 new JsonDocumentOptions { MaxDepth = MaximumSchemaDepth });
-            var schema = XmlSchemaNode.Parse(document.RootElement, 0);
+            var schema = XmlSchemaNode.Parse(document.RootElement, 0, documentBoundary);
             if (schema.Repeating)
             {
                 throw new InvalidOperationException(
                     "XML serializer schema must describe one document element");
             }
-            var writer = new XmlOutput(indent);
+            var writer = new XmlOutput(indent, ParseLiteralHints(schemaHintsJson));
             if (declaration)
             {
                 writer.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
@@ -183,8 +195,16 @@ public static class FerruleXml
             }
             writer.WriteNode(schema, schema, instance, true, 0, 0, null, defaultNamespace);
             var output = writer.ToString();
-            if (Encoding.UTF8.GetByteCount(output) > MaximumOutputBytes)
+            var outputBytes = Encoding.UTF8.GetByteCount(output);
+            if (outputBytes > MaximumOutputBytes)
             {
+                if (documentBoundary)
+                {
+                    throw new FerruleXmlBoundaryException(
+                        FerruleXmlBoundaryErrorKind.DocumentLimit,
+                        $"XML output is {outputBytes} bytes; maximum is {MaximumOutputBytes}",
+                        bytes: outputBytes, limit: MaximumOutputBytes);
+                }
                 throw new InvalidOperationException(
                     $"serialized output exceeds {MaximumOutputBytes} bytes");
             }
@@ -271,7 +291,7 @@ public static class FerruleXml
         IReadOnlyList<XmlRepeatingChoice> RepeatingChoices,
         string? DefaultType)
     {
-        internal static XmlSchemaNode Parse(JsonElement element, int depth)
+        internal static XmlSchemaNode Parse(JsonElement element, int depth, bool documentBoundary = false)
         {
             if (depth >= MaximumSchemaDepth || element.ValueKind != JsonValueKind.Object)
             {
@@ -309,7 +329,8 @@ public static class FerruleXml
                 !OptionalBoolean(element, "repeating");
             if (!virtualText)
             {
-                _ = XmlConvert.VerifyName(name);
+                if (documentBoundary) RequireDocumentLocalName(name);
+                else _ = XmlConvert.VerifyName(name);
             }
             var (namespaceIsExplicit, namespaceUri) = ParseNamespace(element);
             XmlScalarType? scalarType = null;
@@ -342,9 +363,9 @@ public static class FerruleXml
                 }
                 children = childElements
                     .EnumerateArray()
-                    .Select(child => Parse(child, depth + 1))
+                    .Select(child => Parse(child, depth + 1, documentBoundary))
                     .ToArray();
-                alternatives = ParseAlternatives(kind);
+                alternatives = ParseAlternatives(kind, documentBoundary);
                 repeatingChoices = ParseRepeatingChoices(element, children);
                 if (alternatives.Length != 0)
                 {
@@ -443,7 +464,7 @@ public static class FerruleXml
             };
         }
 
-        private static XmlAlternative[] ParseAlternatives(JsonElement kind)
+        private static XmlAlternative[] ParseAlternatives(JsonElement kind, bool documentBoundary)
         {
             if (!kind.TryGetProperty("alternatives", out var alternatives))
             {
@@ -456,11 +477,11 @@ public static class FerruleXml
             }
             return alternatives
                 .EnumerateArray()
-                .Select(ParseAlternative)
+                .Select(alternative => ParseAlternative(alternative, documentBoundary))
                 .ToArray();
         }
 
-        private static XmlAlternative ParseAlternative(JsonElement element)
+        private static XmlAlternative ParseAlternative(JsonElement element, bool documentBoundary)
         {
             if (element.ValueKind != JsonValueKind.Object)
             {
@@ -469,7 +490,12 @@ public static class FerruleXml
             }
             var name = RequiredString(element, "name");
             var (_, localName) = SplitExpandedName(name);
-            _ = XmlConvert.VerifyName(localName);
+            if (documentBoundary)
+            {
+                if (!FerrulePrimaryRoot.TypeIdentityIsValid(name))
+                    throw new FormatException("XML document schema requires local NCNames and canonical type identities");
+            }
+            else _ = XmlConvert.VerifyName(localName);
             if (element.TryGetProperty("constraints", out var constraints) &&
                 (constraints.ValueKind != JsonValueKind.Array ||
                  constraints.GetArrayLength() != 0))
@@ -599,10 +625,13 @@ public static class FerruleXml
     {
         private readonly StringBuilder _output = new();
         private readonly bool _indent;
+        private readonly XmlLiteralHints? _hints;
+        private int? _rootStart;
 
-        internal XmlOutput(bool indent)
+        internal XmlOutput(bool indent, XmlLiteralHints? hints = null)
         {
             _indent = indent;
+            _hints = hints;
         }
 
         internal void Append(string value) => _output.Append(value);
@@ -711,10 +740,12 @@ public static class FerruleXml
                     Start(schema.Name, elementNamespace, namespaceChanged);
                     Attribute("xmlns:xsi", XsiNamespace);
                     Attribute("xsi:nil", "true");
+                    if (outputDepth == 0) WriteRootHints();
                     _output.Append("/>");
                     return;
                 }
                 Start(schema.Name, elementNamespace, namespaceChanged);
+                if (outputDepth == 0) WriteRootHints();
                 _output.Append('>');
                 Text(FormatScalar(schema, scalarType, scalar.Value));
                 End(schema.Name);
@@ -764,6 +795,7 @@ public static class FerruleXml
                 }
             }
 
+            if (outputDepth == 0) WriteRootHints();
             var textChildren = schema.Children.Where(child => child.Text).ToArray();
             var selectedChildren = schema.Children.Where(child =>
                 alternative is null || alternative.Members.Contains(child.Name));
@@ -1057,11 +1089,51 @@ public static class FerruleXml
 
         private void Start(string name, string? namespaceUri, bool changed)
         {
+            _rootStart ??= _output.Length;
             _output.Append('<').Append(name);
             if (changed)
             {
                 Attribute("xmlns", namespaceUri ?? "");
             }
+        }
+
+        private void WriteRootHints()
+        {
+            if (_hints is null) return;
+            const int maximumRootHeaderBytes = 1024 * 1024;
+            var start = _rootStart ?? throw new InvalidOperationException("missing XML root header");
+            // Match the native BytesStart body: exclude the opening '<' delimiter.
+            var bodyLength = _output.Length - start - 1;
+            if (bodyLength > maximumRootHeaderBytes)
+                throw new InvalidOperationException("XML schema-hint root header exceeds 1 MiB");
+            var header = _output.ToString(start, bodyLength + 1);
+            if (Encoding.UTF8.GetByteCount(header.AsSpan(1)) > maximumRootHeaderBytes)
+                throw new InvalidOperationException("XML schema-hint root header exceeds 1 MiB");
+            using var input = new StringReader(header + "/>");
+            using var reader = XmlReader.Create(input, new XmlReaderSettings {
+                DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
+                MaxCharactersInDocument = maximumRootHeaderBytes + 3,
+            });
+            reader.MoveToContent();
+            var hasXsi = false;
+            while (reader.MoveToNextAttribute())
+            {
+                if (reader.Name == "xmlns:xsi")
+                {
+                    if (reader.Value != XsiNamespace)
+                        throw new InvalidOperationException("conflicting xsi namespace declaration");
+                    hasXsi = true;
+                }
+                if (reader.NamespaceURI == XsiNamespace &&
+                    ((reader.LocalName == "noNamespaceSchemaLocation" && _hints.NoNamespaceLocation is not null) ||
+                     (reader.LocalName == "schemaLocation" && _hints.Locations.Count != 0)))
+                    throw new InvalidOperationException("mapped root attribute already supplies configured XML schema hint");
+            }
+            if (!hasXsi) Attribute("xmlns:xsi", XsiNamespace);
+            if (_hints.NoNamespaceLocation is { } location)
+                Attribute("xsi:noNamespaceSchemaLocation", location);
+            if (_hints.Locations.Count != 0)
+                Attribute("xsi:schemaLocation", string.Join(" ", _hints.Locations.SelectMany(pair => new[] { pair.Namespace, pair.Location })));
         }
 
         private void SchemaAttribute(
