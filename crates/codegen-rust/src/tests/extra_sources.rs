@@ -530,17 +530,31 @@ fn main() {
         Err(RuntimeError::DuplicateNamedSource { name: "Catalog" }),
     );
 
-    // Named-input validation happens before the missing primary field can fail.
-    let invalid_source = primary(false);
+    // An absent declared scalar retains generated SourceField's Null behavior.
+    let absent_source = primary(false);
+    let mut absent_expected = expected.clone();
+    let Instance::Group(fields) = &mut absent_expected else { unreachable!() };
+    fields.iter_mut().find(|(name, _)| name == "Required").unwrap().1 = scalar(Value::Null);
+    assert_eq!(
+        named_input_map::execute_with_sources(&absent_source, &inputs).unwrap(),
+        absent_expected,
+    );
+
+    // Complete name validation precedes a real scalar-shape failure.
+    let mut invalid_source = primary(false);
+    let Instance::Group(fields) = &mut invalid_source else { unreachable!() };
+    fields.push(field("Required", group([])));
     assert_eq!(
         named_input_map::execute(&invalid_source),
         Err(RuntimeError::MissingNamedSource { name: "Catalog" }),
     );
-    assert!(matches!(
+    assert_eq!(
         named_input_map::execute_with_sources(&invalid_source, &inputs),
-        Err(RuntimeError::SourcePath(SourcePathError::MissingField { field, .. }))
-            if field == "Required"
-    ));
+        Err(RuntimeError::SourcePath(SourcePathError::ExpectedScalar {
+            path: vec!["Required".into()],
+            found: codegen_runtime::InstanceKind::Group,
+        })),
+    );
 }
 
 fn text(value: &str) -> Value {

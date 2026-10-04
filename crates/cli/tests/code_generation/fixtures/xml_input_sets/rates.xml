@@ -1,0 +1,1 @@
+<r:Rates xmlns:r="urn:rates" Revision="3"><r:Factor>4</r:Factor><r:Item Code="A"><r:Amount>1.25</r:Amount><r:Details><r:Adjustment>2</r:Adjustment></r:Details></r:Item><r:Item Code="B"><r:Amount>7.5</r:Amount><r:Details><r:Adjustment>6.5</r:Adjustment></r:Details></r:Item></r:Rates>
