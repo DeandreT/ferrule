@@ -3,7 +3,15 @@ using System.Text.Json;
 using Ferrule.Generated;
 using Ferrule.Runtime;
 
-var directory = args.Single();
+var directory = args[0];
+var multiple = args.ElementAtOrDefault(1) switch {
+    null or "single" => false,
+    "multiple" => true,
+    _ => throw new InvalidOperationException("one source policy mode"),
+};
+var refusedSource = multiple ? "beta" : "catalog";
+var refusedIndex = multiple ? 3 : 1;
+var refusedOrdinal = multiple ? 5UL : 2UL;
 var utf8 = new UTF8Encoding(false, true);
 var primary = File.ReadAllBytes(Path.Combine(directory, "primary.xml"));
 var rates = File.ReadAllBytes(Path.Combine(directory, "rates.xml"));
@@ -16,7 +24,7 @@ XmlExecutionOutputs Text(XmlBytesExecutionOutputs value) => new(utf8.GetString(v
     value.Extras.Select(extra => new NamedXmlOutput(extra.Name, utf8.GetString(extra.Document))).ToArray());
 for (var api = 0; api < 8; api++)
 {
-    var host = new Host(directory, false);
+    var host = new Host(directory, false, multiple);
     var outputs = api switch {
         0 => GeneratedMapping.ExecuteXmlOutputsWithSourcesAndDynamicSourceLoader(primaryText, texts, host),
         1 => GeneratedMapping.ExecuteXmlOutputsWithSourcesContextAndDynamicSourceLoader(primaryText, texts, execution, host),
@@ -30,7 +38,7 @@ for (var api = 0; api < 8; api++)
     Console.WriteLine(JsonSerializer.Serialize(new { api, kind = "ok", primary = outputs.Primary,
         extras = outputs.Extras.Select(extra => new { name = extra.Name, document = extra.Document }), calls = host.Calls }));
 }
-var refused = new Host(directory, true);
+var refused = new Host(directory, true, multiple);
 try
 {
     GeneratedMapping.ExecuteXmlBytesOutputsWithSourcesAndDynamicSourceLoader(primary, inputs, refused);
@@ -39,23 +47,23 @@ try
 catch (FerruleXmlExecutionException error)
 {
     var request = error.Request ?? throw new InvalidOperationException("original product request");
-    if (error.Input != FerruleXmlInputSource.Named(1, "catalog") || error.Output is not null ||
+    if (error.Input != FerruleXmlInputSource.Named(refusedIndex, refusedSource) || error.Output is not null ||
         error.Boundary.Kind != FerruleXmlBoundaryErrorKind.Utf8 || error.Boundary.Bytes is not null || error.Boundary.Limit is not null ||
-        request.DeclarationIndex != 1 || request.Source != "catalog" || request.Path != "b.xml" || request.Ordinal != 2 || !request.CallbackInvoked ||
+        request.DeclarationIndex != refusedIndex || request.Source != refusedSource || request.Path != "b.xml" || request.Ordinal != refusedOrdinal || !request.CallbackInvoked ||
         !ReferenceEquals(error.InnerException, error.Boundary) || error.Boundary.InnerException is not DecoderFallbackException cause ||
         cause.Index != 0 || cause.BytesUnknown is not [0xff])
         throw new InvalidOperationException("dynamic refusal lost its original typed ownership or cause");
-    Console.WriteLine(JsonSerializer.Serialize(new { api = 8, kind = "Utf8", input_index = 1, source = "catalog", path = "b.xml",
-        ordinal = 2, callback_invoked = true, boundary_identity = true, typed_cause = true, no_output = true, calls = refused.Calls }));
+    Console.WriteLine(JsonSerializer.Serialize(new { api = 8, kind = "Utf8", input_index = refusedIndex, source = refusedSource, path = "b.xml",
+        ordinal = refusedOrdinal, callback_invoked = true, boundary_identity = true, typed_cause = true, no_output = true, calls = refused.Calls }));
 }
-sealed class Host(string directory, bool invalidSecond) : IFerruleDynamicXmlSourceLoader
+sealed class Host(string directory, bool invalidSecond, bool multiple) : IFerruleDynamicXmlSourceLoader
 {
     public List<string[]> Calls { get; } = [];
     public byte[] Load(string sourceName, string logicalPath)
     {
-        if (sourceName != "catalog" || logicalPath is not ("a.xml" or "b.xml"))
+        if (!(multiple ? sourceName is "alpha" or "beta" : sourceName == "catalog") || logicalPath is not ("a.xml" or "b.xml"))
             throw new InvalidOperationException("unexpected fixture request");
         Calls.Add([sourceName, logicalPath]);
-        return invalidSecond && logicalPath == "b.xml" ? [0xff] : File.ReadAllBytes(Path.Combine(directory, logicalPath));
+        return invalidSecond && sourceName == (multiple ? "beta" : "catalog") && logicalPath == "b.xml" ? [0xff] : File.ReadAllBytes(Path.Combine(directory, logicalPath));
     }
 }

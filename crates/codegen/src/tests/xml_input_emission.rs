@@ -68,3 +68,70 @@ fn unproved_ordinary_named_source_keeps_typed_json_core_and_omits_whole_xml_adap
     assert!(if XML_INPUT_LANGUAGE == "rust" { source.contains("execute_json_outputs_with_sources(") } else { source.contains("ExecuteJsonOutputsWithSources(") });
     assert!(!source.contains("NamedXmlInput"));
 }
+
+
+#[test]
+fn multiple_dynamic_xml_adapters_keep_all_policies_and_existing_eight_signatures() {
+    let project: mapping::Project = serde_json::from_str(include_str!(
+        "fixtures/multiple_dynamic_named_xml_input_mixed.json"
+    )).unwrap();
+    let source = emit_xml_input_source(&codegen::lower(&project).unwrap());
+    let methods: &[&str] = if XML_INPUT_LANGUAGE == "rust" {
+        &[
+            "execute_xml_outputs_with_sources_and_dynamic_source_loader(",
+            "execute_xml_outputs_with_sources_context_and_dynamic_source_loader(",
+            "execute_xml_with_sources_and_dynamic_source_loader(",
+            "execute_xml_with_sources_context_and_dynamic_source_loader(",
+            "execute_xml_bytes_outputs_with_sources_and_dynamic_source_loader(",
+            "execute_xml_bytes_outputs_with_sources_context_and_dynamic_source_loader(",
+            "execute_xml_bytes_with_sources_and_dynamic_source_loader(",
+            "execute_xml_bytes_with_sources_context_and_dynamic_source_loader(",
+        ]
+    } else {
+        &[
+            "ExecuteXmlOutputsWithSourcesAndDynamicSourceLoader(",
+            "ExecuteXmlOutputsWithSourcesContextAndDynamicSourceLoader(",
+            "ExecuteXmlWithSourcesAndDynamicSourceLoader(",
+            "ExecuteXmlWithSourcesContextAndDynamicSourceLoader(",
+            "ExecuteXmlBytesOutputsWithSourcesAndDynamicSourceLoader(",
+            "ExecuteXmlBytesOutputsWithSourcesContextAndDynamicSourceLoader(",
+            "ExecuteXmlBytesWithSourcesAndDynamicSourceLoader(",
+            "ExecuteXmlBytesWithSourcesContextAndDynamicSourceLoader(",
+        ]
+    };
+    for method in methods { assert!(source.contains(method), "missing unchanged {method}"); }
+    if XML_INPUT_LANGUAGE == "rust" {
+        assert_eq!(source.matches("XmlDynamicSourceAdapter::for_sources(loader, vec![").count(), 4);
+        assert!(!source.contains("XmlDynamicSourceAdapter::new(loader,"));
+        for (index, name) in [(1, "alpha"), (3, "beta")] {
+            assert_eq!(source.matches(&format!("XmlDynamicSourcePolicy {{ declaration_index: {index}, source: \"{name}\", schema: EXTRA_XML_INPUT_SCHEMA_{index} }}")).count(), 4);
+        }
+        assert!(source.contains("XmlInputSource::Named { index: 2, name: \"labels\" }"));
+        assert!(source.contains("inputs[indices[1]].document"));
+    } else {
+        assert_eq!(source.matches("FerruleXmlDynamicSourceAdapter.ForSources(loader,").count(), 4);
+        assert!(!source.contains("new global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter(loader,"));
+        assert_eq!(source.matches("new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy[] {\n").count(), 4);
+        for (index, name) in [(1, "alpha"), (3, "beta")] {
+            assert_eq!(source.matches(&format!("new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy({index}, \"{name}\", ExtraXmlInputSchema_{index})")).count(), 4);
+        }
+        assert!(source.contains("FerruleXmlInputSource.Named(2, \"labels\")"));
+    }
+}
+
+#[test]
+fn one_dynamic_xml_source_keeps_original_single_policy_constructor_emission() {
+    let project: mapping::Project = serde_json::from_str(include_str!(
+        "fixtures/dynamic_named_xml_input_mixed.json"
+    )).unwrap();
+    let source = emit_xml_input_source(&codegen::lower(&project).unwrap());
+    if XML_INPUT_LANGUAGE == "rust" {
+        assert_eq!(source.matches("XmlDynamicSourceAdapter::new(loader,").count(), 4);
+        assert!(!source.contains("XmlDynamicSourceAdapter::for_sources("));
+        assert_eq!(source.matches("XmlDynamicSourcePolicy { declaration_index: 1, source: \"catalog\", schema: EXTRA_XML_INPUT_SCHEMA_1 }").count(), 4);
+    } else {
+        assert_eq!(source.matches("new global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter(loader,").count(), 4);
+        assert!(!source.contains("FerruleXmlDynamicSourceAdapter.ForSources("));
+        assert_eq!(source.matches("new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy(1, \"catalog\", ExtraXmlInputSchema_1)").count(), 4);
+    }
+}
