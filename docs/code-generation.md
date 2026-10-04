@@ -9,6 +9,29 @@ Generation rejects unsupported reachable constructs with capability diagnostics
 before creating the destination. Unreachable graph nodes do not prevent an
 otherwise portable project from being generated.
 
+## Generate a Library in the Native Editor
+
+Choose **File → Generate Library** to generate Rust or C# library source for the
+entire project. Select the language and enter a new library folder. **Choose
+parent...** selects its parent folder while retaining the new folder name.
+Rust also requires ferrule’s `codegen-runtime` folder containing `Cargo.toml`;
+C# includes its package-free runtime sources.
+
+Select **Save and generate** to save the mapping before generation. An untitled
+mapping opens Save As. Relative library and Rust runtime paths resolve from the
+folder where the mapping is actually saved. Canceling Save As or a failed save
+prevents generation from starting; the settings remain available to correct or
+retry.
+
+Generation runs in the background through the same public writer used by the
+CLI. It publishes the complete source tree into a new folder and does not
+replace an existing destination. Mapping or generation failures appear in the
+settings window and diagnostics, including their full error details. Build the
+generated source with the Rust or .NET toolchain to obtain a compiled library.
+
+While generation runs, project actions are locked. A request to close the editor
+waits for generation to finish, then follows the editor’s usual close guards.
+
 ## C#
 
 ```sh
