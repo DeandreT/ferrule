@@ -4,15 +4,30 @@ use crate::literal;
 use codegen::Program;
 
 pub(super) fn render(program: &Program, output: &mut String) {
-    let Some((dynamic_index, dynamic)) = program
+    let dynamic_sources = program
         .extra_sources
         .iter()
         .enumerate()
-        .find(|(_, source)| source.dynamic.is_some())
-    else {
+        .filter(|(_, source)| source.dynamic.is_some())
+        .collect::<Vec<_>>();
+    let Some((dynamic_index, dynamic)) = dynamic_sources.first().copied() else {
         return;
     };
-    let dynamic_name = literal::string(&dynamic.name);
+    let adapter = if dynamic_sources.len() == 1 {
+        format!(
+            "        var adapter = new global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter(loader,\n            new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy({dynamic_index}, {}, ExtraXmlInputSchema_{dynamic_index}), parsed.Budget);\n",
+            literal::string(&dynamic.name)
+        )
+    } else {
+        let mut adapter = String::from(
+            "        var adapter = global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter.ForSources(loader,\n            new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy[] {\n",
+        );
+        for (index, source) in dynamic_sources {
+            adapter.push_str(&format!("                new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy({index}, {}, ExtraXmlInputSchema_{index}),\n", literal::string(&source.name)));
+        }
+        adapter.push_str("            }, parsed.Budget);\n");
+        adapter
+    };
     for bytes in [false, true] {
         let (stem, input, ty, result, parse_helper, serialize) = if bytes {
             (
@@ -62,9 +77,7 @@ pub(super) fn render(program: &Program, output: &mut String) {
         global::System.ArgumentNullException.ThrowIfNull(extraSources);
         global::System.ArgumentNullException.ThrowIfNull(loader);
         var parsed = {parse_helper}(source, extraSources);
-        var adapter = new global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter(loader,
-            new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy({dynamic_index}, {dynamic_name}, ExtraXmlInputSchema_{dynamic_index}), parsed.Budget);
-        ExecutionOutputs mapped;
+{adapter}        ExecutionOutputs mapped;
         try {{ mapped = {execute}(parsed.Primary, parsed.Inputs{context_call}, adapter); }}
         catch (global::Ferrule.Runtime.FerruleRuntimeException error) {{ throw adapter.Recover(error); }}
         try {{ return {serialize}(mapped); }}

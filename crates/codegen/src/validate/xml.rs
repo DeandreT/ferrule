@@ -210,17 +210,6 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             "XML document input sets permit at most 4096 artifacts including primary",
         ));
     }
-    if program
-        .extra_sources
-        .iter()
-        .filter(|source| source.dynamic.is_some())
-        .count()
-        > 1
-    {
-        return Err(reject(
-            "the Structured XML adapter permits at most one dynamic source",
-        ));
-    }
     if policy.extra_inputs.len() != program.extra_sources.len()
         || policy
             .extra_inputs

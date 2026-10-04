@@ -8,14 +8,15 @@ use std::path::{Path, PathBuf};
 struct Host {
     directory: PathBuf,
     invalid_second: bool,
+    multiple: bool,
     calls: RefCell<Vec<(String, String)>>,
 }
 impl DynamicXmlSourceLoader for Host {
     fn load(&self, source: &str, path: &str) -> Result<Vec<u8>, String> {
-        assert_eq!(source, "catalog");
+        assert!(if self.multiple { matches!(source, "alpha" | "beta") } else { source == "catalog" });
         assert!(matches!(path, "a.xml" | "b.xml"));
         self.calls.borrow_mut().push((source.into(), path.into()));
-        if self.invalid_second && path == "b.xml" {
+        if self.invalid_second && source == (if self.multiple { "beta" } else { "catalog" }) && path == "b.xml" {
             Ok(vec![0xff])
         } else {
             std::fs::read(self.directory.join(path)).map_err(|error| error.to_string())
@@ -32,6 +33,14 @@ fn text(outputs: generated::XmlBytesExecutionOutputs) -> generated::XmlExecution
 }
 fn main() -> Result<(), Box<dyn Error>> {
     let directory = PathBuf::from(std::env::args().nth(1).expect("fixture directory"));
+    let multiple = match std::env::args().nth(2).as_deref() {
+        None | Some("single") => false,
+        Some("multiple") => true,
+        _ => panic!("one source policy mode"),
+    };
+    let refused_source = if multiple { "beta" } else { "catalog" };
+    let refused_index = if multiple { 3 } else { 1 };
+    let refused_ordinal = if multiple { 5 } else { 2 };
     let primary = std::fs::read(directory.join("primary.xml"))?;
     let rates = std::fs::read(directory.join("rates.xml"))?;
     let labels = std::fs::read(directory.join("labels.xml"))?;
@@ -47,7 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let primary_text = std::str::from_utf8(&primary)?;
     let execution = ExecutionContext::new(Path::new("fixture.json"));
     for api in 0..8 {
-        let host = Host { directory: directory.clone(), invalid_second: false, calls: RefCell::default() };
+        let host = Host { directory: directory.clone(), invalid_second: false, multiple, calls: RefCell::default() };
         let outputs = match api {
             0 => generated::execute_xml_outputs_with_sources_and_dynamic_source_loader(primary_text, &texts, &host)?,
             1 => generated::execute_xml_outputs_with_sources_context_and_dynamic_source_loader(primary_text, &texts, &execution, &host)?,
@@ -62,19 +71,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             "extras":outputs.extras.into_iter().map(|extra|json!({"name":extra.name,"document":extra.document})).collect::<Vec<_>>(),
             "calls":host.calls.borrow().clone()}));
     }
-    let host = Host { directory, invalid_second: true, calls: RefCell::default() };
+    let host = Host { directory, invalid_second: true, multiple, calls: RefCell::default() };
     let error = generated::execute_xml_bytes_outputs_with_sources_and_dynamic_source_loader(&primary, &inputs, &host).unwrap_err();
-    assert_eq!(error.input, Some(XmlInputSource::Named { index: 1, name: "catalog" }));
+    assert_eq!(error.input, Some(XmlInputSource::Named { index: refused_index, name: refused_source }));
     assert!(error.output.is_none());
     assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Utf8);
     assert_eq!((error.boundary.bytes, error.boundary.limit), (None, None));
     let request = error.request.as_ref().expect("original dynamic product request");
-    assert_eq!((request.declaration_index, request.source, request.path.as_str(), request.ordinal, request.callback_invoked), (1, "catalog", "b.xml", 2, true));
+    assert_eq!((request.declaration_index, request.source, request.path.as_str(), request.ordinal, request.callback_invoked), (refused_index, refused_source, "b.xml", refused_ordinal, true));
     assert!(std::ptr::eq(error.source().unwrap().downcast_ref::<codegen_runtime::XmlBoundaryError>().unwrap(), error.boundary.as_ref()));
     let cause = error.boundary.source().unwrap().downcast_ref::<std::str::Utf8Error>().expect("typed original UTF-8 cause");
     assert_eq!((cause.valid_up_to(), cause.error_len()), (0, Some(1)));
-    println!("{}", json!({"api":8,"kind":"Utf8","input_index":1,"source":"catalog","path":"b.xml",
-        "ordinal":2,"callback_invoked":true,"boundary_identity":true,"typed_cause":true,
+    println!("{}", json!({"api":8,"kind":"Utf8","input_index":refused_index,"source":refused_source,"path":"b.xml",
+        "ordinal":refused_ordinal,"callback_invoked":true,"boundary_identity":true,"typed_cause":true,
         "no_output":true,"calls":host.calls.borrow().clone()}));
     Ok(())
 }

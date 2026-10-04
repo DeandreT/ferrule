@@ -49,6 +49,7 @@ fn unproved_dynamic_boundary_falls_back_as_a_whole_without_dropping_typed_core()
             1 => {
                 let mut second = project.extra_sources[1].clone();
                 second.name = "second-catalog".into();
+                second.options.xml_document = false;
                 project.extra_sources.push(second);
             }
             _ => {
@@ -102,4 +103,92 @@ fn interleaved_dynamic_policies_keep_both_static_neighbors_in_original_order() {
     assert!(program.extra_sources[0].dynamic.is_none());
     assert!(program.extra_sources[1].dynamic.is_some());
     assert!(program.extra_sources[2].dynamic.is_none());
+}
+
+#[test]
+fn structured_xml_keeps_all_mixed_dynamic_policies_and_original_schemas() {
+    let project: mapping::Project = serde_json::from_str(include_str!(
+        "fixtures/multiple_dynamic_named_xml_input_mixed.json"
+    ))
+    .unwrap();
+    let program = crate::lower(&project).unwrap();
+    crate::validate_program(&program).unwrap();
+    let boundary = program
+        .xml_boundary
+        .as_ref()
+        .expect("complete ordinary XML admission");
+    assert_eq!(
+        boundary.input.profile(),
+        Some(crate::XmlInputProfile::Structured)
+    );
+    assert_eq!(
+        boundary
+            .extra_inputs
+            .iter()
+            .map(|input| input.name.as_str())
+            .collect::<Vec<_>>(),
+        ["rates", "alpha", "labels", "beta"]
+    );
+    assert_eq!(
+        program
+            .extra_sources
+            .iter()
+            .enumerate()
+            .filter(|(_, source)| source.dynamic.is_some())
+            .map(|(index, source)| (index, source.name.as_str()))
+            .collect::<Vec<_>>(),
+        [(1, "alpha"), (3, "beta")]
+    );
+    for ((source, original), policy) in program
+        .extra_sources
+        .iter()
+        .zip(&project.extra_sources)
+        .zip(&boundary.extra_inputs)
+    {
+        assert_eq!(source.source, original.schema);
+        assert_eq!(source.name, policy.name);
+        assert_eq!(
+            policy.input.profile(),
+            Some(crate::XmlInputProfile::Structured)
+        );
+    }
+    let alpha = program.extra_sources[1]
+        .source
+        .child("Row")
+        .unwrap()
+        .child("Amount")
+        .unwrap();
+    let beta = program.extra_sources[3]
+        .source
+        .child("Row")
+        .unwrap()
+        .child("Amount")
+        .unwrap();
+    assert!(matches!(
+        alpha.kind,
+        ir::SchemaKind::Scalar {
+            ty: ir::ScalarType::Float
+        }
+    ));
+    assert!(matches!(
+        beta.kind,
+        ir::SchemaKind::Scalar {
+            ty: ir::ScalarType::Int
+        }
+    ));
+}
+
+#[test]
+fn an_unproved_second_dynamic_xml_boundary_removes_only_the_xml_adapter() {
+    let mut project: mapping::Project = serde_json::from_str(include_str!(
+        "fixtures/multiple_dynamic_named_xml_input_mixed.json"
+    ))
+    .unwrap();
+    project.extra_sources[3].options.xml_document = false;
+    let program = crate::lower(&project).unwrap();
+    assert!(program.xml_boundary.is_none());
+    assert_eq!(program.extra_sources.len(), 4);
+    assert!(
+        program.extra_sources[1].dynamic.is_some() && program.extra_sources[3].dynamic.is_some()
+    );
 }
