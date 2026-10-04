@@ -293,6 +293,7 @@ fn planner_accounts_all_nodes_and_rejects_unsupported_options() {
                 root_view_policy: true,
             },
             output: codegen::XmlOutputPolicy::default(),
+            extra_outputs: Vec::new(),
         })
     );
     assert_eq!(generated.source, original.source);
