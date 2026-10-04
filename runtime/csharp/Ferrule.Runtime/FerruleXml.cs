@@ -1168,16 +1168,16 @@ public static partial class FerruleXml
             _output.Append(' ').Append(name).Append("=\"");
             foreach (var character in value)
             {
-                _output.Append(character switch
+                switch (character)
                 {
-                    '&' => "&amp;",
-                    '<' => "&lt;",
-                    '"' => "&quot;",
-                    '\t' => "&#x9;",
-                    '\n' => "&#xA;",
-                    '\r' => "&#xD;",
-                    _ => character.ToString(),
-                });
+                    case '&': _output.Append("&amp;"); break;
+                    case '<': _output.Append("&lt;"); break;
+                    case '"': _output.Append("&quot;"); break;
+                    case '\t': _output.Append("&#x9;"); break;
+                    case '\n': _output.Append("&#xA;"); break;
+                    case '\r': _output.Append("&#xD;"); break;
+                    default: _output.Append(character); break;
+                }
             }
             _output.Append('"');
         }
@@ -1186,16 +1186,16 @@ public static partial class FerruleXml
         {
             foreach (var character in value)
             {
-                _output.Append(character switch
+                switch (character)
                 {
-                    '&' => "&amp;",
-                    '<' => "&lt;",
-                    '>' => "&gt;",
-                    '\'' => "&apos;",
-                    '"' => "&quot;",
-                    '\r' => "&#xD;",
-                    _ => character.ToString(),
-                });
+                    case '&': _output.Append("&amp;"); break;
+                    case '<': _output.Append("&lt;"); break;
+                    case '>': _output.Append("&gt;"); break;
+                    case '\'': _output.Append("&apos;"); break;
+                    case '"': _output.Append("&quot;"); break;
+                    case '\r': _output.Append("&#xD;"); break;
+                    default: _output.Append(character); break;
+                }
             }
         }
 
