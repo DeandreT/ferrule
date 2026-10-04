@@ -284,7 +284,19 @@ fn planner_accounts_all_nodes_and_rejects_unsupported_options() {
         }
         assert!(RootTypeViewPlan::build(&changed, 211, 307).is_err());
     }
-    assert!(codegen::lower(&original).is_err());
+    let generated = codegen::lower(&original).unwrap();
+    assert_eq!(
+        generated.xml_boundary,
+        Some(codegen::XmlBoundaryProgram {
+            input: codegen::XmlInputPolicy {
+                allow_inactive_root_type_members: true,
+                root_view_policy: true,
+            },
+            output: codegen::XmlOutputPolicy::default(),
+        })
+    );
+    assert_eq!(generated.source, original.source);
+    assert_eq!(generated.target, original.target);
     let dir = fixture::Directory::new();
     assert!(
         prepare_export(&original, &dir.0.join("mapping.mfd"))

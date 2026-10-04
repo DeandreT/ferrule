@@ -132,6 +132,7 @@ fn fixture() -> Program {
     .repeating();
 
     Program {
+        xml_boundary: None,
         source: SchemaNode::group("Source", vec![a, c, string("Separator")]),
         extra_sources: vec![NamedSourceProgram {
             name: "catalog".into(),

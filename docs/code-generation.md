@@ -327,12 +327,74 @@ finite `not` exclusions, portable patterns and their exact complements, and
 nonasserting format metadata; raw parsed input keys and normalized emitted
 keys are checked, including the empty string. Nullable
 object null bypasses these name assertions. These APIs
-intentionally use JSON regardless of
-stored project paths or format options; hosts needing X12, XML, database, or
-other physical formats should use the interpreter payload API or adapt a typed
-`Instance` at their own boundary.
+intentionally use JSON regardless of stored project paths or format options.
+Supported primary XML root-view mappings also have the XML document APIs below.
+Hosts needing other physical formats should use the interpreter payload API
+or adapt a typed `Instance` at their own boundary.
 Dynamic JSON documents share the 64 MiB per-document limit and additionally
 have a 256 MiB combined budget per execution.
+
+## XML Host Boundary
+
+Supported primary XML root-view mappings also expose XML document entry points:
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| XML text | `execute_xml` | `GeneratedMapping.ExecuteXml` |
+| UTF-8 bytes | `execute_xml_bytes` | `GeneratedMapping.ExecuteXmlBytes` |
+| XML text with execution context | `execute_xml_with_context` | `GeneratedMapping.ExecuteXml(source, executionContext)` |
+| UTF-8 bytes with execution context | `execute_xml_bytes_with_context` | `GeneratedMapping.ExecuteXmlBytes(source, executionContext)` |
+
+These entry points parse the source XML using the embedded source schema,
+execute the generated mapping, and return one serialized primary target.
+They preserve the source reader's observed root type identity and physical
+attribute presence. A required primary-root field fails only when the mapping
+evaluates its read, so a conditional branch can leave that read unevaluated.
+JSON entry points continue to parse JSON; they do not reconstruct an XML type
+annotation that was absent from their input.
+
+The admitted source is a closed, nonrepeating XML root with 1–32 String
+attributes, 2–32 declared type alternatives, an explicit default type, and
+qualified or explicitly unqualified names. Its input options must enable
+`xml_document`, `xml_allow_inactive_root_type_members`, and
+`xml_root_view_read_policy`.
+Named or dynamic XML document inputs and named document outputs remain outside
+this adapter. Unsupported input or target schemas fail during generation,
+before the artifact destination is created.
+
+The target supports closed structured XML, including nested and repeating
+fields and known `xsi:type` alternatives. Runtime-named elements, substitution
+groups, and ordered mixed element/text schemas remain outside this adapter.
+Physical schema names must be local XML NCNames; namespaces are retained
+separately from those names. Declared type identities must be canonical.
+The generated input parser and hinted-output parser cannot accept
+supplementary Unicode characters in physical names, so generation rejects
+those profiles. Unhinted output names retain the supported XML name range.
+Ordinary qualified `xml:` attributes are supported; schema metadata that would
+create illegal reserved namespace declarations is rejected.
+
+Project generation uses the native XML writer defaults: an XML declaration
+and indentation, with namespaces taken from the target schema. It retains the
+project's literal XML schema-hint settings. Schema locations are emitted as
+metadata; the generated host does not open them or resolve them against a
+filesystem path. The host owns publication of the returned document.
+
+Each input and returned output document is limited to 64 MiB of UTF-8.
+Embedded XML schemas have an 8 MiB limit, and the runtime schema-hint descriptor
+has a separate 2 MiB limit. String and byte entry points use the same mapping
+and output policy. Byte input must be valid UTF-8, and oversized input is
+rejected before parsing or mapping. Serialization checks the output limit
+before returning a document.
+
+Rust returns `codegen_runtime::XmlBoundaryError`; C# throws
+`FerruleXmlBoundaryException`. Both distinguish `Schema`, `DocumentLimit`,
+`Utf8`, `Input`, `Mapping`, and `Output` failures. `DocumentLimit` failures
+retain the observed byte count and limit. Mapping failures retain the original typed
+runtime error, including a required primary-root field's node and path.
+
+These are in-memory document APIs. Parsed instances, mapping intermediates,
+serialization buffers, and caller-owned inputs can coexist, so the document
+limits do not establish a peak memory limit or provide streaming execution.
 
 ## Runnable Hosts
 

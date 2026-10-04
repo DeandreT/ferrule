@@ -25,6 +25,7 @@ mod xml_serialize;
 
 fn program() -> Program {
     Program {
+        xml_boundary: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::group("Rows", Vec::new()).repeating()],
