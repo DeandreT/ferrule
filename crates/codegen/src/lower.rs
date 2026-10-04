@@ -42,13 +42,18 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     // output removes that whole adapter without obstructing typed/JSON core.
     let ordinary_xml = ordinary_xml_input
         && project.extra_sources.len() < 4096
+        && project
+            .extra_sources
+            .iter()
+            .filter(|source| source.dynamic_path.is_some())
+            .count()
+            <= 1
         && project.extra_sources.iter().all(|source| {
-            source.dynamic_path.is_none()
-                && source.options
-                    == (mapping::FormatOptions {
-                        xml_document: true,
-                        ..Default::default()
-                    })
+            source.options
+                == (mapping::FormatOptions {
+                    xml_document: true,
+                    ..Default::default()
+                })
                 && ir::xml_structured_document_input_is_supported(&source.schema)
         })
         && xml_document_output_options(&project.target_options)
