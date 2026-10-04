@@ -1,0 +1,484 @@
+{
+  "source": {
+    "name": "Manifest",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Driver",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Id",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Path",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Result",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Line",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "DriverId",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Path",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Name",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Amount",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "Scaled",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "Adjustment",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                },
+                "nillable": true
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "source_path": "documents/manifest.xml",
+  "target_path": "result.xml",
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true,
+    "xml_schema_hints": {
+      "no_namespace_location": "result.xsd"
+    }
+  },
+  "extra_sources": [
+    {
+      "name": "rates",
+      "path": "documents/rates.xml",
+      "schema": {
+        "name": "Rates",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Factor",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    },
+    {
+      "name": "catalog",
+      "path": "",
+      "schema": {
+        "name": "Catalog",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:catalog"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Row",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:catalog"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "Name",
+                    "xml_namespace": {
+                      "kind": "unqualified"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "attribute": true
+                  },
+                  {
+                    "name": "Amount",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:catalog"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "Details",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:catalog"
+                    },
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "Adjustment",
+                          "xml_namespace": {
+                            "kind": "qualified",
+                            "uri": "urn:catalog"
+                          },
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "float"
+                          },
+                          "nillable": true
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      },
+      "dynamic_path": {
+        "node": 1,
+        "iteration": [
+          "Driver"
+        ]
+      }
+    },
+    {
+      "name": "labels",
+      "path": "documents/labels.xml",
+      "schema": {
+        "name": "Labels",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Marker",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    }
+  ],
+  "extra_targets": [
+    {
+      "name": "audit",
+      "path": "audit.xml",
+      "schema": {
+        "name": "Audit",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:audit"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "DriverCount",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:audit"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "Factor",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:audit"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Status",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:audit"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:audit",
+              "location": "audit.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "Audit",
+        "bindings": [
+          {
+            "target_field": "DriverCount",
+            "node": 8
+          },
+          {
+            "target_field": "Factor",
+            "node": 5
+          },
+          {
+            "target_field": "Status",
+            "node": 9
+          }
+        ],
+        "children": []
+      }
+    }
+  ],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "1": {
+        "kind": "source_field",
+        "frame": [
+          "Driver"
+        ],
+        "path": [
+          "Path"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "frame": [
+          "Driver"
+        ],
+        "path": [
+          "Id"
+        ]
+      },
+      "3": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "Name"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "Amount"
+        ]
+      },
+      "5": {
+        "kind": "source_field",
+        "path": [
+          "rates",
+          "Factor"
+        ]
+      },
+      "6": {
+        "kind": "call",
+        "function": "multiply",
+        "args": [
+          4,
+          5
+        ]
+      },
+      "7": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "Details",
+          "Adjustment"
+        ]
+      },
+      "8": {
+        "kind": "aggregate",
+        "function": "count",
+        "collection": [
+          "Driver"
+        ],
+        "value": []
+      },
+      "9": {
+        "kind": "const",
+        "value": "complete"
+      }
+    }
+  },
+  "root": {
+    "target_field": "Result",
+    "bindings": [],
+    "children": [
+      {
+        "target_field": "Line",
+        "bindings": [
+          {
+            "target_field": "DriverId",
+            "node": 2
+          },
+          {
+            "target_field": "Path",
+            "node": 1
+          },
+          {
+            "target_field": "Name",
+            "node": 3
+          },
+          {
+            "target_field": "Amount",
+            "node": 4
+          },
+          {
+            "target_field": "Scaled",
+            "node": 6
+          },
+          {
+            "target_field": "Adjustment",
+            "node": 7
+          }
+        ],
+        "children": [],
+        "source": [
+          "catalog",
+          "Row"
+        ]
+      }
+    ]
+  }
+}
