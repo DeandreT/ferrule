@@ -406,6 +406,8 @@ pub const SUPPORTED_SCALAR_CALLS: &[ScalarFunction] = ScalarFunction::ALL;
 /// Deterministic backend-neutral representation of one supported mapping.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
+    /// Explicit primary XML document adapter. JSON entry points remain independent.
+    pub xml_boundary: Option<XmlBoundaryProgram>,
     pub source: SchemaNode,
     /// Additional typed inputs available through outward source fallback.
     pub extra_sources: Vec<NamedSourceProgram>,
@@ -419,6 +421,40 @@ pub struct Program {
     pub root: TargetScope,
     /// Additional independently shaped outputs in declaration order.
     pub extra_targets: Vec<NamedTargetProgram>,
+}
+
+/// Explicit primary XML reader and writer policies carried through lowering.
+/// Named or dynamic document adapters require separate admission evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XmlBoundaryProgram {
+    pub input: XmlInputPolicy,
+    pub output: XmlOutputPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct XmlInputPolicy {
+    pub allow_inactive_root_type_members: bool,
+    pub root_view_policy: bool,
+}
+
+/// Literal output policy; schema locations are never opened or path-resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XmlOutputPolicy {
+    pub declaration: bool,
+    pub indent: bool,
+    pub default_namespace: Option<String>,
+    pub schema_hints: Option<ir::XmlSchemaHints>,
+}
+
+impl Default for XmlOutputPolicy {
+    fn default() -> Self {
+        Self {
+            declaration: true,
+            indent: true,
+            default_namespace: None,
+            schema_hints: None,
+        }
+    }
 }
 
 /// One isolated scalar user function retained for deterministic helper emission.

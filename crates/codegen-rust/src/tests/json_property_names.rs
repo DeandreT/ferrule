@@ -170,6 +170,7 @@ fn property_name_program() -> Result<Program, &'static str> {
     )?;
 
     Ok(Program {
+        xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {
             name: "Named".into(),
@@ -224,6 +225,7 @@ fn property_name_program() -> Result<Program, &'static str> {
 fn pattern_budget_program() -> Result<Program, &'static str> {
     let expensive = property_names(None, None, None, None, Some(&[&["^(a?){8000}$"]]), &[])?;
     Ok(Program {
+        xml_boundary: None,
         source: constrained_group("Source", Vec::new(), arbitrary_json("*")?, expensive)?,
         extra_sources: Vec::new(),
         target: SchemaNode::group("Target", Vec::new()),

@@ -902,6 +902,7 @@ impl FerruleApp {
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         let primary_root_bindings = crate::primary_root_authoring::available(&self.project);
+        let mut type_action = None;
         egui::ScrollArea::both()
             .id_salt(("scope_editor_scroll", active_target))
             .show(ui, |ui| {
@@ -916,6 +917,24 @@ impl FerruleApp {
                                 scope_target_chain(&target.root, &self.selected_scope);
                             let target_fields =
                                 binding_target_fields(&target.schema, &target_chain);
+                            let target_xml_types =
+                                crate::target_xml_type::schema_at(&target.schema, &target_chain)
+                                    .map(crate::target_xml_type::choices)
+                                    .unwrap_or_default();
+                            let target_xml_default =
+                                crate::target_xml_type::schema_at(&target.schema, &target_chain)
+                                    .and_then(|schema| schema.xml_default_type.as_deref())
+                                    .filter(|identity| {
+                                        target_xml_types
+                                            .iter()
+                                            .any(|choice| choice.as_str() == *identity)
+                                    });
+                            let target_type_editable =
+                                crate::scope_editor::copied_ancestor_at_path(
+                                    &target.root,
+                                    &self.selected_scope,
+                                )
+                                .is_none();
                             let output_profile = crate::scope_editor::output_profile(
                                 &target.root,
                                 &target.schema,
@@ -924,7 +943,7 @@ impl FerruleApp {
                                 target.path.as_deref(),
                             );
                             let scope = scope_at_mut(&mut target.root, &self.selected_scope);
-                            show_scope_editor(
+                            type_action = show_scope_editor(
                                 ui,
                                 scope,
                                 &self.project.graph,
@@ -933,6 +952,9 @@ impl FerruleApp {
                                 crate::scope_editor::ScopeEditorOwner {
                                     nested,
                                     primary_root_bindings: false,
+                                    target_xml_types: &target_xml_types,
+                                    target_xml_default,
+                                    target_type_editable,
                                 },
                                 output_profile,
                             );
@@ -942,6 +964,28 @@ impl FerruleApp {
                                 scope_target_chain(&self.project.root, &self.selected_scope);
                             let target_fields =
                                 binding_target_fields(&self.project.target, &target_chain);
+                            let target_xml_types = crate::target_xml_type::schema_at(
+                                &self.project.target,
+                                &target_chain,
+                            )
+                            .map(crate::target_xml_type::choices)
+                            .unwrap_or_default();
+                            let target_xml_default = crate::target_xml_type::schema_at(
+                                &self.project.target,
+                                &target_chain,
+                            )
+                            .and_then(|schema| schema.xml_default_type.as_deref())
+                            .filter(|identity| {
+                                target_xml_types
+                                    .iter()
+                                    .any(|choice| choice.as_str() == *identity)
+                            });
+                            let target_type_editable =
+                                crate::scope_editor::copied_ancestor_at_path(
+                                    &self.project.root,
+                                    &self.selected_scope,
+                                )
+                                .is_none();
                             let output_profile = crate::scope_editor::output_profile(
                                 &self.project.root,
                                 &self.project.target,
@@ -950,7 +994,7 @@ impl FerruleApp {
                                 self.project.target_path.as_deref(),
                             );
                             let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
-                            show_scope_editor(
+                            type_action = show_scope_editor(
                                 ui,
                                 scope,
                                 &self.project.graph,
@@ -959,6 +1003,9 @@ impl FerruleApp {
                                 crate::scope_editor::ScopeEditorOwner {
                                     nested,
                                     primary_root_bindings,
+                                    target_xml_types: &target_xml_types,
+                                    target_xml_default,
+                                    target_type_editable,
                                 },
                                 output_profile,
                             );
@@ -966,6 +1013,9 @@ impl FerruleApp {
                     }
                 });
             });
+        if let Some(action) = type_action {
+            self.apply_selected_target_xml_type(&action);
+        }
     }
 
     fn show_failure_rules(&mut self, ui: &mut egui::Ui) {

@@ -20,6 +20,7 @@ fn patterned_string(name: &str, alternatives: &[&[&str]]) -> SchemaNode {
 
 fn pattern_program() -> Program {
     Program {
+        xml_boundary: None,
         source: SchemaNode::group(
             "Source",
             vec![patterned_string("Code", &[&["^[A-Z]+$"], &["^😀$"]])],

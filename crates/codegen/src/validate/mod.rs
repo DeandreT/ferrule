@@ -40,6 +40,7 @@ use targets::TargetOwner;
 /// This check protects the public programmatic API from emitting recursive or
 /// backend-dependent source when callers construct a [`Program`] directly.
 pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError> {
+    xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
         validate_schema_metadata(&format!("extra source {:?}", source.name), &source.source)?;

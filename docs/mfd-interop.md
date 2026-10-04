@@ -413,6 +413,22 @@ the generated project is written somewhere other than the design directory.
 HTTP URLs and graph-computed paths are unchanged. Moving or using Save As on a
 project applies the same rebasing rule, including wildcard input paths.
 
+### XML root-view interoperability
+
+A bounded flat String-attribute profile supports one local XML source and one
+local XML target. Both schemas must declare the same selected nondefault type
+and exact root identity. Each output field uses the same observed primary-root
+type condition, a direct source-root attribute read, and an absent false branch.
+The target type is one unconditional declared constant. Attribute requirements
+must agree with the source schema, and every graph node must belong to these
+projections. Shared source fields can feed multiple target attributes.
+
+Import and export retain the type condition, required reads, physical namespace
+identities, and direct base-root selection. Other root-expression graphs,
+additional document boundaries, failure rules, user functions, and explicit
+schema hints remain outside this `.mfd` profile. Unsupported export fails before
+publishing artifacts; unproved import shapes retain actionable diagnostics.
+
 ## Export
 
 Ordinary and connected `.mfd` designs share a 64 MiB UTF-8 byte limit. Import

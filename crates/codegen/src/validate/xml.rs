@@ -170,3 +170,230 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     }
     children.iter().find_map(unsupported_schema_feature)
 }
+
+/// The admitted document adapter owns only one closed primary String root.
+pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramValidationError> {
+    let Some(policy) = &program.xml_boundary else {
+        return Ok(());
+    };
+    let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
+        reason: reason.to_owned(),
+    };
+    if !policy.input.root_view_policy
+        || !policy.input.allow_inactive_root_type_members
+        || !ir::xml_root_view_read_policy_is_supported(&program.source)
+    {
+        return Err(reject(
+            "requires the closed observed primary XML root input policy",
+        ));
+    }
+    if !program.extra_sources.is_empty() || !program.extra_targets.is_empty() {
+        return Err(reject(
+            "named XML document inputs and outputs require separate adapter support",
+        ));
+    }
+    if program.root.iteration.is_some() || program.root.repeating {
+        return Err(reject(
+            "XML document output requires one non-iterating primary root",
+        ));
+    }
+    if !input_namespace_identity_supported(&program.source) {
+        return Err(reject("XML input schema namespace is invalid or too large"));
+    }
+    if !document_namespace_metadata_supported(&program.target, true) {
+        return Err(reject(
+            "unsupported XML namespace declaration metadata in document schema",
+        ));
+    }
+    if !document_schema_names_supported(&program.target, true) {
+        return Err(reject(
+            "XML document schema requires local NCNames and canonical type identities",
+        ));
+    }
+    if document_schema_has_supplementary_name(&program.source, true)
+        || (policy.output.schema_hints.is_some()
+            && document_schema_has_supplementary_name(&program.target, false))
+    {
+        return Err(reject(
+            "supplementary XML names are unsupported by the generated input and hinted-output parsers",
+        ));
+    }
+    if program.target.repeating || unsupported_schema_feature(&program.target).is_some() {
+        return Err(reject("unsupported XML document target schema"));
+    }
+    if policy
+        .output
+        .default_namespace
+        .as_ref()
+        .is_some_and(|uri| uri.is_empty() || uri.len() > ir::MAX_PRIMARY_ROOT_IDENTITY_BYTES)
+    {
+        return Err(reject(
+            "default XML namespace must be nonempty and at most 4096 UTF-8 bytes",
+        ));
+    }
+    if policy
+        .output
+        .schema_hints
+        .as_ref()
+        .is_some_and(|hints| hints.validate().is_err())
+    {
+        return Err(reject("invalid literal XML schema hints"));
+    }
+    if policy.output.default_namespace.as_ref().is_some_and(|uri| {
+        !uri.chars().all(|character| {
+            matches!(character as u32, 0x9 | 0xA | 0xD | 0x20..=0xD7FF | 0xE000..=0xFFFD | 0x10000..=0x10FFFF)
+        })
+    }) {
+        return Err(reject(
+            "default XML namespace must contain XML 1.0 characters",
+        ));
+    }
+    let schema_root_namespace = match &program.target.xml_namespace {
+        Some(ir::XmlNamespace::Qualified(uri)) => Some(uri.as_str()),
+        _ => None,
+    };
+    if [
+        policy.output.default_namespace.as_deref(),
+        schema_root_namespace,
+    ]
+    .into_iter()
+    .any(|uri| {
+        matches!(
+            uri,
+            Some("http://www.w3.org/XML/1998/namespace" | "http://www.w3.org/2000/xmlns/")
+        )
+    }) {
+        return Err(reject(
+            "reserved XML namespace cannot be the default namespace",
+        ));
+    }
+    Ok(())
+}
+
+fn document_namespace_metadata_supported(schema: &SchemaNode, root: bool) -> bool {
+    let uri = match &schema.xml_namespace {
+        Some(ir::XmlNamespace::Qualified(uri)) => Some(uri.as_str()),
+        _ => None,
+    };
+    if schema.attribute && schema.name == "xmlns" && uri.is_none() {
+        return false;
+    }
+    if !root
+        && (uri == Some("http://www.w3.org/2000/xmlns/")
+            || (!schema.attribute && uri == Some("http://www.w3.org/XML/1998/namespace")))
+    {
+        return false;
+    }
+    match &schema.kind {
+        ir::SchemaKind::Group {
+            children,
+            alternatives,
+            dynamic,
+            ..
+        } => {
+            !alternatives.iter().any(|alternative| {
+                alternative
+                    .name
+                    .strip_prefix('{')
+                    .and_then(|name| name.split_once('}'))
+                    .is_some_and(|(uri, _)| {
+                        matches!(
+                            uri,
+                            "http://www.w3.org/XML/1998/namespace"
+                                | "http://www.w3.org/2000/xmlns/"
+                        )
+                    })
+            }) && children
+                .iter()
+                .all(|child| document_namespace_metadata_supported(child, false))
+                && dynamic
+                    .as_ref()
+                    .is_none_or(|child| document_namespace_metadata_supported(child, false))
+        }
+        _ => true,
+    }
+}
+
+fn input_namespace_identity_supported(schema: &SchemaNode) -> bool {
+    if let Some(ir::XmlNamespace::Qualified(uri)) = &schema.xml_namespace
+        && (uri.as_str().len() + schema.name.len() + 2 > ir::MAX_PRIMARY_ROOT_IDENTITY_BYTES
+            || !ir::primary_root_type_identity_is_valid(&format!(
+                "{{{}}}{}",
+                uri.as_str(),
+                schema.name
+            )))
+    {
+        return false;
+    }
+    match &schema.kind {
+        ir::SchemaKind::Group { children, .. } => {
+            children.iter().all(input_namespace_identity_supported)
+        }
+        _ => true,
+    }
+}
+
+fn document_schema_names_supported(schema: &SchemaNode, root: bool) -> bool {
+    let virtual_text = !root
+        && schema.name == XML_TEXT_FIELD
+        && schema.text
+        && !schema.attribute
+        && !schema.repeating
+        && matches!(schema.kind, SchemaKind::Scalar { .. });
+    if !virtual_text && !ir::primary_root_ncname_is_valid(&schema.name) {
+        return false;
+    }
+    match &schema.kind {
+        SchemaKind::Group {
+            children,
+            alternatives,
+            dynamic,
+            ..
+        } => {
+            alternatives
+                .iter()
+                .all(|alternative| ir::primary_root_type_identity_is_valid(&alternative.name))
+                && children
+                    .iter()
+                    .all(|child| document_schema_names_supported(child, false))
+                && dynamic
+                    .as_ref()
+                    .is_none_or(|child| document_schema_names_supported(child, false))
+        }
+        _ => true,
+    }
+}
+
+fn document_schema_has_supplementary_name(schema: &SchemaNode, include_types: bool) -> bool {
+    if schema
+        .name
+        .chars()
+        .any(|character| character as u32 > 0xFFFF)
+    {
+        return true;
+    }
+    match &schema.kind {
+        SchemaKind::Group {
+            children,
+            alternatives,
+            dynamic,
+            ..
+        } => {
+            (include_types
+                && alternatives.iter().any(|alternative| {
+                    let local = alternative
+                        .name
+                        .rsplit_once('}')
+                        .map_or(alternative.name.as_str(), |(_, local)| local);
+                    local.chars().any(|character| character as u32 > 0xFFFF)
+                }))
+                || children
+                    .iter()
+                    .any(|child| document_schema_has_supplementary_name(child, include_types))
+                || dynamic.as_ref().is_some_and(|child| {
+                    document_schema_has_supplementary_name(child, include_types)
+                })
+        }
+        _ => false,
+    }
+}

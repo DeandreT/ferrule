@@ -72,6 +72,62 @@ pub fn arrange_snarl_with_mode(
     }
 }
 
+/// Move one newly created graph node clear of existing rectangles. Existing
+/// positions, node identity, open state, and wires remain untouched.
+pub(crate) fn place_graph_node_without_overlap(
+    snarl: &mut Snarl<CanvasNode>,
+    measured_sizes: &BTreeMap<CanvasNode, Vec2>,
+    graph: mapping::NodeId,
+) {
+    let Some(id) = snarl
+        .node_ids()
+        .find_map(|(id, node)| (*node == CanvasNode::Graph(graph)).then_some(id))
+    else {
+        return;
+    };
+    let Some(info) = snarl.get_node_info(id) else {
+        return;
+    };
+    let initial = info.pos;
+    let size = node_size(CanvasNode::Graph(graph), measured_sizes);
+    let left = initial.x - NODE_GAP;
+    let right = initial.x + size.x + NODE_GAP;
+    if !initial.y.is_finite() || !left.is_finite() || !right.is_finite() {
+        return;
+    }
+    let mut blocked: Vec<_> = snarl
+        .nodes_pos_ids()
+        .filter_map(|(other, position, node)| {
+            if other == id {
+                return None;
+            }
+            let other_size = node_size(*node, measured_sizes);
+            let bottom = position.y + other_size.y + NODE_GAP;
+            let top = position.y - NODE_GAP;
+            let other_right = position.x + other_size.x;
+            (position.x.is_finite()
+                && other_right.is_finite()
+                && top.is_finite()
+                && bottom.is_finite()
+                && position.x < right
+                && left < other_right)
+                .then_some((top, bottom))
+        })
+        .collect();
+    blocked.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut y = initial.y;
+    for (top, bottom) in blocked {
+        if y < bottom && top < y + size.y {
+            y = bottom;
+        }
+    }
+    if y.is_finite()
+        && let Some(info) = snarl.get_node_info_mut(id)
+    {
+        info.pos.y = y;
+    }
+}
+
 fn layout_positions(
     snarl: &Snarl<CanvasNode>,
     measured_sizes: &BTreeMap<CanvasNode, Vec2>,
@@ -1048,6 +1104,45 @@ mod tests {
                 .all(|position| position.x + 180.0 <= MIN_COMPACT_WIDTH)
         );
         assert_eq!(snarl.wires().collect::<Vec<_>>(), wires);
+    }
+
+    #[test]
+    fn placing_one_node_uses_measured_rectangles_and_keeps_every_other_node() {
+        let mut snarl = Snarl::new();
+        let old = snarl.insert_node_collapsed(pos2(267.0, 112.0), CanvasNode::Graph(7));
+        let nearby = snarl.insert_node(pos2(310.0, 249.0), CanvasNode::Graph(71));
+        let endpoint = snarl.insert_node(pos2(500.0, 390.0), CanvasNode::TargetBlock(0));
+        let fresh = snarl.insert_node(pos2(289.0, 125.0), CanvasNode::Graph(103));
+        connect(&mut snarl, old, 0, nearby, 0);
+        connect(&mut snarl, fresh, 0, endpoint, 0);
+        let measured = BTreeMap::from([
+            (CanvasNode::Graph(7), vec2(235.0, 110.0)),
+            (CanvasNode::Graph(71), vec2(240.0, 149.0)),
+            (CanvasNode::TargetBlock(0), vec2(210.0, 170.0)),
+            (CanvasNode::Graph(103), vec2(220.0, 130.0)),
+        ]);
+        let retained = [old, nearby, endpoint].map(|id| (id, snarl.get_node_info(id).unwrap().pos));
+        let wires = snarl.wires().collect::<Vec<_>>();
+
+        place_graph_node_without_overlap(&mut snarl, &measured, 103);
+
+        let position = snarl.get_node_info(fresh).unwrap().pos;
+        assert_eq!(position.x, 289.0);
+        assert!(position.y > 125.0, "nearby rectangles also block placement");
+        let rect = egui::Rect::from_min_size(position, measured[&CanvasNode::Graph(103)]);
+        for (id, previous) in retained {
+            assert_eq!(snarl.get_node_info(id).unwrap().pos, previous);
+            let other = egui::Rect::from_min_size(previous, measured[&snarl[id]]);
+            assert!(!rect.intersects(other.expand(NODE_GAP - 0.01)));
+        }
+        assert!(!snarl.get_node_info(old).unwrap().open);
+        assert_eq!(snarl.wires().collect::<Vec<_>>(), wires);
+        let once = position;
+        place_graph_node_without_overlap(&mut snarl, &measured, 103);
+        assert_eq!(snarl.get_node_info(fresh).unwrap().pos, once);
+        snarl.get_node_info_mut(fresh).unwrap().pos = pos2(900.0, 125.0);
+        place_graph_node_without_overlap(&mut snarl, &measured, 103);
+        assert_eq!(snarl.get_node_info(fresh).unwrap().pos, pos2(900.0, 125.0));
     }
 
     #[test]

@@ -19,6 +19,7 @@ fn emitted_package_enforces_source_and_normalized_target_patterns()
         .with_json_patterns(target_patterns)
         .ok_or("target pattern metadata is valid")?;
     let program = Program {
+        xml_boundary: None,
         source,
         extra_sources: Vec::new(),
         target,
@@ -61,6 +62,7 @@ fn emitted_package_uses_rust_float_lexicals_for_string_targets()
         .with_json_patterns(target_patterns)
         .ok_or("target pattern metadata is valid")?;
     let program = Program {
+        xml_boundary: None,
         source: SchemaNode::scalar("Source", ScalarType::Float),
         extra_sources: Vec::new(),
         target,

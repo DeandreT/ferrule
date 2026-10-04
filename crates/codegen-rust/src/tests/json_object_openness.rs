@@ -45,6 +45,7 @@ fn object_openness_program() -> Result<Program, &'static str> {
     let mut target = source.clone();
     target.name = "Target".into();
     Ok(Program {
+        xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {
             name: "NamedOpen".into(),

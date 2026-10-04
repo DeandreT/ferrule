@@ -29,6 +29,7 @@ mod sequence_context;
 mod sequences;
 mod source_document_path;
 mod user_functions;
+mod xml_document_boundary;
 mod xml_mixed_content;
 mod xml_serialize;
 

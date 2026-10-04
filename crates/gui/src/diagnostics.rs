@@ -1,5 +1,67 @@
 use std::path::PathBuf;
 
+/// Format a known virtual binding only after resolving its exact typed owner.
+/// Engine/CLI issue text and serialized mapping field identities stay unchanged.
+pub(crate) fn validation_display_message(
+    project: &mapping::Project,
+    issue: &engine::ValidationIssue,
+) -> String {
+    let missing_type_prefix = format!(
+        "binding for `{}` references missing node ",
+        ir::XML_TYPE_FIELD
+    );
+    if !issue.message.starts_with(&missing_type_prefix) {
+        return issue.to_string();
+    }
+    let Some(engine::ValidationOwner::Scope(owner)) = &issue.owner else {
+        return issue.to_string();
+    };
+    let mut scope = match &owner.target {
+        engine::ValidationEndpoint::Target => &project.root,
+        engine::ValidationEndpoint::NamedTarget { index, name } => {
+            let Some(target) = project
+                .extra_targets
+                .get(*index)
+                .filter(|target| target.name == *name)
+            else {
+                return issue.to_string();
+            };
+            &target.root
+        }
+        _ => return issue.to_string(),
+    };
+    for step in &owner.path {
+        let next = match step {
+            engine::ValidationScopeStep::Child(index) => scope.children.get(*index),
+            engine::ValidationScopeStep::DynamicChild(index) => {
+                scope.dynamic_children.get(*index).map(|child| &child.scope)
+            }
+            engine::ValidationScopeStep::Segment(index) => {
+                let mapping::ScopeIteration::Concatenate(segments) = &scope.iteration else {
+                    return issue.to_string();
+                };
+                segments.iter().nth(*index)
+            }
+        };
+        let Some(next) = next else {
+            return issue.to_string();
+        };
+        scope = next;
+    }
+    let missing = scope.bindings.iter().find(|binding| {
+        binding.target_field == ir::XML_TYPE_FIELD
+            && !project.graph.nodes.contains_key(&binding.node)
+            && issue.message == format!("{missing_type_prefix}{}", binding.node)
+    });
+    match missing {
+        Some(binding) => format!(
+            "{}: binding for `XML type` references missing node {}",
+            issue.location, binding.node
+        ),
+        None => issue.to_string(),
+    }
+}
+
 /// Ownership belongs to the project snapshot that produced these diagnostics.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DiagnosticLocation {
@@ -70,16 +132,21 @@ impl Diagnostic {
 
     #[cfg(test)]
     pub fn validation(project: &mapping::Project, issue: engine::ValidationIssue) -> Self {
-        Self::validation_with_fingerprint(issue, &crate::layout_store::project_fingerprint(project))
+        Self::validation_with_fingerprint(
+            project,
+            issue,
+            &crate::layout_store::project_fingerprint(project),
+        )
     }
 
     pub(crate) fn validation_with_fingerprint(
+        project: &mapping::Project,
         issue: engine::ValidationIssue,
         fingerprint: &str,
     ) -> Self {
         Self {
             level: DiagnosticLevel::Error,
-            message: issue.to_string(),
+            message: validation_display_message(project, &issue),
             location: issue.owner.map(DiagnosticLocation::Validation),
             project_fingerprint: Some(fingerprint.to_string()),
         }
@@ -129,7 +196,7 @@ impl Diagnostics {
             "Validation",
             issues
                 .into_iter()
-                .map(|issue| Diagnostic::validation_with_fingerprint(issue, &fingerprint)),
+                .map(|issue| Diagnostic::validation_with_fingerprint(project, issue, &fingerprint)),
         );
     }
 

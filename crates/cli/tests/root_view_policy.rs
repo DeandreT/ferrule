@@ -115,7 +115,7 @@ fn project() -> Project {
 
 const XML: &[u8]=br#"<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Derived" Code="c" Extra="e"/>"#;
 #[test]
-fn root_view_policy_defaults_options_and_generated_refusal() {
+fn root_view_policy_defaults_options_and_generated_adapter() {
     let value = serde_json::to_value(FormatOptions::default()).unwrap();
     assert!(value.get("xml_root_view_read_policy").is_none());
     let project = project();
@@ -124,11 +124,11 @@ fn root_view_policy_defaults_options_and_generated_refusal() {
         serde_json::to_value(&project.source_options).unwrap()["xml_root_view_read_policy"],
         true
     );
-    let diagnostics = format!("{:?}", codegen::lower(&project).unwrap_err().diagnostics());
-    assert!(
-        diagnostics.contains("observed XML root-view input adapters"),
-        "{diagnostics}"
-    );
+    let lowered = codegen::lower(&project).unwrap();
+    let boundary = lowered.xml_boundary.unwrap();
+    assert!(boundary.input.root_view_policy);
+    assert!(boundary.input.allow_inactive_root_type_members);
+    assert!(boundary.output.schema_hints.is_none());
     for changed in 0..4 {
         let mut invalid = project.clone();
         match changed {

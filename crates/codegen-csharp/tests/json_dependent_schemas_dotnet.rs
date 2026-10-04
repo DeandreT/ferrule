@@ -186,6 +186,7 @@ fn program() -> Result<Program, &'static str> {
     )?;
 
     Ok(Program {
+        xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {
             name: "Config".into(),

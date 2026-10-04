@@ -84,13 +84,13 @@ fn imported_root_profile_filesystem_and_payload_execution_match() {
 }
 
 #[test]
-fn generated_boundary_refusal_remains_after_public_roundtrip() {
+fn generated_boundary_lowers_after_public_roundtrip() {
     let directory = Directory::new();
     let mapping = directory.0.join("mapping.mfd");
     mfd::export(&project(Shape::Fanout, true, false), &mapping).unwrap();
     let imported = mfd::import(&mapping).unwrap().project;
-    let error = codegen::lower(&imported).unwrap_err();
-    assert!(format!("{:?}", error.diagnostics()).contains("observed XML root-view input adapters"));
+    let program = codegen::lower(&imported).unwrap();
+    assert!(program.xml_boundary.unwrap().input.root_view_policy);
     assert!(!directory.0.join("generated").exists());
 }
 
@@ -182,18 +182,14 @@ fn public_commands_roundtrip_and_refuse_before_publication() {
             "--language",
             language,
             "--out",
-            "generated",
+            language,
         ];
         if language == "rust" {
             args.extend(["--rust-runtime-path", runtime.to_str().unwrap()]);
         }
         let output = run(&args);
-        assert!(!output.status.success());
-        assert!(
-            String::from_utf8_lossy(&output.stderr)
-                .contains("observed XML root-view input adapters")
-        );
-        assert!(!directory.0.join("generated").exists());
+        assert!(output.status.success(), "{:?}", output);
+        assert!(directory.0.join(language).is_dir());
     }
     let mapping_path = directory.0.join("mapping.mfd");
     let text = std::fs::read_to_string(&mapping_path)

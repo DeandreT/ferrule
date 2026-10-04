@@ -72,7 +72,7 @@ fn frame(
             ..Default::default()
         },
         |ui| {
-            show_scope_editor(
+            let _ = show_scope_editor(
                 ui,
                 scope,
                 graph,
@@ -81,6 +81,9 @@ fn frame(
                 ScopeEditorOwner {
                     nested: false,
                     primary_root_bindings,
+                    target_xml_types: &[],
+                    target_xml_default: None,
+                    target_type_editable: false,
                 },
                 ScopeOutputProfile::ReadOnly(
                     "XML element output selection is available on child scopes",

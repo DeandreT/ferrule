@@ -6,6 +6,7 @@ fn repeated_copy_current_source_emits_owned_groups_and_executes()
     let row =
         SchemaNode::group("Row", vec![SchemaNode::scalar("Name", ScalarType::String)]).repeating();
     let program = Program {
+        xml_boundary: None,
         source: SchemaNode::group("Source", vec![row.clone()]),
         extra_sources: Vec::new(),
         target: SchemaNode::group("Target", vec![row]),

@@ -1,6 +1,79 @@
 use super::*;
 
 impl FerruleApp {
+    pub(super) fn apply_selected_target_xml_type(
+        &mut self,
+        action: &crate::target_xml_type::Action,
+    ) {
+        let target = match self.mapping_workspace.active {
+            MappingDocument::Main => None,
+            MappingDocument::Target(index) => Some(index),
+            MappingDocument::Function(_) => return,
+        };
+        match crate::target_xml_type::apply(&mut self.project, target, &self.selected_scope, action)
+        {
+            Ok(true) => {
+                if let Some(index) = target {
+                    let nodes = self
+                        .mapping_workspace
+                        .target_canvases
+                        .get(&index)
+                        .map(|canvas| CanvasLayout::capture_nodes(&canvas.snarl))
+                        .unwrap_or_default();
+                    let mut snarl = canvas_build::build_named_target_snarl(&self.project, index);
+                    CanvasLayout::apply_nodes(&nodes, &mut snarl);
+                    if let Some(canvas) = self.mapping_workspace.target_canvases.get_mut(&index) {
+                        // Keep this named document's search, viewport, and
+                        // endpoint scroll state while updating its bindings.
+                        canvas.snarl = snarl;
+                    } else {
+                        self.mapping_workspace
+                            .target_canvases
+                            .insert(index, CanvasDocumentState::with_snarl(snarl));
+                    }
+                } else {
+                    self.rebuild_snarl_preserving_positions();
+                }
+                if matches!(action, crate::target_xml_type::Action::Declared(_)) {
+                    let root = target
+                        .and_then(|index| self.project.extra_targets.get(index))
+                        .map_or(&self.project.root, |target| &target.root);
+                    let expression = crate::auto_connect::scope_at(root, &self.selected_scope)
+                        .and_then(|scope| {
+                            scope
+                                .bindings
+                                .iter()
+                                .find(|binding| binding.target_field == ir::XML_TYPE_FIELD)
+                        })
+                        .map(|binding| binding.node);
+                    let canvas = match target {
+                        Some(index) => self.mapping_workspace.target_canvases.get_mut(&index),
+                        None => Some(&mut self.main_canvas),
+                    };
+                    if let (Some(expression), Some(canvas)) = (expression, canvas) {
+                        crate::canvas_layout::place_graph_node_without_overlap(
+                            &mut canvas.snarl,
+                            &canvas.node_sizes,
+                            expression,
+                        );
+                    }
+                }
+                self.status = "target XML type updated".to_string();
+                let issues = cli::validate(&self.project);
+                if issues.is_empty() {
+                    self.diagnostics.clear();
+                } else {
+                    self.diagnostics.validation(&self.project, issues);
+                }
+            }
+            Ok(false) => {}
+            Err(error) => {
+                self.status = "target XML type edit failed".to_string();
+                self.diagnostics.error("Target XML type edit failed", error);
+            }
+        }
+    }
+
     pub(super) fn show_scope_controls(&mut self, ui: &mut egui::Ui) {
         let target_index = match self.mapping_workspace.active {
             MappingDocument::Target(index) => Some(index),
