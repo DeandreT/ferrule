@@ -1,0 +1,118 @@
+use std::error::Error;
+use std::path::Path;
+
+use codegen_runtime::{ExecutionContext, JsonBoundaryError, RuntimeError, XmlBoundaryError};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+
+#[path = "structured_xml_snapshot.rs.txt"]
+mod snapshot;
+
+fn physical(xml: &str) -> Json {
+    let document = roxmltree::Document::parse(xml).expect("public XML output must parse");
+    let root = document.root_element();
+    let text = |node: roxmltree::Node<'_, '_>, name: &str| {
+        node.children().find(|child| child.is_element() && child.tag_name().name() == name)
+            .and_then(|child| child.text()).map(str::to_owned)
+    };
+    let articles = root.children().filter(|node| node.is_element() && node.tag_name().name() == "Article")
+        .map(|article| {
+            let stats = article.children().find(|child| child.is_element() && child.tag_name().name() == "Stats").expect("constructed Stats");
+            let maybe = stats.children().find(|child| child.is_element() && child.tag_name().name() == "Maybe");
+            let maybe_bits = maybe.and_then(|node| node.text()).and_then(|value| value.parse::<f64>().ok()).map(|value| format!("{:016x}", value.to_bits()));
+            let quotes = article.children().filter(|node| node.is_element() && node.tag_name().name() == "SinglePrice")
+                .map(|quote| {
+                    let lexical = quote.text().expect("quote text");
+                    let value = lexical.parse::<f64>().expect("finite numeric quote");
+                    assert!(value.is_finite());
+                    json!({"discount":quote.attribute("discount"),"lexical":lexical,"bits":format!("{:016x}", value.to_bits())})
+                }).collect::<Vec<_>>();
+            json!({"number":text(article,"Number"),"name":text(article,"Name"),"counter":text(stats,"Counter"),
+                "maybe_nil":maybe.is_some_and(|node| matches!(node.attribute(("http://www.w3.org/2001/XMLSchema-instance","nil")),Some("true"|"1"))),
+                "maybe_bits":maybe_bits,"quotes":quotes})
+        }).collect::<Vec<_>>();
+    json!({"root":root.tag_name().name(),"namespace":root.tag_name().namespace().unwrap_or(""),"code":root.attribute("Code"),
+        "stamp":text(root,"Stamp"),"active":text(root,"Active"),"main":text(root,"Main"),"articles":articles})
+}
+
+fn boundary(result: Result<String, XmlBoundaryError>) -> Json {
+    match result {
+        Ok(xml) => json!({"kind":"ok","physical":physical(&xml),"xml":xml}),
+        Err(error) => {
+            let mut function = None;
+            let mut found = None;
+            let mut runtime_error = None;
+            let mut runtime_value = None;
+            let mut source = error.source();
+            while let Some(current) = source {
+                if let Some(RuntimeError::Function(codegen_runtime::FunctionError::TypeMismatch { function: name, got })) = current.downcast_ref::<RuntimeError>() {
+                    function = Some(*name); found = Some(*got);
+                }
+                if let Some(RuntimeError::MissingRuntimeValue { value }) = current.downcast_ref::<RuntimeError>() {
+                    runtime_error = Some("MissingRuntimeValue"); runtime_value = Some(format!("{value:?}"));
+                }
+                source = current.source();
+            }
+            json!({"kind":format!("{:?}",error.kind),"detail":error.detail,"raw_debug":format!("{error:?}"),
+                "function":function,"found":found,"runtime_error":runtime_error,"runtime_value":runtime_value,"no_output":true})
+        }
+    }
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    assert_eq!(args.len(), 3, "cases source-descriptor exact-project-path");
+    let cases: Json = serde_json::from_slice(&std::fs::read(&args[0])?)?;
+    let descriptor = std::fs::read_to_string(&args[1])?;
+    let context = ExecutionContext::new(Path::new(&args[2])).with_current_datetime("2026-10-03T00:00:00Z");
+    for test in cases.as_array().expect("case list") {
+        let case = test["case"].as_str().expect("case name");
+        let xml = test["xml"].as_str().expect("XML input");
+        let emit = |api: &str, result: Json| println!("{}", json!({"case":case,"api":api,"result":result}));
+        emit("xml", boundary(generated::execute_xml(xml)));
+        emit("xml-context", boundary(generated::execute_xml_with_context(xml, &context)));
+        emit("bytes", boundary(generated::execute_xml_bytes(xml.as_bytes()).map(|output| String::from_utf8(output).expect("UTF8 public bytes"))));
+        emit("bytes-context", boundary(generated::execute_xml_bytes_with_context(xml.as_bytes(), &context).map(|output| String::from_utf8(output).expect("UTF8 public bytes"))));
+        for (api, input) in [
+            ("source", codegen_runtime::parse_structured_xml(&descriptor, xml)),
+            ("source-bytes", codegen_runtime::parse_structured_xml_bytes(&descriptor, xml.as_bytes())),
+        ] {
+            match input {
+                Ok(input) => emit(api, json!({"kind":"ok","snapshot":snapshot::snapshot(&input)})),
+                Err(error) => emit(api, json!({"kind":format!("{:?}",error.kind),"detail":error.detail,"no_result":true})),
+            }
+        }
+        match codegen_runtime::parse_structured_xml(&descriptor, xml) {
+            Ok(input) => for (api, result) in [
+                ("typed", generated::execute(&input)),
+                ("typed-context", generated::execute_with_context(&input, &context)),
+            ] {
+                match result {
+                    Ok(output) => emit(api, json!({"kind":"ok","snapshot":snapshot::snapshot(&output)})),
+                    Err(error) => emit(api, json!({"kind":"Mapping","detail":error.to_string(),"raw_debug":format!("{error:?}"),"no_result":true})),
+                }
+            },
+            Err(_) => for api in ["typed","typed-context"] { emit(api, json!({"kind":"blocked_input","attempted":false})); },
+        }
+        if case == "nominal" {
+            let input = r#"{"Code":"batch","NeedContext":false,"Order":[{"Id":101,"Label":"bolt😀","Price":48,"Details":{"Counter":7}},{"Id":202,"Label":"nut&washer","Price":10,"Details":{"Counter":8,"Maybe":6.5}}]}"#;
+            let result = match generated::execute_json(input) {
+                Ok(output) => json!({"kind":"ok","json":output}),
+                Err(error) => {
+                    let kind = match &error {
+                        JsonBoundaryError::InvalidOutput { .. } => "InvalidOutput",
+                        JsonBoundaryError::Execution(_) => "Execution",
+                        JsonBoundaryError::InvalidInput { .. } => "InvalidInput",
+                        JsonBoundaryError::InvalidEmbeddedSchema { .. } => "InvalidEmbeddedSchema",
+                        JsonBoundaryError::EmbeddedSchemaTooLarge { .. } => "EmbeddedSchemaTooLarge",
+                        JsonBoundaryError::InputTooLarge { .. } => "InputTooLarge",
+                        JsonBoundaryError::OutputTooLarge { .. } => "OutputTooLarge",
+                    };
+                    json!({"kind":kind,"detail":error.to_string(),"raw_debug":format!("{error:?}"),"no_output":true})
+                }
+            };
+            emit("json-cardinality", result);
+        }
+    }
+    Ok(())
+}

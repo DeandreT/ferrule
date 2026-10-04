@@ -1,0 +1,131 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+if (args.Length != 3) throw new InvalidOperationException("cases source-descriptor exact-project-path");
+using var cases = JsonDocument.Parse(File.ReadAllText(args[0]));
+var descriptor = File.ReadAllText(args[1]);
+var context = new FerruleExecutionContext(args[2], args[2], "2026-10-03T00:00:00Z", null);
+var utf8 = new UTF8Encoding(false, true);
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var caseName = test.GetProperty("case").GetString()!;
+    var xml = test.GetProperty("xml").GetString()!;
+    void Emit(string api, object result) => Console.WriteLine(JsonSerializer.Serialize(new { @case = caseName, api, result }));
+    Emit("xml", Boundary(() => GeneratedMapping.ExecuteXml(xml)));
+    Emit("xml-context", Boundary(() => GeneratedMapping.ExecuteXml(xml, context)));
+    Emit("bytes", Boundary(() => utf8.GetString(GeneratedMapping.ExecuteXmlBytes(utf8.GetBytes(xml)))));
+    Emit("bytes-context", Boundary(() => utf8.GetString(GeneratedMapping.ExecuteXmlBytes(utf8.GetBytes(xml), context))));
+    foreach (var api in new[] { "source", "source-bytes" })
+    {
+        try
+        {
+            var input = api == "source" ? FerruleXml.ParseStructuredEmbedded(descriptor, xml)
+                : FerruleXml.ParseStructuredEmbeddedBytes(descriptor, utf8.GetBytes(xml));
+            Emit(api, new { kind = "ok", snapshot = Snapshot(input) });
+        }
+        catch (FerruleXmlBoundaryException error)
+        {
+            Emit(api, new { kind = error.Kind.ToString(), detail = error.Detail, no_result = true });
+        }
+    }
+    FerruleInstance? parsed = null;
+    try { parsed = FerruleXml.ParseStructuredEmbedded(descriptor, xml); }
+    catch (FerruleXmlBoundaryException) { }
+    foreach (var api in new[] { "typed", "typed-context" })
+    {
+        if (parsed is null) { Emit(api, new { kind = "blocked_input", attempted = false }); continue; }
+        try
+        {
+            var mapped = api == "typed" ? GeneratedMapping.Execute(parsed) : GeneratedMapping.Execute(parsed, context);
+            Emit(api, new { kind = "ok", snapshot = Snapshot(mapped) });
+        }
+        catch (FerruleRuntimeException error)
+        {
+            Emit(api, new { kind = "Mapping", detail = error.Message, runtime_error = error.Error.ToString(), no_result = true });
+        }
+    }
+    if (caseName == "nominal")
+    {
+        const string input = """{"Code":"batch","NeedContext":false,"Order":[{"Id":101,"Label":"bolt😀","Price":48,"Details":{"Counter":7}},{"Id":202,"Label":"nut&washer","Price":10,"Details":{"Counter":8,"Maybe":6.5}}]}""";
+        try { Emit("json-cardinality", new { kind = "ok", json = GeneratedMapping.ExecuteJson(input) }); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary && string.Equals(error.Message, "JSON field 'SinglePrice' expected one mapped item, got mapped sequence.", StringComparison.Ordinal))
+        {
+            Emit("json-cardinality", new { kind = "InvalidOutput", detail = error.Message, runtime_error = error.Error.ToString(), inner = error.InnerException?.Message, no_output = true });
+        }
+    }
+}
+
+static object Boundary(Func<string> run)
+{
+    try { var xml = run(); return new { kind = "ok", physical = Physical(xml), xml }; }
+    catch (FerruleXmlBoundaryException error)
+    {
+        var runtime = error.InnerException as FerruleRuntimeException;
+        return new { kind = error.Kind.ToString(), detail = error.Detail, function = runtime?.Function,
+            found = runtime?.FoundKind?.ToString(), runtime_error = runtime?.Error.ToString(),
+            runtime_value = runtime?.RuntimeValue?.ToString(), no_output = true };
+    }
+}
+
+static object Snapshot(FerruleInstance input) => input switch
+{
+    FerruleScalar scalar => Scalar(scalar.Value),
+    FerruleGroup group => new { kind = "Group", xml_type_origin = Origin(group.XmlTypeOrigin),
+        fields = group.Fields.Select(field => new { name = field.Name, instance = Snapshot(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(Snapshot).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(Snapshot).ToArray() },
+    _ => throw new InvalidOperationException("unexpected closed fixture instance variant"),
+};
+
+static object Origin(FerruleXmlTypeOrigin origin) => origin.Kind switch
+{
+    FerruleXmlTypeOriginKind.Unknown => new { kind = "Unknown" },
+    FerruleXmlTypeOriginKind.Absent => new { kind = "Absent" },
+    FerruleXmlTypeOriginKind.Explicit => new { kind = "Explicit", identity = origin.Identity },
+    FerruleXmlTypeOriginKind.ExplicitPadded => new { kind = "ExplicitPadded", literal = origin.Literal, resolved_identity = origin.Identity },
+    _ => throw new InvalidOperationException("unexpected XML type origin"),
+};
+
+static object Scalar(FerruleValue value) => value.Kind switch
+{
+    FerruleValueKind.Null => new { kind = "Scalar", tag = "Null" },
+    FerruleValueKind.JsonNull => new { kind = "Scalar", tag = "JsonNull" },
+    FerruleValueKind.XmlNil => new { kind = "Scalar", tag = "XmlNil" },
+    FerruleValueKind.Bool => new { kind = "Scalar", tag = "Bool", value = value.BooleanValue },
+    FerruleValueKind.Int64 => new { kind = "Scalar", tag = "Int", value = value.Int64Value },
+    FerruleValueKind.Double => new { kind = "Scalar", tag = "Float", bits_hex = BitConverter.DoubleToUInt64Bits(value.DoubleValue).ToString("x16", CultureInfo.InvariantCulture) },
+    FerruleValueKind.String => new { kind = "Scalar", tag = "String", value = value.StringValue },
+    _ => throw new InvalidOperationException("unexpected scalar tag"),
+};
+
+static object Physical(string xml)
+{
+    using var text = new StringReader(xml);
+    using var reader = XmlReader.Create(text, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+    var root = XDocument.Load(reader).Root ?? throw new InvalidOperationException("output root");
+    string? Child(XElement element, string name) => element.Elements().FirstOrDefault(child => child.Name.LocalName == name)?.Value;
+    var articles = root.Elements().Where(element => element.Name.LocalName == "Article").Select(article =>
+    {
+        var stats = article.Elements().First(element => element.Name.LocalName == "Stats");
+        var maybe = stats.Elements().FirstOrDefault(element => element.Name.LocalName == "Maybe");
+        var quotes = article.Elements().Where(element => element.Name.LocalName == "SinglePrice").Select(quote =>
+        {
+            var number = double.Parse(quote.Value, CultureInfo.InvariantCulture);
+            if (!double.IsFinite(number)) throw new InvalidOperationException("nonfinite quote");
+            return new { discount = (string?)quote.Attribute("discount"), lexical = quote.Value,
+                bits = BitConverter.DoubleToUInt64Bits(number).ToString("x16", CultureInfo.InvariantCulture) };
+        }).ToArray();
+        return new { number = Child(article, "Number"), name = Child(article, "Name"), counter = Child(stats, "Counter"),
+            maybe_nil = (string?)maybe?.Attribute(XName.Get("nil", "http://www.w3.org/2001/XMLSchema-instance")) is "true" or "1",
+            maybe_bits = double.TryParse(maybe?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                ? BitConverter.DoubleToUInt64Bits(value).ToString("x16", CultureInfo.InvariantCulture) : null,
+            quotes };
+    }).ToArray();
+    return new { root = root.Name.LocalName, @namespace = root.Name.NamespaceName, code = (string?)root.Attribute("Code"),
+        stamp = Child(root, "Stamp"), active = Child(root, "Active"), main = Child(root, "Main"), articles };
+}

@@ -274,6 +274,87 @@ impl ScopeContext<'_> {
         }))
     }
 
+    /// Reads a statically validated SourceField expression. An absolute path
+    /// owned by the active collection cannot borrow a value from another item.
+    /// Ordinary relative paths retain innermost-to-outermost broadcast lookup.
+    pub fn resolve_source_field(&self, path: &[&str]) -> Result<Value, SourcePathError> {
+        let owned_path = owned_path(path);
+        for frame in self.frames.iter().rev() {
+            let Some(collection) = &frame.collection else {
+                continue;
+            };
+            let prefix = collection.path();
+            if !prefix.is_empty() && has_prefix(path, prefix) {
+                return resolve_source_field_in(
+                    frame.instance,
+                    &path[prefix.len()..],
+                    &owned_path,
+                    prefix.len(),
+                );
+            }
+        }
+
+        let mut first_owner = None;
+        let mut first_absence = None;
+        for frame in self.frames.iter().rev() {
+            match resolve_scalar_in(frame.instance, path, &owned_path, 0) {
+                Ok(value) => return Ok(value),
+                Err(error) => {
+                    let owns_path = path.is_empty()
+                        || first_repeated(frame.instance)
+                            .is_some_and(|instance| instance.field(path[0]).is_some());
+                    if owns_path && first_owner.is_none() {
+                        first_owner = Some((frame.instance, path, 0));
+                    }
+                    if matches!(error, SourcePathError::MissingField { .. })
+                        && first_absence.is_none()
+                    {
+                        first_absence = Some((frame.instance, path, 0));
+                    }
+                }
+            }
+        }
+        if let Some((name, rest)) = path.split_first()
+            && let Some(input) = self.named_input(name)
+        {
+            match resolve_scalar_in(input, rest, &owned_path, 1) {
+                Ok(value) => return Ok(value),
+                Err(_) if first_owner.is_none() => first_owner = Some((input, rest, 1)),
+                Err(_) => {}
+            }
+        }
+        match first_owner.or(first_absence) {
+            Some((instance, suffix, offset)) => {
+                resolve_source_field_in(instance, suffix, &owned_path, offset)
+            }
+            None => self.resolve_scalar(path),
+        }
+    }
+
+    /// Reads a statically validated field only in its exact active frame.
+    /// Missing groups and intermediate Null/JsonNull are absence; malformed non-null
+    /// values and inactive frames retain the strict traversal errors.
+    pub fn resolve_source_field_in_frame(
+        &self,
+        frame: &[&str],
+        path: &[&str],
+    ) -> Result<Value, SourcePathError> {
+        let mut absolute_path = owned_path(frame);
+        absolute_path.extend(path.iter().map(|segment| (*segment).to_string()));
+        let Some(owner) = self.frames.iter().rev().find(|scope_frame| {
+            scope_frame.collection.as_ref().is_some_and(|collection| {
+                same_path(frame, collection.path())
+                    || !collection.path().is_empty() && has_suffix(frame, collection.path())
+            })
+        }) else {
+            return Err(SourcePathError::MissingFrame {
+                frame: owned_path(frame),
+                path: owned_path(path),
+            });
+        };
+        resolve_source_field_in(owner.instance, path, &absolute_path, frame.len())
+    }
+
     /// Resolves `path` only against the innermost active collection matching
     /// the absolute `frame` path.
     ///
@@ -356,6 +437,49 @@ fn resolve_scalar_in(
         })?;
     }
 
+    let Some(current) = first_repeated(current) else {
+        return Ok(Value::Null);
+    };
+    current
+        .as_scalar()
+        .cloned()
+        .ok_or_else(|| SourcePathError::ExpectedScalar {
+            path: owned_path.to_vec(),
+            found: InstanceKind::of(current),
+        })
+}
+
+// Absence is lenient only for generated SourceField expressions. The public
+// strict scalar and complete-instance traversal helpers keep their contracts.
+fn resolve_source_field_in(
+    source: &Instance,
+    path: &[&str],
+    owned_path: &[String],
+    segment_offset: usize,
+) -> Result<Value, SourcePathError> {
+    let mut current = source;
+    for (segment, field_name) in path.iter().enumerate() {
+        let Some(next) = first_repeated(current) else {
+            return Ok(Value::Null);
+        };
+        current = next;
+        if matches!(current, Instance::Scalar(Value::Null | Value::JsonNull(_))) {
+            return Ok(Value::Null);
+        }
+        let Some(next) = current.field(field_name) else {
+            let found = InstanceKind::of(current);
+            return if matches!(found, InstanceKind::Group | InstanceKind::DocumentSet) {
+                Ok(Value::Null)
+            } else {
+                Err(SourcePathError::CannotTraverse {
+                    path: owned_path.to_vec(),
+                    segment: segment_offset + segment,
+                    found,
+                })
+            };
+        };
+        current = next;
+    }
     let Some(current) = first_repeated(current) else {
         return Ok(Value::Null);
     };

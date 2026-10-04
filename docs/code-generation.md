@@ -351,7 +351,7 @@ nonasserting format metadata; raw parsed input keys and normalized emitted
 keys are checked, including the empty string. Nullable
 object null bypasses these name assertions. These APIs
 intentionally use JSON regardless of stored project paths or format options.
-Supported primary XML root-view mappings also have the XML document APIs below.
+Supported primary XML mappings also have the XML document APIs below.
 Hosts needing other physical formats should use the interpreter payload API
 or adapt a typed `Instance` at their own boundary.
 Dynamic JSON documents share the 64 MiB per-document limit and additionally
@@ -359,7 +359,7 @@ have a 256 MiB combined budget per execution.
 
 ## XML Host Boundary
 
-Supported primary XML root-view mappings also expose XML document entry points:
+Supported primary XML mappings expose XML document entry points:
 
 | Input and result | Rust | C# |
 | --- | --- | --- |
@@ -370,11 +370,46 @@ Supported primary XML root-view mappings also expose XML document entry points:
 
 These entry points parse the source XML using the embedded source schema,
 execute the generated mapping, and return one serialized primary target.
-They preserve the source reader's observed root type identity and physical
-attribute presence. A required primary-root field fails only when the mapping
-evaluates its read, so a conditional branch can leave that read unevaluated.
 JSON entry points continue to parse JSON; they do not reconstruct an XML type
 annotation that was absent from their input.
+
+### Closed Ordinary Structured Input
+
+The `Structured` input profile reads one closed primary XML document into
+nested groups, repeated fields, attributes and String, Int, Float or Bool
+leaves. Nillable scalar leaves and attribute-only or scalar-text groups are
+supported. Absent scalars remain Null, absent groups remain omitted, present
+empty groups remain present, and repeated fields retain every matching item.
+Singular fields select their first matching occurrence.
+
+Both source and target options must be defaults with only `xml_document=true`.
+The source reader flags `xml_allow_inactive_root_type_members` and
+`xml_root_view_read_policy` remain false. Named or dynamic inputs and named
+outputs do not receive these XML adapters. Derived-type alternatives,
+runtime-named fields, generic or mixed-content elements, recursive schemas,
+fixed/default values and JSON-only constraints are outside this input profile.
+
+Schema names and physical element, attribute, prefix and processing-instruction
+names use the supported BMP XML name range. Schema data attributes named
+`xmlns` reject in every namespace. Physical prefixed local `xmlns` attributes
+and `xmlns:xmlns` declarations also reject, including content the schema would
+ignore. These conservative restrictions do not change the general XML reader.
+Input requires valid UTF-8, permits a BOM and a UTF-8 declaration, and refuses
+DTDs. Numeric leaves retain strict typed lexical and finite-number checks.
+
+This adapter is optional for ordinary XML format identity. Unsupported ordinary
+input or target shapes can retain otherwise supported typed/JSON core lowering
+without XML entry points. Embedded schema validation still runs before emission:
+successful lowering alone does not guarantee that an artifact tree can be
+produced. An observed root-view policy remains a separate strict request and
+does not fall back to `Structured`.
+
+### Observed Root-View Input
+
+The existing `RootView` profile preserves the source reader's observed root
+type identity and physical attribute presence. A required primary-root field
+fails only when the mapping evaluates its read, so a conditional branch can
+leave that read unevaluated.
 
 The admitted source is a closed, nonrepeating XML root with 1–32 String
 attributes, 2–32 declared type alternatives, an explicit default type, and
@@ -384,6 +419,8 @@ qualified or explicitly unqualified names. Its input options must enable
 Named or dynamic XML document inputs and named document outputs remain outside
 this adapter. Unsupported input or target schemas fail during generation,
 before the artifact destination is created.
+
+### Output and Limits
 
 The target supports closed structured XML, including nested and repeating
 fields and known `xsi:type` alternatives. Runtime-named elements, substitution
@@ -409,15 +446,40 @@ and output policy. Byte input must be valid UTF-8, and oversized input is
 rejected before parsing or mapping. Serialization checks the output limit
 before returning a document.
 
+The ordinary `Structured` reader also enforces these independent resource
+counts; they are acceptance limits rather than memory estimates:
+
+| Structured input budget | Maximum |
+| --- | ---: |
+| Logical schema depth and physical element depth | 64 each |
+| Embedded descriptor JSON container depth, including ignored properties | 127 |
+| Schema nodes, physical nodes and materialized Instance nodes | 1,000,000 each |
+| Materialized field-name/String bytes and numeric-text temporaries | 64 MiB |
+| Projection work | 100,000,000 |
+| Raw `<` plus `=` reservation slots | 1,000,000 |
+| Conservative namespace references | 1,000,000 |
+| Parser structural work | 100,000,000 |
+| Normalized namespace registry UTF-8 bytes | 64 MiB |
+
+Descriptor JSON nesting is separate from logical schema depth. Its container
+limit can refuse a schema before the logical depth bound is reached; for example,
+42 single-child groups followed by a scalar have logical depth 43 and require
+128 JSON containers.
+The emitter checks descriptor transport before returning artifacts. Schema and
+document byte limits can likewise mask a later node or work limit.
+
 Rust returns `codegen_runtime::XmlBoundaryError`; C# throws
 `FerruleXmlBoundaryException`. Both distinguish `Schema`, `DocumentLimit`,
 `Utf8`, `Input`, `Mapping`, and `Output` failures. `DocumentLimit` failures
 retain the observed byte count and limit. Mapping failures retain the original typed
 runtime error, including a required primary-root field's node and path.
+Parser-resource guard failures retain the underlying resource identifier,
+observed count and limit. Those units remain separate from document-byte errors.
 
-These are in-memory document APIs. Parsed instances, mapping intermediates,
-serialization buffers, and caller-owned inputs can coexist, so the document
-limits do not establish a peak memory limit or provide streaming execution.
+These are eager in-memory document APIs. The reader builds a DOM and an Instance;
+parsed instances, mapping intermediates, serialization buffers and caller-owned
+inputs can coexist. Document and resource counts do not establish a peak memory
+limit or provide streaming execution.
 
 ## Runnable Hosts
 

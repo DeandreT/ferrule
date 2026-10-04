@@ -66,6 +66,8 @@ mod sequence_context;
 mod sequence_reducers;
 #[path = "code_generation/static_sources.rs"]
 mod static_sources;
+#[path = "code_generation/structured_xml_public.rs"]
+mod structured_xml_public;
 #[path = "code_generation/value_maps.rs"]
 mod value_maps;
 #[path = "code_generation/xml_text.rs"]
