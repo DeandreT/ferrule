@@ -171,7 +171,7 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     children.iter().find_map(unsupported_schema_feature)
 }
 
-/// The admitted document adapter owns only one closed primary String root.
+/// Each admitted document adapter owns one primary source and output policy.
 pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramValidationError> {
     let Some(policy) = &program.xml_boundary else {
         return Ok(());
@@ -179,13 +179,21 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
     let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
         reason: reason.to_owned(),
     };
-    if !policy.input.root_view_policy
-        || !policy.input.allow_inactive_root_type_members
-        || !ir::xml_root_view_read_policy_is_supported(&program.source)
-    {
-        return Err(reject(
-            "requires the closed observed primary XML root input policy",
-        ));
+    match policy.input.profile() {
+        Some(crate::XmlInputProfile::RootView)
+            if ir::xml_root_view_read_policy_is_supported(&program.source) => {}
+        Some(crate::XmlInputProfile::Structured)
+            if ir::xml_structured_document_input_is_supported(&program.source) => {}
+        Some(crate::XmlInputProfile::Structured) => {
+            return Err(reject(
+                "requires the closed ordinary structured XML input policy",
+            ));
+        }
+        _ => {
+            return Err(reject(
+                "requires the closed observed primary XML root input policy",
+            ));
+        }
     }
     if !program.extra_sources.is_empty() || !program.extra_targets.is_empty() {
         return Err(reject(

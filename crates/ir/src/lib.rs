@@ -15,6 +15,7 @@ mod primary_root;
 mod scalar_lexical;
 mod schema;
 mod xml_schema_hints;
+mod xml_structured_input;
 mod xml_type_origin;
 pub use xml_schema_hints::{
     MAX_XML_SCHEMA_HINT_PAIRS, MAX_XML_SCHEMA_HINT_TOKEN_BYTES, XmlSchemaHints,
@@ -30,6 +31,14 @@ pub use primary_root::{
     primary_root_schema_has_scalar, primary_root_schema_has_type, primary_root_schema_is_supported,
     primary_root_type_identity_is_valid, primary_root_xml_type_equals,
     xml_inactive_root_type_members_are_supported, xml_root_view_read_policy_is_supported,
+};
+pub use xml_structured_input::{
+    MAX_STRUCTURED_XML_DEPTH, MAX_STRUCTURED_XML_DOCUMENT_BYTES,
+    MAX_STRUCTURED_XML_MATERIALIZED_BYTES, MAX_STRUCTURED_XML_MATERIALIZED_NODES,
+    MAX_STRUCTURED_XML_NAMESPACE_REFERENCES, MAX_STRUCTURED_XML_NAMESPACE_REGISTRY_BYTES,
+    MAX_STRUCTURED_XML_PARSER_RESERVATION_SLOTS, MAX_STRUCTURED_XML_PARSER_WORK,
+    MAX_STRUCTURED_XML_PHYSICAL_NODES, MAX_STRUCTURED_XML_PROJECTION_WORK,
+    MAX_STRUCTURED_XML_SCHEMA_NODES, xml_structured_document_input_is_supported,
 };
 pub use xml_type_origin::{XmlTypeOrigin, XmlTypeOriginError};
 

@@ -552,6 +552,96 @@ public sealed partial class ScopeContext
             $"Framed source scalar '{string.Join('/', fullPath)}' does not exist in the active scope context.");
     }
 
+    /// <summary>
+    /// Reads a validated SourceField. The first matching active collection owns
+    /// an absolute path even when an optional descendant is absent.
+    /// Ordinary relative fields retain their existing outward broadcast lookup.
+    /// </summary>
+    public FerruleValue ResolveSourceField(IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ValidatePath(path);
+        for (var index = _collections.Count - 1; index >= 0; index--)
+        {
+            var collection = _collections[index];
+            if (collection.Path.Count == 0 || !StartsWith(path, collection.Path))
+            {
+                continue;
+            }
+            var resolved = TryResolveScalar(collection.Item, path, collection.Path.Count, true);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.MissingSourceField,
+                $"Source scalar '{string.Join('/', path)}' does not exist in the active scope context.");
+        }
+
+        FerruleInstance? firstOwner = null;
+        FerruleInstance? firstAbsence = null;
+        for (var index = _frames.Count - 1; index >= 0; index--)
+        {
+            var instance = _frames[index];
+            var resolved = TryResolveScalar(instance, path, 0);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+            var candidate = instance is FerruleRepeated { Items.Count: > 0 } repeated
+                ? repeated.Items[0]
+                : instance;
+            if (firstOwner is null &&
+                (path.Count == 0 || TryGetField(candidate, path[0], out _)))
+            {
+                firstOwner = instance;
+            }
+            if (firstAbsence is null && resolved.MissingField)
+            {
+                firstAbsence = instance;
+            }
+        }
+        var selected = firstOwner ?? firstAbsence;
+        if (selected is not null)
+        {
+            var resolved = TryResolveScalar(selected, path, 0, true);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+        }
+        return ResolveScalar(path);
+    }
+
+    /// <summary>
+    /// Reads a validated field in its exact frame. Missing groups and an
+    /// intermediate Null/JsonNull yield Null; malformed values and inactive frames fail.
+    /// </summary>
+    public FerruleValue ResolveSourceFieldInFrame(
+        IReadOnlyList<string> frame,
+        IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(path);
+        ValidatePath(frame);
+        ValidatePath(path);
+        for (var index = _collections.Count - 1; index >= 0; index--)
+        {
+            var collection = _collections[index];
+            if (!FrameMatches(frame, collection.Path))
+            {
+                continue;
+            }
+            var resolved = TryResolveScalar(collection.Item, path, 0, true);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+            break;
+        }
+        return ResolveScalarInFrame(frame, path);
+    }
+
     /// <summary>Returns the active collection's 1-based position, or 1.</summary>
     public long Position(params string[] collection) =>
         Position((IReadOnlyList<string>)collection);
@@ -872,7 +962,8 @@ public sealed partial class ScopeContext
     private static ScalarResolution TryResolveScalar(
         FerruleInstance source,
         IReadOnlyList<string> path,
-        int pathIndex)
+        int pathIndex,
+        bool absenceAsNull = false)
     {
         var current = source;
         for (var index = pathIndex; index < path.Count; index++)
@@ -886,8 +977,18 @@ public sealed partial class ScopeContext
                 current = repeated.Items[0];
             }
 
+            if (absenceAsNull && current is FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull })
+            {
+                return ScalarResolution.Resolved(FerruleValue.Null);
+            }
             if (!TryGetField(current, path[index], out var next))
             {
+                if (current is FerruleGroup or FerruleDocumentSet)
+                {
+                    return absenceAsNull
+                        ? ScalarResolution.Resolved(FerruleValue.Null)
+                        : ScalarResolution.AbsentField;
+                }
                 return ScalarResolution.Missing;
             }
             current = next;
@@ -1034,9 +1135,11 @@ public sealed partial class ScopeContext
         bool Grouped = false,
         string? DocumentPath = null);
 
-    private readonly record struct ScalarResolution(bool Found, FerruleValue Value)
+    private readonly record struct ScalarResolution(bool Found, FerruleValue Value, bool MissingField = false)
     {
         internal static ScalarResolution Missing => default;
+
+        internal static ScalarResolution AbsentField => new(false, FerruleValue.Null, true);
 
         internal static ScalarResolution Resolved(FerruleValue value) => new(true, value);
     }

@@ -14,6 +14,8 @@ mod grouping_tests;
 mod join_tests;
 #[cfg(test)]
 mod named_tests;
+#[cfg(test)]
+mod source_field_tests;
 
 pub use grouping::GroupedItems;
 pub use join::{InnerJoinKey, InnerJoinStage};

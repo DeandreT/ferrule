@@ -738,7 +738,7 @@ mod tests {
         assert!(source.contains("return new global::Ferrule.Runtime.FerruleRepeated(items_1);"));
         assert!(!source.contains("FerruleInstance[] { item_1 }"));
         assert!(source.contains(
-            "context.ResolveScalarInFrame(new string[] { \"orders\", \"items\" }, new string[] { \"name\" })"
+            "context.ResolveSourceFieldInFrame(new string[] { \"orders\", \"items\" }, new string[] { \"name\" })"
         ));
         assert!(
             source.contains("FerruleValue.FromInt64(context.Position(new string[] { \"items\" }))")
