@@ -74,6 +74,8 @@ mod structured_xml_snapshot;
 mod value_maps;
 #[path = "code_generation/xml_dynamic_inputs.rs"]
 mod xml_dynamic_inputs;
+#[path = "code_generation/xml_dynamic_outputs.rs"]
+mod xml_dynamic_outputs;
 #[path = "code_generation/xml_input_sets.rs"]
 mod xml_input_sets;
 #[path = "code_generation/xml_output_sets.rs"]
@@ -711,7 +713,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 70,
+            files_written: 71,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -761,6 +763,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleValue.cs",
             "Runtime/FerruleValueMaps.cs",
             "Runtime/FerruleXml.Boundary.cs",
+            "Runtime/FerruleXml.DocumentSet.cs",
             "Runtime/FerruleXml.DynamicSources.cs",
             "Runtime/FerruleXml.Input.Structured.cs",
             "Runtime/FerruleXml.Input.StructuredProjection.cs",
