@@ -68,5 +68,27 @@ rejects targets, remote inputs, and other format-option combinations. Unknown or
 malformed type annotations and ordinary scalar validation remain errors; absent
 annotations retain their absence. Required-value failures are controlled by the
 mapping's reads rather than this input policy. File and payload entry points
-apply the same policy. These root expression nodes remain outside public `.mfd`
-import and export admission.
+apply the same policy. A bounded flat String-attribute root-view pattern
+supports `.mfd` import and export; other root expression graphs remain
+unsupported. See [XML root-view interoperability](mfd-interop.md#xml-root-view-interoperability).
+
+
+## Target XML type selection
+
+In the native editor, select a target group and use **XML type** in its scope
+inspector to choose one of that group’s declared XML types. The chooser is
+available for supported schema type alternatives on primary and named targets,
+including nested groups. The canvas shows the type binding as an **XML type**
+input beside the group’s ordinary fields.
+
+Choosing a declared type creates a separate constant for that binding. Other
+outputs that share the previous expression keep their values. Choose **Schema
+inference** to remove the explicit type binding and let the writer select from
+the populated fields and the schema default. Ambiguous inferred types fail when
+writing XML.
+
+The editor retains invalid imported type bindings and displays them for repair
+or removal. Opening the inspector does not rewrite them. Whole source group
+copies cannot gain a new explicit type binding; an existing invalid binding can
+still be removed. Type edits support undo, redo, and save/reopen, and retain
+canonical namespace-qualified type identities.

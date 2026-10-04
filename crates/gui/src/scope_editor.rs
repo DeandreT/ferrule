@@ -487,16 +487,22 @@ pub fn binding_target_fields(target: &SchemaNode, chain: &[String]) -> Vec<Strin
     }
     match &node.kind {
         SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Vec::new(),
-        SchemaKind::Group { children, .. } => children
-            .iter()
-            .filter(|child| {
-                matches!(
-                    child.kind,
-                    SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }
-                )
-            })
-            .map(|child| child.name.clone())
-            .collect(),
+        SchemaKind::Group { children, .. } => {
+            let mut fields: Vec<_> = children
+                .iter()
+                .filter(|child| {
+                    matches!(
+                        child.kind,
+                        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }
+                    )
+                })
+                .map(|child| child.name.clone())
+                .collect();
+            if !crate::target_xml_type::choices(node).is_empty() {
+                fields.push(ir::XML_TYPE_FIELD.to_string());
+            }
+            fields
+        }
     }
 }
 
@@ -568,9 +574,12 @@ fn show_scope_node(
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct ScopeEditorOwner {
+pub(crate) struct ScopeEditorOwner<'a> {
     pub nested: bool,
     pub primary_root_bindings: bool,
+    pub target_xml_types: &'a [String],
+    pub target_xml_default: Option<&'a str>,
+    pub target_type_editable: bool,
 }
 
 /// Edits `scope`'s sequence controls and bindings.
@@ -580,9 +589,9 @@ pub(crate) fn show_scope_editor(
     graph: &Graph,
     source_paths: &SourcePathCatalog,
     target_fields: &[String],
-    owner: ScopeEditorOwner,
+    owner: ScopeEditorOwner<'_>,
     output_profile: ScopeOutputProfile,
-) {
+) -> Option<crate::target_xml_type::Action> {
     let first_node = first_node_id(graph);
     ui.strong(if scope.target_field.is_empty() {
         "root scope".to_string()
@@ -594,6 +603,16 @@ pub(crate) fn show_scope_editor(
     if whole_group_copy {
         copy_controls::show_reason(ui);
     }
+    let type_action = crate::target_xml_type::show(
+        ui,
+        graph,
+        scope,
+        owner.target_xml_types,
+        owner.target_xml_default,
+        owner.target_type_editable
+            && scope.construction == ScopeConstruction::Constructed
+            && scope.concatenated().is_none(),
+    );
 
     output_controls::show(ui, scope, output_profile);
 
@@ -637,7 +656,7 @@ pub(crate) fn show_scope_editor(
                 ui.label("iteration:");
                 ui.label(format!("{} ordered row segments", segments.len()));
             });
-            return;
+            return type_action;
         }
         ScopeIteration::None
         | ScopeIteration::Source(_)
@@ -784,12 +803,16 @@ pub(crate) fn show_scope_editor(
                     .selected_text(if binding.target_field.is_empty() {
                         "<target field>"
                     } else {
-                        &binding.target_field
+                        crate::target_xml_type::field_label(&binding.target_field)
                     })
                     .width(130.0)
                     .show_ui(ui, |ui| {
                         for field in target_fields {
-                            ui.selectable_value(&mut binding.target_field, field.clone(), field);
+                            ui.selectable_value(
+                                &mut binding.target_field,
+                                field.clone(),
+                                crate::target_xml_type::field_label(field),
+                            );
                         }
                     });
                 ui.label("->");
@@ -815,10 +838,11 @@ pub(crate) fn show_scope_editor(
         let next_target = target_fields
             .iter()
             .find(|field| {
-                !scope
-                    .bindings
-                    .iter()
-                    .any(|binding| binding.target_field.as_str() == field.as_str())
+                field.as_str() != ir::XML_TYPE_FIELD
+                    && !scope
+                        .bindings
+                        .iter()
+                        .any(|binding| binding.target_field.as_str() == field.as_str())
             })
             .cloned();
         if ui
@@ -837,6 +861,7 @@ pub(crate) fn show_scope_editor(
             scope.bindings.push(Binding { target_field, node });
         }
     });
+    type_action
 }
 
 fn node_picker(

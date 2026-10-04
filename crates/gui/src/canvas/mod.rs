@@ -193,6 +193,9 @@ pub fn target_leaves(schema: &SchemaNode) -> Vec<TargetLeaf> {
     for child in children {
         collect_target(child, &mut Vec::new(), &mut out);
     }
+    // Append virtual fields after all physical fields, preserving existing
+    // pin order and endpoint block identities used by saved layouts.
+    collect_target_types(schema, &mut Vec::new(), &mut out);
     out
 }
 
@@ -220,12 +223,40 @@ pub fn target_blocks(schema: &SchemaNode) -> Vec<TargetBlock> {
 fn target_block(schema: &SchemaNode, chain: Vec<String>, leaves: Vec<TargetLeaf>) -> TargetBlock {
     let context = chain.last().cloned().unwrap_or_else(|| schema.name.clone());
     let title = format!("Target: {context}");
-    let pin_labels = leaves.iter().map(|leaf| leaf.field.clone()).collect();
+    let pin_labels = leaves
+        .iter()
+        .map(|leaf| crate::target_xml_type::field_label(&leaf.field).to_string())
+        .collect();
     TargetBlock {
         title,
         chain,
         leaves,
         pin_labels,
+    }
+}
+
+fn collect_target_types(node: &SchemaNode, chain: &mut Vec<String>, out: &mut Vec<TargetLeaf>) {
+    if !crate::target_xml_type::choices(node).is_empty() {
+        let label = if chain.is_empty() {
+            "XML type".to_string()
+        } else {
+            format!("{}/XML type", chain.join("/"))
+        };
+        out.push(TargetLeaf {
+            label,
+            chain: chain.clone(),
+            field: ir::XML_TYPE_FIELD.into(),
+            ty: ScalarDomain::Single(ir::ScalarType::String),
+        });
+    }
+    if let SchemaKind::Group { children, .. } = &node.kind {
+        for child in children {
+            if matches!(child.kind, SchemaKind::Group { .. }) {
+                chain.push(child.name.clone());
+                collect_target_types(child, chain, out);
+                chain.pop();
+            }
+        }
     }
 }
 

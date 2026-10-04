@@ -24,6 +24,7 @@ fn unique_items_program() -> Result<Program, &'static str> {
         .with_json_unique_items()
         .ok_or("test target array accepts uniqueItems")?;
     Ok(Program {
+        xml_boundary: None,
         source: SchemaNode::group(
             "Source",
             vec![

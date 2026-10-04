@@ -12,6 +12,7 @@ use ir::ScalarType;
 use crate::{EmitError, literal};
 
 mod failures;
+mod xml_api;
 
 struct ScopePlan<'a> {
     repeating: bool,
@@ -55,6 +56,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     );
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     render_json_entry_points(program, &mut output)?;
+    xml_api::render(program, &mut output)?;
     failures::render(&program.failure_rules, &mut output);
     for function in &program.user_functions {
         render_user_function(function, &functions, &mut output)?;

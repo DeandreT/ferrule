@@ -57,6 +57,7 @@ mod tests {
 
     fn program() -> Program {
         Program {
+            xml_boundary: None,
             source: SchemaNode::group("schema source", Vec::new()),
             extra_sources: Vec::new(),
             target: SchemaNode::group(

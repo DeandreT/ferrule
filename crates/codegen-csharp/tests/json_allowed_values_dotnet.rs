@@ -43,6 +43,7 @@ fn emitted_package_enforces_source_and_normalized_target_allowed_values()
         )?],
     );
     let program = Program {
+        xml_boundary: None,
         source,
         extra_sources: Vec::new(),
         target,
