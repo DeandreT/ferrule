@@ -437,6 +437,23 @@ pub struct XmlInputPolicy {
     pub root_view_policy: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XmlInputProfile {
+    RootView,
+    Structured,
+}
+
+impl XmlInputPolicy {
+    /// Mixed observed-reader flags never select an ordinary fallback.
+    pub const fn profile(self) -> Option<XmlInputProfile> {
+        match (self.allow_inactive_root_type_members, self.root_view_policy) {
+            (true, true) => Some(XmlInputProfile::RootView),
+            (false, false) => Some(XmlInputProfile::Structured),
+            _ => None,
+        }
+    }
+}
+
 /// Literal output policy; schema locations are never opened or path-resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XmlOutputPolicy {

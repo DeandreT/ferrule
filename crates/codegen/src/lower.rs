@@ -28,6 +28,23 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     }
 
     let primary_xml = project.source_options.xml_root_view_read_policy;
+    // Ordinary XML format identity does not make adapter support mandatory.
+    // Existing core-only generation survives an unproved ordinary schema.
+    let ordinary_xml = !project.source_options.xml_allow_inactive_root_type_members
+        && !primary_xml
+        && project.extra_sources.is_empty()
+        && project.extra_targets.is_empty()
+        && project.source_options
+            == (mapping::FormatOptions {
+                xml_document: true,
+                ..Default::default()
+            })
+        && project.target_options
+            == (mapping::FormatOptions {
+                xml_document: true,
+                ..Default::default()
+            })
+        && ir::xml_structured_document_input_is_supported(&project.source);
     let mut reader_diagnostics: Vec<_> = project
         .extra_sources
         .iter()
@@ -149,13 +166,13 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     if !diagnostics.is_empty() {
         return Err(LowerError::new(diagnostics));
     }
-    let program = Program {
-        xml_boundary: primary_xml.then(|| crate::XmlBoundaryProgram {
+    let mut program = Program {
+        xml_boundary: (primary_xml || ordinary_xml).then(|| crate::XmlBoundaryProgram {
             input: crate::XmlInputPolicy {
                 allow_inactive_root_type_members: project
                     .source_options
                     .xml_allow_inactive_root_type_members,
-                root_view_policy: true,
+                root_view_policy: primary_xml,
             },
             output: crate::XmlOutputPolicy {
                 schema_hints: project.target_options.xml_schema_hints.clone(),
@@ -171,6 +188,16 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         root,
         extra_targets,
     };
+    if ordinary_xml
+        && matches!(
+            validate_program(&program),
+            Err(ProgramValidationError::InvalidXmlBoundary { .. })
+        )
+    {
+        // This optional adapter is removed only for ordinary format identity.
+        // Observed input policies above retain their strict typed refusal.
+        program.xml_boundary = None;
+    }
     if let Err(error) = validate_program(&program) {
         let diagnostic = portable_context_error(&error).unwrap_or_else(|| Diagnostic::Validation {
             location: "code generation".into(),
@@ -978,5 +1005,87 @@ fn unsupported_function(node: NodeId, function: &str) -> Diagnostic {
     Diagnostic::UnsupportedFunction {
         node,
         function: function.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod structured_xml_admission_tests {
+    use super::*;
+    use ir::{ScalarType, Value};
+
+    fn project() -> Project {
+        Project {
+            source: SchemaNode::group(
+                "Source",
+                vec![SchemaNode::scalar("Value", ScalarType::String)],
+            ),
+            target: SchemaNode::group(
+                "Target",
+                vec![SchemaNode::scalar("Value", ScalarType::String)],
+            ),
+            source_path: None,
+            target_path: None,
+            source_options: mapping::FormatOptions {
+                xml_document: true,
+                ..Default::default()
+            },
+            target_options: mapping::FormatOptions {
+                xml_document: true,
+                ..Default::default()
+            },
+            extra_sources: Vec::new(),
+            extra_targets: Vec::new(),
+            failure_rules: Vec::new(),
+            user_functions: BTreeMap::new(),
+            graph: Graph {
+                nodes: BTreeMap::from([(
+                    0,
+                    Node::Const {
+                        value: Value::String("mapped".into()),
+                    },
+                )]),
+            },
+            root: Scope {
+                bindings: vec![mapping::Binding {
+                    target_field: "Value".into(),
+                    node: 0,
+                }],
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn ordinary_xml_adds_an_optional_adapter_without_rejecting_existing_core_generation() {
+        let mut project = project();
+        assert_eq!(
+            lower(&project)
+                .unwrap()
+                .xml_boundary
+                .unwrap()
+                .input
+                .profile(),
+            Some(crate::XmlInputProfile::Structured)
+        );
+        let SchemaKind::Group { children, .. } = &mut project.source.kind else {
+            unreachable!()
+        };
+        children[0].default = Some("fallback".into());
+        assert!(lower(&project).unwrap().xml_boundary.is_none());
+        project.source_options.xml_root_view_read_policy = true;
+        assert!(lower(&project).is_err());
+    }
+
+    #[test]
+    fn ordinary_xml_keeps_global_explicit_hint_refusal_and_format_identity_optional() {
+        let mut project = project();
+        project.source_options.xml_document = false;
+        assert!(lower(&project).unwrap().xml_boundary.is_none());
+        project.source_options.xml_document = true;
+        project.target_options.xml_schema_hints = Some(ir::XmlSchemaHints {
+            no_namespace_location: Some("literal.xsd".into()),
+            ..Default::default()
+        });
+        assert!(lower(&project).is_err());
     }
 }

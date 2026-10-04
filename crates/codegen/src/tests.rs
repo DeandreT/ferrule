@@ -28,6 +28,7 @@ mod scalar_functions;
 mod sequence_context;
 mod sequences;
 mod source_document_path;
+mod structured_xml_transport;
 mod user_functions;
 mod xml_document_boundary;
 mod xml_mixed_content;
