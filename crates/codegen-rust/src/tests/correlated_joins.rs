@@ -992,7 +992,7 @@ fn main() {
         .args(["run", "--quiet"])
         .env("EXPECTED_OUTPUT", format!("{expected:?}"))
         .current_dir(output.path())
-        .output()
+        .generated_host_output(output.path())
         .expect("generated package starts");
     assert!(
         run.status.success(),

@@ -258,8 +258,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
-        .output()?;
+        .generated_host_output(output.path())?;
     assert!(
         run.status.success(),
         "generated property-dependency mapping failed:\nstdout:\n{}\nstderr:\n{}",
