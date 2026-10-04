@@ -215,6 +215,7 @@ fn document_boundary_program() -> Program {
             root_view_policy: true,
         },
         output: crate::XmlOutputPolicy::default(),
+        extra_inputs: Vec::new(),
         extra_outputs: Vec::new(),
     });
     program

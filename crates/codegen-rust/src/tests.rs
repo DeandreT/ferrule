@@ -42,6 +42,7 @@ mod json_unique_items;
 mod recursive_filter;
 mod scalar_functions;
 mod scalar_union;
+mod xml_inputs;
 mod xml_mixed_content;
 mod xml_serialize;
 
@@ -782,15 +783,40 @@ let context_outputs =
 assert_eq!(context_outputs, outputs);
 
 let missing_extra = source_without_extra(Value::Int(8), Value::Int(2), Value::Bool(true));
-for error in [
+for actual in [
     sample_map::execute(&missing_extra),
     sample_map::execute_with_context(&missing_extra, &execution),
 ] {
-    assert!(matches!(
-        error,
-        Err(RuntimeError::SourcePath(SourcePathError::MissingField { field, .. }))
-            if field == "ExtraOnly"
-    ));
+    assert_eq!(actual.unwrap(), expected);
+}
+let mut absent_outputs = outputs.clone();
+absent_outputs.extras[1].instance = group([field("Status", scalar(Value::Null))]);
+for actual in [
+    sample_map::execute_outputs(&missing_extra),
+    sample_map::execute_outputs_with_context(&missing_extra, &execution),
+] {
+    assert_eq!(actual.unwrap(), absent_outputs);
+}
+
+// A malformed named target dependency still aborts every primary-only call.
+let mut malformed_extra = missing_extra.clone();
+let Instance::Group(fields) = &mut malformed_extra else { unreachable!() };
+fields.push(field("ExtraOnly", group([])));
+let expected_error = || RuntimeError::SourcePath(SourcePathError::ExpectedScalar {
+    path: vec!["ExtraOnly".into()],
+    found: codegen_runtime::InstanceKind::Group,
+});
+for actual in [
+    sample_map::execute(&malformed_extra),
+    sample_map::execute_with_context(&malformed_extra, &execution),
+] {
+    assert_eq!(actual, Err(expected_error()));
+}
+for actual in [
+    sample_map::execute_outputs(&malformed_extra),
+    sample_map::execute_outputs_with_context(&malformed_extra, &execution),
+] {
+    assert_eq!(actual, Err(expected_error()));
 }
 
 let arithmetic = sample_map::execute(&source(
@@ -820,11 +846,14 @@ let missing = group([
     field("Name", scalar(Value::String("Ada".to_string()))),
     field("Condition", scalar(Value::Bool(true))),
 ]);
-assert!(matches!(
+// Null crosses the user-function boundary and fails at its numeric add call.
+assert_eq!(
     sample_map::execute(&missing),
-    Err(RuntimeError::SourcePath(SourcePathError::MissingField { field, .. }))
-        if field == "First"
-));
+    Err(RuntimeError::Function(FunctionError::TypeMismatch {
+        function: "add",
+        got: "null",
+    })),
+);
 }
 
 fn source(first: Value, second: Value, condition: Value) -> Instance {

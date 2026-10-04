@@ -1,5 +1,11 @@
 //! Explicit primary XML document boundaries. JSON codecs never invent XML origins.
 
+mod input_set;
+pub use input_set::{
+    MAX_XML_INPUT_ARTIFACTS, MAX_XML_INPUT_SET_BYTES, XmlExecutionError, XmlInputSetBudget,
+    XmlInputSetResourceError, XmlInputSource, preflight_xml_input_sizes, xml_input_indices,
+};
+
 mod namespace;
 mod output_set;
 pub use output_set::{
