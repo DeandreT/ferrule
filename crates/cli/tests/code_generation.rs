@@ -58,6 +58,8 @@ mod runtime_values;
 mod scalar_algorithms;
 #[path = "code_generation/scalar_functions.rs"]
 mod scalar_functions;
+#[path = "code_generation/scalar_total_corpus.rs"]
+mod scalar_total_corpus;
 #[path = "code_generation/sequence_context.rs"]
 mod sequence_context;
 #[path = "code_generation/sequence_reducers.rs"]
