@@ -385,13 +385,13 @@ supported. Absent scalars remain Null, absent groups remain omitted, present
 empty groups remain present, and repeated fields retain every matching item.
 Singular fields select their first matching occurrence.
 
-Source options for the primary and every static named input must be defaults
+Source options for the primary and every named input must be defaults
 with only `xml_document=true`. Each input has its own closed embedded schema.
 Each primary or static named target must likewise have XML identity and can
 retain its own literal XML schema hints.
 The source reader flags `xml_allow_inactive_root_type_members` and
-`xml_root_view_read_policy` remain false. Dynamic sources and document sets do
-not receive these XML adapters. Derived-type alternatives,
+`xml_root_view_read_policy` remain false. One dynamic source can use the separate
+loader methods below; document sets do not receive these XML adapters. Derived-type alternatives,
 runtime-named fields, generic or mixed-content elements, recursive schemas,
 fixed/default values and JSON-only constraints are outside this input profile.
 
@@ -522,11 +522,90 @@ its existing eight single-input methods and original observed parser; it does
 not gain the new with-sources APIs. Observed flags with named inputs remain
 strict refusals.
 
-An unproved ordinary named source, dynamic source, unsupported format or
-schema, or excessive declared count omits the entire optional XML adapter,
+An unproved ordinary input, unsupported format or schema, more than one dynamic
+source, or excessive declared count omits the entire optional XML adapter,
 while preserving otherwise supported typed/JSON core generation. Valid literal
 output hints remain optional metadata during that fallback. Generation never
 silently drops a named input or output.
+
+### Dynamic XML Input Loader
+
+An admitted `Structured` project with one dynamic named source adds eight loader
+methods. The input list contains every declared static source and excludes the
+dynamic source. Requests begin only when evaluation reaches a dynamic scope;
+that scope loads its driver documents eagerly before target projection. These
+methods return the primary document or the complete output set:
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| Text, primary | `execute_xml_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlWithSourcesAndDynamicSourceLoader` |
+| UTF-8 bytes, primary | `execute_xml_bytes_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesWithSourcesAndDynamicSourceLoader` |
+| Text, output set | `execute_xml_outputs_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlOutputsWithSourcesAndDynamicSourceLoader` |
+| UTF-8 bytes, output set | `execute_xml_bytes_outputs_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesOutputsWithSourcesAndDynamicSourceLoader` |
+
+Rust context variants replace `_with_sources_and_dynamic_source_loader` with
+`_with_sources_context_and_dynamic_source_loader`. C# context variants replace
+`WithSourcesAndDynamicSourceLoader` with
+`WithSourcesContextAndDynamicSourceLoader`. Arguments are primary input, static
+input list, execution context when present, and loader last.
+
+The host implements `DynamicXmlSourceLoader::load` in Rust or
+`IFerruleDynamicXmlSourceLoader.Load` in C# and returns original UTF-8 bytes for
+the requested source name and logical path. The host resolves, authorizes and
+confines that path. Generated libraries do no file or network I/O and do not cache documents. A
+reached dynamic scope loads its driver documents eagerly before that scope's
+filters and windows; it requests no documents beyond evaluated scopes. Returned
+bytes are parsed against that dynamic
+source's embedded closed schema, with the same per-document parser and
+materialization limits as other `Structured` inputs.
+
+Initial name and document-shape checks, all primary/static document sizes,
+combined original bytes and initial parsing finish before any loader callback.
+The live input budget starts with primary and supplied static documents. Before each
+callback, it reserves one of the 4,096 document slots; repeated requests count
+separately. A rejected reservation invokes no host callback. A host failure
+consumes its reserved slot but charges no document bytes. Returned documents
+are checked against 64 MiB before their original bytes are charged to the shared
+256 MiB budget, then decoded and parsed. One budget covers the entire execution,
+including requests needed by different targets. Output limits remain separate.
+
+These methods retain `XmlExecutionError` / `FerruleXmlExecutionException`.
+Only this adapter's product-input refusals add `request` / `Request`, containing
+the original zero-based source declaration index, declared name, logical path,
+one-based callback reservation ordinal and `callback_invoked` / `CallbackInvoked`.
+The input owner uses the full declaration index, even when static and dynamic
+sources are interleaved. Count refusal reports the next ordinal with callback
+false; a returned-document refusal reports callback true. The original XML
+boundary and typed cause remain available through the error chain. A host load
+failure stays an unowned `Mapping` error with its original runtime cause, even
+if the host throws an XML boundary exception in C#. Global name errors, path
+errors, missing-loader errors, mapping failures and output failures have no
+dynamic request metadata. Output failures retain their output owner.
+
+The existing no-loader methods retain their signatures, error wrappers and
+lazy missing-loader behavior. Reaching a dynamic scope requires a loader before
+enumerating its drivers, including an empty or all-absent driver collection.
+An unused dynamic declaration does not trigger a callback or a missing-loader
+failure. Absent or explicit JSON-null paths skip their driver; `XmlNil` is not
+an absent path. A pre-target mapping failure can stop execution before a dynamic
+scope is reached. All targets map before serialization, and any failure returns
+no primary document or partial output set.
+
+Low-level `XmlDynamicSourceAdapter` / `FerruleXmlDynamicSourceAdapter` instances
+are for one execution and are terminal after any failed load, including a host
+failure. Only the first failed load may be recovered; do not retry a load or
+reuse its adapter for another execution. Restoring a product refusal in Rust
+requires the original returned nonempty marker `String` to stay live and move unchanged through the
+typed `DynamicSourceLoad` error into synchronous `recover`; cloned text does not
+identify it. C# product recovery requires the original private exception
+reference wrapped by the typed loader. The generated methods construct a fresh adapter
+and abort and recover immediately, so hosts normally implement only the raw
+loader interface.
+
+These limits admit original input bytes and callback counts. They do not bound
+caller buffers, eager parsed instances or mapping allocations, and are not
+streaming or process-RSS guarantees. The host must keep input buffers stable
+for the duration of the call.
 
 ### Static Named Output Sets
 
@@ -571,11 +650,12 @@ do not bound eager typed-target allocations or peak process memory.
 
 Hand-built code-generation programs must also provide
 `XmlBoundaryProgram.extra_inputs`: `Vec::new()` for zero named inputs, otherwise
-one `NamedXmlInputPolicy` per static source in exact declaration order, with its
+one `NamedXmlInputPolicy` per named source in exact declaration order, with its
 exact name and a `Structured` input policy (both observed flags false). The
-corresponding schema stays in `Program.extra_sources`. Missing, reordered or
-surplus policies, dynamic sources and observed named policies reject before
-emission. Existing `RootView` programs use an empty `extra_inputs` vector.
+corresponding schema stays in `Program.extra_sources`, including the dynamic
+declaration when present. Missing, reordered or surplus policies, more than one
+dynamic source and observed named policies reject before emission. Existing
+`RootView` programs use an empty `extra_inputs` vector.
 
 `XmlBoundaryProgram.extra_outputs` remains required:
 an empty vector for one output, or one exact named policy per declared target

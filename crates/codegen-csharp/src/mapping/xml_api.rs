@@ -1,3 +1,4 @@
+mod dynamic_inputs;
 mod named_inputs;
 
 use crate::{EmitError, literal};
@@ -70,6 +71,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
     output.push_str("    private static readonly global::System.Text.UTF8Encoding XmlOutputUtf8 = new(false, true);\n");
     if profile == XmlInputProfile::Structured {
         named_inputs::render(program, output)?;
+        dynamic_inputs::render(program, output);
     }
     for bytes in [false, true] {
         let name = if bytes {

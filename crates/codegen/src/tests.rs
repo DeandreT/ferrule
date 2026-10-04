@@ -31,6 +31,7 @@ mod source_document_path;
 mod structured_xml_transport;
 mod user_functions;
 mod xml_document_boundary;
+mod xml_dynamic_inputs;
 mod xml_input_sets;
 mod xml_mixed_content;
 mod xml_output_sets;

@@ -9,6 +9,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
     let names = program
         .extra_sources
         .iter()
+        .filter(|source| source.dynamic.is_none())
         .map(|source| literal::string(&source.name))
         .collect::<Vec<_>>()
         .join(", ");
@@ -25,6 +26,22 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
             literal::string(&descriptor)
         ));
     }
+    let static_sources = program
+        .extra_sources
+        .iter()
+        .enumerate()
+        .filter(|(_, source)| source.dynamic.is_none())
+        .collect::<Vec<_>>();
+    let has_dynamic = program
+        .extra_sources
+        .iter()
+        .any(|source| source.dynamic.is_some());
+    let budget_return_type = if has_dynamic {
+        ", global::Ferrule.Runtime.FerruleXmlInputSetBudget Budget"
+    } else {
+        ""
+    };
+    let budget_return_value = if has_dynamic { ", budget" } else { "" };
     for bytes in [false, true] {
         let stem = if bytes {
             "ExecuteXmlBytes"
@@ -106,7 +123,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
         }
         output.push_str(&format!(r#"
     private static (global::Ferrule.Runtime.FerruleInstance Primary,
-        global::System.Collections.Generic.IReadOnlyList<NamedInput> Inputs) {parse_helper}(
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> Inputs{budget_return_type}) {parse_helper}(
         {ty} source, global::System.Collections.Generic.IReadOnlyList<{input}> extraSources)
     {{
         global::System.ArgumentNullException.ThrowIfNull(source);
@@ -133,9 +150,9 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
                 .to_owned()
         };
         output.push_str(&format!("        var primaryBytes = {primary_size};\n        global::Ferrule.Runtime.FerruleXmlInputSetBudget.RequireDocumentSize(primaryOwner, primaryBytes);\n"));
-        for (index, source) in program.extra_sources.iter().enumerate() {
+        for (static_index, (index, source)) in static_sources.iter().enumerate() {
             let name = literal::string(&source.name);
-            output.push_str(&format!("        var owner_{index} = global::Ferrule.Runtime.FerruleXmlInputSource.Named({index}, {name});\n        var input_{index} = extraSources[indices[{index}]].Document;\n        global::System.ArgumentNullException.ThrowIfNull(input_{index});\n"));
+            output.push_str(&format!("        var owner_{index} = global::Ferrule.Runtime.FerruleXmlInputSource.Named({index}, {name});\n        var input_{index} = extraSources[indices[{static_index}]].Document;\n        global::System.ArgumentNullException.ThrowIfNull(input_{index});\n"));
             let size = if bytes {
                 format!("input_{index}.LongLength")
             } else {
@@ -146,16 +163,18 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
             output.push_str(&format!("        var bytes_{index} = {size};\n        global::Ferrule.Runtime.FerruleXmlInputSetBudget.RequireDocumentSize(owner_{index}, bytes_{index});\n"));
         }
         output.push_str("        budget.Charge(primaryOwner, primaryBytes);\n");
-        for index in 0..program.extra_sources.len() {
+        for (index, _) in &static_sources {
             output.push_str(&format!(
                 "        budget.Charge(owner_{index}, bytes_{index});\n"
             ));
         }
-        output.push_str(&format!("        global::Ferrule.Runtime.FerruleInstance primary;\n        try {{ primary = global::Ferrule.Runtime.FerruleXml.{parser}(SourceXmlSchema, source); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(primaryOwner, error); }}\n        var parsedInputs = new global::System.Collections.Generic.List<NamedInput>({});\n", program.extra_sources.len()));
-        for (index, source) in program.extra_sources.iter().enumerate() {
+        output.push_str(&format!("        global::Ferrule.Runtime.FerruleInstance primary;\n        try {{ primary = global::Ferrule.Runtime.FerruleXml.{parser}(SourceXmlSchema, source); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(primaryOwner, error); }}\n        var parsedInputs = new global::System.Collections.Generic.List<NamedInput>({});\n", static_sources.len()));
+        for (index, source) in &static_sources {
             output.push_str(&format!("        try {{ parsedInputs.Add(new NamedInput({}, global::Ferrule.Runtime.FerruleXml.{parser}(ExtraXmlInputSchema_{index}, input_{index}))); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(owner_{index}, error); }}\n", literal::string(&source.name)));
         }
-        output.push_str("        return (primary, parsedInputs);\n    }\n");
+        output.push_str(&format!(
+            "        return (primary, parsedInputs{budget_return_value});\n    }}\n"
+        ));
     }
     Ok(())
 }
