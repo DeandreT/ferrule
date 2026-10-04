@@ -13,13 +13,17 @@ public sealed record FerruleXmlInputSource(FerruleXmlInputSourceKind Kind, int? 
 public sealed class FerruleXmlExecutionException : Exception
 {
     private FerruleXmlExecutionException(FerruleXmlInputSource? input, FerruleXmlOutputTarget? output,
-        FerruleXmlBoundaryException boundary)
+        FerruleXmlBoundaryException boundary, FerruleXmlDynamicInputRequest? request = null)
         : base(input is not null ? $"XML input {input}: {boundary.Message}" :
             output is not null ? $"XML output {output}: {boundary.Message}" : boundary.Message, boundary)
-    { Input = input; Output = output; Boundary = boundary; }
+    { Input = input; Output = output; Boundary = boundary; Request = request; }
     public FerruleXmlInputSource? Input { get; }
     public FerruleXmlOutputTarget? Output { get; }
     public FerruleXmlBoundaryException Boundary { get; }
+    public FerruleXmlDynamicInputRequest? Request { get; }
+    public static FerruleXmlExecutionException ForDynamicInput(FerruleXmlDynamicInputRequest request,
+        FerruleXmlBoundaryException boundary) =>
+        new(FerruleXmlInputSource.Named(request.DeclarationIndex, request.Source), null, boundary, request);
     public static FerruleXmlExecutionException ForInput(FerruleXmlInputSource input, FerruleXmlBoundaryException boundary) =>
         new(input, null, boundary);
     public static FerruleXmlExecutionException Unowned(FerruleXmlBoundaryException boundary) => new(null, null, boundary);
@@ -46,12 +50,23 @@ public sealed class FerruleXmlInputSetBudget
     public const long MaximumDocumentBytes = 64L * 1024 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private ulong _bytes;
+    private ulong _artifacts;
 
     public FerruleXmlInputSetBudget(long artifactCount)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(artifactCount);
         if ((ulong)artifactCount > MaximumArtifacts)
             throw Refusal(null, "xml_input_artifact_count", (ulong)artifactCount, MaximumArtifacts);
+        _artifacts = (ulong)artifactCount;
+    }
+
+    /// <summary>Reserves one actual callback; a refused reservation never calls the host.</summary>
+    public void Reserve(FerruleXmlInputSource source)
+    {
+        var observed = _artifacts == ulong.MaxValue ? ulong.MaxValue : _artifacts + 1;
+        if (observed > MaximumArtifacts)
+            throw Refusal(source, "xml_input_artifact_count", observed, MaximumArtifacts);
+        _artifacts = observed;
     }
 
     public void Charge(FerruleXmlInputSource source, long utf8Bytes)
