@@ -43,10 +43,34 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             );
             let source_type = if bytes { "&[u8]" } else { "&str" };
             let result_type = if bytes { "Vec<u8>" } else { "String" };
-            let parser = if bytes {
-                "parse_xml_bytes"
-            } else {
-                "parse_xml"
+            let (parser, input_arguments) = match policy.input.profile() {
+                Some(codegen::XmlInputProfile::RootView) => (
+                    if bytes {
+                        "parse_xml_bytes"
+                    } else {
+                        "parse_xml"
+                    },
+                    format!(
+                        ", {}, {}",
+                        policy.input.allow_inactive_root_type_members,
+                        policy.input.root_view_policy
+                    ),
+                ),
+                Some(codegen::XmlInputProfile::Structured) => (
+                    if bytes {
+                        "parse_structured_xml_bytes"
+                    } else {
+                        "parse_structured_xml"
+                    },
+                    String::new(),
+                ),
+                None => {
+                    return Err(EmitError::InvalidProgram(
+                        codegen::ProgramValidationError::InvalidXmlBoundary {
+                            reason: "mixed XML input profile flags".into(),
+                        },
+                    ));
+                }
             };
             let context_arg = if context {
                 ", execution: &ExecutionContext<'_>"
@@ -61,11 +85,10 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             let result = if bytes { "xml.into_bytes()" } else { "xml" };
             output.push_str(&format!(
                 "pub fn {name}(source: {source_type}{context_arg}) -> Result<{result_type}, codegen_runtime::XmlBoundaryError> {{\n\
-                 let parsed = codegen_runtime::{parser}(SOURCE_XML_SCHEMA, source, {}, {})?;\n\
+                 let parsed = codegen_runtime::{parser}(SOURCE_XML_SCHEMA, source{input_arguments})?;\n\
                  let mapped = {execution}?;\n\
                  let xml = codegen_runtime::serialize_xml_document(TARGET_XML_SCHEMA, &mapped, {}, {}, {namespace}, {hints})?;\n\
                  Ok({result})\n}}\n\n",
-                policy.input.allow_inactive_root_type_members, policy.input.root_view_policy,
                 policy.output.declaration, policy.output.indent));
         }
     }

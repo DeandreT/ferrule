@@ -360,7 +360,7 @@ fn emits_deterministic_rust_project() {
     assert!(source.contains("repeated_1.push(scalar(value_1))"));
     assert!(source.contains("scope_root_0(context)?"));
     assert!(source.contains("let candidates = context.walk_source(&[\"Parents\", \"Children\"]);"));
-    assert!(source.contains("context.resolve_scalar_in_frame(&[\"Parents\"], &[\"Id\"])"));
+    assert!(source.contains("context.resolve_source_field_in_frame(&[\"Parents\"], &[\"Id\"])"));
     assert!(source.contains("Ok(Value::Int(context.position(&[\"Children\"]) as i64))"));
     assert!(source.contains("let filter_value = expression_16(&item_context)?;"));
     assert!(source.contains("if !require_bool(16, filter_value)?"));

@@ -1,0 +1,40 @@
+use ir::{Instance, Value, XmlTypeOrigin};
+use serde_json::{Value as Json, json};
+
+pub fn snapshot(instance: &Instance) -> Json {
+    match instance {
+        Instance::Scalar(value) => match value {
+            Value::Null => json!({"kind":"Scalar","tag":"Null"}),
+            Value::JsonNull(_) => json!({"kind":"Scalar","tag":"JsonNull"}),
+            Value::XmlNil(_) => json!({"kind":"Scalar","tag":"XmlNil"}),
+            Value::Bool(value) => json!({"kind":"Scalar","tag":"Bool","value":value}),
+            Value::Int(value) => json!({"kind":"Scalar","tag":"Int","value":value}),
+            Value::Float(value) => {
+                json!({"kind":"Scalar","tag":"Float","bits_hex":format!("{:016x}",value.to_bits())})
+            }
+            Value::String(value) => json!({"kind":"Scalar","tag":"String","value":value}),
+        },
+        Instance::Group(fields) => {
+            let origin = match fields.xml_type_origin() {
+                XmlTypeOrigin::Unknown => json!({"kind":"Unknown"}),
+                XmlTypeOrigin::Absent => json!({"kind":"Absent"}),
+                XmlTypeOrigin::Explicit(identity) => json!({"kind":"Explicit","identity":identity}),
+                XmlTypeOrigin::ExplicitPadded {
+                    literal,
+                    resolved_identity,
+                } => {
+                    json!({"kind":"ExplicitPadded","literal":literal,"resolved_identity":resolved_identity})
+                }
+            };
+            json!({"kind":"Group","xml_type_origin":origin,"fields":fields.iter().map(|(name, value)|
+                json!({"name":name,"instance":snapshot(value)})).collect::<Vec<_>>()})
+        }
+        Instance::Repeated(items) => {
+            json!({"kind":"Repeated","items":items.iter().map(snapshot).collect::<Vec<_>>()})
+        }
+        Instance::MappedSequence(items) => {
+            json!({"kind":"MappedSequence","items":items.iter().map(snapshot).collect::<Vec<_>>()})
+        }
+        other => panic!("unexpected direct-reader instance variant: {other:?}"),
+    }
+}

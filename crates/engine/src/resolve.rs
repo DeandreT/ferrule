@@ -148,9 +148,9 @@ pub(crate) fn scalar_in_active_collection(
             continue;
         };
         let suffix = &path[position.collection.len()..];
-        if let Some(value) = scalar(&[instance], suffix) {
-            return Some(value);
-        }
+        // The active item owns this absolute path. An absent optional group
+        // must not read the first item again through the root context.
+        return Some(scalar(&[instance], suffix).unwrap_or(Value::Null));
     }
     scalar(context, path)
 }
@@ -330,6 +330,73 @@ mod tests {
                 &["items".into(), "name".into()]
             ),
             Some(Value::String("second".into()))
+        );
+    }
+
+    #[test]
+    fn absent_active_item_group_cannot_borrow_the_first_item_or_relative_broadcast() {
+        let details = |value| {
+            Instance::Group(vec![("Counter".into(), Instance::Scalar(Value::Int(value)))].into())
+        };
+        let root = Instance::Group(
+            vec![
+                ("Details".into(), details(99)),
+                (
+                    "Order".into(),
+                    Instance::Repeated(vec![
+                        Instance::Group(vec![("Details".into(), details(7))].into()),
+                        Instance::Group(Vec::new().into()),
+                        Instance::Group(
+                            vec![("Details".into(), Instance::Scalar(Value::Null))].into(),
+                        ),
+                        Instance::Group(
+                            vec![("Details".into(), Instance::Scalar(Value::json_null()))].into(),
+                        ),
+                    ]),
+                ),
+            ]
+            .into(),
+        );
+        let rows = root.field("Order").and_then(Instance::as_repeated).unwrap();
+        let absolute = ["Order".into(), "Details".into(), "Counter".into()];
+        for (index, row) in rows.iter().enumerate() {
+            let positions = [PositionFrame {
+                collection: vec!["Order".into()],
+                index: index + 1,
+                grouped: false,
+                join: None,
+                join_position: None,
+                document_path: None,
+            }];
+            assert_eq!(
+                scalar_in_active_collection(&[&root, row], &positions, &absolute),
+                Some(if index == 0 {
+                    Value::Int(7)
+                } else {
+                    Value::Null
+                })
+            );
+        }
+        // Relative broadcast lookup has no absolute active-collection owner.
+        assert_eq!(
+            scalar(&[&root, &rows[1]], &["Details".into(), "Counter".into()]),
+            Some(Value::Int(99))
+        );
+        assert_eq!(
+            scalar_in_frame(
+                &[&root, &rows[1]],
+                &[PositionFrame {
+                    collection: vec!["Order".into()],
+                    index: 2,
+                    grouped: false,
+                    join: None,
+                    join_position: None,
+                    document_path: None,
+                }],
+                &["Order".into()],
+                &["Details".into(), "Counter".into()]
+            ),
+            None
         );
     }
 }

@@ -1028,11 +1028,11 @@ fn render_expression(
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!(
-                        "context.resolve_scalar_in_frame(&[{frame}], &[{path}]).map_err(RuntimeError::from)"
+                        "context.resolve_source_field_in_frame(&[{frame}], &[{path}]).map_err(RuntimeError::from)"
                     )
                 }
                 None => {
-                    format!("context.resolve_scalar(&[{path}]).map_err(RuntimeError::from)")
+                    format!("context.resolve_source_field(&[{path}]).map_err(RuntimeError::from)")
                 }
             }
         }
