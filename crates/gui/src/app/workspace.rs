@@ -102,6 +102,10 @@ impl FerruleApp {
                             self.start_save_as(None);
                             ui.close();
                         }
+                        if ui.button("Generate Library...").clicked() {
+                            self.begin_library_generation();
+                            ui.close();
+                        }
                         ui.separator();
                         if ui.button("New").clicked() {
                             if let Some(action) =
@@ -294,6 +298,7 @@ impl FerruleApp {
                     ui.spinner();
                     ui.label("Waiting for file dialog");
                     if ui.button("Cancel").clicked() {
+                        self.library_generation_save_cancelled();
                         self.pending_dialog = None;
                         self.pending_save_continuation = None;
                         self.status = "file dialog cancelled".to_string();
