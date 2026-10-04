@@ -987,6 +987,7 @@ dependencies = [
  "functions",
  "ir",
  "json-pattern",
+ "quick-xml 0.41.0",
  "regex",
  "serde_json",
 ]

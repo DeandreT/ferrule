@@ -179,6 +179,7 @@ fn property_name_program() -> Result<Program, &'static str> {
     )?;
 
     Ok(Program {
+        xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {
             name: "Named".into(),

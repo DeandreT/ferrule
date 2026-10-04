@@ -8,6 +8,9 @@ use super::ProgramValidationError;
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidXmlBoundary { reason } => {
+                write!(formatter, "invalid XML document boundary: {reason}")
+            }
             Self::InvalidPrimaryRootSchema { node } => write!(
                 formatter,
                 "compiled mapping expression {node} requires a supported nonrepeating closed primary XML root"

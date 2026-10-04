@@ -27,21 +27,37 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         ));
     }
 
-    let reader_diagnostics: Vec<_> =
-        std::iter::once(("source format options".to_string(), &project.source_options))
-            .chain(project.extra_sources.iter().map(|source| {
-                (
-                    format!("extra source `{}` format options", source.name),
-                    &source.options,
-                )
-            }))
-            .filter(|(_, options)| options.xml_root_view_read_policy)
-            .map(|(location, _)| Diagnostic::Validation {
-                location,
-                message: "code generation does not support observed XML root-view input adapters"
+    let primary_xml = project.source_options.xml_root_view_read_policy;
+    let mut reader_diagnostics: Vec<_> = project
+        .extra_sources
+        .iter()
+        .filter(|source| source.options.xml_root_view_read_policy)
+        .map(|source| Diagnostic::Validation {
+            location: format!("extra source `{}` format options", source.name),
+            message: "code generation does not support named observed XML root-view input adapters"
+                .into(),
+        })
+        .collect();
+    if primary_xml && (!project.extra_sources.is_empty() || !project.extra_targets.is_empty()) {
+        reader_diagnostics.push(Diagnostic::Validation {
+            location: "source format options".into(),
+            message: "generated XML document adapters require one primary input and output; named and dynamic boundaries are unsupported".into(),
+        });
+    }
+    if primary_xml {
+        let supported = mapping::FormatOptions {
+            xml_document: project.target_options.xml_document,
+            xml_schema_hints: project.target_options.xml_schema_hints.clone(),
+            ..Default::default()
+        };
+        if project.target_options != supported {
+            reader_diagnostics.push(Diagnostic::Validation {
+                location: "target format options".into(),
+                message: "generated XML document output supports only primary XML format options"
                     .into(),
-            })
-            .collect();
+            });
+        }
+    }
     if !reader_diagnostics.is_empty() {
         return Err(LowerError::new(reader_diagnostics));
     }
@@ -57,7 +73,9 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             }),
         )
     {
-        if options.xml_schema_hints.is_some() {
+        if options.xml_schema_hints.is_some()
+            && !(primary_xml && location == "target format options")
+        {
             hint_diagnostics.push(Diagnostic::Validation {
                 location,
                 message: "code generation does not support XML schema hints".into(),
@@ -132,6 +150,18 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         return Err(LowerError::new(diagnostics));
     }
     let program = Program {
+        xml_boundary: primary_xml.then(|| crate::XmlBoundaryProgram {
+            input: crate::XmlInputPolicy {
+                allow_inactive_root_type_members: project
+                    .source_options
+                    .xml_allow_inactive_root_type_members,
+                root_view_policy: true,
+            },
+            output: crate::XmlOutputPolicy {
+                schema_hints: project.target_options.xml_schema_hints.clone(),
+                ..Default::default()
+            },
+        }),
         source: project.source.clone(),
         extra_sources,
         target: project.target.clone(),

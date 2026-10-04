@@ -18,6 +18,7 @@ fn multiple_of_scalar(name: &str, ty: ScalarType, divisor: &str) -> SchemaNode {
 
 fn multiple_of_program() -> Program {
     Program {
+        xml_boundary: None,
         source: SchemaNode::group(
             "Source",
             vec![

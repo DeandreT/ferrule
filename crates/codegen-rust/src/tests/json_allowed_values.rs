@@ -36,6 +36,7 @@ fn allowed_values_program() -> Program {
     };
 
     Program {
+        xml_boundary: None,
         source: SchemaNode::group(
             "Source",
             vec![

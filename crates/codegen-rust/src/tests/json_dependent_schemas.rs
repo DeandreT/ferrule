@@ -131,6 +131,7 @@ fn dependent_schema_program() -> Result<Program, &'static str> {
         ],
     )?;
     Ok(Program {
+        xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {
             name: "Named".into(),
@@ -192,6 +193,7 @@ fn pattern_budget_program() -> Result<Program, &'static str> {
         ],
     )?;
     Ok(Program {
+        xml_boundary: None,
         source,
         extra_sources: Vec::new(),
         target: SchemaNode::scalar("Target", ScalarType::String),

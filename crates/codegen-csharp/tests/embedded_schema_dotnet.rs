@@ -99,6 +99,7 @@ fn rust_encoded_float_metadata_executes_in_generated_csharp()
         .collect::<Result<Vec<_>, _>>()?;
 
     let program = Program {
+        xml_boundary: None,
         source: SchemaNode::group("Source", Vec::new()),
         extra_sources: Vec::new(),
         target: SchemaNode::group("Target", Vec::new()),
