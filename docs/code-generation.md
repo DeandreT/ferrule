@@ -391,7 +391,8 @@ Each primary or static named target must likewise have XML identity and can
 retain its own literal XML schema hints.
 The source reader flags `xml_allow_inactive_root_type_members` and
 `xml_root_view_read_policy` remain false. Per-driver dynamic sources can use the
-separate loader methods below; document sets do not receive these XML adapters. Derived-type alternatives,
+separate loader methods below. Dynamic primary output uses the document-list
+methods below. Derived-type alternatives,
 runtime-named fields, generic or mixed-content elements, recursive schemas,
 fixed/default values and JSON-only constraints are outside this input profile.
 
@@ -667,6 +668,58 @@ named policies reject before emission. Existing
 an empty vector for one output, or one exact named policy per declared target
 in declaration order. Model validation rejects missing, reordered or surplus
 policies before emission.
+
+### Dynamic Primary Documents
+
+An ordinary `Structured` XML mapping whose root constructs dynamic documents can
+return an ordered list of XML documents and their logical paths. This adapter
+requires one primary input, no named sources or targets, a driver path ending
+in a repeating group, and a closed nonrepeating group schema for each target
+document. Both observed input flags remain false. Other combinations preserve
+the supported typed/JSON core without receiving these XML methods.
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| XML text | `execute_xml_documents` | `GeneratedMapping.ExecuteXmlDocuments` |
+| UTF-8 bytes | `execute_xml_bytes_documents` | `GeneratedMapping.ExecuteXmlBytesDocuments` |
+| XML text with execution context | `execute_xml_documents_with_context` | `GeneratedMapping.ExecuteXmlDocuments(source, executionContext)` |
+| UTF-8 bytes with execution context | `execute_xml_bytes_documents_with_context` | `GeneratedMapping.ExecuteXmlBytesDocuments(source, executionContext)` |
+
+Text methods return ordered `XmlDocumentOutput` entries containing `path` and
+`document` in Rust, or `Path` and `Document` in C#. Byte methods return
+`XmlBytesDocumentOutput` entries with owned UTF-8 buffers. An empty mapped
+document set returns an empty list. Duplicate paths remain separate entries
+in mapping order. Paths are opaque metadata: hosts decide how to resolve,
+confine, handle collisions, and publish them. The library performs no file or
+network publication and does not load schema-hint locations.
+
+The adapter parses the input once and finishes the complete typed mapping
+before serialization starts. It then validates the actual member count and
+serializes each member using the embedded target schema and XML policy.
+Any parsing, mapping, or serialization failure returns no document list.
+Consequently, a later mapping failure takes priority over a serialization
+failure that an earlier member would have produced.
+
+Rust methods return `codegen_runtime::XmlDocumentExecutionError`; C# methods
+throw `FerruleXmlDocumentExecutionException`. Each wrapper retains the original
+XML boundary and typed cause. Member-specific serialization failures identify
+the primary target, the zero-based index in the final output list, and the
+exact logical path. Input, mapping, descriptor setup, output shape, and total
+member-count failures have no invented member owner. A combined-byte refusal
+identifies the member that crossed the limit. The existing singular and static
+output-set methods keep their signatures and apply to single-document mode.
+
+The list permits zero through 4,096 actual documents, each at most 64 MiB, with
+at most 256 MiB of combined serialized UTF-8. A count or combined-byte refusal
+retains the existing `Output` boundary and typed resource cause. Per-document
+refusals retain their original byte count and limit. Logical paths are excluded
+from the byte counter. Mapping instances can already be live when output limits
+are checked; these limits do not provide streaming or a process memory ceiling.
+
+The checked `Program::xml_output_mode()` query distinguishes `SingleDocument`
+from `DynamicPrimaryDocuments`, returns no optional adapter for an unsupported
+ordinary boundary, and preserves the original typed error for an invalid
+hand-built program.
 
 ### Observed Root-View Input
 

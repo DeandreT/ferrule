@@ -57,7 +57,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     let type_position = output
         .find("public static class GeneratedMapping")
         .expect("generated mapping header");
-    output.insert_str(type_position, xml_api::render_types(program));
+    output.insert_str(type_position, xml_api::render_types(program)?);
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     render_json_entry_points(program, &mut output)?;
     xml_api::render(program, &mut output)?;
