@@ -78,6 +78,7 @@ fn contains_program() -> Result<Program, &'static str> {
         .with_json_contains(contains(exact_number("contains item", 3.0)?, 1, Some(1))?)
         .ok_or("contains metadata belongs to a named target array")?;
     Ok(Program {
+        xml_boundary: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -127,6 +128,7 @@ fn pattern_budget_program() -> Result<Program, &'static str> {
         .with_json_contains(contains(predicate, 1, None)?)
         .ok_or("contains metadata belongs to an array")?;
     Ok(Program {
+        xml_boundary: None,
         source: SchemaNode::group("Source", vec![ordinary, values]),
         target: SchemaNode::scalar("Values", ScalarType::String).repeating(),
         extra_sources: Vec::new(),

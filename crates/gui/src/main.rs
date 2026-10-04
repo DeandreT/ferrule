@@ -32,6 +32,7 @@ mod run_report;
 mod schema_scalar;
 mod schema_tree;
 mod scope_editor;
+mod target_xml_type;
 mod theme;
 mod value_editor;
 mod wire_colors;

@@ -217,7 +217,9 @@ impl FerruleApp {
             return false;
         }
         let still_current = cli::validate(&self.project).into_iter().any(|issue| {
-            issue.owner.as_ref() == Some(owner) && issue.to_string() == diagnostic.message
+            issue.owner.as_ref() == Some(owner)
+                && crate::diagnostics::validation_display_message(&self.project, &issue)
+                    == diagnostic.message
         });
         if !still_current {
             self.status = "diagnostic is out of date; validate again".to_string();
@@ -647,5 +649,132 @@ mod tests {
         assert!(!app.navigate_to_diagnostic(&diagnostic));
         assert_eq!(app.main_canvas.pending_focus, None);
         assert_eq!(app.status, "diagnostic is out of date; validate again");
+    }
+
+    #[test]
+    fn missing_xml_type_display_keeps_raw_issue_project_and_navigation_identity() {
+        for named in [false, true] {
+            let mut app = FerruleApp {
+                project: crate::target_xml_type::tests::project(),
+                ..Default::default()
+            };
+            let scope = if named {
+                &mut app.project.extra_targets[0].root
+            } else {
+                &mut app.project.root.children[0]
+            };
+            let binding = scope
+                .bindings
+                .iter_mut()
+                .find(|binding| binding.target_field == ir::XML_TYPE_FIELD)
+                .unwrap();
+            binding.node = 41;
+            let before = mapping::project_file::encode_pretty(&app.project).unwrap();
+            let raw = cli::validate(&app.project);
+            let issue = raw
+                .iter()
+                .find(|issue| {
+                    issue.message
+                        == format!(
+                            "binding for `{}` references missing node 41",
+                            ir::XML_TYPE_FIELD
+                        )
+                })
+                .expect("actual engine missing virtual binding issue");
+            assert!(issue.to_string().contains(ir::XML_TYPE_FIELD));
+            let mut unresolved = issue.clone();
+            if let Some(ValidationOwner::Scope(owner)) = &mut unresolved.owner {
+                owner.path.push(ValidationScopeStep::Child(999));
+            }
+            assert_eq!(
+                crate::diagnostics::validation_display_message(&app.project, &unresolved),
+                unresolved.to_string(),
+                "unresolved owners are not rewritten"
+            );
+            let mut diagnostics = crate::diagnostics::Diagnostics::default();
+            diagnostics.validation(&app.project, raw.clone());
+            let display = diagnostics
+                .items()
+                .iter()
+                .find(|diagnostic| {
+                    diagnostic.location == issue.owner.clone().map(DiagnosticLocation::Validation)
+                })
+                .unwrap()
+                .clone();
+            assert_eq!(
+                display.message,
+                format!(
+                    "{}: binding for `XML type` references missing node 41",
+                    issue.location
+                )
+            );
+            assert!(!display.message.contains(ir::XML_TYPE_FIELD));
+            assert_eq!(
+                display.project_fingerprint.as_deref(),
+                Some(project_fingerprint(&app.project).as_str())
+            );
+
+            let context = egui::Context::default();
+            let output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1200.0, 600.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    let _ = diagnostics.show(ui);
+                },
+            );
+            fn texts(shape: &egui::epaint::Shape, result: &mut Vec<String>) {
+                match shape {
+                    egui::epaint::Shape::Text(text) => result.push(text.galley.text().to_string()),
+                    egui::epaint::Shape::Vec(shapes) => {
+                        for shape in shapes {
+                            texts(shape, result);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let mut labels = Vec::new();
+            for shape in output.shapes {
+                texts(&shape.shape, &mut labels);
+            }
+            assert!(labels.iter().any(|label| label.contains("XML type")));
+            assert!(
+                !labels
+                    .iter()
+                    .any(|label| label.contains(ir::XML_TYPE_FIELD))
+            );
+            assert_eq!(cli::validate(&app.project), raw);
+            assert_eq!(
+                mapping::project_file::encode_pretty(&app.project).unwrap(),
+                before
+            );
+
+            assert!(app.navigate_to_diagnostic(&display));
+            assert_eq!(
+                app.mapping_workspace.active,
+                if named {
+                    MappingDocument::Target(0)
+                } else {
+                    MappingDocument::Main
+                }
+            );
+            assert_eq!(app.selected_scope, if named { vec![] } else { vec![0] });
+            assert_eq!(
+                mapping::project_file::encode_pretty(&app.project).unwrap(),
+                before
+            );
+            app.project.graph.nodes.insert(
+                41,
+                Node::Const {
+                    value: ir::Value::String(crate::target_xml_type::tests::BASE.into()),
+                },
+            );
+            assert!(!app.navigate_to_diagnostic(&display));
+        }
     }
 }
