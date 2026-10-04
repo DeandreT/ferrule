@@ -424,7 +424,7 @@ pub struct Program {
 }
 
 /// Exact primary and ordered named XML input/output policies.
-/// The Structured profile admits at most one per-driver dynamic source.
+/// The Structured profile admits per-driver dynamic sources in original declaration order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XmlBoundaryProgram {
     pub input: XmlInputPolicy,
