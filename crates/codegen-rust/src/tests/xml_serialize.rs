@@ -445,7 +445,7 @@ fn main() {
         .env("EXPECTED_PRETTY", pretty)
         .env("EXPECTED_COMPACT", compact)
         .current_dir(output.path())
-        .output()
+        .generated_host_output(output.path())
         .expect("generated package runs");
     assert!(
         result.status.success(),
