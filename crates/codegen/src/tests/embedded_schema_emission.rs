@@ -418,3 +418,5 @@ fn embedded_schema_emission_counts_lossless_encoding_before_artifacts() {
         })
     );
 }
+
+include!("structured_xml_transport_emission.rs");

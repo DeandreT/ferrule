@@ -108,3 +108,22 @@ from the repository's recorded support boundaries and official product/manual
 references. Historical corpus counts in linked documents are not fresh run
 results, and the local informational surveys are not automatically promoted to
 release gates by this ledger.
+
+## Generated XML test catalog
+
+Keep closed ordinary `Structured` XML input and observed `RootView` input as
+separate profiles. A direct reader comparison does not establish execution of
+the public generated XML APIs or native interchange. Their evidence needs
+independent gates:
+
+| Gate | Required comparison |
+| --- | --- |
+| Schema admission and transport | Closed-input proof versus plain/versioned descriptor parsing; logical depth and JSON container depth; core-only fallback versus strict observed-policy refusal |
+| Direct readers | Rust/C# string and byte calls, complete scalar tags/Int payloads/Float bits, ordered repetitions and Group type origins; namespace, nil, missing/empty and strict lexical failures |
+| Resource limits | Independent physical/result counts, logical bytes, projection work, raw reservation slots, namespace references/registry bytes and parser work; typed resource units/count/limit and no result |
+| Published libraries | Untouched public generation, compiler outcomes, all four XML APIs, fixed-context versus missing-context behavior, every physical mapped output occurrence and existing JSON cardinality refusals |
+| Memory | Fresh-process phase/peak measurements of eager DOM, Instance and output processing; acceptance counters do not imply streaming or an RSS limit |
+
+The [generated XML boundary](../docs/code-generation.md#xml-host-boundary)
+documents the supported profile and limits. These catalog requirements do not
+change ledger statuses or imply that every gate has passed.

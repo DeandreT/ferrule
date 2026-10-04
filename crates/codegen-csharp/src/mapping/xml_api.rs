@@ -1,10 +1,17 @@
 use crate::{EmitError, literal};
-use codegen::Program;
+use codegen::{Program, ProgramValidationError, XmlInputProfile};
 
 pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
     let Some(policy) = &program.xml_boundary else {
         return Ok(());
     };
+    let profile =
+        policy
+            .input
+            .profile()
+            .ok_or_else(|| ProgramValidationError::InvalidXmlBoundary {
+                reason: "XML input policy has incompatible profile flags".into(),
+            })?;
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -37,10 +44,27 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
                 "ExecuteXml"
             };
             let ty = if bytes { "byte[]" } else { "string" };
-            let parser = if bytes {
-                "ParseEmbeddedBytes"
-            } else {
-                "ParseEmbedded"
+            let parser_call = match &profile {
+                XmlInputProfile::RootView => {
+                    let parser = if bytes {
+                        "ParseEmbeddedBytes"
+                    } else {
+                        "ParseEmbedded"
+                    };
+                    format!(
+                        "global::Ferrule.Runtime.FerruleXml.{parser}(SourceXmlSchema, source, {}, {})",
+                        policy.input.allow_inactive_root_type_members,
+                        policy.input.root_view_policy
+                    )
+                }
+                XmlInputProfile::Structured => {
+                    let parser = if bytes {
+                        "ParseStructuredEmbeddedBytes"
+                    } else {
+                        "ParseStructuredEmbedded"
+                    };
+                    format!("global::Ferrule.Runtime.FerruleXml.{parser}(SourceXmlSchema, source)")
+                }
             };
             let context_arg = if context {
                 ", global::Ferrule.Runtime.FerruleExecutionContext executionContext"
@@ -57,7 +81,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
                 r#"
     public static {ty} {name}({ty} source{context_arg})
     {{
-        var parsed = global::Ferrule.Runtime.FerruleXml.{parser}(SourceXmlSchema, source, {}, {});
+        var parsed = {parser_call};
         global::Ferrule.Runtime.FerruleInstance mapped;
         try
         {{
@@ -73,10 +97,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
         return {result};
     }}
 "#,
-                policy.input.allow_inactive_root_type_members,
-                policy.input.root_view_policy,
-                policy.output.declaration,
-                policy.output.indent
+                policy.output.declaration, policy.output.indent
             ));
         }
     }

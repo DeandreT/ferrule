@@ -1,8 +1,10 @@
 mod generic;
 mod schema_hints;
 mod soap;
+mod structured;
 
 pub use soap::{from_wsdl_message_str, read_wsdl_message};
+pub use structured::from_str_structured;
 
 use std::io::{Cursor, Read};
 use std::path::Path;
@@ -27,6 +29,28 @@ const MAX_ROOT_VIEW_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {
+    #[error("unsupported structured XML input schema")]
+    UnsupportedStructuredInputSchema,
+    #[error("structured XML input exceeds {budget} limit {limit}")]
+    StructuredInputLimit { budget: &'static str, limit: usize },
+    #[error(
+        "structured XML parser resource `{resource}` count {observed_count} exceeds limit {limit}"
+    )]
+    StructuredParserResourceLimit {
+        resource: &'static str,
+        observed_count: u64,
+        limit: u64,
+    },
+    #[error("structured XML input requires names within the Basic Multilingual Plane")]
+    StructuredInputPhysicalName,
+    #[error("structured XML input does not support prefixed local `xmlns` attributes")]
+    StructuredInputNamespaceAttribute,
+    #[error("structured XML input does not support DTD declarations")]
+    StructuredInputDtd,
+    #[error("structured XML input requires UTF-8 declaration encoding")]
+    StructuredInputEncoding,
+    #[error("structured XML content `{name}` contains element children")]
+    StructuredInputContent { name: String },
     #[error("observed XML root-view input requires UTF-8 declaration encoding")]
     RootViewEncoding,
     #[error("unsupported observed XML root-view read policy for `{name}`")]

@@ -883,6 +883,12 @@ Runtime support proceeds in parallel:
 - Close all applicable interpreter-versus-Rust/C# gaps and execute the corpus
   through generated artifacts instead of treating emission as completion.
 - Add generated format/endpoint hosts and publish versioned runtime packages.
+- Qualify the optional closed ordinary `Structured` XML input adapter separately
+  from the existing observed `RootView` profile: untouched published libraries,
+  all string/byte/context APIs, complete typed values and XML occurrences,
+  conservative schema/parser refusals, and independent resource-count edges.
+  Eager DOM/Instance processing still needs measured peak-memory coverage;
+  resource acceptance limits do not qualify streaming or a hard RSS budget.
 - Implement Java, C++, XSLT 1.0/2.0/3.0, and XQuery backends according to the
   reference product's per-format and per-feature support matrices.
 - Qualify compilers, runtimes, deployment layouts, parameters, configuration,

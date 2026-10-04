@@ -71,12 +71,12 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             Expression::SourceField { frame, path } => {
                 output.push_str(" =>\n        ");
                 if let Some(frame) = frame {
-                    output.push_str("context.ResolveScalarInFrame(");
+                    output.push_str("context.ResolveSourceFieldInFrame(");
                     render_path(frame, &mut output);
                     output.push_str(", ");
                     render_path(path, &mut output);
                 } else {
-                    output.push_str("context.ResolveScalar(");
+                    output.push_str("context.ResolveSourceField(");
                     render_path(path, &mut output);
                 }
                 output.push_str(");\n");
