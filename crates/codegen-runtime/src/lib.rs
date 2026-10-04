@@ -69,12 +69,13 @@ pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize
 pub use xml_boundary::{
     DynamicXmlSourceLoader, MAX_XML_DOCUMENT_BYTES, MAX_XML_HINT_DESCRIPTOR_BYTES,
     MAX_XML_INPUT_ARTIFACTS, MAX_XML_INPUT_SET_BYTES, MAX_XML_OUTPUT_ARTIFACTS,
-    MAX_XML_OUTPUT_SET_BYTES, XmlBoundaryError, XmlBoundaryErrorKind, XmlDynamicInputRequest,
-    XmlDynamicSourceAdapter, XmlDynamicSourcePolicy, XmlExecutionError, XmlInputSetBudget,
-    XmlInputSetResourceError, XmlInputSource, XmlOutputSetBudget, XmlOutputSetError,
-    XmlOutputSetResourceError, XmlOutputTarget, parse_structured_xml, parse_structured_xml_bytes,
-    parse_xml, parse_xml_bytes, preflight_xml_input_sizes, preflight_xml_input_sizes_with_budget,
-    serialize_xml_document, xml_input_indices,
+    MAX_XML_OUTPUT_SET_BYTES, XmlBoundaryError, XmlBoundaryErrorKind, XmlDocumentExecutionError,
+    XmlDocumentOutputOwner, XmlDocumentSetBudget, XmlDynamicInputRequest, XmlDynamicSourceAdapter,
+    XmlDynamicSourcePolicy, XmlExecutionError, XmlInputSetBudget, XmlInputSetResourceError,
+    XmlInputSource, XmlOutputSetBudget, XmlOutputSetError, XmlOutputSetResourceError,
+    XmlOutputTarget, parse_structured_xml, parse_structured_xml_bytes, parse_xml, parse_xml_bytes,
+    preflight_xml_input_sizes, preflight_xml_input_sizes_with_budget, serialize_xml_document,
+    xml_input_indices,
 };
 pub use xml_mixed_content::{
     XmlMixedContentElement, XmlMixedContentReplacement, preserve_xml_mixed_content,
