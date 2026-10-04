@@ -1,9 +1,18 @@
+mod named_inputs;
+
 use crate::{EmitError, literal};
 use codegen::{Program, ProgramValidationError, XmlInputProfile, XmlOutputPolicy};
 
 pub(super) fn render_types(program: &Program) -> &'static str {
     if program.xml_boundary.is_none() {
         return "";
+    }
+    if program
+        .xml_boundary
+        .as_ref()
+        .is_some_and(|policy| policy.input.profile() == Some(XmlInputProfile::Structured))
+    {
+        return named_inputs::TYPES;
     }
     "public sealed record NamedXmlOutput(string Name, string Document);\npublic sealed record NamedXmlBytesOutput(string Name, byte[] Document);\npublic sealed record XmlExecutionOutputs(string Primary, global::System.Collections.Generic.IReadOnlyList<NamedXmlOutput> Extras);\npublic sealed record XmlBytesExecutionOutputs(byte[] Primary, global::System.Collections.Generic.IReadOnlyList<NamedXmlBytesOutput> Extras);\n\n"
 }
@@ -59,6 +68,9 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
         ));
     }
     output.push_str("    private static readonly global::System.Text.UTF8Encoding XmlOutputUtf8 = new(false, true);\n");
+    if profile == XmlInputProfile::Structured {
+        named_inputs::render(program, output)?;
+    }
     for bytes in [false, true] {
         let name = if bytes {
             "ExecuteXmlBytesOutputs"
@@ -82,6 +94,9 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
             "SerializeXmlOutputs"
         };
         for context in [false, true] {
+            if profile == XmlInputProfile::Structured {
+                continue;
+            }
             let parser = match profile {
                 XmlInputProfile::RootView => {
                     if bytes {

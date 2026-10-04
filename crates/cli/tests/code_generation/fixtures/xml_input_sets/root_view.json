@@ -1,0 +1,105 @@
+{
+  "source": {
+    "name": "Source",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "xml_type_alternatives": true,
+    "xml_default_type": "{urn:types}Base",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Id",
+          "attribute": true,
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Extra",
+          "attribute": true,
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "{urn:types}Base",
+          "members": [
+            "Id"
+          ]
+        },
+        {
+          "name": "{urn:types}Derived",
+          "members": [
+            "Id",
+            "Extra"
+          ]
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Primary",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Id",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": "../documents/rootview-default.xml",
+  "target_path": "result.xml",
+  "source_options": {
+    "xml_document": true,
+    "xml_allow_inactive_root_type_members": true,
+    "xml_root_view_read_policy": true
+  },
+  "target_options": {
+    "xml_document": true
+  },
+  "extra_sources": [],
+  "extra_targets": [],
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "path": [
+          "Id"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "Primary",
+    "bindings": [
+      {
+        "target_field": "Id",
+        "node": 0
+      }
+    ],
+    "children": []
+  }
+}

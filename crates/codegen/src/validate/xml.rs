@@ -171,7 +171,7 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     children.iter().find_map(unsupported_schema_feature)
 }
 
-/// Each admitted document adapter owns one primary source and every output policy.
+/// Each admitted document adapter owns every static source and output policy.
 pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramValidationError> {
     let Some(policy) = &program.xml_boundary else {
         return Ok(());
@@ -195,13 +195,53 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             ));
         }
     }
-    if !program.extra_sources.is_empty()
-        || (policy.input.profile() == Some(crate::XmlInputProfile::RootView)
-            && (!program.extra_targets.is_empty() || !policy.extra_outputs.is_empty()))
+    if policy.input.profile() == Some(crate::XmlInputProfile::RootView)
+        && (!program.extra_sources.is_empty()
+            || !policy.extra_inputs.is_empty()
+            || !program.extra_targets.is_empty()
+            || !policy.extra_outputs.is_empty())
     {
         return Err(reject(
             "named XML document inputs and observed root-view outputs require separate adapter support",
         ));
+    }
+    if program.extra_sources.len() >= 4096 {
+        return Err(reject(
+            "XML document input sets permit at most 4096 artifacts including primary",
+        ));
+    }
+    if policy.extra_inputs.len() != program.extra_sources.len()
+        || policy
+            .extra_inputs
+            .iter()
+            .zip(&program.extra_sources)
+            .any(|(input, source)| {
+                input.name != source.name
+                    || source.dynamic.is_some()
+                    || input.input.profile() != Some(crate::XmlInputProfile::Structured)
+                    || !ir::xml_structured_document_input_is_supported(&source.source)
+            })
+        || policy
+            .extra_inputs
+            .iter()
+            .map(|input| input.name.as_str())
+            .collect::<BTreeSet<_>>()
+            .len()
+            != policy.extra_inputs.len()
+    {
+        return Err(reject(
+            "XML input policies must own every static closed Structured source in exact declaration order",
+        ));
+    }
+    for source in &program.extra_sources {
+        if !input_namespace_identity_supported(&source.source)
+            || document_schema_has_supplementary_name(&source.source, true)
+        {
+            return Err(reject(&format!(
+                "named XML input `{}` has unsupported namespace or physical name metadata",
+                source.name
+            )));
+        }
     }
     if program.extra_targets.len() >= 4096 {
         return Err(reject(

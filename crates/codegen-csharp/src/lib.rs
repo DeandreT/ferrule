@@ -12,6 +12,8 @@ mod dynamic_targets_tests;
 
 #[cfg(test)]
 mod embedded_schema_tests;
+#[cfg(test)]
+mod xml_input_tests;
 
 pub use error::EmitError;
 
