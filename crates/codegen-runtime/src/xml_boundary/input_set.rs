@@ -22,6 +22,8 @@ pub struct XmlExecutionError {
     pub input: Option<XmlInputSource>,
     pub output: Option<XmlOutputTarget>,
     pub boundary: Box<XmlBoundaryError>,
+    /// Present only for this adapter's dynamic product-input refusal.
+    pub request: Option<Box<super::XmlDynamicInputRequest>>,
 }
 
 impl XmlExecutionError {
@@ -30,7 +32,23 @@ impl XmlExecutionError {
             input: Some(source),
             output: None,
             boundary: Box::new(boundary),
+            request: None,
         }
+    }
+
+    pub fn dynamic_input(
+        request: super::XmlDynamicInputRequest,
+        boundary: XmlBoundaryError,
+    ) -> Self {
+        let mut error = Self::input(
+            XmlInputSource::Named {
+                index: request.declaration_index,
+                name: request.source,
+            },
+            boundary,
+        );
+        error.request = Some(Box::new(request));
+        error
     }
 
     pub fn into_boundary(self) -> XmlBoundaryError {
@@ -49,6 +67,7 @@ impl From<XmlBoundaryError> for XmlExecutionError {
             input: None,
             output: None,
             boundary: Box::new(boundary),
+            request: None,
         }
     }
 }
@@ -59,6 +78,7 @@ impl From<XmlOutputSetError> for XmlExecutionError {
             input: None,
             output: error.target,
             boundary: Box::new(error.boundary),
+            request: None,
         }
     }
 }
@@ -103,6 +123,7 @@ impl std::error::Error for XmlInputSetResourceError {}
 #[derive(Debug, Default)]
 pub struct XmlInputSetBudget {
     bytes: u64,
+    artifacts: u64,
 }
 
 impl XmlInputSetBudget {
@@ -116,7 +137,26 @@ impl XmlInputSetBudget {
                 MAX_XML_INPUT_ARTIFACTS,
             ));
         }
-        Ok(Self::default())
+        Ok(Self {
+            bytes: 0,
+            artifacts: count,
+        })
+    }
+
+    /// Reserve an actual dynamic callback slot before invoking the host.
+    /// Rejected reservations never mutate the admitted artifact count.
+    pub fn reserve(&mut self, source: XmlInputSource) -> Result<(), XmlExecutionError> {
+        let observed = self.artifacts.saturating_add(1);
+        if observed > MAX_XML_INPUT_ARTIFACTS {
+            return Err(refusal(
+                Some(source),
+                "xml_input_artifact_count",
+                observed,
+                MAX_XML_INPUT_ARTIFACTS,
+            ));
+        }
+        self.artifacts = observed;
+        Ok(())
     }
 
     pub fn charge(
@@ -202,6 +242,13 @@ pub fn xml_input_indices(
 pub fn preflight_xml_input_sizes(
     sizes: &[(XmlInputSource, usize)],
 ) -> Result<(), XmlExecutionError> {
+    preflight_xml_input_sizes_with_budget(sizes).map(|_| ())
+}
+
+/// Returns the original admitted counters for later per-driver XML requests.
+pub fn preflight_xml_input_sizes_with_budget(
+    sizes: &[(XmlInputSource, usize)],
+) -> Result<XmlInputSetBudget, XmlExecutionError> {
     let mut budget = XmlInputSetBudget::new(sizes.len())?;
     for &(source, bytes) in sizes {
         super::check_document_size(bytes)
@@ -210,7 +257,53 @@ pub fn preflight_xml_input_sizes(
     for &(source, bytes) in sizes {
         budget.charge(source, bytes)?;
     }
-    Ok(())
+    Ok(budget)
+}
+
+#[cfg(test)]
+mod dynamic_budget_tests {
+    use super::*;
+    use std::error::Error;
+
+    #[test]
+    fn reserve_and_charge_refusals_leave_committed_counters_unchanged() {
+        let named = XmlInputSource::Named {
+            index: 7,
+            name: "catalog",
+        };
+        let mut budget = XmlInputSetBudget::new(4095).unwrap();
+        budget.reserve(named).unwrap();
+        assert_eq!(budget.artifacts, 4096);
+        for _ in 0..2 {
+            let error = budget.reserve(named).unwrap_err();
+            assert_eq!(budget.artifacts, 4096);
+            let cause = error
+                .boundary
+                .source()
+                .unwrap()
+                .downcast_ref::<XmlInputSetResourceError>()
+                .unwrap();
+            assert_eq!((cause.observed_count, cause.limit), (4097, 4096));
+        }
+        // This is a counter-only transition, not an admitted 256 MiB document.
+        budget
+            .charge(XmlInputSource::Primary, MAX_XML_INPUT_SET_BYTES as usize)
+            .unwrap();
+        for _ in 0..2 {
+            let error = budget.charge(named, 1).unwrap_err();
+            assert_eq!(budget.bytes, MAX_XML_INPUT_SET_BYTES);
+            let cause = error
+                .boundary
+                .source()
+                .unwrap()
+                .downcast_ref::<XmlInputSetResourceError>()
+                .unwrap();
+            assert_eq!(
+                (cause.observed_count, cause.limit),
+                (MAX_XML_INPUT_SET_BYTES + 1, MAX_XML_INPUT_SET_BYTES)
+            );
+        }
+    }
 }
 
 #[cfg(test)]

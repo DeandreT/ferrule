@@ -1,0 +1,1 @@
+<c:Catalog xmlns:c="urn:catalog"><c:Row Name="A&amp;Ω"><c:Amount>1.25</c:Amount><c:Details><c:Adjustment>2</c:Adjustment></c:Details></c:Row><c:Row Name="B"><c:Amount>2.5</c:Amount></c:Row></c:Catalog>

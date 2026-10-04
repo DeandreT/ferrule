@@ -1,0 +1,61 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var directory = args.Single();
+var utf8 = new UTF8Encoding(false, true);
+var primary = File.ReadAllBytes(Path.Combine(directory, "primary.xml"));
+var rates = File.ReadAllBytes(Path.Combine(directory, "rates.xml"));
+var labels = File.ReadAllBytes(Path.Combine(directory, "labels.xml"));
+var inputs = new[] { new NamedXmlBytesInput("labels", labels), new NamedXmlBytesInput("rates", rates) };
+var texts = new[] { new NamedXmlInput("labels", utf8.GetString(labels)), new NamedXmlInput("rates", utf8.GetString(rates)) };
+var primaryText = utf8.GetString(primary);
+var execution = new FerruleExecutionContext("fixture.json", "fixture.json", "2026-10-04T00:00:00Z", null);
+XmlExecutionOutputs Text(XmlBytesExecutionOutputs value) => new(utf8.GetString(value.Primary),
+    value.Extras.Select(extra => new NamedXmlOutput(extra.Name, utf8.GetString(extra.Document))).ToArray());
+for (var api = 0; api < 8; api++)
+{
+    var host = new Host(directory, false);
+    var outputs = api switch {
+        0 => GeneratedMapping.ExecuteXmlOutputsWithSourcesAndDynamicSourceLoader(primaryText, texts, host),
+        1 => GeneratedMapping.ExecuteXmlOutputsWithSourcesContextAndDynamicSourceLoader(primaryText, texts, execution, host),
+        2 => new XmlExecutionOutputs(GeneratedMapping.ExecuteXmlWithSourcesAndDynamicSourceLoader(primaryText, texts, host), Array.Empty<NamedXmlOutput>()),
+        3 => new XmlExecutionOutputs(GeneratedMapping.ExecuteXmlWithSourcesContextAndDynamicSourceLoader(primaryText, texts, execution, host), Array.Empty<NamedXmlOutput>()),
+        4 => Text(GeneratedMapping.ExecuteXmlBytesOutputsWithSourcesAndDynamicSourceLoader(primary, inputs, host)),
+        5 => Text(GeneratedMapping.ExecuteXmlBytesOutputsWithSourcesContextAndDynamicSourceLoader(primary, inputs, execution, host)),
+        6 => new XmlExecutionOutputs(utf8.GetString(GeneratedMapping.ExecuteXmlBytesWithSourcesAndDynamicSourceLoader(primary, inputs, host)), Array.Empty<NamedXmlOutput>()),
+        _ => new XmlExecutionOutputs(utf8.GetString(GeneratedMapping.ExecuteXmlBytesWithSourcesContextAndDynamicSourceLoader(primary, inputs, execution, host)), Array.Empty<NamedXmlOutput>()),
+    };
+    Console.WriteLine(JsonSerializer.Serialize(new { api, kind = "ok", primary = outputs.Primary,
+        extras = outputs.Extras.Select(extra => new { name = extra.Name, document = extra.Document }), calls = host.Calls }));
+}
+var refused = new Host(directory, true);
+try
+{
+    GeneratedMapping.ExecuteXmlBytesOutputsWithSourcesAndDynamicSourceLoader(primary, inputs, refused);
+    throw new InvalidOperationException("second dynamic product must refuse without an output set");
+}
+catch (FerruleXmlExecutionException error)
+{
+    var request = error.Request ?? throw new InvalidOperationException("original product request");
+    if (error.Input != FerruleXmlInputSource.Named(1, "catalog") || error.Output is not null ||
+        error.Boundary.Kind != FerruleXmlBoundaryErrorKind.Utf8 || error.Boundary.Bytes is not null || error.Boundary.Limit is not null ||
+        request.DeclarationIndex != 1 || request.Source != "catalog" || request.Path != "b.xml" || request.Ordinal != 2 || !request.CallbackInvoked ||
+        !ReferenceEquals(error.InnerException, error.Boundary) || error.Boundary.InnerException is not DecoderFallbackException cause ||
+        cause.Index != 0 || cause.BytesUnknown is not [0xff])
+        throw new InvalidOperationException("dynamic refusal lost its original typed ownership or cause");
+    Console.WriteLine(JsonSerializer.Serialize(new { api = 8, kind = "Utf8", input_index = 1, source = "catalog", path = "b.xml",
+        ordinal = 2, callback_invoked = true, boundary_identity = true, typed_cause = true, no_output = true, calls = refused.Calls }));
+}
+sealed class Host(string directory, bool invalidSecond) : IFerruleDynamicXmlSourceLoader
+{
+    public List<string[]> Calls { get; } = [];
+    public byte[] Load(string sourceName, string logicalPath)
+    {
+        if (sourceName != "catalog" || logicalPath is not ("a.xml" or "b.xml"))
+            throw new InvalidOperationException("unexpected fixture request");
+        Calls.Add([sourceName, logicalPath]);
+        return invalidSecond && logicalPath == "b.xml" ? [0xff] : File.ReadAllBytes(Path.Combine(directory, logicalPath));
+    }
+}

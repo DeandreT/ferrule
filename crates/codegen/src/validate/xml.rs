@@ -171,7 +171,7 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     children.iter().find_map(unsupported_schema_feature)
 }
 
-/// Each admitted document adapter owns every static source and output policy.
+/// Each admitted document adapter owns every named source and output policy.
 pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramValidationError> {
     let Some(policy) = &program.xml_boundary else {
         return Ok(());
@@ -210,6 +210,17 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             "XML document input sets permit at most 4096 artifacts including primary",
         ));
     }
+    if program
+        .extra_sources
+        .iter()
+        .filter(|source| source.dynamic.is_some())
+        .count()
+        > 1
+    {
+        return Err(reject(
+            "the Structured XML adapter permits at most one dynamic source",
+        ));
+    }
     if policy.extra_inputs.len() != program.extra_sources.len()
         || policy
             .extra_inputs
@@ -217,7 +228,6 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             .zip(&program.extra_sources)
             .any(|(input, source)| {
                 input.name != source.name
-                    || source.dynamic.is_some()
                     || input.input.profile() != Some(crate::XmlInputProfile::Structured)
                     || !ir::xml_structured_document_input_is_supported(&source.source)
             })
@@ -230,7 +240,7 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             != policy.extra_inputs.len()
     {
         return Err(reject(
-            "XML input policies must own every static closed Structured source in exact declaration order",
+            "XML input policies must own every closed Structured source in exact declaration order",
         ));
     }
     for source in &program.extra_sources {
