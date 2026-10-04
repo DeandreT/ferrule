@@ -55,6 +55,7 @@ mod extra_target_ui;
 mod function_workspace;
 #[path = "host_parameters.rs"]
 pub(crate) mod host_parameters;
+mod library_generation;
 #[path = "mfd_export.rs"]
 mod mfd_export_ui;
 #[path = "new_mapping.rs"]
@@ -427,6 +428,9 @@ pub struct FerruleApp {
     file_run_input_condition: crate::preview::BreakpointInputConditionDraft,
     file_run_pause_on_failure: bool,
     pending_file_run: Option<run_ui::PendingFileRun>,
+    library_generation_draft: Option<library_generation::LibraryGenerationDraft>,
+    pending_library_generation: Option<library_generation::PendingLibraryGeneration>,
+    close_after_library_generation: bool,
     close_after_file_run: bool,
     preview_draft: Option<crate::preview::PreviewDraft>,
     preview_value_condition: crate::preview::BreakpointValueConditionDraft,
@@ -482,6 +486,8 @@ pub struct FerruleApp {
     pending_auto_connect: Option<PendingAutoConnect>,
     /// Native file dialog receiver; the dialog runs outside the UI thread.
     pending_dialog: Option<(DialogKind, std::sync::mpsc::Receiver<Option<String>>)>,
+    #[cfg(test)]
+    save_as_dialog_override: Option<std::sync::mpsc::Receiver<Option<String>>>,
     pending_destructive_action: Option<DestructiveAction>,
     pending_save_continuation: Option<SaveContinuation>,
     allow_close: bool,
@@ -520,6 +526,8 @@ enum DialogKind {
     BrowseExtraSourceInstance,
     BrowseExtraTargetSchema,
     BrowseExtraTargetOutput,
+    BrowseLibraryParent,
+    BrowseLibraryRuntime,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -535,6 +543,7 @@ enum SaveContinuation {
     Destructive(DestructiveAction),
     Run,
     DebugRun,
+    GenerateLibrary,
 }
 
 struct DocumentSaveOutcome {
@@ -573,6 +582,9 @@ impl Default for FerruleApp {
             file_run_input_condition: Default::default(),
             file_run_pause_on_failure: false,
             pending_file_run: None,
+            library_generation_draft: None,
+            pending_library_generation: None,
+            close_after_library_generation: false,
             close_after_file_run: false,
             preview_draft: None,
             preview_value_condition: Default::default(),
@@ -627,6 +639,8 @@ impl Default for FerruleApp {
             pending_extra_target_removal: None,
             pending_auto_connect: None,
             pending_dialog: None,
+            #[cfg(test)]
+            save_as_dialog_override: None,
             pending_destructive_action: None,
             pending_save_continuation: None,
             allow_close: false,
@@ -1155,10 +1169,13 @@ impl FerruleApp {
 
     fn start_save_as(&mut self, continuation: Option<SaveContinuation>) {
         self.pending_save_continuation = continuation;
-        self.pending_dialog = Some((
-            DialogKind::SaveProjectAs,
-            save_file("ferrule project", &["json"], &self.document.display_path()),
-        ));
+        #[cfg(test)]
+        let receiver = self.save_as_dialog_override.take().unwrap_or_else(|| {
+            save_file("ferrule project", &["json"], &self.document.display_path())
+        });
+        #[cfg(not(test))]
+        let receiver = save_file("ferrule project", &["json"], &self.document.display_path());
+        self.pending_dialog = Some((DialogKind::SaveProjectAs, receiver));
     }
 
     fn save_with_continuation(
@@ -1178,6 +1195,9 @@ impl FerruleApp {
                 self.complete_save_continuation(continuation, ctx);
             }
             Err(error) => {
+                if continuation == Some(SaveContinuation::GenerateLibrary) {
+                    self.library_generation_save_failed(&error);
+                }
                 self.status = format!("failed to save {}", path.display());
                 self.diagnostics.error("Save failed", error.to_string());
             }
@@ -1195,6 +1215,7 @@ impl FerruleApp {
             }
             Some(SaveContinuation::Run) => self.run_saved(false),
             Some(SaveContinuation::DebugRun) => self.run_saved(true),
+            Some(SaveContinuation::GenerateLibrary) => self.generate_saved_library(),
             None => {}
         }
     }
@@ -1223,6 +1244,7 @@ impl FerruleApp {
         self.pending_dialog = None;
         let Some(path) = result else {
             if kind == DialogKind::SaveProjectAs {
+                self.library_generation_save_cancelled();
                 self.pending_save_continuation = None;
             }
             return; // cancelled or no dialog backend
@@ -1256,11 +1278,18 @@ impl FerruleApp {
                         self.complete_save_continuation(continuation, ctx);
                     }
                     Err(error) => {
+                        if continuation == Some(SaveContinuation::GenerateLibrary) {
+                            self.library_generation_save_failed(&error);
+                        }
                         self.status = format!("failed to save {}", path.display());
                         self.diagnostics.error("Save failed", error.to_string());
                     }
                 }
             }
+            DialogKind::BrowseLibraryParent => {
+                self.stage_library_parent_folder(PathBuf::from(path))
+            }
+            DialogKind::BrowseLibraryRuntime => self.stage_library_runtime_folder(path),
             DialogKind::BrowseInput => self.input_path = path,
             DialogKind::BrowseOutput => self.output_path = path,
             DialogKind::BrowseSourceSchema => {
@@ -1391,12 +1420,17 @@ impl eframe::App for FerruleApp {
             self.reset_canvas_view();
         }
         self.poll_dialog(ui.ctx());
+        self.poll_library_generation(ui.ctx());
         self.poll_pipeline_run(ui.ctx());
         self.poll_preview(ui.ctx());
         self.poll_file_run(ui.ctx());
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
-        self.guard_app_close_requested(ui.ctx(), close_requested);
-        let project_editing_enabled = self.pending_dialog.is_none()
+        if !self.guard_library_generation_close_requested(ui.ctx(), close_requested) {
+            self.guard_app_close_requested(ui.ctx(), close_requested);
+        }
+        let project_editing_enabled = self.library_generation_draft.is_none()
+            && self.pending_library_generation.is_none()
+            && self.pending_dialog.is_none()
             && self.pending_destructive_action.is_none()
             && self.new_mapping_setup.is_none()
             && self.extra_source_draft.is_none()
@@ -1503,6 +1537,7 @@ impl eframe::App for FerruleApp {
             self.show_run_report = false;
         }
 
+        self.show_library_generation(ui.ctx());
         self.show_unsaved_confirmation(ui.ctx());
         self.show_new_mapping_setup(ui.ctx());
         self.show_extra_source_setup(ui.ctx());
