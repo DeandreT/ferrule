@@ -273,9 +273,15 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             "supplementary XML names are unsupported by the generated input and hinted-output parsers",
         ));
     }
-    validate_document_output(&program.target, &program.root, &policy.output)?;
+    let dynamic_primary = validate_dynamic_primary_output(program)?;
+    validate_document_output(
+        &program.target,
+        &program.root,
+        &policy.output,
+        dynamic_primary,
+    )?;
     for (target, output) in program.extra_targets.iter().zip(&policy.extra_outputs) {
-        validate_document_output(&target.target, &target.root, &output.output).map_err(
+        validate_document_output(&target.target, &target.root, &output.output, false).map_err(
             |error| match error {
                 ProgramValidationError::InvalidXmlBoundary { reason } => {
                     reject(&format!("named XML output `{}`: {reason}", target.name))
@@ -287,15 +293,66 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
     Ok(())
 }
 
+fn validate_dynamic_primary_output(
+    program: &crate::Program,
+) -> Result<bool, ProgramValidationError> {
+    let Some(dynamic) = program
+        .root
+        .iteration
+        .as_ref()
+        .and_then(|iteration| iteration.dynamic_document_iteration())
+    else {
+        return Ok(false);
+    };
+    let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
+        reason: reason.to_owned(),
+    };
+    let policy = program
+        .xml_boundary
+        .as_ref()
+        .ok_or_else(|| reject("missing XML boundary"))?;
+    if policy.input.profile() != Some(crate::XmlInputProfile::Structured)
+        || !program.extra_sources.is_empty()
+        || !policy.extra_inputs.is_empty()
+        || !program.extra_targets.is_empty()
+        || !policy.extra_outputs.is_empty()
+    {
+        return Err(reject(
+            "dynamic primary XML output requires one Structured input and no named boundaries",
+        ));
+    }
+    if program.target.repeating
+        || program.root.repeating
+        || !matches!(program.target.kind, SchemaKind::Group { .. })
+    {
+        return Err(reject(
+            "dynamic primary XML members require a closed nonrepeating group target",
+        ));
+    }
+    let path = dynamic.source().path();
+    let driver = SourceCatalog::new(&program.source, &[]).root_schema_at(path);
+    if path.is_empty()
+        || !driver.is_some_and(|driver| {
+            driver.node().repeating && matches!(driver.node().kind, SchemaKind::Group { .. })
+        })
+    {
+        return Err(reject(
+            "dynamic primary XML output driver must end in a repeating Group",
+        ));
+    }
+    Ok(true)
+}
+
 fn validate_document_output(
     target: &SchemaNode,
     root: &crate::TargetScope,
     output: &crate::XmlOutputPolicy,
+    dynamic_primary: bool,
 ) -> Result<(), ProgramValidationError> {
     let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
         reason: reason.to_owned(),
     };
-    if root.iteration.is_some() || root.repeating {
+    if (root.iteration.is_some() && !dynamic_primary) || root.repeating {
         return Err(reject(
             "XML document output requires one non-iterating primary root",
         ));

@@ -1,0 +1,114 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Row",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Value",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Result",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Value",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true
+  },
+  "extra_sources": [],
+  "extra_targets": [],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "frame": [
+          "Row"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "frame": [
+          "Row"
+        ],
+        "path": [
+          "Value"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "Result",
+    "source": [
+      "Row"
+    ],
+    "output_path": 0,
+    "bindings": [
+      {
+        "target_field": "Value",
+        "node": 1
+      }
+    ],
+    "children": []
+  }
+}
