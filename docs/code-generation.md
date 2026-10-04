@@ -377,19 +377,21 @@ annotation that was absent from their input.
 
 ### Closed Ordinary Structured Input
 
-The `Structured` input profile reads one closed primary XML document into
+The `Structured` input profile reads a closed primary XML document and admitted
+static named XML documents into
 nested groups, repeated fields, attributes and String, Int, Float or Bool
 leaves. Nillable scalar leaves and attribute-only or scalar-text groups are
 supported. Absent scalars remain Null, absent groups remain omitted, present
 empty groups remain present, and repeated fields retain every matching item.
 Singular fields select their first matching occurrence.
 
-Source options must be defaults with only `xml_document=true`. Each primary
-or static named target must likewise have XML identity and can retain its own
-literal XML schema hints.
+Source options for the primary and every static named input must be defaults
+with only `xml_document=true`. Each input has its own closed embedded schema.
+Each primary or static named target must likewise have XML identity and can
+retain its own literal XML schema hints.
 The source reader flags `xml_allow_inactive_root_type_members` and
-`xml_root_view_read_policy` remain false. Named or dynamic inputs do not
-receive these XML adapters. Derived-type alternatives,
+`xml_root_view_read_policy` remain false. Dynamic sources and document sets do
+not receive these XML adapters. Derived-type alternatives,
 runtime-named fields, generic or mixed-content elements, recursive schemas,
 fixed/default values and JSON-only constraints are outside this input profile.
 
@@ -407,6 +409,124 @@ without XML entry points. Embedded schema validation still runs before emission:
 successful lowering alone does not guarantee that an artifact tree can be
 produced. An observed root-view policy remains a separate strict request and
 does not fall back to `Structured`.
+
+### Static Named Inputs
+
+The `Structured` profile adds document APIs that accept the complete declared
+static named input set. These methods can return either the primary document
+or the complete ordered output set:
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| Text, primary | `execute_xml_with_sources` | `GeneratedMapping.ExecuteXmlWithSources` |
+| UTF-8 bytes, primary | `execute_xml_bytes_with_sources` | `GeneratedMapping.ExecuteXmlBytesWithSources` |
+| Text, output set | `execute_xml_outputs_with_sources` | `GeneratedMapping.ExecuteXmlOutputsWithSources` |
+| UTF-8 bytes, output set | `execute_xml_bytes_outputs_with_sources` | `GeneratedMapping.ExecuteXmlBytesOutputsWithSources` |
+
+Rust context variants append `_and_context` to each name in the table and
+accept `&ExecutionContext` after the input slice. C# provides an overload of
+each method with `FerruleExecutionContext` after the input list.
+
+Rust:
+
+```rust
+let inputs = [
+    ferrule_generated_mapping::NamedXmlInput {
+        name: "rates",
+        document: rates_xml,
+    },
+    ferrule_generated_mapping::NamedXmlInput {
+        name: "labels",
+        document: labels_xml,
+    },
+];
+let outputs = ferrule_generated_mapping::execute_xml_outputs_with_sources(
+    source_xml, &inputs,
+)?;
+publish(outputs.primary);
+for output in outputs.extras {
+    publish_named(output.name, output.document);
+}
+```
+
+C#:
+
+```csharp
+var inputs = new[] {
+    new NamedXmlInput("rates", ratesXml),
+    new NamedXmlInput("labels", labelsXml),
+};
+var outputs = GeneratedMapping.ExecuteXmlOutputsWithSources(sourceXml, inputs);
+Publish(outputs.Primary);
+foreach (var output in outputs.Extras)
+{
+    PublishNamed(output.Name, output.Document);
+}
+```
+
+Byte methods use `NamedXmlBytesInput`: borrowed `&[u8]` documents in Rust and
+`byte[]` documents in C#. Output sets retain the existing
+`XmlExecutionOutputs` / `XmlBytesExecutionOutputs` result types. A singular call
+still maps and serializes every output before selecting its primary document.
+The host owns publication and keeps its input slices, lists and byte buffers
+stable for the duration of a call.
+
+Validation proceeds in this order:
+
+1. Check at most 4,096 input documents including primary, before name bookkeeping.
+2. Check exact case-sensitive names in supplied order for unexpected or duplicate
+   entries, then check missing names in project declaration order. C# also checks
+   every named `Document` for null after names succeed and before sizing.
+3. Check every original document against the 64 MiB UTF-8 limit, primary first
+   and then named inputs in declaration order.
+4. Check at most 256 MiB of combined original UTF-8 input, in that same order.
+5. Parse primary and then each named document against its own embedded schema
+   in declaration order, execute all mappings, and serialize all outputs.
+
+Thus a missing name wins over malformed primary XML, and an oversized later
+named document wins over malformed primary bytes. All per-document sizes are
+checked before the combined sum. Byte entry points complete size validation
+before UTF-8 decoding. C# text methods count UTF-8 without allocating an encoded
+byte array; invalid UTF-16 can fail with `Utf8` during that size pass.
+No input is omitted because it is unused by the mapping, and no partial output
+set is returned when any phase fails.
+
+Rust returns `codegen_runtime::XmlExecutionError`; C# throws
+`FerruleXmlExecutionException`. The original boundary is retained as `boundary`
+/ `Boundary` and as the standard error source / inner exception. Rust boxes the
+boundary to keep the execution error small; `boundary.as_ref()` borrows that
+same original error. An input-phase
+failure identifies primary or a named input's zero-based declaration index and
+exact declared name in `input` / `Input`. A serialization-phase failure instead
+retains the original output owner in `output` / `Output`. Complete-set name
+errors and global mapping failures have neither owner; their original typed
+runtime cause is retained. Owners describe the failing phase, independently
+of the boundary's `Schema`, `DocumentLimit`, `Utf8`, `Input`, `Mapping` or
+`Output` category.
+
+Input count and combined-size refusals have category `Input` with an
+`XmlInputSetResourceError` / `FerruleXmlInputSetResourceException` cause.
+Its resource is `xml_input_artifact_count` or `xml_input_set_utf8_bytes`, with
+observed count and limit. A count refusal has no guessed input owner; a sum
+refusal owns the document whose charge crosses the limit. Boundary byte fields
+remain unset for these resources. A per-document `DocumentLimit` retains that
+document's original byte count and 64 MiB limit instead. Output-set counters
+remain independent and retain their existing output categories and owners.
+
+For zero-named-input `Structured` projects, the existing no-sources APIs
+use the same complete execution with an empty named-input list. They retain
+`XmlOutputSetError` / `FerruleXmlOutputSetException` for sets and the original
+`XmlBoundaryError` / `FerruleXmlBoundaryException` for singular results. The
+new with-sources APIs retain their source-aware wrapper. `RootView` keeps only
+its existing eight single-input methods and original observed parser; it does
+not gain the new with-sources APIs. Observed flags with named inputs remain
+strict refusals.
+
+An unproved ordinary named source, dynamic source, unsupported format or
+schema, or excessive declared count omits the entire optional XML adapter,
+while preserving otherwise supported typed/JSON core generation. Valid literal
+output hints remain optional metadata during that fallback. Generation never
+silently drops a named input or output.
 
 ### Static Named Output Sets
 
@@ -449,7 +569,15 @@ cause (`xml_output_artifact_count` or `xml_output_set_utf8_bytes`) with its
 observed count and limit; per-document byte fields remain unset. These counters
 do not bound eager typed-target allocations or peak process memory.
 
-Hand-built code-generation programs must provide `XmlBoundaryProgram.extra_outputs`:
+Hand-built code-generation programs must also provide
+`XmlBoundaryProgram.extra_inputs`: `Vec::new()` for zero named inputs, otherwise
+one `NamedXmlInputPolicy` per static source in exact declaration order, with its
+exact name and a `Structured` input policy (both observed flags false). The
+corresponding schema stays in `Program.extra_sources`. Missing, reordered or
+surplus policies, dynamic sources and observed named policies reject before
+emission. Existing `RootView` programs use an empty `extra_inputs` vector.
+
+`XmlBoundaryProgram.extra_outputs` remains required:
 an empty vector for one output, or one exact named policy per declared target
 in declaration order. Model validation rejects missing, reordered or surplus
 policies before emission.
@@ -526,10 +654,15 @@ runtime error, including a required primary-root field's node and path.
 Parser-resource guard failures retain the underlying resource identifier,
 observed count and limit. Those units remain separate from document-byte errors.
 
-These are eager in-memory document APIs. The reader builds a DOM and an Instance;
-parsed instances, mapping intermediates, serialization buffers and caller-owned
-inputs can coexist. Document and resource counts do not establish a peak memory
-limit or provide streaming execution.
+These are eager in-memory document APIs. Each reader builds a DOM and an
+Instance; earlier parsed sources stay alive while later documents are read.
+All parsed sources, typed outputs, mapping intermediates, serialization buffers
+and caller-owned inputs can coexist. The named-input 256 MiB budget counts
+original UTF-8 only. The structured node, field/String and work ledgers remain
+per document and do not impose an aggregate materialized-instance limit. Output
+sets separately count serialized UTF-8. These acceptance counts do not establish
+a peak memory limit or provide streaming execution. Measurements for one
+document are not measurements or bounds for a complete named-input set.
 
 ## Runnable Hosts
 
