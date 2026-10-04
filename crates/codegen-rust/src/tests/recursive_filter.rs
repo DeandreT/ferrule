@@ -248,7 +248,7 @@ fn generated_package_matches_engine_recursive_filter_and_typed_errors() {
     let status = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .status()
+        .generated_host_status(output.path())
         .unwrap_or_else(|error| panic!("run generated recursive-filter package: {error}"));
     assert!(status.success());
 }

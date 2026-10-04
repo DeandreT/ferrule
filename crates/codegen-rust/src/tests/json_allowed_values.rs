@@ -169,8 +169,7 @@ fn main() {
     let run = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
-        .output();
+        .generated_host_output(output.path());
     let Ok(run) = run else {
         panic!("generated allowed-values cargo run starts");
     };

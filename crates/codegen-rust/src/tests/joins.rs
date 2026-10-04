@@ -385,7 +385,7 @@ fn main() {
     let result = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .output()
+        .generated_host_output(output.path())
         .unwrap();
     assert!(
         result.status.success(),

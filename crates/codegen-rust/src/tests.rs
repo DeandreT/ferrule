@@ -26,6 +26,9 @@ mod extra_sources;
 mod extra_targets;
 mod failure_rules;
 mod grouping;
+mod host_target;
+
+use host_target::GeneratedHostCommand;
 mod joins;
 mod json_allowed_values;
 mod json_contains;
@@ -913,8 +916,7 @@ group([
     let result = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
-        .output()
+        .generated_host_output(output.path())
         .unwrap();
     assert!(
         result.status.success(),
@@ -1093,8 +1095,7 @@ fn row(value: i64, position: i64) -> Instance {
     let result = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
-        .output()
+        .generated_host_output(output.path())
         .unwrap();
     assert!(
         result.status.success(),
@@ -1468,8 +1469,7 @@ fn input(text: Value, delimiter: &str, index: i64, fail_index: bool) -> Instance
     let result = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(output.path())
-        .env("CARGO_TARGET_DIR", output.path().join("target"))
-        .output()
+        .generated_host_output(output.path())
         .unwrap();
     assert!(
         result.status.success(),
