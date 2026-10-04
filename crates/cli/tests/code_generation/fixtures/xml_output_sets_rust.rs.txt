@@ -1,0 +1,242 @@
+use codegen_runtime::{
+    ExecutionContext, RuntimeError, XmlBoundaryError, XmlOutputSetError, XmlOutputTarget,
+};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use std::error::Error;
+use std::path::Path;
+
+#[path = "structured_xml_snapshot.rs.txt"]
+mod snapshot;
+
+fn physical(xml: &str) -> Json {
+    fn element(node: roxmltree::Node<'_, '_>) -> Json {
+        let mut attributes = node
+            .attributes()
+            .map(|attribute| {
+                (
+                    attribute.namespace().unwrap_or(""),
+                    attribute.name(),
+                    attribute.value(),
+                )
+            })
+            .collect::<Vec<_>>();
+        attributes.sort_by_key(|(namespace, name, _)| (*namespace, *name));
+        let children = node
+            .children()
+            .filter(|child| child.is_element())
+            .map(element)
+            .collect::<Vec<_>>();
+        let text = if children.is_empty() {
+            Some(
+                node.children()
+                    .filter(|child| child.is_text())
+                    .filter_map(|child| child.text())
+                    .collect::<String>(),
+            )
+        } else {
+            None
+        };
+        json!({"name":node.tag_name().name(),"namespace":node.tag_name().namespace().unwrap_or(""),"text":text,
+            "attributes":attributes.iter().map(|(namespace,name,value)|json!({"name":name,"namespace":namespace,"value":value})).collect::<Vec<_>>(),"children":children})
+    }
+    element(
+        roxmltree::Document::parse(xml)
+            .expect("complete returned XML must parse")
+            .root_element(),
+    )
+}
+fn document(xml: String) -> Json {
+    json!({"physical":physical(&xml),"xml":xml})
+}
+fn boundary(error: &XmlBoundaryError) -> Json {
+    let mut function = None;
+    let mut found = None;
+    let mut runtime_value = None;
+    let mut inner_sources = Vec::new();
+    let mut resource = None;
+    let mut writer_error = None;
+    let mut source = error.source();
+    while let Some(current) = source {
+        if let Some(cause) = current.downcast_ref::<format_xml::XmlFormatError>() {
+            writer_error = Some(json!({"type":"XmlFormatError","debug":format!("{cause:?}")}));
+        }
+        inner_sources.push(json!({"detail":current.to_string(),"debug":format!("{current:?}")}));
+        if let Some(cause) = current.downcast_ref::<codegen_runtime::XmlOutputSetResourceError>() {
+            resource = Some(
+                json!({"resource":cause.resource,"observed_count":cause.observed_count,"limit":cause.limit}),
+            );
+        }
+        if let Some(RuntimeError::Function(codegen_runtime::FunctionError::TypeMismatch {
+            function: name,
+            got,
+        })) = current.downcast_ref::<RuntimeError>()
+        {
+            function = Some(*name);
+            found = Some(*got);
+        }
+        if let Some(RuntimeError::MissingRuntimeValue { value }) =
+            current.downcast_ref::<RuntimeError>()
+        {
+            runtime_value = Some(format!("{value:?}"));
+        }
+        source = current.source();
+    }
+    json!({"kind":format!("{:?}",error.kind),"detail":error.detail,"raw_debug":format!("{error:?}"),"function":function,"found":found,"runtime_value":runtime_value,"boundary_bytes":error.bytes,"boundary_limit":error.limit,"inner_sources":inner_sources,"resource":resource,"writer_error":writer_error,"no_output":true})
+}
+fn outputs(result: Result<generated::XmlExecutionOutputs, XmlOutputSetError>) -> Json {
+    match result {
+        Ok(output) => {
+            json!({"kind":"ok","primary":document(output.primary),"extras":output.extras.into_iter().map(|target|{
+            json!({"name":target.name,"physical":physical(&target.document),"xml":target.document})
+        }).collect::<Vec<_>>()})
+        }
+        Err(error) => {
+            let mut result = boundary(&error.boundary);
+            result["target"] = match error.target {
+                None => Json::Null,
+                Some(XmlOutputTarget::Primary) => {
+                    json!({"kind":"Primary","index":null,"name":null})
+                }
+                Some(XmlOutputTarget::Named { index, name }) => {
+                    json!({"kind":"Named","index":index,"name":name})
+                }
+            };
+            result["boundary_preserved"] = json!(
+                error
+                    .source()
+                    .and_then(|source| source.downcast_ref::<XmlBoundaryError>())
+                    .is_some_and(|boundary| std::ptr::eq(boundary, &error.boundary))
+            );
+            result
+        }
+    }
+}
+fn bytes_outputs(result: Result<generated::XmlBytesExecutionOutputs, XmlOutputSetError>) -> Json {
+    outputs(result.map(|output| {
+        generated::XmlExecutionOutputs {
+            primary: String::from_utf8(output.primary).expect("strict UTF8 primary"),
+            extras: output
+                .extras
+                .into_iter()
+                .map(|target| generated::NamedXmlOutput {
+                    name: target.name,
+                    document: String::from_utf8(target.document)
+                        .expect("strict UTF8 named document"),
+                })
+                .collect(),
+        }
+    }))
+}
+fn singular(result: Result<String, XmlBoundaryError>) -> Json {
+    match result {
+        Ok(xml) => json!({"kind":"ok","primary":document(xml)}),
+        Err(error) => boundary(&error),
+    }
+}
+fn main() -> Result<(), Box<dyn Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    assert_eq!(args.len(), 3, "cases source-descriptor exact-project-path");
+    let cases: Json = serde_json::from_slice(&std::fs::read(&args[0])?)?;
+    let descriptor = std::fs::read_to_string(&args[1])?;
+    let context =
+        ExecutionContext::new(Path::new(&args[2])).with_current_datetime("2026-10-04T00:00:00Z");
+    for test in cases.as_array().expect("cases") {
+        let case = test["case"].as_str().expect("case");
+        let xml = test["xml"].as_str().expect("XML");
+        let invalid = case == "invalid-utf8";
+        let input = if invalid {
+            b"<Batch>\xff</Batch>".as_slice()
+        } else {
+            xml.as_bytes()
+        };
+        let emit = |api: &str, result: Json| {
+            println!("{}", json!({"case":case,"api":api,"result":result}))
+        };
+        if !invalid {
+            emit("xml-outputs", outputs(generated::execute_xml_outputs(xml)));
+            emit(
+                "xml-outputs-context",
+                outputs(generated::execute_xml_outputs_with_context(xml, &context)),
+            );
+            emit("xml", singular(generated::execute_xml(xml)));
+            emit(
+                "xml-context",
+                singular(generated::execute_xml_with_context(xml, &context)),
+            );
+        }
+        emit(
+            "bytes-outputs",
+            bytes_outputs(generated::execute_xml_bytes_outputs(input)),
+        );
+        emit(
+            "bytes-outputs-context",
+            bytes_outputs(generated::execute_xml_bytes_outputs_with_context(
+                input, &context,
+            )),
+        );
+        emit(
+            "bytes",
+            singular(
+                generated::execute_xml_bytes(input)
+                    .map(|output| String::from_utf8(output).expect("strict UTF8 primary")),
+            ),
+        );
+        emit(
+            "bytes-context",
+            singular(
+                generated::execute_xml_bytes_with_context(input, &context)
+                    .map(|output| String::from_utf8(output).expect("strict UTF8 primary")),
+            ),
+        );
+        for api in if invalid {
+            vec!["source-bytes"]
+        } else {
+            vec!["source", "source-bytes"]
+        } {
+            let parsed = if api == "source" {
+                codegen_runtime::parse_structured_xml(&descriptor, xml)
+            } else {
+                codegen_runtime::parse_structured_xml_bytes(&descriptor, input)
+            };
+            match parsed {
+                Ok(input) => emit(
+                    api,
+                    json!({"kind":"ok","snapshot":snapshot::snapshot(&input)}),
+                ),
+                Err(error) => emit(
+                    api,
+                    json!({"kind":format!("{:?}",error.kind),"detail":error.detail,"no_result":true}),
+                ),
+            }
+        }
+        match codegen_runtime::parse_structured_xml_bytes(&descriptor, input) {
+            Ok(input) => {
+                for (api, result) in [
+                    ("typed-outputs", generated::execute_outputs(&input)),
+                    (
+                        "typed-outputs-context",
+                        generated::execute_outputs_with_context(&input, &context),
+                    ),
+                ] {
+                    match result {
+                        Ok(output) => emit(
+                            api,
+                            json!({"kind":"ok","primary":snapshot::snapshot(&output.primary),"extras":output.extras.iter().map(|target|json!({"name":target.name,"instance":snapshot::snapshot(&target.instance)})).collect::<Vec<_>>()}),
+                        ),
+                        Err(error) => emit(
+                            api,
+                            json!({"kind":"Mapping","detail":error.to_string(),"raw_debug":format!("{error:?}"),"no_result":true}),
+                        ),
+                    }
+                }
+            }
+            Err(_) => {
+                for api in ["typed-outputs", "typed-outputs-context"] {
+                    emit(api, json!({"kind":"blocked_input","attempted":false}));
+                }
+            }
+        }
+    }
+    Ok(())
+}

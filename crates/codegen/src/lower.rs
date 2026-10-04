@@ -30,21 +30,23 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     let primary_xml = project.source_options.xml_root_view_read_policy;
     // Ordinary XML format identity does not make adapter support mandatory.
     // Existing core-only generation survives an unproved ordinary schema.
-    let ordinary_xml = !project.source_options.xml_allow_inactive_root_type_members
+    let ordinary_xml_input = !project.source_options.xml_allow_inactive_root_type_members
         && !primary_xml
         && project.extra_sources.is_empty()
-        && project.extra_targets.is_empty()
         && project.source_options
             == (mapping::FormatOptions {
                 xml_document: true,
                 ..Default::default()
             })
-        && project.target_options
-            == (mapping::FormatOptions {
-                xml_document: true,
-                ..Default::default()
-            })
         && ir::xml_structured_document_input_is_supported(&project.source);
+    // Literal hints belong to the optional XML adapter. An unsuitable named
+    // output removes that whole adapter without obstructing typed/JSON core.
+    let ordinary_xml = ordinary_xml_input
+        && xml_document_output_options(&project.target_options)
+        && project
+            .extra_targets
+            .iter()
+            .all(|target| xml_document_output_options(&target.options));
     let mut reader_diagnostics: Vec<_> = project
         .extra_sources
         .iter()
@@ -91,7 +93,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         )
     {
         if options.xml_schema_hints.is_some()
-            && !(primary_xml && location == "target format options")
+            && !(ordinary_xml_input || (primary_xml && location == "target format options"))
         {
             hint_diagnostics.push(Diagnostic::Validation {
                 location,
@@ -178,6 +180,17 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
                 schema_hints: project.target_options.xml_schema_hints.clone(),
                 ..Default::default()
             },
+            extra_outputs: project
+                .extra_targets
+                .iter()
+                .map(|target| crate::NamedXmlOutputPolicy {
+                    name: target.name.clone(),
+                    output: crate::XmlOutputPolicy {
+                        schema_hints: target.options.xml_schema_hints.clone(),
+                        ..Default::default()
+                    },
+                })
+                .collect(),
         }),
         source: project.source.clone(),
         extra_sources,
@@ -1008,6 +1021,15 @@ fn unsupported_function(node: NodeId, function: &str) -> Diagnostic {
     }
 }
 
+fn xml_document_output_options(options: &mapping::FormatOptions) -> bool {
+    *options
+        == mapping::FormatOptions {
+            xml_document: true,
+            xml_schema_hints: options.xml_schema_hints.clone(),
+            ..Default::default()
+        }
+}
+
 #[cfg(test)]
 mod structured_xml_admission_tests {
     use super::*;
@@ -1077,7 +1099,7 @@ mod structured_xml_admission_tests {
     }
 
     #[test]
-    fn ordinary_xml_keeps_global_explicit_hint_refusal_and_format_identity_optional() {
+    fn ordinary_xml_retains_literal_hints_and_keeps_other_input_profiles_explicit() {
         let mut project = project();
         project.source_options.xml_document = false;
         assert!(lower(&project).unwrap().xml_boundary.is_none());
@@ -1086,6 +1108,12 @@ mod structured_xml_admission_tests {
             no_namespace_location: Some("literal.xsd".into()),
             ..Default::default()
         });
+        let program = lower(&project).unwrap();
+        assert_eq!(
+            program.xml_boundary.unwrap().output.schema_hints,
+            project.target_options.xml_schema_hints
+        );
+        project.source_options.xml_document = false;
         assert!(lower(&project).is_err());
     }
 }

@@ -1,6 +1,11 @@
 //! Explicit primary XML document boundaries. JSON codecs never invent XML origins.
 
 mod namespace;
+mod output_set;
+pub use output_set::{
+    MAX_XML_OUTPUT_ARTIFACTS, MAX_XML_OUTPUT_SET_BYTES, XmlOutputSetBudget, XmlOutputSetError,
+    XmlOutputSetResourceError, XmlOutputTarget,
+};
 
 use std::fmt;
 
