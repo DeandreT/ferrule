@@ -1,0 +1,151 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var directory = args[0];
+var sourceSchema = File.ReadAllText(Path.Combine(directory, "source-schema.txt"));
+var targetSchema = File.ReadAllText(Path.Combine(directory, "target-schema.txt"));
+var utf8 = new UTF8Encoding(false, true);
+var execution = new FerruleExecutionContext("fixture.json", "fixture.json", "2026-10-04T00:00:00Z", null);
+foreach (var name in new[] { "ordered", "empty", "late-output", "mapping-first" })
+{
+    var bytes = File.ReadAllBytes(Path.Combine(directory, name + ".xml"));
+    var text = utf8.GetString(bytes);
+    var parsed = FerruleXml.ParseStructuredEmbeddedBytes(sourceSchema, bytes);
+    FerruleXmlBoundaryException? originalOutput = null;
+    string? originalMapping = null;
+    try
+    {
+        var mapped = GeneratedMapping.ExecuteOutputs(parsed, execution);
+        Require(mapped.Extras.Count == 0, "no extra target");
+        var documents = mapped.Primary as FerruleDocumentSet ?? throw new InvalidOperationException("complete document set");
+        Write(new { @case = name, api = -1, source = Snapshot(parsed), members = documents.Documents.Select(document => new { path = document.Path, instance = Snapshot(document.Value) }), mapping_failure = false });
+        if (name == "late-output")
+        {
+            Require(documents.Documents.Count == 2 && documents.Documents[1].Path == "bad.xml", "late member index");
+            try
+            {
+                FerruleXml.SerializeDocumentEmbedded(targetSchema, documents.Documents[1].Value, true, true, null, null);
+                throw new InvalidOperationException("original serializer must refuse invalid XML character");
+            }
+            catch (FerruleXmlBoundaryException error) { originalOutput = error; }
+        }
+    }
+    catch (FerruleRuntimeException error)
+    {
+        Require(name == "mapping-first" && error.Error == FerruleRuntimeError.EmptyDynamicTargetPath && error.Node == 0, "exact original mapping refusal");
+        originalMapping = error.Message;
+        Write(new { @case = name, api = -1, source = Snapshot(parsed), members = (object?)null, mapping_failure = true });
+    }
+    for (var api = 0; api < 4; api++)
+    {
+        try
+        {
+            var documents = Call(api, text, bytes, execution);
+            Require(name is "ordered" or "empty", "refused run must never return a partial list");
+            var records = documents.Select((document, index) => {
+                var actual = Physical(document.Document);
+                var native = Physical(File.ReadAllText(Path.Combine(directory, $"native-{name}-{index}.xml")));
+                Require(JsonSerializer.Serialize(actual) == JsonSerializer.Serialize(native), "complete native/generated physical XML");
+                return new { path = document.Path, document = document.Document, physical = actual, native_physical_match = true };
+            }).ToArray();
+            Write(new { @case = name, api, kind = "ok", documents = records });
+        }
+        catch (FerruleXmlDocumentExecutionException error)
+        {
+            Require(ReferenceEquals(error.InnerException, error.Boundary), "wrapper contains actual original boundary");
+            Require(error.Boundary.Bytes is null && error.Boundary.Limit is null, "document byte payload remains unset");
+            object? member = null;
+            string? runtimeError = null;
+            uint? node = null;
+            if (name == "late-output")
+            {
+                Require(error.Boundary.Kind == FerruleXmlBoundaryErrorKind.Output, "member Output refusal");
+                var owner = error.Member ?? throw new InvalidOperationException("actual serialized member");
+                Require(owner.Target == FerruleXmlOutputTarget.Primary && owner.Index == 1 && owner.Path == "bad.xml", "exact member owner");
+                Require(originalOutput is not null && JsonSerializer.Serialize(Boundary(error.Boundary)) == JsonSerializer.Serialize(Boundary(originalOutput)), "same-language original serializer boundary");
+                member = new { target = "Primary", index = owner.Index, path = owner.Path };
+            }
+            else
+            {
+                Require(name == "mapping-first" && error.Member is null && error.Boundary.Kind == FerruleXmlBoundaryErrorKind.Mapping, "late Mapping wins before serialization and has no member");
+                var cause = error.Boundary.InnerException as FerruleRuntimeException ?? throw new InvalidOperationException("typed original mapping cause");
+                Require(cause.Error == FerruleRuntimeError.EmptyDynamicTargetPath && cause.Node == 0 && cause.Message == originalMapping, "original typed mapping failure");
+                runtimeError = cause.Error.ToString();
+                node = cause.Node;
+            }
+            Write(new { @case = name, api, kind = error.Boundary.Kind.ToString(), member, boundary = Boundary(error.Boundary),
+                boundary_identity = true, original_boundary_match = true, runtime_error = runtimeError, node, no_partial_result = true });
+        }
+    }
+}
+
+static (string Path, string Document)[] Call(int api, string text, byte[] bytes, FerruleExecutionContext execution) => api switch
+{
+    0 => GeneratedMapping.ExecuteXmlDocuments(text).Select(document => (document.Path, document.Document)).ToArray(),
+    1 => GeneratedMapping.ExecuteXmlDocuments(text, execution).Select(document => (document.Path, document.Document)).ToArray(),
+    2 => GeneratedMapping.ExecuteXmlBytesDocuments(bytes).Select(document => (document.Path, new UTF8Encoding(false, true).GetString(document.Document))).ToArray(),
+    3 => GeneratedMapping.ExecuteXmlBytesDocuments(bytes, execution).Select(document => (document.Path, new UTF8Encoding(false, true).GetString(document.Document))).ToArray(),
+    _ => throw new InvalidOperationException("one of four document APIs"),
+};
+static object Boundary(FerruleXmlBoundaryException error)
+{
+    var causes = new List<object>();
+    for (var cause = error.InnerException; cause is not null; cause = cause.InnerException)
+        causes.Add(new { type = cause.GetType().Name, detail = cause.Message });
+    return new { kind = error.Kind.ToString(), detail = error.Detail, bytes = error.Bytes, limit = error.Limit, causes };
+}
+static object Physical(string xml)
+{
+    static object Element(XElement element)
+    {
+        var attributes = element.Attributes().Where(attribute => !attribute.IsNamespaceDeclaration)
+            .OrderBy(attribute => attribute.Name.NamespaceName, StringComparer.Ordinal).ThenBy(attribute => attribute.Name.LocalName, StringComparer.Ordinal)
+            .Select(attribute => new { name = attribute.Name.LocalName, @namespace = attribute.Name.NamespaceName, value = attribute.Value }).ToArray();
+        var children = element.Elements().Select(Element).ToArray();
+        var rawText = string.Concat(element.Nodes().OfType<XText>().Select(text => text.Value));
+        string? text = rawText;
+        if (children.Length != 0)
+        {
+            Require(rawText.All(character => character is ' ' or '\t' or '\r' or '\n'), "only element-only formatting whitespace");
+            text = null;
+        }
+        return new { name = element.Name.LocalName, @namespace = element.Name.NamespaceName, text, attributes, children };
+    }
+    return Element(XDocument.Parse(xml, LoadOptions.PreserveWhitespace).Root ?? throw new InvalidOperationException("document root"));
+}
+static object Snapshot(FerruleInstance input) => input switch
+{
+    FerruleScalar scalar => Scalar(scalar.Value),
+    FerruleGroup group => new { kind = "Group", xml_type_origin = Origin(group.XmlTypeOrigin), fields = group.Fields.Select(field => new { name = field.Name, instance = Snapshot(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(Snapshot).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(Snapshot).ToArray() },
+    _ => throw new InvalidOperationException("unexpected closed instance variant"),
+};
+static object Origin(FerruleXmlTypeOrigin origin) => origin.Kind switch
+{
+    FerruleXmlTypeOriginKind.Unknown => new { kind = "Unknown" },
+    FerruleXmlTypeOriginKind.Absent => new { kind = "Absent" },
+    FerruleXmlTypeOriginKind.Explicit => new { kind = "Explicit", identity = origin.Identity },
+    FerruleXmlTypeOriginKind.ExplicitPadded => new { kind = "ExplicitPadded", literal = origin.Literal, resolved_identity = origin.Identity },
+    _ => throw new InvalidOperationException("unexpected XML type origin"),
+};
+static object Scalar(FerruleValue value) => value.Kind switch
+{
+    FerruleValueKind.Null => new { kind = "Scalar", tag = "Null" },
+    FerruleValueKind.JsonNull => new { kind = "Scalar", tag = "JsonNull" },
+    FerruleValueKind.XmlNil => new { kind = "Scalar", tag = "XmlNil" },
+    FerruleValueKind.Bool => new { kind = "Scalar", tag = "Bool", value = value.BooleanValue },
+    FerruleValueKind.Int64 => new { kind = "Scalar", tag = "Int", value = value.Int64Value },
+    FerruleValueKind.Double => new { kind = "Scalar", tag = "Float", bits_hex = BitConverter.DoubleToUInt64Bits(value.DoubleValue).ToString("x16", CultureInfo.InvariantCulture) },
+    FerruleValueKind.String => new { kind = "Scalar", tag = "String", value = value.StringValue },
+    _ => throw new InvalidOperationException("unexpected scalar tag"),
+};
+static void Require(bool condition, string detail)
+{
+    if (!condition) throw new InvalidOperationException(detail);
+}
+static void Write(object record) => Console.WriteLine(JsonSerializer.Serialize(record));

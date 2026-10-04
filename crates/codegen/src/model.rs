@@ -423,6 +423,33 @@ pub struct Program {
     pub extra_targets: Vec<NamedTargetProgram>,
 }
 
+/// Output cardinality proved by the complete XML boundary and mapping validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XmlOutputMode {
+    SingleDocument,
+    DynamicPrimaryDocuments,
+}
+
+impl Program {
+    /// Returns a proved XML adapter mode, or no adapter, without changing its policy ABI.
+    /// An invalid program returns its original typed validation error.
+    pub fn xml_output_mode(&self) -> Result<Option<XmlOutputMode>, crate::ProgramValidationError> {
+        crate::validate_program(self)?;
+        Ok(self.xml_boundary.as_ref().map(|_| {
+            if self
+                .root
+                .iteration
+                .as_ref()
+                .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
+            {
+                XmlOutputMode::DynamicPrimaryDocuments
+            } else {
+                XmlOutputMode::SingleDocument
+            }
+        }))
+    }
+}
+
 /// Exact primary and ordered named XML input/output policies.
 /// The Structured profile admits per-driver dynamic sources in original declaration order.
 #[derive(Debug, Clone, PartialEq, Eq)]

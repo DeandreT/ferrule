@@ -1,0 +1,1 @@
+<Input><Row><File>same.xml</File><Value>  Café &amp; 雪  </Value></Row><Row><File>same.xml</File><Value>&lt;second&gt;</Value></Row><Row><File>/opaque.xml</File><Value>absolute</Value></Row><Row><File>../opaque.xml</File><Value>traversal</Value></Row><Row><File>résult/雪.xml</File><Value>🙂</Value></Row></Input>

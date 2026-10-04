@@ -58,6 +58,7 @@ internal static partial class Program
             ("JSON recursive references", JsonRecursiveReferences),
             ("JSON mapped-sequence output", JsonMappedSequenceOutput),
             ("JSON root rows", JsonRootRows),
+            ("XML document member errors and budgets", XmlDocumentMembersAndBudgets),
             ("XML type alternatives", XmlTypeAlternatives),
             ("XML type origin selection and privacy", XmlTypeOriginSelectionAndPrivacy),
             ("XML type origin malformed payloads", XmlTypeOriginMalformedPayloads),

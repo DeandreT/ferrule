@@ -12,7 +12,9 @@ pub use input_set::{
     preflight_xml_input_sizes_with_budget, xml_input_indices,
 };
 
+mod document_set;
 mod namespace;
+pub use document_set::{XmlDocumentExecutionError, XmlDocumentOutputOwner, XmlDocumentSetBudget};
 mod output_set;
 pub use output_set::{
     MAX_XML_OUTPUT_ARTIFACTS, MAX_XML_OUTPUT_SET_BYTES, XmlOutputSetBudget, XmlOutputSetError,
