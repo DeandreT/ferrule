@@ -1,0 +1,288 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Alpha",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Amount",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        },
+        {
+          "name": "Beta",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Amount",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Summary",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Marker",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true
+  },
+  "extra_sources": [],
+  "extra_targets": [
+    {
+      "name": "z-audit",
+      "path": null,
+      "schema": {
+        "name": "Audit",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:audit"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Amount",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:audit"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Label",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:audit"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:audit",
+              "location": "audit.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "Audit",
+        "source": [
+          "Alpha"
+        ],
+        "output_path": 0,
+        "bindings": [
+          {
+            "target_field": "Amount",
+            "node": 1
+          },
+          {
+            "target_field": "Label",
+            "node": 5
+          }
+        ],
+        "children": []
+      }
+    },
+    {
+      "name": "a-receipt",
+      "path": null,
+      "schema": {
+        "name": "Receipt",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:receipt"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Amount",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:receipt"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:receipt",
+              "location": "receipt.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "Receipt",
+        "source": [
+          "Beta"
+        ],
+        "output_path": 3,
+        "bindings": [
+          {
+            "target_field": "Amount",
+            "node": 4
+          }
+        ],
+        "children": []
+      }
+    }
+  ],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "frame": [
+          "Alpha"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "frame": [
+          "Alpha"
+        ],
+        "path": [
+          "Amount"
+        ]
+      },
+      "2": {
+        "kind": "const",
+        "value": "ok"
+      },
+      "3": {
+        "kind": "source_field",
+        "frame": [
+          "Beta"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "frame": [
+          "Beta"
+        ],
+        "path": [
+          "Amount"
+        ]
+      },
+      "5": {
+        "kind": "const",
+        "value": "audit"
+      }
+    }
+  },
+  "root": {
+    "target_field": "Summary",
+    "bindings": [
+      {
+        "target_field": "Marker",
+        "node": 2
+      }
+    ],
+    "children": []
+  }
+}

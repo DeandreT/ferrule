@@ -725,11 +725,11 @@ this public enum must handle the added variant.
 ### Static Primary and Dynamic Named Documents
 
 An ordinary `Structured` XML mapping can return one static primary document and
-one named target containing ordered dynamic documents. This adapter requires a
-closed nonrepeating primary group with a noniterating root, exactly one named
-target with a dynamic-document root, and no named inputs. The named driver's
-nonempty source path must end in a repeating group, and its member schema must
-be a closed nonrepeating group. Both observed input flags remain false. Existing
+one or more named targets containing ordered dynamic documents. This adapter
+requires a closed nonrepeating primary group with a noniterating root and no
+named inputs. Every named target must have a dynamic-document root whose
+nonempty source path ends in a repeating group; each member schema must be a
+closed nonrepeating group. Both observed input flags remain false. Existing
 XML schema, namespace, and literal schema-hint restrictions still apply.
 
 | Input and result | Rust | C# |
@@ -741,19 +741,20 @@ XML schema, namespace, and literal schema-hint restrictions still apply.
 
 Text methods return `XmlDocumentExecutionOutputs`; byte methods return
 `XmlBytesDocumentExecutionOutputs`. Each result owns its primary document and an
-ordered `extras` collection containing one named envelope with `name` and
-`documents` fields. C# uses the corresponding `Primary`, `Extras`, `Name`, and
+ordered `extras` collection containing each declared named envelope with `name`
+and `documents` fields. C# uses the corresponding `Primary`, `Extras`, `Name`, and
 `Documents` properties and read-only collections. Members retain their exact
 logical paths beside XML strings or owned UTF-8 buffers. Duplicate, absolute,
 and traversal-shaped paths remain opaque metadata for the host to resolve and
-publish. An empty named list still returns the primary and its empty named
-envelope.
+publish. Every named envelope remains in declaration order, including empty
+lists; an empty list still returns its named envelope beside the primary.
 
 The adapter completes the whole typed mapping once before serialization. It
 checks output shape, name alignment, and the actual artifact count before
 allocating output collections or serializing documents. The maximum of 4,096
-artifacts includes the primary, permitting at most 4,095 named members. It
-serializes and charges the primary first, then each named member in final order.
+artifacts includes the primary, permitting at most 4,095 named members across
+all targets. It serializes and charges the primary first, then each named target
+in declaration order and its members in final order.
 Each document is limited to 64 MiB and the complete set to 256 MiB of serialized
 UTF-8, excluding logical paths. These limits do not bound live mapping instances
 or provide streaming or a process memory ceiling.
