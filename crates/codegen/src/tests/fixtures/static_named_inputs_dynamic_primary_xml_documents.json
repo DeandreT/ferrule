@@ -1,0 +1,276 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Row",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Value",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "nillable": true
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Result",
+    "xml_namespace": {
+      "kind": "qualified",
+      "uri": "urn:result"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Value",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "nillable": true
+        },
+        {
+          "name": "Rate",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "float"
+          }
+        },
+        {
+          "name": "Count",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true,
+    "xml_schema_hints": {
+      "locations": [
+        {
+          "namespace": "urn:result",
+          "location": "result.xsd"
+        }
+      ]
+    }
+  },
+  "extra_sources": [
+    {
+      "name": "alpha",
+      "path": "alpha.xml",
+      "schema": {
+        "name": "Alpha",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:alpha"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Rate",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:alpha"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Prefix",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:alpha"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    },
+    {
+      "name": "beta",
+      "path": "beta.xml",
+      "schema": {
+        "name": "Beta",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:beta"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Count",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:beta"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "Keep",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:beta"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    }
+  ],
+  "extra_targets": [],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "frame": [
+          "Row"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "frame": [
+          "Row"
+        ],
+        "path": [
+          "Value"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "alpha",
+          "Rate"
+        ]
+      },
+      "3": {
+        "kind": "source_field",
+        "path": [
+          "beta",
+          "Count"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "path": [
+          "alpha",
+          "Prefix"
+        ]
+      },
+      "5": {
+        "kind": "call",
+        "function": "concat",
+        "args": [
+          4,
+          0
+        ]
+      },
+      "6": {
+        "kind": "source_field",
+        "path": [
+          "beta",
+          "Keep"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "Result",
+    "source": [
+      "Row"
+    ],
+    "output_path": 5,
+    "filter": 6,
+    "bindings": [
+      {
+        "target_field": "Value",
+        "node": 1
+      },
+      {
+        "target_field": "Rate",
+        "node": 2
+      },
+      {
+        "target_field": "Count",
+        "node": 3
+      }
+    ],
+    "children": []
+  }
+}

@@ -1,0 +1,100 @@
+use codegen_runtime::{ExecutionContext, Instance, RuntimeError, XmlBoundaryError, XmlInputDocumentExecutionError, XmlInputDocumentOwner, XmlInputSource, XmlOutputTarget};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json,json};
+use std::{error::Error,path::PathBuf};
+#[path="structured_xml_snapshot.rs.txt"] mod snapshot;
+
+fn physical(xml:&str)->Json {
+ fn element(node:roxmltree::Node<'_,'_>)->Json {
+  let mut attributes=node.attributes().map(|a|(a.namespace().unwrap_or(""),a.name(),a.value())).collect::<Vec<_>>();attributes.sort();
+  let children=node.children().filter(|n|n.is_element()).map(element).collect::<Vec<_>>();
+  let raw=node.children().filter(|n|n.is_text()).filter_map(|n|n.text()).collect::<String>();
+  let text=if children.is_empty(){Some(raw)}else{assert!(raw.chars().all(|c|matches!(c,' '| '\t'|'\r'|'\n')));None};
+  json!({"name":node.tag_name().name(),"namespace":node.tag_name().namespace().unwrap_or(""),"text":text,"attributes":attributes.iter().map(|(namespace,name,value)|json!({"name":name,"namespace":namespace,"value":value})).collect::<Vec<_>>(),"children":children})
+ }
+ element(roxmltree::Document::parse(xml).unwrap().root_element())
+}
+fn members(value:&Instance)->Json {let Instance::DocumentSet(docs)=value else{panic!("complete primary DocumentSet")};json!(docs.iter().map(|d|json!({"path":d.path(),"instance":snapshot::snapshot(d.value())})).collect::<Vec<_>>())}
+fn boundary(error:&XmlBoundaryError)->Json {
+ let mut causes=Vec::new();let mut next=error.source();let mut runtime=None;
+ while let Some(cause)=next {
+  causes.push(json!({"detail":cause.to_string(),"debug":format!("{cause:?}")}));assert!(causes.len()<32);
+  if let Some(cause)=cause.downcast_ref::<RuntimeError>() {runtime=Some(match cause {
+   RuntimeError::EmptyDynamicTargetPath{node}=>json!({"error":"EmptyDynamicTargetPath","node":node}),
+   RuntimeError::UnexpectedNamedSource{name}=>json!({"error":"UnexpectedNamedSource","name":name}),
+   RuntimeError::DuplicateNamedSource{name}=>json!({"error":"DuplicateNamedSource","name":name}),
+   RuntimeError::MissingNamedSource{name}=>json!({"error":"MissingNamedSource","name":name}),
+   _=>json!({"error":"other","debug":format!("{cause:?}")})});}
+  next=cause.source();
+ }
+ json!({"kind":format!("{:?}",error.kind),"detail":error.detail,"bytes":error.bytes,"limit":error.limit,"causes":causes,"runtime":runtime})
+}
+fn owner(error:&XmlInputDocumentExecutionError)->Json {
+ match &error.owner {
+  None=>Json::Null,
+  Some(XmlInputDocumentOwner::Input(source))=>json!({"kind":"Input","source":match source {XmlInputSource::Primary=>json!({"kind":"Primary","index":null,"name":null}),XmlInputSource::Named{index,name}=>json!({"kind":"Named","index":index,"name":name})}}),
+  Some(XmlInputDocumentOwner::Member(member))=>{assert_eq!(member.target,XmlOutputTarget::Primary);json!({"kind":"Member","output":{"target":"Primary","index":member.index,"path":member.path}})},
+  Some(_)=>panic!("unexpected future owner in this closed test"),
+ }
+}
+fn call(api:usize,primary:&[u8],pairs:&[Json],documents:&[Vec<u8>],execution:&ExecutionContext<'_>)->Result<Vec<(String,String)>,XmlInputDocumentExecutionError> {
+ if api<2 {
+  let inputs=pairs.iter().zip(documents).map(|(p,d)|generated::NamedXmlInput{name:p["name"].as_str().unwrap(),document:std::str::from_utf8(d).unwrap()}).collect::<Vec<_>>();let text=std::str::from_utf8(primary).unwrap();
+  let output=if api==0{generated::execute_xml_documents_with_sources(text,&inputs)}else{generated::execute_xml_documents_with_sources_and_context(text,&inputs,execution)};
+  output.map(|docs|docs.into_iter().map(|d|(d.path,d.document)).collect())
+ } else {
+  let inputs=pairs.iter().zip(documents).map(|(p,d)|generated::NamedXmlBytesInput{name:p["name"].as_str().unwrap(),document:d}).collect::<Vec<_>>();
+  let output=if api==2{generated::execute_xml_bytes_documents_with_sources(primary,&inputs)}else{assert_eq!(api,3);generated::execute_xml_bytes_documents_with_sources_and_context(primary,&inputs,execution)};
+  output.map(|docs|docs.into_iter().map(|d|(d.path,String::from_utf8(d.document).expect("owned serialized UTF8"))).collect())
+ }
+}
+fn main()->Result<(),Box<dyn Error>> {
+ let directory=PathBuf::from(std::env::args().nth(1).expect("fixture directory"));
+ let cases:Json=serde_json::from_slice(&std::fs::read(directory.join("cases.json"))?)?;
+ let descriptors:Json=serde_json::from_slice(&std::fs::read(directory.join("descriptors.json"))?)?;
+ let project_path=directory.join("project.json");let execution=ExecutionContext::new(&project_path).with_current_datetime("2026-10-04T00:00:00Z");
+ let source_schema=descriptors["source"].as_str().unwrap();let target_schema=descriptors["target"].as_str().unwrap();let target_hints=descriptors["hints"].as_str().unwrap();
+ let names=["z-rates","a-count"];let schemas=descriptors["inputs"].as_array().unwrap();assert_eq!(schemas.len(),2);
+ for test in cases.as_array().unwrap() {
+  let name=test["case"].as_str().unwrap();let primary=std::fs::read(directory.join(test["primary"].as_str().unwrap()))?;let pairs=test["inputs"].as_array().unwrap();
+  let named=pairs.iter().map(|p|std::fs::read(directory.join(p["file"].as_str().unwrap()))).collect::<Result<Vec<_>,_>>()?;
+  let mut original:Option<Box<XmlBoundaryError>>=None;
+  if test["semantic"].as_bool().unwrap() {
+   let parsed=codegen_runtime::parse_structured_xml_bytes(source_schema,&primary)?;
+   let inputs=names.iter().enumerate().map(|(i,name)|{let supplied=pairs.iter().position(|p|p["name"]==*name).unwrap();codegen_runtime::parse_structured_xml_bytes(schemas[i]["schema"].as_str().unwrap(),&named[supplied])}).collect::<Result<Vec<_>,_>>()?;
+   let typed=[codegen_runtime::NamedInput{name:names[1],instance:&inputs[1]},codegen_runtime::NamedInput{name:names[0],instance:&inputs[0]}];
+   let input_records=names.iter().zip(&inputs).map(|(name,value)|json!({"name":name,"instance":snapshot::snapshot(value)})).collect::<Vec<_>>();
+   match generated::execute_outputs_with_sources_and_context(&parsed,&typed,&execution) {
+    Ok(mapped)=>{
+     assert!(mapped.extras.is_empty());println!("{}",json!({"case":name,"api":-1,"source":snapshot::snapshot(&parsed),"inputs":input_records,"members":members(&mapped.primary),"mapping_failure":false}));
+     if test["primitive"]["phase"]=="member" {let Instance::DocumentSet(docs)=&mapped.primary else{unreachable!()};let i=test["primitive"]["index"].as_u64().unwrap() as usize;assert_eq!(docs[i].path(),"bad.xml");original=Some(Box::new(codegen_runtime::serialize_xml_document(target_schema,docs[i].value(),true,true,None,Some(target_hints)).unwrap_err()));}
+    }
+    Err(error)=>{
+     assert_eq!(name,"mapping-first");assert!(matches!(error,RuntimeError::EmptyDynamicTargetPath{node:0}));original=Some(Box::new(XmlBoundaryError::from(error)));
+     println!("{}",json!({"case":name,"api":-1,"source":snapshot::snapshot(&parsed),"inputs":input_records,"members":null,"mapping_failure":true}));
+    }
+   }
+  }
+  if test["primitive"]["phase"]=="parser" {
+   let input=test["primitive"]["source"].as_str().unwrap();let (schema,bytes)=if input=="primary"{(source_schema,primary.as_slice())}else{let i=names.iter().position(|name|*name==input).unwrap();let supplied=pairs.iter().position(|p|p["name"]==input).unwrap();(schemas[i]["schema"].as_str().unwrap(),named[supplied].as_slice())};
+   original=Some(Box::new(codegen_runtime::parse_structured_xml_bytes(schema,bytes).unwrap_err()));
+  }
+  if test["primitive"]["phase"]=="names" {let supplied=pairs.iter().map(|p|p["name"].as_str().unwrap()).collect::<Vec<_>>();let error=codegen_runtime::xml_input_indices(&names,&supplied).unwrap_err();assert!(error.input.is_none());original=Some(error.boundary);}
+  for api in test["apis"].as_array().unwrap() {
+   let api=api.as_u64().unwrap() as usize;
+   match call(api,&primary,pairs,&named,&execution) {
+    Ok(docs)=>{
+     assert_eq!(test["kind"],"ok");let docs=docs.into_iter().enumerate().map(|(i,(path,document))|{let actual=physical(&document);let native=physical(&std::fs::read_to_string(directory.join(format!("native-{name}-{i}.xml"))).expect("complete independent native XML"));assert_eq!(actual,native);json!({"path":path,"document":document,"physical":actual,"native_physical_match":true})}).collect::<Vec<_>>();
+     println!("{}",json!({"case":name,"api":api,"kind":"ok","documents":docs}));
+    }
+    Err(error)=>{
+     assert_eq!(format!("{:?}",error.boundary.kind),test["kind"].as_str().unwrap());assert_eq!(owner(&error),test["owner"]);
+     let identity=error.source().and_then(|x|x.downcast_ref::<XmlBoundaryError>()).is_some_and(|b|std::ptr::eq(b,error.boundary.as_ref()));assert!(identity);
+     let original=original.as_ref().expect("own original primitive refusal");assert_eq!(boundary(&error.boundary),boundary(original));
+     println!("{}",json!({"case":name,"api":api,"kind":format!("{:?}",error.boundary.kind),"owner":owner(&error),"boundary":boundary(&error.boundary),"original_boundary":boundary(original),"boundary_identity":identity,"original_boundary_match":true,"no_partial_result":true}));
+    }
+   }
+  }
+ }
+ Ok(())
+}

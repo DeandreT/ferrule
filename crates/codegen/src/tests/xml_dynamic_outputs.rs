@@ -142,7 +142,7 @@ fn dynamic_xml_query_returns_typed_error_for_nested_and_nonrepeated_output() {
 }
 
 #[test]
-fn named_boundaries_and_other_root_iteration_keep_optional_fallback() {
+fn static_named_inputs_get_a_dedicated_mode_and_named_outputs_keep_optional_fallback() {
     let mut named = project();
     named.extra_sources.push(mapping::NamedSource {
         name: "unused".into(),
@@ -153,7 +153,12 @@ fn named_boundaries_and_other_root_iteration_keep_optional_fallback() {
     });
     let program = lower(&named).unwrap();
     assert_eq!(program.extra_sources.len(), 1);
-    assert_eq!(program.xml_output_mode(), Ok(None));
+    assert_eq!(
+        program.xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments
+        ))
+    );
     let mut target = project();
     target.extra_targets.push(NamedTarget {
         name: "unused".into(),

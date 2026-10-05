@@ -931,6 +931,7 @@ dependencies = [
  "jiff",
  "mapping",
  "mfd",
+ "roxmltree",
  "rust_xlsxwriter",
  "rustix 1.1.4",
  "serde_json",
