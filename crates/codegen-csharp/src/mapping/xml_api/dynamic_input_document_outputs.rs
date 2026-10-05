@@ -1,4 +1,4 @@
-//! One dynamic XML input and optional statics feed primary-first named document lists.
+//! Dynamic XML inputs and optional statics feed primary-first named document lists.
 use super::output_arguments;
 use crate::{EmitError, literal};
 use codegen::{Program, ProgramValidationError};
@@ -37,14 +37,32 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
         .enumerate()
         .filter(|(_, source)| source.dynamic.is_none())
         .collect::<Vec<_>>();
-    let (dynamic_index, dynamic_source) = program
+    let dynamic_sources = program
         .extra_sources
         .iter()
         .enumerate()
-        .find(|(_, source)| source.dynamic.is_some())
-        .ok_or_else(|| ProgramValidationError::InvalidXmlBoundary {
+        .filter(|(_, source)| source.dynamic.is_some())
+        .collect::<Vec<_>>();
+    let (dynamic_index, dynamic_source) = dynamic_sources.first().copied().ok_or_else(|| {
+        ProgramValidationError::InvalidXmlBoundary {
             reason: "dynamic input mixed XML outputs require their dynamic declaration".into(),
-        })?;
+        }
+    })?;
+    let adapter = if dynamic_sources.len() == 1 {
+        format!(
+            "        var adapter = new global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter(loader,\n            new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy({dynamic_index}, {}, ExtraXmlInputSchema_{dynamic_index}), parsed.Budget);\n",
+            literal::string(&dynamic_source.name)
+        )
+    } else {
+        let mut adapter = String::from(
+            "        var adapter = global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter.ForSources(loader,\n            new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy[] {\n",
+        );
+        for (index, source) in dynamic_sources {
+            adapter.push_str(&format!("                new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy({index}, {}, ExtraXmlInputSchema_{index}),\n", literal::string(&source.name)));
+        }
+        adapter.push_str("            }, parsed.Budget);\n");
+        adapter
+    };
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -177,7 +195,6 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
             } else {
                 "ExecuteOutputsWithSourcesAndDynamicSourceLoader"
             };
-            let dynamic_name = literal::string(&dynamic_source.name);
             let context_arg = if context {
                 ", global::Ferrule.Runtime.FerruleExecutionContext executionContext"
             } else {
@@ -196,9 +213,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
     {{
 {require_context}        global::System.ArgumentNullException.ThrowIfNull(loader);
         var parsed = {parse_helper}(source, extraSources);
-        var adapter = new global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter(loader,
-            new global::Ferrule.Runtime.FerruleXmlDynamicSourcePolicy({dynamic_index}, {dynamic_name}, ExtraXmlInputSchema_{dynamic_index}), parsed.Budget);
-        ExecutionOutputs mapped;
+{adapter}        ExecutionOutputs mapped;
         try {{ mapped = {execute}(parsed.Primary, parsed.Inputs{context_call}, adapter); }}
         catch (global::Ferrule.Runtime.FerruleRuntimeException error)
         {{

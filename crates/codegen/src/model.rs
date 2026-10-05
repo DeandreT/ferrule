@@ -436,7 +436,7 @@ pub enum XmlOutputMode {
     StaticPrimaryDynamicNamedDocuments,
     /// Static named Structured inputs, a static primary and ordered named document lists.
     StaticNamedInputsStaticPrimaryDynamicNamedDocuments,
-    /// One dynamic named Structured input, optional statics and ordered named document lists.
+    /// Dynamic named Structured inputs, optional statics and ordered named document lists.
     DynamicNamedInputStaticPrimaryDynamicNamedDocuments,
 }
 
