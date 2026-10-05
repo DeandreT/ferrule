@@ -1,0 +1,44 @@
+use ir::{Instance, Value, XmlTypeOrigin};
+use serde_json::{Value as Json, json};
+
+pub fn snapshot(instance: &Instance) -> Json {
+    match instance {
+        Instance::Scalar(value) => {
+            let payload = match value {
+                Value::Null => json!({"kind":"Null"}),
+                Value::JsonNull(_) => json!({"kind":"JsonNull"}),
+                Value::XmlNil(_) => json!({"kind":"XmlNil"}),
+                Value::Bool(v) => json!({"kind":"Bool","value":v}),
+                Value::Int(v) => json!({"kind":"Int64","value":v.to_string()}),
+                Value::Float(v) => json!({"kind":"Double","bits":format!("{:016x}",v.to_bits())}),
+                Value::String(v) => json!({"kind":"String","value":v}),
+            };
+            json!({"kind":"Scalar","value":payload})
+        }
+        Instance::Group(fields) => {
+            let origin = match fields.xml_type_origin() {
+                XmlTypeOrigin::Unknown => json!({"kind":"Unknown","identity":null,"literal":null}),
+                XmlTypeOrigin::Absent => json!({"kind":"Absent","identity":null,"literal":null}),
+                XmlTypeOrigin::Explicit(identity) => {
+                    json!({"kind":"Explicit","identity":identity,"literal":null})
+                }
+                XmlTypeOrigin::ExplicitPadded {
+                    literal,
+                    resolved_identity,
+                } => {
+                    json!({"kind":"ExplicitPadded","identity":resolved_identity,"literal":literal})
+                }
+            };
+            json!({"kind":"Group","origin":origin,"fields":fields.iter().map(|(name,value)|json!({"name":name,"value":snapshot(value)})).collect::<Vec<_>>()})
+        }
+        Instance::Repeated(items) => {
+            json!({"kind":"Repeated","items":items.iter().map(snapshot).collect::<Vec<_>>()})
+        }
+        Instance::MappedSequence(items) => {
+            json!({"kind":"MappedSequence","items":items.iter().map(snapshot).collect::<Vec<_>>()})
+        }
+        Instance::DocumentSet(items) => {
+            json!({"kind":"DocumentSet","documents":items.iter().map(|d|json!({"path":d.path(),"source_path":d.source_path(),"value":snapshot(d.value())})).collect::<Vec<_>>()})
+        }
+    }
+}
