@@ -1,0 +1,283 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "PrimaryBad",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "Skip",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "First",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "Row",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Value",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Keep",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              },
+              {
+                "name": "Rank",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Summary",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Marker",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true
+  },
+  "extra_sources": [],
+  "extra_targets": [
+    {
+      "name": "Audit",
+      "path": null,
+      "schema": {
+        "name": "Result",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Value",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      },
+      "root": {
+        "target_field": "Result",
+        "source": [
+          "Row"
+        ],
+        "output_path": 0,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 5
+          }
+        ],
+        "children": [],
+        "filter": 9,
+        "sort_by": 10,
+        "windows": [
+          {
+            "kind": "skip_first",
+            "count": 11
+          },
+          {
+            "kind": "first",
+            "count": 12
+          }
+        ]
+      }
+    }
+  ],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "frame": [
+          "Row"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "frame": [
+          "Row"
+        ],
+        "path": [
+          "Value"
+        ]
+      },
+      "2": {
+        "kind": "const",
+        "value": "bad"
+      },
+      "3": {
+        "kind": "call",
+        "function": "equal",
+        "args": [
+          1,
+          2
+        ]
+      },
+      "4": {
+        "kind": "const",
+        "value": "\u0001"
+      },
+      "5": {
+        "kind": "if",
+        "condition": 3,
+        "then": 4,
+        "else": 1
+      },
+      "6": {
+        "kind": "const",
+        "value": "summary"
+      },
+      "7": {
+        "kind": "source_field",
+        "path": [
+          "PrimaryBad"
+        ]
+      },
+      "8": {
+        "kind": "if",
+        "condition": 7,
+        "then": 4,
+        "else": 6
+      },
+      "9": {
+        "kind": "source_field",
+        "frame": [
+          "Row"
+        ],
+        "path": [
+          "Keep"
+        ]
+      },
+      "10": {
+        "kind": "source_field",
+        "frame": [
+          "Row"
+        ],
+        "path": [
+          "Rank"
+        ]
+      },
+      "11": {
+        "kind": "source_field",
+        "path": [
+          "Skip"
+        ]
+      },
+      "12": {
+        "kind": "source_field",
+        "path": [
+          "First"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "Summary",
+    "bindings": [
+      {
+        "target_field": "Marker",
+        "node": 8
+      }
+    ],
+    "children": []
+  }
+}
