@@ -361,9 +361,16 @@ fn every_input_and_output_policy_is_validated_without_partial_admission() {
         path: 0,
         driver: SourceIteration::new(vec!["Alpha".into()]),
     });
+    assert_eq!(
+        dynamic.xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments
+        ))
+    );
+    dynamic.extra_sources[0].dynamic = dynamic.extra_sources[2].dynamic.clone();
     assert!(
         matches!(dynamic.xml_output_mode(), Err(ProgramValidationError::InvalidXmlBoundary { reason })
-        if reason.contains("only static named inputs"))
+        if reason.contains("at most one dynamic named input"))
     );
 }
 
