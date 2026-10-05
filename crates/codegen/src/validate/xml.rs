@@ -364,11 +364,9 @@ fn validate_dynamic_named_output(program: &crate::Program) -> Result<bool, Progr
     if policy.input.profile() != Some(crate::XmlInputProfile::Structured)
         || !program.extra_sources.is_empty()
         || !policy.extra_inputs.is_empty()
-        || program.extra_targets.len() != 1
-        || policy.extra_outputs.len() != 1
     {
         return Err(reject(
-            "dynamic named XML output requires one Structured input and exactly one named target",
+            "dynamic named XML output requires one Structured input and no named inputs",
         ));
     }
     if program.root.iteration.is_some()
@@ -380,31 +378,41 @@ fn validate_dynamic_named_output(program: &crate::Program) -> Result<bool, Progr
             "dynamic named XML output requires a static noniterating group primary",
         ));
     }
-    let target = &program.extra_targets[0];
-    if target.target.repeating
-        || target.root.repeating
-        || !matches!(target.target.kind, SchemaKind::Group { .. })
-    {
-        return Err(reject(
-            "dynamic named XML members require a closed nonrepeating group target",
-        ));
-    }
-    let dynamic = target
-        .root
-        .iteration
-        .as_ref()
-        .and_then(|iteration| iteration.dynamic_document_iteration())
-        .ok_or_else(|| reject("dynamic named XML output requires a dynamic-document root"))?;
-    let path = dynamic.source().path();
-    let driver = SourceCatalog::new(&program.source, &[]).root_schema_at(path);
-    if path.is_empty()
-        || !driver.is_some_and(|driver| {
-            driver.node().repeating && matches!(driver.node().kind, SchemaKind::Group { .. })
-        })
-    {
-        return Err(reject(
-            "dynamic named XML output driver must end in a repeating Group",
-        ));
+    for target in &program.extra_targets {
+        let reject_target = |reason: &str| {
+            if program.extra_targets.len() == 1 {
+                reject(reason)
+            } else {
+                reject(&format!("named XML output `{}`: {reason}", target.name))
+            }
+        };
+        if target.target.repeating
+            || target.root.repeating
+            || !matches!(target.target.kind, SchemaKind::Group { .. })
+        {
+            return Err(reject_target(
+                "dynamic named XML members require a closed nonrepeating group target",
+            ));
+        }
+        let dynamic = target
+            .root
+            .iteration
+            .as_ref()
+            .and_then(|iteration| iteration.dynamic_document_iteration())
+            .ok_or_else(|| {
+                reject_target("dynamic named XML output requires a dynamic-document root")
+            })?;
+        let path = dynamic.source().path();
+        let driver = SourceCatalog::new(&program.source, &[]).root_schema_at(path);
+        if path.is_empty()
+            || !driver.is_some_and(|driver| {
+                driver.node().repeating && matches!(driver.node().kind, SchemaKind::Group { .. })
+            })
+        {
+            return Err(reject_target(
+                "dynamic named XML output driver must end in a repeating Group",
+            ));
+        }
     }
     Ok(true)
 }
