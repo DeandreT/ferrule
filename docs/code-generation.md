@@ -718,7 +718,7 @@ are checked; these limits do not provide streaming or a process memory ceiling.
 
 The checked `Program::xml_output_mode()` query distinguishes `SingleDocument`,
 `DynamicPrimaryDocuments`, `StaticNamedInputsDynamicPrimaryDocuments`,
-`StaticPrimaryDynamicNamedDocuments`, and
+`DynamicNamedInputDynamicPrimaryDocuments`, `StaticPrimaryDynamicNamedDocuments`, and
 `StaticNamedInputsStaticPrimaryDynamicNamedDocuments`, returns no optional adapter for an
 unsupported ordinary boundary, and preserves the original
 typed error for an invalid hand-built program. External exhaustive matches on
@@ -766,6 +766,76 @@ failures remain unowned. Combined-byte failures identify the input or member tha
 crossed its independent limit. No partial list is returned. The four zero-named
 primary-list APIs and the static named-input APIs keep their existing signatures,
 wrappers and semantics. Paths remain opaque metadata with no publication.
+
+### One Dynamic Named Input and Dynamic Primary Documents
+
+An ordinary `Structured` XML mapping can combine exactly one dynamic named
+XML source and optional static named XML inputs with a primary dynamic document
+list. Every input retains its own closed schema and policy in original
+declaration order, including unused static inputs. The output driver must be
+a nonempty path in the primary schema ending in a repeating group. The target
+member is a closed nonrepeating group, named targets are absent, and both
+observed input flags remain false. Multiple dynamic declarations, drivers rooted in named
+inputs, observed root-view profiles and advanced unsupported schemas remain
+outside this adapter. Unsupported ordinary boundaries retain the typed and JSON
+core without these XML methods; observed profiles keep their strict refusals.
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| XML text, static inputs and loader | `execute_xml_documents_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlDocumentsWithSourcesAndDynamicSourceLoader` |
+| UTF-8 bytes, static inputs and loader | `execute_xml_bytes_documents_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesDocumentsWithSourcesAndDynamicSourceLoader` |
+| XML text, static inputs, context and loader | `execute_xml_documents_with_sources_context_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlDocumentsWithSourcesContextAndDynamicSourceLoader` |
+| UTF-8 bytes, static inputs, context and loader | `execute_xml_bytes_documents_with_sources_context_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesDocumentsWithSourcesContextAndDynamicSourceLoader` |
+
+The argument order is primary, static input collection, optional execution
+context, then loader. The input entries reuse `NamedXmlInput` and
+`NamedXmlBytesInput`; the collection contains exactly the static declaration
+subsequence and may be empty. A dynamic declaration is supplied exclusively
+through `DynamicXmlSourceLoader` or `IFerruleDynamicXmlSourceLoader`. Its host
+callback receives the exact source name and logical path and returns original
+UTF-8 bytes. The host resolves paths and performs any I/O. Results reuse ordered
+`XmlDocumentOutput` and `XmlBytesDocumentOutput` lists with opaque paths; duplicate,
+absolute, traversal-shaped and Unicode paths retain their exact identities.
+C# collections are read-only and byte results own their buffers.
+
+The adapter checks the initial input count, complete static names and document
+shapes, all static per-document sizes and then combined original bytes before
+parsing primary and each static input in declaration order. Owners retain the
+original indices across the dynamic declaration. C# strict text measurement can
+reject invalid UTF-16 during the size pass; byte decoding occurs during parsing.
+An empty final list still requires all static inputs to be admitted and parsed.
+After static admission, one fresh loader adapter shares that input budget across
+all actual requests. Existing typed traversal determines callbacks, Null path
+skips, lazy context reads and repeated loads; an XML adapter does not move them
+before mapping or suppress reached callbacks. Each request reserves its document
+count before invoking the host. A host failure reserves count and charges no
+bytes. Repeated loads count and charge again. A failed adapter is terminal; the
+generated method aborts and synchronously recovers its first failure without retry.
+
+Rust returns `XmlDynamicInputDocumentExecutionError`; C# throws
+`FerruleXmlDynamicInputDocumentExecutionException`. The optional exclusive owner
+is either `Input` with the original `XmlInputSource` or `Member` with the primary
+target, zero-based final member index and exact path. `Request` is present only
+for this adapter's original XML or input-resource refusal; it retains the dynamic
+declaration index, source, path, one-based whole-execution ordinal and whether the
+host callback ran. Exact marker identity, source and path restore the original
+boundary and typed cause. An externally thrown XML exception, matching error text,
+host loader failure, invalid path or missing context cannot fabricate this channel.
+Static input descriptor and parser failures keep their input owner without a
+request. Serializer `Schema` setup, exact-name and initial-count failures, mapping,
+alignment and final output-count failures remain unowned without a request.
+Combined-byte failures identify the crossing input request or final member.
+
+All mapping completes once before final output alignment, actual member count,
+capacity or serialization. The input and output ledgers are independent: each
+permits at most 4,096 documents and 256 MiB UTF-8, with a 64 MiB per-document
+limit. Input count includes primary, every static input and each reserved loader
+request; output count is the final primary member count and may be zero.
+Serialization and output charging occur in final member order before retaining
+strings or converting them to owned byte buffers. Any failure returns no partial
+list. Existing XML APIs, wrappers and loader behavior keep their signatures and
+semantics. These byte limits do not provide streaming or a process memory ceiling,
+and the library does not publish files or open schema-hint locations.
 
 ### Static Primary and Dynamic Named Documents
 

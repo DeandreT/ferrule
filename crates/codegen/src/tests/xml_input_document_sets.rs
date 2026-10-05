@@ -259,7 +259,7 @@ fn unsupported_ordinary_named_input_keeps_core_but_observed_flags_stay_strict() 
 }
 
 #[test]
-fn dynamic_named_sources_and_named_drivers_remain_outside_this_adapter() {
+fn named_outputs_and_named_drivers_remain_outside_static_input_adapter() {
     let mut named_output = project();
     named_output.extra_targets.push(NamedTarget {
         name: "audit".into(),
@@ -296,8 +296,29 @@ fn dynamic_named_sources_and_named_drivers_remain_outside_this_adapter() {
                 root_view_policy: false,
             },
         });
+    assert_eq!(
+        dynamic.xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
+        ))
+    );
+    let mut second = dynamic.extra_sources.last().unwrap().clone();
+    second.name = "second_dynamic".into();
+    dynamic.extra_sources.push(second);
+    dynamic
+        .xml_boundary
+        .as_mut()
+        .unwrap()
+        .extra_inputs
+        .push(crate::NamedXmlInputPolicy {
+            name: "second_dynamic".into(),
+            input: crate::XmlInputPolicy {
+                allow_inactive_root_type_members: false,
+                root_view_policy: false,
+            },
+        });
     assert!(
-        matches!(dynamic.xml_output_mode(), Err(ProgramValidationError::InvalidXmlBoundary { reason }) if reason.contains("only static named inputs"))
+        matches!(dynamic.xml_output_mode(), Err(ProgramValidationError::InvalidXmlBoundary { reason }) if reason.contains("at most one dynamic named input"))
     );
     let mut named_driver = valid;
     let row = named_driver.source.child("Row").unwrap().clone();

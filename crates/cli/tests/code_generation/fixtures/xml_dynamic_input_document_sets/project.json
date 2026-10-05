@@ -1,0 +1,555 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "OutputRow",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Id",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Keep",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              },
+              {
+                "name": "Rank",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        },
+        {
+          "name": "LoadRow",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Id",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Path",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "nillable": true
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Result",
+    "xml_namespace": {
+      "kind": "qualified",
+      "uri": "urn:document"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Id",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          },
+          "attribute": true
+        },
+        {
+          "name": "Marker",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:document"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Line",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:document"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "DriverId",
+                "xml_namespace": {
+                  "kind": "qualified",
+                  "uri": "urn:document"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Name",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "attribute": true
+              },
+              {
+                "name": "Amount",
+                "xml_namespace": {
+                  "kind": "qualified",
+                  "uri": "urn:document"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "Scaled",
+                "xml_namespace": {
+                  "kind": "qualified",
+                  "uri": "urn:document"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "Adjustment",
+                "xml_namespace": {
+                  "kind": "qualified",
+                  "uri": "urn:document"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                },
+                "nillable": true
+              },
+              {
+                "name": "Text",
+                "xml_namespace": {
+                  "kind": "qualified",
+                  "uri": "urn:document"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true,
+    "xml_schema_hints": {
+      "locations": [
+        {
+          "namespace": "urn:document",
+          "location": "documents.xsd"
+        }
+      ]
+    }
+  },
+  "extra_sources": [
+    {
+      "name": "rates",
+      "path": "",
+      "schema": {
+        "name": "Rates",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Factor",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    },
+    {
+      "name": "catalog",
+      "path": "",
+      "schema": {
+        "name": "Catalog",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:loaded"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Row",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:loaded"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "Name",
+                    "xml_namespace": {
+                      "kind": "unqualified"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "attribute": true
+                  },
+                  {
+                    "name": "Amount",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:loaded"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "Adjustment",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:loaded"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    },
+                    "nillable": true
+                  },
+                  {
+                    "name": "Text",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:loaded"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      },
+      "dynamic_path": {
+        "node": 2,
+        "iteration": [
+          "LoadRow"
+        ]
+      }
+    },
+    {
+      "name": "labels",
+      "path": "",
+      "schema": {
+        "name": "Labels",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Marker",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    }
+  ],
+  "extra_targets": [],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "frame": [
+          "OutputRow"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "frame": [
+          "OutputRow"
+        ],
+        "path": [
+          "Id"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "frame": [
+          "LoadRow"
+        ],
+        "path": [
+          "Path"
+        ]
+      },
+      "3": {
+        "kind": "source_field",
+        "frame": [
+          "LoadRow"
+        ],
+        "path": [
+          "Id"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "Name"
+        ]
+      },
+      "5": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "Amount"
+        ]
+      },
+      "6": {
+        "kind": "source_field",
+        "path": [
+          "rates",
+          "Factor"
+        ]
+      },
+      "7": {
+        "kind": "call",
+        "function": "multiply",
+        "args": [
+          5,
+          6
+        ]
+      },
+      "8": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "Adjustment"
+        ]
+      },
+      "9": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "Text"
+        ]
+      },
+      "10": {
+        "kind": "source_field",
+        "path": [
+          "labels",
+          "Marker"
+        ]
+      },
+      "11": {
+        "kind": "source_field",
+        "frame": [
+          "OutputRow"
+        ],
+        "path": [
+          "Keep"
+        ]
+      },
+      "12": {
+        "kind": "source_field",
+        "frame": [
+          "OutputRow"
+        ],
+        "path": [
+          "Rank"
+        ]
+      },
+      "100": {
+        "kind": "runtime_value",
+        "value": "current_date_time"
+      },
+      "101": {
+        "kind": "if",
+        "condition": 11,
+        "then": 100,
+        "else": 10
+      }
+    }
+  },
+  "root": {
+    "target_field": "Result",
+    "source": [
+      "OutputRow"
+    ],
+    "output_path": 0,
+    "bindings": [
+      {
+        "target_field": "Id",
+        "node": 1
+      },
+      {
+        "target_field": "Marker",
+        "node": 101
+      }
+    ],
+    "children": [
+      {
+        "target_field": "Line",
+        "source": [
+          "catalog",
+          "Row"
+        ],
+        "bindings": [
+          {
+            "target_field": "DriverId",
+            "node": 3
+          },
+          {
+            "target_field": "Name",
+            "node": 4
+          },
+          {
+            "target_field": "Amount",
+            "node": 5
+          },
+          {
+            "target_field": "Scaled",
+            "node": 7
+          },
+          {
+            "target_field": "Adjustment",
+            "node": 8
+          },
+          {
+            "target_field": "Text",
+            "node": 9
+          }
+        ],
+        "children": []
+      }
+    ]
+  }
+}
