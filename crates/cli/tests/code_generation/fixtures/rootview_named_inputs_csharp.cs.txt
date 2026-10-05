@@ -1,0 +1,90 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+static class Program
+{
+    static readonly UTF8Encoding Utf8 = new(false, true);
+    static object? Owner(FerruleXmlInputSource? owner) => owner is null ? null :
+        owner.Kind == FerruleXmlInputSourceKind.Primary ? new { kind="Primary" } :
+        (object)new {kind="Named",index=owner.Index,name=owner.Name};
+    static object BoundaryRecord(FerruleXmlBoundaryException boundary)
+    {
+        var causes=new List<object>();for(Exception? cause=boundary.InnerException;cause is not null;cause=cause.InnerException)causes.Add(new {type=cause.GetType().FullName,display=cause.Message});
+        return new {kind=boundary.Kind.ToString(),detail=boundary.Message,bytes=boundary.Bytes,limit=boundary.Limit,causes};
+    }
+    static object? PrimitiveInput(JsonElement caseEntry,JsonElement project,byte[] primary,List<string> names,List<byte[]> documents,bool bytes)
+    {
+        string id=caseEntry.GetProperty("id").GetString()!;
+        if(id is not ("malformed-primary" or "malformed-named"))return null;
+        try {
+            if(id=="malformed-primary") {
+                string schema=project.GetProperty("source").GetRawText();
+                if(bytes)FerruleXml.ParseEmbeddedBytes(schema,primary,true,true);else FerruleXml.ParseEmbedded(schema,Utf8.GetString(primary),true,true);
+            } else {
+                var source=project.GetProperty("extra_sources").EnumerateArray().Single(s=>s.GetProperty("name").GetString()=="labels");string schema=source.GetProperty("schema").GetRawText();int index=names.IndexOf("labels");
+                if(bytes)FerruleXml.ParseStructuredEmbeddedBytes(schema,documents[index]);else FerruleXml.ParseStructuredEmbedded(schema,Utf8.GetString(documents[index]));
+            }
+        } catch(FerruleXmlBoundaryException primitiveError){return BoundaryRecord(primitiveError);}
+        throw new InvalidOperationException("Malformed original primitive input unexpectedly parsed");
+    }
+    static object Error(FerruleXmlExecutionException original)
+    {
+        var causes=new List<object>();
+        for(Exception? cause=original.InnerException;cause is not null;cause=cause.InnerException)
+        {
+            object? runtime=cause is FerruleRuntimeException typed ? new {error=typed.Error.ToString(),typed.Node,typed.Detail,runtime_value=typed.RuntimeValue?.ToString(),typed.SourceField,primary_root=typed.PrimaryRoot is null?null:new {error=typed.PrimaryRoot.Error.ToString(),path=typed.PrimaryRoot.Path,found=typed.PrimaryRoot.Found}} : null;
+            causes.Add(new {type=cause.GetType().FullName,display=cause.Message,debug=cause.ToString(),runtime});
+        }
+        return new {kind=original.Boundary.Kind.ToString(),input=Owner(original.Input),output=original.Output,request=original.Request,
+            boundary_identity=ReferenceEquals(original.InnerException,original.Boundary),display=original.Message,debug=original.ToString(),bytes=original.Boundary.Bytes,limit=original.Boundary.Limit,causes,original_boundary=BoundaryRecord(original.Boundary)};
+    }
+    static int Main(string[] args)
+    {
+        if(args.Length!=2)throw new ArgumentException("fixture root, fresh evidence directory");
+        string root=args[0],evidence=args[1];
+        if(Directory.Exists(evidence)||File.Exists(evidence))throw new IOException("Evidence directory already exists");
+        Directory.CreateDirectory(evidence);
+        using var manifest=JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root,"cases.json")));
+        using var project=JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root,"project.json")));
+        var execution=new FerruleExecutionContext("mapping/library.json","mapping/main.json","2026-10-05T00:00:00Z");
+        foreach(var caseEntry in manifest.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            string id=caseEntry.GetProperty("id").GetString()!;
+            byte[] primary=File.ReadAllBytes(Path.Combine(root,"documents",caseEntry.GetProperty("primary").GetString()!));
+            string primaryText=Utf8.GetString(primary);
+            var names=new List<string>();var documents=new List<byte[]>();
+            foreach(var entry in caseEntry.GetProperty("named").EnumerateArray())
+            { names.Add(entry.GetProperty("name").GetString()!);documents.Add(File.ReadAllBytes(Path.Combine(root,"documents",entry.GetProperty("file").GetString()!))); }
+            var textInputs=names.Select((name,i)=>new NamedXmlInput(name,Utf8.GetString(documents[i]))).ToArray();
+            var byteInputs=names.Select((name,i)=>new NamedXmlBytesInput(name,documents[i])).ToArray();
+            foreach(string method in new[]{"text-set","text-set-context","bytes-set","bytes-set-context","text","text-context","bytes","bytes-context"})
+            {
+                object? failure=null;List<(string? Name,byte[] Bytes)>? outputs=null;
+                try
+                {
+                    switch(method)
+                    {
+                        case "text-set": {var mapped=GeneratedMapping.ExecuteXmlOutputsWithSources(primaryText,textInputs);outputs=[(null,Utf8.GetBytes(mapped.Primary))];outputs.AddRange(mapped.Extras.Select(member=>((string?)member.Name,Utf8.GetBytes(member.Document))));break;}
+                        case "text-set-context": {var mapped=GeneratedMapping.ExecuteXmlOutputsWithSources(primaryText,textInputs,execution);outputs=[(null,Utf8.GetBytes(mapped.Primary))];outputs.AddRange(mapped.Extras.Select(member=>((string?)member.Name,Utf8.GetBytes(member.Document))));break;}
+                        case "bytes-set": {var mapped=GeneratedMapping.ExecuteXmlBytesOutputsWithSources(primary,byteInputs);outputs=[(null,mapped.Primary)];outputs.AddRange(mapped.Extras.Select(member=>((string?)member.Name,member.Document)));break;}
+                        case "bytes-set-context": {var mapped=GeneratedMapping.ExecuteXmlBytesOutputsWithSources(primary,byteInputs,execution);outputs=[(null,mapped.Primary)];outputs.AddRange(mapped.Extras.Select(member=>((string?)member.Name,member.Document)));break;}
+                        case "text": outputs=[(null,Utf8.GetBytes(GeneratedMapping.ExecuteXmlWithSources(primaryText,textInputs)))];break;
+                        case "text-context": outputs=[(null,Utf8.GetBytes(GeneratedMapping.ExecuteXmlWithSources(primaryText,textInputs,execution)))];break;
+                        case "bytes": outputs=[(null,GeneratedMapping.ExecuteXmlBytesWithSources(primary,byteInputs))];break;
+                        default: outputs=[(null,GeneratedMapping.ExecuteXmlBytesWithSources(primary,byteInputs,execution))];break;
+                    }
+                }
+                catch(FerruleXmlExecutionException caught){failure=Error(caught);}
+                var retained=new List<object>();
+                if(outputs is not null)for(int i=0;i<outputs.Count;i++) {var item=outputs[i];string file=$"{id}-{method}-{i}.xml";File.WriteAllBytes(Path.Combine(evidence,file),item.Bytes);retained.Add(new{name=item.Name,bytes=item.Bytes.LongLength,document_hex=Convert.ToHexStringLower(item.Bytes),file});}
+                var originalRow=new {@case=id,method,primary_hex=Convert.ToHexStringLower(primary),named=names.Select((name,i)=>new{name,document_hex=Convert.ToHexStringLower(documents[i])}).ToArray(),outcome=failure is null?"success":"error",outputs=outputs is null?null:retained,error=failure};
+                File.WriteAllText(Path.Combine(evidence,$"{id}-{method}-original-product.json"),JsonSerializer.Serialize(originalRow),new UTF8Encoding(false));
+                var primitive=PrimitiveInput(caseEntry,project.RootElement,primary,names,documents,method.StartsWith("bytes",StringComparison.Ordinal));
+                var row=new {primitive_input_boundary=primitive, @case=id,method,primary_hex=Convert.ToHexStringLower(primary),named=names.Select((name,i)=>new{name,document_hex=Convert.ToHexStringLower(documents[i])}).ToArray(),outcome=failure is null?"success":"error",outputs=outputs is null?null:retained,error=failure};
+                string raw=JsonSerializer.Serialize(row);File.WriteAllText(Path.Combine(evidence,$"{id}-{method}.json"),raw,new UTF8Encoding(false));Console.WriteLine(raw);Console.Out.Flush();
+            }
+        }
+        return 0;
+    }
+}

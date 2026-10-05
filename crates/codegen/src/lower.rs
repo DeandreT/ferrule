@@ -83,7 +83,27 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             });
         }
     }
-    if primary_xml && (!project.extra_sources.is_empty() || !project.extra_targets.is_empty()) {
+    // An observed primary may compose only with static ordinary named inputs.
+    // Its zero-named route and every dynamic/extra-output refusal stay separate.
+    let root_view_static_inputs = primary_xml
+        && !project.extra_sources.is_empty()
+        && project.extra_targets.is_empty()
+        && matches!(project.root.iteration, ScopeIteration::None)
+        && matches!(project.root.construction, ScopeConstruction::Constructed)
+        && !project.target.repeating
+        && project.extra_sources.iter().all(|source| {
+            source.dynamic_path.is_none()
+                && source.options
+                    == (mapping::FormatOptions {
+                        xml_document: true,
+                        ..Default::default()
+                    })
+                && ir::xml_structured_document_input_is_supported(&source.schema)
+        });
+    if primary_xml
+        && (!project.extra_sources.is_empty() || !project.extra_targets.is_empty())
+        && !root_view_static_inputs
+    {
         reader_diagnostics.push(Diagnostic::Validation {
             location: "source format options".into(),
             message: "generated XML document adapters require one primary input and output; named and dynamic boundaries are unsupported".into(),
