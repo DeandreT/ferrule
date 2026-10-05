@@ -5,6 +5,9 @@ pub use dynamic_inputs::{
     DynamicXmlSourceLoader, XmlDynamicInputRequest, XmlDynamicSourceAdapter, XmlDynamicSourcePolicy,
 };
 
+mod input_document_set;
+pub use input_document_set::{XmlInputDocumentExecutionError, XmlInputDocumentOwner};
+
 mod input_set;
 pub use input_set::{
     MAX_XML_INPUT_ARTIFACTS, MAX_XML_INPUT_SET_BYTES, XmlExecutionError, XmlInputSetBudget,

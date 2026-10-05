@@ -72,9 +72,10 @@ pub use xml_boundary::{
     MAX_XML_OUTPUT_SET_BYTES, XmlBoundaryError, XmlBoundaryErrorKind, XmlDocumentExecutionError,
     XmlDocumentOutputOwner, XmlDocumentOutputsBudget, XmlDocumentOutputsExecutionError,
     XmlDocumentOutputsOwner, XmlDocumentSetBudget, XmlDynamicInputRequest, XmlDynamicSourceAdapter,
-    XmlDynamicSourcePolicy, XmlExecutionError, XmlInputSetBudget, XmlInputSetResourceError,
-    XmlInputSource, XmlOutputSetBudget, XmlOutputSetError, XmlOutputSetResourceError,
-    XmlOutputTarget, parse_structured_xml, parse_structured_xml_bytes, parse_xml, parse_xml_bytes,
+    XmlDynamicSourcePolicy, XmlExecutionError, XmlInputDocumentExecutionError,
+    XmlInputDocumentOwner, XmlInputSetBudget, XmlInputSetResourceError, XmlInputSource,
+    XmlOutputSetBudget, XmlOutputSetError, XmlOutputSetResourceError, XmlOutputTarget,
+    parse_structured_xml, parse_structured_xml_bytes, parse_xml, parse_xml_bytes,
     preflight_xml_input_sizes, preflight_xml_input_sizes_with_budget, serialize_xml_document,
     xml_input_indices,
 };
