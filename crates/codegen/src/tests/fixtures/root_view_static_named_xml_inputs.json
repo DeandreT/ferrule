@@ -1,0 +1,326 @@
+{
+  "source": {
+    "name": "Root",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Code",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "attribute": true
+        },
+        {
+          "name": "Extra",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "attribute": true,
+          "xml_attribute_required": true
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "{urn:types}Base",
+          "members": [
+            "Code"
+          ]
+        },
+        {
+          "name": "{urn:types}Derived",
+          "members": [
+            "Code",
+            "Extra"
+          ]
+        }
+      ]
+    },
+    "xml_type_alternatives": true,
+    "xml_default_type": "{urn:types}Base"
+  },
+  "target": {
+    "name": "Result",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Code",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Extra",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Derived",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "Revision",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "Message",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Timestamp",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": "primary.xml",
+  "target_path": "result.xml",
+  "source_options": {
+    "xml_document": true,
+    "xml_allow_inactive_root_type_members": true,
+    "xml_root_view_read_policy": true
+  },
+  "target_options": {
+    "xml_document": true
+  },
+  "extra_sources": [
+    {
+      "name": "rates",
+      "path": "rates.xml",
+      "schema": {
+        "name": "Rates",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Revision",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              },
+              "attribute": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    },
+    {
+      "name": "labels",
+      "path": "labels.xml",
+      "schema": {
+        "name": "Labels",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Prefix",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ReadExtra",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            },
+            {
+              "name": "NeedContext",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    }
+  ],
+  "extra_targets": [],
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_root_field",
+        "path": [
+          "Code"
+        ],
+        "required": true
+      },
+      "1": {
+        "kind": "source_root_field",
+        "path": [
+          "Extra"
+        ],
+        "required": true
+      },
+      "2": {
+        "kind": "source_root_xml_type_equals",
+        "canonical_expanded_type": "{urn:types}Derived"
+      },
+      "3": {
+        "kind": "source_field",
+        "path": [
+          "rates",
+          "Revision"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "path": [
+          "labels",
+          "Prefix"
+        ]
+      },
+      "5": {
+        "kind": "source_field",
+        "path": [
+          "labels",
+          "ReadExtra"
+        ]
+      },
+      "6": {
+        "kind": "const",
+        "value": "skipped"
+      },
+      "7": {
+        "kind": "if",
+        "condition": 5,
+        "then": 1,
+        "else": 6
+      },
+      "8": {
+        "kind": "call",
+        "function": "concat",
+        "args": [
+          4,
+          0
+        ]
+      },
+      "9": {
+        "kind": "source_field",
+        "path": [
+          "labels",
+          "NeedContext"
+        ]
+      },
+      "10": {
+        "kind": "runtime_value",
+        "value": "current_date_time"
+      },
+      "11": {
+        "kind": "const",
+        "value": "unused"
+      },
+      "12": {
+        "kind": "if",
+        "condition": 9,
+        "then": 10,
+        "else": 11
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "bindings": [
+      {
+        "target_field": "Code",
+        "node": 0
+      },
+      {
+        "target_field": "Extra",
+        "node": 7
+      },
+      {
+        "target_field": "Derived",
+        "node": 2
+      },
+      {
+        "target_field": "Revision",
+        "node": 3
+      },
+      {
+        "target_field": "Message",
+        "node": 8
+      },
+      {
+        "target_field": "Timestamp",
+        "node": 12
+      }
+    ],
+    "children": []
+  }
+}

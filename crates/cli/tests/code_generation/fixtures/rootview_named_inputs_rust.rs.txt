@@ -1,0 +1,93 @@
+use ferrule_generated_mapping as generated;
+use generated::{NamedXmlBytesInput, NamedXmlInput};
+use serde_json::{Value as Json, json};
+use std::{error::Error, path::{Path, PathBuf}, io::Write};
+fn hex(bytes: &[u8]) -> String { bytes.iter().map(|byte| format!("{byte:02x}")).collect() }
+fn owner(owner: Option<codegen_runtime::XmlInputSource>) -> Json {
+    match owner {
+        None => Json::Null,
+        Some(codegen_runtime::XmlInputSource::Primary) => json!({"kind":"Primary"}),
+        Some(codegen_runtime::XmlInputSource::Named {index,name}) => json!({"kind":"Named","index":index,"name":name}),
+    }
+}
+fn boundary_record(boundary: &codegen_runtime::XmlBoundaryError) -> Json {
+    let mut causes=Vec::new();let mut cause=boundary.source();
+    while let Some(value)=cause {causes.push(json!({"display":value.to_string(),"debug":format!("{value:?}")}));cause=value.source();}
+    json!({"kind":format!("{:?}",boundary.kind),"detail":boundary.detail,"bytes":boundary.bytes,"limit":boundary.limit,"causes":causes})
+}
+fn primitive_input(case: &Json, project: &Json, primary: &[u8], names: &[&str], documents: &[Vec<u8>], bytes: bool) -> Json {
+    let id=case["id"].as_str().unwrap();
+    let result=if id=="malformed-primary" {
+        let schema=serde_json::to_string(&project["source"]).unwrap();
+        if bytes {codegen_runtime::parse_xml_bytes(&schema,primary,true,true)}
+        else {codegen_runtime::parse_xml(&schema,std::str::from_utf8(primary).unwrap(),true,true)}
+    } else if id=="malformed-named" {
+        let source=project["extra_sources"].as_array().unwrap().iter().find(|s|s["name"]=="labels").unwrap();
+        let schema=serde_json::to_string(&source["schema"]).unwrap();let index=names.iter().position(|name|*name=="labels").unwrap();
+        if bytes {codegen_runtime::parse_structured_xml_bytes(&schema,&documents[index])}
+        else {codegen_runtime::parse_structured_xml(&schema,std::str::from_utf8(&documents[index]).unwrap())}
+    } else {return Json::Null};
+    match result {Err(boundary)=>boundary_record(&boundary),Ok(_)=>panic!("malformed original primitive input unexpectedly parsed")}
+}
+fn error(original: &codegen_runtime::XmlExecutionError) -> Json {
+    let boundary: &(dyn Error + 'static) = original.boundary.as_ref();
+    let identity = original.source().is_some_and(|source| {
+        (source as *const dyn Error as *const ()) == (boundary as *const dyn Error as *const ())
+    });
+    let mut causes = Vec::new(); let mut cause = original.source();
+    while let Some(value) = cause {
+        let runtime = value.downcast_ref::<codegen_runtime::RuntimeError>().map(|typed| match typed {
+            codegen_runtime::RuntimeError::PrimaryRoot { node, source } => json!({"error":"PrimaryRoot","node":node,"primary_root":format!("{source:?}")}),
+            codegen_runtime::RuntimeError::MissingRuntimeValue { value } => json!({"error":"MissingRuntimeValue","runtime_value":format!("{value:?}")}),
+            codegen_runtime::RuntimeError::MissingNamedSource { name } => json!({"error":"MissingNamedSource","name":name}),
+            codegen_runtime::RuntimeError::DuplicateNamedSource { name } => json!({"error":"DuplicateNamedSource","name":name}),
+            codegen_runtime::RuntimeError::UnexpectedNamedSource { name } => json!({"error":"UnexpectedNamedSource","name":name}),
+            other => json!({"debug":format!("{other:?}")}),
+        });
+        causes.push(json!({"display":value.to_string(),"debug":format!("{value:?}"),"runtime":runtime})); cause=value.source();
+    }
+    json!({"kind":format!("{:?}",original.boundary.kind),"input":owner(original.input),
+        "output":original.output.map(|output| json!({"debug":format!("{output:?}")})),
+        "request":original.request.as_ref().map(|request| json!({"debug":format!("{request:?}")})),
+        "boundary_identity":identity,"display":original.to_string(),"debug":format!("{original:?}"),
+        "bytes":original.boundary.bytes,"limit":original.boundary.limit,"causes":causes,"original_boundary":boundary_record(&original.boundary)})
+}
+fn main() -> Result<(), Box<dyn Error>> {
+    let args=std::env::args().collect::<Vec<_>>(); assert_eq!(args.len(),3,"fixture root, fresh evidence directory");
+    let root=Path::new(&args[1]); let evidence=PathBuf::from(&args[2]); std::fs::create_dir(&evidence)?;
+    let manifest: Json=serde_json::from_slice(&std::fs::read(root.join("cases.json"))?)?;
+    let project: Json=serde_json::from_slice(&std::fs::read(root.join("project.json"))?)?;
+    let execution=codegen_runtime::ExecutionContext::new(Path::new("mapping/library.json"))
+        .with_current_datetime("2026-10-05T00:00:00Z");
+    for case in manifest["cases"].as_array().unwrap() {
+        let id=case["id"].as_str().unwrap(); let primary=std::fs::read(root.join("documents").join(case["primary"].as_str().unwrap()))?;
+        let primary_text=std::str::from_utf8(&primary)?;
+        let names=case["named"].as_array().unwrap().iter().map(|item| item["name"].as_str().unwrap()).collect::<Vec<_>>();
+        let named=case["named"].as_array().unwrap().iter().map(|item| std::fs::read(root.join("documents").join(item["file"].as_str().unwrap()))).collect::<Result<Vec<_>,_>>()?;
+        let text=named.iter().map(|bytes| std::str::from_utf8(bytes)).collect::<Result<Vec<_>,_>>()?;
+        let text_inputs=names.iter().zip(&text).map(|(name,document)| NamedXmlInput{name,document}).collect::<Vec<_>>();
+        let byte_inputs=names.iter().zip(&named).map(|(name,document)| NamedXmlBytesInput{name,document}).collect::<Vec<_>>();
+        for method in ["text-set","text-set-context","bytes-set","bytes-set-context","text","text-context","bytes","bytes-context"] {
+            let result: Result<Vec<(Option<String>,Vec<u8>)>,codegen_runtime::XmlExecutionError> = match method {
+                "text-set" => generated::execute_xml_outputs_with_sources(primary_text,&text_inputs).map(|mapped| std::iter::once((None,mapped.primary.into_bytes())).chain(mapped.extras.into_iter().map(|member|(Some(member.name.to_owned()),member.document.into_bytes()))).collect()),
+                "text-set-context" => generated::execute_xml_outputs_with_sources_and_context(primary_text,&text_inputs,&execution).map(|mapped| std::iter::once((None,mapped.primary.into_bytes())).chain(mapped.extras.into_iter().map(|member|(Some(member.name.to_owned()),member.document.into_bytes()))).collect()),
+                "bytes-set" => generated::execute_xml_bytes_outputs_with_sources(&primary,&byte_inputs).map(|mapped| std::iter::once((None,mapped.primary)).chain(mapped.extras.into_iter().map(|member|(Some(member.name.to_owned()),member.document))).collect()),
+                "bytes-set-context" => generated::execute_xml_bytes_outputs_with_sources_and_context(&primary,&byte_inputs,&execution).map(|mapped| std::iter::once((None,mapped.primary)).chain(mapped.extras.into_iter().map(|member|(Some(member.name.to_owned()),member.document))).collect()),
+                "text" => generated::execute_xml_with_sources(primary_text,&text_inputs).map(|value|vec![(None,value.into_bytes())]),
+                "text-context" => generated::execute_xml_with_sources_and_context(primary_text,&text_inputs,&execution).map(|value|vec![(None,value.into_bytes())]),
+                "bytes" => generated::execute_xml_bytes_with_sources(&primary,&byte_inputs).map(|value|vec![(None,value)]),
+                _ => generated::execute_xml_bytes_with_sources_and_context(&primary,&byte_inputs,&execution).map(|value|vec![(None,value)]),
+            };
+            let mut row=json!({"primitive_input_boundary":null,"case":id,"method":method,"primary_hex":hex(&primary),"named":names.iter().zip(&named).map(|(name,bytes)|json!({"name":name,"document_hex":hex(bytes)})).collect::<Vec<_>>(),"outputs":null,"error":null});
+            match result {
+                Ok(outputs) => { let mut records=Vec::new(); for (index,(name,bytes)) in outputs.into_iter().enumerate() { let file=format!("{id}-{method}-{index}.xml"); std::fs::write(evidence.join(&file),&bytes)?; records.push(json!({"name":name,"bytes":bytes.len(),"document_hex":hex(&bytes),"file":file})); } row["outcome"]=json!("success");row["outputs"]=json!(records); }
+                Err(original) => { row["outcome"]=json!("error");row["error"]=error(&original); }
+            }
+            std::fs::write(evidence.join(format!("{id}-{method}-original-product.json")),serde_json::to_vec(&row)?)?;
+            row["primitive_input_boundary"]=primitive_input(case,&project,&primary,&names,&named,method.starts_with("bytes"));
+            let raw=serde_json::to_vec(&row)?;std::fs::write(evidence.join(format!("{id}-{method}.json")),&raw)?;
+            std::io::stdout().write_all(&raw)?;std::io::stdout().write_all(b"\n")?;std::io::stdout().flush()?;
+        }
+    }
+    Ok(())
+}
