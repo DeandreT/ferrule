@@ -1,0 +1,133 @@
+use super::typed_snapshot;
+use ir::Instance;
+use mapping::Project;
+use serde_json::{Value as Json, json};
+use std::{cell::RefCell, error::Error, path::Path, sync::Arc};
+use typed_snapshot::snapshot;
+const MARKER: &str = "typed-dispatch-original-second-host-failure";
+struct Loader {
+    a: Instance,
+    b: Instance,
+    fail: bool,
+    trace: RefCell<Vec<Json>>,
+}
+impl engine::DynamicSourceLoader for Loader {
+    fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String> {
+        let result = if source != "catalog" {
+            Err("unexpected source".to_string())
+        } else if path == "a.xml" {
+            Ok(Arc::new(self.a.clone()))
+        } else if path == "b.xml" && self.fail {
+            Err(MARKER.to_string())
+        } else if path == "b.xml" {
+            Ok(Arc::new(self.b.clone()))
+        } else {
+            Err("unexpected path".to_string())
+        };
+        let ordinal = self.trace.borrow().len() + 1;
+        let outcome = match &result {
+            Ok(value) => json!({"status":"returned","value":snapshot(value)}),
+            Err(message) => json!({"status":"error","message":message}),
+        };
+        self.trace
+            .borrow_mut()
+            .push(json!({"ordinal":ordinal,"source":source,"path":path,"outcome":outcome}));
+        result
+    }
+}
+fn error(error: &engine::EngineError) -> Json {
+    let (kind, source, path, message) = match error {
+        engine::EngineError::MissingDynamicSourceLoader { source_name } => (
+            "MissingDynamicSourceLoader",
+            Some(source_name.as_str()),
+            None,
+            None,
+        ),
+        engine::EngineError::DynamicSourceLoad {
+            source_name,
+            path,
+            message,
+        } => (
+            "DynamicSourceLoad",
+            Some(source_name.as_str()),
+            Some(path.as_str()),
+            Some(message.as_str()),
+        ),
+        _ => ("Other", None, None, None),
+    };
+    let mut causes = Vec::new();
+    let mut next = error.source();
+    while let Some(cause) = next {
+        causes.push(json!({"display":cause.to_string(),"debug":format!("{cause:?}")}));
+        next = cause.source();
+    }
+    json!({"kind":kind,"source":source,"path":path,"host_message":message,"display":error.to_string(),"debug":format!("{error:?}"),"causes":causes,"original_host_message_matches":message==Some(MARKER)})
+}
+pub fn records(root: &Path) -> Result<Vec<Json>, Box<dyn Error>> {
+    let cases = [
+        (
+            "ordinary-child-host-control",
+            "ordinary-child-dynamic-source-control.project.json",
+            true,
+            false,
+        ),
+        (
+            "document-driver-with-loader",
+            "dynamic-source-root-document-driver.project.json",
+            true,
+            false,
+        ),
+        (
+            "document-driver-no-loader",
+            "dynamic-source-root-document-driver.project.json",
+            false,
+            false,
+        ),
+        (
+            "document-driver-second-host-failure",
+            "dynamic-source-root-document-driver.project.json",
+            true,
+            true,
+        ),
+    ];
+    let mut records = Vec::new();
+    for (case, filename, enabled, fail) in cases {
+        let project_path = root.join(filename);
+        let project: Project = serde_json::from_str(&std::fs::read_to_string(&project_path)?)?;
+        let primary = format_json::from_str(
+            &std::fs::read_to_string(root.join("primary.json"))?,
+            &project.source,
+        )?;
+        let a = format_json::from_str(
+            &std::fs::read_to_string(root.join("a.json"))?,
+            &project.extra_sources[0].schema,
+        )?;
+        let b = format_json::from_str(
+            &std::fs::read_to_string(root.join("b.json"))?,
+            &project.extra_sources[0].schema,
+        )?;
+        let loader = Loader {
+            a,
+            b,
+            fail,
+            trace: RefCell::new(Vec::new()),
+        };
+        let result = if enabled {
+            let context =
+                engine::ExecutionContext::new(&project_path).with_dynamic_source_loader(&loader);
+            engine::run_outputs_with_sources_and_context(&project, &primary, Vec::new(), &context)
+        } else {
+            engine::run_outputs(&project, &primary)
+        };
+        let record = match result {
+            Ok(output) => {
+                json!({"status":"success","primary":snapshot(&output.primary),"extras":output.extras.iter().map(|o|json!({"name":o.name,"instance":snapshot(&o.instance)})).collect::<Vec<_>>(),"error":null})
+            }
+            Err(ref failure) => {
+                json!({"status":"error","primary":null,"extras":null,"error":error(failure)})
+            }
+        };
+        records.push(json!({"version":1,"backend":"native","case":case,"project":filename,"loader_enabled":enabled,"fail_second":fail,"primary_input":snapshot(&primary),"prepared_loaded_sources":[snapshot(&loader.a),snapshot(&loader.b)],"callbacks":loader.trace.borrow().clone(),"result":record}));
+    }
+    Ok(records)
+}

@@ -1,0 +1,167 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Driver",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Path",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Result",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Value",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {},
+  "target_options": {},
+  "extra_sources": [
+    {
+      "name": "catalog",
+      "path": "",
+      "schema": {
+        "name": "Catalog",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Row",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "File",
+                    "xml_namespace": {
+                      "kind": "unqualified"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "Value",
+                    "xml_namespace": {
+                      "kind": "unqualified"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            }
+          ]
+        }
+      },
+      "options": {},
+      "dynamic_path": {
+        "node": 0,
+        "iteration": [
+          "Driver"
+        ]
+      }
+    }
+  ],
+  "extra_targets": [],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "frame": [
+          "Driver"
+        ],
+        "path": [
+          "Path"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "frame": [
+          "catalog",
+          "Row"
+        ],
+        "path": [
+          "Value"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "Result",
+    "source": [
+      "catalog",
+      "Row"
+    ],
+    "output_path": 1,
+    "bindings": [
+      {
+        "target_field": "Value",
+        "node": 2
+      }
+    ],
+    "children": []
+  }
+}
