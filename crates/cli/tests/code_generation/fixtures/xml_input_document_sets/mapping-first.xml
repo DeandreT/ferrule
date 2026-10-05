@@ -1,0 +1,1 @@
+<Input xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Skip>0</Skip><First>10</First><Row><File>earlier.xml</File><Value>bad</Value><Keep>true</Keep><Rank>1</Rank><Bad>true</Bad></Row><Row><File></File><Value>later</Value><Keep>true</Keep><Rank>2</Rank><Bad>false</Bad></Row></Input>

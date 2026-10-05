@@ -1,4 +1,5 @@
 mod dynamic_inputs;
+mod input_document_sets;
 mod named_document_outputs;
 mod named_inputs;
 
@@ -6,6 +7,11 @@ use crate::{EmitError, literal};
 use codegen::{Program, ProgramValidationError, XmlInputProfile, XmlOutputPolicy};
 
 pub(super) fn render_types(program: &Program) -> Result<&'static str, EmitError> {
+    if program.xml_output_mode()?
+        == Some(codegen::XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments)
+    {
+        return Ok(input_document_sets::TYPES);
+    }
     if program.xml_output_mode()? == Some(codegen::XmlOutputMode::DynamicPrimaryDocuments) {
         return Ok(
             "public sealed record XmlDocumentOutput(string Path, string Document);\npublic sealed record XmlBytesDocumentOutput(string Path, byte[] Document);\n\n",
@@ -52,6 +58,11 @@ fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
 }
 
 pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
+    if program.xml_output_mode()?
+        == Some(codegen::XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments)
+    {
+        return input_document_sets::render(program, output);
+    }
     if program.xml_output_mode()? == Some(codegen::XmlOutputMode::DynamicPrimaryDocuments) {
         return render_dynamic_documents(program, output);
     }
