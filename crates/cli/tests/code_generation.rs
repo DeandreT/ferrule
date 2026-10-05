@@ -719,7 +719,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 74,
+            files_written: 75,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -771,6 +771,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleXml.Boundary.cs",
             "Runtime/FerruleXml.DocumentOutputs.cs",
             "Runtime/FerruleXml.DocumentSet.cs",
+            "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
             "Runtime/FerruleXml.DynamicSources.cs",
             "Runtime/FerruleXml.Input.Structured.cs",
             "Runtime/FerruleXml.Input.StructuredProjection.cs",
@@ -1293,3 +1294,6 @@ mod xml_input_document_outputs;
 
 #[path = "code_generation/typed_dynamic_document_sources.rs"]
 mod typed_dynamic_document_sources;
+
+#[path = "code_generation/xml_dynamic_input_document_sets.rs"]
+mod xml_dynamic_input_document_sets;

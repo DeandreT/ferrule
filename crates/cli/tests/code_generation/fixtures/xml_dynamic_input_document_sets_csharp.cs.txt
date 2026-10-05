@@ -1,0 +1,126 @@
+using System.Collections;
+using System.Text;
+using System.Text.Json;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static class Program
+{
+    static readonly UTF8Encoding Utf8=new(false,true);
+    static string Root="";
+    static string Schema(string name)=>File.ReadAllText(Path.Combine(Root,name+"-schema.json"));
+    static object Snapshot(FerruleInstance value)=>value switch
+    {
+        FerruleScalar scalar=>scalar.Value.Kind switch
+        {
+            FerruleValueKind.Null=>(object)new {kind="Scalar",tag="Null"},
+            FerruleValueKind.JsonNull=>new {kind="Scalar",tag="JsonNull"},
+            FerruleValueKind.XmlNil=>new {kind="Scalar",tag="XmlNil"},
+            FerruleValueKind.Bool=>new {kind="Scalar",tag="Bool",value=scalar.Value.BooleanValue},
+            FerruleValueKind.Int64=>new {kind="Scalar",tag="Int",value=scalar.Value.Int64Value},
+            FerruleValueKind.Double=>new {kind="Scalar",tag="Float",bits_hex=BitConverter.DoubleToUInt64Bits(scalar.Value.DoubleValue).ToString("x16")},
+            FerruleValueKind.String=>new {kind="Scalar",tag="String",value=scalar.Value.StringValue},
+            _=>throw new InvalidDataException("unknown scalar tag"),
+        },
+        FerruleGroup group=>new {kind="Group",xml_type_origin=new {kind=group.XmlTypeOrigin.Kind.ToString()},fields=group.Fields.Select(f=>new {name=f.Name,instance=Snapshot(f.Value)}).ToArray()},
+        FerruleRepeated repeated=>new {kind="Repeated",items=repeated.Items.Select(Snapshot).ToArray()},
+        FerruleMappedSequence sequence=>new {kind="MappedSequence",items=sequence.Items.Select(Snapshot).ToArray()},
+        _=>throw new InvalidDataException("unexpected direct ordinary instance"),
+    };
+    static object Physical(XElement node,JsonElement schema)
+    {
+        var group=schema.GetProperty("kind").GetProperty("kind").GetString()=="group";
+        var text=string.Concat(node.Nodes().OfType<XText>().Select(t=>t.Value));
+        if(group && text.Any(c=>c is not (' ' or '\t' or '\r' or '\n')))throw new InvalidDataException("significant element-only group text");
+        var children=node.Elements().Select(child=>
+        {
+            var field=schema.GetProperty("kind").GetProperty("children").EnumerateArray().Single(f=>f.GetProperty("name").GetString()==child.Name.LocalName && !(f.TryGetProperty("attribute",out var a)&&a.GetBoolean()));
+            return Physical(child,field);
+        }).ToArray();
+        return new {name=node.Name.LocalName,@namespace=node.Name.NamespaceName,attributes=node.Attributes().Where(a=>!a.IsNamespaceDeclaration).OrderBy(a=>a.Name.NamespaceName,StringComparer.Ordinal).ThenBy(a=>a.Name.LocalName,StringComparer.Ordinal).Select(a=>new {name=a.Name.LocalName,@namespace=a.Name.NamespaceName,value=a.Value}).ToArray(),text=group?"":text,children};
+    }
+    static object Inputs(byte[] primary,byte[] rates,byte[] labels)=>new
+    {
+        primary=Snapshot(FerruleXml.ParseStructuredEmbeddedBytes(Schema("source"),primary)),
+        statics=new object[]{new {name="labels",declaration_index=2,instance=Snapshot(FerruleXml.ParseStructuredEmbeddedBytes(Schema("labels"),labels))},new {name="rates",declaration_index=0,instance=Snapshot(FerruleXml.ParseStructuredEmbeddedBytes(Schema("rates"),rates))}},
+    };
+    sealed class Loader(bool fail):IFerruleDynamicXmlSourceLoader
+    {
+        public List<object> Calls {get;}=[];
+        public Exception? OriginalHostError {get;private set;}
+        public byte[] Load(string source,string path)
+        {
+            var call=new Dictionary<string,object?> { ["source"]=source,["path"]=path,["loaded"]=null,["host_error"]=null };Calls.Add(call);
+            var message=source!="catalog" || path is not ("a.xml" or "b.xml")?"unexpected authored source/path":fail && path=="b.xml"?"original second catalog failure":null;
+            if(message is not null){call["host_error"]=message;OriginalHostError=new InvalidOperationException(message);throw OriginalHostError;}
+            byte[] bytes;
+            try{bytes=File.ReadAllBytes(Path.Combine(Root,path));}catch(Exception error){call["host_error"]=error.Message;OriginalHostError=error;throw;}
+            try{call["loaded"]=Snapshot(FerruleXml.ParseStructuredEmbeddedBytes(Schema("catalog"),bytes));}catch(Exception diagnostic){call["loaded"]=new {diagnostic_parse_error=diagnostic.ToString()};}
+            return bytes;
+        }
+    }
+    static bool Contains(Exception error,Exception? original)
+    {
+        if(original is null)return false;
+        for(Exception? e=error;e is not null;e=e.InnerException)if(ReferenceEquals(e,original))return true;
+        return false;
+    }
+    static object Error(Exception original,Loader loader)
+    {
+        if(original is not FerruleXmlDynamicInputDocumentExecutionException error)return new {type=original.GetType().FullName,detail=original.Message,debug=original.ToString(),kind="ordinary",boundary_identity=false};
+        var runtime=error.Boundary.InnerException as FerruleRuntimeException;
+        object? fields=null;
+        if(runtime is not null) fields=runtime.Error switch
+        {
+            FerruleRuntimeError.DynamicSourceLoad=>new {variant="DynamicSourceLoad",source=runtime.SourceField,path=runtime.Detail,message=runtime.InnerException?.Message},
+            FerruleRuntimeError.MissingRuntimeValue=>new {variant="MissingRuntimeValue",value=runtime.RuntimeValue?.ToString()},
+            _=>null,
+        };
+        var causes=new List<object>();
+        for(Exception? c=error.Boundary.InnerException;c is not null;c=c.InnerException)causes.Add(new {type=c.GetType().FullName,detail=c.Message,debug=c.ToString()});
+        return new {type=error.GetType().FullName,detail=error.Message,debug=error.ToString(),kind=error.Boundary.Kind.ToString(),boundary_detail=error.Boundary.Detail,bytes=error.Boundary.Bytes,limit=error.Boundary.Limit,owner=error.Owner?.ToString(),request=error.Request?.ToString(),runtime=fields,causes,boundary_identity=ReferenceEquals(error.InnerException,error.Boundary),original_host_identity=loader.OriginalHostError is null?(bool?)null:Contains(error,loader.OriginalHostError)};
+    }
+    static void Emit(object row){Console.Out.WriteLine(JsonSerializer.Serialize(row));Console.Out.Flush();}
+    static void Main(string[] args)
+    {
+        Root=args[0];var rates=File.ReadAllBytes(Path.Combine(Root,"rates.xml"));var labels=File.ReadAllBytes(Path.Combine(Root,"labels.xml"));
+        var named=new[]{new NamedXmlBytesInput("labels",labels),new NamedXmlBytesInput("rates",rates)};
+        var texts=new[]{new NamedXmlInput("labels",Utf8.GetString(labels)),new NamedXmlInput("rates",Utf8.GetString(rates))};
+        var execution=new FerruleExecutionContext("mapping/library.json","mapping/main.json","2026-10-05T00:00:00Z",null);
+        using var target=JsonDocument.Parse(Schema("target"));
+        foreach(var @case in new[]{"base","context","host-failure"})
+        foreach(var method in new[]{"text","text-context","bytes","bytes-context"})
+        {
+            var primary=File.ReadAllBytes(Path.Combine(Root,@case=="context"?"context.xml":"primary.xml"));var loader=new Loader(@case=="host-failure");
+            IReadOnlyList<XmlDocumentOutput>? textOutput=null;IReadOnlyList<XmlBytesDocumentOutput>? byteOutput=null;Exception? original=null;
+            try
+            {
+                switch(method)
+                {
+                    case "text":textOutput=GeneratedMapping.ExecuteXmlDocumentsWithSourcesAndDynamicSourceLoader(Utf8.GetString(primary),texts,loader);break;
+                    case "text-context":textOutput=GeneratedMapping.ExecuteXmlDocumentsWithSourcesContextAndDynamicSourceLoader(Utf8.GetString(primary),texts,execution,loader);break;
+                    case "bytes":byteOutput=GeneratedMapping.ExecuteXmlBytesDocumentsWithSourcesAndDynamicSourceLoader(primary,named,loader);break;
+                    default:byteOutput=GeneratedMapping.ExecuteXmlBytesDocumentsWithSourcesContextAndDynamicSourceLoader(primary,named,execution,loader);break;
+                }
+            }
+            catch(Exception error){original=error;}
+            var outputs=textOutput is not null?textOutput.Select(x=>(x.Path,Bytes:Utf8.GetBytes(x.Document))).ToArray():byteOutput?.Select(x=>(x.Path,Bytes:x.Document)).ToArray();
+            var buffers=new HashSet<byte[]>(ReferenceEqualityComparer.Instance);
+            var distinct=outputs is null || outputs.All(x=>buffers.Add(x.Bytes));
+            var originalRows=outputs?.Select(x=>new {path=x.Path,xml=Utf8.GetString(x.Bytes),bytes=x.Bytes.Length}).ToArray();
+            Emit(new {@case,method,inputs=Inputs(primary,rates,labels),calls=loader.Calls,outputs=originalRows,error=original is null?null:Error(original,loader),outcome=original is null?"success":"error",distinct_output_buffers=distinct,public_byte_buffers_checked=byteOutput is not null});
+            // The full original public outcome is flushed before independent diagnostics.
+            if(outputs is not null)
+            {
+                try
+                {
+                    var diagnostic=outputs.Select(x=>new {path=x.Path,instance=Snapshot(FerruleXml.ParseStructuredEmbeddedBytes(Schema("target"),x.Bytes)),physical=Physical(XDocument.Parse(Utf8.GetString(x.Bytes),LoadOptions.PreserveWhitespace).Root!,target.RootElement)}).ToArray();
+                    var readOnly=(object?)textOutput??byteOutput;
+                    Console.Error.WriteLine(JsonSerializer.Serialize(new {@case,method,outputs=diagnostic,readonly_list=readOnly is IList list && list.IsReadOnly}));Console.Error.Flush();
+                }
+                catch(Exception diagnostic){Console.Error.WriteLine(JsonSerializer.Serialize(new {@case,method,diagnostic_error=diagnostic.ToString()}));Console.Error.Flush();}
+            }
+        }
+    }
+}

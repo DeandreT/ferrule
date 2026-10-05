@@ -1,5 +1,10 @@
 //! Explicit primary XML document boundaries. JSON codecs never invent XML origins.
 
+mod dynamic_input_document_set;
+pub use dynamic_input_document_set::{
+    XmlDynamicInputDocumentExecutionError, XmlDynamicInputDocumentOwner,
+};
+
 mod dynamic_inputs;
 pub use dynamic_inputs::{
     DynamicXmlSourceLoader, XmlDynamicInputRequest, XmlDynamicSourceAdapter, XmlDynamicSourcePolicy,
