@@ -717,8 +717,9 @@ from the byte counter. Mapping instances can already be live when output limits
 are checked; these limits do not provide streaming or a process memory ceiling.
 
 The checked `Program::xml_output_mode()` query distinguishes `SingleDocument`,
-`DynamicPrimaryDocuments`, `StaticNamedInputsDynamicPrimaryDocuments`, and
-`StaticPrimaryDynamicNamedDocuments`, returns no optional adapter for an
+`DynamicPrimaryDocuments`, `StaticNamedInputsDynamicPrimaryDocuments`,
+`StaticPrimaryDynamicNamedDocuments`, and
+`StaticNamedInputsStaticPrimaryDynamicNamedDocuments`, returns no optional adapter for an
 unsupported ordinary boundary, and preserves the original
 typed error for an invalid hand-built program. External exhaustive matches on
 this public enum must handle the added variant.
@@ -812,6 +813,58 @@ zero-based member index, and exact path. The wrapper preserves the original XML
 boundary and typed cause. Any failure returns no partial output envelope, and a
 later mapping failure takes priority over an earlier potential serialization
 failure. Existing single-document and primary-list methods keep their meanings.
+
+### Static Named Inputs with Static Primary and Dynamic Named Documents
+
+An ordinary `Structured` XML mapping can combine static named inputs with a
+static primary document and one or more dynamic named document lists. This
+separate mode requires at least one static named input. Every input has its own
+closed `Structured` schema and policy in original declaration order, including
+unused inputs. The primary is a closed nonrepeating group with a noniterating
+root. Every named output has a closed nonrepeating member group and a root
+`DynamicDocuments` driver whose nonempty path ends in a repeating group of the
+primary input. Both observed flags remain false. Dynamic named sources, observed
+root-view profiles, static named output roots mixed with document-list roots,
+and advanced unsupported XML schemas remain outside this adapter.
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| XML text and named inputs | `execute_xml_document_outputs_with_sources` | `GeneratedMapping.ExecuteXmlDocumentOutputsWithSources` |
+| UTF-8 bytes and named inputs | `execute_xml_bytes_document_outputs_with_sources` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSources` |
+| XML text, named inputs and context | `execute_xml_document_outputs_with_sources_and_context` | `GeneratedMapping.ExecuteXmlDocumentOutputsWithSources(source, extraSources, executionContext)` |
+| UTF-8 bytes, named inputs and context | `execute_xml_bytes_document_outputs_with_sources_and_context` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSources(source, extraSources, executionContext)` |
+
+Inputs reuse `NamedXmlInput` and `NamedXmlBytesInput`. Results reuse
+`XmlDocumentExecutionOutputs` and `XmlBytesDocumentExecutionOutputs`, retaining
+the primary and every named envelope in declaration order, including empty
+lists. Members retain their exact opaque logical paths. The adapter admits the
+complete input count, exact names and document shapes, all per-document sizes,
+and combined original input bytes before parsing the primary and then each
+named declaration. Empty output lists still require every input. C# strict text
+measurement can refuse invalid UTF-16 during the size pass; byte decoding occurs
+during primary-then-declaration parsing.
+
+All typed mapping completes once before output alignment, checked actual count,
+capacity, or serialization. The adapter checks `1 + sum(named member counts)`
+including the primary, then serializes and charges the primary followed by each
+named declaration and its members in final order. The input and output ledgers
+are independent. Each permits at most 4,096 artifacts and 256 MiB UTF-8, with a
+64 MiB per-document limit. The output always includes the primary; all named
+lists can be empty.
+
+Rust returns `XmlInputDocumentOutputsExecutionError`; C# throws
+`FerruleXmlInputDocumentOutputsExecutionException`. The optional exclusive owner
+identifies either `Input` with the original input owner, or `Output` with the
+existing mixed-output owner: `Primary` has no member fields, while `NamedMember`
+retains the original declaration index and name, zero-based final member index,
+and exact path. The original boundary and typed cause remain unchanged. Input
+descriptor and parser failures keep their input owner; serializer `Schema`
+setup remains unowned. Global names/count, mapping and alignment failures remain
+unowned. Shared-byte refusals identify the crossing input or output. Any failure
+returns no partial envelope. Existing XML methods keep their signatures,
+wrappers and behavior. Paths remain opaque; the library does not publish files,
+resolve paths or open schema-hint locations. These serialized-byte limits do not
+provide streaming or a process memory ceiling.
 
 ### Observed Root-View Input
 

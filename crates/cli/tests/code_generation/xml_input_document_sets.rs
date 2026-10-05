@@ -337,7 +337,7 @@ fn exercise(language: &str) -> TestResult<()> {
         String::from_utf8_lossy(&result.stderr)
     );
     let unchanged = artifact_files(&generated)?;
-    assert_eq!(unchanged.len(), if language == "rust" { 2 } else { 73 });
+    assert_eq!(unchanged.len(), if language == "rust" { 2 } else { 74 });
     let api = std::fs::read_to_string(generated.join(if language == "rust" {
         "src/lib.rs"
     } else {
@@ -381,6 +381,11 @@ fn exercise(language: &str) -> TestResult<()> {
         assert!(
             generated
                 .join("Runtime/FerruleXml.InputDocumentSet.cs")
+                .is_file()
+        );
+        assert!(
+            generated
+                .join("Runtime/FerruleXml.InputDocumentOutputs.cs")
                 .is_file()
         );
     }

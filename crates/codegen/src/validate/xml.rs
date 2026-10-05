@@ -370,12 +370,20 @@ fn validate_dynamic_named_output(program: &crate::Program) -> Result<bool, Progr
         .xml_boundary
         .as_ref()
         .ok_or_else(|| reject("missing XML boundary"))?;
-    if policy.input.profile() != Some(crate::XmlInputProfile::Structured)
-        || !program.extra_sources.is_empty()
-        || !policy.extra_inputs.is_empty()
+    if policy.input.profile() != Some(crate::XmlInputProfile::Structured) {
+        return Err(reject(if program.extra_sources.is_empty() {
+            "dynamic named XML output requires one Structured input and no named inputs"
+        } else {
+            "dynamic named XML output requires closed Structured inputs"
+        }));
+    }
+    if program
+        .extra_sources
+        .iter()
+        .any(|source| source.dynamic.is_some())
     {
         return Err(reject(
-            "dynamic named XML output requires one Structured input and no named inputs",
+            "dynamic named XML output permits only static named inputs",
         ));
     }
     if program.root.iteration.is_some()
