@@ -1,4 +1,4 @@
-//! One dynamic input, static admission and complete mixed XML serialization.
+//! Dynamic inputs, static admission and complete mixed XML serialization.
 use super::output_arguments;
 use crate::{EmitError, rust_string};
 use codegen::{Program, ProgramValidationError};
@@ -35,14 +35,32 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
         .enumerate()
         .filter(|(_, source)| source.dynamic.is_none())
         .collect::<Vec<_>>();
-    let (dynamic_index, dynamic_source) = program
+    let dynamic_sources = program
         .extra_sources
         .iter()
         .enumerate()
-        .find(|(_, source)| source.dynamic.is_some())
-        .ok_or_else(|| ProgramValidationError::InvalidXmlBoundary {
+        .filter(|(_, source)| source.dynamic.is_some())
+        .collect::<Vec<_>>();
+    let (dynamic_index, dynamic_source) = dynamic_sources.first().copied().ok_or_else(|| {
+        ProgramValidationError::InvalidXmlBoundary {
             reason: "dynamic input mixed XML outputs require their dynamic declaration".into(),
-        })?;
+        }
+    })?;
+    let adapter = if dynamic_sources.len() == 1 {
+        format!(
+            "    let adapter = codegen_runtime::XmlDynamicSourceAdapter::new(loader, codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {dynamic_index}, source: {}, schema: EXTRA_XML_INPUT_SCHEMA_{dynamic_index} }}, budget);\n",
+            rust_string(&dynamic_source.name)
+        )
+    } else {
+        let mut adapter = String::from(
+            "    let adapter = codegen_runtime::XmlDynamicSourceAdapter::for_sources(loader, vec![\n",
+        );
+        for (index, source) in dynamic_sources {
+            adapter.push_str(&format!("        codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {index}, source: {}, schema: EXTRA_XML_INPUT_SCHEMA_{index} }},\n", rust_string(&source.name)));
+        }
+        adapter.push_str("    ], budget);\n");
+        adapter
+    };
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -182,8 +200,7 @@ fn xml_dynamic_document_outputs_recovery_error(error: codegen_runtime::XmlExecut
                     rust_string(&input.name)
                 ));
             }
-            let dynamic_name = rust_string(&dynamic_source.name);
-            output.push_str(&format!("    ];\n    let adapter = codegen_runtime::XmlDynamicSourceAdapter::new(loader, codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {dynamic_index}, source: {dynamic_name}, schema: EXTRA_XML_INPUT_SCHEMA_{dynamic_index} }}, budget);\n    let mapped = {execute}(&parsed, &parsed_inputs{context_call}, &adapter).map_err(|error| xml_dynamic_document_outputs_recovery_error(adapter.recover(error)))?;\n    {helper}(mapped).map_err(codegen_runtime::XmlDynamicInputDocumentOutputsExecutionError::from)\n}}\n\n"));
+            output.push_str(&format!("    ];\n{adapter}    let mapped = {execute}(&parsed, &parsed_inputs{context_call}, &adapter).map_err(|error| xml_dynamic_document_outputs_recovery_error(adapter.recover(error)))?;\n    {helper}(mapped).map_err(codegen_runtime::XmlDynamicInputDocumentOutputsExecutionError::from)\n}}\n\n"));
         }
         let target_count = program.extra_targets.len();
         output.push_str(&format!(r#"fn {helper}(mapped: ExecutionOutputs) -> Result<{result}, codegen_runtime::XmlDocumentOutputsExecutionError> {{

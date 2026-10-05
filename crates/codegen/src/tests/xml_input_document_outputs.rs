@@ -368,9 +368,11 @@ fn every_input_and_output_policy_is_validated_without_partial_admission() {
         ))
     );
     dynamic.extra_sources[0].dynamic = dynamic.extra_sources[2].dynamic.clone();
-    assert!(
-        matches!(dynamic.xml_output_mode(), Err(ProgramValidationError::InvalidXmlBoundary { reason })
-        if reason.contains("at most one dynamic named input"))
+    assert_eq!(
+        dynamic.xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments
+        ))
     );
 }
 
