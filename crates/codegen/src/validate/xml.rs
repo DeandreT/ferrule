@@ -274,6 +274,7 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
         ));
     }
     let dynamic_primary = validate_dynamic_primary_output(program)?;
+    let dynamic_named = validate_dynamic_named_output(program)?;
     validate_document_output(
         &program.target,
         &program.root,
@@ -281,14 +282,13 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
         dynamic_primary,
     )?;
     for (target, output) in program.extra_targets.iter().zip(&policy.extra_outputs) {
-        validate_document_output(&target.target, &target.root, &output.output, false).map_err(
-            |error| match error {
+        validate_document_output(&target.target, &target.root, &output.output, dynamic_named)
+            .map_err(|error| match error {
                 ProgramValidationError::InvalidXmlBoundary { reason } => {
                     reject(&format!("named XML output `{}`: {reason}", target.name))
                 }
                 error => error,
-            },
-        )?;
+            })?;
     }
     Ok(())
 }
@@ -338,6 +338,72 @@ fn validate_dynamic_primary_output(
     {
         return Err(reject(
             "dynamic primary XML output driver must end in a repeating Group",
+        ));
+    }
+    Ok(true)
+}
+
+fn validate_dynamic_named_output(program: &crate::Program) -> Result<bool, ProgramValidationError> {
+    let has_dynamic_named = program.extra_targets.iter().any(|target| {
+        target
+            .root
+            .iteration
+            .as_ref()
+            .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
+    });
+    if !has_dynamic_named {
+        return Ok(false);
+    }
+    let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
+        reason: reason.to_owned(),
+    };
+    let policy = program
+        .xml_boundary
+        .as_ref()
+        .ok_or_else(|| reject("missing XML boundary"))?;
+    if policy.input.profile() != Some(crate::XmlInputProfile::Structured)
+        || !program.extra_sources.is_empty()
+        || !policy.extra_inputs.is_empty()
+        || program.extra_targets.len() != 1
+        || policy.extra_outputs.len() != 1
+    {
+        return Err(reject(
+            "dynamic named XML output requires one Structured input and exactly one named target",
+        ));
+    }
+    if program.root.iteration.is_some()
+        || program.root.repeating
+        || program.target.repeating
+        || !matches!(program.target.kind, SchemaKind::Group { .. })
+    {
+        return Err(reject(
+            "dynamic named XML output requires a static noniterating group primary",
+        ));
+    }
+    let target = &program.extra_targets[0];
+    if target.target.repeating
+        || target.root.repeating
+        || !matches!(target.target.kind, SchemaKind::Group { .. })
+    {
+        return Err(reject(
+            "dynamic named XML members require a closed nonrepeating group target",
+        ));
+    }
+    let dynamic = target
+        .root
+        .iteration
+        .as_ref()
+        .and_then(|iteration| iteration.dynamic_document_iteration())
+        .ok_or_else(|| reject("dynamic named XML output requires a dynamic-document root"))?;
+    let path = dynamic.source().path();
+    let driver = SourceCatalog::new(&program.source, &[]).root_schema_at(path);
+    if path.is_empty()
+        || !driver.is_some_and(|driver| {
+            driver.node().repeating && matches!(driver.node().kind, SchemaKind::Group { .. })
+        })
+    {
+        return Err(reject(
+            "dynamic named XML output driver must end in a repeating Group",
         ));
     }
     Ok(true)

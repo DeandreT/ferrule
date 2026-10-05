@@ -1,0 +1,1 @@
+<Input><PrimaryBad>false</PrimaryBad><Skip>0</Skip><First>10</First><Row><File>first.xml</File><Value>bad</Value><Keep>true</Keep><Rank>1</Rank></Row><Row><File>   </File><Value>good</Value><Keep>true</Keep><Rank>2</Rank></Row></Input>

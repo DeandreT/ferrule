@@ -716,10 +716,57 @@ refusals retain their original byte count and limit. Logical paths are excluded
 from the byte counter. Mapping instances can already be live when output limits
 are checked; these limits do not provide streaming or a process memory ceiling.
 
-The checked `Program::xml_output_mode()` query distinguishes `SingleDocument`
-from `DynamicPrimaryDocuments`, returns no optional adapter for an unsupported
-ordinary boundary, and preserves the original typed error for an invalid
-hand-built program.
+The checked `Program::xml_output_mode()` query distinguishes `SingleDocument`,
+`DynamicPrimaryDocuments`, and `StaticPrimaryDynamicNamedDocuments`, returns no
+optional adapter for an unsupported ordinary boundary, and preserves the original
+typed error for an invalid hand-built program. External exhaustive matches on
+this public enum must handle the added variant.
+
+### Static Primary and Dynamic Named Documents
+
+An ordinary `Structured` XML mapping can return one static primary document and
+one named target containing ordered dynamic documents. This adapter requires a
+closed nonrepeating primary group with a noniterating root, exactly one named
+target with a dynamic-document root, and no named inputs. The named driver's
+nonempty source path must end in a repeating group, and its member schema must
+be a closed nonrepeating group. Both observed input flags remain false. Existing
+XML schema, namespace, and literal schema-hint restrictions still apply.
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| XML text | `execute_xml_document_outputs` | `GeneratedMapping.ExecuteXmlDocumentOutputs` |
+| UTF-8 bytes | `execute_xml_bytes_document_outputs` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputs` |
+| XML text with execution context | `execute_xml_document_outputs_with_context` | `GeneratedMapping.ExecuteXmlDocumentOutputs(source, executionContext)` |
+| UTF-8 bytes with execution context | `execute_xml_bytes_document_outputs_with_context` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputs(source, executionContext)` |
+
+Text methods return `XmlDocumentExecutionOutputs`; byte methods return
+`XmlBytesDocumentExecutionOutputs`. Each result owns its primary document and an
+ordered `extras` collection containing one named envelope with `name` and
+`documents` fields. C# uses the corresponding `Primary`, `Extras`, `Name`, and
+`Documents` properties and read-only collections. Members retain their exact
+logical paths beside XML strings or owned UTF-8 buffers. Duplicate, absolute,
+and traversal-shaped paths remain opaque metadata for the host to resolve and
+publish. An empty named list still returns the primary and its empty named
+envelope.
+
+The adapter completes the whole typed mapping once before serialization. It
+checks output shape, name alignment, and the actual artifact count before
+allocating output collections or serializing documents. The maximum of 4,096
+artifacts includes the primary, permitting at most 4,095 named members. It
+serializes and charges the primary first, then each named member in final order.
+Each document is limited to 64 MiB and the complete set to 256 MiB of serialized
+UTF-8, excluding logical paths. These limits do not bound live mapping instances
+or provide streaming or a process memory ceiling.
+
+Rust returns `codegen_runtime::XmlDocumentOutputsExecutionError`; C# throws
+`FerruleXmlDocumentOutputsExecutionException`. Input, mapping, schema setup,
+alignment, and count failures have no output owner. Other primary serialization
+failures own `Primary`, which has no member index or path. Named serialization
+and combined-byte failures identify the declaration index and name, final
+zero-based member index, and exact path. The wrapper preserves the original XML
+boundary and typed cause. Any failure returns no partial output envelope, and a
+later mapping failure takes priority over an earlier potential serialization
+failure. Existing single-document and primary-list methods keep their meanings.
 
 ### Observed Root-View Input
 

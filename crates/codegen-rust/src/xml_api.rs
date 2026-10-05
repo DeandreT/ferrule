@@ -1,4 +1,5 @@
 mod dynamic_inputs;
+mod named_document_outputs;
 mod named_inputs;
 
 use crate::{EmitError, rust_string};
@@ -27,6 +28,11 @@ fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
 pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     if program.xml_output_mode()? == Some(codegen::XmlOutputMode::DynamicPrimaryDocuments) {
         return render_dynamic_documents(program);
+    }
+    if program.xml_output_mode()?
+        == Some(codegen::XmlOutputMode::StaticPrimaryDynamicNamedDocuments)
+    {
+        return named_document_outputs::render(program);
     }
     let Some(policy) = &program.xml_boundary else {
         return Ok(String::new());
