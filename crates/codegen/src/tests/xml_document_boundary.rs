@@ -188,3 +188,173 @@ fn public_xml_document_profile_refuses_namespace_declaration_roles_before_artifa
             .any(|d| d.to_string().contains("namespace is invalid or too large"))
     );
 }
+
+fn root_view_static_inputs_project() -> Project {
+    serde_json::from_str(include_str!(
+        "fixtures/root_view_static_named_xml_inputs.json"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn observed_primary_composes_with_exact_static_structured_named_inputs() {
+    let project = root_view_static_inputs_project();
+    assert!(engine::validate(&project).is_empty());
+    let program = lower(&project).expect("observed primary plus ordinary static inputs");
+    assert_eq!(
+        program.xml_output_mode(),
+        Ok(Some(crate::XmlOutputMode::SingleDocument))
+    );
+    let policy = program.xml_boundary.as_ref().unwrap();
+    assert_eq!(
+        policy.input.profile(),
+        Some(crate::XmlInputProfile::RootView)
+    );
+    assert_eq!(
+        policy
+            .extra_inputs
+            .iter()
+            .map(|input| input.name.as_str())
+            .collect::<Vec<_>>(),
+        ["rates", "labels"]
+    );
+    for (source, input) in program.extra_sources.iter().zip(&policy.extra_inputs) {
+        assert!(source.dynamic.is_none());
+        assert_eq!(
+            input.input.profile(),
+            Some(crate::XmlInputProfile::Structured)
+        );
+        assert_eq!(
+            source.source,
+            project
+                .extra_sources
+                .iter()
+                .find(|s| s.name == source.name)
+                .unwrap()
+                .schema
+        );
+    }
+    assert!(program.extra_targets.is_empty());
+    assert!(policy.extra_outputs.is_empty());
+    assert!(program.root.iteration.is_none());
+    for mutation in 0..5 {
+        let mut invalid = program.clone();
+        let inputs = &mut invalid.xml_boundary.as_mut().unwrap().extra_inputs;
+        match mutation {
+            0 => {
+                inputs.pop();
+            }
+            1 => inputs.swap(0, 1),
+            2 => inputs[0].name = "wrong".into(),
+            3 => inputs[0].input.root_view_policy = true,
+            _ => {
+                inputs[0].input = crate::XmlInputPolicy {
+                    allow_inactive_root_type_members: true,
+                    root_view_policy: true,
+                }
+            }
+        }
+        assert!(matches!(
+            validate_program(&invalid),
+            Err(ProgramValidationError::InvalidXmlBoundary { .. })
+        ));
+    }
+}
+
+#[test]
+fn observed_compound_stays_strict_without_ordinary_schema_fallback() {
+    let mut unsupported = root_view_static_inputs_project();
+    let SchemaKind::Group { children, .. } = &mut unsupported.extra_sources[0].schema.kind else {
+        unreachable!()
+    };
+    children[0].default = Some("0".into());
+    assert!(
+        lower(&unsupported).is_err(),
+        "mandatory observed boundary cannot silently omit its adapter"
+    );
+    let mut mixed = root_view_static_inputs_project();
+    mixed.extra_sources[1]
+        .options
+        .xml_allow_inactive_root_type_members = true;
+    assert!(lower(&mixed).is_err());
+    let mut observed_named = document_project();
+    observed_named.extra_sources.push(mapping::NamedSource {
+        name: "other".into(),
+        path: "other.xml".into(),
+        schema: observed_named.source.clone(),
+        options: observed_named.source_options.clone(),
+        dynamic_path: None,
+    });
+    assert!(
+        lower(&observed_named)
+            .unwrap_err()
+            .diagnostics()
+            .iter()
+            .any(|error| {
+                error
+                    .to_string()
+                    .contains("named observed XML root-view input adapters")
+            })
+    );
+    let mut extra_output = root_view_static_inputs_project();
+    extra_output.extra_targets.push(mapping::NamedTarget {
+        name: "another".into(),
+        path: None,
+        schema: extra_output.target.clone(),
+        root: Scope::default(),
+        options: extra_output.target_options.clone(),
+    });
+    assert!(
+        lower(&extra_output)
+            .unwrap_err()
+            .diagnostics()
+            .iter()
+            .any(|error| { error.to_string().contains("one primary input and output") })
+    );
+    let mut dynamic = lower(&root_view_static_inputs_project()).unwrap();
+    dynamic.extra_sources[0].dynamic = Some(crate::DynamicSourceProgram {
+        path: 0,
+        driver: SourceIteration::new(Vec::new()),
+    });
+    assert!(
+        validate_program(&dynamic).is_err(),
+        "dynamic sources remain outside the observed route"
+    );
+}
+
+#[test]
+fn observed_compound_input_count_includes_primary() {
+    let mut program = lower(&root_view_static_inputs_project()).unwrap();
+    let source = program.extra_sources[0].clone();
+    let input = program.xml_boundary.as_ref().unwrap().extra_inputs[0].clone();
+    for index in 2..4095 {
+        let name = format!("unused{index}");
+        let mut source = source.clone();
+        source.name = name.clone();
+        let mut input = input.clone();
+        input.name = name;
+        program.extra_sources.push(source);
+        program
+            .xml_boundary
+            .as_mut()
+            .unwrap()
+            .extra_inputs
+            .push(input);
+    }
+    assert_eq!(validate_program(&program), Ok(()));
+    let mut source = source;
+    source.name = "one-too-many".into();
+    let mut input = input;
+    input.name = "one-too-many".into();
+    program.extra_sources.push(source);
+    program
+        .xml_boundary
+        .as_mut()
+        .unwrap()
+        .extra_inputs
+        .push(input);
+    assert!(
+        matches!(validate_program(&program), Err(ProgramValidationError::InvalidXmlBoundary { reason })
+        if reason == "XML document input sets permit at most 4096 artifacts including primary")
+    );
+}

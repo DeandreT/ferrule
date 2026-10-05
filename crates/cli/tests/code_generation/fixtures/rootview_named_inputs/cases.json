@@ -1,0 +1,275 @@
+{
+  "schema": 1,
+  "fixed_datetime": "2026-10-05T00:00:00Z",
+  "cases": [
+    {
+      "id": "default-inactive-attribute",
+      "primary": "default.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "success",
+        "Code": "  雪 & 😀  ",
+        "Extra": "  inactive  ",
+        "Derived": false,
+        "Revision": 7,
+        "Message": "prefix:   雪 & 😀  ",
+        "Timestamp": "unused"
+      }
+    },
+    {
+      "id": "missing-required-lazy",
+      "primary": "missing-extra.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels-lazy.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "success",
+        "Code": "missing",
+        "Extra": "skipped",
+        "Derived": false,
+        "Revision": 7,
+        "Message": "prefix: missing",
+        "Timestamp": "unused"
+      }
+    },
+    {
+      "id": "missing-required-evaluated",
+      "primary": "missing-extra.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "error",
+        "kind": "Mapping",
+        "owner": null,
+        "runtime": "PrimaryRoot",
+        "node": 1,
+        "field": [
+          "Extra"
+        ]
+      }
+    },
+    {
+      "id": "explicit-derived",
+      "primary": "derived.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "success",
+        "Code": "derived",
+        "Extra": "present",
+        "Derived": true,
+        "Revision": 7,
+        "Message": "prefix: derived",
+        "Timestamp": "unused"
+      }
+    },
+    {
+      "id": "explicit-unknown",
+      "primary": "other.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "success",
+        "Code": "other",
+        "Extra": "present",
+        "Derived": false,
+        "Revision": 7,
+        "Message": "prefix: other",
+        "Timestamp": "unused"
+      }
+    },
+    {
+      "id": "explicit-padded",
+      "primary": "padded.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "success",
+        "Code": "padded",
+        "Extra": "present",
+        "Derived": false,
+        "Revision": 7,
+        "Message": "prefix: padded",
+        "Timestamp": "unused"
+      }
+    },
+    {
+      "id": "actual-runtime-context",
+      "primary": "default.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels-context.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "context": {
+          "outcome": "success",
+          "Code": "  雪 & 😀  ",
+          "Extra": "  inactive  ",
+          "Derived": false,
+          "Revision": 7,
+          "Message": "prefix:   雪 & 😀  ",
+          "Timestamp": "2026-10-05T00:00:00Z"
+        },
+        "no_context": {
+          "outcome": "error",
+          "kind": "Mapping",
+          "owner": null,
+          "runtime": "MissingRuntimeValue"
+        }
+      }
+    },
+    {
+      "id": "malformed-primary",
+      "primary": "malformed.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "error",
+        "kind": "Input",
+        "owner": {
+          "kind": "Primary"
+        }
+      }
+    },
+    {
+      "id": "malformed-named",
+      "primary": "default.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels-malformed.xml"
+        },
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "error",
+        "kind": "Input",
+        "owner": {
+          "kind": "Named",
+          "index": 1,
+          "name": "labels"
+        }
+      }
+    },
+    {
+      "id": "missing-name-before-primary-parse",
+      "primary": "malformed.xml",
+      "named": [
+        {
+          "name": "rates",
+          "file": "rates.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "error",
+        "kind": "Mapping",
+        "owner": null,
+        "runtime": "MissingNamedSource",
+        "name": "labels"
+      }
+    },
+    {
+      "id": "duplicate-name-before-primary-parse",
+      "primary": "malformed.xml",
+      "named": [
+        {
+          "name": "labels",
+          "file": "labels.xml"
+        },
+        {
+          "name": "labels",
+          "file": "labels-malformed.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "error",
+        "kind": "Mapping",
+        "owner": null,
+        "runtime": "DuplicateNamedSource",
+        "name": "labels"
+      }
+    },
+    {
+      "id": "unexpected-name-before-primary-parse",
+      "primary": "malformed.xml",
+      "named": [
+        {
+          "name": "unknown",
+          "file": "labels-malformed.xml"
+        }
+      ],
+      "expected": {
+        "outcome": "error",
+        "kind": "Mapping",
+        "owner": null,
+        "runtime": "UnexpectedNamedSource",
+        "name": "unknown"
+      }
+    }
+  ]
+}

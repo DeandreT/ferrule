@@ -1,4 +1,5 @@
-//! Structured-only static XML input methods and complete preflight.
+//! Static Structured named inputs beside an ordinary or observed primary.
+//! Complete input preflight precedes either primary reader.
 
 use crate::{EmitError, literal};
 use codegen::Program;
@@ -64,6 +65,19 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
         } else {
             "ParseStructuredEmbedded"
         };
+        let observed_primary = program.xml_boundary.as_ref().is_some_and(|policy| {
+            policy.input.profile() == Some(codegen::XmlInputProfile::RootView)
+        });
+        let primary_parser = if observed_primary {
+            if bytes {
+                "ParseEmbeddedBytes"
+            } else {
+                "ParseEmbedded"
+            }
+        } else {
+            parser
+        };
+        let primary_arguments = if observed_primary { ", true, true" } else { "" };
         let parse_helper = if bytes {
             "ParseXmlBytesInputs"
         } else {
@@ -168,7 +182,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
                 "        budget.Charge(owner_{index}, bytes_{index});\n"
             ));
         }
-        output.push_str(&format!("        global::Ferrule.Runtime.FerruleInstance primary;\n        try {{ primary = global::Ferrule.Runtime.FerruleXml.{parser}(SourceXmlSchema, source); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(primaryOwner, error); }}\n        var parsedInputs = new global::System.Collections.Generic.List<NamedInput>({});\n", static_sources.len()));
+        output.push_str(&format!("        global::Ferrule.Runtime.FerruleInstance primary;\n        try {{ primary = global::Ferrule.Runtime.FerruleXml.{primary_parser}(SourceXmlSchema, source{primary_arguments}); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(primaryOwner, error); }}\n        var parsedInputs = new global::System.Collections.Generic.List<NamedInput>({});\n", static_sources.len()));
         for (index, source) in &static_sources {
             output.push_str(&format!("        try {{ parsedInputs.Add(new NamedInput({}, global::Ferrule.Runtime.FerruleXml.{parser}(ExtraXmlInputSchema_{index}, input_{index}))); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(owner_{index}, error); }}\n", literal::string(&source.name)));
         }
@@ -177,4 +191,83 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    fn project() -> ::mapping::Project {
+        serde_json::from_str(include_str!(
+            "../../../../codegen/src/tests/fixtures/root_view_static_named_xml_inputs.json"
+        ))
+        .unwrap()
+    }
+    #[test]
+    fn observed_primary_and_structured_named_parsers_keep_whole_input_phase_order() {
+        let program = codegen::lower(&project()).unwrap();
+        let mut output = String::new();
+        super::super::render(&program, &mut output).unwrap();
+        assert!(
+            super::super::render_types(&program)
+                .unwrap()
+                .contains("public sealed record NamedXmlInput")
+        );
+        assert_eq!(
+            output
+                .matches("ParseEmbedded(SourceXmlSchema, source, true, true)")
+                .count(),
+            1
+        );
+        assert_eq!(
+            output
+                .matches("ParseEmbeddedBytes(SourceXmlSchema, source, true, true)")
+                .count(),
+            1
+        );
+        assert!(output.contains("ParseStructuredEmbedded(ExtraXmlInputSchema_0"));
+        assert!(output.contains("ParseStructuredEmbeddedBytes(ExtraXmlInputSchema_1"));
+        let parse_start = output
+            .find("private static (global::Ferrule.Runtime.FerruleInstance Primary,")
+            .unwrap();
+        let parser = &output[parse_start..];
+        let positions = [
+            "new global::Ferrule.Runtime.FerruleXmlInputSetBudget",
+            "FerruleXmlInputSetBudget.Indices",
+            "foreach (var input in extraSources)",
+            "RequireDocumentSize(owner_1",
+            "budget.Charge(primaryOwner",
+            "budget.Charge(owner_1",
+            "ParseEmbedded(SourceXmlSchema",
+            "ParseStructuredEmbedded(ExtraXmlInputSchema_0",
+            "ParseStructuredEmbedded(ExtraXmlInputSchema_1",
+        ]
+        .map(|needle| parser.find(needle).unwrap());
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(output.matches("    public static ").count(), 16);
+        assert!(output.contains("FerruleXmlExecutionException.ForInput(owner_1, error)"));
+        assert!(output.contains("FerruleXmlExecutionException.Unowned("));
+        let mut invalid = program;
+        invalid.xml_boundary.as_mut().unwrap().extra_inputs[1].name = "wrong".into();
+        let mut refused = String::new();
+        assert!(super::super::render(&invalid, &mut refused).is_err());
+        assert!(refused.is_empty());
+    }
+    #[test]
+    fn zero_named_observed_route_keeps_its_existing_types_and_boundary_wrappers() {
+        let project: ::mapping::Project = serde_json::from_str(include_str!(
+            "../../../../codegen/src/tests/fixtures/static_named_xml_rootview.json"
+        ))
+        .unwrap();
+        let program = codegen::lower(&project).unwrap();
+        assert!(
+            !super::super::render_types(&program)
+                .unwrap()
+                .contains("NamedXmlInput")
+        );
+        let mut output = String::new();
+        super::super::render(&program, &mut output).unwrap();
+        assert!(!output.contains("WithSources"));
+        assert!(output.contains("ParseEmbedded(SourceXmlSchema, source, true, true)"));
+        assert!(output.contains("throw error.Boundary"));
+        assert_eq!(output.matches("    public static ").count(), 8);
+    }
 }

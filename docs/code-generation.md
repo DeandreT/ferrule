@@ -948,9 +948,18 @@ attributes, 2–32 declared type alternatives, an explicit default type, and
 qualified or explicitly unqualified names. Its input options must enable
 `xml_document`, `xml_allow_inactive_root_type_members`, and
 `xml_root_view_read_policy`.
-Named or dynamic XML document inputs and named document outputs remain outside
-this adapter. Unsupported input or target schemas fail during generation,
-before the artifact destination is created.
+A static constructed primary XML output can also use static named XML inputs
+whose individual schemas and options satisfy the closed `Structured` profile.
+The source-aware text, byte and context methods above retain each named source's
+original declaration identity. They validate the complete input set and original
+UTF-8 sizes before parsing the observed primary, then the named declarations.
+Their shared input admission and `XmlExecutionError` / `FerruleXmlExecutionException`
+wrappers are the same as the static named-input adapter. The zero-named observed
+methods retain their existing signatures and boundary wrappers.
+
+Dynamic XML document inputs, observed named inputs, dynamic outputs and named
+outputs remain outside this observed-primary adapter. Unsupported input or target
+schemas fail during generation, before the artifact destination is created.
 
 ### Output and Limits
 
