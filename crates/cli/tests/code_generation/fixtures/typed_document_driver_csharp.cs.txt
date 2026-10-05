@@ -1,0 +1,102 @@
+using System.Globalization;
+using System.Text.Json;
+using Ferrule.Runtime;
+using Ferrule.Generated;
+
+internal static class Program
+{
+    internal const string Marker = "typed-dispatch-original-second-host-failure";
+    private static object Scalar(FerruleValue v) => v.Kind switch
+    {
+        FerruleValueKind.Null => new { kind="Null" },
+        FerruleValueKind.JsonNull => new { kind="JsonNull" },
+        FerruleValueKind.XmlNil => new { kind="XmlNil" },
+        FerruleValueKind.Bool => new { kind="Bool", value=v.BooleanValue },
+        FerruleValueKind.Int64 => new { kind="Int64", value=v.Int64Value.ToString(CultureInfo.InvariantCulture) },
+        FerruleValueKind.Double => new { kind="Double", bits=unchecked((ulong)BitConverter.DoubleToInt64Bits(v.DoubleValue)).ToString("x16",CultureInfo.InvariantCulture) },
+        FerruleValueKind.String => new { kind="String", value=v.StringValue },
+        _ => throw new InvalidOperationException("unknown actual value tag"),
+    };
+    internal static object Snapshot(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar scalar => new { kind="Scalar", value=Scalar(scalar.Value) },
+        FerruleGroup group => new { kind="Group", origin=new { kind=group.XmlTypeOrigin.Kind.ToString(), identity=group.XmlTypeOrigin.Identity, literal=group.XmlTypeOrigin.Literal }, fields=group.Fields.Select(f=>new { name=f.Name,value=Snapshot(f.Value) }).ToArray() },
+        FerruleRepeated repeated => new { kind="Repeated", items=repeated.Items.Select(Snapshot).ToArray() },
+        FerruleMappedSequence mapped => new { kind="MappedSequence", items=mapped.Items.Select(Snapshot).ToArray() },
+        FerruleDocumentSet documents => new { kind="DocumentSet", documents=documents.Documents.Select(d=>new { path=d.Path,source_path=d.ResolvedSourcePath ?? d.Path,value=Snapshot(d.Value) }).ToArray() },
+        _ => throw new InvalidOperationException("unknown actual instance tag"),
+    };
+    private static object Error(Exception error, Loader loader)
+    {
+        var runtime=error as FerruleRuntimeException;
+        var causes=new List<object>();
+        for(var cause=error.InnerException;cause is not null;cause=cause.InnerException)
+            causes.Add(new { type=cause.GetType().FullName,message=cause.Message,full=cause.ToString() });
+        return new { kind=runtime?.Error.ToString() ?? "Other", source=runtime?.SourceField,
+            path=runtime is { Error: FerruleRuntimeError.DynamicSourceLoad } ? runtime.Detail : null,
+            host_message=error.InnerException?.Message, display=error.Message,debug=error.ToString(),causes,
+            original_host_message_matches=error.InnerException?.Message==Marker,
+            original_host_exception_reference=ReferenceEquals(error.InnerException,loader.Original),
+            original_runtime_payload=runtime is null ? null : new {
+                error=runtime.Error.ToString(),runtime.Node,runtime.Function,runtime.ExpectedArity,runtime.ActualArity,
+                foundKind=runtime.FoundKind?.ToString(),aggregateOperation=runtime.AggregateOperation?.ToString(),runtime.Detail,
+                requestedItems=runtime.RequestedItems?.ToString(),maximumItems=runtime.MaximumItems?.ToString(),runtime.MaximumDepth,
+                runtimeValue=runtime.RuntimeValue?.ToString(),runtime.FailureRule,runtime.MappingFailureMessage,runtime.Join,
+                runtime.UserFunction,runtime.FunctionParameter,expectedScalarType=runtime.ExpectedScalarType?.ToString(),
+                runtime.RuntimeParameter,runtime.SourceField,runtime.FoundInstance,primaryRoot=runtime.PrimaryRoot?.ToString()
+            } };
+    }
+    private static int Main(string[] args)
+    {
+        if(args.Length!=2) throw new ArgumentException("fixture root and variant required");
+        var root=args[0];var variant=args[1];
+        var filename=variant switch { "ordinary"=>"ordinary-child-dynamic-source-control.project.json", "documents"=>"dynamic-source-root-document-driver.project.json",_=>throw new ArgumentException("unknown variant") };
+        using var project=JsonDocument.Parse(File.ReadAllText(Path.Combine(root,filename)));
+        var primarySchema=project.RootElement.GetProperty("source").GetRawText();
+        var namedSchema=project.RootElement.GetProperty("extra_sources")[0].GetProperty("schema").GetRawText();
+        var cases=variant=="ordinary" ? new[] { ("ordinary-child-host-control",true,false) } : new[] {
+            ("document-driver-with-loader",true,false),("document-driver-no-loader",false,false),("document-driver-second-host-failure",true,true) };
+        foreach(var (id,enabled,fail) in cases)
+        {
+            var primary=FerruleJson.Parse(primarySchema,File.ReadAllText(Path.Combine(root,"primary.json")));
+            var a=FerruleJson.Parse(namedSchema,File.ReadAllText(Path.Combine(root,"a.json")));
+            var b=FerruleJson.Parse(namedSchema,File.ReadAllText(Path.Combine(root,"b.json")));
+            var loader=new Loader(a,b,fail);
+            object result;
+            try
+            {
+                var output=enabled ? GeneratedMapping.ExecuteOutputsWithSourcesAndDynamicSourceLoader(primary,Array.Empty<NamedInput>(),loader)
+                    : GeneratedMapping.ExecuteOutputsWithSources(primary,Array.Empty<NamedInput>());
+                result=new { status="success",primary=Snapshot(output.Primary),extras=output.Extras.Select(o=>new { name=o.Name,instance=Snapshot(o.Instance) }).ToArray(),error=(object?)null };
+            }
+            catch(Exception failure) { result=new { status="error",primary=(object?)null,extras=(object?)null,error=Error(failure,loader) }; }
+            Console.WriteLine(JsonSerializer.Serialize(new { version=1,backend="csharp",@case=id,project=filename,loader_enabled=enabled,fail_second=fail,
+                primary_input=Snapshot(primary),prepared_loaded_sources=new[] { Snapshot(loader.A),Snapshot(loader.B) },callbacks=loader.Trace,result }));
+            Console.Out.Flush();
+        }
+        return 0;
+    }
+    internal sealed class Loader(FerruleInstance a,FerruleInstance b,bool fail) : IFerruleDynamicSourceLoader
+    {
+        internal FerruleInstance A { get; }=a;
+        internal FerruleInstance B { get; }=b;
+        internal Exception Original { get; }=new InvalidOperationException(Marker);
+        internal List<object> Trace { get; }=[];
+        public FerruleInstance Load(string sourceName,string logicalPath)
+        {
+            var ordinal=Trace.Count+1;
+            try
+            {
+                if(sourceName!="catalog") throw new InvalidOperationException("unexpected source");
+                var value=logicalPath switch { "a.xml"=>A,"b.xml" when fail=>throw Original,"b.xml"=>B,_=>throw new InvalidOperationException("unexpected path") };
+                Trace.Add(new { ordinal,source=sourceName,path=logicalPath,outcome=new { status="returned",value=Snapshot(value) } });
+                return value;
+            }
+            catch(Exception failure)
+            {
+                Trace.Add(new { ordinal,source=sourceName,path=logicalPath,outcome=new { status="error",message=failure.Message,type=failure.GetType().FullName,original_host_exception_reference=ReferenceEquals(failure,Original) } });
+                throw;
+            }
+        }
+    }
+}

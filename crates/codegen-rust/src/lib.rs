@@ -1810,6 +1810,36 @@ fn render_post_group_filter(post_group_filter: Option<NodeId>, output: &mut Stri
     }
 }
 
+fn render_source_iteration_candidates(
+    program: &Program,
+    source_path: &[String],
+    binding: &str,
+    output: &mut String,
+) {
+    let dynamic = source_path.first().and_then(|name| {
+        program
+            .extra_sources
+            .iter()
+            .find(|candidate| candidate.name == *name)
+            .and_then(|candidate| candidate.dynamic.as_ref().map(|plan| (candidate, plan)))
+    });
+    if let Some((source_program, dynamic)) = dynamic {
+        let driver = render_string_path(dynamic.driver.path());
+        let tail = render_string_path(&source_path[1..]);
+        output.push_str(&format!(
+            "    let dynamic_source_items = DynamicSourceItems::load(\n        context,\n        {},\n        &[{driver}],\n        &[{tail}],\n        {},\n        |driver_context| expression_{}(driver_context),\n    )?;\n    {binding} = dynamic_source_items.contexts();\n",
+            rust_string(&source_program.name),
+            dynamic.path,
+            dynamic.path,
+        ));
+    } else {
+        let path = render_string_path(source_path);
+        output.push_str(&format!(
+            "    {binding} = context.walk_source(&[{path}]);\n"
+        ));
+    }
+}
+
 fn render_iteration_candidates(
     program: &Program,
     input: &IterationSource,
@@ -1823,40 +1853,10 @@ fn render_iteration_candidates(
     };
     match input {
         IterationSource::Source(source) => {
-            let dynamic = source.path().first().and_then(|name| {
-                program
-                    .extra_sources
-                    .iter()
-                    .find(|candidate| candidate.name == *name)
-                    .and_then(|candidate| candidate.dynamic.as_ref().map(|plan| (candidate, plan)))
-            });
-            if let Some((source_program, dynamic)) = dynamic {
-                let driver = render_string_path(dynamic.driver.path());
-                let tail = render_string_path(&source.path()[1..]);
-                output.push_str(&format!(
-                    "    let dynamic_source_items = DynamicSourceItems::load(\n        context,\n        {},\n        &[{driver}],\n        &[{tail}],\n        {},\n        |driver_context| expression_{}(driver_context),\n    )?;\n    {binding} = dynamic_source_items.contexts();\n",
-                    rust_string(&source_program.name),
-                    dynamic.path,
-                    dynamic.path,
-                ));
-            } else {
-                let path = render_string_path(source.path());
-                output.push_str(&format!(
-                    "    {binding} = context.walk_source(&[{path}]);\n"
-                ));
-            }
+            render_source_iteration_candidates(program, source.path(), binding, output);
         }
         IterationSource::DynamicDocuments(dynamic) => {
-            let path = dynamic
-                .source()
-                .path()
-                .iter()
-                .map(|segment| rust_string(segment))
-                .collect::<Vec<_>>()
-                .join(", ");
-            output.push_str(&format!(
-                "    {binding} = context.walk_source(&[{path}]);\n"
-            ));
+            render_source_iteration_candidates(program, dynamic.source().path(), binding, output);
         }
         IterationSource::Generated(sequence) => {
             render_generated_values(sequence, "    ", output);
