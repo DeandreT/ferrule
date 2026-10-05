@@ -124,7 +124,7 @@ fn named_dynamic_driver_must_be_a_nonempty_path_to_a_repeating_group() {
 }
 
 #[test]
-fn additional_boundaries_and_primary_iteration_keep_ordinary_optional_fallback() {
+fn static_named_inputs_gain_xml_adapter_while_other_boundaries_keep_optional_fallback() {
     let mut named_input = project();
     named_input.extra_sources.push(mapping::NamedSource {
         name: "unused".into(),
@@ -143,8 +143,15 @@ fn additional_boundaries_and_primary_iteration_keep_ordinary_optional_fallback()
     });
     let mut iterating_primary = project();
     iterating_primary.root.iteration = ScopeIteration::Source(vec!["Row".into()]);
-    for unsupported in [named_input, second_target, iterating_primary] {
-        let typed = lower(&unsupported).unwrap();
+    for (candidate, expected_mode) in [
+        (
+            named_input,
+            Some(XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments),
+        ),
+        (second_target, None),
+        (iterating_primary, None),
+    ] {
+        let typed = lower(&candidate).unwrap();
         assert!(
             typed.extra_targets[0]
                 .root
@@ -154,7 +161,7 @@ fn additional_boundaries_and_primary_iteration_keep_ordinary_optional_fallback()
                 .dynamic_document_iteration()
                 .is_some()
         );
-        assert_eq!(typed.xml_output_mode(), Ok(None));
+        assert_eq!(typed.xml_output_mode(), Ok(expected_mode));
     }
 }
 

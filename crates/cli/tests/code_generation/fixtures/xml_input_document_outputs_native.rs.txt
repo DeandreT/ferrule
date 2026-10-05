@@ -1,0 +1,116 @@
+use super::snapshot;
+use ir::Instance;
+use mapping::Project;
+use serde_json::{Value as Json, json};
+use std::{collections::BTreeMap, error::Error, path::Path};
+type Result<T> = std::result::Result<T, Box<dyn Error>>;
+fn extras(mapped: &engine::ExecutionOutputs) -> Json {
+    json!(mapped.extras.iter().map(|e|{let Instance::DocumentSet(docs)=&e.instance else{panic!("named DocumentSet")};json!({"name":e.name,"members":docs.iter().map(|d|json!({"path":d.path(),"instance":snapshot::snapshot(d.value())})).collect::<Vec<_>>()})}).collect::<Vec<_>>())
+}
+pub fn prepare(directory: &Path) -> Result<BTreeMap<String, Json>> {
+    let path = directory.join("project.json");
+    let project: Project = serde_json::from_slice(&std::fs::read(&path)?)?;
+    let tests: Json = serde_json::from_slice(&std::fs::read(directory.join("cases.json"))?)?;
+    assert!(engine::validate(&project).is_empty());
+    assert_eq!(
+        codegen::lower(&project)?.xml_output_mode()?,
+        Some(codegen::XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
+    );
+    assert_eq!(
+        project
+            .extra_sources
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        ["z-rates", "a-count", "unused-padding"]
+    );
+    assert_eq!(project.extra_targets.len(), 2);
+    let descriptors = json!({"source":codegen::serialize_embedded_schema(&project.source,codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?,"target":codegen::serialize_embedded_schema(&project.target,codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?,"hints":serde_json::to_string(project.target_options.xml_schema_hints.as_ref().unwrap())?,
+  "inputs":project.extra_sources.iter().map(|s|Ok(json!({"name":s.name,"schema":codegen::serialize_embedded_schema(&s.schema,codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?}))).collect::<Result<Vec<_>>>()?,
+  "outputs":project.extra_targets.iter().map(|t|Ok(json!({"name":t.name,"schema":codegen::serialize_embedded_schema(&t.schema,codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?,"hints":serde_json::to_string(t.options.xml_schema_hints.as_ref().unwrap())?}))).collect::<Result<Vec<_>>>()?});
+    std::fs::write(
+        directory.join("descriptors.json"),
+        serde_json::to_vec_pretty(&descriptors)?,
+    )?;
+    let execution =
+        engine::ExecutionContext::new(&path).with_current_datetime("2026-10-04T00:00:00Z");
+    let mut expected = BTreeMap::new();
+    for test in tests
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|t| t["semantic"] == true)
+    {
+        let case = test["case"].as_str().unwrap();
+        let bytes = std::fs::read(directory.join(test["primary"].as_str().unwrap()))?;
+        let text = std::str::from_utf8(&bytes)?;
+        let parsed = format_xml::from_str(text, &project.source)?;
+        let pairs = test["inputs"].as_array().unwrap();
+        let mut declared = Vec::new();
+        for s in &project.extra_sources {
+            let pair = pairs.iter().find(|p| p["name"] == s.name).unwrap();
+            let raw = std::fs::read_to_string(directory.join(pair["file"].as_str().unwrap()))?;
+            declared.push((s.name.clone(), format_xml::from_str(&raw, &s.schema)?));
+        }
+        let inputs = declared
+            .iter()
+            .map(|(name, value)| json!({"name":name,"instance":snapshot::snapshot(value)}))
+            .collect::<Vec<_>>();
+        declared.reverse();
+        match engine::run_outputs_with_sources_and_context(&project, &parsed, declared, &execution)
+        {
+            Ok(mapped) => {
+                assert!(!case.starts_with("mapping-"));
+                assert_eq!(mapped.extras.len(), 2);
+                let mut physical_files = Vec::new();
+                if test["kind"] == "ok" {
+                    let options = format_xml::XmlWriteOptions {
+                        schema_hints: project.target_options.xml_schema_hints.clone(),
+                        ..Default::default()
+                    };
+                    let xml = format_xml::to_string_with_options(
+                        &project.target,
+                        &mapped.primary,
+                        &options,
+                    )?;
+                    assert_eq!(format_xml::from_str(&xml, &project.target)?, mapped.primary);
+                    let file = format!("native-{case}-primary.xml");
+                    std::fs::write(directory.join(&file), xml)?;
+                    physical_files.push(file);
+                    for (index, extra) in mapped.extras.iter().enumerate() {
+                        assert_eq!(extra.name, project.extra_targets[index].name);
+                        let Instance::DocumentSet(docs) = &extra.instance else {
+                            panic!("named DocumentSet")
+                        };
+                        let target = &project.extra_targets[index];
+                        let options = format_xml::XmlWriteOptions {
+                            schema_hints: target.options.xml_schema_hints.clone(),
+                            ..Default::default()
+                        };
+                        for (member, doc) in docs.iter().enumerate() {
+                            let xml = format_xml::to_string_with_options(
+                                &target.schema,
+                                doc.value(),
+                                &options,
+                            )?;
+                            assert_eq!(format_xml::from_str(&xml, &target.schema)?, *doc.value());
+                            let file = format!("native-{case}-{index}-{member}.xml");
+                            std::fs::write(directory.join(&file), xml)?;
+                            physical_files.push(file);
+                        }
+                    }
+                }
+                expected.insert(case.to_owned(),json!({"backend":"native","case":case,"api":-1,"source_xml":text,"source_bytes":bytes.len(),"source":snapshot::snapshot(&parsed),"inputs":inputs,"primary":snapshot::snapshot(&mapped.primary),"extras":extras(&mapped),"mapping_failure":false,"error":null,"physical_files":physical_files,"native_invalid_xml_or_input_budget_guard_equivalence_claim":false}));
+            }
+            Err(error) => {
+                assert!(case.starts_with("mapping-"));
+                assert!(matches!(
+                    error,
+                    engine::EngineError::EmptyDynamicTargetPath { node: 3 }
+                ));
+                expected.insert(case.to_owned(),json!({"backend":"native","case":case,"api":-1,"source_xml":text,"source_bytes":bytes.len(),"source":snapshot::snapshot(&parsed),"inputs":inputs,"primary":null,"extras":null,"mapping_failure":true,"error":{"kind":"EmptyDynamicTargetPath","node":3,"detail":error.to_string(),"debug":format!("{error:?}")},"physical_files":[],"native_invalid_xml_or_input_budget_guard_equivalence_claim":false}));
+            }
+        }
+    }
+    Ok(expected)
+}

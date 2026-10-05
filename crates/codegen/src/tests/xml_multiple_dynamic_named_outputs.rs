@@ -457,5 +457,10 @@ fn existing_single_named_primary_list_static_and_observed_contracts_stay_separat
         options: named_input.source_options.clone(),
         dynamic_path: None,
     });
-    assert_eq!(lower(&named_input).unwrap().xml_output_mode(), Ok(None));
+    assert_eq!(
+        lower(&named_input).unwrap().xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments
+        ))
+    );
 }

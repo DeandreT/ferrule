@@ -719,7 +719,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 73,
+            files_written: 74,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -776,6 +776,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleXml.Input.StructuredProjection.cs",
             "Runtime/FerruleXml.Input.StructuredSchema.cs",
             "Runtime/FerruleXml.Input.cs",
+            "Runtime/FerruleXml.InputDocumentOutputs.cs",
             "Runtime/FerruleXml.InputDocumentSet.cs",
             "Runtime/FerruleXml.InputSet.cs",
             "Runtime/FerruleXml.Output.cs",
@@ -1286,3 +1287,6 @@ fn target_order(id: &str, lines: impl IntoIterator<Item = Instance>) -> Instance
     );
     Ok(())
 }
+
+#[path = "code_generation/xml_input_document_outputs.rs"]
+mod xml_input_document_outputs;

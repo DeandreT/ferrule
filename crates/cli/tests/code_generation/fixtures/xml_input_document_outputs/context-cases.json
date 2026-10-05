@@ -1,0 +1,69 @@
+[
+  {
+    "case": "context-success",
+    "primary": "ordered.xml",
+    "inputs": [
+      {
+        "name": "unused-padding",
+        "file": "padding.xml"
+      },
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates-negative-zero.xml"
+      }
+    ],
+    "semantic": true,
+    "kind": "ok",
+    "owner": null,
+    "primitive": null,
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "no_context_missing": true
+  },
+  {
+    "case": "context-input-first",
+    "primary": "primary-malformed.xml",
+    "inputs": [
+      {
+        "name": "unused-padding",
+        "file": "padding.xml"
+      },
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "semantic": false,
+    "kind": "Input",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Primary",
+        "index": null,
+        "name": null
+      }
+    },
+    "primitive": {
+      "phase": "parser",
+      "source": "primary"
+    },
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ]
+  }
+]

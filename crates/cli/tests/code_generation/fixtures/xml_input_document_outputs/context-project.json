@@ -1,0 +1,796 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "PrimaryBad",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "AlphaSkip",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "AlphaFirst",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "BetaSkip",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "BetaFirst",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "Alpha",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Amount",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "Value",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "nillable": true
+              },
+              {
+                "name": "Keep",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              },
+              {
+                "name": "Rank",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Bad",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        },
+        {
+          "name": "Beta",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Amount",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Value",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "nillable": true
+              },
+              {
+                "name": "Keep",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              },
+              {
+                "name": "Rank",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Bad",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Summary",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Marker",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Rate",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "float"
+          }
+        },
+        {
+          "name": "Count",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true,
+    "xml_schema_hints": {
+      "no_namespace_location": "summary.xsd"
+    }
+  },
+  "extra_sources": [
+    {
+      "name": "z-rates",
+      "path": "rates.xml",
+      "schema": {
+        "name": "Rates",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:rates"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Rate",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:rates"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Prefix",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:rates"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      },
+      "dynamic_path": null
+    },
+    {
+      "name": "a-count",
+      "path": "count.xml",
+      "schema": {
+        "name": "Counts",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:counts"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Count",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:counts"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      },
+      "dynamic_path": null
+    },
+    {
+      "name": "unused-padding",
+      "path": "padding.xml",
+      "schema": {
+        "name": "Padding",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Value",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      },
+      "dynamic_path": null
+    }
+  ],
+  "extra_targets": [
+    {
+      "name": "z-alpha",
+      "path": null,
+      "schema": {
+        "name": "AlphaDocument",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:alpha-doc"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Amount",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:alpha-doc"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Rate",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:alpha-doc"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Count",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:alpha-doc"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "Value",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:alpha-doc"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              },
+              "nillable": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:alpha-doc",
+              "location": "alphadocument.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "AlphaDocument",
+        "source": [
+          "Alpha"
+        ],
+        "output_path": 0,
+        "filter": 9,
+        "bindings": [
+          {
+            "target_field": "Amount",
+            "node": 1
+          },
+          {
+            "target_field": "Rate",
+            "node": 6
+          },
+          {
+            "target_field": "Count",
+            "node": 7
+          },
+          {
+            "target_field": "Value",
+            "node": 31
+          }
+        ],
+        "children": [],
+        "sort_by": 11,
+        "windows": [
+          {
+            "kind": "skip_first",
+            "count": 13
+          },
+          {
+            "kind": "first",
+            "count": 14
+          }
+        ]
+      }
+    },
+    {
+      "name": "a-beta",
+      "path": null,
+      "schema": {
+        "name": "BetaDocument",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:beta-doc"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Amount",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:beta-doc"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "Rate",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:beta-doc"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Count",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:beta-doc"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "Value",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:beta-doc"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              },
+              "nillable": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:beta-doc",
+              "location": "betadocument.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "BetaDocument",
+        "source": [
+          "Beta"
+        ],
+        "output_path": 3,
+        "filter": 10,
+        "bindings": [
+          {
+            "target_field": "Amount",
+            "node": 4
+          },
+          {
+            "target_field": "Rate",
+            "node": 6
+          },
+          {
+            "target_field": "Count",
+            "node": 7
+          },
+          {
+            "target_field": "Value",
+            "node": 41
+          }
+        ],
+        "children": [],
+        "sort_by": 12,
+        "windows": [
+          {
+            "kind": "skip_first",
+            "count": 15
+          },
+          {
+            "kind": "first",
+            "count": 16
+          }
+        ]
+      }
+    }
+  ],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "frame": [
+          "Alpha"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "frame": [
+          "Alpha"
+        ],
+        "path": [
+          "Amount"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "frame": [
+          "Alpha"
+        ],
+        "path": [
+          "Value"
+        ]
+      },
+      "3": {
+        "kind": "source_field",
+        "frame": [
+          "Beta"
+        ],
+        "path": [
+          "File"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "frame": [
+          "Beta"
+        ],
+        "path": [
+          "Amount"
+        ]
+      },
+      "5": {
+        "kind": "source_field",
+        "frame": [
+          "Beta"
+        ],
+        "path": [
+          "Value"
+        ]
+      },
+      "9": {
+        "kind": "source_field",
+        "frame": [
+          "Alpha"
+        ],
+        "path": [
+          "Keep"
+        ]
+      },
+      "10": {
+        "kind": "source_field",
+        "frame": [
+          "Beta"
+        ],
+        "path": [
+          "Keep"
+        ]
+      },
+      "6": {
+        "kind": "source_field",
+        "path": [
+          "z-rates",
+          "Rate"
+        ]
+      },
+      "7": {
+        "kind": "source_field",
+        "path": [
+          "a-count",
+          "Count"
+        ]
+      },
+      "8": {
+        "kind": "source_field",
+        "path": [
+          "z-rates",
+          "Prefix"
+        ]
+      },
+      "11": {
+        "kind": "source_field",
+        "frame": [
+          "Alpha"
+        ],
+        "path": [
+          "Rank"
+        ]
+      },
+      "12": {
+        "kind": "source_field",
+        "frame": [
+          "Beta"
+        ],
+        "path": [
+          "Rank"
+        ]
+      },
+      "13": {
+        "kind": "source_field",
+        "path": [
+          "AlphaSkip"
+        ]
+      },
+      "14": {
+        "kind": "source_field",
+        "path": [
+          "AlphaFirst"
+        ]
+      },
+      "15": {
+        "kind": "source_field",
+        "path": [
+          "BetaSkip"
+        ]
+      },
+      "16": {
+        "kind": "source_field",
+        "path": [
+          "BetaFirst"
+        ]
+      },
+      "20": {
+        "kind": "source_field",
+        "path": [
+          "PrimaryBad"
+        ]
+      },
+      "21": {
+        "kind": "const",
+        "value": "\u0001"
+      },
+      "22": {
+        "kind": "if",
+        "condition": 20,
+        "then": 21,
+        "else": 8
+      },
+      "30": {
+        "kind": "source_field",
+        "frame": [
+          "Alpha"
+        ],
+        "path": [
+          "Bad"
+        ]
+      },
+      "31": {
+        "kind": "if",
+        "condition": 30,
+        "then": 21,
+        "else": 2
+      },
+      "40": {
+        "kind": "source_field",
+        "frame": [
+          "Beta"
+        ],
+        "path": [
+          "Bad"
+        ]
+      },
+      "41": {
+        "kind": "if",
+        "condition": 40,
+        "then": 21,
+        "else": 5
+      },
+      "100": {
+        "kind": "runtime_value",
+        "value": "current_date_time"
+      }
+    }
+  },
+  "root": {
+    "target_field": "Summary",
+    "bindings": [
+      {
+        "target_field": "Marker",
+        "node": 100
+      },
+      {
+        "target_field": "Rate",
+        "node": 6
+      },
+      {
+        "target_field": "Count",
+        "node": 7
+      }
+    ],
+    "children": []
+  }
+}
