@@ -117,8 +117,8 @@ fn scan(xml: &str, uri: &str, root_only: bool) -> Result<Patches, XmlBoundaryErr
 pub(super) fn preserve(
     xml: String,
     schema: &ir::SchemaNode,
-    instance: &ir::Instance,
     options: &format_xml::XmlWriteOptions,
+    preview: format_xml::XmlWritePreflight<'_>,
 ) -> Result<String, XmlBoundaryError> {
     let effective_namespace = match &schema.xml_namespace {
         Some(ir::XmlNamespace::Qualified(uri)) => Some(uri.as_str()),
@@ -139,14 +139,14 @@ pub(super) fn preserve(
             .root_header_bytes
             .is_some_and(|size| size > ROOT_HEADER_BYTES)
     {
-        let mut no_hints = options.clone();
-        no_hints.schema_hints = None;
-        let preflight = format_xml::to_string_with_options(schema, instance, &no_hints)
-            .map_err(|error| XmlBoundaryError::with_source(XmlBoundaryErrorKind::Output, error))?;
-        if scan(&preflight, uri, true)?
-            .root_header_bytes
-            .is_some_and(|size| size > ROOT_HEADER_BYTES)
-        {
+        let exceeds = preview
+            .check_unhinted_root_header(|preflight| {
+                Ok(scan(preflight, uri, true)?
+                    .root_header_bytes
+                    .is_some_and(|size| size > ROOT_HEADER_BYTES))
+            })
+            .map_err(super::project_finalization_error)?;
+        if exceeds {
             return Err(refusal(
                 "XML schema hints conflict with the root attributes: root header exceeds 1 MiB",
             ));

@@ -32,22 +32,74 @@ pub fn serialize_xml(
         default_namespace: namespace.map(str::to_owned),
         schema_hints: None,
     };
-    let xml = format_xml::to_string_with_options(&schema, instance, &options)
-        .map_err(|source| error(node, source.to_string()))?;
-    if xml.len() > MAX_SERIALIZED_XML_BYTES {
-        return Err(error(
-            node,
-            format!(
-                "serialized output is {} bytes; maximum is {MAX_SERIALIZED_XML_BYTES}",
-                xml.len()
-            ),
-        ));
-    }
+    let xml = format_xml::to_string_with_options_and_finalizer(
+        &schema,
+        instance,
+        &options,
+        |xml, _preview| {
+            if xml.len() > MAX_SERIALIZED_XML_BYTES {
+                return Err(format_xml::XmlWriteFinalizationError::Policy(error(
+                    node,
+                    format!(
+                        "serialized output is {} bytes; maximum is {MAX_SERIALIZED_XML_BYTES}",
+                        xml.len()
+                    ),
+                )));
+            }
+            Ok(xml)
+        },
+    )
+    .map_err(|source| match source {
+        format_xml::XmlWriteFinalizationError::Format(source) => error(node, source.to_string()),
+        format_xml::XmlWriteFinalizationError::Policy(error) => error,
+    })?;
     Ok(Value::String(xml))
 }
 
 fn error(node: u32, message: String) -> RuntimeError {
     RuntimeError::XmlSerialization { node, message }
+}
+
+#[cfg(test)]
+mod strict_character_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_node_serializer_rejects_small_invalid_xml_but_keeps_size_first() {
+        let schema = ir::SchemaNode::group(
+            "Root",
+            vec![ir::SchemaNode::scalar("Code", ir::ScalarType::String)],
+        );
+        let descriptor = serde_json::to_string(&schema).unwrap();
+        let data = |text: String| {
+            Instance::Group(vec![("Code".into(), Instance::Scalar(Value::String(text)))].into())
+        };
+        let error =
+            serialize_xml(17, &descriptor, &data("\u{1}".into()), false, false, None).unwrap_err();
+        assert!(
+            matches!(error, RuntimeError::XmlSerialization { node: 17, message }
+            if message == "XML output contains forbidden XML 1.0 character U+0001 at UTF-8 byte 12")
+        );
+        let framing = format_xml::to_string_with_options(
+            &schema,
+            &data(String::new()),
+            &XmlWriteOptions {
+                declaration: false,
+                indent: false,
+                default_namespace: None,
+                schema_hints: None,
+            },
+        )
+        .unwrap()
+        .len();
+        let mut text = "x".repeat(MAX_SERIALIZED_XML_BYTES + 1 - framing - 1);
+        text.push('\u{1}');
+        let error = serialize_xml(17, &descriptor, &data(text), false, false, None).unwrap_err();
+        assert!(
+            matches!(error, RuntimeError::XmlSerialization { node: 17, message }
+            if message == "serialized output is 67108865 bytes; maximum is 67108864")
+        );
+    }
 }
 
 #[cfg(test)]
