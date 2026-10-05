@@ -30,11 +30,19 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
     let generated_mapping = mapping::render(program)?;
-    let mut files = Vec::with_capacity(runtime::SOURCES.len() + 3);
+    let dynamic_input_document_outputs = program.xml_output_mode()?
+        == Some(codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments);
+    let mut files = Vec::with_capacity(
+        runtime::SOURCES.len() + 3 + usize::from(dynamic_input_document_outputs),
+    );
     files.push(file("Ferrule.Generated.csproj", runtime::PROJECT)?);
     files.push(file("GeneratedMapping.cs", generated_mapping)?);
     files.push(file("GeneratedTargetBuilder.cs", runtime::TARGET_BUILDER)?);
     for (path, source) in runtime::SOURCES {
+        files.push(file(path, source)?);
+    }
+    if dynamic_input_document_outputs {
+        let (path, source) = runtime::DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE;
         files.push(file(path, source)?);
     }
     Ok(ArtifactSet::new(files)?)
