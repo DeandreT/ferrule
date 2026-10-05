@@ -390,17 +390,6 @@ fn validate_dynamic_named_output(program: &crate::Program) -> Result<bool, Progr
             "dynamic named XML output requires closed Structured inputs"
         }));
     }
-    if program
-        .extra_sources
-        .iter()
-        .filter(|source| source.dynamic.is_some())
-        .count()
-        > 1
-    {
-        return Err(reject(
-            "dynamic named XML output permits at most one dynamic named input",
-        ));
-    }
     if program.root.iteration.is_some()
         || program.root.repeating
         || program.target.repeating
