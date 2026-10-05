@@ -1,0 +1,382 @@
+{
+  "cases": [
+    {
+      "id": "happy-normal",
+      "project": "projects/normal.json",
+      "primary": "documents/primary.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "full",
+      "native_applicable": true
+    },
+    {
+      "id": "happy-reversed",
+      "project": "projects/reversed.json",
+      "primary": "documents/primary.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "full",
+      "native_applicable": true
+    },
+    {
+      "id": "empty-output-envelopes",
+      "project": "projects/normal.json",
+      "primary": "documents/primary-empty-output.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "full",
+      "native_applicable": true
+    },
+    {
+      "id": "missing-unused-before-malformed-primary",
+      "project": "projects/normal.json",
+      "primary": "documents/primary-malformed.xml",
+      "statics_transport": [
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "full",
+      "native_applicable": false
+    },
+    {
+      "id": "ordinal2-loader-invalid-utf8",
+      "project": "projects/normal.json",
+      "primary": "documents/primary.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "invalid-utf8-second",
+      "context_mode": "full",
+      "native_applicable": false
+    },
+    {
+      "id": "external-host-marker-text",
+      "project": "projects/normal.json",
+      "primary": "documents/primary.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "marker-text-second",
+      "context_mode": "full",
+      "native_applicable": true
+    },
+    {
+      "id": "late-beta-mapping-over-primary-alpha-writer",
+      "project": "projects/late-beta-mapping-normal.json",
+      "primary": "documents/primary-late-beta-empty.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "full",
+      "native_applicable": true
+    },
+    {
+      "id": "beta-final-member1-writer-normal",
+      "project": "projects/beta-writer-normal.json",
+      "primary": "documents/primary-beta-writer.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "full",
+      "native_applicable": true
+    },
+    {
+      "id": "beta-final-member1-writer-reversed",
+      "project": "projects/beta-writer-reversed.json",
+      "primary": "documents/primary-beta-writer.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "full",
+      "native_applicable": true
+    },
+    {
+      "id": "context-selected-supplied",
+      "project": "projects/normal.json",
+      "primary": "documents/primary-context-true.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text-context",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "full",
+      "native_applicable": true
+    },
+    {
+      "id": "context-selected-missing-label",
+      "project": "projects/normal.json",
+      "primary": "documents/primary-context-true.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text-context",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "missing-label",
+      "native_applicable": true
+    },
+    {
+      "id": "lazy-context-unselected",
+      "project": "projects/normal.json",
+      "primary": "documents/primary.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal",
+      "context_mode": "empty",
+      "native_applicable": true
+    },
+    {
+      "id": "numeric-edge-normal",
+      "project": "projects/normal.json",
+      "primary": "documents/primary-numeric-edge.xml",
+      "statics_transport": [
+        {
+          "name": "unused",
+          "document": "documents/unused.xml"
+        },
+        {
+          "name": "rates",
+          "document": "documents/rates-numeric-edge.xml"
+        }
+      ],
+      "methods": [
+        "text",
+        "text-context",
+        "bytes",
+        "bytes-context"
+      ],
+      "backends": [
+        "rust",
+        "csharp"
+      ],
+      "loader_mode": "normal-with-exact-case-document-map",
+      "context_mode": "full",
+      "native_applicable": true,
+      "loader_documents": {
+        "a.xml": "documents/a-numeric-edge.xml",
+        "b.xml": "documents/b-numeric-edge.xml"
+      }
+    }
+  ],
+  "native_engine_case_ids": [
+    "happy-normal",
+    "happy-reversed",
+    "empty-output-envelopes",
+    "external-host-marker-text",
+    "late-beta-mapping-over-primary-alpha-writer",
+    "beta-final-member1-writer-normal",
+    "beta-final-member1-writer-reversed",
+    "context-selected-supplied",
+    "context-selected-missing-label",
+    "lazy-context-unselected",
+    "numeric-edge-normal"
+  ],
+  "context_parameter": {
+    "name": "label",
+    "tag": "String",
+    "value": "  label-雪😀  "
+  }
+}

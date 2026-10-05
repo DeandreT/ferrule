@@ -1,0 +1,140 @@
+mod sha256;
+mod records;
+use ferrule_generated_mapping as generated;
+use codegen_runtime::{DynamicXmlSourceLoader,XmlDynamicInputDocumentOutputsExecutionError};
+use serde_json::{Value as Json,json};
+use std::{cell::RefCell,error::Error,fs,path::{Path,PathBuf},io::Write};
+struct Loader<'a>{root:&'a Path,mode:&'a str,documents:&'a Json,calls:RefCell<Vec<Json>>}
+impl DynamicXmlSourceLoader for Loader<'_>{
+    fn load(&self,source:&str,path:&str)->Result<Vec<u8>,String>{
+        let ordinal={let mut calls=self.calls.borrow_mut();let n=calls.len();calls.push(json!({"source":source,"path":path,"attempt_index":n}));n};
+        let result=if ordinal==1 && self.mode=="marker-text-second" {Err("generated XML input adapter refused a dynamic document".into())} else if ordinal==1 && self.mode=="invalid-utf8-second" {fs::read(self.root.join("documents/invalid-utf8.bin")).map_err(|e|e.to_string())} else if source!="catalog"{Err(format!("unexpected exact source {source}"))}else if !matches!(path,"a.xml"|"b.xml"){Err(format!("unrecognized exact opaque load path {path}"))}else{fs::read(self.root.join(self.documents.get(path).and_then(Json::as_str).map(str::to_owned).unwrap_or_else(||format!("documents/{path}")))).map_err(|e|e.to_string())};
+        let mut call=self.calls.borrow()[ordinal].clone();match &result{
+            Ok(bytes)=>{call["buffer"]=records::buffer(bytes);self.calls.borrow_mut()[ordinal]=call.clone();},
+            Err(message)=>call["host_error"]=json!(message),
+        }self.calls.borrow_mut()[ordinal]=call;result
+    }
+}
+fn primitive(schema:&str,bytes:&[u8])->Json{match codegen_runtime::parse_structured_xml_bytes(schema,bytes){Ok(value)=>json!({"outcome":"parsed","snapshot":records::snapshot(&value)}),Err(error)=>json!({"outcome":"error","boundary":records::boundary(&error)})}}
+fn error_record(error:&XmlDynamicInputDocumentOutputsExecutionError)->Json{
+    use codegen_runtime::{XmlDynamicInputDocumentOutputsOwner as Owner,XmlDocumentOutputsOwner as Output};
+    let owner=match &error.owner{
+        Some(Owner::Input(input))=>json!({"Input":records::input_owner(input)}),
+        Some(Owner::Output(output))=>match output{
+            Output::Primary=>json!({"Output":"Primary"}),
+            Output::NamedMember{declaration_index,name,index,path}=>json!({"Output":{"NamedMember":{"declaration_index":declaration_index,"name":name,"index":index,"path":path}}}),
+        },None=>Json::Null,Some(other)=>json!({"unknown":format!("{other:?}")}),
+    };
+    let request=error.request.as_ref().map(|request|json!({"declaration_index":request.declaration_index,"source":request.source,"path":request.path,"ordinal":request.ordinal,"callback_invoked":request.callback_invoked}));
+    json!({"type":"XmlDynamicInputDocumentOutputsExecutionError","debug":format!("{error:?}"),"detail":error.to_string(),"owner":owner,"request":request,"boundary":records::boundary(&error.boundary),"source_is_boundary":error.source().and_then(|cause|cause.downcast_ref::<codegen_runtime::XmlBoundaryError>()).is_some_and(|cause|std::ptr::eq(cause,error.boundary.as_ref()))})
+}
+struct Mixed{primary:Vec<u8>,extras:Vec<(String,Vec<(String,Vec<u8>)>)>}
+fn emit(row:&Json)->Json {
+    let raw=serde_json::to_vec(row).unwrap();let mut output=std::io::stdout().lock();
+    output.write_all(&raw).unwrap();output.write_all(b"\n").unwrap();output.flush().unwrap();
+    records::buffer(&raw)
+}
+fn raw_document(path:&str,bytes:&[u8])->Json {json!({"path":path,"buffer":records::buffer(bytes)})}
+fn bytes_from_buffer(value:&Json)->Vec<u8> {
+    let hex=value["hex"].as_str().unwrap();assert_eq!(hex.len()%2,0);
+    hex.as_bytes().as_chunks::<2>().0.iter().map(|pair|u8::from_str_radix(std::str::from_utf8(pair).unwrap(),16).unwrap()).collect()
+}
+fn observation(original:&Json,native_rows:&[Json])->Json {
+    // Only this post-flush diagnostic decodes retained original bytes. It never maps or loads.
+    let mut row=original.clone();let project=&original["project_original"];
+    let schema=serde_json::to_string(&project["source"]).unwrap();
+    row["inputs"]["primary"]["diagnostic_parse_outside_product"]=primitive(&schema,&bytes_from_buffer(&original["inputs"]["primary"]["buffer"]));
+    for (index,input) in original["inputs"]["statics_transport"].as_array().unwrap().iter().enumerate() {
+        let declaration=input["original_declaration_index"].as_u64().unwrap() as usize;
+        let schema=serde_json::to_string(&project["extra_sources"][declaration]["schema"]).unwrap();
+        row["inputs"]["statics_transport"][index]["diagnostic_parse_outside_product"]=primitive(&schema,&bytes_from_buffer(&input["buffer"]));
+    }
+    for (index,call) in original["callbacks"].as_array().unwrap().iter().enumerate() {
+        if !call["buffer"].is_null() {
+            let source=project["extra_sources"].as_array().unwrap().iter().find(|source|source["name"]==call["source"]).unwrap();
+            let schema=serde_json::to_string(&source["schema"]).unwrap();
+            row["callbacks"][index]["diagnostic_parse_outside_product"]=primitive(&schema,&bytes_from_buffer(&call["buffer"]));
+        }
+    }
+    if original["outcome"]=="returned_complete_outputs" {
+        let schema=serde_json::to_string(&project["target"]).unwrap();
+        row["outputs"]["primary"]=records::output_record("",&bytes_from_buffer(&original["outputs"]["primary"]["buffer"]),&schema);
+        for (declaration,extra) in original["outputs"]["extras"].as_array().unwrap().iter().enumerate() {
+            let target=project["extra_targets"].as_array().unwrap().get(declaration).filter(|target|target["name"]==extra["name"]);
+            for (index,document) in extra["documents"].as_array().unwrap().iter().enumerate() {
+                let path=document["path"].as_str().unwrap();let bytes=bytes_from_buffer(&document["buffer"]);
+                row["outputs"]["extras"][declaration]["documents"][index]=match target {
+                    Some(target)=>records::output_record(path,&bytes,&serde_json::to_string(&target["schema"]).unwrap()),
+                    None=>json!({"path":path,"buffer":records::buffer(&bytes),"typed":{"outcome":"not_available","reason":"returned declaration has no exact owned schema"},"physical":match std::str::from_utf8(&bytes){Ok(text)=>records::physical(text),Err(error)=>json!({"outcome":"error","detail":error.to_string()})}}),
+                };
+            }
+        }
+    }
+    if original["error"]["owner"]["Output"]!=Json::Null {
+        row["original_same_language_serializer"]=serializer_primitive(original,native_rows);
+    }
+    row
+}
+fn serializer_primitive(original:&Json,native_rows:&[Json])->Json {
+    let native=match native_rows.iter().find(|row|row["case"]==original["case"]) {Some(row)=>row,None=>return json!({"outcome":"missing_original_native"})};
+    let project=&original["project_original"];let owner=&original["error"]["owner"]["Output"];
+    let (schema,options,snapshot)=if owner=="Primary" {
+        (&project["target"],&project["target_options"],&native["complete_typed_outputs"]["primary"])
+    } else {
+        let member=&owner["NamedMember"];let declaration=member["declaration_index"].as_u64().unwrap() as usize;let index=member["index"].as_u64().unwrap() as usize;
+        (&project["extra_targets"][declaration]["schema"],&project["extra_targets"][declaration]["options"],&native["complete_typed_outputs"]["extras"][declaration]["instance"]["documents"][index]["instance"])
+    };
+    let instance=match records::restore(snapshot){Ok(value)=>value,Err(detail)=>return json!({"outcome":"restore_refusal","detail":detail,"original_snapshot":snapshot})};
+    let descriptor=serde_json::to_string(schema).unwrap();let hints=options.get("xml_schema_hints").map(|value|serde_json::to_string(value).unwrap());
+    match codegen_runtime::serialize_xml_document(&descriptor,&instance,true,true,None,hints.as_deref()) {
+        Ok(xml)=>json!({"outcome":"returned","buffer":records::buffer(xml.as_bytes()),"original_snapshot":snapshot,"schema":schema,"options":options}),
+        Err(boundary)=>json!({"outcome":"error","boundary":records::boundary(&boundary),"original_snapshot":snapshot,"schema":schema,"options":options}),
+    }
+}
+fn diagnostic(original:&Json,original_record_buffer:Json,native_rows:&[Json]) {
+    let observed=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||observation(original,native_rows)));
+    let mut row=json!({"schema":2,"record":"diagnostic","phase":"after_original_stdout_flush_outside_public_call",
+        "identity":{"backend":original["backend"],"variant":original["variant"],"case":original["case"],"method":original["method"]},
+        "original_record_buffer":original_record_buffer,"observation":null,"diagnostic_failure":null});
+    match observed{Ok(value)=>row["observation"]=value,Err(payload)=>row["diagnostic_failure"]=json!({"kind":"panic","detail":payload.downcast_ref::<String>().cloned().or_else(||payload.downcast_ref::<&str>().map(|s|s.to_string()))})}
+    let mut output=std::io::stderr().lock();writeln!(output,"{}",serde_json::to_string(&row).unwrap()).unwrap();output.flush().unwrap();
+}
+fn main(){
+    let args=std::env::args().skip(1).collect::<Vec<_>>();if args.len()!=4{panic!("expected fixture-root project cases native-original-records");}
+    let root=PathBuf::from(&args[0]);let path=PathBuf::from(&args[1]);let project_bytes=fs::read(&path).unwrap();let project:Json=serde_json::from_slice(&project_bytes).unwrap();let cases:Json=serde_json::from_slice(&fs::read(&args[2]).unwrap()).unwrap();
+    // Retain native originals externally; no reconstruction or extra mapping probe occurs here.
+    let native_original=fs::read(&args[3]).unwrap();let native_original_reference=json!({"path":args[3],"size":native_original.len(),"sha256":sha256::hex(&native_original)});
+    let native_rows=native_original.split(|byte|*byte==b'\n').filter(|line|!line.is_empty()).map(|line|serde_json::from_slice(line).unwrap()).collect::<Vec<Json>>();
+    let variant=path.file_stem().unwrap().to_str().unwrap();
+    for case in cases["cases"].as_array().unwrap().iter().filter(|c|Path::new(c["project"].as_str().unwrap()).file_name()==path.file_name() && c["backends"].as_array().unwrap().iter().any(|backend|backend=="rust")){
+        for method in case["methods"].as_array().unwrap().iter().map(|m|m.as_str().unwrap()){
+            let byte_api=method.starts_with("bytes");let context_api=method.ends_with("context");let primary=fs::read(root.join(case["primary"].as_str().unwrap())).unwrap();let statics=case["statics_transport"].as_array().unwrap().iter().map(|s|(s["name"].as_str().unwrap().to_owned(),fs::read(root.join(s["document"].as_str().unwrap())).unwrap())).collect::<Vec<_>>();
+            let inputs=json!({"primary":{"buffer":records::buffer(&primary),"original_only":true},"statics_transport":statics.iter().map(|(name,bytes)|{
+                let declaration=project["extra_sources"].as_array().unwrap().iter().position(|s|s["name"]==*name).unwrap();json!({"name":name,"original_declaration_index":declaration,"buffer":records::buffer(bytes)})
+            }).collect::<Vec<_>>()});
+            let mode=case["context_mode"].as_str().unwrap();let has_date=matches!(mode,"full"|"missing-label");let has_label=matches!(mode,"full"|"missing-datetime");
+            let mut parameters=codegen_runtime::RuntimeParameters::new();if has_label{parameters.insert("label",ir::Value::String("  label-雪😀  ".into())).unwrap();}
+            let mut context=codegen_runtime::ExecutionContext::with_main_mapping_file_path(Path::new("maps/library.json"),Path::new("maps/main.json"));
+            if has_date{context=context.with_current_datetime("2026-10-04T00:00:00Z");}if has_label{context=context.with_parameters(&parameters);}
+            let loader=Loader{root:&root,mode:case["loader_mode"].as_str().unwrap(),documents:&case["loader_documents"],calls:RefCell::new(Vec::new())};
+            let attempted=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||->Result<Mixed,XmlDynamicInputDocumentOutputsExecutionError>{
+                if byte_api{
+                    let named=statics.iter().map(|(name,document)|generated::NamedXmlBytesInput{name,document}).collect::<Vec<_>>();let result=if context_api{generated::execute_xml_bytes_document_outputs_with_sources_context_and_dynamic_source_loader(&primary,&named,&context,&loader)}else{generated::execute_xml_bytes_document_outputs_with_sources_and_dynamic_source_loader(&primary,&named,&loader)};
+                    result.map(|r|Mixed{primary:r.primary,extras:r.extras.into_iter().map(|extra|(extra.name.to_owned(),extra.documents.into_iter().map(|d|(d.path,d.document)).collect())).collect()})
+                }else{
+                    let named=statics.iter().map(|(name,document)|generated::NamedXmlInput{name,document:std::str::from_utf8(document).unwrap()}).collect::<Vec<_>>();let source=std::str::from_utf8(&primary).unwrap();let result=if context_api{generated::execute_xml_document_outputs_with_sources_context_and_dynamic_source_loader(source,&named,&context,&loader)}else{generated::execute_xml_document_outputs_with_sources_and_dynamic_source_loader(source,&named,&loader)};
+                    result.map(|r|Mixed{primary:r.primary.into_bytes(),extras:r.extras.into_iter().map(|extra|(extra.name.to_owned(),extra.documents.into_iter().map(|d|(d.path,d.document.into_bytes())).collect())).collect()})
+                }
+            }));
+            let mut row=json!({"schema":2,"record":"original","backend":"rust","variant":variant,"case":case["id"],"method":method,"project_original":project,"project_buffer":records::buffer(&project_bytes),"native_original_stream_reference":native_original_reference,"inputs":inputs,"callbacks":loader.calls.borrow().clone(),"outputs":null,"error":null,"context":{"supplied":context_api,"mapping_file_path":if context_api{Some("maps/library.json")}else{None},"main_mapping_file_path":if context_api{Some("maps/main.json")}else{None},"current_datetime":if context_api && has_date{Some("2026-10-04T00:00:00Z")}else{None},"runtime_parameter":if context_api && has_label{json!({"name":"label","tag":"String","value":"  label-雪😀  "})}else{Json::Null},"context_mode":mode,"context_nodes_source_authored":[11,12,15,16]}});
+            match attempted{
+                Ok(Ok(result))=>{
+                    row["outcome"]=json!("returned_complete_outputs");
+                    row["outputs"]=json!({"primary":raw_document("",&result.primary),"extras":result.extras.iter().enumerate().map(|(declaration,(name,documents))|json!({"original_declaration_index":declaration,"name":name,"documents":documents.iter().map(|(path,bytes)|raw_document(path,bytes)).collect::<Vec<_>>()})).collect::<Vec<_>>()});
+                },
+                Ok(Err(error))=>{row["outcome"]=json!("error");row["error"]=error_record(&error);},
+                Err(payload)=>{row["outcome"]=json!("unexpected_panic");row["panic"]=json!(payload.downcast_ref::<String>().cloned().or_else(||payload.downcast_ref::<&str>().map(|s|s.to_string())));},
+            }let original_record_buffer=emit(&row);diagnostic(&row,original_record_buffer,&native_rows);
+        }
+    }
+}

@@ -1,0 +1,524 @@
+use super::native_records as records;
+
+use serde_json::{Value as Json, json};
+use std::{
+    cell::RefCell,
+    error::Error,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+const CURRENT_DATETIME: &str = "2026-10-04T00:00:00Z";
+const ACTIVE_MAPPING: &str = "maps/library.json";
+const MAIN_MAPPING: &str = "maps/main.json";
+const HOST_MARKER_TEXT: &str = "generated XML input adapter refused a dynamic document";
+
+struct Loader<'a> {
+    root: &'a Path,
+    schema: &'a ir::SchemaNode,
+    mode: &'a str,
+    documents: &'a Json,
+    calls: RefCell<Vec<Json>>,
+}
+
+impl engine::DynamicSourceLoader for Loader<'_> {
+    fn load(&self, source: &str, path: &str) -> Result<Arc<ir::Instance>, String> {
+        // An actual attempt exists before mode dispatch, lookup, I/O or parsing.
+        let attempt = {
+            let mut calls = self.calls.borrow_mut();
+            let index = calls.len();
+            calls.push(json!({"source":source,"path":path,"attempt_index":index}));
+            index
+        };
+        let fetched = if self.mode == "marker-text-second" && attempt == 1 {
+            Err(HOST_MARKER_TEXT.to_owned())
+        } else if source != "catalog" {
+            Err(format!("unexpected exact source {source}"))
+        } else if !matches!(path, "a.xml" | "b.xml") {
+            Err(format!("unrecognized exact opaque load path {path}"))
+        } else {
+            fs::read(
+                self.root.join(
+                    self.documents
+                        .get(path)
+                        .and_then(Json::as_str)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| format!("documents/{path}")),
+                ),
+            )
+            .map_err(|error| error.to_string())
+        };
+        let mut record = self.calls.borrow()[attempt].clone();
+        let result = match fetched {
+            Ok(bytes) => {
+                record["buffer"] = records::buffer(&bytes);
+                self.calls.borrow_mut()[attempt] = record.clone();
+                // This is the required native typed loader read, not an optional
+                // generated-loader diagnostic or a second mapping operation.
+                match parse_instance(&bytes, self.schema) {
+                    Ok(instance) => {
+                        record["typed"] = records::snapshot(&instance);
+                        record["instance_debug"] = json!(format!("{instance:?}"));
+                        Ok(Arc::new(instance))
+                    }
+                    Err(error) => {
+                        let message = error["detail"].as_str().unwrap().to_owned();
+                        record["parse_error"] = error;
+                        record["host_error"] = json!(message);
+                        Err(message)
+                    }
+                }
+            }
+            Err(message) => {
+                record["host_error"] = json!(message);
+                record["host_failure_mode"] = json!(self.mode);
+                Err(message)
+            }
+        };
+        self.calls.borrow_mut()[attempt] = record;
+        result
+    }
+}
+
+fn xml_error(error: &format_xml::XmlFormatError) -> Json {
+    let fields = match error {
+        format_xml::XmlFormatError::InvalidXmlCharacter {
+            codepoint,
+            byte_offset,
+        } => {
+            json!({"variant":"InvalidXmlCharacter","codepoint":codepoint,"byte_offset":byte_offset})
+        }
+        other => json!({"variant":"other","full_payload":format!("{other:?}")}),
+    };
+    json!({"type":"format_xml::XmlFormatError","detail":error.to_string(),
+        "debug":format!("{error:?}"),"fields":fields,"causes":records::causes(error),
+        "source_is_none":error.source().is_none()})
+}
+
+fn parse_instance(bytes: &[u8], schema: &ir::SchemaNode) -> Result<ir::Instance, Json> {
+    let xml = std::str::from_utf8(bytes).map_err(|error| json!({
+        "type":"std::str::Utf8Error","detail":error.to_string(),"debug":format!("{error:?}"),
+        "valid_up_to":error.valid_up_to(),"error_len":error.error_len(),"causes":records::causes(&error)
+    }))?;
+    format_xml::from_str(xml, schema).map_err(|error| xml_error(&error))
+}
+
+fn engine_error(error: &engine::EngineError) -> Json {
+    use engine::EngineError as E;
+    let fields = match error {
+        E::MissingRuntimeValue(value) => {
+            json!({"variant":"MissingRuntimeValue","value":format!("{value:?}")})
+        }
+        E::MissingRuntimeParameter { node, name } => {
+            json!({"variant":"MissingRuntimeParameter","node":node,"name":name})
+        }
+        E::RuntimeParameterType {
+            node,
+            name,
+            expected,
+            found,
+        } => {
+            json!({"variant":"RuntimeParameterType","node":node,"name":name,"expected":format!("{expected:?}"),"found":found})
+        }
+        E::RuntimeParameterPreviewTooLong { node, name, limit } => {
+            json!({"variant":"RuntimeParameterPreviewTooLong","node":node,"name":name,"limit":limit})
+        }
+        E::MissingDynamicSourceLoader { source_name } => {
+            json!({"variant":"MissingDynamicSourceLoader","source":source_name})
+        }
+        E::DynamicSourcePath { source_name, found } => {
+            json!({"variant":"DynamicSourcePath","source":source_name,"found":found})
+        }
+        E::DynamicSourceLoad {
+            source_name,
+            path,
+            message,
+        } => {
+            json!({"variant":"DynamicSourceLoad","source":source_name,"path":path,"message":message})
+        }
+        E::DynamicTargetPath { node, found } => {
+            json!({"variant":"DynamicTargetPath","node":node,"found":found})
+        }
+        E::EmptyDynamicTargetPath { node } => {
+            json!({"variant":"EmptyDynamicTargetPath","node":node})
+        }
+        E::PrimaryRoot { node, source } => {
+            json!({"variant":"PrimaryRoot","node":node,"source_debug":format!("{source:?}"),"source_detail":source.to_string()})
+        }
+        other => json!({"variant":"other","full_payload":format!("{other:?}")}),
+    };
+    json!({"type":"engine::EngineError","detail":error.to_string(),"debug":format!("{error:?}"),
+        "fields":fields,"causes":records::causes(error)})
+}
+
+fn panic_record(payload: &(dyn std::any::Any + Send)) -> Json {
+    json!({"kind":"panic","detail":payload.downcast_ref::<String>().cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|value| value.to_string()))})
+}
+
+fn emit(row: &Json, output: &mut fs::File) -> Json {
+    let raw = serde_json::to_vec(row).unwrap();
+    output.write_all(&raw).unwrap();
+    output.write_all(b"\n").unwrap();
+    output.flush().unwrap();
+    records::buffer(&raw)
+}
+
+fn diagnostic(
+    original: &Json,
+    original_record_buffer: Json,
+    observed: Result<Json, Box<dyn std::any::Any + Send>>,
+    output: &mut fs::File,
+) {
+    let mut row = json!({"schema":2,"record":"diagnostic",
+        "phase":"after_original_file_flush_outside_native_mapping",
+        "identity":{"backend":original["backend"],"variant":original["variant"],
+            "case":original["case"],"method":original["method"]},
+        "original_record_buffer":original_record_buffer,"observation":null,"diagnostic_failure":null});
+    match observed {
+        Ok(value) => row["observation"] = value,
+        Err(payload) => row["diagnostic_failure"] = panic_record(payload.as_ref()),
+    }
+    writeln!(output, "{}", serde_json::to_string(&row).unwrap()).unwrap();
+    output.flush().unwrap();
+}
+
+fn no_writer_diagnostic(row: &Json, originals: &mut fs::File, diagnostics: &mut fs::File) {
+    let original_record_buffer = emit(row, originals);
+    diagnostic(row, original_record_buffer, Ok(row.clone()), diagnostics);
+}
+
+fn native_output_original(
+    schema: &ir::SchemaNode,
+    instance: &ir::Instance,
+    hints: Option<ir::XmlSchemaHints>,
+    file: &Path,
+) -> Json {
+    let mut record = json!({"buffer":null,"physical":null,"typed":null,
+        "mapped_typed":records::snapshot(instance),"mapped_instance_debug":format!("{instance:?}"),
+        "schema_hints":hints.clone(),"native_writer_probe":true});
+    match format_xml::to_string_with_options(
+        schema,
+        instance,
+        &format_xml::XmlWriteOptions {
+            schema_hints: hints,
+            ..Default::default()
+        },
+    ) {
+        Ok(xml) => {
+            // Retain complete original bytes and publish this diagnostic file
+            // before any physical or schema roundtrip parser is invoked.
+            record["buffer"] = records::buffer(xml.as_bytes());
+            record["serialization_outcome"] = json!("returned");
+            match fs::write(file, xml.as_bytes()) {
+                Ok(()) => {
+                    record["native_artifact"] = json!(file.file_name().unwrap().to_str().unwrap())
+                }
+                Err(error) => {
+                    record["artifact_write_error"] = json!({"type":"std::io::Error",
+                    "detail":error.to_string(),"debug":format!("{error:?}"),"kind":format!("{:?}",error.kind())})
+                }
+            }
+        }
+        Err(error) => {
+            record["serialization_outcome"] = json!("error");
+            record["serialization_error"] = xml_error(&error);
+        }
+    }
+    record
+}
+
+fn native_output_diagnostics(record: &mut Json, schema: &ir::SchemaNode) {
+    if record["serialization_outcome"] != "returned" || !record["artifact_write_error"].is_null() {
+        return;
+    }
+    let hex = record["buffer"]["hex"].as_str().unwrap();
+    assert_eq!(hex.len() % 2, 0, "retained byte hex has odd length");
+    let bytes = (0..hex.len())
+        .step_by(2)
+        .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+        .collect::<Vec<_>>();
+    let xml = std::str::from_utf8(&bytes).unwrap();
+    record["physical"] = records::physical(xml);
+    record["typed"] = match format_xml::from_str(xml, schema) {
+        Ok(value) => {
+            json!({"outcome":"parsed","snapshot":records::snapshot(&value),"instance_debug":format!("{value:?}")})
+        }
+        Err(error) => json!({"outcome":"error","error":xml_error(&error)}),
+    };
+}
+
+fn output_diagnostics(
+    project: &mapping::Project,
+    raw: &Json,
+    mapped: &engine::ExecutionOutputs,
+    directory: &Path,
+    id: &str,
+    original: &Json,
+) -> Json {
+    let primary = native_output_original(
+        &project.target,
+        &mapped.primary,
+        project.target_options.xml_schema_hints.clone(),
+        &directory.join(format!("{id}-primary.xml")),
+    );
+    let extras = mapped.extras.iter().enumerate().map(|(declaration_index, extra)| {
+        let target = project.extra_targets.get(declaration_index).filter(|target| target.name == extra.name);
+        let documents = match &extra.instance {
+            ir::Instance::DocumentSet(members) => members.iter().enumerate().map(|(index, member)| {
+                let mut record = match target {
+                    Some(target) => native_output_original(&target.schema, member.value(),
+                        target.options.xml_schema_hints.clone(),
+                        &directory.join(format!("{id}-named-{declaration_index}-member-{index}.xml"))),
+                    None => json!({"mapped_typed":records::snapshot(member.value()),
+                        "mapped_instance_debug":format!("{:?}",member.value()),
+                        "serialization_outcome":"not_available","reason":"mapped declaration has no exact owned schema"}),
+                };
+                record["path"] = json!(member.path());
+                record["final_member_index"] = json!(index);
+                record
+            }).collect::<Vec<_>>(),
+            other => vec![json!({"unexpected_instance_shape":format!("{other:?}"),
+                "complete_typed":records::snapshot(other)})],
+        };
+        json!({"original_declaration_index":declaration_index,"name":extra.name,
+            "target_original":raw["extra_targets"][declaration_index],"documents":documents})
+    }).collect::<Vec<_>>();
+    let mut outputs = json!({"primary":primary,"extras":extras});
+    // Every independent writer probe and original successful XML file above is
+    // retained before this second phase invokes any optional diagnostic parser.
+    native_output_diagnostics(&mut outputs["primary"], &project.target);
+    for (declaration_index, extra) in mapped.extras.iter().enumerate() {
+        if let Some(target) = project
+            .extra_targets
+            .get(declaration_index)
+            .filter(|target| target.name == extra.name)
+        {
+            for record in outputs["extras"][declaration_index]["documents"]
+                .as_array_mut()
+                .unwrap()
+            {
+                native_output_diagnostics(record, &target.schema);
+            }
+        }
+    }
+    let mut observation = original.clone();
+    observation["outputs"] = outputs;
+    observation["native_writer_probe_scope"] = json!(
+        "independent primary and each named member after complete native mapping; no generated batch priority or budget oracle"
+    );
+    observation
+}
+
+pub(super) fn record(root: &Path, cases: &Json) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+    let directory = root.join("native-xml");
+    fs::create_dir(&directory)?;
+    let original_path = root.join("native-original.jsonl");
+    let diagnostic_path = root.join("native-diagnostic.jsonl");
+    let mut originals = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&original_path)?;
+    let mut diagnostics = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&diagnostic_path)?;
+    let selected = cases["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| case["native_applicable"] == true)
+        .collect::<Vec<_>>();
+    let selected_ids = selected
+        .iter()
+        .map(|case| case["id"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        selected_ids.len(),
+        11,
+        "native-applicable case census changed"
+    );
+    assert_eq!(cases["native_engine_case_ids"], json!(selected_ids));
+    let mut ids = std::collections::BTreeSet::new();
+    for case in &selected {
+        assert!(
+            ids.insert(case["id"].as_str().unwrap()),
+            "duplicate native case ID"
+        );
+    }
+    assert_eq!(cases["context_parameter"]["tag"], "String");
+    let parameter_name = cases["context_parameter"]["name"].as_str().unwrap();
+    let parameter_value = cases["context_parameter"]["value"].as_str().unwrap();
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters
+        .insert(
+            parameter_name,
+            ir::Value::String(parameter_value.to_owned()),
+        )
+        .unwrap();
+
+    for case in selected {
+        let project_path = case["project"].as_str().unwrap();
+        let project_bytes = fs::read(root.join(project_path)).unwrap();
+        let raw: Json = serde_json::from_slice(&project_bytes).unwrap();
+        let project: mapping::Project = serde_json::from_slice(&project_bytes).unwrap();
+        let variant = Path::new(project_path)
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap();
+        let id = case["id"].as_str().unwrap();
+        let loader_mode = case["loader_mode"].as_str().unwrap();
+        assert!(
+            matches!(
+                loader_mode,
+                "normal" | "marker-text-second" | "normal-with-exact-case-document-map"
+            ),
+            "native-inapplicable loader mode selected"
+        );
+        let context_mode = case["context_mode"].as_str().unwrap();
+        assert!(matches!(
+            context_mode,
+            "full" | "missing-datetime" | "missing-label" | "none" | "empty"
+        ));
+        let mut row = json!({"schema":2,"record":"original","backend":"native","variant":variant,
+            "case":id,"method":"engine","outcome":"not_reached","case_original":case,
+            "project_original":raw,"project_buffer":records::buffer(&project_bytes),
+            "inputs":{},"callbacks":[],"outputs":null,"error":null,
+            "not_generated_admission_or_request_or_owner_or_budget_oracle":true});
+        let validation = engine::validate(&project);
+        row["validation"] = json!(
+            validation
+                .iter()
+                .map(|issue| format!("{issue:?}"))
+                .collect::<Vec<_>>()
+        );
+        if !validation.is_empty() {
+            row["outcome"] = json!("validation_error");
+            no_writer_diagnostic(&row, &mut originals, &mut diagnostics);
+            continue;
+        }
+        let primary_bytes = fs::read(root.join(case["primary"].as_str().unwrap())).unwrap();
+        row["inputs"]["primary"] =
+            json!({"document":case["primary"],"buffer":records::buffer(&primary_bytes)});
+        let primary = match parse_instance(&primary_bytes, &project.source) {
+            Ok(value) => value,
+            Err(error) => {
+                row["outcome"] = json!("input_parse_error");
+                row["error"] = error;
+                no_writer_diagnostic(&row, &mut originals, &mut diagnostics);
+                continue;
+            }
+        };
+        row["inputs"]["primary"]["typed"] = records::snapshot(&primary);
+        row["inputs"]["primary"]["instance_debug"] = json!(format!("{primary:?}"));
+        let mut statics = Vec::new();
+        let mut input_records = Vec::new();
+        let mut setup_failed = false;
+        for (index, source) in project
+            .extra_sources
+            .iter()
+            .enumerate()
+            .filter(|(_, source)| source.dynamic_path.is_none())
+        {
+            let supplied = case["statics_transport"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|input| input["name"] == source.name);
+            let Some(supplied) = supplied else {
+                input_records.push(json!({"name":source.name,"original_declaration_index":index,"setup_error":"missing exact native static source transport"}));
+                setup_failed = true;
+                continue;
+            };
+            let bytes = fs::read(root.join(supplied["document"].as_str().unwrap())).unwrap();
+            let mut record = json!({"name":source.name,"original_declaration_index":index,
+                "document":supplied["document"],"buffer":records::buffer(&bytes)});
+            match parse_instance(&bytes, &source.schema) {
+                Ok(value) => {
+                    record["typed"] = records::snapshot(&value);
+                    record["instance_debug"] = json!(format!("{value:?}"));
+                    statics.push((source.name.clone(), value));
+                }
+                Err(error) => {
+                    record["parse_error"] = error;
+                    setup_failed = true;
+                }
+            }
+            input_records.push(record);
+        }
+        row["inputs"]["statics_declaration_order"] = json!(input_records);
+        if setup_failed {
+            row["outcome"] = json!("native_input_setup_error");
+            no_writer_diagnostic(&row, &mut originals, &mut diagnostics);
+            continue;
+        }
+        let catalog = &project
+            .extra_sources
+            .iter()
+            .find(|source| source.name == "catalog")
+            .unwrap()
+            .schema;
+        let loader = Loader {
+            root,
+            schema: catalog,
+            mode: loader_mode,
+            documents: &case["loader_documents"],
+            calls: RefCell::new(Vec::new()),
+        };
+        let supply_datetime = matches!(context_mode, "full" | "missing-label");
+        let supply_parameters = matches!(context_mode, "full" | "missing-datetime");
+        let mut context = engine::ExecutionContext::with_main_mapping_file_path(
+            Path::new(ACTIVE_MAPPING),
+            Path::new(MAIN_MAPPING),
+        )
+        .with_dynamic_source_loader(&loader);
+        if supply_datetime {
+            context = context.with_current_datetime(CURRENT_DATETIME);
+        }
+        if supply_parameters {
+            context = context.with_parameters(&parameters);
+        }
+        row["context"] = json!({"mode":context_mode,"loader_mode":loader_mode,
+            "mapping_file_path":ACTIVE_MAPPING,"main_mapping_file_path":MAIN_MAPPING,
+            "current_datetime":if supply_datetime { json!(CURRENT_DATETIME) } else { Json::Null },
+            "runtime_parameter":if supply_parameters { cases["context_parameter"].clone() } else { Json::Null },
+            "native_context_required_for_loader":true,"native_absent_mapping_paths_reproduced":false,
+            "native_none_empty_limit":"Native constructor necessarily supplies paths; selected missing-date nodes or unselected literal branch are the finite comparisons"});
+        let attempted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            engine::run_outputs_with_sources_and_context(&project, &primary, statics, &context)
+        }));
+        row["callbacks"] = json!(loader.calls.borrow().clone());
+        match attempted {
+            Ok(Ok(mapped)) => {
+                row["outcome"] = json!("returned_complete_outputs");
+                row["complete_typed_outputs"] = json!({"primary":records::snapshot(&mapped.primary),
+                    "extras":mapped.extras.iter().enumerate().map(|(index, extra)| json!({
+                        "original_declaration_index":index,"name":extra.name,
+                        "instance":records::snapshot(&extra.instance),"instance_debug":format!("{:?}",extra.instance)
+                    })).collect::<Vec<_>>()});
+                row["complete_native_outputs_debug"] = json!(format!("{mapped:?}"));
+                // No native writer, physical parser or roundtrip parser runs
+                // before these exact mapped values are committed to the original file.
+                let original_record_buffer = emit(&row, &mut originals);
+                let observed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    output_diagnostics(&project, &raw, &mapped, &directory, id, &row)
+                }));
+                diagnostic(&row, original_record_buffer, observed, &mut diagnostics);
+            }
+            Ok(Err(error)) => {
+                row["outcome"] = json!("error");
+                row["error"] = engine_error(&error);
+                no_writer_diagnostic(&row, &mut originals, &mut diagnostics);
+            }
+            Err(payload) => {
+                row["outcome"] = json!("unexpected_panic");
+                row["panic"] = panic_record(payload.as_ref());
+                no_writer_diagnostic(&row, &mut originals, &mut diagnostics);
+            }
+        }
+    }
+    Ok((original_path, diagnostic_path))
+}

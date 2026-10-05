@@ -1,0 +1,1 @@
+<Input><UseContext>true</UseContext><LoadRow><InputFile>a.xml</InputFile></LoadRow><LoadRow><InputFile>b.xml</InputFile></LoadRow><OutputRow><Id>11</Id><OutputFile>duplicate/雪😀.xml</OutputFile><BetaFile>beta/first.xml</BetaFile></OutputRow><OutputRow><Id>22</Id><OutputFile>duplicate/雪😀.xml</OutputFile><BetaFile>../opaque/二.xml</BetaFile></OutputRow></Input>
