@@ -1,4 +1,9 @@
+mod finalization;
 mod generic;
+
+pub use finalization::{
+    XmlWriteFinalizationError, XmlWritePreflight, to_string_with_options_and_finalizer,
+};
 mod schema_hints;
 mod soap;
 mod structured;
@@ -29,6 +34,10 @@ const MAX_ROOT_VIEW_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {
+    #[error(
+        "XML output contains forbidden XML 1.0 character U+{codepoint:04X} at UTF-8 byte {byte_offset}"
+    )]
+    InvalidXmlCharacter { codepoint: u32, byte_offset: usize },
     #[error("unsupported structured XML input schema")]
     UnsupportedStructuredInputSchema,
     #[error("structured XML input exceeds {budget} limit {limit}")]
@@ -1005,7 +1014,33 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Xml
 /// Renders XML with explicit declaration and root default-namespace policy.
 /// The namespace is declared only on the document element; ordinary child
 /// elements inherit it according to XML namespace rules.
+/// Rendering errors precede the final scan for forbidden XML 1.0 characters.
+/// No successful result contains those characters; bytes are never sanitized.
 pub fn to_string_with_options(
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &XmlWriteOptions,
+) -> Result<String, XmlFormatError> {
+    let xml = render_with_options(schema, instance, options)?;
+    validate_output_characters(&xml)?;
+    Ok(xml)
+}
+
+fn validate_output_characters(xml: &str) -> Result<(), XmlFormatError> {
+    for (byte_offset, character) in xml.char_indices() {
+        if !matches!(character as u32, 0x9 | 0xA | 0xD | 0x20..=0xD7FF | 0xE000..=0xFFFD | 0x10000..=0x10FFFF)
+        {
+            return Err(XmlFormatError::InvalidXmlCharacter {
+                codepoint: character as u32,
+                byte_offset,
+            });
+        }
+    }
+    Ok(())
+}
+
+// Rendering remains private: every public String-returning writer finalizes it.
+fn render_with_options(
     schema: &SchemaNode,
     instance: &Instance,
     options: &XmlWriteOptions,
@@ -2348,5 +2383,7 @@ fn integral_i64(value: f64) -> Option<i64> {
         .then_some(value as i64)
 }
 
+#[cfg(test)]
+mod strict_writer_tests;
 #[cfg(test)]
 mod tests;

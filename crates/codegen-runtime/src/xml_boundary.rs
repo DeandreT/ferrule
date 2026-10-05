@@ -40,7 +40,7 @@ pub use output_set::{
 
 use std::fmt;
 
-use format_xml::{XmlReadOptions, XmlWriteOptions};
+use format_xml::{XmlReadOptions, XmlWriteFinalizationError, XmlWriteOptions};
 
 use crate::{Instance, RuntimeError};
 
@@ -417,6 +417,17 @@ fn validate_document_names(schema: &ir::SchemaNode, root: bool) -> Result<(), Xm
     Ok(())
 }
 
+fn project_finalization_error(
+    error: XmlWriteFinalizationError<XmlBoundaryError>,
+) -> XmlBoundaryError {
+    match error {
+        XmlWriteFinalizationError::Format(source) => {
+            XmlBoundaryError::with_source(XmlBoundaryErrorKind::Output, source)
+        }
+        XmlWriteFinalizationError::Policy(error) => error,
+    }
+}
+
 /// Schema locations are neither opened nor resolved against a host path.
 pub fn serialize_xml_document(
     descriptor: &str,
@@ -499,19 +510,20 @@ pub fn serialize_xml_document(
         default_namespace: default_namespace.map(str::to_owned),
         schema_hints: hints,
     };
-    let xml = format_xml::to_string_with_options(&schema, instance, &options)
-        .map_err(|source| XmlBoundaryError::with_source(XmlBoundaryErrorKind::Output, source))?;
-    let xml = namespace::preserve(xml, &schema, instance, &options)?;
-    check_document_size(xml.len())?;
-    if !xml.chars().all(|character| {
-        matches!(character as u32, 0x9 | 0xA | 0xD | 0x20..=0xD7FF | 0xE000..=0xFFFD | 0x10000..=0x10FFFF)
-    }) {
-        return Err(XmlBoundaryError::detail(
-            XmlBoundaryErrorKind::Output,
-            "XML output must contain XML 1.0 characters",
-        ));
-    }
-    Ok(xml)
+    format_xml::to_string_with_options_and_finalizer(&schema, instance, &options, |xml, preview| {
+        let xml = namespace::preserve(xml, &schema, &options, preview)
+            .map_err(XmlWriteFinalizationError::Policy)?;
+        check_document_size(xml.len()).map_err(XmlWriteFinalizationError::Policy)?;
+        if !xml.chars().all(|character| {
+            matches!(character as u32, 0x9 | 0xA | 0xD | 0x20..=0xD7FF | 0xE000..=0xFFFD | 0x10000..=0x10FFFF)
+        }) {
+            return Err(XmlWriteFinalizationError::Policy(XmlBoundaryError::detail(
+                XmlBoundaryErrorKind::Output,
+                "XML output must contain XML 1.0 characters",
+            )));
+        }
+        Ok(xml)
+    }).map_err(project_finalization_error)
 }
 
 #[cfg(test)]
