@@ -717,10 +717,54 @@ from the byte counter. Mapping instances can already be live when output limits
 are checked; these limits do not provide streaming or a process memory ceiling.
 
 The checked `Program::xml_output_mode()` query distinguishes `SingleDocument`,
-`DynamicPrimaryDocuments`, and `StaticPrimaryDynamicNamedDocuments`, returns no
-optional adapter for an unsupported ordinary boundary, and preserves the original
+`DynamicPrimaryDocuments`, `StaticNamedInputsDynamicPrimaryDocuments`, and
+`StaticPrimaryDynamicNamedDocuments`, returns no optional adapter for an
+unsupported ordinary boundary, and preserves the original
 typed error for an invalid hand-built program. External exhaustive matches on
 this public enum must handle the added variant.
+
+### Static Named Inputs and Dynamic Primary Documents
+
+An ordinary `Structured` XML mapping can combine a primary dynamic document list
+with static named XML inputs. This separate mode requires at least one static
+named input, no dynamic named sources or named targets, a nonempty driver path
+in the primary schema ending in a repeating group, and a closed nonrepeating
+member group. Every declared input retains its own closed `Structured` schema
+and policy in original declaration order, including inputs unused by the mapper.
+Both observed flags remain false. Unsupported ordinary combinations preserve the
+typed/JSON core without these XML methods; observed profiles retain their strict
+refusals.
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| XML text and named inputs | `execute_xml_documents_with_sources` | `GeneratedMapping.ExecuteXmlDocumentsWithSources` |
+| UTF-8 bytes and named inputs | `execute_xml_bytes_documents_with_sources` | `GeneratedMapping.ExecuteXmlBytesDocumentsWithSources` |
+| XML text, named inputs and context | `execute_xml_documents_with_sources_and_context` | `GeneratedMapping.ExecuteXmlDocumentsWithSources(source, extraSources, executionContext)` |
+| UTF-8 bytes, named inputs and context | `execute_xml_bytes_documents_with_sources_and_context` | `GeneratedMapping.ExecuteXmlBytesDocumentsWithSources(source, extraSources, executionContext)` |
+
+The input entries reuse `NamedXmlInput` and `NamedXmlBytesInput`. The results reuse
+ordered `XmlDocumentOutput` and `XmlBytesDocumentOutput` lists. The adapter admits
+all exact input names, complete document shapes, per-document sizes and combined
+input bytes before parsing primary and then each named declaration. A complete
+input set is still required when the mapped output list is empty. In C#, invalid
+UTF-16 can refuse during the strict text-size pass; byte decoding happens during
+primary-then-declaration parsing. All mapping finishes before actual output count
+checks or serialization. Input and output ledgers are independent: each permits
+at most 4,096 artifacts and 256 MiB UTF-8, with a 64 MiB per-document limit. Input
+count includes primary and every static declaration; output count is the actual
+final member count and can be zero.
+
+Rust returns `XmlInputDocumentExecutionError`; C# throws
+`FerruleXmlInputDocumentExecutionException`. An optional exclusive owner identifies
+either `Input` with the original `XmlInputSource`, or `Member` with the primary
+target, zero-based final member index and exact opaque path. The wrapper retains
+the original boundary and typed cause. Existing input descriptor/parser failures
+retain their exact input owner; serializer `Schema` setup errors remain unowned.
+Exact-name failures, initial input count, mapping, alignment and output count
+failures remain unowned. Combined-byte failures identify the input or member that
+crossed its independent limit. No partial list is returned. The four zero-named
+primary-list APIs and the static named-input APIs keep their existing signatures,
+wrappers and semantics. Paths remain opaque metadata with no publication.
 
 ### Static Primary and Dynamic Named Documents
 

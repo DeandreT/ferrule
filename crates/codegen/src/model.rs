@@ -428,6 +428,8 @@ pub struct Program {
 pub enum XmlOutputMode {
     SingleDocument,
     DynamicPrimaryDocuments,
+    /// Static named Structured inputs and one ordered primary document list.
+    StaticNamedInputsDynamicPrimaryDocuments,
     /// One static primary document followed by each named target's ordered members.
     StaticPrimaryDynamicNamedDocuments,
 }
@@ -444,7 +446,11 @@ impl Program {
                 .as_ref()
                 .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
             {
-                XmlOutputMode::DynamicPrimaryDocuments
+                if self.extra_sources.is_empty() {
+                    XmlOutputMode::DynamicPrimaryDocuments
+                } else {
+                    XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments
+                }
             } else if self.extra_targets.iter().any(|target| {
                 target
                     .root

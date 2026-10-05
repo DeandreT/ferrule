@@ -1,0 +1,563 @@
+[
+  {
+    "case": "ordered",
+    "primary": "ordered.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates-negative-zero.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "ok",
+    "owner": null,
+    "semantic": true,
+    "primitive": null
+  },
+  {
+    "case": "empty",
+    "primary": "empty.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "ok",
+    "owner": null,
+    "semantic": true,
+    "primitive": null
+  },
+  {
+    "case": "filtered",
+    "primary": "ordered.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count-disabled.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "ok",
+    "owner": null,
+    "semantic": true,
+    "primitive": null
+  },
+  {
+    "case": "selected",
+    "primary": "selected.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "ok",
+    "owner": null,
+    "semantic": true,
+    "primitive": null
+  },
+  {
+    "case": "late-output",
+    "primary": "late-output.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Output",
+    "owner": {
+      "kind": "Member",
+      "output": {
+        "target": "Primary",
+        "index": 1,
+        "path": "bad.xml"
+      }
+    },
+    "semantic": true,
+    "primitive": {
+      "phase": "member",
+      "index": 1
+    }
+  },
+  {
+    "case": "mapping-first",
+    "primary": "mapping-first.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Mapping",
+    "owner": null,
+    "semantic": true,
+    "primitive": {
+      "phase": "mapping",
+      "node": 0
+    }
+  },
+  {
+    "case": "primary-malformed",
+    "primary": "primary-malformed.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count-malformed.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates-malformed.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Input",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Primary",
+        "index": null,
+        "name": null
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "primary"
+    }
+  },
+  {
+    "case": "rates-malformed",
+    "primary": "mapping-first.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates-malformed.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Input",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Named",
+        "index": 0,
+        "name": "z-rates"
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "z-rates"
+    }
+  },
+  {
+    "case": "count-malformed-empty",
+    "primary": "empty.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count-malformed.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Input",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Named",
+        "index": 1,
+        "name": "a-count"
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "a-count"
+    }
+  },
+  {
+    "case": "unknown-name",
+    "primary": "primary-malformed.xml",
+    "inputs": [
+      {
+        "name": "unknown",
+        "file": "invalid-utf8.bin"
+      },
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      }
+    ],
+    "apis": [
+      2,
+      3
+    ],
+    "kind": "Mapping",
+    "owner": null,
+    "semantic": false,
+    "primitive": {
+      "phase": "names",
+      "error": "UnexpectedNamedSource",
+      "name": "unknown"
+    }
+  },
+  {
+    "case": "duplicate-name",
+    "primary": "primary-malformed.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "a-count",
+        "file": "rates-malformed.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Mapping",
+    "owner": null,
+    "semantic": false,
+    "primitive": {
+      "phase": "names",
+      "error": "DuplicateNamedSource",
+      "name": "a-count"
+    }
+  },
+  {
+    "case": "missing-name",
+    "primary": "primary-malformed.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Mapping",
+    "owner": null,
+    "semantic": false,
+    "primitive": {
+      "phase": "names",
+      "error": "MissingNamedSource",
+      "name": "z-rates"
+    }
+  },
+  {
+    "case": "malformed-before-output",
+    "primary": "late-output.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates-malformed.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Input",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Named",
+        "index": 0,
+        "name": "z-rates"
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "z-rates"
+    }
+  },
+  {
+    "case": "named-declaration-order",
+    "primary": "empty.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count-malformed.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates-malformed.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Input",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Named",
+        "index": 0,
+        "name": "z-rates"
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "z-rates"
+    }
+  },
+  {
+    "case": "primary-utf8",
+    "primary": "invalid-utf8.bin",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      2,
+      3
+    ],
+    "kind": "Utf8",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Primary",
+        "index": null,
+        "name": null
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "primary"
+    }
+  },
+  {
+    "case": "rates-utf8",
+    "primary": "ordered.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      },
+      {
+        "name": "z-rates",
+        "file": "invalid-utf8.bin"
+      }
+    ],
+    "apis": [
+      2,
+      3
+    ],
+    "kind": "Utf8",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Named",
+        "index": 0,
+        "name": "z-rates"
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "z-rates"
+    }
+  },
+  {
+    "case": "count-utf8",
+    "primary": "ordered.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "invalid-utf8.bin"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      2,
+      3
+    ],
+    "kind": "Utf8",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Named",
+        "index": 1,
+        "name": "a-count"
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "a-count"
+    }
+  },
+  {
+    "case": "primary-parser-before-named-utf8",
+    "primary": "primary-malformed.xml",
+    "inputs": [
+      {
+        "name": "a-count",
+        "file": "invalid-utf8.bin"
+      },
+      {
+        "name": "z-rates",
+        "file": "rates.xml"
+      }
+    ],
+    "apis": [
+      2,
+      3
+    ],
+    "kind": "Input",
+    "owner": {
+      "kind": "Input",
+      "source": {
+        "kind": "Primary",
+        "index": null,
+        "name": null
+      }
+    },
+    "semantic": false,
+    "primitive": {
+      "phase": "parser",
+      "source": "primary"
+    }
+  },
+  {
+    "case": "unknown-name-text",
+    "primary": "primary-malformed.xml",
+    "inputs": [
+      {
+        "name": "unknown",
+        "file": "rates-malformed.xml"
+      },
+      {
+        "name": "a-count",
+        "file": "count.xml"
+      }
+    ],
+    "apis": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "kind": "Mapping",
+    "owner": null,
+    "semantic": false,
+    "primitive": {
+      "phase": "names",
+      "error": "UnexpectedNamedSource",
+      "name": "unknown"
+    }
+  }
+]

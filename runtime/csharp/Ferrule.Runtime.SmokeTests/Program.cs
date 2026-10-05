@@ -59,6 +59,7 @@ internal static partial class Program
             ("JSON mapped-sequence output", JsonMappedSequenceOutput),
             ("JSON root rows", JsonRootRows),
             ("XML document member errors and budgets", XmlDocumentMembersAndBudgets),
+            ("XML input/document exclusive owners", XmlInputDocumentOwners),
             ("XML mixed document output owners and budgets", XmlDocumentOutputsOwnersAndBudgets),
             ("XML type alternatives", XmlTypeAlternatives),
             ("XML type origin selection and privacy", XmlTypeOriginSelectionAndPrivacy),

@@ -1,4 +1,5 @@
 mod dynamic_inputs;
+mod input_document_sets;
 mod named_document_outputs;
 mod named_inputs;
 
@@ -26,6 +27,11 @@ fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
 }
 
 pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
+    if program.xml_output_mode()?
+        == Some(codegen::XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments)
+    {
+        return input_document_sets::render(program);
+    }
     if program.xml_output_mode()? == Some(codegen::XmlOutputMode::DynamicPrimaryDocuments) {
         return render_dynamic_documents(program);
     }
