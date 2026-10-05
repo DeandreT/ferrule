@@ -336,6 +336,242 @@ mod tests {
 }
 
 #[cfg(test)]
+mod strict_finalization_tests {
+    use super::*;
+    use std::error::Error;
+
+    fn schema() -> ir::SchemaNode {
+        ir::SchemaNode::group(
+            "Root",
+            vec![ir::SchemaNode::scalar("Code", ir::ScalarType::String)],
+        )
+    }
+
+    fn instance(code: String) -> Instance {
+        Instance::Group(vec![("Code".into(), Instance::Scalar(ir::Value::String(code)))].into())
+    }
+
+    fn options(namespace: Option<&str>) -> XmlWriteOptions {
+        XmlWriteOptions {
+            declaration: false,
+            indent: false,
+            default_namespace: namespace.map(str::to_owned),
+            schema_hints: None,
+        }
+    }
+
+    fn invalid_payload(bytes: usize) -> String {
+        assert!(bytes > 0);
+        let mut text = "x".repeat(bytes - 1);
+        text.push('\u{1}');
+        text
+    }
+
+    fn assert_character_refusal(error: &XmlBoundaryError) {
+        assert_eq!(error.kind, XmlBoundaryErrorKind::Output);
+        assert_eq!(error.detail, "XML output must contain XML 1.0 characters");
+        assert_eq!(error.bytes, None);
+        assert_eq!(error.limit, None);
+        assert!(error.source().is_none());
+    }
+
+    fn assert_limit(error: &XmlBoundaryError, bytes: usize) {
+        assert_eq!(error.kind, XmlBoundaryErrorKind::DocumentLimit);
+        assert_eq!(error.bytes, Some(bytes));
+        assert_eq!(error.limit, Some(MAX_XML_DOCUMENT_BYTES));
+        assert_eq!(
+            error.detail,
+            format!("XML document is {bytes} bytes; maximum is {MAX_XML_DOCUMENT_BYTES}")
+        );
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn generated_document_size_precedes_body_character_refusal_at_exact_64_mib() {
+        let schema = schema();
+        let descriptor = serde_json::to_string(&schema).unwrap();
+        let framing =
+            format_xml::to_string_with_options(&schema, &instance(String::new()), &options(None))
+                .unwrap()
+                .len();
+        for total in [MAX_XML_DOCUMENT_BYTES, MAX_XML_DOCUMENT_BYTES + 1] {
+            let data = instance(invalid_payload(total - framing));
+            let error =
+                serialize_xml_document(&descriptor, &data, false, false, None, None).unwrap_err();
+            if total == MAX_XML_DOCUMENT_BYTES {
+                assert_character_refusal(&error);
+            } else {
+                assert_limit(&error, total);
+            }
+        }
+    }
+
+    #[test]
+    fn generated_namespace_growth_size_precedes_body_character_refusal() {
+        let schema = schema();
+        let descriptor = serde_json::to_string(&schema).unwrap();
+        let namespace = "urn:x\t";
+        let framing = format_xml::to_string_with_options(
+            &schema,
+            &instance(String::new()),
+            &options(Some(namespace)),
+        )
+        .unwrap()
+        .len();
+        for expanded in [MAX_XML_DOCUMENT_BYTES, MAX_XML_DOCUMENT_BYTES + 1] {
+            // One literal TAB in the default namespace expands from one byte to five.
+            let data = instance(invalid_payload(expanded - 4 - framing));
+            let error =
+                serialize_xml_document(&descriptor, &data, false, false, Some(namespace), None)
+                    .unwrap_err();
+            if expanded == MAX_XML_DOCUMENT_BYTES {
+                assert_character_refusal(&error);
+            } else {
+                assert_limit(&error, expanded);
+            }
+        }
+    }
+
+    fn root_header_bytes(xml: &str) -> usize {
+        let mut reader = quick_xml::Reader::from_str(xml);
+        loop {
+            match reader.read_event().unwrap() {
+                quick_xml::events::Event::Start(start) | quick_xml::events::Event::Empty(start) => {
+                    return start.len();
+                }
+                quick_xml::events::Event::Eof => panic!("missing root event"),
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn generated_near_header_preview_preserves_both_real_refusal_branches() {
+        const HEADER_LIMIT: usize = 1024 * 1024;
+        let schema = ir::SchemaNode::group(
+            "Root",
+            vec![
+                ir::SchemaNode::scalar("Padding", ir::ScalarType::String).attribute(),
+                ir::SchemaNode::scalar("Code", ir::ScalarType::String),
+            ],
+        );
+        let data = |padding: String, code: &str| {
+            Instance::Group(
+                vec![
+                    (
+                        "Padding".into(),
+                        Instance::Scalar(ir::Value::String(padding)),
+                    ),
+                    (
+                        "Code".into(),
+                        Instance::Scalar(ir::Value::String(code.into())),
+                    ),
+                ]
+                .into(),
+            )
+        };
+        let namespace = "urn:x\t";
+        let plain = options(Some(namespace));
+        let base_header = root_header_bytes(
+            &format_xml::to_string_with_options(&schema, &data(String::new(), "legal"), &plain)
+                .unwrap(),
+        );
+        let hints = ir::XmlSchemaHints {
+            no_namespace_location: Some("literal.xsd".into()),
+            locations: Vec::new(),
+        };
+        let hints_json = serde_json::to_string(&hints).unwrap();
+        let hinted = XmlWriteOptions {
+            schema_hints: Some(hints),
+            ..plain.clone()
+        };
+        let descriptor = serde_json::to_string(&schema).unwrap();
+        for raw_header in [HEADER_LIMIT - 2, HEADER_LIMIT - 4] {
+            let padding = "p".repeat(raw_header - base_header);
+            let legal = data(padding.clone(), "legal");
+            let plain_xml = format_xml::to_string_with_options(&schema, &legal, &plain).unwrap();
+            let hinted_xml = format_xml::to_string_with_options(&schema, &legal, &hinted).unwrap();
+            assert_eq!(root_header_bytes(&plain_xml), raw_header);
+            assert!(root_header_bytes(&hinted_xml) + 4 > HEADER_LIMIT);
+            let error = serialize_xml_document(
+                &descriptor,
+                &data(padding, "\u{1}"),
+                false,
+                false,
+                Some(namespace),
+                Some(&hints_json),
+            )
+            .unwrap_err();
+            if raw_header + 4 > HEADER_LIMIT {
+                assert_eq!(error.kind, XmlBoundaryErrorKind::Output);
+                assert_eq!(
+                    error.detail,
+                    "XML schema hints conflict with the root attributes: root header exceeds 1 MiB"
+                );
+                assert!(error.source().is_none());
+                assert_eq!(error.bytes, None);
+            } else {
+                assert_character_refusal(&error);
+            }
+        }
+    }
+
+    #[test]
+    fn finalizer_projections_preserve_original_policy_box_and_native_format_source() {
+        let original = XmlBoundaryError::with_source(
+            XmlBoundaryErrorKind::Output,
+            std::io::Error::other("original namespace policy"),
+        );
+        let pointer = original.source().unwrap() as *const dyn Error;
+        let projected = project_finalization_error(XmlWriteFinalizationError::Policy(original));
+        assert_eq!(projected.kind, XmlBoundaryErrorKind::Output);
+        assert_eq!(projected.detail, "original namespace policy");
+        assert!(std::ptr::eq(projected.source().unwrap(), pointer));
+        assert!(
+            projected
+                .source()
+                .unwrap()
+                .downcast_ref::<std::io::Error>()
+                .is_some()
+        );
+
+        let projected = project_finalization_error(XmlWriteFinalizationError::Format(
+            format_xml::XmlFormatError::Shape {
+                name: "Code".into(),
+                expected: "scalar",
+                got: "group",
+            },
+        ));
+        assert_eq!(projected.kind, XmlBoundaryErrorKind::Output);
+        assert!(
+            matches!(projected.source().unwrap().downcast_ref::<format_xml::XmlFormatError>(),
+            Some(format_xml::XmlFormatError::Shape { name, expected: "scalar", got: "group" }) if name == "Code")
+        );
+
+        let marker = XmlBoundaryError::with_source(
+            XmlBoundaryErrorKind::Output,
+            std::io::Error::other("original preview scanner policy"),
+        );
+        let pointer = marker.source().unwrap() as *const dyn Error;
+        let schema = schema();
+        let data = instance("\u{1}".into());
+        let result = format_xml::to_string_with_options_and_finalizer(
+            &schema,
+            &data,
+            &options(None),
+            |_xml, preview| {
+                preview
+                    .check_unhinted_root_header(|_text| Err::<bool, XmlBoundaryError>(marker))?;
+                unreachable!("the preview predicate policy aborts before the body scan")
+            },
+        );
+        let projected = project_finalization_error(result.unwrap_err());
+        assert_eq!(projected.detail, "original preview scanner policy");
+        assert!(std::ptr::eq(projected.source().unwrap(), pointer));
+    }
+}
+
+#[cfg(test)]
 #[test]
 fn invalid_default_namespace_xml_character_is_typed_output_refusal() {
     let target = ir::SchemaNode::group(
@@ -482,6 +718,7 @@ fn new_document_rejects_forbidden_scalar_characters_and_preserves_legal_values()
                     let error = output.unwrap_err();
                     assert_eq!(error.kind, XmlBoundaryErrorKind::Output);
                     assert_eq!(error.detail, "XML output must contain XML 1.0 characters");
+                    assert!(std::error::Error::source(&error).is_none());
                 } else {
                     let output = output.unwrap();
                     let parsed = format_xml::from_str(&output, &schema).unwrap();
@@ -492,9 +729,11 @@ fn new_document_rejects_forbidden_scalar_characters_and_preserves_legal_values()
                 }
             }
             if matches!(character, '\0' | '\u{1}' | '\u{B}') {
-                // The new boundary validation must not change the legacy writer.
-                let legacy = format_xml::to_string(&schema, &instance).unwrap();
-                assert!(legacy.contains(character));
+                // Native public writers now refuse the formerly malformed return.
+                let native = format_xml::to_string(&schema, &instance).unwrap_err();
+                assert!(
+                    matches!(native, format_xml::XmlFormatError::InvalidXmlCharacter { codepoint, .. } if codepoint == character as u32)
+                );
             }
         }
     }

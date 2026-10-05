@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Result xmlns="urn:document" Id="10" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:document documents.xsd">
+  <Marker></Marker>
+  <Line Name="a &amp; one">
+    <DriverId>101</DriverId>
+    <Amount>-0</Amount>
+    <Scaled>-0</Scaled>
+    <Adjustment xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/>
+    <Text>  雪 😀  </Text>
+  </Line>
+  <Line Name="b &quot;two&quot;">
+    <DriverId>102</DriverId>
+    <Amount>9007199254740992</Amount>
+    <Scaled>4503599627370496</Scaled>
+    <Adjustment>1.25</Adjustment>
+    <Text></Text>
+  </Line>
+</Result>
