@@ -312,13 +312,22 @@ fn validate_dynamic_primary_output(
         .as_ref()
         .ok_or_else(|| reject("missing XML boundary"))?;
     if policy.input.profile() != Some(crate::XmlInputProfile::Structured)
-        || !program.extra_sources.is_empty()
-        || !policy.extra_inputs.is_empty()
         || !program.extra_targets.is_empty()
         || !policy.extra_outputs.is_empty()
     {
+        return Err(reject(if program.extra_sources.is_empty() {
+            "dynamic primary XML output requires one Structured input and no named boundaries"
+        } else {
+            "dynamic primary XML output requires Structured inputs and no named outputs"
+        }));
+    }
+    if program
+        .extra_sources
+        .iter()
+        .any(|source| source.dynamic.is_some())
+    {
         return Err(reject(
-            "dynamic primary XML output requires one Structured input and no named boundaries",
+            "dynamic primary XML output permits only static named inputs",
         ));
     }
     if program.target.repeating
