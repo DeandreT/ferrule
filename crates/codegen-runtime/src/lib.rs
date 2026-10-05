@@ -72,6 +72,7 @@ pub use xml_boundary::{
     MAX_XML_OUTPUT_SET_BYTES, XmlBoundaryError, XmlBoundaryErrorKind, XmlDocumentExecutionError,
     XmlDocumentOutputOwner, XmlDocumentOutputsBudget, XmlDocumentOutputsExecutionError,
     XmlDocumentOutputsOwner, XmlDocumentSetBudget, XmlDynamicInputDocumentExecutionError,
+    XmlDynamicInputDocumentOutputsExecutionError, XmlDynamicInputDocumentOutputsOwner,
     XmlDynamicInputDocumentOwner, XmlDynamicInputRequest, XmlDynamicSourceAdapter,
     XmlDynamicSourcePolicy, XmlExecutionError, XmlInputDocumentExecutionError,
     XmlInputDocumentOutputsExecutionError, XmlInputDocumentOutputsOwner, XmlInputDocumentOwner,

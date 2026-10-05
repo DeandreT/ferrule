@@ -1,0 +1,129 @@
+use ir::{Instance, Value, XmlTypeOrigin};
+use serde_json::{Value as Json, json};
+use std::error::Error;
+
+pub fn buffer(bytes: &[u8]) -> Json {
+    json!({"size":bytes.len(),"sha256":crate::sha256::hex(bytes),
+        "hex":bytes.iter().map(|byte|format!("{byte:02x}")).collect::<String>()})
+}
+
+pub fn snapshot(instance: &Instance) -> Json {
+    match instance {
+        Instance::Scalar(value) => match value {
+            Value::Null => json!({"kind":"Scalar","tag":"Null"}),
+            Value::JsonNull(_) => json!({"kind":"Scalar","tag":"JsonNull"}),
+            Value::XmlNil(_) => json!({"kind":"Scalar","tag":"XmlNil"}),
+            Value::Bool(value) => json!({"kind":"Scalar","tag":"Bool","value":value}),
+            Value::Int(value) => json!({"kind":"Scalar","tag":"Int","value":value}),
+            Value::Float(value) => json!({"kind":"Scalar","tag":"Float","bits_hex":format!("{:016x}",value.to_bits())}),
+            Value::String(value) => json!({"kind":"Scalar","tag":"String","value":value}),
+        },
+        Instance::Group(fields) => {
+            let origin = match fields.xml_type_origin() {
+                XmlTypeOrigin::Unknown => json!({"kind":"Unknown"}),
+                XmlTypeOrigin::Absent => json!({"kind":"Absent"}),
+                XmlTypeOrigin::Explicit(identity) => json!({"kind":"Explicit","identity":identity}),
+                XmlTypeOrigin::ExplicitPadded { literal, resolved_identity } => json!({"kind":"ExplicitPadded","literal":literal,"resolved_identity":resolved_identity}),
+            };
+            json!({"kind":"Group","xml_type_origin":origin,"fields":fields.iter().map(|(name,value)|json!({"name":name,"instance":snapshot(value)})).collect::<Vec<_>>()})
+        }
+        Instance::Repeated(items) => json!({"kind":"Repeated","items":items.iter().map(snapshot).collect::<Vec<_>>()}),
+        Instance::MappedSequence(items) => json!({"kind":"MappedSequence","items":items.iter().map(snapshot).collect::<Vec<_>>()}),
+        Instance::DocumentSet(items) => json!({"kind":"DocumentSet","documents":items.iter().map(|member|json!({"path":member.path(),"instance":snapshot(member.value())})).collect::<Vec<_>>()}),
+    }
+}
+
+/// This reconstruction is confined to this ordinary fixture's native snapshots.
+/// A non-Unknown group origin refuses rather than silently losing origin metadata.
+pub fn restore(value: &Json) -> Result<Instance, String> {
+    Ok(match value["kind"].as_str().ok_or("snapshot kind missing")? {
+        "Scalar" => Instance::Scalar(match value["tag"].as_str().ok_or("scalar tag missing")? {
+            "Null" => Value::Null,
+            "JsonNull" => Value::json_null(),
+            "XmlNil" => Value::xml_nil(),
+            "Bool" => Value::Bool(value["value"].as_bool().ok_or("Bool value missing")?),
+            "Int" => Value::Int(value["value"].as_i64().ok_or("Int value missing")?),
+            "Float" => Value::Float(f64::from_bits(u64::from_str_radix(value["bits_hex"].as_str().ok_or("Float bits missing")?,16).map_err(|e|e.to_string())?)),
+            "String" => Value::String(value["value"].as_str().ok_or("String value missing")?.into()),
+            other => return Err(format!("unsupported scalar tag {other}")),
+        }),
+        "Group" => {
+            if value["xml_type_origin"]["kind"] != "Unknown" { return Err("ordinary snapshot has non-Unknown group origin".into()); }
+            let fields = value["fields"].as_array().ok_or("Group fields missing")?.iter().map(|field|Ok((field["name"].as_str().ok_or("field name missing")?.to_owned(),restore(&field["instance"])?))).collect::<Result<Vec<_>,String>>()?;
+            Instance::Group(fields.into())
+        }
+        "Repeated" => Instance::Repeated(value["items"].as_array().ok_or("Repeated items missing")?.iter().map(restore).collect::<Result<Vec<_>,_>>()?),
+        other => return Err(format!("unsupported ordinary member snapshot {other}")),
+    })
+}
+
+pub fn physical(xml: &str) -> Json {
+    fn element(node: roxmltree::Node<'_, '_>) -> Json {
+        let mut attributes = node.attributes().map(|attribute|json!({"name":attribute.name(),"namespace":attribute.namespace().unwrap_or(""),"value":attribute.value()})).collect::<Vec<_>>();
+        attributes.sort_by_key(|attribute| (attribute["namespace"].as_str().unwrap().to_owned(),attribute["name"].as_str().unwrap().to_owned()));
+        json!({"name":node.tag_name().name(),"namespace":node.tag_name().namespace().unwrap_or(""),"attributes":attributes,
+            "raw_text":node.children().filter(|child|child.is_text()).filter_map(|child|child.text()).collect::<String>(),
+            "children":node.children().filter(|child|child.is_element()).map(element).collect::<Vec<_>>()})
+    }
+    match roxmltree::Document::parse(xml) {
+        Ok(document) => json!({"outcome":"parsed","tree":element(document.root_element())}),
+        Err(error) => json!({"outcome":"error","type":"roxmltree::Error","detail":error.to_string(),"debug":format!("{error:?}")}),
+    }
+}
+
+pub fn runtime(error: &codegen_runtime::RuntimeError) -> Json {
+    use codegen_runtime::RuntimeError as R;
+    let fields = match error {
+        R::MissingRuntimeValue { value } => json!({"variant":"MissingRuntimeValue","value":format!("{value:?}")}),
+        R::MissingRuntimeParameter { node,name } => json!({"variant":"MissingRuntimeParameter","node":node,"name":name}),
+        R::MissingNamedSource { name } => json!({"variant":"MissingNamedSource","name":name}),
+        R::DuplicateNamedSource { name } => json!({"variant":"DuplicateNamedSource","name":name}),
+        R::UnexpectedNamedSource { name } => json!({"variant":"UnexpectedNamedSource","name":name}),
+        R::DynamicSourcePath { source,node,found } => json!({"variant":"DynamicSourcePath","source":source,"node":node,"found":found}),
+        R::DynamicSourceLoad { source,path,message } => json!({"variant":"DynamicSourceLoad","source":source,"path":path,"message":message}),
+        R::EmptyDynamicTargetPath { node } => json!({"variant":"EmptyDynamicTargetPath","node":node}),
+        other => json!({"variant":"other","full_payload":format!("{other:?}")}),
+    };
+    json!({"fields":fields,"debug":format!("{error:?}"),"detail":error.to_string()})
+}
+
+pub fn causes(error: &(dyn Error + 'static)) -> Vec<Json> {
+    let mut out=Vec::new();
+    let mut current=error.source();
+    while let Some(cause)=current {
+        out.push(if let Some(value)=cause.downcast_ref::<codegen_runtime::RuntimeError>() {
+            json!({"type":"codegen_runtime::RuntimeError","payload":runtime(value),"detail":value.to_string(),"debug":format!("{value:?}")})
+        } else if let Some(value)=cause.downcast_ref::<codegen_runtime::XmlOutputSetResourceError>() {
+            json!({"type":"codegen_runtime::XmlOutputSetResourceError","resource":value.resource,
+                "observed_count":value.observed_count,"limit":value.limit,"detail":value.to_string(),"debug":format!("{value:?}")})
+        } else if let Some(value)=cause.downcast_ref::<std::str::Utf8Error>() {
+            json!({"type":"std::str::Utf8Error","detail":value.to_string(),"debug":format!("{value:?}"),"valid_up_to":value.valid_up_to(),"error_len":value.error_len()})
+        } else if let Some(value)=cause.downcast_ref::<serde_json::Error>() {
+            json!({"type":"serde_json::Error","detail":value.to_string(),"debug":format!("{value:?}"),"line":value.line(),"column":value.column(),"category":format!("{:?}",value.classify())})
+        } else if let Some(value)=cause.downcast_ref::<std::io::Error>() {
+            json!({"type":"std::io::Error","detail":value.to_string(),"debug":format!("{value:?}"),"kind":format!("{:?}",value.kind())})
+        } else { json!({"type":"other","detail":cause.to_string(),"debug":format!("{cause:?}")}) });
+        current=cause.source();
+    }
+    out
+}
+
+pub fn boundary(error: &codegen_runtime::XmlBoundaryError) -> Json {
+    json!({"kind":format!("{:?}",error.kind),"detail":error.detail,"bytes":error.bytes,"limit":error.limit,"causes":causes(error)})
+}
+
+pub fn input_owner(owner: &codegen_runtime::XmlInputSource) -> Json {
+    match owner {
+        codegen_runtime::XmlInputSource::Primary => json!("Primary"),
+        codegen_runtime::XmlInputSource::Named {index,name} => json!({"Named":{"index":index,"name":name}}),
+    }
+}
+
+pub fn output_record(path: &str, xml: &[u8], schema: &str) -> Json {
+    let typed=match codegen_runtime::parse_structured_xml_bytes(schema,xml) {
+        Ok(instance)=>json!({"outcome":"parsed","snapshot":snapshot(&instance)}),
+        Err(error)=>json!({"outcome":"error","boundary":boundary(&error)}),
+    };
+    let physical=match std::str::from_utf8(xml) { Ok(xml)=>physical(xml),Err(error)=>json!({"outcome":"error","detail":error.to_string()}) };
+    json!({"path":path,"buffer":buffer(xml),"typed":typed,"physical":physical})
+}
