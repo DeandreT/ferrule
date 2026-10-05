@@ -34,6 +34,7 @@ mod xml_document_boundary;
 mod xml_dynamic_inputs;
 mod xml_dynamic_named_outputs;
 mod xml_dynamic_outputs;
+mod xml_input_document_outputs;
 mod xml_input_document_sets;
 mod xml_input_sets;
 mod xml_mixed_content;
