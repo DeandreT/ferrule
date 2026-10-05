@@ -466,7 +466,7 @@ fn new_type_constants_clear_retained_nodes_in_primary_and_named_canvases() -> an
                 }
                 let mut labels = Vec::new();
                 for shape in &output.unwrap().shapes {
-                    positions(&shape.shape, &format!("Const: {identity}"), &mut labels);
+                    positions(&shape.shape, "{urn:writer-typ…", &mut labels);
                 }
                 assert!(!labels.is_empty(), "new type constant label is visible");
                 assert_retained_positions(document_canvas(&app, document), &retained);
