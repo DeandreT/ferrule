@@ -1,0 +1,585 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "UseContext",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "LoadRow",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "InputFile",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        },
+        {
+          "name": "OutputRow",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Id",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "OutputFile",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "BetaFile",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Summary",
+    "xml_namespace": {
+      "kind": "qualified",
+      "uri": "urn:summary"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Marker",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:summary"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true,
+    "xml_schema_hints": {
+      "locations": [
+        {
+          "namespace": "urn:summary",
+          "location": "summary.xsd"
+        }
+      ]
+    }
+  },
+  "extra_sources": [
+    {
+      "name": "rates",
+      "path": "",
+      "schema": {
+        "name": "Rates",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Factor",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    },
+    {
+      "name": "catalog",
+      "path": "",
+      "schema": {
+        "name": "Catalog",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:catalog"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Entry",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:catalog"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "Code",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:catalog"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  },
+                  {
+                    "name": "Amount",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:catalog"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "Text",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:catalog"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      },
+      "dynamic_path": {
+        "node": 2,
+        "iteration": [
+          "LoadRow"
+        ]
+      }
+    },
+    {
+      "name": "unused",
+      "path": "",
+      "schema": {
+        "name": "Unused",
+        "xml_namespace": {
+          "kind": "unqualified"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Stamp",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    }
+  ],
+  "extra_targets": [
+    {
+      "name": "alpha",
+      "path": null,
+      "schema": {
+        "name": "AlphaResult",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:alpha"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Id",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              },
+              "attribute": true
+            },
+            {
+              "name": "Line",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:alpha"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "Amount",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:alpha"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "Scaled",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:alpha"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "Text",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:alpha"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:alpha",
+              "location": "alpha.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "AlphaResult",
+        "source": [
+          "OutputRow"
+        ],
+        "output_path": 0,
+        "bindings": [
+          {
+            "target_field": "Id",
+            "node": 1
+          }
+        ],
+        "children": [
+          {
+            "target_field": "Line",
+            "source": [
+              "catalog",
+              "Entry"
+            ],
+            "bindings": [
+              {
+                "target_field": "Amount",
+                "node": 5
+              },
+              {
+                "target_field": "Scaled",
+                "node": 8
+              },
+              {
+                "target_field": "Text",
+                "node": 6
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "beta",
+      "path": null,
+      "schema": {
+        "name": "BetaResult",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:beta"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Id",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              },
+              "attribute": true
+            },
+            {
+              "name": "Line",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:beta"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "Code",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:beta"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  },
+                  {
+                    "name": "Text",
+                    "xml_namespace": {
+                      "kind": "qualified",
+                      "uri": "urn:beta"
+                    },
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:beta",
+              "location": "beta.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "BetaResult",
+        "source": [
+          "OutputRow"
+        ],
+        "output_path": 9,
+        "bindings": [
+          {
+            "target_field": "Id",
+            "node": 1
+          }
+        ],
+        "children": [
+          {
+            "target_field": "Line",
+            "source": [
+              "catalog",
+              "Entry"
+            ],
+            "bindings": [
+              {
+                "target_field": "Code",
+                "node": 3
+              },
+              {
+                "target_field": "Text",
+                "node": 6
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    }
+  ],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "path": [
+          "OutputFile"
+        ],
+        "frame": [
+          "OutputRow"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "Id"
+        ],
+        "frame": [
+          "OutputRow"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "InputFile"
+        ],
+        "frame": [
+          "LoadRow"
+        ]
+      },
+      "3": {
+        "kind": "source_field",
+        "path": [
+          "Code"
+        ],
+        "frame": [
+          "catalog",
+          "Entry"
+        ]
+      },
+      "4": {
+        "kind": "const",
+        "value": "complete"
+      },
+      "5": {
+        "kind": "source_field",
+        "path": [
+          "Amount"
+        ],
+        "frame": [
+          "catalog",
+          "Entry"
+        ]
+      },
+      "6": {
+        "kind": "source_field",
+        "path": [
+          "Text"
+        ],
+        "frame": [
+          "catalog",
+          "Entry"
+        ]
+      },
+      "7": {
+        "kind": "source_field",
+        "path": [
+          "rates",
+          "Factor"
+        ]
+      },
+      "8": {
+        "kind": "call",
+        "function": "multiply",
+        "args": [
+          5,
+          7
+        ]
+      },
+      "9": {
+        "kind": "source_field",
+        "path": [
+          "BetaFile"
+        ],
+        "frame": [
+          "OutputRow"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "Summary",
+    "bindings": [
+      {
+        "target_field": "Marker",
+        "node": 4
+      }
+    ],
+    "children": []
+  }
+}

@@ -1,0 +1,391 @@
+#nullable enable
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+namespace Ferrule.GeneratedTests;
+
+public static partial class Program
+{
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly JsonSerializerOptions JsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private static readonly Dictionary<object, int> ReferenceIds = new(ReferenceEqualityComparer.Instance);
+    private static int _nextReferenceId;
+    private static long _rowSequence;
+    private static string _root = "";
+    private static string _variant = "";
+    private static byte[] _projectBytes = Array.Empty<byte>();
+    private static JsonElement _project;
+    private static object? _nativeOriginalStreamReference;
+    private static JsonElement[] _nativeRows = Array.Empty<JsonElement>();
+    private static string SourceSchema => _project.GetProperty("source").GetRawText();
+    private static string TargetSchema => _project.GetProperty("target").GetRawText();
+    private static byte[] ReadFixture(string relative) => File.ReadAllBytes(Path.Combine(_root, relative));
+    private static string NamedSchema(string name)
+    {
+        foreach (var source in _project.GetProperty("extra_sources").EnumerateArray())
+            if (source.GetProperty("name").GetString() == name) return source.GetProperty("schema").GetRawText();
+        throw new InvalidDataException("No exact source schema for " + name);
+    }
+    private static int ReferenceId(object value)
+    {
+        if (!ReferenceIds.TryGetValue(value, out var id)) { id = ++_nextReferenceId; ReferenceIds.Add(value, id); }
+        return id;
+    }
+    private static object Buffer(byte[] bytes) => new { size = bytes.LongLength, sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(), hex = Convert.ToHexString(bytes).ToLowerInvariant(), base64 = Convert.ToBase64String(bytes), reference_id = ReferenceId(bytes) };
+    private static object Text(string? text)
+    {
+        if (text is null) return new { is_null = true };
+        try { return new { is_null = false, text, utf16_code_units = text.Select(ch => (int)ch).ToArray(), utf8 = Buffer(StrictUtf8.GetBytes(text)) }; }
+        catch (EncoderFallbackException error) { return new { is_null = false, utf16_code_units = text.Select(ch => (int)ch).ToArray(), utf8 = (object?)null, strict_utf8_error = ExceptionSnapshot(error) }; }
+    }
+    private static object ScalarSnapshot(FerruleValue value) => value.Kind switch
+    {
+        FerruleValueKind.Null => new { kind = "Scalar", tag = "Null" },
+        FerruleValueKind.JsonNull => new { kind = "Scalar", tag = "JsonNull" },
+        FerruleValueKind.XmlNil => new { kind = "Scalar", tag = "XmlNil" },
+        FerruleValueKind.Bool => new { kind = "Scalar", tag = "Bool", value = value.BooleanValue },
+        FerruleValueKind.Int64 => new { kind = "Scalar", tag = "Int", value = value.Int64Value },
+        FerruleValueKind.Double => new { kind = "Scalar", tag = "Float", bits_hex = unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture) },
+        FerruleValueKind.String => new { kind = "Scalar", tag = "String", value = value.StringValue },
+        _ => throw new InvalidDataException("Unknown scalar kind " + value.Kind),
+    };
+    private static object Snapshot(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar scalar => ScalarSnapshot(scalar.Value),
+        FerruleGroup group => new { kind = "Group", xml_type_origin = new { kind = group.XmlTypeOrigin.Kind.ToString(), identity = group.XmlTypeOrigin.Identity, literal = group.XmlTypeOrigin.Literal }, fields = group.Fields.Select(f => new { name = f.Name, instance = Snapshot(f.Value) }).ToArray() },
+        FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(Snapshot).ToArray() },
+        FerruleMappedSequence sequence => new { kind = "MappedSequence", items = sequence.Items.Select(Snapshot).ToArray() },
+        FerruleDocumentSet documents => new { kind = "DocumentSet", documents = documents.Documents.Select(d => new { path = d.Path, instance = Snapshot(d.Value), resolved_source_path = d.ResolvedSourcePath }).ToArray() },
+        _ => throw new InvalidDataException("Unknown instance type " + instance.GetType().FullName),
+    };
+    private static object Physical(XElement node) => new
+    {
+        name = node.Name.LocalName, @namespace = node.Name.NamespaceName,
+        attributes = node.Attributes().Where(a => !a.IsNamespaceDeclaration).OrderBy(a => a.Name.NamespaceName, StringComparer.Ordinal).ThenBy(a => a.Name.LocalName, StringComparer.Ordinal).Select(a => new { name = a.Name.LocalName, @namespace = a.Name.NamespaceName, value = a.Value }).ToArray(),
+        raw_text = string.Concat(node.Nodes().OfType<XText>().Select(t => t.Value)), children = node.Elements().Select(Physical).ToArray(),
+        ordered_content = node.Nodes().Select(n => n switch { XElement element => (object)new { kind = "Element", name = element.Name.LocalName, @namespace = element.Name.NamespaceName }, XCData cdata => new { kind = "CData", text = cdata.Value }, XText text => new { kind = "Text", text = text.Value }, XComment comment => new { kind = "Comment", text = comment.Value }, XProcessingInstruction pi => new { kind = "ProcessingInstruction", target = pi.Target, text = pi.Data }, _ => new { kind = n.NodeType.ToString(), text = n.ToString() } }).ToArray(),
+    };
+    private static object ParseObservation(string schema, byte[] bytes)
+    {
+        object? typed = null, physical = null, parseError = null, physicalError = null, utf8 = null, utf8Error = null;
+        try { typed = Snapshot(FerruleXml.ParseStructuredEmbeddedBytes(schema, bytes)); } catch (Exception e) { parseError = ExceptionSnapshot(e); }
+        try { var text = StrictUtf8.GetString(bytes); utf8 = Text(text); physical = Physical(XDocument.Parse(text, LoadOptions.PreserveWhitespace).Root ?? throw new InvalidDataException("No XML root.")); }
+        catch (DecoderFallbackException e) { utf8Error = ExceptionSnapshot(e); }
+        catch (Exception e) { physicalError = ExceptionSnapshot(e); }
+        return new { phase = "independent-recording-diagnostic-outside-public-admission", buffer = Buffer(bytes), utf8, utf8_error = utf8Error, typed, typed_error = parseError, physical, physical_error = physicalError, schema_descriptor = schema };
+    }
+
+    private static object? NormalizeProperty(object? value)
+    {
+        if (value is null) return null;
+        if (value is Exception e) return new { type = e.GetType().FullName, message = e.Message, reference_id = ReferenceId(e) };
+        if (value is byte[] bytes) return Buffer(bytes);
+        if (value is char codeUnit) return new { utf16_code_unit = (int)codeUnit }; // Retain lone surrogate exception fields losslessly.
+        if (value is Enum enumeration) return enumeration.ToString();
+        if (value is UInt128 large) return large.ToString(CultureInfo.InvariantCulture);
+        if (value is Int128 signed) return signed.ToString(CultureInfo.InvariantCulture);
+        if (value is string || value.GetType().IsPrimitive || value is decimal) return value;
+        if (value is MemberInfo member) return member.ToString();
+        if (value is IEnumerable enumerable) { var list = new List<object?>(); foreach (var item in enumerable) list.Add(NormalizeProperty(item)); return list; }
+        var properties = new SortedDictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var p in value.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && p.GetIndexParameters().Length == 0))
+        {
+            try { properties[p.Name] = NormalizeProperty(p.GetValue(value)); }
+            catch (Exception getterError) { properties[p.Name] = new { getter_error_type = getterError.GetType().FullName, getter_error_message = getterError.Message }; }
+        }
+        return properties;
+    }
+    private static object ExceptionProperties(Exception error, bool semanticOnly)
+    {
+        var fields = new SortedDictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var p in error.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && p.Name != "InnerException"))
+        {
+            if (semanticOnly && p.DeclaringType == typeof(Exception)) continue;
+            try { fields[p.Name] = NormalizeProperty(p.GetValue(error)); }
+            catch (Exception e) { fields[p.Name] = new { getter_error_type = e.GetType().FullName, getter_error_message = e.Message }; }
+        }
+        return fields;
+    }
+    private static object ExceptionSnapshot(Exception error) => new { type = error.GetType().FullName, detail = error.Message, debug = error.ToString(), reference_id = ReferenceId(error), full_payload = ExceptionProperties(error, false), inner = error.InnerException is null ? null : ExceptionSnapshot(error.InnerException) };
+    private static object[] Causes(Exception? error)
+    {
+        var result = new List<object>();
+        while (error is not null) { result.Add(ExceptionSnapshot(error)); error = error.InnerException; }
+        return result.ToArray();
+    }
+    private static object RuntimeFields(FerruleRuntimeException e) => new
+    {
+        variant = e.Error.ToString(), node = e.Node, function = e.Function, expected_arity = e.ExpectedArity, actual_arity = e.ActualArity,
+        found = e.FoundKind?.ToString(), aggregate_operation = e.AggregateOperation?.ToString(), detail = e.Detail,
+        requested_items = e.RequestedItems?.ToString(CultureInfo.InvariantCulture), maximum_items = e.MaximumItems?.ToString(CultureInfo.InvariantCulture), maximum_depth = e.MaximumDepth,
+        value = e.RuntimeValue?.ToString(), failure_rule = e.FailureRule, mapping_failure_message = e.MappingFailureMessage, join = e.Join,
+        user_function = e.UserFunction, function_parameter = e.FunctionParameter, expected_scalar_type = e.ExpectedScalarType?.ToString(), name = e.RuntimeParameter,
+        source = e.SourceField, path = e.Detail, message = e.InnerException?.Message, found_instance = e.FoundInstance, primary_root = NormalizeProperty(e.PrimaryRoot),
+        original_public_properties = ExceptionProperties(e, true),
+    };
+    private static FerruleRuntimeException? RuntimeCause(Exception? error)
+    {
+        while (error is not null) { if (error is FerruleRuntimeException runtime) return runtime; error = error.InnerException; }
+        return null;
+    }
+    private static object Boundary(FerruleXmlBoundaryException e) => new { kind = e.Kind.ToString(), detail = e.Detail, bytes = e.Bytes, limit = e.Limit, causes = Causes(e.InnerException), runtime = RuntimeCause(e.InnerException) is { } runtime ? RuntimeFields(runtime) : null, original = ExceptionSnapshot(e) };
+    private static object? InputOwner(FerruleXmlInputSource source) => source.Kind == FerruleXmlInputSourceKind.Primary ? "Primary" : new { Named = new { index = source.Index, name = source.Name } };
+
+    private static object? Owner(FerruleXmlDynamicInputDocumentOutputsOwner? owner) => owner switch
+    {
+        null => null,
+        FerruleXmlDynamicInputDocumentOutputsOwner.Input input => new { Input = InputOwner(input.Source) },
+        FerruleXmlDynamicInputDocumentOutputsOwner.Output output => output.Owner switch
+        {
+            FerruleXmlDocumentOutputsOwner.Primary => new { Output = (object)"Primary" },
+            FerruleXmlDocumentOutputsOwner.NamedMember member => new { Output = (object)new { NamedMember = new { declaration_index = member.DeclarationIndex, name = member.Name, index = member.Index, path = member.Path } } },
+            _ => throw new InvalidDataException("Unknown mixed output owner."),
+        },
+        _ => throw new InvalidDataException("Unknown dynamic input/mixed output owner."),
+    };
+    private static object? Request(FerruleXmlDynamicInputRequest? request) => request is null ? null : new { declaration_index = request.DeclarationIndex, source = request.Source, path = request.Path, ordinal = request.Ordinal, callback_invoked = request.CallbackInvoked, reference_id = ReferenceId(request) };
+    private static object Error(Exception error)
+    {
+        if (error is FerruleXmlDynamicInputDocumentOutputsExecutionException product)
+            return new { type = error.GetType().FullName, detail = error.Message, owner = Owner(product.Owner), request = Request(product.Request), boundary = Boundary(product.Boundary), exception = ExceptionSnapshot(error), identity = new { inner_is_boundary = ReferenceEquals(error.InnerException, product.Boundary), boundary_reference_id = ReferenceId(product.Boundary), request_reference_id = product.Request is null ? (int?)null : ReferenceId(product.Request) } };
+        return new { type = error.GetType().FullName, detail = error.Message, owner = (object?)null, request = (object?)null, boundary = (object?)null, exception = ExceptionSnapshot(error) };
+    }
+    private static object TypedObservation(string schema, byte[] bytes)
+    {
+        try { return new { outcome = "parsed", snapshot = Snapshot(FerruleXml.ParseStructuredEmbeddedBytes(schema, bytes)) }; }
+        catch (FerruleXmlBoundaryException error) { return new { outcome = "error", boundary = Boundary(error) }; }
+        catch (Exception error) { return new { outcome = "ordinary_CLR_exception", original = ExceptionSnapshot(error) }; }
+    }
+    private static object PhysicalObservation(byte[] bytes)
+    {
+        try { return new { outcome = "parsed", tree = Physical(XDocument.Parse(StrictUtf8.GetString(bytes), LoadOptions.PreserveWhitespace).Root ?? throw new InvalidDataException("No XML root.")) }; }
+        catch (Exception error) { return new { outcome = "error", original = ExceptionSnapshot(error) }; }
+    }
+    private static object OutputRecord(string? path, byte[] bytes, string? schema) => new { path, buffer = Buffer(bytes), typed = schema is null ? (object)new { outcome = "not_available", reason = "returned declaration has no exact owned schema" } : TypedObservation(schema, bytes), physical = PhysicalObservation(bytes) };
+    private sealed class RecordingLoader : IFerruleDynamicXmlSourceLoader
+    {
+        public readonly List<Dictionary<string, object?>> Callbacks = new();
+        public readonly List<byte[]> ReturnedBuffers = new();
+        public string Mode = "normal"; public JsonElement Documents; public Exception? Thrown;
+        public byte[] Load(string sourceName, string logicalPath)
+        {
+            var attempt = new Dictionary<string, object?> { ["source"] = sourceName, ["path"] = logicalPath, ["attempt_index"] = Callbacks.Count };
+            Callbacks.Add(attempt); // Retain the attempt before exact finite lookup or I/O.
+            try
+            {
+                if (sourceName != "catalog" || (logicalPath != "a.xml" && logicalPath != "b.xml"))
+                    throw new InvalidOperationException("Unrecognized exact source/path: " + sourceName + "/" + logicalPath);
+                if (Callbacks.Count == 2 && Mode == "fake-boundary-second")
+                    throw new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Utf8, "generated XML input adapter refused a dynamic document", new IOException("original external host XML error"));
+                if (Callbacks.Count == 2 && Mode == "marker-text-second")
+                    throw new InvalidOperationException("generated XML input adapter refused a dynamic document");
+                var buffer = ReadFixture(Callbacks.Count == 2 && Mode == "invalid-utf8-second" ? "documents/invalid-utf8.bin" : (Documents.ValueKind == JsonValueKind.Object && Documents.TryGetProperty(logicalPath, out var mapped) ? mapped.GetString()! : "documents/" + logicalPath));
+                ReturnedBuffers.Add(buffer); attempt["buffer"] = Buffer(buffer);
+                return buffer;
+            }
+            catch (Exception error) { Thrown = error; attempt["host_error"] = ExceptionSnapshot(error); throw; }
+        }
+    }
+    private static FerruleExecutionContext MakeContext(JsonElement c)
+    {
+        var mode = c.GetProperty("context_mode").GetString(); var hasDate = mode is "full" or "missing-label"; var hasLabel = mode is "full" or "missing-datetime";
+        return new("maps/library.json", "maps/main.json", hasDate ? "2026-10-04T00:00:00Z" : null,
+            hasLabel ? new FerruleRuntimeParameters(new[] { new KeyValuePair<string, FerruleValue>("label", FerruleValue.FromString("  label-雪😀  ")) }) : FerruleRuntimeParameters.Empty);
+    }
+    private static object Context(FerruleExecutionContext context, bool supplied, JsonElement c) => new
+    { supplied, context_mode = c.GetProperty("context_mode").GetString(), mapping_file_path = supplied ? context.MappingFilePath : null,
+        main_mapping_file_path = supplied ? context.MainMappingFilePath : null, current_datetime = supplied ? context.CurrentDateTime : null,
+        runtime_parameter = supplied && context.RuntimeParameters.Count != 0 ? new { name = "label", tag = "String", value = "  label-雪😀  " } : null,
+        context_nodes_source_authored = new[] { 11,12,15,16 } };
+    private static byte[] Emit(Dictionary<string, object?> row)
+    {
+        var raw = JsonSerializer.Serialize(row, JsonOptions);
+        Console.Out.WriteLine(raw); Console.Out.Flush();
+        return StrictUtf8.GetBytes(raw);
+    }
+    private static object RawOutput(string? path, byte[] bytes) => new { path, buffer = Buffer(bytes) };
+    private static object OriginalTextOutputs(XmlDocumentExecutionOutputs outputs) => new
+    {
+        primary = RawOutput(null, StrictUtf8.GetBytes(outputs.Primary)),
+        extras = outputs.Extras.Select((extra, index) => new { original_declaration_index = index, name = extra.Name,
+            documents = extra.Documents.Select(document => RawOutput(document.Path, StrictUtf8.GetBytes(document.Document))).ToArray() }).ToArray(),
+    };
+    private static object OriginalByteOutputs(XmlBytesDocumentExecutionOutputs outputs) => new
+    {
+        primary = RawOutput(null, outputs.Primary),
+        extras = outputs.Extras.Select((extra, index) => new { original_declaration_index = index, name = extra.Name,
+            documents = extra.Documents.Select(document => RawOutput(document.Path, document.Document)).ToArray() }).ToArray(),
+    };
+    private static byte[] RetainedBytes(object buffer) => Convert.FromHexString(JsonSerializer.SerializeToElement(buffer, JsonOptions).GetProperty("hex").GetString()!);
+    private static void EmitDiagnostic(Dictionary<string, object?> original, byte[] originalRecord, Func<Dictionary<string, object?>> observe)
+    {
+        var diagnostic = new Dictionary<string, object?> { ["schema"] = 2, ["record"] = "diagnostic",
+            ["phase"] = "after_original_stdout_flush_outside_public_call",
+            ["identity"] = new { backend = original["backend"], variant = original["variant"], @case = original["case"], method = original["method"] },
+            ["original_record_buffer"] = Buffer(originalRecord), ["observation"] = null, ["diagnostic_failure"] = null };
+        try { diagnostic["observation"] = observe(); }
+        catch (Exception error) { diagnostic["diagnostic_failure"] = ExceptionSnapshot(error); }
+        Console.Error.WriteLine(JsonSerializer.Serialize(diagnostic, JsonOptions)); Console.Error.Flush();
+    }
+    private static object TextOutputs(XmlDocumentExecutionOutputs outputs)
+    {
+        var declarations = _project.GetProperty("extra_targets").EnumerateArray().ToArray();
+        return new { primary = OutputRecord(null, StrictUtf8.GetBytes(outputs.Primary), TargetSchema), extras = outputs.Extras.Select((extra, index) => new { original_declaration_index = index, name = extra.Name, documents = extra.Documents.Select(document => OutputRecord(document.Path, StrictUtf8.GetBytes(document.Document), index < declarations.Length && declarations[index].GetProperty("name").GetString() == extra.Name ? declarations[index].GetProperty("schema").GetRawText() : null)).ToArray() }).ToArray() };
+    }
+    private static object ByteOutputs(XmlBytesDocumentExecutionOutputs outputs)
+    {
+        var declarations = _project.GetProperty("extra_targets").EnumerateArray().ToArray();
+        return new { primary = OutputRecord(null, outputs.Primary, TargetSchema), extras = outputs.Extras.Select((extra, index) => new { original_declaration_index = index, name = extra.Name, documents = extra.Documents.Select(document => OutputRecord(document.Path, document.Document, index < declarations.Length && declarations[index].GetProperty("name").GetString() == extra.Name ? declarations[index].GetProperty("schema").GetRawText() : null)).ToArray() }).ToArray() };
+    }
+    private static void RecordCall(JsonElement c, string method)
+    {
+        var primary = ReadFixture(c.GetProperty("primary").GetString()!);
+        var supplied = c.GetProperty("statics_transport").EnumerateArray().Select(item => (Name: item.GetProperty("name").GetString()!, Bytes: ReadFixture(item.GetProperty("document").GetString()!))).ToArray();
+        var byteApi = method.StartsWith("bytes", StringComparison.Ordinal); var contextApi = method.EndsWith("context", StringComparison.Ordinal);
+        var context = MakeContext(c); var loader = new RecordingLoader { Mode = c.GetProperty("loader_mode").GetString()!, Documents = c.TryGetProperty("loader_documents", out var documents) ? documents : default };
+        var row = new Dictionary<string, object?> { ["schema"] = 2, ["record"] = "original", ["backend"] = "csharp", ["variant"] = _variant, ["case"] = c.GetProperty("id").GetString(), ["method"] = method, ["row_sequence"] = ++_rowSequence, ["project_original"] = _project, ["project_buffer"] = Buffer(_projectBytes), ["native_original_stream_reference"] = _nativeOriginalStreamReference,
+            ["inputs"] = new { primary = new { buffer = Buffer(primary) }, statics_transport = supplied.Select(input => new { name = input.Name, original_declaration_index = _project.GetProperty("extra_sources").EnumerateArray().Select((source, index) => (source, index)).Single(pair => pair.source.GetProperty("name").GetString() == input.Name).index, buffer = Buffer(input.Bytes) }).ToArray() },
+            ["context"] = Context(context, contextApi, c), ["callbacks"] = loader.Callbacks, ["outputs"] = null, ["error"] = null };
+        XmlDocumentExecutionOutputs? textResult = null; XmlBytesDocumentExecutionOutputs? byteResult = null;
+        try
+        {
+            if (byteApi)
+            {
+                var named = supplied.Select(input => new NamedXmlBytesInput(input.Name, input.Bytes)).ToArray();
+                byteResult = contextApi ? GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSourcesContextAndDynamicSourceLoader(primary, named, context, loader) : GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSourcesAndDynamicSourceLoader(primary, named, loader);
+                row["outcome"] = "returned_complete_outputs";
+            }
+            else
+            {
+                var named = supplied.Select(input => new NamedXmlInput(input.Name, StrictUtf8.GetString(input.Bytes))).ToArray();
+                var text = StrictUtf8.GetString(primary);
+                textResult = contextApi ? GeneratedMapping.ExecuteXmlDocumentOutputsWithSourcesContextAndDynamicSourceLoader(text, named, context, loader) : GeneratedMapping.ExecuteXmlDocumentOutputsWithSourcesAndDynamicSourceLoader(text, named, loader);
+                row["outcome"] = "returned_complete_outputs";
+            }
+        }
+        catch (FerruleXmlDynamicInputDocumentOutputsExecutionException error) { row["outcome"] = "error"; row["error"] = Error(error); }
+        catch (Exception error) { row["outcome"] = "ordinary_CLR_exception"; row["error"] = Error(error); }
+        if (Equals(row["outcome"], "returned_complete_outputs"))
+            row["outputs"] = byteApi ? OriginalByteOutputs(byteResult!) : OriginalTextOutputs(textResult!);
+        // This dedicated original channel has no optional parser, physical-tree or DTO-reflection observations.
+        var originalRecord = Emit(row);
+        EmitDiagnostic(row, originalRecord, () =>
+        {
+            var observed = new Dictionary<string, object?>(row);
+            observed["inputs"] = new { primary = new { buffer = Buffer(primary), diagnostic_parse_outside_product = TypedObservation(SourceSchema, primary) },
+                statics_transport = supplied.Select(input => new { name = input.Name,
+                    original_declaration_index = _project.GetProperty("extra_sources").EnumerateArray().Select((source, index) => (source, index)).Single(pair => pair.source.GetProperty("name").GetString() == input.Name).index,
+                    buffer = Buffer(input.Bytes), diagnostic_parse_outside_product = TypedObservation(NamedSchema(input.Name), input.Bytes) }).ToArray() };
+            observed["callbacks"] = loader.Callbacks.Select(call =>
+            {
+                var retained = new Dictionary<string, object?>(call);
+                if (call.TryGetValue("buffer", out var bytes) && bytes is not null)
+                    retained["diagnostic_parse_outside_product"] = TypedObservation(NamedSchema((string)call["source"]!), RetainedBytes(bytes));
+                return retained;
+            }).ToArray();
+            if (Equals(row["outcome"], "returned_complete_outputs"))
+            {
+                // Optional return-object reflection and codec diagnostics occur only after the original flush.
+                try { observed["original_returned_value"] = NormalizeProperty(byteApi ? (object?)byteResult : textResult); }
+                catch (Exception error) { observed["original_value_recording_error"] = ExceptionSnapshot(error); }
+                observed["returned_ownership"] = ReturnOwnership(textResult, byteResult);
+                try { observed["outputs"] = byteApi ? ByteOutputs(byteResult!) : TextOutputs(textResult!); }
+                catch (Exception error) { observed["diagnostic_recording_error"] = ExceptionSnapshot(error); }
+            }
+            if (loader.Thrown is not null) observed["original_host_exception"] = ExceptionSnapshot(loader.Thrown);
+            if (row["error"] is not null && JsonSerializer.SerializeToElement(row["error"], JsonOptions).TryGetProperty("owner", out var owner) && owner.ValueKind == JsonValueKind.Object && owner.TryGetProperty("Output", out _))
+                observed["original_same_language_serializer"] = SerializerPrimitive(c, owner);
+            return observed;
+        });
+    }
+
+    private static object ReturnOwnership(XmlDocumentExecutionOutputs? text, XmlBytesDocumentExecutionOutputs? bytes)
+    {
+        if (bytes is not null)
+        {
+            var buffers = new HashSet<byte[]>(ReferenceEqualityComparer.Instance); var distinct = buffers.Add(bytes.Primary);
+            foreach (var extra in bytes.Extras) foreach (var member in extra.Documents) distinct &= buffers.Add(member.Document);
+            return new { extras_readonly = bytes.Extras is IList byteExtrasList && byteExtrasList.IsReadOnly,
+                documents_readonly = bytes.Extras.Select(extra => extra.Documents is IList members && members.IsReadOnly).ToArray(),
+                all_buffers_distinct = distinct, actual_buffer_count = buffers.Count,
+                expected_buffer_count = 1 + bytes.Extras.Sum(extra => extra.Documents.Count) };
+        }
+        if (text is not null) return new { extras_readonly = text.Extras is IList textExtrasList && textExtrasList.IsReadOnly,
+            documents_readonly = text.Extras.Select(extra => extra.Documents is IList members && members.IsReadOnly).ToArray() };
+        return new { not_returned = true };
+    }
+    private static FerruleInstance RestoreOrdinary(JsonElement snapshot)
+    {
+        switch (snapshot.GetProperty("kind").GetString())
+        {
+            case "Scalar":
+                var tag = snapshot.GetProperty("tag").GetString();
+                return new FerruleScalar(tag switch {
+                    "Null" => FerruleValue.Null, "JsonNull" => FerruleValue.JsonNull, "XmlNil" => FerruleValue.XmlNil,
+                    "Bool" => FerruleValue.FromBoolean(snapshot.GetProperty("value").GetBoolean()),
+                    "Int" => FerruleValue.FromInt64(snapshot.GetProperty("value").GetInt64()),
+                    "Float" => FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)ulong.Parse(snapshot.GetProperty("bits_hex").GetString()!, NumberStyles.HexNumber, CultureInfo.InvariantCulture)))),
+                    "String" => FerruleValue.FromString(snapshot.GetProperty("value").GetString()!),
+                    _ => throw new InvalidDataException("Unknown authored scalar snapshot " + tag) });
+            case "Group":
+                if (snapshot.GetProperty("xml_type_origin").GetProperty("kind").GetString() != "Unknown") throw new InvalidDataException("Ordinary fixture restoration refuses non-Unknown XML origin");
+                return new FerruleGroup(snapshot.GetProperty("fields").EnumerateArray().Select(field => new FerruleField(field.GetProperty("name").GetString()!, RestoreOrdinary(field.GetProperty("instance")))));
+            case "Repeated": return new FerruleRepeated(snapshot.GetProperty("items").EnumerateArray().Select(RestoreOrdinary));
+            default: throw new InvalidDataException("Unknown ordinary member snapshot shape");
+        }
+    }
+    private static object SerializerPrimitive(JsonElement c, JsonElement owner)
+    {
+        var native = _nativeRows.SingleOrDefault(row => row.GetProperty("case").GetString() == c.GetProperty("id").GetString());
+        if (native.ValueKind == JsonValueKind.Undefined) return new { outcome = "missing_original_native" };
+        var output = owner.GetProperty("Output"); JsonElement schema, options, snapshot;
+        if (output.ValueKind == JsonValueKind.String && output.GetString() == "Primary")
+        { schema = _project.GetProperty("target"); options = _project.GetProperty("target_options"); snapshot = native.GetProperty("complete_typed_outputs").GetProperty("primary"); }
+        else
+        { var member = output.GetProperty("NamedMember"); var declaration = member.GetProperty("declaration_index").GetInt32(); var index = member.GetProperty("index").GetInt32();
+            var target = _project.GetProperty("extra_targets")[declaration]; schema = target.GetProperty("schema"); options = target.GetProperty("options");
+            snapshot = native.GetProperty("complete_typed_outputs").GetProperty("extras")[declaration].GetProperty("instance").GetProperty("documents")[index].GetProperty("instance"); }
+        var value = RestoreOrdinary(snapshot); var hints = options.TryGetProperty("xml_schema_hints", out var hint) ? hint.GetRawText() : null;
+        try { var xml = FerruleXml.SerializeDocumentEmbedded(schema.GetRawText(), value, true, true, null, hints);
+            return new { outcome = "returned", buffer = Buffer(StrictUtf8.GetBytes(xml)), original_snapshot = snapshot, schema, options }; }
+        catch (FerruleXmlBoundaryException boundary) { return new { outcome = "error", boundary = Boundary(boundary), original_snapshot = snapshot, schema, options }; }
+    }
+
+    public static int Main(string[] args)
+    {
+        try
+        {
+            if (args.Length != 4) throw new ArgumentException("Expected fixtureRoot, rawProjectPath, caseManifestPath, nativeRecordsPath.");
+            _root = Path.GetFullPath(args[0]); _variant = Path.GetFileNameWithoutExtension(args[1]); _projectBytes = File.ReadAllBytes(args[1]);
+            using var project = JsonDocument.Parse(_projectBytes); _project = project.RootElement.Clone();
+            var nativeBytes = File.ReadAllBytes(args[3]);
+            _nativeOriginalStreamReference = new { path = args[3], size = nativeBytes.LongLength, sha256 = Convert.ToHexString(SHA256.HashData(nativeBytes)).ToLowerInvariant() };
+            _nativeRows = StrictUtf8.GetString(nativeBytes).Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => { using var document = JsonDocument.Parse(line); return document.RootElement.Clone(); }).ToArray();
+            using var cases = JsonDocument.Parse(File.ReadAllBytes(args[2]));
+            foreach (var c in cases.RootElement.GetProperty("cases").EnumerateArray())
+            {
+                if (!string.Equals(Path.GetFileName(c.GetProperty("project").GetString()), Path.GetFileName(args[1]), StringComparison.Ordinal) || !c.GetProperty("backends").EnumerateArray().Any(backend => backend.GetString() == "csharp")) continue;
+                foreach (var method in c.GetProperty("methods").EnumerateArray()) RecordCall(c, method.GetString()!);
+            }
+            return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine(JsonSerializer.Serialize(new { schema = 1, backend = "csharp", variant = _variant, phase = "ordinary-caller-setup-or-recording", error = ExceptionSnapshot(error) }, JsonOptions)); Console.Error.Flush(); return 2;
+        }
+    }
+}

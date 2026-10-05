@@ -436,6 +436,8 @@ pub enum XmlOutputMode {
     StaticPrimaryDynamicNamedDocuments,
     /// Static named Structured inputs, a static primary and ordered named document lists.
     StaticNamedInputsStaticPrimaryDynamicNamedDocuments,
+    /// One dynamic named Structured input, optional statics and ordered named document lists.
+    DynamicNamedInputStaticPrimaryDynamicNamedDocuments,
 }
 
 impl Program {
@@ -468,7 +470,13 @@ impl Program {
                     .as_ref()
                     .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
             }) {
-                if self.extra_sources.is_empty() {
+                if self
+                    .extra_sources
+                    .iter()
+                    .any(|source| source.dynamic.is_some())
+                {
+                    XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments
+                } else if self.extra_sources.is_empty() {
                     XmlOutputMode::StaticPrimaryDynamicNamedDocuments
                 } else {
                     XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments

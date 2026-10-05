@@ -393,10 +393,12 @@ fn validate_dynamic_named_output(program: &crate::Program) -> Result<bool, Progr
     if program
         .extra_sources
         .iter()
-        .any(|source| source.dynamic.is_some())
+        .filter(|source| source.dynamic.is_some())
+        .count()
+        > 1
     {
         return Err(reject(
-            "dynamic named XML output permits only static named inputs",
+            "dynamic named XML output permits at most one dynamic named input",
         ));
     }
     if program.root.iteration.is_some()
