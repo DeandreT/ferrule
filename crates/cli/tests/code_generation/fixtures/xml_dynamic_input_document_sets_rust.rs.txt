@@ -1,0 +1,88 @@
+mod snapshot { include!("snapshot.rs"); }
+use codegen_runtime::{DynamicXmlSourceLoader, RuntimeError, XmlBoundaryError, XmlDynamicInputDocumentExecutionError};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use std::{cell::RefCell, error::Error, fs, io::Write, path::{Path, PathBuf}};
+
+fn physical(xml: &str, schema: &Json) -> Json {
+    fn element(node: roxmltree::Node<'_, '_>, schema: &Json) -> Json {
+        let mut attributes=node.attributes().map(|a|json!({"name":a.name(),"namespace":a.namespace().unwrap_or(""),"value":a.value()})).collect::<Vec<_>>();
+        attributes.sort_by_key(|a|(a["namespace"].as_str().unwrap().to_owned(),a["name"].as_str().unwrap().to_owned()));
+        let text=node.children().filter(|n|n.is_text()).filter_map(|n|n.text()).collect::<String>();
+        let group=schema["kind"]["kind"]=="group";
+        let children=node.children().filter(|n|n.is_element()).map(|child| {
+            let fields=schema["kind"]["children"].as_array().expect("element child requires Group schema");
+            let field=fields.iter().find(|f|f["name"]==child.tag_name().name() && f["attribute"]!=true).expect("exact child schema");
+            element(child,field)
+        }).collect::<Vec<_>>();
+        let text=if group {assert!(text.chars().all(|c|matches!(c,' '| '\t'|'\r'|'\n')));String::new()}else{text};
+        json!({"name":node.tag_name().name(),"namespace":node.tag_name().namespace().unwrap_or(""),"attributes":attributes,"text":text,"children":children})
+    }
+    element(roxmltree::Document::parse(xml).unwrap().root_element(),schema)
+}
+fn schema(root:&Path,name:&str)->String {fs::read_to_string(root.join(format!("{name}-schema.json"))).unwrap()}
+fn input_records(root:&Path,primary:&[u8],rates:&[u8],labels:&[u8])->Json {
+    json!({"primary":snapshot::snapshot(&codegen_runtime::parse_structured_xml_bytes(&schema(root,"source"),primary).unwrap()),
+        "statics":[{"name":"labels","declaration_index":2,"instance":snapshot::snapshot(&codegen_runtime::parse_structured_xml_bytes(&schema(root,"labels"),labels).unwrap())},
+        {"name":"rates","declaration_index":0,"instance":snapshot::snapshot(&codegen_runtime::parse_structured_xml_bytes(&schema(root,"rates"),rates).unwrap())}]})
+}
+struct Loader<'a>{root:&'a Path,fail:bool,calls:RefCell<Vec<Json>>}
+impl DynamicXmlSourceLoader for Loader<'_> {
+    fn load(&self,source:&str,path:&str)->Result<Vec<u8>,String> {
+        let index=self.calls.borrow().len();
+        self.calls.borrow_mut().push(json!({"source":source,"path":path,"loaded":null,"host_error":null}));
+        let failure=if source!="catalog" || !matches!(path,"a.xml"|"b.xml") {Some("unexpected authored source/path")}
+            else if self.fail && path=="b.xml" {Some("original second catalog failure")}else{None};
+        if let Some(message)=failure {self.calls.borrow_mut()[index]["host_error"]=json!(message);return Err(message.into());}
+        let bytes=match fs::read(self.root.join(path)) {Ok(bytes)=>bytes,Err(error)=>{self.calls.borrow_mut()[index]["host_error"]=json!(error.to_string());return Err(error.to_string());}};
+        self.calls.borrow_mut()[index]["loaded"]=match codegen_runtime::parse_structured_xml_bytes(&schema(self.root,"catalog"),&bytes) {
+            Ok(instance)=>snapshot::snapshot(&instance),Err(error)=>json!({"diagnostic_parse_error":format!("{error:?}")})};
+        Ok(bytes)
+    }
+}
+fn error(error:&XmlDynamicInputDocumentExecutionError)->Json {
+    let runtime=error.boundary.source().and_then(|cause|cause.downcast_ref::<RuntimeError>());
+    let fields=match runtime {
+        Some(RuntimeError::DynamicSourceLoad{source,path,message})=>json!({"variant":"DynamicSourceLoad","source":source,"path":path,"message":message}),
+        Some(RuntimeError::MissingRuntimeValue{value})=>json!({"variant":"MissingRuntimeValue","value":format!("{value:?}")}),
+        other=>json!({"variant":"other","debug":format!("{other:?}")}),
+    };
+    let mut causes=Vec::new();let mut cause=error.boundary.source();
+    while let Some(current)=cause {causes.push(json!({"detail":current.to_string(),"debug":format!("{current:?}")}));cause=current.source();}
+    json!({"type":"XmlDynamicInputDocumentExecutionError","detail":error.to_string(),"debug":format!("{error:?}"),
+        "kind":format!("{:?}",error.boundary.kind),"boundary_detail":error.boundary.detail,"bytes":error.boundary.bytes,"limit":error.boundary.limit,
+        "owner":error.owner.as_ref().map(|owner|format!("{owner:?}")),"request":error.request.as_ref().map(|request|format!("{request:?}")),"runtime":fields,"causes":causes,
+        "boundary_identity":error.source().and_then(|s|s.downcast_ref::<XmlBoundaryError>()).is_some_and(|s|std::ptr::eq(s,error.boundary.as_ref()))})
+}
+fn emit(row:&Json) {let mut out=std::io::stdout().lock();writeln!(out,"{}",row).unwrap();out.flush().unwrap();}
+fn main() {
+    let root=PathBuf::from(std::env::args().nth(1).expect("fixture directory"));
+    let target_text=schema(&root,"target");let target:Json=serde_json::from_str(&target_text).unwrap();
+    let rates=fs::read(root.join("rates.xml")).unwrap();let labels=fs::read(root.join("labels.xml")).unwrap();
+    let named=[generated::NamedXmlBytesInput{name:"labels",document:&labels},generated::NamedXmlBytesInput{name:"rates",document:&rates}];
+    let texts=[generated::NamedXmlInput{name:"labels",document:std::str::from_utf8(&labels).unwrap()},generated::NamedXmlInput{name:"rates",document:std::str::from_utf8(&rates).unwrap()}];
+    let execution=codegen_runtime::ExecutionContext::with_main_mapping_file_path(Path::new("mapping/library.json"),Path::new("mapping/main.json")).with_current_datetime("2026-10-05T00:00:00Z");
+    for case in ["base","context","host-failure"] {
+        let primary=fs::read(root.join(if case=="context"{"context.xml"}else{"primary.xml"})).unwrap();
+        for method in ["text","text-context","bytes","bytes-context"] {
+            let loader=Loader{root:&root,fail:case=="host-failure",calls:RefCell::new(Vec::new())};
+            let result:Result<Vec<(String,Vec<u8>)>,_>=match method {
+                "text"=>generated::execute_xml_documents_with_sources_and_dynamic_source_loader(std::str::from_utf8(&primary).unwrap(),&texts,&loader).map(|v|v.into_iter().map(|x|(x.path,x.document.into_bytes())).collect()),
+                "text-context"=>generated::execute_xml_documents_with_sources_context_and_dynamic_source_loader(std::str::from_utf8(&primary).unwrap(),&texts,&execution,&loader).map(|v|v.into_iter().map(|x|(x.path,x.document.into_bytes())).collect()),
+                "bytes"=>generated::execute_xml_bytes_documents_with_sources_and_dynamic_source_loader(&primary,&named,&loader).map(|v|v.into_iter().map(|x|(x.path,x.document)).collect()),
+                _=>generated::execute_xml_bytes_documents_with_sources_context_and_dynamic_source_loader(&primary,&named,&execution,&loader).map(|v|v.into_iter().map(|x|(x.path,x.document)).collect()),
+            };
+            let mut row=json!({"case":case,"method":method,"inputs":input_records(&root,&primary,&rates,&labels),"calls":loader.calls.borrow().clone(),"outputs":null,"error":null});
+            match result {
+                Ok(outputs)=>{let distinct=outputs.iter().enumerate().all(|(i,(_,v))|outputs.iter().skip(i+1).all(|(_,w)|v.is_empty()||w.is_empty()||v.as_ptr()!=w.as_ptr()));
+                    row["outcome"]=json!("success");row["distinct_output_buffers"]=json!(distinct);
+                    row["outputs"]=json!(outputs.iter().map(|(path,xml)|json!({"path":path,"xml":std::str::from_utf8(xml).unwrap(),"bytes":xml.len()})).collect::<Vec<_>>());
+                    emit(&row);
+                    let diagnostics=outputs.iter().map(|(path,xml)|json!({"path":path,"instance":snapshot::snapshot(&codegen_runtime::parse_structured_xml_bytes(&target_text,xml).unwrap()),"physical":physical(std::str::from_utf8(xml).unwrap(),&target)})).collect::<Vec<_>>();
+                    eprintln!("{}",json!({"case":case,"method":method,"outputs":diagnostics}));continue;},
+                Err(original)=>{row["outcome"]=json!("error");row["error"]=error(&original);},
+            }
+            emit(&row);
+        }
+    }
+}

@@ -18,7 +18,13 @@ pub(crate) const PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
 </Project>
 "#;
 
-pub(crate) const SOURCES: [(&str, &str); 71] = [
+pub(crate) const SOURCES: [(&str, &str); 72] = [
+    (
+        "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
+        include_str!(
+            "../../../runtime/csharp/Ferrule.Runtime/FerruleXml.DynamicInputDocumentSet.cs"
+        ),
+    ),
     (
         "Runtime/FerruleXml.InputDocumentOutputs.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXml.InputDocumentOutputs.cs"),
