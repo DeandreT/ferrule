@@ -428,6 +428,8 @@ pub struct Program {
 pub enum XmlOutputMode {
     SingleDocument,
     DynamicPrimaryDocuments,
+    /// One static primary document followed by one named target's ordered members.
+    StaticPrimaryDynamicNamedDocuments,
 }
 
 impl Program {
@@ -443,6 +445,14 @@ impl Program {
                 .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
             {
                 XmlOutputMode::DynamicPrimaryDocuments
+            } else if self.extra_targets.iter().any(|target| {
+                target
+                    .root
+                    .iteration
+                    .as_ref()
+                    .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
+            }) {
+                XmlOutputMode::StaticPrimaryDynamicNamedDocuments
             } else {
                 XmlOutputMode::SingleDocument
             }
