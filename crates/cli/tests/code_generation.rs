@@ -1297,3 +1297,6 @@ mod typed_dynamic_document_sources;
 
 #[path = "code_generation/xml_dynamic_input_document_sets.rs"]
 mod xml_dynamic_input_document_sets;
+
+#[path = "code_generation/rootview_named_inputs.rs"]
+mod rootview_named_inputs;

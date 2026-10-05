@@ -195,7 +195,18 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             ));
         }
     }
+    let root_view_static_inputs = !program.extra_sources.is_empty()
+        && program
+            .extra_sources
+            .iter()
+            .all(|source| source.dynamic.is_none())
+        && program.extra_targets.is_empty()
+        && policy.extra_outputs.is_empty()
+        && program.root.iteration.is_none()
+        && matches!(program.root.construction, crate::TargetConstruction::Group)
+        && !program.root.repeating;
     if policy.input.profile() == Some(crate::XmlInputProfile::RootView)
+        && !root_view_static_inputs
         && (!program.extra_sources.is_empty()
             || !policy.extra_inputs.is_empty()
             || !program.extra_targets.is_empty()

@@ -37,11 +37,11 @@ pub(super) fn render_types(program: &Program) -> Result<&'static str, EmitError>
     if program.xml_boundary.is_none() {
         return Ok("");
     }
-    if program
-        .xml_boundary
-        .as_ref()
-        .is_some_and(|policy| policy.input.profile() == Some(XmlInputProfile::Structured))
-    {
+    if program.xml_boundary.as_ref().is_some_and(|policy| {
+        policy.input.profile() == Some(XmlInputProfile::Structured)
+            || (policy.input.profile() == Some(XmlInputProfile::RootView)
+                && !program.extra_sources.is_empty())
+    }) {
         return Ok(named_inputs::TYPES);
     }
     Ok(
@@ -123,8 +123,12 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
         ));
     }
     output.push_str("    private static readonly global::System.Text.UTF8Encoding XmlOutputUtf8 = new(false, true);\n");
-    if profile == XmlInputProfile::Structured {
+    let named_input_route = profile == XmlInputProfile::Structured
+        || (profile == XmlInputProfile::RootView && !program.extra_sources.is_empty());
+    if named_input_route {
         named_inputs::render(program, output)?;
+    }
+    if profile == XmlInputProfile::Structured {
         dynamic_inputs::render(program, output);
     }
     for bytes in [false, true] {
@@ -150,7 +154,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
             "SerializeXmlOutputs"
         };
         for context in [false, true] {
-            if profile == XmlInputProfile::Structured {
+            if named_input_route {
                 continue;
             }
             let parser = match profile {
