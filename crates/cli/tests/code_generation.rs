@@ -80,6 +80,8 @@ mod xml_dynamic_outputs;
 mod xml_input_sets;
 #[path = "code_generation/xml_mixed_document_outputs.rs"]
 mod xml_mixed_document_outputs;
+#[path = "code_generation/xml_multiple_named_document_outputs.rs"]
+mod xml_multiple_named_document_outputs;
 #[path = "code_generation/xml_output_sets.rs"]
 mod xml_output_sets;
 #[path = "code_generation/xml_text.rs"]
