@@ -1,0 +1,51 @@
+mod typed_snapshot;
+use std::{cell::RefCell,error::Error,io::{self,Write},path::Path};
+use ir::Instance;
+use mapping::Project;
+use serde_json::{Value as Json,json};
+use typed_snapshot::snapshot;
+use ferrule_generated_mapping as generated;
+const MARKER:&str="typed-dispatch-original-second-host-failure";
+struct Loader { a:Instance,b:Instance,fail:bool,trace:RefCell<Vec<Json>> }
+impl generated::DynamicSourceLoader for Loader {
+    fn load(&self,source:&str,path:&str)->Result<Instance,String> {
+        let result=if source!="catalog" { Err("unexpected source".to_string()) }
+          else if path=="a.xml" { Ok(self.a.clone()) }
+          else if path=="b.xml" && self.fail { Err(MARKER.to_string()) }
+          else if path=="b.xml" { Ok(self.b.clone()) }
+          else { Err("unexpected path".to_string()) };
+        let ordinal=self.trace.borrow().len()+1;
+        let outcome=match &result {Ok(value)=>json!({"status":"returned","value":snapshot(value)}),Err(message)=>json!({"status":"error","message":message})};
+        self.trace.borrow_mut().push(json!({"ordinal":ordinal,"source":source,"path":path,"outcome":outcome}));
+        result
+    }
+}
+fn error(error:&codegen_runtime::RuntimeError)->Json {
+    let (kind,source,path,message)=match error {
+        codegen_runtime::RuntimeError::MissingDynamicSourceLoader{source}=>("MissingDynamicSourceLoader",Some(*source),None,None),
+        codegen_runtime::RuntimeError::DynamicSourceLoad{source,path,message}=>("DynamicSourceLoad",Some(*source),Some(path.as_str()),Some(message.as_str())),
+        _=>("Other",None,None,None),
+    };
+    let mut causes=Vec::new();let mut next=error.source();while let Some(cause)=next {causes.push(json!({"display":cause.to_string(),"debug":format!("{cause:?}")}));next=cause.source();}
+    json!({"kind":kind,"source":source,"path":path,"host_message":message,"display":error.to_string(),"debug":format!("{error:?}"),"causes":causes,"original_host_message_matches":message==Some(MARKER)})
+}
+fn main()->Result<(),Box<dyn Error>> {
+    let args:Vec<_>=std::env::args().collect();let root=Path::new(args.get(1).ok_or("fixture root required")?);let variant=args.get(2).ok_or("variant required")?;
+    let (filename,cases)=if variant=="ordinary" {("ordinary-child-dynamic-source-control.project.json",vec![("ordinary-child-host-control",true,false)])}
+      else if variant=="documents" {("dynamic-source-root-document-driver.project.json",vec![("document-driver-with-loader",true,false),("document-driver-no-loader",false,false),("document-driver-second-host-failure",true,true)])}
+      else {return Err("unknown variant".into())};
+    let project:Project=serde_json::from_str(&std::fs::read_to_string(root.join(filename))?)?;let mut stdout=io::stdout().lock();
+    for (case,enabled,fail) in cases {
+        let primary=format_json::from_str(&std::fs::read_to_string(root.join("primary.json"))?,&project.source)?;
+        let a=format_json::from_str(&std::fs::read_to_string(root.join("a.json"))?,&project.extra_sources[0].schema)?;
+        let b=format_json::from_str(&std::fs::read_to_string(root.join("b.json"))?,&project.extra_sources[0].schema)?;
+        let loader=Loader{a,b,fail,trace:RefCell::new(Vec::new())};
+        let result=if enabled {generated::execute_outputs_with_sources_and_dynamic_source_loader(&primary,&[],&loader)}else{generated::execute_outputs_with_sources(&primary,&[])};
+        let record=match result {
+            Ok(output)=>json!({"status":"success","primary":snapshot(&output.primary),"extras":output.extras.iter().map(|o|json!({"name":o.name,"instance":snapshot(&o.instance)})).collect::<Vec<_>>(),"error":null}),
+            Err(ref failure)=>json!({"status":"error","primary":null,"extras":null,"error":error(failure)}),
+        };
+        writeln!(stdout,"{}",json!({"version":1,"backend":"rust","case":case,"project":filename,"loader_enabled":enabled,"fail_second":fail,"primary_input":snapshot(&primary),"prepared_loaded_sources":[snapshot(&loader.a),snapshot(&loader.b)],"callbacks":loader.trace.borrow().clone(),"result":record}))?;stdout.flush()?;
+    }
+    Ok(())
+}

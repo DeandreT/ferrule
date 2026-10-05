@@ -1669,6 +1669,40 @@ fn render_grouping_path(input: &IterationSource, output: &mut String) {
     }
 }
 
+fn render_source_iteration_candidates(
+    program: &Program,
+    scope: usize,
+    source_path: &[String],
+    output: &mut String,
+) {
+    let dynamic = source_path.first().and_then(|name| {
+        program
+            .extra_sources
+            .iter()
+            .find(|candidate| candidate.name == *name)
+            .and_then(|candidate| candidate.dynamic.as_ref().map(|plan| (candidate, plan)))
+    });
+    if let Some((source_program, dynamic)) = dynamic {
+        output.push_str(&format!(
+            "        var dynamic_source_items_{scope} = global::Ferrule.Runtime.FerruleDynamicSourceItems.Load(\n            context,\n            {},\n            ",
+            literal::string(&source_program.name),
+        ));
+        render_path(dynamic.driver.path(), output);
+        output.push_str(",\n            ");
+        render_path(&source_path[1..], output);
+        output.push_str(&format!(
+            ",\n            {}U,\n            driver_context_{scope} => Node_{}(driver_context_{scope}));\n        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(dynamic_source_items_{scope}.Contexts());\n",
+            dynamic.path, dynamic.path,
+        ));
+    } else {
+        output.push_str(&format!(
+            "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateSource("
+        ));
+        render_path(source_path, output);
+        output.push_str("));\n");
+    }
+}
+
 fn render_iteration_candidates(
     program: &Program,
     scope: usize,
@@ -1677,39 +1711,10 @@ fn render_iteration_candidates(
 ) {
     match input {
         IterationSource::Source(source) => {
-            let dynamic = source.path().first().and_then(|name| {
-                program
-                    .extra_sources
-                    .iter()
-                    .find(|candidate| candidate.name == *name)
-                    .and_then(|candidate| candidate.dynamic.as_ref().map(|plan| (candidate, plan)))
-            });
-            if let Some((source_program, dynamic)) = dynamic {
-                output.push_str(&format!(
-                    "        var dynamic_source_items_{scope} = global::Ferrule.Runtime.FerruleDynamicSourceItems.Load(\n            context,\n            {},\n            ",
-                    literal::string(&source_program.name),
-                ));
-                render_path(dynamic.driver.path(), output);
-                output.push_str(",\n            ");
-                render_path(&source.path()[1..], output);
-                output.push_str(&format!(
-                    ",\n            {}U,\n            driver_context_{scope} => Node_{}(driver_context_{scope}));\n        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(dynamic_source_items_{scope}.Contexts());\n",
-                    dynamic.path, dynamic.path,
-                ));
-            } else {
-                output.push_str(&format!(
-                    "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateSource("
-                ));
-                render_path(source.path(), output);
-                output.push_str("));\n");
-            }
+            render_source_iteration_candidates(program, scope, source.path(), output);
         }
         IterationSource::DynamicDocuments(dynamic) => {
-            output.push_str(&format!(
-                "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateSource("
-            ));
-            render_path(dynamic.source().path(), output);
-            output.push_str("));\n");
+            render_source_iteration_candidates(program, scope, dynamic.source().path(), output);
         }
         IterationSource::Generated(sequence) => {
             let identifier = format!("scope_{scope}");

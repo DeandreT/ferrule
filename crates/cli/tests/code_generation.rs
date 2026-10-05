@@ -1290,3 +1290,6 @@ fn target_order(id: &str, lines: impl IntoIterator<Item = Instance>) -> Instance
 
 #[path = "code_generation/xml_input_document_outputs.rs"]
 mod xml_input_document_outputs;
+
+#[path = "code_generation/typed_dynamic_document_sources.rs"]
+mod typed_dynamic_document_sources;
