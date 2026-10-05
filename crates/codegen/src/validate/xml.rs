@@ -324,10 +324,12 @@ fn validate_dynamic_primary_output(
     if program
         .extra_sources
         .iter()
-        .any(|source| source.dynamic.is_some())
+        .filter(|source| source.dynamic.is_some())
+        .count()
+        > 1
     {
         return Err(reject(
-            "dynamic primary XML output permits only static named inputs",
+            "dynamic primary XML output permits at most one dynamic named input",
         ));
     }
     if program.target.repeating
