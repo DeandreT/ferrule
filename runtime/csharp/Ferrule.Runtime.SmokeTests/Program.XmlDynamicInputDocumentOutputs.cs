@@ -99,6 +99,7 @@ internal static partial class Program
         Equal(FerruleXmlBoundaryErrorKind.Mapping, hostError.Boundary.Kind);
         Equal(true, ReferenceEquals(hostRuntime, hostError.Boundary.InnerException));
         Equal(true, ReferenceEquals(hostBoundary, hostError.Boundary.InnerException!.InnerException));
+        XmlDynamicInputDocumentOutputsMultipleSourceChannels();
     }
 
     private static void XmlDynamicInputDocumentOutputsIndependentLedgers()
@@ -131,6 +132,86 @@ internal static partial class Program
         var outputCause = (FerruleXmlOutputSetResourceException)outputError.Boundary.InnerException!;
         Equal("xml_output_set_utf8_bytes", outputCause.Resource);
         Equal(256UL * 1024 * 1024 + 1, outputCause.ObservedCount);
+    }
+
+    private const string DynamicMixedFloatSchema = """{"name":"Catalog","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"group","children":[{"name":"Amount","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"scalar","ty":"float"}}]}}""";
+    private const string DynamicMixedIntSchema = """{"name":"Catalog","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"group","children":[{"name":"Amount","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"scalar","ty":"int"}}]}}""";
+    private static FerruleXmlDynamicSourcePolicy[] DynamicMixedMultiplePolicies() => new[] {
+        new FerruleXmlDynamicSourcePolicy(1, "alpha", DynamicMixedFloatSchema),
+        new FerruleXmlDynamicSourcePolicy(3, "beta", DynamicMixedIntSchema),
+    };
+    private static void XmlDynamicInputDocumentOutputsMultipleSourceChannels()
+    {
+        var successfulHost = new DynamicMixedMultipleBytes(false);
+        var successful = FerruleXmlDynamicSourceAdapter.ForSources(successfulHost,
+            DynamicMixedMultiplePolicies(), new FerruleXmlInputSetBudget(3));
+        var alpha = (FerruleGroup)successful.Load("alpha", "same.xml");
+        var beta = (FerruleGroup)successful.Load("beta", "same.xml");
+        Equal(true, alpha.TryGetField("Amount", out var alphaAmount));
+        Equal(true, beta.TryGetField("Amount", out var betaAmount));
+        Equal(FerruleValueKind.Double, ((FerruleScalar)alphaAmount!).Value.Kind);
+        Equal(FerruleValueKind.Int64, ((FerruleScalar)betaAmount!).Value.Kind);
+        Equal(7.0, ((FerruleScalar)alphaAmount!).Value.DoubleValue);
+        Equal(7L, ((FerruleScalar)betaAmount!).Value.Int64Value);
+        Equal(2, successfulHost.Calls.Count);
+        Equal(("alpha", "same.xml"), successfulHost.Calls[0]);
+        Equal(("beta", "same.xml"), successfulHost.Calls[1]);
+
+        // Counter-only resource modes; each actual original callback buffer is tiny.
+        for (var mode = 0; mode < 3; mode++)
+        {
+            var host = new DynamicMixedMultipleBytes(mode == 0);
+            var budget = new FerruleXmlInputSetBudget(mode == 1 ? 4095 : 3);
+            if (mode == 2)
+                budget.Charge(FerruleXmlInputSource.Primary, 256L * 1024 * 1024 - DynamicMixedMultipleBytes.Document.Length);
+            var adapter = FerruleXmlDynamicSourceAdapter.ForSources(host, DynamicMixedMultiplePolicies(), budget);
+            _ = adapter.Load("alpha", "same.xml");
+            var marker = CaptureDynamicMixedMultipleLoad(adapter);
+            var original = adapter.Recover(DynamicMixedRuntime(marker, "beta", "same.xml"));
+            var request = original.Request!;
+            var error = FerruleXmlDynamicInputDocumentOutputsExecutionException.FromDynamicInputBoundary(request, original.Boundary);
+            Equal<FerruleXmlDynamicInputDocumentOutputsOwner?>(new FerruleXmlDynamicInputDocumentOutputsOwner.Input(FerruleXmlInputSource.Named(3, "beta")), error.Owner);
+            Equal(3, request.DeclarationIndex);
+            Equal("beta", request.Source);
+            Equal("same.xml", request.Path);
+            Equal(2UL, request.Ordinal);
+            Equal(mode != 1, request.CallbackInvoked);
+            Equal(true, ReferenceEquals(request, error.Request));
+            Equal(true, ReferenceEquals(original.Boundary, error.Boundary));
+            Equal(true, ReferenceEquals(original.Boundary, error.InnerException));
+            Equal(true, ReferenceEquals(original.Boundary.InnerException, error.Boundary.InnerException));
+            Equal(mode == 1 ? 1 : 2, host.Calls.Count);
+            if (mode == 0)
+            {
+                Equal(FerruleXmlBoundaryErrorKind.Utf8, error.Boundary.Kind);
+                Equal(true, error.Boundary.InnerException is System.Text.DecoderFallbackException);
+            }
+            else
+            {
+                Equal(FerruleXmlBoundaryErrorKind.Input, error.Boundary.Kind);
+                var resource = (FerruleXmlInputSetResourceException)error.Boundary.InnerException!;
+                Equal(mode == 1 ? "xml_input_artifact_count" : "xml_input_set_utf8_bytes", resource.Resource);
+                Equal(mode == 1 ? 4097UL : 256UL * 1024 * 1024 + (ulong)DynamicMixedMultipleBytes.Document.Length, resource.ObservedCount);
+                Equal(mode == 1 ? 4096UL : 256UL * 1024 * 1024, resource.Limit);
+            }
+            // Recovery is terminal; the next control creates a fresh adapter.
+        }
+    }
+    private sealed class DynamicMixedMultipleBytes(bool invalidBeta) : IFerruleDynamicXmlSourceLoader
+    {
+        public static readonly byte[] Document = System.Text.Encoding.UTF8.GetBytes("<Catalog><Amount>7</Amount></Catalog>");
+        public readonly List<(string Source, string Path)> Calls = new();
+        public byte[] Load(string sourceName, string logicalPath)
+        {
+            Calls.Add((sourceName, logicalPath));
+            return invalidBeta && sourceName == "beta" ? new byte[] { 0xff } : (byte[])Document.Clone();
+        }
+    }
+    private static Exception CaptureDynamicMixedMultipleLoad(FerruleXmlDynamicSourceAdapter adapter)
+    {
+        try { _ = adapter.Load("beta", "same.xml"); }
+        catch (Exception error) { return error; }
+        throw new InvalidOperationException("Expected one terminal second-source refusal.");
     }
 
     private sealed class DynamicMixedInvalidBytes : IFerruleDynamicXmlSourceLoader

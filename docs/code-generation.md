@@ -937,15 +937,15 @@ wrappers and behavior. Paths remain opaque; the library does not publish files,
 resolve paths or open schema-hint locations. These serialized-byte limits do not
 provide streaming or a process memory ceiling.
 
-### One Dynamic Named Input with Static Primary and Dynamic Named Documents
+### Dynamic Named Inputs with Static Primary and Dynamic Named Documents
 
-An ordinary `Structured` XML mapping can combine exactly one dynamic named input,
+An ordinary `Structured` XML mapping can combine one or more dynamic named inputs,
 optional static named inputs, one static primary document and one or more named
 document lists. Each input and output retains its own closed schema and policy.
 The primary target is a closed nonrepeating group with a noniterating root. Each
 named output has a closed nonrepeating member group and a nonempty document driver
-path ending in a repeating group of the primary input. Multiple dynamic inputs,
-named-input output drivers, observed root-view profiles, static named output roots
+path ending in a repeating group of the primary input. Named-input output
+drivers, observed root-view profiles, static named output roots
 mixed with document lists, and unsupported advanced XML schemas remain outside
 this adapter.
 
@@ -973,7 +973,10 @@ methods rather than the old singular or primary-list XML families.
 The adapter admits the complete initial count, exact static names and document
 shapes, every per-document size and combined original bytes before parsing primary
 and then static declarations in order. Unused static inputs are still required.
-One fresh dynamic adapter then shares that input ledger across actual requests.
+One fresh dynamic adapter then shares that input ledger and request ordinal across
+all dynamic declarations. Policies retain original declaration indices, exact
+source names and independent schemas; the same logical path under different
+source names remains a separate load with its own schema.
 It reserves each request's document count before the host callback and charges
 returned original bytes before parsing them. Repeated loads count and charge
 again. Mapping determines callback reachability and lazy context reads.
