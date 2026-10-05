@@ -1,4 +1,5 @@
 mod dynamic_inputs;
+mod named_document_outputs;
 mod named_inputs;
 
 use crate::{EmitError, literal};
@@ -9,6 +10,11 @@ pub(super) fn render_types(program: &Program) -> Result<&'static str, EmitError>
         return Ok(
             "public sealed record XmlDocumentOutput(string Path, string Document);\npublic sealed record XmlBytesDocumentOutput(string Path, byte[] Document);\n\n",
         );
+    }
+    if program.xml_output_mode()?
+        == Some(codegen::XmlOutputMode::StaticPrimaryDynamicNamedDocuments)
+    {
+        return Ok(named_document_outputs::TYPES);
     }
     if program.xml_boundary.is_none() {
         return Ok("");
@@ -48,6 +54,11 @@ fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
 pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
     if program.xml_output_mode()? == Some(codegen::XmlOutputMode::DynamicPrimaryDocuments) {
         return render_dynamic_documents(program, output);
+    }
+    if program.xml_output_mode()?
+        == Some(codegen::XmlOutputMode::StaticPrimaryDynamicNamedDocuments)
+    {
+        return named_document_outputs::render(program, output);
     }
     let Some(policy) = &program.xml_boundary else {
         return Ok(());
