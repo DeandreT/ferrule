@@ -1,0 +1,149 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var directory=args[0];using var project=JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory,"project.json")));
+var names=project.RootElement.GetProperty("extra_targets").EnumerateArray().Select(t=>t.GetProperty("name").GetString()!).ToArray();Require(names.Length==2,"two original declarations");
+var sourceSchema=File.ReadAllText(Path.Combine(directory,"source-schema.txt"));var primarySchema=File.ReadAllText(Path.Combine(directory,"primary-schema.txt"));
+var schemas=Enumerable.Range(0,2).Select(i=>File.ReadAllText(Path.Combine(directory,$"named-{i}-schema.txt"))).ToArray();var hints=Enumerable.Range(0,2).Select(i=>File.ReadAllText(Path.Combine(directory,$"named-{i}-hints.json"))).ToArray();
+var utf8=new UTF8Encoding(false,true);var execution=new FerruleExecutionContext("fixture.json","fixture.json","2026-10-04T00:00:00Z",null);
+foreach(var name in new[]{"ordered","empty-alpha","empty-beta","empty-both","selected","late-beta-output","primary-output","alpha-output","mapping-primary","mapping-alpha"})
+{
+    var bytes=File.ReadAllBytes(Path.Combine(directory,name+".xml"));var text=utf8.GetString(bytes);var parsed=FerruleXml.ParseStructuredEmbeddedBytes(sourceSchema,bytes);FerruleXmlBoundaryException? originalOutput=null;string? originalMapping=null;
+    try
+    {
+        var mapped=GeneratedMapping.ExecuteOutputs(parsed,execution);Require(mapped.Extras.Count==2,"two complete mapped targets");for(var i=0;i<2;i++)Require(mapped.Extras[i].Name==names[i],"original declared target order");
+        Write(new{@case=name,api=-1,source=Snapshot(parsed),primary=Snapshot(mapped.Primary),extras=mapped.Extras.Select(e=>new{name=e.Name,members=((FerruleDocumentSet)e.Instance).Documents.Select(d=>new{path=d.Path,instance=Snapshot(d.Value)}).ToArray()}).ToArray(),mapping_failure=false});
+        if(name is "late-beta-output" or "alpha-output" or "primary-output")
+        {
+            var targetName=name=="late-beta-output"?"a-receipt":"z-audit";var index=Array.IndexOf(names,targetName);var schema=name=="primary-output"?primarySchema:schemas[index];var value=name=="primary-output"?mapped.Primary:((FerruleDocumentSet)mapped.Extras[index].Instance).Documents[1].Value;var schemaHints=name=="primary-output"?null:hints[index];
+            if(name!="primary-output")Require(((FerruleDocumentSet)mapped.Extras[index].Instance).Documents.Count==2,"final selected member1");
+            try{FerruleXml.SerializeDocumentEmbedded(schema,value,true,true,null,schemaHints);throw new InvalidOperationException("original serializer must refuse");}catch(FerruleXmlBoundaryException error){originalOutput=error;}
+        }
+    }
+    catch(FerruleRuntimeException error){Require(name.StartsWith("mapping-",StringComparison.Ordinal)&&error.Error==FerruleRuntimeError.EmptyDynamicTargetPath&&error.Node==10,"exact original beta Mapping failure");originalMapping=error.Message;Write(new{@case=name,api=-1,source=Snapshot(parsed),primary=(object?)null,extras=(object?)null,mapping_failure=true});}
+    for(var api=0;api<4;api++)
+    {
+        try
+        {
+            var output=Call(api,text,bytes,execution);Require(name is "ordered" or "empty-alpha" or "empty-beta" or "empty-both" or "selected","no partial refusal result");Require(output.Extras.Length==2,"both envelopes even empty");for(var i=0;i<2;i++)Require(output.Extras[i].Name==names[i],"complete declaration order");
+            var p=Physical(output.Primary);Require(JsonSerializer.Serialize(p)==JsonSerializer.Serialize(Physical(File.ReadAllText(Path.Combine(directory,$"native-{name}-primary.xml")))),"complete native Primary physical");
+            var extras=output.Extras.Select((extra,declaration)=>new{name=extra.Name,documents=extra.Documents.Select((d,index)=>{var actual=Physical(d.Document);var native=Physical(File.ReadAllText(Path.Combine(directory,$"native-{name}-{declaration}-{index}.xml")));Require(JsonSerializer.Serialize(actual)==JsonSerializer.Serialize(native),"complete original native QName/hints/children/scalar text");return new{path=d.Path,document=d.Document,physical=actual,native_physical_match=true};}).ToArray()}).ToArray();
+            Write(new{@case=name,api,kind="ok",primary=new{document=output.Primary,physical=p,native_physical_match=true},extras});
+        }
+        catch(FerruleXmlDocumentOutputsExecutionException error)
+        {
+            Require(ReferenceEquals(error.InnerException,error.Boundary),"actual original Boundary identity");Require(error.Boundary.Bytes is null&&error.Boundary.Limit is null,"small byte payload unset");object? owner=null;string? runtimeError=null;uint? node=null;
+            if(name is "late-beta-output" or "alpha-output" or "primary-output")
+            {
+                Require(error.Boundary.Kind==FerruleXmlBoundaryErrorKind.Output,"original serializer Output");
+                if(name=="primary-output"){Require(error.Owner is FerruleXmlDocumentOutputsOwner.Primary,"static Primary no member fields");owner=new{kind="Primary"};}
+                else{var wanted=name=="late-beta-output"?"a-receipt":"z-audit";var index=Array.IndexOf(names,wanted);var path=name=="late-beta-output"?"bad-beta.xml":"bad-alpha.xml";var member=error.Owner as FerruleXmlDocumentOutputsOwner.NamedMember??throw new InvalidOperationException("precise owner");Require(member.DeclarationIndex==index&&member.Name==wanted&&member.Index==1&&member.Path==path,"original declaration/final member/path");owner=new{kind="NamedMember",declaration_index=member.DeclarationIndex,name=member.Name,index=member.Index,path=member.Path};}
+                Require(originalOutput is not null&&JsonSerializer.Serialize(Boundary(error.Boundary))==JsonSerializer.Serialize(Boundary(originalOutput)),"complete same-language original cause payload");
+            }
+            else{Require(name.StartsWith("mapping-",StringComparison.Ordinal)&&error.Owner is null&&error.Boundary.Kind==FerruleXmlBoundaryErrorKind.Mapping,"mapping all completes before any serializer");var cause=error.Boundary.InnerException as FerruleRuntimeException??throw new InvalidOperationException("original runtime cause");Require(cause.Error==FerruleRuntimeError.EmptyDynamicTargetPath&&cause.Node==10&&cause.Message==originalMapping,"original beta typed Mapping");runtimeError=cause.Error.ToString();node=cause.Node;}
+            Write(new{@case=name,api,kind=error.Boundary.Kind.ToString(),wrapper=nameof(FerruleXmlDocumentOutputsExecutionException),owner,boundary=Boundary(error.Boundary),original_boundary=originalOutput is null?null:Boundary(originalOutput),boundary_identity=true,original_boundary_match=true,runtime_error=runtimeError,node,no_partial_result=true});
+        }
+    }
+}
+
+static Mixed Call(int api, string text, byte[] bytes, FerruleExecutionContext execution)
+{
+    static Mixed Strings(XmlDocumentExecutionOutputs output)
+    {
+        ReadOnly(output.Extras);
+        foreach (var extra in output.Extras) ReadOnly(extra.Documents);
+        return new(output.Primary, output.Extras.Select(extra => (extra.Name, extra.Documents.Select(document => (document.Path, document.Document)).ToArray())).ToArray());
+    }
+    static Mixed Buffers(XmlBytesDocumentExecutionOutputs output)
+    {
+        ReadOnly(output.Extras);
+        var buffers = new HashSet<byte[]>(ReferenceEqualityComparer.Instance) { output.Primary };
+        foreach (var extra in output.Extras)
+        {
+            ReadOnly(extra.Documents);
+            foreach (var document in extra.Documents) Require(buffers.Add(document.Document), "all owned primary/member buffers distinct");
+        }
+        var decoder = new UTF8Encoding(false, true);
+        return new(decoder.GetString(output.Primary), output.Extras.Select(extra => (extra.Name, extra.Documents.Select(document => (document.Path, decoder.GetString(document.Document))).ToArray())).ToArray());
+    }
+    return api switch
+    {
+        0 => Strings(GeneratedMapping.ExecuteXmlDocumentOutputs(text)),
+        1 => Strings(GeneratedMapping.ExecuteXmlDocumentOutputs(text, execution)),
+        2 => Buffers(GeneratedMapping.ExecuteXmlBytesDocumentOutputs(bytes)),
+        3 => Buffers(GeneratedMapping.ExecuteXmlBytesDocumentOutputs(bytes, execution)),
+        _ => throw new InvalidOperationException("one of four mixed APIs"),
+    };
+}
+static void ReadOnly<T>(IReadOnlyList<T> values)
+{
+    if (values is IList<T> mutable)
+    {
+        try { mutable.Add(default!); throw new InvalidOperationException("returned collection permitted mutation"); }
+        catch (NotSupportedException) { }
+    }
+}
+static object Boundary(FerruleXmlBoundaryException error)
+{
+    var causes = new List<object>();
+    for (var cause = error.InnerException; cause is not null; cause = cause.InnerException)
+        causes.Add(new { type = cause.GetType().Name, detail = cause.Message });
+    return new { kind = error.Kind.ToString(), detail = error.Detail, bytes = error.Bytes, limit = error.Limit, causes };
+}
+static object Physical(string xml)
+{
+    static object Element(XElement element)
+    {
+        var attributes = element.Attributes().Where(attribute => !attribute.IsNamespaceDeclaration)
+            .OrderBy(attribute => attribute.Name.NamespaceName, StringComparer.Ordinal).ThenBy(attribute => attribute.Name.LocalName, StringComparer.Ordinal)
+            .Select(attribute => new { name = attribute.Name.LocalName, @namespace = attribute.Name.NamespaceName, value = attribute.Value }).ToArray();
+        var children = element.Elements().Select(Element).ToArray();
+        var rawText = string.Concat(element.Nodes().OfType<XText>().Select(text => text.Value));
+        string? text = rawText;
+        if (children.Length != 0)
+        {
+            Require(rawText.All(character => character is ' ' or '\t' or '\r' or '\n'), "only element-only formatting whitespace");
+            text = null;
+        }
+        return new { name = element.Name.LocalName, @namespace = element.Name.NamespaceName, text, attributes, children };
+    }
+    return Element(XDocument.Parse(xml, LoadOptions.PreserveWhitespace).Root ?? throw new InvalidOperationException("document root"));
+}
+static object Snapshot(FerruleInstance input) => input switch
+{
+    FerruleScalar scalar => Scalar(scalar.Value),
+    FerruleGroup group => new { kind = "Group", xml_type_origin = Origin(group.XmlTypeOrigin), fields = group.Fields.Select(field => new { name = field.Name, instance = Snapshot(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(Snapshot).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(Snapshot).ToArray() },
+    _ => throw new InvalidOperationException("unexpected closed instance variant"),
+};
+static object Origin(FerruleXmlTypeOrigin origin) => origin.Kind switch
+{
+    FerruleXmlTypeOriginKind.Unknown => new { kind = "Unknown" },
+    FerruleXmlTypeOriginKind.Absent => new { kind = "Absent" },
+    FerruleXmlTypeOriginKind.Explicit => new { kind = "Explicit", identity = origin.Identity },
+    FerruleXmlTypeOriginKind.ExplicitPadded => new { kind = "ExplicitPadded", literal = origin.Literal, resolved_identity = origin.Identity },
+    _ => throw new InvalidOperationException("unexpected XML type origin"),
+};
+static object Scalar(FerruleValue value) => value.Kind switch
+{
+    FerruleValueKind.Null => new { kind = "Scalar", tag = "Null" },
+    FerruleValueKind.JsonNull => new { kind = "Scalar", tag = "JsonNull" },
+    FerruleValueKind.XmlNil => new { kind = "Scalar", tag = "XmlNil" },
+    FerruleValueKind.Bool => new { kind = "Scalar", tag = "Bool", value = value.BooleanValue },
+    FerruleValueKind.Int64 => new { kind = "Scalar", tag = "Int", value = value.Int64Value },
+    FerruleValueKind.Double => new { kind = "Scalar", tag = "Float", bits_hex = BitConverter.DoubleToUInt64Bits(value.DoubleValue).ToString("x16", CultureInfo.InvariantCulture) },
+    FerruleValueKind.String => new { kind = "Scalar", tag = "String", value = value.StringValue },
+    _ => throw new InvalidOperationException("unexpected scalar tag"),
+};
+static void Require(bool condition, string detail)
+{
+    if (!condition) throw new InvalidOperationException(detail);
+}
+static void Write(object record) => Console.WriteLine(JsonSerializer.Serialize(record));
+
+sealed record Mixed(string Primary, (string Name, (string Path, string Document)[] Documents)[] Extras);
