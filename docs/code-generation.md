@@ -718,8 +718,9 @@ are checked; these limits do not provide streaming or a process memory ceiling.
 
 The checked `Program::xml_output_mode()` query distinguishes `SingleDocument`,
 `DynamicPrimaryDocuments`, `StaticNamedInputsDynamicPrimaryDocuments`,
-`DynamicNamedInputDynamicPrimaryDocuments`, `StaticPrimaryDynamicNamedDocuments`, and
-`StaticNamedInputsStaticPrimaryDynamicNamedDocuments`, returns no optional adapter for an
+`DynamicNamedInputDynamicPrimaryDocuments`, `StaticPrimaryDynamicNamedDocuments`,
+`StaticNamedInputsStaticPrimaryDynamicNamedDocuments`, and
+`DynamicNamedInputStaticPrimaryDynamicNamedDocuments`, returns no optional adapter for an
 unsupported ordinary boundary, and preserves the original
 typed error for an invalid hand-built program. External exhaustive matches on
 this public enum must handle the added variant.
@@ -935,6 +936,74 @@ returns no partial envelope. Existing XML methods keep their signatures,
 wrappers and behavior. Paths remain opaque; the library does not publish files,
 resolve paths or open schema-hint locations. These serialized-byte limits do not
 provide streaming or a process memory ceiling.
+
+### One Dynamic Named Input with Static Primary and Dynamic Named Documents
+
+An ordinary `Structured` XML mapping can combine exactly one dynamic named input,
+optional static named inputs, one static primary document and one or more named
+document lists. Each input and output retains its own closed schema and policy.
+The primary target is a closed nonrepeating group with a noniterating root. Each
+named output has a closed nonrepeating member group and a nonempty document driver
+path ending in a repeating group of the primary input. Multiple dynamic inputs,
+named-input output drivers, observed root-view profiles, static named output roots
+mixed with document lists, and unsupported advanced XML schemas remain outside
+this adapter.
+
+| Input and result | Rust | C# |
+| --- | --- | --- |
+| XML text, static inputs and loader | `execute_xml_document_outputs_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlDocumentOutputsWithSourcesAndDynamicSourceLoader` |
+| UTF-8 bytes, static inputs and loader | `execute_xml_bytes_document_outputs_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSourcesAndDynamicSourceLoader` |
+| XML text, static inputs, context and loader | `execute_xml_document_outputs_with_sources_context_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlDocumentOutputsWithSourcesContextAndDynamicSourceLoader` |
+| UTF-8 bytes, static inputs, context and loader | `execute_xml_bytes_document_outputs_with_sources_context_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSourcesContextAndDynamicSourceLoader` |
+
+Arguments are primary, static input collection, optional execution context, then
+loader. Inputs reuse `NamedXmlInput` and `NamedXmlBytesInput`. The collection
+contains exactly the static declaration subsequence and may be empty. The host
+implements `DynamicXmlSourceLoader` or `IFerruleDynamicXmlSourceLoader` and returns
+original UTF-8 bytes for each exact source name and logical path. The library
+performs no file or URL access.
+
+Results reuse `XmlDocumentExecutionOutputs` and `XmlBytesDocumentExecutionOutputs`.
+They contain the primary and every named envelope in original declaration order,
+including empty lists. Member paths remain exact opaque metadata, including
+duplicates, Unicode, absolute and traversal-shaped paths. C# collections are
+read-only; byte results own separate buffers. This mode exposes these four XML
+methods rather than the old singular or primary-list XML families.
+
+The adapter admits the complete initial count, exact static names and document
+shapes, every per-document size and combined original bytes before parsing primary
+and then static declarations in order. Unused static inputs are still required.
+One fresh dynamic adapter then shares that input ledger across actual requests.
+It reserves each request's document count before the host callback and charges
+returned original bytes before parsing them. Repeated loads count and charge
+again. Mapping determines callback reachability and lazy context reads.
+
+The complete mapping runs once before output alignment, checked actual count,
+capacity or writers. Output count is `1 + sum(named member counts)`, including the
+primary. Serialization and charging proceed primary first, then original named
+declaration order and final member order, each with its own schema and hints. A
+later mapping failure precedes any potential writer failure. Any failure returns
+no partial result. Input and output ledgers are independent: each permits 4,096
+documents and 256 MiB UTF-8, with a 64 MiB per-document limit. Logical output paths
+do not count toward serialized bytes. These acceptance limits do not provide
+streaming or a process memory ceiling.
+
+Rust returns `XmlDynamicInputDocumentOutputsExecutionError`; C# throws
+`FerruleXmlDynamicInputDocumentOutputsExecutionException`. Its optional exclusive
+owner is `Input` with the original `XmlInputSource`, or `Output` with the existing
+mixed-output owner. Output `Primary` has no member fields; `NamedMember` retains
+original declaration index and name, final zero-based member index and exact path.
+Input descriptor/parser failures retain their input owner; output `Schema` setup,
+global name/count, mapping and alignment failures remain unowned. The original
+boundary and typed cause are preserved.
+
+Optional `Request` is present only for an original refusal synchronously recovered
+from this fresh adapter. It preserves the dynamic declaration index, source, path,
+one-based request ordinal and whether the host callback ran. An external XML
+exception, similar error text or marker, host failure, missing context or invalid
+mapping path cannot authenticate that request channel. Ordinary C# null/list
+accessor guards remain ordinary CLR exceptions. Existing XML methods retain their
+signatures and behavior.
 
 ### Observed Root-View Input
 
