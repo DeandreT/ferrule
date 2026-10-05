@@ -565,7 +565,7 @@ fn output_frame(
         },
         |ui| {
             let mut viewer = fx.viewer();
-            viewer.show_output(&pin, ui, snarl);
+            viewer.show_node_properties(&pin, ui, snarl);
             error = viewer.error;
         },
     );

@@ -214,7 +214,9 @@ fn recorded_pin_ids_match_snarl_drag_widgets() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
 
-    egui::__run_test_ui(|ui| {
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    let _ = context.run_ui(Default::default(), |ui| {
         ui.set_min_size(egui::vec2(800.0, 600.0));
         let mut viewer = fx.viewer();
         SnarlWidget::new().show(&mut snarl, &mut viewer, ui);
@@ -237,7 +239,9 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
     let mut node_sizes = std::collections::BTreeMap::new();
     let mut endpoint_scroll = crate::canvas_endpoints::EndpointScrollState::default();
 
-    egui::__run_test_ui(|ui| {
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    let _ = context.run_ui(Default::default(), |ui| {
         ui.set_min_size(egui::vec2(800.0, 600.0));
         let mut viewer = GraphViewer {
             graph: &mut fx.graph,
@@ -349,6 +353,7 @@ fn lookup_node_width_stabilizes_across_repaints() {
     let mut node_sizes = std::collections::BTreeMap::new();
     let mut endpoint_scroll = crate::canvas_endpoints::EndpointScrollState::default();
     let context = egui::Context::default();
+    crate::icons::install(&context);
     context.set_zoom_factor(1.5);
     let mut sizes = Vec::new();
     let style = crate::appearance::EditorAppearance::default().to_snarl_style();
@@ -1851,3 +1856,6 @@ fn locked_root_editor_preserves_invalid_imported_path_and_policy() {
     let _ = root_editor_frame(&mut fx, &mut snarl, &context, true, Vec::new());
     assert_eq!(serde_json::to_value(&fx.graph).unwrap(), before);
 }
+
+#[path = "graph_viewer_tests/compact_nodes.rs"]
+mod compact_node_tests;
