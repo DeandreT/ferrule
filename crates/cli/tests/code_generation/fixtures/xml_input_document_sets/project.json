@@ -1,0 +1,401 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Skip",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "First",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "Row",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Value",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "nillable": true
+              },
+              {
+                "name": "Keep",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              },
+              {
+                "name": "Rank",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Bad",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Result",
+    "xml_namespace": {
+      "kind": "qualified",
+      "uri": "urn:result"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Value",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "nillable": true
+        },
+        {
+          "name": "Rate",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "float"
+          }
+        },
+        {
+          "name": "Count",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "Prefix",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true,
+    "xml_schema_hints": {
+      "locations": [
+        {
+          "namespace": "urn:result",
+          "location": "result.xsd"
+        }
+      ]
+    }
+  },
+  "extra_sources": [
+    {
+      "name": "z-rates",
+      "path": "rates.xml",
+      "schema": {
+        "name": "Rates",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:rates"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Rate",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:rates"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            },
+            {
+              "name": "Prefix",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:rates"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    },
+    {
+      "name": "a-count",
+      "path": "count.xml",
+      "schema": {
+        "name": "Counts",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:count"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Count",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:count"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "Enabled",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:count"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true
+      }
+    }
+  ],
+  "extra_targets": [],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "path": [
+          "File"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "Value"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "z-rates",
+          "Rate"
+        ]
+      },
+      "3": {
+        "kind": "source_field",
+        "path": [
+          "a-count",
+          "Count"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "path": [
+          "z-rates",
+          "Prefix"
+        ]
+      },
+      "5": {
+        "kind": "source_field",
+        "path": [
+          "a-count",
+          "Enabled"
+        ]
+      },
+      "6": {
+        "kind": "source_field",
+        "path": [
+          "Keep"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "7": {
+        "kind": "source_field",
+        "path": [
+          "Rank"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "8": {
+        "kind": "source_field",
+        "path": [
+          "Bad"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "9": {
+        "kind": "const",
+        "value": "\u0001"
+      },
+      "10": {
+        "kind": "if",
+        "condition": 8,
+        "then": 9,
+        "else": 1
+      },
+      "11": {
+        "kind": "call",
+        "function": "and",
+        "args": [
+          6,
+          5
+        ]
+      },
+      "12": {
+        "kind": "source_field",
+        "path": [
+          "Skip"
+        ]
+      },
+      "13": {
+        "kind": "source_field",
+        "path": [
+          "First"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "Result",
+    "source": [
+      "Row"
+    ],
+    "output_path": 0,
+    "filter": 11,
+    "sort_by": 7,
+    "windows": [
+      {
+        "kind": "skip_first",
+        "count": 12
+      },
+      {
+        "kind": "first",
+        "count": 13
+      }
+    ],
+    "bindings": [
+      {
+        "target_field": "Value",
+        "node": 10
+      },
+      {
+        "target_field": "Rate",
+        "node": 2
+      },
+      {
+        "target_field": "Count",
+        "node": 3
+      },
+      {
+        "target_field": "Prefix",
+        "node": 4
+      }
+    ],
+    "children": []
+  }
+}

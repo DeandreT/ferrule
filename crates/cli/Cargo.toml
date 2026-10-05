@@ -47,5 +47,6 @@ rustix = { workspace = true }
 
 [dev-dependencies]
 codegen-runtime = { workspace = true }
+roxmltree = { workspace = true }
 sha2 = { workspace = true }
 rust_xlsxwriter = { workspace = true }
