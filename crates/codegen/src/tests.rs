@@ -36,6 +36,7 @@ mod xml_dynamic_named_outputs;
 mod xml_dynamic_outputs;
 mod xml_input_sets;
 mod xml_mixed_content;
+mod xml_multiple_dynamic_named_outputs;
 mod xml_output_sets;
 mod xml_serialize;
 

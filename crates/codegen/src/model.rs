@@ -428,7 +428,7 @@ pub struct Program {
 pub enum XmlOutputMode {
     SingleDocument,
     DynamicPrimaryDocuments,
-    /// One static primary document followed by one named target's ordered members.
+    /// One static primary document followed by each named target's ordered members.
     StaticPrimaryDynamicNamedDocuments,
 }
 
