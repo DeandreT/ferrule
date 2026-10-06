@@ -250,9 +250,12 @@ impl GraphViewer<'_> {
                 Node::ValueMap { .. } => {
                     ui.label("mapped value");
                 }
-                Node::Lookup { .. } => {
-                    ui.label("result");
-                }
+                Node::Lookup {
+                    collection,
+                    key,
+                    value,
+                    ..
+                } => show_lookup_editor(ui, self.source_paths, collection, key, value),
                 Node::DynamicSourceField { object, frame, .. } => {
                     ui.label(format!(
                         "open source object: {}{}",

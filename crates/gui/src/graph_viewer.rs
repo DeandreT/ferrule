@@ -1402,6 +1402,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let graph_node = Self::mapping_id(canvas_node).and_then(|id| self.graph.nodes.get(&id));
         let compact_header = graph_node
             .and_then(|node| graph_node_presentation::header(node, &full_title, is_output));
+        let full_title = graph_node_presentation::complete_title(graph_node, full_title);
         let header_hint = endpoint_hint
             .or_else(|| graph_node.map(|node| graph_node_presentation::hint(node, &full_title)));
         let show_title = |ui: &mut Ui| {
@@ -1545,12 +1546,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn has_body(&mut self, node: &CanvasNode) -> bool {
-        Self::mapping_id(*node).is_some_and(|id| {
-            matches!(
-                self.graph.nodes.get(&id),
-                Some(Node::Lookup { .. } | Node::ValueMap { .. })
-            )
-        })
+        Self::mapping_id(*node)
+            .is_some_and(|id| matches!(self.graph.nodes.get(&id), Some(Node::ValueMap { .. })))
     }
 
     fn show_body(
@@ -1571,18 +1568,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
             _ => None,
         };
-        let source_paths = self.source_paths;
-        match self.graph.nodes.get_mut(&node_id) {
-            Some(Node::Lookup {
-                collection,
-                key,
-                value,
-                ..
-            }) => show_lookup_editor(ui, source_paths, collection, key, value),
-            Some(Node::ValueMap { table, default, .. }) => {
-                show_value_map_editor(ui, table, default, value_map_wheel);
-            }
-            _ => {}
+        if let Some(Node::ValueMap { table, default, .. }) = self.graph.nodes.get_mut(&node_id) {
+            show_value_map_editor(ui, table, default, value_map_wheel);
         }
     }
 
@@ -1828,6 +1815,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 )
             })
             .is_some();
+        let full_title =
+            graph_node_presentation::complete_title(self.graph.nodes.get(&node_id), full_title);
         if self
             .graph
             .nodes
