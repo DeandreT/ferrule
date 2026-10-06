@@ -1696,12 +1696,12 @@ Generation requires a destination that does not already exist, avoiding partial
 replacement of user-managed source trees.
 
 
-### Static named documents beside a named document list
+### Static named documents beside named document lists
 
 A Structured XML primary with no named inputs can expose one static primary,
-one static named document, and one dynamic named document list. Both named
-declaration orders are supported. The new `StaticPrimaryMixedNamedXmlOutputs`
-mode requires flat, ordinary Group roots; only the list root uses a primary
+one static named document, and one or more independent dynamic named document
+lists. Named declarations retain their original order. The `StaticPrimaryMixedNamedXmlOutputs`
+mode requires flat, ordinary Group roots; each list root uses its own primary
 repeating Group driver. Existing all-static and all-list modes keep their APIs.
 
 Generated Rust provides `execute_xml_mixed_outputs` and
@@ -1723,7 +1723,7 @@ index/name/final member index/original opaque path). Input, mapping, descriptor
 Schema, alignment and total-count failures are unowned. Logical paths are neither
 normalized nor opened.
 
-One shared budget counts `2 + list members` and charges actual serialized UTF-8
+One shared budget counts `2 + the sum of every list’s members` and charges actual serialized UTF-8
 bytes. The existing limits remain 4096 artifacts, 64 MiB per document and 256 MiB
 per output set. Charge occurs before retaining/converting each new document.
 These are admission limits, not streaming or peak-memory guarantees: mapped
