@@ -160,7 +160,20 @@ public static partial class FerruleXml
         bool indent,
         string? defaultNamespace,
         string? schemaHintsJson,
-        bool documentBoundary)
+        bool documentBoundary) =>
+        SerializeCore<FerruleValue>(node, schemaJson, instance, declaration, indent,
+            defaultNamespace, schemaHintsJson, documentBoundary, CompleteSerializedText);
+
+    private static T SerializeCore<T>(
+        uint node,
+        string schemaJson,
+        FerruleInstance instance,
+        bool declaration,
+        bool indent,
+        string? defaultNamespace,
+        string? schemaHintsJson,
+        bool documentBoundary,
+        Func<XmlOutput, bool, T> complete)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(instance);
@@ -194,8 +207,46 @@ public static partial class FerruleXml
                 }
             }
             writer.WriteNode(schema, schema, instance, true, 0, 0, null, defaultNamespace);
-            var output = writer.ToString();
-            var outputBytes = Encoding.UTF8.GetByteCount(output);
+            return complete(writer, documentBoundary);
+        }
+        catch (FerruleRuntimeException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is JsonException or InvalidOperationException or
+            FormatException or OverflowException or ArgumentException or XmlException)
+        {
+            throw Error(node, exception.Message, exception);
+        }
+    }
+
+    private static FerruleValue CompleteSerializedText(XmlOutput writer, bool documentBoundary)
+    {
+        var output = writer.ToString();
+        var outputBytes = Encoding.UTF8.GetByteCount(output);
+        if (outputBytes > MaximumOutputBytes)
+        {
+            if (documentBoundary)
+            {
+                throw new FerruleXmlBoundaryException(
+                    FerruleXmlBoundaryErrorKind.DocumentLimit,
+                    $"XML output is {outputBytes} bytes; maximum is {MaximumOutputBytes}",
+                    bytes: outputBytes, limit: MaximumOutputBytes);
+            }
+            throw new InvalidOperationException(
+                $"serialized output exceeds {MaximumOutputBytes} bytes");
+        }
+        return FerruleValue.FromString(output);
+    }
+
+    private static FerruleXmlPreparedUtf8Document PrepareSerializedUtf8(
+        XmlOutput writer,
+        bool documentBoundary)
+    {
+        if (writer.HasOnlyAsciiXml())
+        {
+            var outputBytes = writer.Length;
             if (outputBytes > MaximumOutputBytes)
             {
                 if (documentBoundary)
@@ -208,18 +259,11 @@ public static partial class FerruleXml
                 throw new InvalidOperationException(
                     $"serialized output exceeds {MaximumOutputBytes} bytes");
             }
-            return FerruleValue.FromString(output);
+            return writer.PrepareAsciiUtf8(outputBytes);
         }
-        catch (FerruleRuntimeException)
-        {
-            throw;
-        }
-        catch (Exception exception) when (
-            exception is JsonException or InvalidOperationException or
-            FormatException or OverflowException or ArgumentException or XmlException)
-        {
-            throw Error(node, exception.Message, exception);
-        }
+        var output = CompleteSerializedText(writer, documentBoundary).StringValue;
+        return new FerruleXmlPreparedUtf8Document(OutputUtf8.GetByteCount(output),
+            () => OutputUtf8.GetBytes(output), output);
     }
 
     private static FerruleRuntimeException Error(
@@ -639,6 +683,39 @@ public static partial class FerruleXml
         internal void Append(char value) => _output.Append(value);
 
         public override string ToString() => _output.ToString();
+
+        internal int Length => _output.Length;
+
+        internal bool HasOnlyAsciiXml()
+        {
+            foreach (ReadOnlyMemory<char> chunk in _output.GetChunks())
+            {
+                var characters = chunk.Span;
+                foreach (var character in characters)
+                {
+                    if (character is not ('\t' or '\n' or '\r') &&
+                        (character < ' ' || character > '~'))
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        internal FerruleXmlPreparedUtf8Document PrepareAsciiUtf8(int outputBytes)
+        {
+            var output = _output;
+            return new FerruleXmlPreparedUtf8Document(outputBytes, () =>
+            {
+                lock (output)
+                {
+                    var bytes = new byte[outputBytes];
+                    var offset = 0;
+                    foreach (ReadOnlyMemory<char> chunk in output.GetChunks())
+                        offset += OutputUtf8.GetBytes(chunk.Span, bytes.AsSpan(offset));
+                    return bytes;
+                }
+            });
+        }
 
         internal void WriteNode(
             XmlSchemaNode schema,

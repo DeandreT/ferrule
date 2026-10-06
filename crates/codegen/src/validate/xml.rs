@@ -390,12 +390,12 @@ fn validate_mixed_named_output(program: &crate::Program) -> Result<bool, Program
     let Some(policy) = program.xml_boundary.as_ref() else {
         return Ok(false);
     };
-    // Only this exact new cardinality bypasses the existing all-list requirement.
-    // Every older route still runs its complete original validator.
+    // One static declaration beside any nonempty set of document-list declarations
+    // bypasses the all-list requirement; all-static and all-list routes stay intact.
     if policy.input.profile() != Some(crate::XmlInputProfile::Structured)
         || !program.extra_sources.is_empty()
         || !policy.extra_inputs.is_empty()
-        || program.extra_targets.len() != 2
+        || program.extra_targets.len() < 2
         || program
             .extra_targets
             .iter()
@@ -413,7 +413,7 @@ fn validate_mixed_named_output(program: &crate::Program) -> Result<bool, Program
                     .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
             })
             .count()
-            != 1
+            != program.extra_targets.len() - 1
     {
         return Ok(false);
     }
