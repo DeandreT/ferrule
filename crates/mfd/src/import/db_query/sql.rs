@@ -253,6 +253,9 @@ impl Parser {
             return Err("query IN predicate requires a parenthesized operand list".to_string());
         }
         let mut operands = Vec::new();
+        if self.take(&Token::RightParen) {
+            return Ok(ParsedOperand::List(operands));
+        }
         loop {
             if operands.len() >= super::MAX_QUERY_IN_ITEMS {
                 return Err(format!(

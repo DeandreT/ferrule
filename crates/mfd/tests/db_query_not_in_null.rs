@@ -380,12 +380,10 @@ fn one_operand_not_in_excludes_null_source_and_null_host() {
 }
 
 #[test]
-fn empty_quoted_and_malformed_memberships_remain_explicit_import_blockers() {
+fn quoted_and_malformed_memberships_remain_explicit_import_blockers() {
     let dir = TempDir::new();
     prepare_database(&dir.0);
     for membership in [
-        "NOT IN ()",
-        "IN ()",
         r#"IN ("NULL")"#,
         "IN ([NULL])",
         "IN ((NULL))",
@@ -413,7 +411,7 @@ fn empty_quoted_and_malformed_memberships_remain_explicit_import_blockers() {
         ));
     }
     // SQLite admits an empty list and selects even a NULL lhs for NOT IN.
-    // The importer rejects that grammar instead of applying a nonempty-list guard.
+    // That result differs from a nonempty list containing one NULL.
     assert_eq!(
         oracle(
             &dir.0,
@@ -885,5 +883,285 @@ fn literal_null_members_lower_and_emit_both_languages_without_building() {
             assert!(csharp_source.contains("RequireBoolean("));
             assert!(csharp_source.contains("context.ResolveRuntimeParameter("));
         }
+    }
+}
+
+fn assert_empty_membership_emits_both_languages(project: &Project, expected: bool) {
+    assert!(project.root.source().is_some());
+    assert!(project.root.filter.is_some());
+    let program = codegen::lower(project).unwrap();
+    assert!(program.expressions.iter().any(|node| matches!(
+        &node.expression,
+        codegen::Expression::Const { value: Value::Bool(value) } if *value == expected
+    )));
+    let options = codegen_rust::Options {
+        package_name: "empty-membership".into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Path("../runtime".into()),
+    };
+    let rust = codegen_rust::emit(&program, &options).unwrap();
+    assert_eq!(rust, codegen_rust::emit(&program, &options).unwrap());
+    assert!(
+        rust.files()
+            .iter()
+            .any(|file| file.path.as_str() == "src/lib.rs")
+    );
+    let csharp = codegen_csharp::emit(&program).unwrap();
+    assert_eq!(csharp, codegen_csharp::emit(&program).unwrap());
+    assert!(
+        csharp
+            .files()
+            .iter()
+            .any(|file| file.path.as_str() == "GeneratedMapping.cs")
+    );
+}
+
+#[test]
+fn sqlite_empty_memberships_match_exact_rows_for_numeric_and_text_columns() {
+    for ty in [ScalarType::Int, ScalarType::Float, ScalarType::String] {
+        for operator in ["IN", "NOT IN"] {
+            let dir = TempDir::new();
+            match ty {
+                ScalarType::Int => prepare_database(&dir.0),
+                ScalarType::Float => {
+                    Connection::open(dir.0.join("numbers.sqlite"))
+                        .unwrap()
+                        .execute_batch(
+                            "CREATE TABLE Numbers (RowID INTEGER PRIMARY KEY, Number REAL); \
+                             INSERT INTO Numbers VALUES \
+                             (1,NULL),(2,1.5),(3,2.5),(4,3.5),(5,4.5),(6,2.5);",
+                        )
+                        .unwrap();
+                }
+                ScalarType::String => {
+                    Connection::open(dir.0.join("numbers.sqlite"))
+                        .unwrap()
+                        .execute_batch(
+                            "CREATE TABLE Numbers (RowID INTEGER PRIMARY KEY, Number TEXT); \
+                             INSERT INTO Numbers VALUES \
+                             (1,NULL),(2,'alpha'),(3,'beta'),(4,''),(5,'gamma'),(6,'beta');",
+                        )
+                        .unwrap();
+                }
+                ScalarType::Bool => unreachable!(),
+            }
+            let membership = format!("{operator} ()");
+            let (path, sql) = write_design(&dir.0, &membership, false);
+            let expected: &[i64] = if operator == "IN" {
+                &[]
+            } else {
+                &[1, 2, 3, 4, 5, 6]
+            };
+            assert_eq!(oracle(&dir.0, &sql, None, None), expected);
+            let projects = projects_after_cycles(&dir.0, import(&path));
+            for project in &projects {
+                assert!(matches!(
+                    project.source.child("Number").unwrap().kind,
+                    ir::SchemaKind::Scalar { ty: actual } if actual == ty
+                ));
+                assert_empty_membership_emits_both_languages(project, operator == "NOT IN");
+                for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
+                    assert_eq!(execute(&dir.0, project, purpose, &[]).unwrap(), expected);
+                }
+            }
+            if ty == ScalarType::String {
+                let (path, _) = write_design(&dir.0, "IN ('alpha')", false);
+                assert_late_query_coercion_refusal(
+                    &dir.0,
+                    &path,
+                    "text IN collation cannot be established from SQLite schema metadata",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sqlite_empty_memberships_keep_source_sort_and_window_controls() {
+    for operator in ["IN", "NOT IN"] {
+        let dir = TempDir::new();
+        prepare_database(&dir.0);
+        let (path, sql) = write_design(&dir.0, &format!("{operator} ()"), false);
+        let order = "ORDER BY RowID DESC LIMIT 3 OFFSET 1";
+        let sql = sql.replace("ORDER BY RowID", order);
+        let xml = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(xml.matches("ORDER BY RowID").count(), 1);
+        std::fs::write(&path, xml.replace("ORDER BY RowID", order)).unwrap();
+        let expected: &[i64] = if operator == "IN" { &[] } else { &[5, 4, 3] };
+        assert_eq!(oracle(&dir.0, &sql, None, None), expected);
+        let projects = projects_after_cycles(&dir.0, import(&path));
+        for project in &projects {
+            assert!(project.root.source().is_some());
+            assert!(project.root.filter.is_some());
+            assert!(project.root.sort_by.is_some());
+            assert!(project.root.sort_descending);
+            assert_eq!(project.root.windows.len(), 2);
+            for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
+                assert_eq!(execute(&dir.0, project, purpose, &[]).unwrap(), expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn sqlite_empty_memberships_keep_unrelated_host_reads_and_empty_source_laziness() {
+    for operator in ["IN", "NOT IN"] {
+        for empty_first in [false, true] {
+            for defaults in [false, true] {
+                let dir = TempDir::new();
+                prepare_database(&dir.0);
+                let membership = if empty_first {
+                    format!("{operator} () AND Number > :First")
+                } else {
+                    format!("> :First AND Number {operator} ()")
+                };
+                let (path, sql) = write_design(&dir.0, &membership, defaults);
+                let projects = projects_after_cycles(&dir.0, import(&path));
+                for project in &projects {
+                    if defaults {
+                        let expected = oracle(&dir.0, &sql, Some(1), None);
+                        assert_eq!(
+                            execute(&dir.0, project, ExecutionPurpose::Run, &[]).unwrap(),
+                            expected
+                        );
+                    } else {
+                        assert!(matches!(
+                            execute(&dir.0, project, ExecutionPurpose::Run, &[]),
+                            Err(engine::EngineError::MissingRuntimeParameter { name, .. })
+                                if name == "First"
+                        ));
+                    }
+                    assert_eq!(
+                        execute(&dir.0, project, ExecutionPurpose::Preview, &[]).unwrap(),
+                        oracle(&dir.0, &sql, Some(2), None)
+                    );
+                    for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
+                        assert!(matches!(
+                            execute_values(&dir.0, project, purpose, &[("First", Value::Bool(true))]),
+                            Err(engine::EngineError::RuntimeParameterType {
+                                name,
+                                expected: ScalarType::Int,
+                                found: "bool",
+                                ..
+                            }) if name == "First"
+                        ));
+                        for first in [None, Some(1), Some(2), Some(9)] {
+                            assert_eq!(
+                                execute(&dir.0, project, purpose, &[("First", first)]).unwrap(),
+                                oracle(&dir.0, &sql, first, None),
+                                "operator={operator}, empty_first={empty_first}, defaults={defaults}, first={first:?}"
+                            );
+                        }
+                    }
+                }
+                Connection::open(dir.0.join("numbers.sqlite"))
+                    .unwrap()
+                    .execute("DELETE FROM Numbers", [])
+                    .unwrap();
+                for project in &projects {
+                    for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
+                        assert!(oracle(&dir.0, &sql, None, None).is_empty());
+                        assert!(execute(&dir.0, project, purpose, &[]).unwrap().is_empty());
+                        assert!(
+                            execute_values(
+                                &dir.0,
+                                project,
+                                purpose,
+                                &[("First", Value::Bool(true))]
+                            )
+                            .unwrap()
+                            .is_empty()
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sqlite_empty_memberships_require_both_explicit_sqlite_boundary_kinds() {
+    for operator in ["IN", "NOT IN"] {
+        let dir = TempDir::new();
+        prepare_database(&dir.0);
+        let (path, _) = write_design(&dir.0, &format!("{operator} ()"), false);
+        let sqlite = std::fs::read_to_string(&path).unwrap();
+        let qualified = sqlite.replace(
+            r#"database_kind="SQLite" import_kind="SQLite""#,
+            r#"database_kind="sQlItE" import_kind="SQLITE""#,
+        );
+        assert_ne!(qualified, sqlite);
+        std::fs::write(&path, qualified).unwrap();
+        let expected: &[i64] = if operator == "IN" {
+            &[]
+        } else {
+            &[1, 2, 3, 4, 5, 6]
+        };
+        assert_eq!(
+            execute(&dir.0, &import(&path), ExecutionPurpose::Run, &[]).unwrap(),
+            expected
+        );
+        for (from, to) in [
+            (r#"database_kind="SQLite""#, ""),
+            (r#"import_kind="SQLite""#, ""),
+            (r#"database_kind="SQLite""#, r#"database_kind="PostgreSQL""#),
+            (r#"import_kind="SQLite""#, r#"import_kind="PostgreSQL""#),
+        ] {
+            let xml = sqlite.replace(from, to);
+            assert_ne!(xml, sqlite);
+            std::fs::write(&path, xml).unwrap();
+            assert!(matches!(
+                mfd::import(&path),
+                Err(mfd::MfdError::UnsupportedImport(_))
+            ));
+            assert!(matches!(
+                mfd::import_with_profile(
+                    &path,
+                    &mfd::ImportOptions::default(),
+                    mfd::ImportProfile::Executable
+                ),
+                Err(mfd::MfdError::UnsupportedImport(_))
+            ));
+        }
+    }
+}
+
+#[test]
+fn sqlite_empty_memberships_still_require_a_resolved_column_and_exact_list_grammar() {
+    let dir = TempDir::new();
+    prepare_database(&dir.0);
+    for membership in ["IN (,)", "IN (())", "IN (1,)", "NOT IN (1,,2)", "IN (,1)"] {
+        let (path, _) = write_design(&dir.0, membership, false);
+        assert!(matches!(
+            mfd::import(&path),
+            Err(mfd::MfdError::UnsupportedImport(_))
+        ));
+        assert!(matches!(
+            mfd::import_with_profile(
+                &path,
+                &mfd::ImportOptions::default(),
+                mfd::ImportProfile::Executable
+            ),
+            Err(mfd::MfdError::UnsupportedImport(_))
+        ));
+    }
+    for operator in ["IN", "NOT IN"] {
+        let (path, _) = write_design(&dir.0, &format!("{operator} ()"), false);
+        let xml = std::fs::read_to_string(&path)
+            .unwrap()
+            .replace("WHERE Number", "WHERE Missing");
+        assert!(xml.contains("WHERE Missing"));
+        std::fs::write(&path, xml).unwrap();
+        assert!(matches!(
+            mfd::import(&path),
+            Err(mfd::MfdError::UnsupportedImport(_))
+        ));
+        assert!(matches!(
+            mfd::import_with_profile(
+                &path,
+                &mfd::ImportOptions::default(),
+                mfd::ImportProfile::Executable
+            ),
+            Err(mfd::MfdError::UnsupportedImport(_))
+        ));
     }
 }
