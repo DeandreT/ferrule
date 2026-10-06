@@ -8,6 +8,7 @@ use super::{
 #[derive(Clone, Debug, PartialEq)]
 enum Token {
     Word(String),
+    Null,
     String(String),
     Number(String),
     Parameter(String),
@@ -259,7 +260,11 @@ impl Parser {
                     super::MAX_QUERY_IN_ITEMS
                 ));
             }
-            operands.push(self.predicate_operand()?);
+            operands.push(if self.take(&Token::Null) {
+                ParsedOperand::Null
+            } else {
+                self.predicate_operand()?
+            });
             if self.take(&Token::Comma) {
                 continue;
             }
@@ -420,9 +425,16 @@ impl Parser {
     }
 
     fn take_keyword(&mut self, expected: &str) -> bool {
-        let matches = self.tokens.get(self.position).is_some_and(
-            |token| matches!(token, Token::Word(word) if word.eq_ignore_ascii_case(expected)),
-        );
+        let matches = self
+            .tokens
+            .get(self.position)
+            .is_some_and(|token| match token {
+                Token::Null => expected.eq_ignore_ascii_case("NULL"),
+                Token::Word(word) => {
+                    !expected.eq_ignore_ascii_case("NULL") && word.eq_ignore_ascii_case(expected)
+                }
+                _ => false,
+            });
         if matches {
             self.position += 1;
         }
@@ -540,7 +552,11 @@ fn tokenize(sql: &str) -> Result<Vec<Token>, String> {
             }
             character if character == '_' || character.is_ascii_alphabetic() => {
                 let (value, next) = bare(&chars, index);
-                tokens.push(Token::Word(value));
+                tokens.push(if value.eq_ignore_ascii_case("NULL") {
+                    Token::Null
+                } else {
+                    Token::Word(value)
+                });
                 index = next;
             }
             character => {
