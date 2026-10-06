@@ -1694,3 +1694,40 @@ against that schema; arrays inside a row still require repeating fields.
 The CLI validates and stages a complete artifact tree before publishing it.
 Generation requires a destination that does not already exist, avoiding partial
 replacement of user-managed source trees.
+
+
+### Static named documents beside a named document list
+
+A Structured XML primary with no named inputs can expose one static primary,
+one static named document, and one dynamic named document list. Both named
+declaration orders are supported. The new `StaticPrimaryMixedNamedXmlOutputs`
+mode requires flat, ordinary Group roots; only the list root uses a primary
+repeating Group driver. Existing all-static and all-list modes keep their APIs.
+
+Generated Rust provides `execute_xml_mixed_outputs` and
+`execute_xml_bytes_mixed_outputs`, each with a `_with_context` companion.
+Generated C# provides `ExecuteXmlMixedOutputs` and `ExecuteXmlBytesMixedOutputs`,
+each with a context overload. `XmlMixedExecutionOutputs` and
+`XmlMixedBytesExecutionOutputs` contain one primary document and ordered named
+variants: `SingleDocument` has an original declaration index, name and document;
+`DocumentList` has an original declaration index, name and ordered path-bearing
+members. An empty list retains its envelope. Static documents have no fabricated
+path or member index. Existing DTOs are unchanged.
+
+The complete core mapping finishes before any writer. Writers run Primary first,
+then named declarations and final list members in order. Failure returns no
+partial result. `XmlMixedExecutionError` (Rust) and `XmlMixedExecutionException`
+(C#) preserve the original boundary and cause. `XmlMixedOutputOwner` distinguishes
+`Primary`, static `Named` (declaration index/name), and `Member` (declaration
+index/name/final member index/original opaque path). Input, mapping, descriptor
+Schema, alignment and total-count failures are unowned. Logical paths are neither
+normalized nor opened.
+
+One shared budget counts `2 + list members` and charges actual serialized UTF-8
+bytes. The existing limits remain 4096 artifacts, 64 MiB per document and 256 MiB
+per output set. Charge occurs before retaining/converting each new document.
+These are admission limits, not streaming or peak-memory guarantees: mapped
+values and previously accepted buffers may coexist. Runtime and vendored source
+files are unchanged. Adding a public `XmlOutputMode` variant requires downstream
+exhaustive matches to include the new case; old mapping-specific APIs and their
+result meanings remain unchanged.

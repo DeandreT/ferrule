@@ -148,7 +148,10 @@ fn static_named_inputs_gain_xml_adapter_while_other_boundaries_keep_optional_fal
             named_input,
             Some(XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments),
         ),
-        (second_target, None),
+        (
+            second_target,
+            Some(XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs),
+        ),
         (iterating_primary, None),
     ] {
         let typed = lower(&candidate).unwrap();
