@@ -48,6 +48,29 @@ impl From<MfdExportProfile> for mfd::ExportProfile {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Fetch one explicitly approved JSON response and map it to stdout.
+    RunRestJson {
+        #[arg(long, value_name = "PROJECT")]
+        project: PathBuf,
+        /// Host-owned JSON request description, separate from the project.
+        #[arg(long, value_name = "PATH")]
+        request: PathBuf,
+        /// Host-owned header values; credentials never belong in argv or projects.
+        #[arg(long, value_name = "PATH")]
+        header_values: Option<PathBuf>,
+        /// Grant one live request for this invocation. Default is denied.
+        #[arg(long)]
+        allow_live_rest: bool,
+        /// Permit cleartext HTTP explicitly; use HTTPS for protected data.
+        #[arg(long, requires = "allow_live_rest")]
+        allow_insecure_http: bool,
+        #[arg(long, value_name = "LOGICAL_JSON_PATH")]
+        response_identity: PathBuf,
+        #[arg(long, value_name = "LOGICAL_JSON_PATH")]
+        output_identity: PathBuf,
+        #[arg(long = "param", value_name = "NAME=VALUE")]
+        parameters: Vec<String>,
+    },
     /// Run a mapping project, including configured PDF input. Output supports
     /// CSV, XLSX, XML, JSON, SQLite, EDI, FlexText, and Protocol Buffers.
     /// For SQLite the table name is the schema root's name.
@@ -195,6 +218,7 @@ enum Command {
 impl Command {
     fn name(&self) -> &'static str {
         match self {
+            Self::RunRestJson { .. } => "run-rest-json",
             Self::Run { .. } => "run",
             Self::RunPipeline { .. } => "run-pipeline",
             Self::Validate { .. } => "validate",
@@ -320,8 +344,9 @@ fn json_diagnostics_requested(args: &[OsString]) -> bool {
 }
 
 fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
-    const COMMANDS: [&str; 9] = [
+    const COMMANDS: [&str; 10] = [
         "run",
+        "run-rest-json",
         "run-pipeline",
         "validate",
         "generate",
@@ -354,6 +379,47 @@ fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
 fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
     let diagnostics = cli.diagnostics;
     match cli.command {
+        Command::RunRestJson {
+            project,
+            request,
+            header_values,
+            allow_live_rest,
+            allow_insecure_http,
+            response_identity,
+            output_identity,
+            parameters,
+        } => {
+            let policy = if allow_live_rest {
+                cli::RestExecutionPolicy::AllowSingleRequest {
+                    allow_insecure_http,
+                }
+            } else {
+                cli::RestExecutionPolicy::Deny
+            };
+            // Denial precedes request-file reads and parameter diagnostics.
+            if policy == cli::RestExecutionPolicy::Deny {
+                return Err(cli::RestJsonError::Disabled.into());
+            }
+            let parameters = parse_runtime_parameters(&parameters)?;
+            let mut options =
+                cli::RestJsonMappingOptions::new(&response_identity, &output_identity);
+            options.runtime_parameters = Some(&parameters);
+            let outcome = cli::run_project_rest_json_request_file_payloads(
+                &project,
+                &request,
+                header_values.as_deref(),
+                policy,
+                &options,
+            )?;
+            let artifact = outcome
+                .artifacts
+                .first()
+                .context("REST mapping returned no artifact")?;
+            let mut stdout = std::io::stdout().lock();
+            stdout.write_all(&artifact.bytes)?;
+            stdout.flush()?;
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Run {
             project,
             project_positional,
