@@ -247,4 +247,164 @@ mod tests {
             Some(RuntimeError::DynamicSourceLoad { message, .. }) if message == "original host marker")
         );
     }
+
+    const MULTIPLE_FLOAT_SCHEMA: &str = r#"{"name":"Catalog","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"group","children":[{"name":"Amount","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"scalar","ty":"float"}}]}}"#;
+    const MULTIPLE_INT_SCHEMA: &str = r#"{"name":"Codes","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"group","children":[{"name":"Code","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"scalar","ty":"int"}}]}}"#;
+    const MULTIPLE_CATALOG: &[u8] = b"<Catalog><Amount>-0.0</Amount></Catalog>";
+    const MULTIPLE_CODES: &[u8] = b"<Codes><Code>9007199254740993</Code></Codes>";
+
+    struct MultiplePrimaryBytes {
+        calls: std::cell::RefCell<Vec<(String, String)>>,
+        invalid_codes: bool,
+    }
+    impl DynamicXmlSourceLoader for MultiplePrimaryBytes {
+        fn load(&self, source: &str, path: &str) -> Result<Vec<u8>, String> {
+            self.calls.borrow_mut().push((source.into(), path.into()));
+            match source {
+                "catalog" => Ok(MULTIPLE_CATALOG.to_vec()),
+                "codes" if self.invalid_codes => Ok(vec![0xff]),
+                "codes" => Ok(MULTIPLE_CODES.to_vec()),
+                _ => Err("unexpected dynamic source".into()),
+            }
+        }
+    }
+    fn multiple_primary_policies() -> Vec<XmlDynamicSourcePolicy> {
+        vec![
+            XmlDynamicSourcePolicy {
+                declaration_index: 1,
+                source: "catalog",
+                schema: MULTIPLE_FLOAT_SCHEMA,
+            },
+            XmlDynamicSourcePolicy {
+                declaration_index: 3,
+                source: "codes",
+                schema: MULTIPLE_INT_SCHEMA,
+            },
+        ]
+    }
+    fn multiple_primary_scalar(instance: &crate::Instance, field: &str) -> crate::Value {
+        let crate::Instance::Group(fields) = instance else {
+            panic!("loaded group")
+        };
+        let crate::Instance::Scalar(value) =
+            &fields.iter().find(|(name, _)| name == field).unwrap().1
+        else {
+            panic!("loaded scalar")
+        };
+        value.clone()
+    }
+
+    #[test]
+    fn multiple_primary_adapter_keeps_same_path_distinct_scalar_domains() {
+        let host = MultiplePrimaryBytes {
+            calls: Default::default(),
+            invalid_codes: false,
+        };
+        let adapter = XmlDynamicSourceAdapter::for_sources(
+            &host,
+            multiple_primary_policies(),
+            XmlInputSetBudget::new(3).unwrap(),
+        );
+        let catalog = DynamicSourceLoader::load(&adapter, "catalog", "same.xml").unwrap();
+        let codes = DynamicSourceLoader::load(&adapter, "codes", "same.xml").unwrap();
+        let crate::Value::Float(amount) = multiple_primary_scalar(&catalog, "Amount") else {
+            panic!("Float amount")
+        };
+        assert_eq!(amount.to_bits(), (-0.0f64).to_bits());
+        assert_eq!(
+            multiple_primary_scalar(&codes, "Code"),
+            crate::Value::Int(9_007_199_254_740_993)
+        );
+        assert_eq!(
+            host.calls.borrow().as_slice(),
+            [
+                ("catalog".to_owned(), "same.xml".to_owned()),
+                ("codes".to_owned(), "same.xml".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn second_primary_source_recovery_keeps_shared_ordinal_and_original_allocations() {
+        // Only counter setup is seeded. These tiny callbacks do not qualify real input caps.
+        for mode in 0..3 {
+            let host = MultiplePrimaryBytes {
+                calls: Default::default(),
+                invalid_codes: mode == 0,
+            };
+            let mut budget = XmlInputSetBudget::new(if mode == 1 { 4095 } else { 3 }).unwrap();
+            if mode == 2 {
+                budget
+                    .charge(
+                        XmlInputSource::Primary,
+                        super::super::MAX_XML_INPUT_SET_BYTES as usize - MULTIPLE_CATALOG.len(),
+                    )
+                    .unwrap();
+            }
+            let adapter =
+                XmlDynamicSourceAdapter::for_sources(&host, multiple_primary_policies(), budget);
+            DynamicSourceLoader::load(&adapter, "catalog", "same.xml").unwrap();
+            let marker = DynamicSourceLoader::load(&adapter, "codes", "same.xml").unwrap_err();
+            let original = adapter.recover(RuntimeError::DynamicSourceLoad {
+                source: "codes",
+                path: "same.xml".into(),
+                message: marker,
+            });
+            let boundary = original.boundary.as_ref() as *const XmlBoundaryError;
+            let cause = original.boundary.source().unwrap() as *const dyn Error;
+            let request = original.request.unwrap();
+            let request_allocation = request.as_ref() as *const XmlDynamicInputRequest;
+            let error = XmlDynamicInputDocumentExecutionError::from_dynamic_input_boundary(
+                request,
+                original.boundary,
+            );
+            assert_eq!(
+                error.owner,
+                Some(XmlDynamicInputDocumentOwner::Input(XmlInputSource::Named {
+                    index: 3,
+                    name: "codes"
+                }))
+            );
+            let actual = error.request.as_ref().unwrap();
+            assert_eq!(
+                (
+                    actual.declaration_index,
+                    actual.source,
+                    actual.path.as_str(),
+                    actual.ordinal,
+                    actual.callback_invoked
+                ),
+                (3, "codes", "same.xml", 2, mode != 1)
+            );
+            assert!(std::ptr::eq(actual.as_ref(), request_allocation));
+            assert!(std::ptr::eq(error.boundary.as_ref(), boundary));
+            assert!(std::ptr::eq(error.boundary.source().unwrap(), cause));
+            assert_eq!(host.calls.borrow().len(), if mode == 1 { 1 } else { 2 });
+            if mode == 0 {
+                assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Utf8);
+                assert!(error.boundary.source().unwrap().is::<std::str::Utf8Error>());
+            } else {
+                assert_eq!(error.boundary.kind, XmlBoundaryErrorKind::Input);
+                let resource = error
+                    .boundary
+                    .source()
+                    .unwrap()
+                    .downcast_ref::<crate::XmlInputSetResourceError>()
+                    .unwrap();
+                assert_eq!(
+                    (resource.resource, resource.observed_count, resource.limit),
+                    if mode == 1 {
+                        ("xml_input_artifact_count", 4097, 4096)
+                    } else {
+                        (
+                            "xml_input_set_utf8_bytes",
+                            super::super::MAX_XML_INPUT_SET_BYTES + MULTIPLE_CODES.len() as u64,
+                            super::super::MAX_XML_INPUT_SET_BYTES,
+                        )
+                    }
+                );
+            }
+            // First refusal is terminal; no additional source is loaded or recovered.
+        }
+    }
 }

@@ -1119,3 +1119,6 @@ fn reports_dangling_references_paths_unknown_functions_and_cycles() {
         );
     }
 }
+
+#[path = "tests/primary_root_named.rs"]
+mod primary_root_named;

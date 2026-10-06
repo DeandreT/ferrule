@@ -332,3 +332,78 @@ mod dynamic_document_tests {
         assert!(render(&program).unwrap().is_empty());
     }
 }
+
+#[cfg(test)]
+mod observed_static_output_tests {
+    use super::*;
+
+    #[test]
+    fn observed_primary_static_named_output_uses_existing_eight_methods_and_writer_order() {
+        let project: ::mapping::Project = serde_json::from_str(include_str!(
+            "../../codegen/src/tests/fixtures/root_view_primary_static_named_xml_output.json"
+        ))
+        .unwrap();
+        let program = codegen::lower(&project).unwrap();
+        assert_eq!(
+            program.xml_output_mode(),
+            Ok(Some(codegen::XmlOutputMode::SingleDocument))
+        );
+        let source = render(&program).unwrap();
+        let functions = source
+            .lines()
+            .filter_map(|line| {
+                line.strip_prefix("pub fn ")
+                    .map(|rest| rest.split('(').next().unwrap())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            functions,
+            [
+                "execute_xml_outputs",
+                "execute_xml",
+                "execute_xml_outputs_with_context",
+                "execute_xml_with_context",
+                "execute_xml_bytes_outputs",
+                "execute_xml_bytes",
+                "execute_xml_bytes_outputs_with_context",
+                "execute_xml_bytes_with_context",
+            ]
+        );
+        assert_eq!(
+            source
+                .matches("parse_xml(SOURCE_XML_SCHEMA, source, true, true)")
+                .count(),
+            2
+        );
+        assert_eq!(
+            source
+                .matches("parse_xml_bytes(SOURCE_XML_SCHEMA, source, true, true)")
+                .count(),
+            2
+        );
+        assert_eq!(
+            source
+                .matches("XmlOutputTarget::Named { index: 0, name: \"audit\" }")
+                .count(),
+            2
+        );
+        assert!(source.contains("result.xsd") && source.contains("audit.xsd"));
+        assert!(!source.contains("NamedXmlInput") && !source.contains("dynamic_source_loader"));
+        let helper = &source[source.find("fn serialize_xml_outputs(").unwrap()..];
+        let positions = [
+            "mapped.extras.len() != EXTRA_XML_OUTPUT_NAMES.len()",
+            "XmlOutputSetBudget::new(mapped.extras.len() + 1)",
+            "serialize_xml_document(TARGET_XML_SCHEMA",
+            "budget.charge(codegen_runtime::XmlOutputTarget::Primary",
+            "serialize_xml_document(EXTRA_XML_SCHEMA_0",
+            "budget.charge(target, xml.len())",
+            "extras.push(NamedXmlOutput",
+            "Ok(XmlExecutionOutputs { primary, extras })",
+        ]
+        .map(|part| helper.find(part).unwrap());
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+        let mut invalid = program;
+        invalid.xml_boundary.as_mut().unwrap().extra_outputs[0].name = "wrong".into();
+        assert!(render(&invalid).is_err());
+    }
+}
