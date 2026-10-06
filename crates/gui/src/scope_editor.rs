@@ -864,7 +864,7 @@ pub(crate) fn show_scope_editor(
     type_action
 }
 
-fn node_picker(
+pub(crate) fn node_picker(
     ui: &mut Ui,
     id_salt: impl std::hash::Hash + std::fmt::Debug,
     node_id: &mut NodeId,
