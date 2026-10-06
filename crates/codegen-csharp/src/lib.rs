@@ -2,10 +2,14 @@
 
 #![forbid(unsafe_code)]
 
+mod csv_output;
 mod error;
 mod literal;
 mod mapping;
 mod runtime;
+
+#[cfg(test)]
+mod csv_output_tests;
 
 #[cfg(test)]
 mod dynamic_targets_tests;
@@ -46,6 +50,19 @@ pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
         files.push(file(path, source)?);
     }
     Ok(ArtifactSet::new(files)?)
+}
+
+/// Emit an explicitly selected flat primary CSV output adapter.
+///
+/// Shared validation proves the static boundary and policy before artifacts
+/// exist. The generated `ExecuteCsv` and `ExecuteCsvBytes` methods, including
+/// execution-context overloads, execute the mapping once and then serialize its
+/// primary result. Ordinary [`emit`] artifacts remain unchanged.
+pub fn emit_with_csv_output(
+    program: &Program,
+    policy: &codegen::CsvOutputPolicy,
+) -> Result<ArtifactSet, EmitError> {
+    csv_output::emit(program, policy)
 }
 
 fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitError> {

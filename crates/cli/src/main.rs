@@ -148,6 +148,9 @@ enum Command {
         /// Required for Rust generation until the runtime is published.
         #[arg(long)]
         rust_runtime_path: Option<PathBuf>,
+        /// Include bounded CSV output methods for a flat primary target.
+        #[arg(long)]
+        csv_output: bool,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -602,6 +605,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             language,
             out,
             rust_runtime_path,
+            csv_output,
         } => {
             let target = match language {
                 CodegenLanguage::Rust => cli::GenerateTarget::Rust {
@@ -616,7 +620,11 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = cli::generate_project(&project, &out, target)?;
+            let outcome = if csv_output {
+                cli::generate_project_with_csv_output(&project, &out, target)?
+            } else {
+                cli::generate_project(&project, &out, target)?
+            };
             println!(
                 "generated {} file(s) in {}",
                 outcome.files_written,

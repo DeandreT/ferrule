@@ -5,6 +5,7 @@ use codegen::{ArtifactPathError, ArtifactSetError, ProgramValidationError};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmitError {
     ProgramValidation(ProgramValidationError),
+    CsvOutput(codegen::CsvOutputError),
     SchemaSerialization(String),
     EmbeddedSchema(codegen::EmbeddedSchemaError),
     ArtifactPath(ArtifactPathError),
@@ -15,6 +16,7 @@ impl fmt::Display for EmitError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ProgramValidation(error) => error.fmt(formatter),
+            Self::CsvOutput(error) => error.fmt(formatter),
             Self::SchemaSerialization(message) => {
                 write!(formatter, "cannot serialize embedded schema: {message}")
             }
@@ -29,6 +31,7 @@ impl std::error::Error for EmitError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::ProgramValidation(error) => Some(error),
+            Self::CsvOutput(error) => Some(error),
             Self::SchemaSerialization(_) => None,
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
@@ -58,5 +61,11 @@ impl From<ArtifactPathError> for EmitError {
 impl From<ArtifactSetError> for EmitError {
     fn from(error: ArtifactSetError) -> Self {
         Self::ArtifactSet(error)
+    }
+}
+
+impl From<codegen::CsvOutputError> for EmitError {
+    fn from(error: codegen::CsvOutputError) -> Self {
+        Self::CsvOutput(error)
     }
 }

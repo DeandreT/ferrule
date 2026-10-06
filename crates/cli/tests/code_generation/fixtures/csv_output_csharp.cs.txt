@@ -1,0 +1,207 @@
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+Directory.CreateDirectory("evidence");
+var mode = args.Single();
+var source = mode == "disabled"
+    ? new FerruleRepeated(new FerruleInstance[] { Row("safe's\"quoted", -7, 1.25, true, true, 1) })
+    : new FerruleRepeated(new FerruleInstance[]
+    {
+        Row("tail", 9, 1.25, true, true, 1),
+        Row("filtered", 9, 1.25, true, false, 4),
+        Row("A;'B\"\n\U0001F600", -7, 0.0000001, true, true, 3),
+        Row("", 0, BitConverter.Int64BitsToDouble(long.MinValue), false, true, 2),
+    });
+var emptyContext = Context();
+CheckFour("default", source, "expected-default.csv", "expected-default.csv", emptyContext);
+CheckFour("context", source, "expected-default.csv", "expected-context.csv", Context(
+    ("Label", FerruleValue.FromString("host")),
+    ("Count", FerruleValue.FromString(" 9 "))));
+CheckFour("null", source, "expected-default.csv", "expected-null.csv", Context(("Count", FerruleValue.Null)));
+var require = Context(("Require", FerruleValue.FromBoolean(true)));
+var empty = new FerruleRepeated(Array.Empty<FerruleInstance>());
+CheckFour("empty", empty, "expected-empty.csv", "expected-empty.csv", require);
+var filtered = new FerruleRepeated(new FerruleInstance[] { Row("not evaluated", -7, 1.25, true, false, 1) });
+CheckFour("filtered", filtered, "expected-empty.csv", "expected-empty.csv", require);
+
+var index = 0;
+foreach (var action in ContextActions(source, require, "required"))
+{
+    var error = RuntimeFailure("required-" + index++, action, FerruleRuntimeError.MissingRuntimeParameter);
+    Assert(error.Node == 15U && error.RuntimeParameter == "Required", "required-host identity changed");
+}
+var wrong = Context(("Count", FerruleValue.FromBoolean(true)));
+index = 0;
+foreach (var action in ContextActions(source, wrong, "wrong-count"))
+{
+    var error = RuntimeFailure("wrong-count-" + index++, action, FerruleRuntimeError.RuntimeParameterType);
+    Assert(error.Node == 12U && error.RuntimeParameter == "Count" &&
+        error.ExpectedScalarType == FerruleScalarType.Int64 && error.FoundKind == FerruleValueKind.Bool,
+        "wrong-host type payload changed");
+}
+if (mode == "disabled")
+{
+    var bad = new FerruleRepeated(new FerruleInstance[] { Row("bad\tvalue", -7, 1.25, true, true, 1) });
+    index = 0;
+    foreach (var action in FourActions(bad, emptyContext, "noquote"))
+    {
+        var error = CsvFailure("noquote-" + index++, action, FerruleCsvError.UnquotedFieldBoundary);
+        Assert(error.Row == 0 && error.Field == "Text'\n\U0001F600", "unquoted field identity changed");
+    }
+}
+foreach (var (name, number) in new (string Name, double Number)[]
+{
+    ("negative-zero", BitConverter.Int64BitsToDouble(long.MinValue)),
+    ("small", 1e-7), ("large", 1e20), ("epsilon", BitConverter.Int64BitsToDouble(1)),
+    ("min-normal", BitConverter.Int64BitsToDouble(0x0010000000000000L)),
+    ("max", BitConverter.Int64BitsToDouble(0x7FEFFFFFFFFFFFFFL)),
+})
+{
+    var numeric = new FerruleRepeated(new FerruleInstance[]
+    {
+        RowValue(FerruleValue.FromDouble(number), -7, number, true, true, 1),
+    });
+    var oracle = "expected-numeric-" + name + ".csv";
+    CheckFour("numeric-" + name, numeric, oracle, oracle, emptyContext);
+}
+var nil = new FerruleRepeated(new FerruleInstance[] { RowValue(FerruleValue.XmlNil, -7, 1.25, true, true, 1) });
+index = 0;
+foreach (var action in FourActions(nil, emptyContext, "xml-nil"))
+{
+    var error = CsvFailure("xml-nil-" + index++, action, FerruleCsvError.ValueType);
+    Assert(error.Row == 0 && error.Field == "Text'\n\U0001F600" && error.Expected == FerruleScalarType.String &&
+        error.Got == "xml nil", "selected XML nil must retain its typed CSV refusal");
+}
+Console.WriteLine("generated CSV checks passed");
+
+static FerruleGroup Row(string text, long integer, double number, bool boolean, bool keep, long rank) =>
+    RowValue(FerruleValue.FromString(text), integer, number, boolean, keep, rank);
+
+static FerruleGroup RowValue(FerruleValue text, long integer, double number, bool boolean, bool keep, long rank) =>
+    new(new FerruleField[]
+    {
+        new("Text", new FerruleScalar(text)),
+        new("Integer", new FerruleScalar(FerruleValue.FromInt64(integer))),
+        new("Number", new FerruleScalar(FerruleValue.FromDouble(number))),
+        new("Boolean", new FerruleScalar(FerruleValue.FromBoolean(boolean))),
+        new("Keep", new FerruleScalar(FerruleValue.FromBoolean(keep))),
+        new("Rank", new FerruleScalar(FerruleValue.FromInt64(rank))),
+    });
+
+static FerruleExecutionContext Context(params (string Name, FerruleValue Value)[] values) =>
+    FerruleExecutionContext.WithParameters("csv-project.json", new FerruleRuntimeParameters(
+        values.Select(value => KeyValuePair.Create(value.Name, value.Value))));
+
+static void CheckFour(string tag, FerruleInstance source, string defaultPath, string contextPath, FerruleExecutionContext context)
+{
+    var defaults = File.ReadAllBytes(defaultPath);
+    var supplied = File.ReadAllBytes(contextPath);
+    Assert(CsvBytes(tag + "-bytes", () => GeneratedMapping.ExecuteCsvBytes(source)).SequenceEqual(defaults), "default byte API differs from native");
+    Assert(CsvText(tag + "-text", () => GeneratedMapping.ExecuteCsv(source)).SequenceEqual(defaults), "default text API differs from native");
+    Assert(CsvBytes(tag + "-bytes-context", () => GeneratedMapping.ExecuteCsvBytes(source, context)).SequenceEqual(supplied), "context byte API differs from native");
+    Assert(CsvText(tag + "-text-context", () => GeneratedMapping.ExecuteCsv(source, context)).SequenceEqual(supplied), "context text API differs from native");
+}
+
+static FerruleRuntimeException RuntimeFailure(string tag, Action action, FerruleRuntimeError expected)
+{
+    try { action(); }
+    catch (Exception error)
+    {
+        if (tag == "ordinary-mapping") { CapturedError(tag, error); }
+        if (error is FerruleRuntimeException mapping && mapping.Error == expected) { return mapping; }
+        throw;
+    }
+    throw new InvalidOperationException($"Expected mapping failure {expected} before CSV serialization.");
+}
+
+static FerruleCsvException CsvFailure(string tag, Action action, FerruleCsvError expected)
+{
+    try { action(); }
+    catch (Exception error)
+    {
+        if (error is FerruleCsvException csv && csv.Error == expected) { return csv; }
+        throw;
+    }
+    throw new InvalidOperationException($"Expected typed CSV failure {expected}.");
+}
+
+static byte[] CsvBytes(string tag, Func<byte[]> call)
+{
+    try { return CapturedBytes(tag, call()); }
+    catch (Exception error) { CapturedError(tag, error); throw; }
+}
+
+static byte[] CsvText(string tag, Func<string> call)
+{
+    try { return CapturedText(tag, call()); }
+    catch (Exception error) { CapturedError(tag, error); throw; }
+}
+
+static byte[] CapturedBytes(string tag, byte[] bytes)
+{
+    var path = Path.Combine("evidence", tag + ".csv");
+    File.WriteAllBytes(path, bytes);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+    {
+        caseApi = tag, kind = "returned-csv", path, length = bytes.Length,
+        sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)),
+    }));
+    Console.Out.Flush();
+    return bytes;
+}
+
+static byte[] CapturedText(string tag, string text) =>
+    CapturedBytes(tag, new UTF8Encoding(false, true).GetBytes(text));
+
+static void CapturedError(string tag, Exception error)
+{
+    var causes = new List<string>();
+    for (var cause = error.InnerException; cause is not null; cause = cause.InnerException)
+    {
+        causes.Add(cause.ToString());
+    }
+    object payload;
+    if (error is FerruleCsvException csv)
+    {
+        payload = new { caseApi = tag, kind = "csv-error", type = error.GetType().FullName,
+            display = error.ToString(), causes, category = csv.Error.ToString(), csv.Row, csv.Field,
+            expected = csv.Expected?.ToString(), csv.Got, csv.Character, csv.Maximum };
+    }
+    else if (error is FerruleRuntimeException mapping)
+    {
+        payload = new { caseApi = tag, kind = "mapping-error", type = error.GetType().FullName,
+            display = error.ToString(), causes, category = mapping.Error.ToString(), mapping.Node,
+            mapping.RuntimeParameter, expected = mapping.ExpectedScalarType?.ToString(),
+            found = mapping.FoundKind?.ToString(), mapping.Function, mapping.ExpectedArity,
+            mapping.ActualArity, mapping.Detail, mapping.SourceField, mapping.FoundInstance };
+    }
+    else
+    {
+        payload = new { caseApi = tag, kind = "unexpected-error", type = error.GetType().FullName,
+            display = error.ToString(), causes };
+    }
+    var original = System.Text.Json.JsonSerializer.Serialize(payload);
+    File.WriteAllText(Path.Combine("evidence", tag + ".error.json"), original);
+    Console.WriteLine(original);
+    Console.Out.Flush();
+}
+
+static Action[] ContextActions(FerruleInstance source, FerruleExecutionContext context, string tag) => new Action[]
+{
+    () => { _ = CsvText(tag + "-text-context", () => GeneratedMapping.ExecuteCsv(source, context)); },
+    () => { _ = CsvBytes(tag + "-bytes-context", () => GeneratedMapping.ExecuteCsvBytes(source, context)); },
+};
+
+static Action[] FourActions(FerruleInstance source, FerruleExecutionContext context, string tag) => new Action[]
+{
+    () => { _ = CsvText(tag + "-text", () => GeneratedMapping.ExecuteCsv(source)); },
+    () => { _ = CsvBytes(tag + "-bytes", () => GeneratedMapping.ExecuteCsvBytes(source)); },
+    () => { _ = CsvText(tag + "-text-context", () => GeneratedMapping.ExecuteCsv(source, context)); },
+    () => { _ = CsvBytes(tag + "-bytes-context", () => GeneratedMapping.ExecuteCsvBytes(source, context)); },
+};
+
+static void Assert(bool condition, string message)
+{
+    if (!condition) { throw new InvalidOperationException(message); }
+}

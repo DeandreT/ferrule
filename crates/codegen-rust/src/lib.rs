@@ -13,9 +13,11 @@ use codegen::{
     RuntimeValue, ScalarTargetDomain, SequenceWindow, SortFilterOrder, TargetConstruction,
     TargetScope, UserFunctionProgram, serialize_embedded_schema, validate_program,
 };
+use codegen::{CsvOutputError, CsvOutputPolicy, validate_csv_output};
 use ir::{ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, NodeId};
 
+mod csv_api;
 mod failure;
 mod xml_api;
 
@@ -40,6 +42,7 @@ pub struct Options {
 /// Failure to render a complete Rust project.
 #[derive(Debug)]
 pub enum EmitError {
+    CsvOutput(CsvOutputError),
     InvalidProgram(ProgramValidationError),
     InvalidPackageName(String),
     SchemaSerialization(String),
@@ -51,6 +54,7 @@ pub enum EmitError {
 impl fmt::Display for EmitError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::CsvOutput(error) => error.fmt(formatter),
             Self::InvalidProgram(error) => error.fmt(formatter),
             Self::InvalidPackageName(name) => {
                 write!(formatter, "invalid generated Rust package name {name:?}")
@@ -68,12 +72,19 @@ impl fmt::Display for EmitError {
 impl std::error::Error for EmitError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::CsvOutput(error) => Some(error),
             Self::InvalidProgram(error) => Some(error),
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
             Self::InvalidPackageName(_) | Self::SchemaSerialization(_) => None,
         }
+    }
+}
+
+impl From<CsvOutputError> for EmitError {
+    fn from(error: CsvOutputError) -> Self {
+        Self::CsvOutput(error)
     }
 }
 
@@ -114,6 +125,25 @@ pub fn emit(program: &Program, options: &Options) -> Result<ArtifactSet, EmitErr
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
     ])
     .map_err(EmitError::from)
+}
+
+/// Emit the ordinary library with explicitly selected bounded CSV adapters.
+/// Flat row/schema and literal dialect eligibility are checked before artifacts
+/// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
+pub fn emit_with_csv_output(
+    program: &Program,
+    options: &Options,
+    policy: &CsvOutputPolicy,
+) -> Result<ArtifactSet, EmitError> {
+    validate_csv_output(program, policy)?;
+    let mut files = emit(program, options)?.into_files();
+    let adapters = csv_api::render(program, policy)?;
+    for file in &mut files {
+        if file.path.as_str() == "src/lib.rs" {
+            file.contents.extend_from_slice(adapters.as_bytes());
+        }
+    }
+    ArtifactSet::new(files).map_err(EmitError::from)
 }
 
 fn valid_package_name(name: &str) -> bool {
