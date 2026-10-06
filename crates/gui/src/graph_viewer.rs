@@ -139,7 +139,6 @@ fn show_lookup_editor(
     key: &mut Vec<String>,
     value: &mut Vec<String>,
 ) {
-    ui.set_min_width(PATH_EDITOR_WIDTH);
     ui.set_max_width(PATH_EDITOR_WIDTH);
     egui::Grid::new(ui.id().with("lookup_paths")).show(ui, |ui| {
         ui.label("collection");
