@@ -123,7 +123,7 @@ fn context() -> egui::Context {
 
 /// Exercise the actual SourceField output widget; only the enclosing Snarl
 /// placement is omitted so pointer coordinates stay deterministic.
-fn frame(
+fn raw_frame(
     project: &mut Project,
     named: bool,
     item: NodeId,
@@ -203,6 +203,103 @@ fn frame(
                 .rect;
         },
     );
+    (output, rect, title)
+}
+
+fn text_rect(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Rect> {
+    match shape {
+        egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+            Some(text.visual_bounding_rect())
+        }
+        egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(|shape| text_rect(shape, label)),
+        _ => None,
+    }
+}
+
+fn property_rect(output: &egui::FullOutput, project: &Project, item: NodeId) -> Option<egui::Rect> {
+    let label_rect = |label: &str| {
+        output
+            .shapes
+            .iter()
+            .find_map(|shape| text_rect(&shape.shape, label))
+    };
+    if let Some(rect) = label_rect("Generated item (read-only)") {
+        return Some(rect);
+    }
+    let Some(Node::SourceField { path, .. }) = project.graph.nodes.get(&item) else {
+        return None;
+    };
+    if !path.is_empty() {
+        return label_rect(&path.join("/"));
+    }
+    // An empty TextEdit has no text galley. Target its actual painted field,
+    // not the requested width or the properties button's enclosing row.
+    fn empty_field(shape: &egui::epaint::Shape) -> Option<egui::Rect> {
+        match shape {
+            egui::epaint::Shape::Rect(rect)
+                if (rect.rect.width() - SOURCE_FIELD_EDIT_WIDTH).abs() <= 8.0
+                    && (10.0..=40.0).contains(&rect.rect.height()) =>
+            {
+                Some(rect.rect)
+            }
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(empty_field),
+            _ => None,
+        }
+    }
+    output
+        .shapes
+        .iter()
+        .find_map(|shape| empty_field(&shape.shape))
+}
+
+fn frame(
+    project: &mut Project,
+    named: bool,
+    item: NodeId,
+    context: &egui::Context,
+    events: Vec<egui::Event>,
+    isolated_function: bool,
+) -> (egui::FullOutput, egui::Rect, String) {
+    let (mut output, _, mut title) =
+        raw_frame(project, named, item, context, events, isolated_function);
+    if property_rect(&output, project, item).is_none() {
+        let pencil = char::from(lucide_icons::Icon::Pencil).to_string();
+        let position = output
+            .shapes
+            .iter()
+            .find_map(|shape| text_rect(&shape.shape, &pencil))
+            .expect("SourceField exposes its existing properties")
+            .center();
+        for pressed in [true, false] {
+            (output, _, title) = raw_frame(
+                project,
+                named,
+                item,
+                context,
+                vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                isolated_function,
+            );
+        }
+        for _ in 0..3 {
+            (output, _, title) =
+                raw_frame(project, named, item, context, Vec::new(), isolated_function);
+        }
+    }
+    eprintln!(
+        "Sequence-item property originals: title={title:?}; project={}; shapes={:?}",
+        snapshot(project),
+        output.shapes
+    );
+    let rect = property_rect(&output, project, item)
+        .expect("actual SourceField editor or read-only item label is rendered");
     (output, rect, title)
 }
 
