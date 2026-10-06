@@ -107,14 +107,14 @@ pub(super) fn validate(
 }
 
 // The XML boundary validator checks complete schema/output policies first;
-// this proof additionally confines root readers to these two flat roots.
+// this proof additionally confines root readers to the admitted flat roots.
 fn observed_static_named_root_is_supported(program: &Program) -> bool {
     program.xml_boundary.as_ref().is_some_and(|policy| {
         policy.input.profile() == Some(crate::XmlInputProfile::RootView)
             && policy.extra_inputs.is_empty()
-            && policy.extra_outputs.len() == 1
+            && policy.extra_outputs.len() == program.extra_targets.len()
             && program.extra_sources.is_empty()
-            && program.extra_targets.len() == 1
+            && !program.extra_targets.is_empty()
             && flat_static_group_root(&program.target, &program.root)
             && program
                 .extra_targets

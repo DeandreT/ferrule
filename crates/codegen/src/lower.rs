@@ -83,7 +83,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             });
         }
     }
-    // Observed inputs keep separate static-input and one-static-output routes.
+    // Observed inputs keep separate static-input and static-output routes.
     // Combining the two routes or adding dynamic boundaries remains unsupported.
     let root_view_static_inputs = primary_xml
         && !project.extra_sources.is_empty()
@@ -100,9 +100,33 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
                     })
                 && ir::xml_structured_document_input_is_supported(&source.schema)
         });
+    // The newly admitted plural route remains flat even when its expressions
+    // contain no primary-root reader. Preserve the existing one-output route.
+    let root_view_plural_roots_flat = project.extra_targets.len() == 1
+        || std::iter::once((&project.target, &project.root))
+            .chain(
+                project
+                    .extra_targets
+                    .iter()
+                    .map(|target| (&target.schema, &target.root)),
+            )
+            .all(|(schema, scope)| {
+                (scope.target_field.is_empty() || scope.target_field == schema.name)
+                    && scope.dynamic_bindings.is_empty()
+                    && scope.filter.is_none()
+                    && scope.post_group_filter.is_none()
+                    && !scope.has_grouping()
+                    && !scope.has_sort()
+                    && scope.windows.is_empty()
+                    && !scope.merge_dynamic_fields
+                    && scope.children.is_empty()
+                    && scope.dynamic_children.is_empty()
+                    && scope.concatenated().is_none()
+            });
     let root_view_static_output = primary_xml
         && project.extra_sources.is_empty()
-        && project.extra_targets.len() == 1
+        && !project.extra_targets.is_empty()
+        && root_view_plural_roots_flat
         && matches!(project.root.iteration, ScopeIteration::None)
         && matches!(project.root.construction, ScopeConstruction::Constructed)
         && !project.target.repeating

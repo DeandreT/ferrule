@@ -254,6 +254,7 @@ fn observed_one_static_named_root_admission_preserves_other_ownership_refusals()
             2 => {
                 let mut other = project.extra_targets[0].clone();
                 other.name = "other".into();
+                other.root.target_field = "descendant".into();
                 project.extra_targets.push(other);
             }
             3 => project.extra_targets[0].root.set_source(Some(vec![])),
@@ -311,4 +312,180 @@ fn observed_one_static_named_root_admission_preserves_other_ownership_refusals()
         dynamic_path: None,
     });
     assert!(validate(&old).is_empty());
+}
+
+fn observed_plural_static_named_root_project(count: usize) -> Project {
+    let mut project = observed_one_static_named_root_project();
+    project.root.target_field = project.target.name.clone();
+    let template = project.extra_targets[0].clone();
+    project.extra_targets = ["z-audit", "a-summary", "m-receipt"]
+        .into_iter()
+        .zip(["Audit", "Summary", "Receipt"])
+        .take(count)
+        .enumerate()
+        .map(|(index, (name, schema_name))| {
+            let mut target = template.clone();
+            target.name = name.into();
+            target.schema.name = schema_name.into();
+            target.root.target_field = schema_name.into();
+            // Only the later roots own the lazy required Extra read.
+            target.root.bindings[0].node = if index == 0 { 0 } else { 4 };
+            target
+        })
+        .collect();
+    project
+}
+
+#[test]
+fn observed_plural_static_named_roots_keep_order_primary_owner_and_late_laziness() {
+    for count in [2, 3] {
+        for reverse in [false, true] {
+            let mut project = observed_plural_static_named_root_project(count);
+            if reverse {
+                project.extra_targets.reverse();
+            }
+            assert!(validate(&project).is_empty());
+            for derived in [false, true] {
+                let source = observed_one_static_named_root_source(
+                    derived,
+                    derived.then_some("derived extra"),
+                );
+                let outputs = crate::run_outputs(&project, &source).unwrap();
+                assert_eq!(outputs.extras.len(), count);
+                assert_eq!(
+                    outputs
+                        .extras
+                        .iter()
+                        .map(|output| output.name.as_str())
+                        .collect::<Vec<_>>(),
+                    project
+                        .extra_targets
+                        .iter()
+                        .map(|target| target.name.as_str())
+                        .collect::<Vec<_>>()
+                );
+                for (output, target) in outputs.extras.iter().zip(&project.extra_targets) {
+                    let expected = if target.root.bindings[0].node == 0 {
+                        "primary owner 雪"
+                    } else if derived {
+                        "derived extra"
+                    } else {
+                        "skipped"
+                    };
+                    assert_eq!(
+                        output
+                            .instance
+                            .field("Value")
+                            .and_then(ir::Instance::as_scalar),
+                        Some(&Value::String(expected.into()))
+                    );
+                }
+            }
+            assert!(matches!(
+                crate::run_outputs(&project, &observed_one_static_named_root_source(true, None)),
+                Err(crate::EngineError::PrimaryRoot {
+                    node: 1,
+                    source: ir::PrimaryRootError::MissingRequiredField { path },
+                }) if path == vec!["Extra".to_owned()]
+            ));
+            project.root.target_field.clear();
+            for target in &mut project.extra_targets {
+                target.root.target_field.clear();
+            }
+            assert!(validate(&project).is_empty());
+        }
+    }
+}
+
+#[test]
+fn observed_plural_last_named_context_is_lazy_and_uses_the_supplied_context() {
+    let mut project = observed_plural_static_named_root_project(2);
+    project.graph.nodes.insert(
+        5,
+        Node::RuntimeValue {
+            value: mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    project.graph.nodes.insert(
+        4,
+        Node::If {
+            condition: 2,
+            then: 5,
+            else_: 3,
+        },
+    );
+    assert!(validate(&project).is_empty());
+    let base = crate::run_outputs(
+        &project,
+        &observed_one_static_named_root_source(false, None),
+    )
+    .unwrap();
+    assert_eq!(
+        base.extras[1]
+            .instance
+            .field("Value")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("skipped".into()))
+    );
+    let derived = observed_one_static_named_root_source(true, Some("present"));
+    assert!(matches!(
+        crate::run_outputs(&project, &derived),
+        Err(crate::EngineError::MissingRuntimeValue(
+            mapping::RuntimeValue::CurrentDateTime
+        ))
+    ));
+    let context = crate::ExecutionContext::new(std::path::Path::new("mapping.json"))
+        .with_current_datetime("2026-10-05T12:00:00Z");
+    let outputs =
+        crate::run_outputs_with_sources_and_context(&project, &derived, Vec::new(), &context)
+            .unwrap();
+    assert_eq!(
+        outputs.extras[1]
+            .instance
+            .field("Value")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("2026-10-05T12:00:00Z".into()))
+    );
+}
+
+#[test]
+fn observed_plural_named_reader_permission_rejects_mismatch_and_invalid_consumers() {
+    let valid = observed_plural_static_named_root_project(3);
+    for mutation in 0..9 {
+        let mut invalid = valid.clone();
+        match mutation {
+            0 => invalid.extra_targets[2].root.target_field = "Audit".into(),
+            1 => invalid.root.target_field = "descendant".into(),
+            2 => invalid.extra_targets[2].root.set_source(Some(vec![])),
+            3 => invalid.extra_targets[2].schema.repeating = true,
+            4 => {
+                let bindings = invalid.extra_targets[2].root.bindings.clone();
+                invalid.extra_targets[2].root.children.push(Scope {
+                    target_field: "Value".into(),
+                    bindings,
+                    ..Scope::default()
+                });
+            }
+            5 => invalid.extra_targets[2].root.filter = Some(2),
+            6 => invalid.extra_targets[2]
+                .root
+                .dynamic_bindings
+                .push(DynamicBinding { key: 0, value: 1 }),
+            7 => invalid.extra_targets[2].root.construction = ScopeConstruction::CopyCurrentSource,
+            8 => invalid.extra_sources.push(NamedSource {
+                name: "secondary".into(),
+                path: "secondary.xml".into(),
+                schema: valid.source.clone(),
+                options: Default::default(),
+                dynamic_path: None,
+            }),
+            _ => unreachable!(),
+        }
+        assert!(
+            validate(&invalid).iter().any(|issue| issue
+                .message
+                .contains("primary-root primitive is unavailable")),
+            "mutation {mutation}"
+        );
+    }
 }
