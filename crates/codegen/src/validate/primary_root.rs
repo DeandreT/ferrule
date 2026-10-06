@@ -27,7 +27,8 @@ pub(super) fn validate(
         return Ok(());
     }
     let first = *primitives.first().expect("nonempty primitive inventory");
-    let named_root_allowed = observed_static_named_root_is_supported(program);
+    let named_root_allowed = observed_static_named_root_is_supported(program)
+        || observed_static_combined_root_is_supported(program);
     if program.root.repeating
         || program.root.iteration.is_some()
         || (!program.root.target_field.is_empty() && !named_root_allowed)
@@ -115,6 +116,37 @@ fn observed_static_named_root_is_supported(program: &Program) -> bool {
             && policy.extra_outputs.len() == program.extra_targets.len()
             && program.extra_sources.is_empty()
             && !program.extra_targets.is_empty()
+            && flat_static_group_root(&program.target, &program.root)
+            && program
+                .extra_targets
+                .iter()
+                .zip(&policy.extra_outputs)
+                .all(|(target, output)| {
+                    target.name == output.name
+                        && flat_static_group_root(&target.target, &target.root)
+                })
+    })
+}
+
+// A combined route owns every Structured secondary declaration but never
+// grants its fields the primary-root metadata identity.
+fn observed_static_combined_root_is_supported(program: &Program) -> bool {
+    program.xml_boundary.as_ref().is_some_and(|policy| {
+        policy.input.profile() == Some(crate::XmlInputProfile::RootView)
+            && !program.extra_sources.is_empty()
+            && policy.extra_inputs.len() == program.extra_sources.len()
+            && program
+                .extra_sources
+                .iter()
+                .zip(&policy.extra_inputs)
+                .all(|(source, input)| {
+                    source.dynamic.is_none()
+                        && source.name == input.name
+                        && input.input.profile() == Some(crate::XmlInputProfile::Structured)
+                        && ir::xml_structured_document_input_is_supported(&source.source)
+                })
+            && !program.extra_targets.is_empty()
+            && policy.extra_outputs.len() == program.extra_targets.len()
             && flat_static_group_root(&program.target, &program.root)
             && program
                 .extra_targets
