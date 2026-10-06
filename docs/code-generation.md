@@ -1035,17 +1035,18 @@ wrappers are the same as the static named-input adapter. The zero-named observed
 methods retain their existing signatures and boundary wrappers.
 
 With no named inputs, an observed primary can also feed a static constructed
-primary XML document and exactly one static constructed named XML document. Both
-output roots are closed nonrepeating groups with independent schemas, namespaces
-and literal hints. The existing text, byte and context output-set methods return
-primary then named output; the singular methods serialize the same complete set
-before returning primary. Mapping completes before any writer, and serialization
+primary XML document and one or more static constructed named XML documents.
+The plural route requires flat, closed nonrepeating output groups with independent
+schemas, namespaces and literal hints. Root labels may be empty or each output's
+own schema name. The existing text, byte and context output-set methods return
+primary then named outputs in declaration order; the singular methods serialize
+the same complete set before returning primary. Mapping completes before any
+writer, and serialization
 failures retain the exact Primary or Named target. This route does not perform
 file publication or add document-member paths.
 
-Dynamic XML document inputs, observed named inputs, dynamic outputs, two or more
-named outputs, and combined named inputs and outputs remain outside this
-observed-primary adapter. Unsupported input or target schemas fail during
+Dynamic XML document inputs, observed named inputs, dynamic outputs, and combined
+named inputs and outputs remain outside this observed-primary adapter. Unsupported input or target schemas fail during
 generation, before the artifact destination is created.
 
 ### Output and Limits
