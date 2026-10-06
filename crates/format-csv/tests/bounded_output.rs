@@ -419,3 +419,164 @@ fn dense_quotes_split_utf8_and_long_headers_match_native_without_field_state_lea
         original.as_bytes()
     );
 }
+
+#[test]
+fn late_row_errors_precede_deferred_unquoted_headers_records_and_budget() {
+    let row_schema = schema(&[("a,b", ScalarType::String), ("number", ScalarType::Int)]);
+    for has_headers in [false, true] {
+        let options = CsvWriteOptions {
+            quote_disabled: true,
+            has_headers,
+            utf8_bom: true,
+            ..CsvWriteOptions::default()
+        };
+        let invalid_rows = [
+            (
+                "shape",
+                Instance::Scalar(Value::String("not a group".into())),
+            ),
+            ("missing", row(vec![("a,b", Value::String("later".into()))])),
+            (
+                "unexpected",
+                row(vec![
+                    ("a,b", Value::String("later".into())),
+                    ("number", Value::Int(2)),
+                    ("other", Value::Null),
+                ]),
+            ),
+            (
+                "duplicate",
+                row(vec![
+                    ("a,b", Value::String("later".into())),
+                    ("number", Value::Int(2)),
+                    ("a,b", Value::String("duplicate".into())),
+                ]),
+            ),
+            (
+                "type",
+                row(vec![
+                    ("a,b", Value::String("later".into())),
+                    ("number", Value::Bool(true)),
+                ]),
+            ),
+        ];
+        for (kind, invalid) in invalid_rows {
+            let rows = [
+                row(vec![
+                    ("a,b", Value::String("early,\nrecord".into())),
+                    ("number", Value::Int(1)),
+                ]),
+                invalid,
+            ];
+            let original = to_string_with_options(&row_schema, &rows, &options).unwrap_err();
+            let bounded =
+                to_bytes_with_options_bounded(&row_schema, &rows, &options, 0).unwrap_err();
+            let CsvBoundedError::Format(error) = bounded else {
+                panic!("native row error must precede the zero-byte budget");
+            };
+            assert_eq!(format!("{error:?}"), format!("{original:?}"));
+            match kind {
+                "shape" => assert!(matches!(
+                    error,
+                    CsvFormatError::RowShape {
+                        row: 1,
+                        got: "string"
+                    }
+                )),
+                "missing" => assert!(matches!(
+                    error,
+                    CsvFormatError::MissingField { row: 1, field } if field == "number"
+                )),
+                "unexpected" => assert!(matches!(
+                    error,
+                    CsvFormatError::UnexpectedField { row: 1, field } if field == "other"
+                )),
+                "duplicate" => assert!(matches!(
+                    error,
+                    CsvFormatError::DuplicateField { row: 1, field } if field == "a,b"
+                )),
+                "type" => assert!(matches!(
+                    error,
+                    CsvFormatError::ValueType {
+                        row: 1,
+                        field,
+                        expected: ScalarType::Int,
+                        got: "bool",
+                    } if field == "number"
+                )),
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+#[test]
+fn deferred_unquoted_errors_keep_header_then_row_then_field_order() {
+    let header_schema = schema(&[
+        ("a,b", ScalarType::String),
+        ("later\nheader", ScalarType::String),
+    ]);
+    let header_rows = [row(vec![
+        ("a,b", Value::String("first,data".into())),
+        ("later\nheader", Value::String("second\nrecord".into())),
+    ])];
+    let options = CsvWriteOptions {
+        quote_disabled: true,
+        utf8_bom: true,
+        ..CsvWriteOptions::default()
+    };
+    assert!(matches!(
+        to_bytes_with_options_bounded(&header_schema, &header_rows, &options, 0),
+        Err(CsvBoundedError::Format(
+            CsvFormatError::UnquotedHeaderBoundary { field }
+        )) if field == "a,b"
+    ));
+    let two_fields = schema(&[
+        ("first", ScalarType::String),
+        ("second", ScalarType::String),
+    ]);
+    let rows = [
+        row(vec![
+            ("second", Value::String("second\nrecord".into())),
+            ("first", Value::String("first,data".into())),
+        ]),
+        row(vec![("first", Value::Null), ("second", Value::Null)]),
+    ];
+    assert!(matches!(
+        to_bytes_with_options_bounded(&two_fields, &rows, &options, 0),
+        Err(CsvBoundedError::Format(
+            CsvFormatError::UnquotedFieldBoundary { row: 0, field }
+        )) if field == "first"
+    ));
+    let single_field = schema(&[("value", ScalarType::String)]);
+    let options = CsvWriteOptions {
+        has_headers: false,
+        ..options
+    };
+    for empty_first in [false, true] {
+        let empty = row(vec![("value", Value::Null)]);
+        let boundary = row(vec![("value", Value::String("late\nrecord".into()))]);
+        let rows = if empty_first {
+            [empty, boundary]
+        } else {
+            [boundary, empty]
+        };
+        let original = to_string_with_options(&single_field, &rows, &options).unwrap_err();
+        let bounded = to_bytes_with_options_bounded(&single_field, &rows, &options, 0).unwrap_err();
+        let CsvBoundedError::Format(error) = bounded else {
+            panic!("native quote error must precede the zero-byte budget");
+        };
+        assert_eq!(format!("{error:?}"), format!("{original:?}"));
+        if empty_first {
+            assert!(matches!(
+                error,
+                CsvFormatError::UnquotedSingleEmptyRow { row: 0 }
+            ));
+        } else {
+            assert!(matches!(
+                error,
+                CsvFormatError::UnquotedFieldBoundary { row: 0, field } if field == "value"
+            ));
+        }
+    }
+}
