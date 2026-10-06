@@ -124,6 +124,14 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 SUMMARY_CHAR_LIMIT,
             ),
         ),
+        Node::Lookup { collection, .. } => (
+            Icon::Search,
+            if collection.is_empty() {
+                "lookup".into()
+            } else {
+                compact(&collection.join("/"), SUMMARY_CHAR_LIMIT)
+            },
+        ),
         Node::CollectionFind { .. } => (Icon::Search, "find".into()),
         Node::SequenceExists { .. } => (Icon::ListChecks, "any".into()),
         Node::SequenceItemAt { .. } => (Icon::ListOrdered, "item at".into()),
