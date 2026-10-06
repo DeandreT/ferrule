@@ -11,7 +11,7 @@ pub fn adapt_user_function_value(
 ) -> Result<Value, RuntimeError> {
     let found = value.type_name();
     let adapted = match (expected, value) {
-        (_, value @ (Value::Null | Value::XmlNil(_))) => Some(value),
+        (_, value @ (Value::Null | Value::JsonNull(_) | Value::XmlNil(_))) => Some(value),
         (ScalarType::String, value @ Value::String(_))
         | (ScalarType::Int, value @ Value::Int(_))
         | (ScalarType::Float, value @ Value::Float(_))

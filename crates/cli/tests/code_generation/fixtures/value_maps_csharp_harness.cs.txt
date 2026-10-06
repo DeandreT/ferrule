@@ -13,6 +13,12 @@ AssertField(output, "Bool", FerruleValue.FromString("bool"));
 AssertField(output, "Failed", FerruleValue.FromString("retained"));
 AssertField(output, "Null", FerruleValue.FromString("null"));
 AssertField(output, "XmlNil", FerruleValue.FromString("xml-nil"));
+AssertField(output, "TypedJsonNull", FerruleValue.FromString("null-row"));
+AssertField(output, "UntypedJsonNull", FerruleValue.FromString("json-null-row"));
+AssertField(output, "TypedXmlNil", FerruleValue.FromString("xml-nil-row"));
+AssertField(output, "UntypedXmlNil", FerruleValue.FromString("xml-nil-row"));
+AssertField(output, "FunctionConstantJsonNull", FerruleValue.FromString("json-null-row"));
+AssertField(output, "FunctionParameterJsonNull", FerruleValue.FromString("json-null-row"));
 
 static void AssertField(FerruleGroup output, string name, FerruleValue expected)
 {
