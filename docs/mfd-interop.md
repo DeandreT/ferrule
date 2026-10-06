@@ -578,6 +578,17 @@ source setup exposes “Keep empty text fields.” Browser reads and writes now
 also honor custom or disabled quoting, including the writer's boundary errors.
 
 
+The GUI's **File → Import MFD as Pipeline** action opens the supported connected
+design in the separate pipeline editor. Choose a new pipeline location; the
+document stays unsaved until **Save pipeline**. Ordinary single-mapping import
+and export remain separate actions. The editor can export its current applied,
+validated snapshot with either **Export MFD (Ferrule)** or **Export native MFD**
+without saving the pipeline JSON first. These actions retain the same native
+serial-chain limits and diagnostics as the CLI; unsupported branching does not
+fall back to a single mapping. The main mapping canvas and its layout are
+preserved throughout. See [GUI pipeline editing](mapping-pipelines.md#editing-in-the-gui)
+for save, cancellation, path, and warning behavior.
+
 Pipeline export writes one connected design for a validated serial XML
 pass-through chain of 2–65 stages. Each intermediate primary target becomes
 the next stage's pass-through source. The final primary target may be XML,
