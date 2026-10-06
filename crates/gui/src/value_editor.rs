@@ -7,6 +7,7 @@ use ir::Value;
 const VALUE_EDIT_WIDTH: f32 = 150.0;
 const VALUE_MAP_CELL_WIDTH: f32 = 104.0;
 const VALUE_MAP_CONTENT_WIDTH: f32 = 640.0;
+const VALUE_MAP_COMPACT_CONTENT_WIDTH: f32 = 320.0;
 const VALUE_MAP_MAX_HEIGHT: f32 = 170.0;
 const CONST_TITLE_CHAR_LIMIT: usize = 28;
 
@@ -138,10 +139,16 @@ pub fn show_value_map_editor(
     wheel_delta_y: Option<f32>,
 ) {
     ui.vertical(|ui| {
-        // Leave room for the solid scrollbar so the complete body stays at
-        // the advertised node width when enough rows require scrolling.
-        ui.set_min_width(VALUE_MAP_CONTENT_WIDTH);
-        ui.set_max_width(VALUE_MAP_CONTENT_WIDTH);
+        // Leave room for the solid scrollbar without reserving a second
+        // entry column for an empty or single-entry table.
+        let mut compact = table.len() <= 1;
+        let content_width = if compact {
+            VALUE_MAP_COMPACT_CONTENT_WIDTH
+        } else {
+            VALUE_MAP_CONTENT_WIDTH
+        };
+        ui.set_min_width(content_width);
+        ui.set_max_width(content_width);
         ui.horizontal(|ui| {
             ui.weak(match table.len() {
                 1 => "1 entry".to_string(),
@@ -161,6 +168,13 @@ pub fn show_value_map_editor(
             });
         });
 
+        if compact && table.len() > 1 {
+            compact = false;
+            ui.set_min_width(VALUE_MAP_CONTENT_WIDTH);
+            ui.set_max_width(VALUE_MAP_CONTENT_WIDTH);
+            ui.ctx().request_repaint();
+        }
+
         let mut remove_idx = None;
         ui.scope(|ui| {
             let mut scroll_style = egui::style::ScrollStyle::solid();
@@ -179,13 +193,15 @@ pub fn show_value_map_editor(
                     mouse_wheel: false,
                 })
                 .show(ui, |ui| {
-                    egui::Grid::new("value_map_table")
-                        .num_columns(9)
-                        .striped(true)
-                        .spacing([4.0, 3.0])
-                        .show(ui, |ui| {
-                            for (row, entries) in table.chunks_mut(2).enumerate() {
-                                show_value_map_entry(ui, row * 2, &mut entries[0], &mut remove_idx);
+                    let grid = if compact {
+                        egui::Grid::new("value_map_table_compact").num_columns(4)
+                    } else {
+                        egui::Grid::new("value_map_table").num_columns(9)
+                    };
+                    grid.striped(true).spacing([4.0, 3.0]).show(ui, |ui| {
+                        for (row, entries) in table.chunks_mut(2).enumerate() {
+                            show_value_map_entry(ui, row * 2, &mut entries[0], &mut remove_idx);
+                            if !compact {
                                 ui.weak("|");
                                 if let Some(entry) = entries.get_mut(1) {
                                     show_value_map_entry(ui, row * 2 + 1, entry, &mut remove_idx);
@@ -194,14 +210,18 @@ pub fn show_value_map_editor(
                                         ui.label("");
                                     }
                                 }
-                                ui.end_row();
                             }
-                        });
+                            ui.end_row();
+                        }
+                    });
                 });
             apply_value_map_wheel(ui, &scroll, wheel_delta_y);
         });
         if let Some(i) = remove_idx {
             table.remove(i);
+            if table.len() == 1 {
+                ui.ctx().request_repaint();
+            }
         }
 
         let mut has_default = default.is_some();
