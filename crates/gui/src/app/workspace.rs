@@ -811,7 +811,7 @@ impl FerruleApp {
                 MappingDocument::Function(_) => {}
             }
         }
-        self.show_failure_rules(ui);
+        self.show_failure_rules(ui, editing_enabled);
         let active_target = match self.mapping_workspace.active {
             MappingDocument::Target(index) => Some(index),
             MappingDocument::Main | MappingDocument::Function(_) => None,
@@ -1026,82 +1026,6 @@ impl FerruleApp {
         if let Some(action) = type_action {
             self.apply_selected_target_xml_type(&action);
         }
-    }
-
-    fn show_failure_rules(&mut self, ui: &mut egui::Ui) {
-        if self.project.failure_rules.is_empty() {
-            self.selected_failure_rule = None;
-            self.pending_failure_rule_scroll = false;
-            return;
-        }
-        if self
-            .selected_failure_rule
-            .is_some_and(|index| index >= self.project.failure_rules.len())
-        {
-            self.selected_failure_rule = None;
-            self.pending_failure_rule_scroll = false;
-        }
-        let mut selection = None;
-        egui::CollapsingHeader::new(format!(
-            "Failure rules ({})",
-            self.project.failure_rules.len()
-        ))
-        .default_open(self.selected_failure_rule.is_some())
-        .open(self.pending_failure_rule_scroll.then_some(true))
-        .show(ui, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("failure_rules_scroll")
-                .max_height(120.0)
-                .show(ui, |ui| {
-                    for (index, rule) in self.project.failure_rules.iter().enumerate() {
-                        let source = match &rule.iteration {
-                            mapping::FailureIteration::Source { collection } => {
-                                if collection.is_empty() {
-                                    "current source".to_string()
-                                } else {
-                                    collection.join("/")
-                                }
-                            }
-                            mapping::FailureIteration::Sequence { .. } => {
-                                "generated sequence".to_string()
-                            }
-                        };
-                        let response = ui.selectable_label(
-                            self.selected_failure_rule == Some(index),
-                            format!("Rule {}: {source}", index + 1),
-                        );
-                        if response.clicked() {
-                            selection = Some(index);
-                        }
-                        if self.pending_failure_rule_scroll
-                            && self.selected_failure_rule == Some(index)
-                        {
-                            response.scroll_to_me(None);
-                        }
-                        if self.selected_failure_rule == Some(index) {
-                            let selection = match rule.selection {
-                                mapping::FailureSelection::All => "all items".to_string(),
-                                mapping::FailureSelection::WhenTrue { predicate } => {
-                                    format!("when node {predicate} is true")
-                                }
-                                mapping::FailureSelection::WhenFalse { predicate } => {
-                                    format!("when node {predicate} is false")
-                                }
-                            };
-                            ui.weak(match rule.message {
-                                Some(message) => {
-                                    format!("{selection}; message from node {message}")
-                                }
-                                None => selection,
-                            });
-                        }
-                    }
-                });
-        });
-        if let Some(index) = selection {
-            self.selected_failure_rule = Some(index);
-        }
-        self.pending_failure_rule_scroll = false;
     }
 
     pub(super) fn show_main_canvas(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
