@@ -428,7 +428,7 @@ pub struct Program {
 pub enum XmlOutputMode {
     SingleDocument,
     DynamicPrimaryDocuments,
-    /// One dynamic named XML input and optional statics feed a primary document list.
+    /// Dynamic named XML inputs and optional statics feed a primary document list.
     DynamicNamedInputDynamicPrimaryDocuments,
     /// Static named Structured inputs and one ordered primary document list.
     StaticNamedInputsDynamicPrimaryDocuments,

@@ -27,9 +27,10 @@ pub(super) fn validate(
         return Ok(());
     }
     let first = *primitives.first().expect("nonempty primitive inventory");
+    let named_root_allowed = observed_static_named_root_is_supported(program);
     if program.root.repeating
         || program.root.iteration.is_some()
-        || !program.root.target_field.is_empty()
+        || (!program.root.target_field.is_empty() && !named_root_allowed)
         || !program.root.children.is_empty()
         || !matches!(program.root.construction, TargetConstruction::Group)
         || program
@@ -39,18 +40,27 @@ pub(super) fn validate(
     {
         return Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: first });
     }
-    let allowed = closure(
-        program
-            .root
-            .bindings
-            .iter()
-            .map(|binding| binding.expression),
-        expressions,
-    );
+    let mut allowed_roots = program
+        .root
+        .bindings
+        .iter()
+        .map(|binding| binding.expression)
+        .collect::<Vec<_>>();
     let mut forbidden_roots = Vec::new();
     for target in &program.extra_targets {
-        scope_roots(&target.root, &mut forbidden_roots);
+        if named_root_allowed {
+            allowed_roots.extend(
+                target
+                    .root
+                    .bindings
+                    .iter()
+                    .map(|binding| binding.expression),
+            );
+        } else {
+            scope_roots(&target.root, &mut forbidden_roots);
+        }
     }
+    let allowed = closure(allowed_roots, expressions);
     for rule in &program.failure_rules {
         if let FailureIteration::Generated(sequence) = &rule.iteration {
             forbidden_roots.extend(sequence.roots());
@@ -94,6 +104,37 @@ pub(super) fn validate(
         }
     }
     validate_source(program, expressions, &primitives)
+}
+
+// The XML boundary validator checks complete schema/output policies first;
+// this proof additionally confines root readers to these two flat roots.
+fn observed_static_named_root_is_supported(program: &Program) -> bool {
+    program.xml_boundary.as_ref().is_some_and(|policy| {
+        policy.input.profile() == Some(crate::XmlInputProfile::RootView)
+            && policy.extra_inputs.is_empty()
+            && policy.extra_outputs.len() == 1
+            && program.extra_sources.is_empty()
+            && program.extra_targets.len() == 1
+            && flat_static_group_root(&program.target, &program.root)
+            && program
+                .extra_targets
+                .iter()
+                .zip(&policy.extra_outputs)
+                .all(|(target, output)| {
+                    target.name == output.name
+                        && flat_static_group_root(&target.target, &target.root)
+                })
+    })
+}
+
+fn flat_static_group_root(schema: &ir::SchemaNode, scope: &TargetScope) -> bool {
+    !schema.repeating
+        && matches!(schema.kind, ir::SchemaKind::Group { .. })
+        && !scope.repeating
+        && scope.iteration.is_none()
+        && (scope.target_field.is_empty() || scope.target_field == schema.name)
+        && scope.children.is_empty()
+        && matches!(scope.construction, TargetConstruction::Group)
 }
 
 fn closure(
