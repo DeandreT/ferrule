@@ -34,6 +34,7 @@ mod payload;
 mod pipeline;
 mod pipeline_preview;
 mod project_paths;
+mod rest_json;
 mod stdio;
 mod trace_json;
 
@@ -60,6 +61,12 @@ pub use pipeline_preview::{
     PipelinePreviewOutputIdentity, preview_pipeline_value_payloads, validate_pipeline_preview,
 };
 pub use project_paths::rebase as rebase_project_paths;
+pub use rest_json::{
+    MAX_REST_JSON_BODY_BYTES, MAX_REST_JSON_HEADER_BYTES, MAX_REST_JSON_HEADERS,
+    MAX_REST_JSON_URL_BYTES, RestExecutionPolicy, RestJsonError, RestJsonHeader,
+    RestJsonMappingOptions, RestJsonMethod, RestJsonRequest, RestJsonResponse, fetch_rest_json,
+    run_project_rest_json_request_file_payloads, run_project_value_rest_json_payloads,
+};
 pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;
 
