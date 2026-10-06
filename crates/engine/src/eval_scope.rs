@@ -36,9 +36,10 @@ struct GroupBucket {
 }
 
 struct OwnedGroup {
-    wrapper: Option<Instance>,
+    // Named groups own their member list inside a one-field wrapper;
+    // anonymous groups own the repeated member frame directly.
+    frame: Instance,
     intermediate_frames: Vec<Instance>,
-    members: Instance,
     positions: Vec<PositionFrame>,
 }
 
@@ -558,13 +559,13 @@ pub(crate) fn eval_scope(
             .filter(|group| group.post_filter_match)
             .map(|group| {
                 let members = Instance::Repeated(group.members);
-                let wrapper = scope.source().and_then(|path| path.last()).map(|segment| {
-                    Instance::Group((vec![(segment.clone(), members.clone())]).into())
-                });
+                let frame = match scope.source().and_then(|path| path.last()) {
+                    Some(segment) => Instance::Group((vec![(segment.clone(), members)]).into()),
+                    None => members,
+                };
                 OwnedGroup {
-                    wrapper,
+                    frame,
                     intermediate_frames: group.intermediate_frames,
-                    members,
                     positions: group.positions,
                 }
             })
@@ -572,6 +573,11 @@ pub(crate) fn eval_scope(
         let owned = apply_sequence_windows(owned, &windows, program.trace_sink, trace_scope);
         produced.reserve(owned.len());
         for group in &owned {
+            let (wrapper, members) = match &group.frame {
+                // Only the constructor above creates a group frame, with one field.
+                Instance::Group(fields) => (Some(&group.frame), &fields[0].1),
+                members => (None, members),
+            };
             let parent_wrappers = positions.iter().filter(|position| position.grouped).count();
             let parent_frame_start = context
                 .len()
@@ -580,14 +586,14 @@ pub(crate) fn eval_scope(
             let mut next_context = context[..parent_frame_start].to_vec();
             next_context.extend_from_slice(&context[parent_frame_start..]);
             next_context.extend(group.intermediate_frames.iter());
-            if let Some(wrapper) = &group.wrapper {
+            if let Some(wrapper) = wrapper {
                 next_context.push(wrapper);
             }
-            next_context.push(&group.members);
+            next_context.push(members);
             let mut output_positions = group.positions.clone();
             if let Some(position) = output_positions.last_mut() {
                 position.index = produced.len() + 1;
-                position.grouped = group.wrapper.is_some();
+                position.grouped = wrapper.is_some();
             }
             if let Some(instance) =
                 item_evaluator.produce(&next_context, &group.positions, &output_positions, false)?
