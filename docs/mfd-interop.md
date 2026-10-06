@@ -280,9 +280,17 @@ skips its dependent iteration instead of producing unfiltered rows.
 If the database cannot be
 resolved for the read-only foreign-key check, the exporter leaves its internal
 function and reports the native limitation.
-For supported nonempty `NOT IN` lists, an absent or null column/list operand
-excludes the row, preserving SQL WHERE behavior when equality results are
-negated. Literal NULL list entries and empty lists remain explicitly unsupported.
+Nonempty numeric `IN` and `NOT IN` lists retain literal SQL `NULL` members.
+`IN` keeps a matching non-null member even when another member is null; an
+absent or null column/list operand excludes the row for `NOT IN`, preserving
+SQL WHERE behavior when equality results are negated. Membership trees pair
+adjacent operand ranges, retaining eager left-to-right host reads while keeping
+all 256 supported members within export expression-depth limits. A quoted
+string `'NULL'` remains a string operand and must pass numeric coercion; a
+connected static null parameter remains unsupported. Late coercion failures
+retain a partial repair design with a diagnostic and skip the dependent
+iteration; executable import rejects that design. Empty lists, quoted
+identifier operands, and text membership with unknown collation remain unsupported.
 Two temperature designs recover their original native numeric wiring. The
 annual PDF mapping retains all eight conversions inside its user function and
 strictly reimports its native-shaped PDF extraction template to the same 148
