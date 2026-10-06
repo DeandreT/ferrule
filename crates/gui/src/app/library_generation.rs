@@ -27,7 +27,16 @@ pub(super) struct LibraryGenerationDraft {
     pub(super) language: LibraryLanguage,
     pub(super) destination: String,
     pub(super) runtime_path: String,
+    pub(super) include_csv_output: bool,
+    pending_settings: Option<LibraryGenerationSettings>,
     error: Option<String>,
+}
+
+struct LibraryGenerationSettings {
+    language: LibraryLanguage,
+    destination: String,
+    runtime_path: String,
+    include_csv_output: bool,
 }
 
 impl LibraryGenerationDraft {
@@ -42,10 +51,38 @@ impl LibraryGenerationDraft {
             language: LibraryLanguage::Rust,
             destination,
             runtime_path: String::new(),
+            include_csv_output: false,
+            pending_settings: None,
             error: None,
         }
     }
 
+    fn settings(&self) -> LibraryGenerationSettings {
+        LibraryGenerationSettings {
+            language: self.language,
+            destination: self.destination.clone(),
+            runtime_path: self.runtime_path.clone(),
+            include_csv_output: self.include_csv_output,
+        }
+    }
+
+    fn validate_settings_presence(&self) -> anyhow::Result<()> {
+        self.settings().validate_settings_presence()
+    }
+
+    fn request(&self, project_path: &Path) -> anyhow::Result<LibraryGenerationRequest> {
+        self.settings().request(project_path)
+    }
+
+    fn request_after_save(&self, project_path: &Path) -> anyhow::Result<LibraryGenerationRequest> {
+        match &self.pending_settings {
+            Some(settings) => settings.request(project_path),
+            None => self.request(project_path),
+        }
+    }
+}
+
+impl LibraryGenerationSettings {
     fn validate_settings_presence(&self) -> anyhow::Result<()> {
         if self.destination.trim().is_empty() {
             bail!("Enter a new folder for the generated library.");
@@ -88,6 +125,7 @@ impl LibraryGenerationDraft {
             destination,
             target,
             language: self.language,
+            include_csv_output: self.include_csv_output,
         })
     }
 }
@@ -113,6 +151,21 @@ struct LibraryGenerationRequest {
     destination: PathBuf,
     target: cli::GenerateTarget,
     language: LibraryLanguage,
+    include_csv_output: bool,
+}
+
+impl LibraryGenerationRequest {
+    fn generate(self) -> anyhow::Result<cli::GenerateOutcome> {
+        if self.include_csv_output {
+            cli::generate_project_with_csv_output(
+                &self.project_path,
+                &self.destination,
+                self.target,
+            )
+        } else {
+            cli::generate_project(&self.project_path, &self.destination, self.target)
+        }
+    }
 }
 
 pub(super) struct PendingLibraryGeneration {
@@ -178,6 +231,7 @@ impl FerruleApp {
         }
         if let Some(draft) = &mut self.library_generation_draft {
             draft.error = None;
+            draft.pending_settings = Some(draft.settings());
         }
         self.save_with_continuation(Some(SaveContinuation::GenerateLibrary), context);
     }
@@ -194,7 +248,7 @@ impl FerruleApp {
             self.library_generation_draft
                 .as_ref()
                 .context("Library generation settings are unavailable.")?
-                .request(saved)
+                .request_after_save(saved)
         })();
         let request = match request {
             Ok(request) => request,
@@ -203,17 +257,15 @@ impl FerruleApp {
                 return;
             }
         };
+        if let Some(draft) = &mut self.library_generation_draft {
+            draft.pending_settings = None;
+        }
         let language = request.language;
         let (sender, receiver) = mpsc::channel();
         let spawned = std::thread::Builder::new()
             .name("ferrule-library-generation".into())
             .spawn(move || {
-                let result = cli::generate_project(
-                    &request.project_path,
-                    &request.destination,
-                    request.target,
-                )
-                .map_err(|error| format!("{error:#}"));
+                let result = request.generate().map_err(|error| format!("{error:#}"));
                 let _ = sender.send(result);
             });
         if let Err(error) = spawned {
@@ -227,6 +279,7 @@ impl FerruleApp {
     fn library_generation_failed(&mut self, message: String) {
         if let Some(draft) = &mut self.library_generation_draft {
             draft.error = Some(message.clone());
+            draft.pending_settings = None;
         }
         self.status = "library generation failed".into();
         self.diagnostics.error("Library generation failed", message);
@@ -235,12 +288,16 @@ impl FerruleApp {
     pub(super) fn library_generation_save_failed(&mut self, error: &anyhow::Error) {
         if let Some(draft) = &mut self.library_generation_draft {
             draft.error = Some(format!("The mapping could not be saved: {error:#}"));
+            draft.pending_settings = None;
         }
     }
 
     pub(super) fn library_generation_save_cancelled(&mut self) {
         if self.pending_save_continuation == Some(SaveContinuation::GenerateLibrary) {
             self.status = "library generation cancelled before saving".into();
+            if let Some(draft) = &mut self.library_generation_draft {
+                draft.pending_settings = None;
+            }
         }
     }
 
@@ -341,6 +398,11 @@ impl FerruleApp {
                     ui.selectable_value(&mut draft.language, LibraryLanguage::Rust, "Rust");
                     ui.selectable_value(&mut draft.language, LibraryLanguage::CSharp, "C#");
                 });
+                ui.checkbox(&mut draft.include_csv_output, "Include CSV output")
+                    .on_hover_text("Add CSV output for a flat row table using the mapping's output settings.");
+                if draft.include_csv_output {
+                    ui.weak("CSV uses the mapping's output settings and needs a flat row table.");
+                }
                 ui.label("New library folder");
                 ui.horizontal(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut draft.destination).desired_width(340.0));

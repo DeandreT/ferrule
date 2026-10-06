@@ -17,6 +17,10 @@ parent...** selects its parent folder while retaining the new folder name.
 Rust also requires ferrule’s `codegen-runtime` folder containing `Cargo.toml`;
 C# includes its package-free runtime sources.
 
+Select **Include CSV output** to add CSV methods for a flat row table using the
+mapping’s output settings. The choice is saved with the generation request; it
+does not change the mapping itself.
+
 Select **Save and generate** to save the mapping before generation. An untitled
 mapping opens Save As. Relative library and Rust runtime paths resolve from the
 folder where the mapping is actually saved. Canceling Save As or a failed save
@@ -90,6 +94,30 @@ Per-driver sources use `execute_with_dynamic_source_loader`,
 `execute_with_sources_and_dynamic_source_loader`, or their output/context
 variants. The host implements `DynamicSourceLoader` and returns one
 schema-shaped `Instance` for each source-name/logical-path request.
+
+## Flat CSV Output
+
+Add `--csv-output` to either generation command to include CSV output methods.
+The target must be a closed, non-repeating row schema with unique scalar columns
+and a mapping that produces repeated rows. Stored CSV delimiter, quote,
+quote-disabled, header and UTF-8 BOM settings are baked into the library. A stored
+target path must select `.csv`, `.txt`, or the explicit CSV fallback identity;
+without a stored path, the flag explicitly selects the CSV adapter.
+
+Rust adds `execute_csv`, `execute_csv_bytes`, `execute_csv_with_context` and
+`execute_csv_bytes_with_context`. C# adds `ExecuteCsv` and `ExecuteCsvBytes`,
+with source-only and execution-context overloads. Each call executes the mapping
+once, validates every output row, and returns one complete CSV text or byte
+buffer. Existing typed, JSON and XML generation is unchanged when the flag is
+absent.
+
+Each CSV document is limited to 64 MiB of UTF-8 output, including BOM, headers,
+delimiters, doubled quotes and LF record endings. This output limit does not
+bound the input tree, mapped rows, formatted records or total memory use.
+Mapping failures and native CSV row/type/dialect failures retain typed causes;
+no partial buffer is returned. Named inputs, named outputs, dynamic document
+iteration, scalar unions and conflicting physical adapters are currently
+refused before any generated files are published.
 
 ## Dynamic Source Host Boundary
 
