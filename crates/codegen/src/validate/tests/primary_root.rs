@@ -539,3 +539,202 @@ fn observed_one_static_named_root_program_still_rejects_private_and_failure_cons
         Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 2 })
     );
 }
+
+fn observed_plural_static_named_root_program(count: usize) -> Program {
+    let mut program = observed_one_static_named_root_program();
+    program.root.target_field = program.target.name.clone();
+    let template = program.extra_targets[0].clone();
+    program.expressions.push(ExpressionNode {
+        id: 2,
+        expression: Expression::SourceRootField {
+            path: vec!["Extra".into()],
+            required: true,
+        },
+    });
+    program.extra_targets = ["z-audit", "a-summary", "m-receipt"]
+        .into_iter()
+        .zip(["Audit", "Summary", "Receipt"])
+        .take(count)
+        .enumerate()
+        .map(|(index, (name, schema_name))| {
+            let mut target = template.clone();
+            target.name = name.into();
+            target.target.name = schema_name.into();
+            target.root.target_field = schema_name.into();
+            if index != 0 {
+                target.target = SchemaNode::group(
+                    schema_name,
+                    vec![SchemaNode::scalar("Value", ScalarType::String)],
+                );
+                target.root.bindings[0].expression = 2;
+                target.root.bindings[0].target_domain = ScalarType::String.into();
+            }
+            target
+        })
+        .collect();
+    program.xml_boundary.as_mut().unwrap().extra_outputs = program
+        .extra_targets
+        .iter()
+        .map(|target| crate::NamedXmlOutputPolicy {
+            name: target.name.clone(),
+            output: crate::XmlOutputPolicy::default(),
+        })
+        .collect();
+    program
+}
+
+#[test]
+fn observed_plural_neutral_roots_admit_late_readers_and_aligned_reversed_policies() {
+    for count in [2, 3] {
+        for reverse in [false, true] {
+            let mut program = observed_plural_static_named_root_program(count);
+            if reverse {
+                program.extra_targets.reverse();
+                program
+                    .xml_boundary
+                    .as_mut()
+                    .unwrap()
+                    .extra_outputs
+                    .reverse();
+            }
+            assert_eq!(validate_program(&program), Ok(()));
+            assert_eq!(
+                program.xml_output_mode(),
+                Ok(Some(crate::XmlOutputMode::SingleDocument))
+            );
+            program.root.target_field.clear();
+            for target in &mut program.extra_targets {
+                target.root.target_field.clear();
+            }
+            assert_eq!(validate_program(&program), Ok(()));
+        }
+    }
+}
+
+#[test]
+fn observed_plural_neutral_roots_preserve_mismatch_policy_and_forbidden_consumer_refusals() {
+    let valid = observed_plural_static_named_root_program(3);
+    for primary in [false, true] {
+        let mut invalid = valid.clone();
+        if primary {
+            invalid.root.target_field = "Audit".into();
+        } else {
+            invalid.extra_targets[2].root.target_field = "Audit".into();
+        }
+        assert!(validate_program(&invalid).is_err());
+    }
+    let mut wrong_order = valid.clone();
+    wrong_order
+        .xml_boundary
+        .as_mut()
+        .unwrap()
+        .extra_outputs
+        .reverse();
+    assert!(matches!(
+        validate_program(&wrong_order),
+        Err(ProgramValidationError::InvalidXmlBoundary { .. })
+    ));
+    let mut failure = valid.clone();
+    failure.failure_rules.push(crate::FailureRule {
+        iteration: crate::FailureIteration::Source(SourceIteration::new(vec![])),
+        selection: crate::FailureSelection::WhenTrue(1),
+        message: None,
+    });
+    assert_eq!(
+        validate_program(&failure),
+        Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 1 })
+    );
+    let mut reducer = valid;
+    reducer.expressions.push(ExpressionNode {
+        id: 3,
+        expression: Expression::Aggregate {
+            function: AggregateFunction::Count,
+            collection: vec![],
+            value: AggregateValue::Expression(2),
+            arg: None,
+        },
+    });
+    reducer.extra_targets[2].root.bindings[0].expression = 3;
+    assert_eq!(
+        validate_program(&reducer),
+        Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 3 })
+    );
+}
+
+#[test]
+fn observed_plural_declared_output_count_retains_the_existing_limit() {
+    let mut program = observed_one_static_named_root_program();
+    let template = program.extra_targets[0].clone();
+    program.extra_targets = (0..4095)
+        .map(|index| {
+            let mut target = template.clone();
+            target.name = format!("output-{index}");
+            target
+        })
+        .collect();
+    program.xml_boundary.as_mut().unwrap().extra_outputs = program
+        .extra_targets
+        .iter()
+        .map(|target| crate::NamedXmlOutputPolicy {
+            name: target.name.clone(),
+            output: crate::XmlOutputPolicy::default(),
+        })
+        .collect();
+    assert_eq!(validate_program(&program), Ok(()));
+    let mut extra = template;
+    extra.name = "output-4095".into();
+    program.extra_targets.push(extra);
+    program
+        .xml_boundary
+        .as_mut()
+        .unwrap()
+        .extra_outputs
+        .push(crate::NamedXmlOutputPolicy {
+            name: "output-4095".into(),
+            output: crate::XmlOutputPolicy::default(),
+        });
+    assert!(
+        matches!(validate_program(&program), Err(ProgramValidationError::InvalidXmlBoundary { reason })
+        if reason == "XML document output sets permit at most 4096 artifacts including primary")
+    );
+}
+
+#[test]
+fn observed_plural_neutral_flatness_refuses_controls_without_root_readers() {
+    let mut program = observed_plural_static_named_root_program(2);
+    for node in &mut program.expressions {
+        node.expression = Expression::Const {
+            value: if node.id == 1 {
+                Value::Bool(false)
+            } else {
+                Value::String("constant".into())
+            },
+        };
+    }
+    assert_eq!(validate_program(&program), Ok(()));
+    for primary in [false, true] {
+        for mutation in 0..5 {
+            let mut invalid = program.clone();
+            let scope = if primary {
+                &mut invalid.root
+            } else {
+                &mut invalid.extra_targets[1].root
+            };
+            match mutation {
+                0 => scope.target_field = "descendant".into(),
+                1 => scope.iteration = Some(IterationPlan::source(vec![])),
+                2 => scope.iteration = Some(IterationPlan::dynamic_documents(vec![], 1)),
+                3 => scope.repeating = true,
+                4 => scope.construction = TargetConstruction::CopyCurrentSource,
+                _ => unreachable!(),
+            }
+            assert!(
+                matches!(
+                    validate_program(&invalid),
+                    Err(ProgramValidationError::InvalidXmlBoundary { .. })
+                ),
+                "primary {primary}, mutation {mutation}"
+            );
+        }
+    }
+}
