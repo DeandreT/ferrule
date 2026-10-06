@@ -9,6 +9,7 @@
 mod adjacency_tree;
 mod aggregate;
 mod context;
+mod csv;
 mod dynamic_document;
 mod dynamic_source;
 mod dynamic_target;
@@ -33,6 +34,7 @@ pub use context::{
     GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput,
     ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
+pub use csv::{CsvBoundaryError, MAX_CSV_DOCUMENT_BYTES, serialize_csv, serialize_csv_bytes};
 pub use dynamic_document::dynamic_document;
 pub use dynamic_source::{
     DynamicJsonSourceLoader, DynamicSourceItems, DynamicSourceLoader, MAX_DYNAMIC_SOURCE_BYTES,
@@ -40,12 +42,14 @@ pub use dynamic_source::{
 };
 pub use dynamic_target::{dynamic_property_name, insert_dynamic_field, merge_dynamic_fragments};
 pub use failure::mapping_failure;
+pub use format_csv::{CsvFormatError, CsvWriteOptions};
 pub use functions::FunctionError;
 pub use generated_sequence::{
     MAX_GENERATED_SEQUENCE_ITEMS, MAX_RECURSIVE_SEQUENCE_DEPTH, RecursiveCollectPaths,
     generate_sequence, recursive_collect, recursive_sequence_parameter, tokenize,
     tokenize_by_length, tokenize_regex,
 };
+pub use ir::SchemaNode;
 pub use ir::{
     DocumentMember, Instance, InstanceGroup, PrimaryRootError, ScalarType, Value, XmlTypeOrigin,
     XmlTypeOriginError,

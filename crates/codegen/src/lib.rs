@@ -5,6 +5,7 @@
 //! [`ArtifactSet`] without owning filesystem policy.
 
 mod artifact;
+mod csv_output;
 mod diagnostic;
 mod embedded_schema;
 mod join;
@@ -16,6 +17,7 @@ pub use artifact::{
     ArtifactPath, ArtifactPathError, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError,
     GeneratedFile,
 };
+pub use csv_output::{CsvOutputError, CsvOutputPolicy, validate_csv_output};
 pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
 pub use embedded_schema::{
     EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,

@@ -10,4 +10,5 @@ description = "Delimited/fixed-width flat file schema and instance read/write"
 ir = { workspace = true }
 mapping = { workspace = true }
 csv = { workspace = true }
+csv-core = "=0.1.13"
 thiserror = { workspace = true }

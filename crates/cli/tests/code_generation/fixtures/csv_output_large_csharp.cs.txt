@@ -1,0 +1,168 @@
+using System.Globalization;
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+Directory.CreateDirectory("evidence");
+Assert(args.Single() == "large", "large fixture mode changed");
+const int maximum = 64 * 1024 * 1024;
+Assert(FerruleCsv.MaximumOutputBytes == maximum, "generated CSV maximum changed");
+var extra = int.Parse(File.ReadAllText("large-extra.txt"), CultureInfo.InvariantCulture);
+var context = Context();
+var expected = File.ReadAllBytes("expected-maximum.csv");
+Assert(expected.Length == maximum && expected.AsSpan(0, 3).SequenceEqual(new byte[] { 0xef, 0xbb, 0xbf }),
+    "native boundary oracle must include actual BOM/header/quotes/LF bytes");
+var source = new FerruleRepeated(new FerruleInstance[] { Row("\"" + new string('x', extra), 1.25, 1) });
+Assert(CsvBytes("maximum-bytes", () => GeneratedMapping.ExecuteCsvBytes(source)).SequenceEqual(expected), "maximum byte API differs");
+Assert(CsvText("maximum-text", () => GeneratedMapping.ExecuteCsv(source)).SequenceEqual(expected), "maximum text API differs");
+Assert(CsvBytes("maximum-bytes-context", () => GeneratedMapping.ExecuteCsvBytes(source, context)).SequenceEqual(expected), "maximum context byte API differs");
+Assert(CsvText("maximum-text-context", () => GeneratedMapping.ExecuteCsv(source, context)).SequenceEqual(expected), "maximum context text API differs");
+
+var over = new FerruleRepeated(new FerruleInstance[] { Row("\"" + new string('x', extra + 1), 1.25, 2) });
+var index = 0;
+foreach (var action in FourActions(over, context, "maximum-plus-one"))
+{
+    var error = CsvFailure("maximum-plus-one-" + index++, action, FerruleCsvError.OutputTooLarge);
+    Assert(error.Maximum == maximum && error.Row is null && error.Field is null,
+        "+1 failure must report the fixed maximum without invented complete length or partial output");
+}
+var invalid = new FerruleRepeated(new FerruleInstance[]
+{
+    Row("\"" + new string('x', extra + 1), 1.25, 2),
+    Row("late-invalid", double.PositiveInfinity, 1),
+});
+index = 0;
+foreach (var action in FourActions(invalid, context, "late-invalid"))
+{
+    var error = CsvFailure("late-invalid-" + index++, action, FerruleCsvError.ValueType);
+    Assert(error.Row == 1 && error.Field == "Number" && error.Expected == FerruleScalarType.Double &&
+        error.Got == "non-finite float", "all-row validation must precede the byte budget");
+}
+var required = Context(("Require", FerruleValue.FromBoolean(true)));
+var ordinary = RuntimeFailure("ordinary-mapping", () => { _ = GeneratedMapping.Execute(invalid, required); });
+index = 0;
+foreach (var action in ContextActions(invalid, required, "mapping-before-row-budget"))
+{
+    var error = RuntimeFailure("mapping-before-row-budget-" + index++, action);
+    Assert(error.Node == ordinary.Node && error.RuntimeParameter == ordinary.RuntimeParameter &&
+        error.Error == ordinary.Error, "CSV wrapper must preserve the original mapping failure");
+}
+Console.WriteLine("generated CSV checks passed");
+
+static FerruleGroup Row(string text, double number, long rank) => new(new FerruleField[]
+{
+    new("Text", new FerruleScalar(FerruleValue.FromString(text))),
+    new("Integer", new FerruleScalar(FerruleValue.FromInt64(-7))),
+    new("Number", new FerruleScalar(FerruleValue.FromDouble(number))),
+    new("Boolean", new FerruleScalar(FerruleValue.FromBoolean(true))),
+    new("Keep", new FerruleScalar(FerruleValue.FromBoolean(true))),
+    new("Rank", new FerruleScalar(FerruleValue.FromInt64(rank))),
+});
+
+static FerruleExecutionContext Context(params (string Name, FerruleValue Value)[] values) =>
+    FerruleExecutionContext.WithParameters("csv-project.json", new FerruleRuntimeParameters(
+        values.Select(value => KeyValuePair.Create(value.Name, value.Value))));
+
+static FerruleCsvException CsvFailure(string tag, Action action, FerruleCsvError expected)
+{
+    try { action(); }
+    catch (Exception error)
+    {
+        if (error is FerruleCsvException csv && csv.Error == expected) { return csv; }
+        throw;
+    }
+    throw new InvalidOperationException($"Expected typed CSV failure {expected}.");
+}
+
+static FerruleRuntimeException RuntimeFailure(string tag, Action action)
+{
+    try { action(); }
+    catch (Exception error)
+    {
+        if (tag == "ordinary-mapping") { CapturedError(tag, error); }
+        if (error is FerruleRuntimeException mapping && mapping.Error == FerruleRuntimeError.MissingRuntimeParameter &&
+            mapping.Node == 15U && mapping.RuntimeParameter == "Required") { return mapping; }
+        throw;
+    }
+    throw new InvalidOperationException("Expected original typed mapping failure before CSV row validation/budget.");
+}
+
+static byte[] CsvBytes(string tag, Func<byte[]> call)
+{
+    try { return CapturedBytes(tag, call()); }
+    catch (Exception error) { CapturedError(tag, error); throw; }
+}
+
+static byte[] CsvText(string tag, Func<string> call)
+{
+    try { return CapturedText(tag, call()); }
+    catch (Exception error) { CapturedError(tag, error); throw; }
+}
+
+static byte[] CapturedBytes(string tag, byte[] bytes)
+{
+    var path = Path.Combine("evidence", tag + ".csv");
+    File.WriteAllBytes(path, bytes);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+    {
+        caseApi = tag, kind = "returned-csv", path, length = bytes.Length,
+        sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)),
+    }));
+    Console.Out.Flush();
+    return bytes;
+}
+
+static byte[] CapturedText(string tag, string text) =>
+    CapturedBytes(tag, new UTF8Encoding(false, true).GetBytes(text));
+
+static void CapturedError(string tag, Exception error)
+{
+    var causes = new List<string>();
+    for (var cause = error.InnerException; cause is not null; cause = cause.InnerException)
+    {
+        causes.Add(cause.ToString());
+    }
+    object payload;
+    if (error is FerruleCsvException csv)
+    {
+        payload = new { caseApi = tag, kind = "csv-error", type = error.GetType().FullName,
+            display = error.ToString(), causes, category = csv.Error.ToString(), csv.Row, csv.Field,
+            expected = csv.Expected?.ToString(), csv.Got, csv.Character, csv.Maximum };
+    }
+    else if (error is FerruleRuntimeException mapping)
+    {
+        payload = new { caseApi = tag, kind = "mapping-error", type = error.GetType().FullName,
+            display = error.ToString(), causes, category = mapping.Error.ToString(), mapping.Node,
+            mapping.RuntimeParameter, expected = mapping.ExpectedScalarType?.ToString(),
+            found = mapping.FoundKind?.ToString(), mapping.Function, mapping.ExpectedArity,
+            mapping.ActualArity, mapping.Detail, mapping.SourceField, mapping.FoundInstance };
+    }
+    else
+    {
+        payload = new { caseApi = tag, kind = "unexpected-error", type = error.GetType().FullName,
+            display = error.ToString(), causes };
+    }
+    var original = System.Text.Json.JsonSerializer.Serialize(payload);
+    File.WriteAllText(Path.Combine("evidence", tag + ".error.json"), original);
+    Console.WriteLine(original);
+    Console.Out.Flush();
+}
+
+static Action[] ContextActions(FerruleInstance source, FerruleExecutionContext context, string tag) => new Action[]
+{
+    () => { _ = CsvText(tag + "-text-context", () => GeneratedMapping.ExecuteCsv(source, context)); },
+    () => { _ = CsvBytes(tag + "-bytes-context", () => GeneratedMapping.ExecuteCsvBytes(source, context)); },
+};
+
+static Action[] FourActions(FerruleInstance source, FerruleExecutionContext context, string tag) => new Action[]
+{
+    () => { _ = CsvText(tag + "-text", () => GeneratedMapping.ExecuteCsv(source)); },
+    () => { _ = CsvBytes(tag + "-bytes", () => GeneratedMapping.ExecuteCsvBytes(source)); },
+    () => { _ = CsvText(tag + "-text-context", () => GeneratedMapping.ExecuteCsv(source, context)); },
+    () => { _ = CsvBytes(tag + "-bytes-context", () => GeneratedMapping.ExecuteCsvBytes(source, context)); },
+};
+
+static void Assert(bool condition, string message)
+{
+    if (!condition) { throw new InvalidOperationException(message); }
+}
