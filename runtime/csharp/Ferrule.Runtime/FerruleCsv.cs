@@ -87,6 +87,25 @@ public static class FerruleCsv
         IReadOnlyList<FerruleCsvField> fields,
         FerruleCsvWriteOptions? options = null)
     {
+        using var sink = EncodeValidatedDocument(primary, fields, options);
+        return sink.ToArray();
+    }
+
+    /// <summary>Return the same bounded UTF-8 document as Unicode text.</summary>
+    public static string Serialize(
+        FerruleInstance primary,
+        IReadOnlyList<FerruleCsvField> fields,
+        FerruleCsvWriteOptions? options = null)
+    {
+        using var sink = EncodeValidatedDocument(primary, fields, options);
+        return sink.ToText();
+    }
+
+    private static BoundedUtf8Sink EncodeValidatedDocument(
+        FerruleInstance primary,
+        IReadOnlyList<FerruleCsvField> fields,
+        FerruleCsvWriteOptions? options)
+    {
         ArgumentNullException.ThrowIfNull(primary);
         ArgumentNullException.ThrowIfNull(fields);
         if (primary is not FerruleRepeated rows)
@@ -141,29 +160,30 @@ public static class FerruleCsv
                 }
             }
         }
-        using var sink = new BoundedUtf8Sink();
-        if (options.Utf8Bom)
+        var sink = new BoundedUtf8Sink();
+        try
         {
-            sink.Write([0xef, 0xbb, 0xbf]);
+            if (options.Utf8Bom)
+            {
+                sink.Write([0xef, 0xbb, 0xbf]);
+            }
+            if (options.HasHeaders)
+            {
+                WriteRecord(sink, orderedFields.Select(field => field.Name).ToArray(),
+                    delimiter, quote, options.QuoteDisabled);
+            }
+            foreach (var record in records)
+            {
+                WriteRecord(sink, record, delimiter, quote, options.QuoteDisabled);
+            }
+            return sink;
         }
-        if (options.HasHeaders)
+        catch
         {
-            WriteRecord(sink, orderedFields.Select(field => field.Name).ToArray(),
-                delimiter, quote, options.QuoteDisabled);
+            sink.Dispose();
+            throw;
         }
-        foreach (var record in records)
-        {
-            WriteRecord(sink, record, delimiter, quote, options.QuoteDisabled);
-        }
-        return sink.ToArray();
     }
-
-    /// <summary>Return the same bounded UTF-8 document as Unicode text.</summary>
-    public static string Serialize(
-        FerruleInstance primary,
-        IReadOnlyList<FerruleCsvField> fields,
-        FerruleCsvWriteOptions? options = null) =>
-        Encoding.UTF8.GetString(SerializeBytes(primary, fields, options));
 
     private static FerruleCsvField[] ValidateFields(IReadOnlyList<FerruleCsvField> fields)
     {
@@ -504,6 +524,9 @@ public static class FerruleCsv
         }
 
         internal byte[] ToArray() => _bytes.ToArray();
+
+        internal string ToText() => Encoding.UTF8.GetString(
+            _bytes.GetBuffer().AsSpan(0, checked((int)_bytes.Length)));
 
         public void Dispose() => _bytes.Dispose();
     }
