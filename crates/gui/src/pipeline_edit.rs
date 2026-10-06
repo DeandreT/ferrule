@@ -60,6 +60,27 @@ impl PipelineEditorDocument {
         })
     }
 
+    /// Start an imported pipeline at a new document location without writing it.
+    pub fn from_imported_mfd(
+        path: &Path,
+        imported: mfd::ImportedPipeline,
+    ) -> anyhow::Result<(Self, Vec<String>)> {
+        let mut document = Self::create(path)?;
+        let identity = mapping_identity(&imported.mapping_path, path)?;
+        let mut pipeline = imported.pipeline;
+        pipeline.main_mapping_path = Some(identity.clone());
+        for stage in &mut pipeline.stages {
+            cli::rebase_project_paths(&mut stage.project, &imported.mapping_path, path)?;
+            stage.mapping_path = Some(identity.clone());
+        }
+        document.pipeline = pipeline;
+        let issues = document.issues();
+        if !issues.is_empty() {
+            bail!("imported pipeline failed validation: {}", issues.join("; "));
+        }
+        Ok((document, imported.warnings))
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.saved_semantic.as_ref().is_none_or(|saved| {
             &crate::project_state::pipeline_snapshot_key(&self.pipeline) != saved

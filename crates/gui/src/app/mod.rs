@@ -58,6 +58,7 @@ pub(crate) mod host_parameters;
 mod library_generation;
 #[path = "mfd_export.rs"]
 mod mfd_export_ui;
+mod mfd_pipeline;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
 #[path = "pipeline_editor.rs"]
@@ -462,6 +463,8 @@ pub struct FerruleApp {
     close_after_pipeline_run: bool,
     pipeline_editor: Option<pipeline_editor_ui::PipelineEditorUi>,
     pending_pipeline_editor_action: Option<pipeline_editor_ui::PipelineEditorAction>,
+    pending_mfd_pipeline_import: Option<mfd_pipeline::PendingMfdPipelineImport>,
+    pending_pipeline_mfd_export: Option<mfd_pipeline::PipelineMfdExport>,
     show_run_report: bool,
     show_appearance_editor: bool,
     appearance_tab: AppearanceTab,
@@ -493,6 +496,8 @@ pub struct FerruleApp {
     pending_dialog: Option<(DialogKind, std::sync::mpsc::Receiver<Option<String>>)>,
     #[cfg(test)]
     save_as_dialog_override: Option<std::sync::mpsc::Receiver<Option<String>>>,
+    #[cfg(test)]
+    pipeline_mfd_dialog_override: Option<std::sync::mpsc::Receiver<Option<String>>>,
     pending_destructive_action: Option<DestructiveAction>,
     pending_save_continuation: Option<SaveContinuation>,
     allow_close: bool,
@@ -513,6 +518,9 @@ enum DialogKind {
     OpenPipelineEditor,
     CreatePipeline,
     AddPipelineStageProject,
+    ImportMfdPipeline,
+    ChooseImportedPipelineDestination,
+    ExportPipelineMfd,
     SaveProjectAs,
     BrowseInput,
     BrowseOutput,
@@ -620,6 +628,8 @@ impl Default for FerruleApp {
             close_after_pipeline_run: false,
             pipeline_editor: None,
             pending_pipeline_editor_action: None,
+            pending_mfd_pipeline_import: None,
+            pending_pipeline_mfd_export: None,
             show_run_report: false,
             show_appearance_editor: false,
             appearance_tab: AppearanceTab::default(),
@@ -650,6 +660,8 @@ impl Default for FerruleApp {
             pending_dialog: None,
             #[cfg(test)]
             save_as_dialog_override: None,
+            #[cfg(test)]
+            pipeline_mfd_dialog_override: None,
             pending_destructive_action: None,
             pending_save_continuation: None,
             allow_close: false,
@@ -971,6 +983,10 @@ impl FerruleApp {
         self.status = format!("redid {label}");
     }
 
+    fn ui_project_editing_enabled(&self) -> bool {
+        self.project_editing_enabled() && !self.pipeline_mfd_busy()
+    }
+
     fn handle_history_shortcuts(&mut self, context: &egui::Context, editing_enabled: bool) {
         if !editing_enabled {
             return;
@@ -1248,6 +1264,25 @@ impl FerruleApp {
         mfd::import_with_options(mapping_path, &options)
     }
 
+    /// Cancel the selected file action before dropping its result receiver.
+    pub(super) fn cancel_pending_file_dialog(&mut self) {
+        let Some(kind) = self.pending_dialog.as_ref().map(|(kind, _)| *kind) else {
+            return;
+        };
+        self.cancel_pipeline_mfd_dialog(kind);
+        self.library_generation_save_cancelled();
+        self.pending_dialog = None;
+        self.pending_save_continuation = None;
+        self.status = "file dialog cancelled".to_string();
+    }
+
+    fn poll_dialog_with_close_guard(&mut self, ctx: &egui::Context, close_requested: bool) {
+        if close_requested {
+            self.cancel_pipeline_mfd_for_app_close();
+        }
+        self.poll_dialog(ctx);
+    }
+
     /// Applies the result of a finished file dialog, if any.
     fn poll_dialog(&mut self, ctx: &egui::Context) {
         let Some((kind, rx)) = &self.pending_dialog else {
@@ -1265,6 +1300,7 @@ impl FerruleApp {
                 self.library_generation_save_cancelled();
                 self.pending_save_continuation = None;
             }
+            self.cancel_pipeline_mfd_dialog(kind);
             return; // cancelled or no dialog backend
         };
         match kind {
@@ -1283,6 +1319,23 @@ impl FerruleApp {
                 self.request_pipeline_editor_action(
                     pipeline_editor_ui::PipelineEditorAction::Create(PathBuf::from(path)),
                 );
+            }
+            DialogKind::ImportMfdPipeline => {
+                if let Err(error) = self.stage_mfd_pipeline_source(PathBuf::from(&path)) {
+                    self.status = format!("failed to import pipeline {path}");
+                    self.diagnostics
+                        .error("MFD pipeline import failed", error.to_string());
+                }
+            }
+            DialogKind::ChooseImportedPipelineDestination => {
+                if let Err(error) = self.finish_mfd_pipeline_import(std::path::Path::new(&path)) {
+                    self.status = "failed to create imported pipeline".into();
+                    self.diagnostics
+                        .error("MFD pipeline import failed", format!("{error:#}"));
+                }
+            }
+            DialogKind::ExportPipelineMfd => {
+                self.finish_pipeline_mfd_export(std::path::Path::new(&path));
             }
             DialogKind::AddPipelineStageProject => {
                 self.add_pipeline_stage_from_path(std::path::Path::new(&path));
@@ -1437,17 +1490,17 @@ impl eframe::App for FerruleApp {
             self.last_layout_class = Some(layout_class);
             self.reset_canvas_view();
         }
-        self.poll_dialog(ui.ctx());
+        let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
+        self.poll_dialog_with_close_guard(ui.ctx(), close_requested);
         self.poll_library_generation(ui.ctx());
         self.poll_pipeline_run(ui.ctx());
         self.poll_preview(ui.ctx());
         self.poll_file_run(ui.ctx());
         self.poll_rest_run(ui.ctx());
-        let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
         if !self.guard_library_generation_close_requested(ui.ctx(), close_requested) {
             self.guard_app_close_requested(ui.ctx(), close_requested);
         }
-        let project_editing_enabled = self.project_editing_enabled();
+        let project_editing_enabled = self.ui_project_editing_enabled();
         let [undo_shortcut, redo_shortcut, _] = history_shortcuts();
         let coalesce_history_change = ui.ctx().input(|input| {
             input.pointer.primary_down()

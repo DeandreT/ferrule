@@ -244,6 +244,39 @@ from its bound stages resolve to one file relative to the pipeline location.
 Conflicting path hints leave that input blank. Output selection remains
 explicit in the dialog.
 
+Use **File → Import MFD as Pipeline** for a supported connected design. This
+explicit action leaves ordinary **Import MFD** behavior unchanged for single
+mappings. It reads and validates the connected stages before asking for a new
+pipeline file location. The new document is unsaved until **Save pipeline**;
+choosing a location does not create a file. The first stage is selected, and
+the open mapping project, canvas layout, and undo history remain available.
+Stored instance paths and the original mapping identity are rebased to the
+chosen pipeline location. Cancelling either chooser or a failed import keeps
+the previous pipeline document. Replacing a pipeline with unsaved edits uses
+the existing **Keep editing** / **Discard changes** guard before opening a
+chooser. Single-stage designs and unsupported branching retain the native
+pipeline import diagnostic; they do not fall back to an ordinary import.
+The toolbar's **Cancel** action clears the current import or export request
+and releases the pipeline controls. An application close request also cancels
+these MFD choosers before the usual unsaved pipeline and mapping guards run;
+late dialog results cannot open a new document or publish an export.
+While the unsaved-pipeline import prompt is pending, mapping edit controls and
+shortcuts stay disabled until **Keep editing** or cancellation releases the
+request. Close an existing **Run Pipeline** setup before starting an MFD
+pipeline import or export.
+
+The pipeline editor's **Export MFD (Ferrule)** and **Export native MFD** actions
+export a snapshot of the current applied, validated pipeline edits. Saving the
+pipeline JSON first is optional. Apply staged stage-ID or host-name text edits
+before exporting. Paths are rebased from the pipeline location to the selected
+design location, and the existing serial-chain preflight and selected export
+profile apply before publication. Export does not save the pipeline document
+or replace the main mapping canvas. The snapshot stays fixed while the output
+chooser is open; cancelling it writes no artifacts. Diagnostics identify the
+pipeline's stage IDs and preserve native warning text and available file or
+component provenance. Native import currently rejects a chain with stage
+warnings; export warnings do not carry a separate per-stage owner.
+
 The Run Pipeline dialog can run, preview, or debug a saved pipeline on a worker.
 **Preview pipeline** returns all intermediate and final outputs in the run
 report without saving files. Its format paths are separate from the selected
