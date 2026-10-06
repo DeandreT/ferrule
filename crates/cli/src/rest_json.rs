@@ -11,7 +11,7 @@ mod validation;
 
 pub use mapping::{
     RestJsonMappingOptions, run_project_rest_json_request_file_payloads,
-    run_project_value_rest_json_payloads,
+    run_project_value_rest_json_payloads, run_project_value_rest_json_request_file_payloads,
 };
 
 pub const MAX_REST_JSON_BODY_BYTES: usize = 8 * 1024 * 1024;

@@ -136,6 +136,9 @@ fn pick_folder(current: &Path) -> Receiver<Option<String>> {
 
 impl FerruleApp {
     pub(super) fn begin_library_generation(&mut self) {
+        if self.rest_run_busy() {
+            return;
+        }
         if self.library_generation_draft.is_some() || self.pending_library_generation.is_some() {
             return;
         }
@@ -144,6 +147,9 @@ impl FerruleApp {
     }
 
     fn request_library_generation(&mut self, context: &egui::Context) {
+        if self.rest_run_busy() {
+            return;
+        }
         if self.pending_dialog.is_some() || self.pending_library_generation.is_some() {
             return;
         }

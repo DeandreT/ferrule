@@ -1116,6 +1116,9 @@ impl FerruleApp {
     }
 
     fn start_pipeline_execution_mode(&mut self, preview: bool, debug: bool) {
+        if self.rest_run_busy() {
+            return;
+        }
         if self.pending_pipeline_run.is_some()
             || self.pending_file_run.is_some()
             || self.pending_preview.is_some()

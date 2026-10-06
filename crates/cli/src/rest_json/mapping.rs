@@ -141,7 +141,31 @@ pub fn run_project_rest_json_request_file_payloads(
         return Err(RestJsonError::Disabled);
     }
     let project = crate::load_project(project_path).map_err(RestJsonError::Mapping)?;
-    preflight(&project, options)?;
+    run_project_value_rest_json_request_file_payloads(
+        &project,
+        project_path,
+        request_path,
+        header_values_path,
+        policy,
+        options,
+    )
+}
+
+/// Host-owned request files applied to one already-loaded mapping snapshot.
+/// The files use the same bounded parser as the saved-project companion.
+/// Neither request/header values nor remote response data are saved in the project.
+pub fn run_project_value_rest_json_request_file_payloads(
+    project: &::mapping::Project,
+    project_path: &Path,
+    request_path: &Path,
+    header_values_path: Option<&Path>,
+    policy: RestExecutionPolicy,
+    options: &RestJsonMappingOptions<'_>,
+) -> Result<PayloadRunOutcome, RestJsonError> {
+    if policy == RestExecutionPolicy::Deny {
+        return Err(RestJsonError::Disabled);
+    }
+    preflight(project, options)?;
     let bytes = super::read_host_file(request_path, super::MAX_REST_JSON_HEADER_BYTES)?;
     let value: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|_| RestJsonError::RequestPolicy("invalid request description"))?;
@@ -242,5 +266,5 @@ pub fn run_project_rest_json_request_file_payloads(
     }
     .with_timeout(timeout)
     .with_headers(&headers);
-    run_project_value_rest_json_payloads(&project, project_path, &request, policy, options)
+    run_project_value_rest_json_payloads(project, project_path, &request, policy, options)
 }
