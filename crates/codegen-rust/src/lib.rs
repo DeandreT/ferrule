@@ -1388,6 +1388,11 @@ fn render_expression(
             table,
             default,
         } => {
+            let normalization = if parameters.is_none() && input_type.is_some() {
+                "        let input = match input { Value::JsonNull(_) => Value::Null, value => value };\n"
+            } else {
+                ""
+            };
             let input_type = input_type.map_or_else(
                 || "None".to_string(),
                 |value| format!("Some(ScalarType::{})", scalar_type_name(value)),
@@ -1409,7 +1414,7 @@ fn render_expression(
             };
             let input = call_expression(*input, "context");
             format!(
-                "{{\n        let input = {input}?;\n        Ok(value_map(input, {input_type}, &[{table}], {default}))\n    }}"
+                "{{\n        let input = {input}?;\n{normalization}        Ok(value_map(input, {input_type}, &[{table}], {default}))\n    }}"
             )
         }
         Expression::Lookup {

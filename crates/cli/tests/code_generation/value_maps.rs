@@ -1,5 +1,68 @@
 use super::*;
 
+use mapping::{FunctionId, FunctionParameter, FunctionParameterId, UserFunction};
+
+struct ValueMapDirectory {
+    path: PathBuf,
+    complete: bool,
+}
+
+impl ValueMapDirectory {
+    fn new() -> io::Result<Self> {
+        let directory = TempDir::new("value_maps")?;
+        let path = directory.0.clone();
+        std::mem::forget(directory);
+        Ok(Self {
+            path,
+            complete: false,
+        })
+    }
+}
+
+impl Drop for ValueMapDirectory {
+    fn drop(&mut self) {
+        if self.complete
+            && std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref()
+                != Some(std::ffi::OsStr::new("1"))
+        {
+            let _ = std::fs::remove_dir_all(&self.path);
+        } else {
+            eprintln!("Retained ValueMap test artifacts: {}", self.path.display());
+        }
+    }
+}
+
+fn recorded_value_map_command(
+    command: &mut Command,
+    directory: &Path,
+    name: &str,
+) -> io::Result<Output> {
+    std::fs::write(
+        directory.join(format!("{name}-command.txt")),
+        format!("{command:?}\n"),
+    )?;
+    let output = match command.isolated_output() {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::write(
+                directory.join(format!("{name}-spawn-error.txt")),
+                format!("{error:?}\n"),
+            );
+            return Err(error);
+        }
+    };
+    std::fs::write(directory.join(format!("{name}-stdout.txt")), &output.stdout)?;
+    std::fs::write(directory.join(format!("{name}-stderr.txt")), &output.stderr)?;
+    std::fs::write(
+        directory.join(format!("{name}-status.json")),
+        serde_json::to_vec(&serde_json::json!({
+            "success": output.status.success(),
+            "code": output.status.code(),
+        }))?,
+    )?;
+    Ok(output)
+}
+
 fn value_map_project() -> Project {
     let fields = [
         "Duplicate",
@@ -12,9 +75,20 @@ fn value_map_project() -> Project {
         "Failed",
         "Null",
         "XmlNil",
+        "TypedJsonNull",
+        "UntypedJsonNull",
+        "TypedXmlNil",
+        "UntypedXmlNil",
+        "FunctionConstantJsonNull",
+        "FunctionParameterJsonNull",
     ];
     let mut nodes = BTreeMap::new();
     let mut bindings = Vec::new();
+    let marker_table = vec![
+        (Value::Null, Value::String("null-row".into())),
+        (Value::json_null(), Value::String("json-null-row".into())),
+        (Value::xml_nil(), Value::String("xml-nil-row".into())),
+    ];
     let cases = [
         (
             Value::String("same".into()),
@@ -80,6 +154,30 @@ fn value_map_project() -> Project {
             vec![(Value::xml_nil(), Value::String("xml-nil".into()))],
             None,
         ),
+        (
+            Value::json_null(),
+            Some(ScalarType::String),
+            marker_table.clone(),
+            Some(Value::String("marker-default".into())),
+        ),
+        (
+            Value::json_null(),
+            None,
+            marker_table.clone(),
+            Some(Value::String("marker-default".into())),
+        ),
+        (
+            Value::xml_nil(),
+            Some(ScalarType::String),
+            marker_table.clone(),
+            Some(Value::String("marker-default".into())),
+        ),
+        (
+            Value::xml_nil(),
+            None,
+            marker_table,
+            Some(Value::String("marker-default".into())),
+        ),
     ];
     for (index, (input, input_type, table, default)) in cases.into_iter().enumerate() {
         let input_id = index as u32 * 2 + 1;
@@ -99,6 +197,84 @@ fn value_map_project() -> Project {
             node: map_id,
         });
     }
+    let parameter = FunctionParameterId::new(1);
+    let function = |name: &str, input, parameters| UserFunction {
+        library: "value_map_tests".into(),
+        name: name.into(),
+        description: None,
+        parameters,
+        output_name: "result".into(),
+        output_type: ScalarType::String,
+        body: Graph {
+            nodes: BTreeMap::from([
+                (1, input),
+                (
+                    2,
+                    Node::ValueMap {
+                        input: 1,
+                        input_type: Some(ScalarType::String),
+                        table: vec![
+                            (Value::Null, Value::String("null-row".into())),
+                            (Value::json_null(), Value::String("json-null-row".into())),
+                            (Value::xml_nil(), Value::String("xml-nil-row".into())),
+                        ],
+                        default: Some(Value::String("marker-default".into())),
+                    },
+                ),
+            ]),
+        },
+        output: 2,
+    };
+    let constant_function = FunctionId::new(1);
+    let parameter_function = FunctionId::new(2);
+    nodes.insert(
+        29,
+        Node::UserFunctionCall {
+            function: constant_function,
+            args: Vec::new(),
+        },
+    );
+    nodes.insert(
+        30,
+        Node::UserFunctionCall {
+            function: parameter_function,
+            args: vec![21],
+        },
+    );
+    bindings.extend([
+        Binding {
+            target_field: "FunctionConstantJsonNull".into(),
+            node: 29,
+        },
+        Binding {
+            target_field: "FunctionParameterJsonNull".into(),
+            node: 30,
+        },
+    ]);
+    let user_functions = BTreeMap::from([
+        (
+            constant_function,
+            function(
+                "constant_json_null",
+                Node::Const {
+                    value: Value::json_null(),
+                },
+                Vec::new(),
+            ),
+        ),
+        (
+            parameter_function,
+            function(
+                "parameter_json_null",
+                Node::FunctionParameter { parameter },
+                vec![FunctionParameter {
+                    id: parameter,
+                    name: "value".into(),
+                    ty: ScalarType::String,
+                }],
+            ),
+        ),
+    ]);
     Project {
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group("Target", fields.into_iter().map(string).collect()),
@@ -109,7 +285,7 @@ fn value_map_project() -> Project {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
-        user_functions: Default::default(),
+        user_functions,
         graph: Graph { nodes },
         root: Scope {
             bindings,
@@ -155,6 +331,30 @@ fn expected_output() -> Instance {
                 "XmlNil".into(),
                 Instance::Scalar(Value::String("xml-nil".into())),
             ),
+            (
+                "TypedJsonNull".into(),
+                Instance::Scalar(Value::String("null-row".into())),
+            ),
+            (
+                "UntypedJsonNull".into(),
+                Instance::Scalar(Value::String("json-null-row".into())),
+            ),
+            (
+                "TypedXmlNil".into(),
+                Instance::Scalar(Value::String("xml-nil-row".into())),
+            ),
+            (
+                "UntypedXmlNil".into(),
+                Instance::Scalar(Value::String("xml-nil-row".into())),
+            ),
+            (
+                "FunctionConstantJsonNull".into(),
+                Instance::Scalar(Value::String("json-null-row".into())),
+            ),
+            (
+                "FunctionParameterJsonNull".into(),
+                Instance::Scalar(Value::String("json-null-row".into())),
+            ),
         ])
         .into(),
     )
@@ -162,15 +362,29 @@ fn expected_output() -> Instance {
 
 #[test]
 fn value_maps_match_engine_and_generated_backends() -> TestResult<()> {
+    let mut directory = ValueMapDirectory::new()?;
     let project = value_map_project();
     let source = Instance::Group((Vec::new()).into());
-    assert_eq!(engine::run(&project, &source)?, expected_output());
-
-    let directory = TempDir::new("value_maps")?;
-    let project_path = directory.0.join("value-maps.json");
+    let project_path = directory.path.join("value-maps.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
+    let native = engine::run(&project, &source);
+    std::fs::write(
+        directory.path.join("native-outcome.txt"),
+        format!("{native:?}\n"),
+    )?;
+    let native = native?;
+    std::fs::write(
+        directory.path.join("native-output.json"),
+        serde_json::to_vec_pretty(&native)?,
+    )?;
+    let expected = expected_output();
+    std::fs::write(
+        directory.path.join("expected-output.json"),
+        serde_json::to_vec_pretty(&expected)?,
+    )?;
+    assert_eq!(native, expected);
 
-    let rust_output = directory.0.join("rust");
+    let rust_output = directory.path.join("rust");
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
     generate_project(
         &project_path,
@@ -183,11 +397,24 @@ fn value_maps_match_engine_and_generated_backends() -> TestResult<()> {
         rust_output.join("src/main.rs"),
         include_str!("fixtures/value_maps_rust_harness.rs.txt"),
     )?;
-    let rust = Command::new("cargo")
-        .args(["run", "--quiet"])
+    let target = match std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
+        Some(target) => {
+            let target = PathBuf::from(target);
+            if target.is_absolute() {
+                target
+            } else {
+                std::env::current_dir()?.join(target)
+            }
+        }
+        None => directory.path.join("cargo-target"),
+    };
+    let mut rust_command = Command::new("cargo");
+    rust_command
+        .args(["run", "--quiet", "--jobs", "1"])
         .current_dir(&rust_output)
-        .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .isolated_output()?;
+        .env("CARGO_TARGET_DIR", &target)
+        .env("CARGO_INCREMENTAL", "0");
+    let rust = recorded_value_map_command(&mut rust_command, &directory.path, "rust")?;
     assert!(
         rust.status.success(),
         "generated Rust value maps failed:\nstdout:\n{}\nstderr:\n{}",
@@ -195,7 +422,7 @@ fn value_maps_match_engine_and_generated_backends() -> TestResult<()> {
         String::from_utf8_lossy(&rust.stderr)
     );
 
-    let csharp_output = directory.0.join("csharp");
+    let csharp_output = directory.path.join("csharp");
     generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
     let harness = csharp_output.join("Harness");
     std::fs::create_dir(&harness)?;
@@ -220,7 +447,8 @@ fn value_maps_match_engine_and_generated_backends() -> TestResult<()> {
         harness.join("Program.cs"),
         include_str!("fixtures/value_maps_csharp_harness.cs.txt"),
     )?;
-    let csharp = dotnet_command(&csharp_output)
+    let mut csharp_command = dotnet_command(&csharp_output);
+    csharp_command
         .args([
             "run",
             "--project",
@@ -228,13 +456,14 @@ fn value_maps_match_engine_and_generated_backends() -> TestResult<()> {
             "--configuration",
             "Release",
         ])
-        .current_dir(&csharp_output)
-        .isolated_output()?;
+        .current_dir(&csharp_output);
+    let csharp = recorded_value_map_command(&mut csharp_command, &directory.path, "csharp")?;
     assert!(
         csharp.status.success(),
         "generated C# value maps failed:\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&csharp.stdout),
         String::from_utf8_lossy(&csharp.stderr)
     );
+    directory.complete = true;
     Ok(())
 }
