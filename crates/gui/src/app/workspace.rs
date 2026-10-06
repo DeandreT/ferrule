@@ -115,6 +115,10 @@ impl FerruleApp {
                             }
                             ui.close();
                         }
+                        if ui.button("Import MFD as Pipeline...").clicked() {
+                            self.begin_mfd_pipeline_import();
+                            ui.close();
+                        }
                         if ui.button("Import MFD...").clicked() {
                             if let Some(action) =
                                 self.request_destructive_action(DestructiveAction::ImportMfd)
@@ -302,10 +306,7 @@ impl FerruleApp {
                     ui.spinner();
                     ui.label("Waiting for file dialog");
                     if ui.button("Cancel").clicked() {
-                        self.library_generation_save_cancelled();
-                        self.pending_dialog = None;
-                        self.pending_save_continuation = None;
-                        self.status = "file dialog cancelled".to_string();
+                        self.cancel_pending_file_dialog();
                     }
                 });
             });

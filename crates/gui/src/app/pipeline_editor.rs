@@ -6,7 +6,7 @@ use mapping::PipelineInput;
 
 pub(super) struct PipelineEditorUi {
     pub document: crate::pipeline_edit::PipelineEditorDocument,
-    selected_stage: Option<usize>,
+    pub(super) selected_stage: Option<usize>,
     rename_draft: String,
     host_drafts: BTreeMap<(usize, usize), String>,
     error: Option<String>,
@@ -18,6 +18,7 @@ pub(super) enum PipelineEditorAction {
     CloseApp,
     Open(PathBuf),
     Create(PathBuf),
+    ImportMfd(mfd::ImportOptions),
 }
 
 enum PipelineEditCommand {
@@ -28,7 +29,7 @@ enum PipelineEditCommand {
 }
 
 impl PipelineEditorUi {
-    fn new(document: crate::pipeline_edit::PipelineEditorDocument) -> Self {
+    pub(super) fn new(document: crate::pipeline_edit::PipelineEditorDocument) -> Self {
         let selected_stage = (!document.pipeline.stages.is_empty()).then_some(0);
         let rename_draft = document
             .pipeline
@@ -61,7 +62,7 @@ impl PipelineEditorUi {
         })
     }
 
-    fn has_unapplied_text(&self) -> bool {
+    pub(super) fn has_unapplied_text(&self) -> bool {
         if self.has_unapplied_rename() {
             return true;
         }
@@ -142,6 +143,9 @@ impl PipelineEditorUi {
 
 impl FerruleApp {
     pub(super) fn request_pipeline_editor_action(&mut self, action: PipelineEditorAction) {
+        if self.pipeline_mfd_busy() {
+            return;
+        }
         if self
             .pipeline_editor
             .as_ref()
@@ -167,6 +171,10 @@ impl FerruleApp {
             }
             PipelineEditorAction::Create(path) => {
                 crate::pipeline_edit::PipelineEditorDocument::create(&path)
+            }
+            PipelineEditorAction::ImportMfd(options) => {
+                self.start_mfd_pipeline_import(options);
+                return;
             }
         };
         match result {
@@ -202,6 +210,7 @@ impl FerruleApp {
     }
 
     pub(super) fn show_pipeline_editor(&mut self, ctx: &egui::Context) {
+        let mfd_busy = self.pipeline_mfd_busy();
         let Some(editor) = &mut self.pipeline_editor else {
             return;
         };
@@ -212,6 +221,7 @@ impl FerruleApp {
         let mut save = false;
         let mut run_saved = false;
         let mut close = false;
+        let mut export_profile = None;
         let issues = editor.document.issues();
         let dirty = editor.is_dirty();
         let unapplied = editor.has_unapplied_text();
@@ -225,6 +235,7 @@ impl FerruleApp {
         .min_width(550.0)
         .resizable(true)
         .show(ctx, |ui| {
+            ui.add_enabled_ui(!mfd_busy, |ui| {
             ui.label(editor.document.path.display().to_string());
             ui.small("This pipeline document is separate from the open mapping project.");
             ui.separator();
@@ -381,6 +392,21 @@ impl FerruleApp {
                     close = true;
                 }
             });
+            ui.horizontal(|ui| {
+                for (label, profile) in [
+                    ("Export MFD (Ferrule)...", mfd::ExportProfile::FerruleExtensions),
+                    ("Export native MFD...", mfd::ExportProfile::NativeMfd),
+                ] {
+                    if ui.add_enabled(!unapplied && issues.is_empty(), egui::Button::new(label))
+                        .on_disabled_hover_text("Apply staged text edits and fix pipeline validation issues first")
+                        .clicked()
+                    {
+                        export_profile = Some(profile);
+                    }
+                }
+            });
+            ui.weak("Export includes the current applied pipeline edits. Saving the pipeline file is optional.");
+            });
         });
         if let Some(index) = selected
             && let Some(editor) = &mut self.pipeline_editor
@@ -444,6 +470,9 @@ impl FerruleApp {
                 }
             }
         }
+        if let Some(profile) = export_profile {
+            self.begin_pipeline_mfd_export(profile);
+        }
         if close || !visible {
             self.request_pipeline_editor_action(PipelineEditorAction::Close);
         }
@@ -484,6 +513,7 @@ impl FerruleApp {
         if !close_requested || self.allow_close {
             return;
         }
+        self.cancel_pipeline_mfd_for_app_close();
         if self.pending_file_run.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.close_after_file_run = true;
