@@ -88,45 +88,69 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
     private static XmlMixedExecutionException MixedXmlError(XmlMixedOutputOwner owner, global::Ferrule.Runtime.FerruleXmlBoundaryException boundary) =>
         new(boundary.Kind == global::Ferrule.Runtime.FerruleXmlBoundaryErrorKind.Schema ? null : owner, boundary);
 "#);
-    let dynamic_index = program
+    let named_count = program.extra_targets.len();
+    let dynamic_indices = program
         .extra_targets
         .iter()
-        .position(|target| {
+        .enumerate()
+        .filter_map(|(index, target)| {
             target
                 .root
                 .iteration
                 .as_ref()
                 .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
+                .then_some(index)
         })
-        .ok_or_else(|| ProgramValidationError::InvalidXmlBoundary {
-            reason: "missing mixed XML document list".into(),
-        })?;
+        .collect::<Vec<_>>();
+    let dynamic_index =
+        *dynamic_indices
+            .first()
+            .ok_or_else(|| ProgramValidationError::InvalidXmlBoundary {
+                reason: "missing mixed XML document list".into(),
+            })?;
     let primary_arguments = output_arguments(&policy.output)?;
     for bytes in [false, true] {
-        let (name, source_type, parser, result, named_dto, member_dto, helper, conversion) =
-            if bytes {
-                (
-                    "ExecuteXmlBytesMixedOutputs",
-                    "byte[]",
-                    "ParseStructuredEmbeddedBytes",
-                    "XmlMixedBytesExecutionOutputs",
-                    "NamedXmlMixedBytesOutput",
-                    "XmlMixedBytesDocumentOutput",
-                    "SerializeMixedXmlBytesOutputs",
-                    "MixedXmlUtf8.GetBytes(xml)",
-                )
-            } else {
-                (
-                    "ExecuteXmlMixedOutputs",
-                    "string",
-                    "ParseStructuredEmbedded",
-                    "XmlMixedExecutionOutputs",
-                    "NamedXmlMixedOutput",
-                    "XmlMixedDocumentOutput",
-                    "SerializeMixedXmlOutputs",
-                    "xml",
-                )
-            };
+        let (
+            name,
+            source_type,
+            parser,
+            result,
+            named_dto,
+            member_dto,
+            helper,
+            conversion,
+            serializer,
+            xml_type,
+            byte_count,
+        ) = if bytes {
+            (
+                "ExecuteXmlBytesMixedOutputs",
+                "byte[]",
+                "ParseStructuredEmbeddedBytes",
+                "XmlMixedBytesExecutionOutputs",
+                "NamedXmlMixedBytesOutput",
+                "XmlMixedBytesDocumentOutput",
+                "SerializeMixedXmlBytesOutputs",
+                "xml.ToByteArray()",
+                "PrepareDocumentEmbeddedUtf8",
+                "global::Ferrule.Runtime.FerruleXmlPreparedUtf8Document",
+                "xml.Utf8ByteCount",
+            )
+        } else {
+            (
+                "ExecuteXmlMixedOutputs",
+                "string",
+                "ParseStructuredEmbedded",
+                "XmlMixedExecutionOutputs",
+                "NamedXmlMixedOutput",
+                "XmlMixedDocumentOutput",
+                "SerializeMixedXmlOutputs",
+                "xml",
+                "SerializeDocumentEmbedded",
+                "string",
+                "MixedXmlUtf8.GetByteCount(xml)",
+            )
+        };
         for context in [false, true] {
             let context_argument = if context {
                 ", global::Ferrule.Runtime.FerruleExecutionContext executionContext"
@@ -161,18 +185,18 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
     {{
         if (mapped.Primary is not global::Ferrule.Runtime.FerruleGroup)
             throw MixedXmlAlignment("mixed XML outputs require a primary Group");
-        if (mapped.Extras.Count != 2)
+        if (mapped.Extras.Count != {named_count})
             throw MixedXmlAlignment("mixed XML outputs require every declared named target");
 "#
         ));
         // Align all declaration envelopes before count arithmetic or serialization.
-        for index in 0..2 {
+        for index in 0..named_count {
             output.push_str(&format!(
                 r#"        if (mapped.Extras[{index}].Name != MixedXmlName{index})
             throw MixedXmlAlignment("mixed XML outputs do not match exact declaration order");
 "#
             ));
-            if index == dynamic_index {
+            if dynamic_indices.contains(&index) {
                 output.push_str(&format!(r#"        if (mapped.Extras[{index}].Instance is not global::Ferrule.Runtime.FerruleDocumentSet members{index})
             throw MixedXmlAlignment("mixed XML document-list output requires a DocumentSet");
 "#));
@@ -182,45 +206,62 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
 "#));
             }
         }
-        output.push_str(&format!(r#"        if (members{dynamic_index}.Documents.Count > global::System.Int32.MaxValue - 2)
+        if named_count == 2 {
+            // Preserve the complete historical two-declaration rendering.
+            output.push_str(&format!(r#"        if (members{dynamic_index}.Documents.Count > global::System.Int32.MaxValue - 2)
             throw MixedXmlAlignment("mixed XML output count exceeds the host index range");
         var artifactCount = checked(members{dynamic_index}.Documents.Count + 2);
-        global::Ferrule.Runtime.FerruleXmlOutputSetBudget budget;
+"#));
+        } else {
+            output.push_str("        var artifactCount = 2;\n");
+            for index in &dynamic_indices {
+                output.push_str(&format!(r#"        if (members{index}.Documents.Count > global::System.Int32.MaxValue - artifactCount)
+            throw MixedXmlAlignment("mixed XML output count exceeds the host index range");
+        artifactCount = checked(artifactCount + members{index}.Documents.Count);
+"#));
+            }
+        }
+        output.push_str(&format!(r#"        global::Ferrule.Runtime.FerruleXmlOutputSetBudget budget;
         try {{ budget = new global::Ferrule.Runtime.FerruleXmlOutputSetBudget(artifactCount); }}
         catch (global::Ferrule.Runtime.FerruleXmlOutputSetException error)
         {{ throw new XmlMixedExecutionException(null, error.Boundary); }}
-        string xml;
-        try {{ xml = global::Ferrule.Runtime.FerruleXml.SerializeDocumentEmbedded(TargetXmlSchema, mapped.Primary, {primary_arguments}); }}
+        {xml_type} xml;
+        try {{ xml = global::Ferrule.Runtime.FerruleXml.{serializer}(TargetXmlSchema, mapped.Primary, {primary_arguments}); }}
         catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)
         {{ throw MixedXmlError(new XmlMixedOutputOwner.Primary(), error); }}
-        try {{ budget.Charge(global::Ferrule.Runtime.FerruleXmlOutputTarget.Primary, MixedXmlUtf8.GetByteCount(xml)); }}
+        try {{ budget.Charge(global::Ferrule.Runtime.FerruleXmlOutputTarget.Primary, {byte_count}); }}
         catch (global::Ferrule.Runtime.FerruleXmlOutputSetException error)
         {{ throw MixedXmlError(new XmlMixedOutputOwner.Primary(), error.Boundary); }}
         var primary = {conversion};
-        var extras = new global::System.Collections.Generic.List<{named_dto}>(2);
+        var extras = new global::System.Collections.Generic.List<{named_dto}>({named_count});
 "#));
         for (index, named_policy) in policy.extra_outputs.iter().enumerate() {
             let arguments = output_arguments(&named_policy.output)?;
-            if index == dynamic_index {
-                output.push_str(&format!(r#"        var documents = new global::System.Collections.Generic.List<{member_dto}>(members{index}.Documents.Count);
+            if dynamic_indices.contains(&index) {
+                let documents = if named_count == 2 {
+                    "documents".to_owned()
+                } else {
+                    format!("documents{index}")
+                };
+                output.push_str(&format!(r#"        var {documents} = new global::System.Collections.Generic.List<{member_dto}>(members{index}.Documents.Count);
         for (var memberIndex = 0; memberIndex < members{index}.Documents.Count; memberIndex++)
         {{
             var member = members{index}.Documents[memberIndex];
-            try {{ xml = global::Ferrule.Runtime.FerruleXml.SerializeDocumentEmbedded(MixedXmlSchema{index}, member.Value, {arguments}); }}
+            try {{ xml = global::Ferrule.Runtime.FerruleXml.{serializer}(MixedXmlSchema{index}, member.Value, {arguments}); }}
             catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)
             {{ throw MixedXmlError(new XmlMixedOutputOwner.Member({index}, MixedXmlName{index}, memberIndex, member.Path), error); }}
-            try {{ budget.Charge(global::Ferrule.Runtime.FerruleXmlOutputTarget.Named({index}, MixedXmlName{index}), MixedXmlUtf8.GetByteCount(xml)); }}
+            try {{ budget.Charge(global::Ferrule.Runtime.FerruleXmlOutputTarget.Named({index}, MixedXmlName{index}), {byte_count}); }}
             catch (global::Ferrule.Runtime.FerruleXmlOutputSetException error)
             {{ throw MixedXmlError(new XmlMixedOutputOwner.Member({index}, MixedXmlName{index}, memberIndex, member.Path), error.Boundary); }}
-            documents.Add(new {member_dto}(member.Path, {conversion}));
+            {documents}.Add(new {member_dto}(member.Path, {conversion}));
         }}
-        extras.Add(new {named_dto}.DocumentList({index}, MixedXmlName{index}, documents.AsReadOnly()));
+        extras.Add(new {named_dto}.DocumentList({index}, MixedXmlName{index}, {documents}.AsReadOnly()));
 "#));
             } else {
-                output.push_str(&format!(r#"        try {{ xml = global::Ferrule.Runtime.FerruleXml.SerializeDocumentEmbedded(MixedXmlSchema{index}, mapped.Extras[{index}].Instance, {arguments}); }}
+                output.push_str(&format!(r#"        try {{ xml = global::Ferrule.Runtime.FerruleXml.{serializer}(MixedXmlSchema{index}, mapped.Extras[{index}].Instance, {arguments}); }}
         catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)
         {{ throw MixedXmlError(new XmlMixedOutputOwner.Named({index}, MixedXmlName{index}), error); }}
-        try {{ budget.Charge(global::Ferrule.Runtime.FerruleXmlOutputTarget.Named({index}, MixedXmlName{index}), MixedXmlUtf8.GetByteCount(xml)); }}
+        try {{ budget.Charge(global::Ferrule.Runtime.FerruleXmlOutputTarget.Named({index}, MixedXmlName{index}), {byte_count}); }}
         catch (global::Ferrule.Runtime.FerruleXmlOutputSetException error)
         {{ throw MixedXmlError(new XmlMixedOutputOwner.Named({index}, MixedXmlName{index}), error.Boundary); }}
         extras.Add(new {named_dto}.SingleDocument({index}, MixedXmlName{index}, {conversion}));

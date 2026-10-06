@@ -103,19 +103,26 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
         ));
     }
     output.push_str(TYPES);
-    let dynamic_index = program
+    let named_count = program.extra_targets.len();
+    let dynamic_indices = program
         .extra_targets
         .iter()
-        .position(|target| {
+        .enumerate()
+        .filter_map(|(index, target)| {
             target
                 .root
                 .iteration
                 .as_ref()
                 .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
+                .then_some(index)
         })
-        .ok_or_else(|| ProgramValidationError::InvalidXmlBoundary {
-            reason: "missing mixed XML document list".into(),
-        })?;
+        .collect::<Vec<_>>();
+    let dynamic_index =
+        *dynamic_indices
+            .first()
+            .ok_or_else(|| ProgramValidationError::InvalidXmlBoundary {
+                reason: "missing mixed XML document list".into(),
+            })?;
     let primary_arguments = output_arguments(&policy.output)?;
     for bytes in [false, true] {
         let (stem, source_type, parser, result, named_dto, member_dto, helper, conversion) =
@@ -168,20 +175,20 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
     if !matches!(&mapped.primary, Instance::Group(_)) {{
         return Err(mixed_xml_alignment("mixed XML outputs require a primary Group"));
     }}
-    if mapped.extras.len() != 2 {{
+    if mapped.extras.len() != {named_count} {{
         return Err(mixed_xml_alignment("mixed XML outputs require every declared named target"));
     }}
     let mut named_targets = mapped.extras.into_iter();
 "#
         ));
         // Align every envelope and its actual cardinality before any writer.
-        for index in 0..2 {
+        for index in 0..named_count {
             output.push_str(&format!(r#"    let named_{index} = named_targets.next().ok_or_else(|| mixed_xml_alignment("mixed XML outputs require every named envelope"))?;
     if named_{index}.name != MIXED_XML_NAME_{index} {{
         return Err(mixed_xml_alignment("mixed XML outputs do not match exact declaration order"));
     }}
 "#));
-            if index == dynamic_index {
+            if dynamic_indices.contains(&index) {
                 output.push_str(&format!(r#"    let Instance::DocumentSet(members_{index}) = named_{index}.instance else {{
         return Err(mixed_xml_alignment("mixed XML document-list output requires a DocumentSet"));
     }};
@@ -195,16 +202,26 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
                 ));
             }
         }
-        output.push_str(&format!(r#"    let artifact_count = members_{dynamic_index}.len().checked_add(2).ok_or_else(|| mixed_xml_alignment("mixed XML output count exceeds the host index range"))?;
-    let mut budget = codegen_runtime::XmlOutputSetBudget::new(artifact_count).map_err(|error| XmlMixedExecutionError::from(error.into_boundary()))?;
+        if named_count == 2 {
+            // Preserve the complete historical two-declaration rendering.
+            output.push_str(&format!(r#"    let artifact_count = members_{dynamic_index}.len().checked_add(2).ok_or_else(|| mixed_xml_alignment("mixed XML output count exceeds the host index range"))?;
+"#));
+        } else {
+            output.push_str("    let mut artifact_count = 2usize;\n");
+            for index in &dynamic_indices {
+                output.push_str(&format!(r#"    artifact_count = artifact_count.checked_add(members_{index}.len()).ok_or_else(|| mixed_xml_alignment("mixed XML output count exceeds the host index range"))?;
+"#));
+            }
+        }
+        output.push_str(&format!(r#"    let mut budget = codegen_runtime::XmlOutputSetBudget::new(artifact_count).map_err(|error| XmlMixedExecutionError::from(error.into_boundary()))?;
     let xml = codegen_runtime::serialize_xml_document(TARGET_XML_SCHEMA, &mapped.primary, {primary_arguments}).map_err(|error| mixed_xml_error(XmlMixedOutputOwner::Primary, error))?;
     budget.charge(codegen_runtime::XmlOutputTarget::Primary, xml.len()).map_err(|error| mixed_xml_error(XmlMixedOutputOwner::Primary, error.into_boundary()))?;
     let primary = {conversion};
-    let mut extras = Vec::with_capacity(2);
+    let mut extras = Vec::with_capacity({named_count});
 "#));
         for (index, named_policy) in policy.extra_outputs.iter().enumerate() {
             let arguments = output_arguments(&named_policy.output)?;
-            if index == dynamic_index {
+            if dynamic_indices.contains(&index) {
                 output.push_str(&format!(r#"    let mut documents = Vec::with_capacity(members_{index}.len());
     for (member_index, member) in members_{index}.into_iter().enumerate() {{
         let xml = codegen_runtime::serialize_xml_document(MIXED_XML_SCHEMA_{index}, member.value(), {arguments}).map_err(|error| mixed_xml_error(XmlMixedOutputOwner::Member {{ declaration_index: {index}, name: MIXED_XML_NAME_{index}.to_owned(), member_index, path: member.path().to_owned() }}, error))?;
