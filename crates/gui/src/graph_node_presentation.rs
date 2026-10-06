@@ -55,6 +55,44 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
     }
 }
 
+pub(super) fn complete_title(node: Option<&Node>, title: String) -> String {
+    if let Some(Node::JoinField {
+        join,
+        collection,
+        path,
+    }) = node
+    {
+        let collection = if collection.is_empty() {
+            "<empty> (empty collection)".to_owned()
+        } else {
+            collection.join("/")
+        };
+        let path = if path.is_empty() {
+            "<current> (empty path)".to_owned()
+        } else {
+            path.join("/")
+        };
+        return format!(
+            "{title}\nJoin: #{}\nCollection: {collection}\nPath: {path}\nRead-only joined field",
+            join.get(),
+        );
+    }
+    let Some(Node::SourceField { path, frame }) = node else {
+        return title;
+    };
+    let path = if path.is_empty() {
+        "<current> (empty path)".to_owned()
+    } else {
+        path.join("/")
+    };
+    let frame = match frame {
+        None => "automatic".to_owned(),
+        Some(frame) if frame.is_empty() => "explicit (empty path)".to_owned(),
+        Some(frame) => format!("explicit {}", frame.join("/")),
+    };
+    format!("{title}\nPath: {path}\nFrame: {frame}")
+}
+
 pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<Header> {
     let title = if is_output {
         full_title.strip_suffix(" (output)").unwrap_or(full_title)
@@ -103,6 +141,33 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         ),
         Node::If { .. } => (Icon::GitBranch, String::new()),
         Node::Position { .. } | Node::JoinPosition { .. } => (Icon::ListOrdered, String::new()),
+        Node::SourceField { path, .. } => {
+            if let Some(item) = title.strip_prefix("Generated item #") {
+                (
+                    Icon::ListOrdered,
+                    compact(&format!("item #{item}"), SUMMARY_CHAR_LIMIT),
+                )
+            } else {
+                (
+                    Icon::ArrowRightFromLine,
+                    path.last().map_or_else(
+                        || "current".into(),
+                        |field| compact(field, SUMMARY_CHAR_LIMIT),
+                    ),
+                )
+            }
+        }
+        Node::JoinField { join, path, .. } => (
+            Icon::ArrowRightFromLine,
+            compact(
+                &format!(
+                    "#{} {}",
+                    join.get(),
+                    path.last().map_or("current", String::as_str),
+                ),
+                SUMMARY_CHAR_LIMIT,
+            ),
+        ),
         Node::SourceDocumentPath => (Icon::FileText, "path".into()),
         Node::RuntimeValue { value } => match value {
             RuntimeValue::MappingFilePath => (Icon::Folder, "mapping path".into()),
@@ -173,6 +238,9 @@ pub(super) fn has_properties(node: &Node) -> bool {
         node,
         Node::Const { .. }
             | Node::Call { .. }
+            | Node::SourceField { .. }
+            | Node::JoinField { .. }
+            | Node::Lookup { .. }
             | Node::Position { .. }
             | Node::RuntimeParameter { .. }
             | Node::RuntimeParameterDefault { .. }
