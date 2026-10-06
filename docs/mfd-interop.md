@@ -289,8 +289,15 @@ all 256 supported members within export expression-depth limits. A quoted
 string `'NULL'` remains a string operand and must pass numeric coercion; a
 connected static null parameter remains unsupported. Late coercion failures
 retain a partial repair design with a diagnostic and skip the dependent
-iteration; executable import rejects that design. Empty lists, quoted
-identifier operands, and text membership with unknown collation remain unsupported.
+iteration; executable import rejects that design. Query boundaries explicitly
+qualified as SQLite by both `database_kind` and `import_kind` metadata also accept
+empty `IN ()` and `NOT IN ()` lists: they reject all rows or retain all rows,
+respectively, including rows with null values. The column must still exist and
+be scalar. Empty membership needs no text collation, so it also works on text
+columns; nonempty text membership with unknown collation and quoted identifier
+operands remain unsupported. Constant filters retain source iteration, ordered
+row controls, and eager reads in unrelated conjunction predicates through both
+export profiles. Other database dialects are not inferred.
 Two temperature designs recover their original native numeric wiring. The
 annual PDF mapping retains all eight conversions inside its user function and
 strictly reimports its native-shaped PDF extraction template to the same 148
