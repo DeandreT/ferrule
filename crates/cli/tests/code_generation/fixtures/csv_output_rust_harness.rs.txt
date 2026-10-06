@@ -1,0 +1,241 @@
+use std::error::Error as _;
+use std::fs::{self, File};
+use std::io::{self, Write};
+use std::path::Path;
+
+use codegen_runtime::{
+    CsvBoundaryError, CsvFormatError, ExecutionContext, Instance, RuntimeError,
+    RuntimeParameters, ScalarType, Value, field, group, repeated, scalar,
+};
+use ferrule_generated_mapping::{
+    execute_csv, execute_csv_bytes, execute_csv_bytes_with_context, execute_csv_with_context,
+    execute_with_context,
+};
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+const TEXT_FIELD: &str = "Text'\n😀";
+const MAXIMUM: usize = 64 * 1024 * 1024;
+const ALL_APIS: [&str; 4] = ["text", "bytes", "text-context", "bytes-context"];
+const CONTEXT_APIS: [&str; 2] = ["text-context", "bytes-context"];
+
+enum Returned {
+    Text(String),
+    Bytes(Vec<u8>),
+}
+impl Returned {
+    fn bytes(&self) -> &[u8] {
+        match self { Self::Text(text) => text.as_bytes(), Self::Bytes(bytes) => bytes }
+    }
+    fn kind(&self) -> &'static str {
+        match self { Self::Text(_) => "returned-string", Self::Bytes(_) => "returned-bytes" }
+    }
+}
+struct Original {
+    result: std::result::Result<Returned, CsvBoundaryError>,
+    direct_cause_matches: bool,
+}
+
+fn call(api: &str, source: &Instance, parameters: &RuntimeParameters) -> std::result::Result<Returned, CsvBoundaryError> {
+    let context = ExecutionContext::new(Path::new("csv-project.json")).with_parameters(parameters);
+    match api {
+        "text" => execute_csv(source).map(Returned::Text),
+        "bytes" => execute_csv_bytes(source).map(Returned::Bytes),
+        "text-context" => execute_csv_with_context(source, &context).map(Returned::Text),
+        "bytes-context" => execute_csv_bytes_with_context(source, &context).map(Returned::Bytes),
+        _ => unreachable!("fixed public API census"),
+    }
+}
+
+fn capture(case: &str, api: &str, result: std::result::Result<Returned, CsvBoundaryError>) -> Result<Original> {
+    let prefix = format!("evidence/{case}-{api}");
+    let direct_cause_matches = match &result {
+        Ok(returned) => {
+            fs::write(format!("{prefix}.csv"), returned.bytes())?;
+            writeln!(io::stdout(), "CSV original case={case:?} api={api:?} kind={} bytes={}", returned.kind(), returned.bytes().len())?;
+            true
+        }
+        Err(error) => {
+            // Complete original observations precede any kind/cause assertion.
+            fs::write(format!("{prefix}.error-debug.txt"), format!("{error:#?}\n"))?;
+            fs::write(format!("{prefix}.error-display.txt"), format!("{error}\n"))?;
+            let mut causes = File::create(format!("{prefix}.error-causes.txt"))?;
+            let mut source = error.source();
+            while let Some(cause) = source {
+                writeln!(causes, "Debug: {cause:?}\nDisplay: {cause}")?;
+                source = cause.source();
+            }
+            let matches = match error {
+                CsvBoundaryError::Execution(inner) => error.source()
+                    .and_then(|cause| cause.downcast_ref::<RuntimeError>())
+                    .is_some_and(|cause| std::ptr::eq(cause, inner)),
+                CsvBoundaryError::Format(inner) => error.source()
+                    .and_then(|cause| cause.downcast_ref::<CsvFormatError>())
+                    .is_some_and(|cause| std::ptr::eq(cause, inner)),
+                CsvBoundaryError::RootShape { .. } | CsvBoundaryError::OutputTooLarge { .. } => error.source().is_none(),
+            };
+            fs::write(format!("{prefix}.cause-identity.txt"), format!("{matches}\n"))?;
+            writeln!(io::stdout(), "CSV original case={case:?} api={api:?} kind=error direct_cause_matches={matches}")?;
+            matches
+        }
+    };
+    io::stdout().flush()?;
+    Ok(Original { result, direct_cause_matches })
+}
+
+fn retain_source(case: &str, source: &Instance) -> Result<()> {
+    // Stream Debug rather than constructing another complete large String.
+    let mut file = File::create(format!("evidence/{case}-source-debug.txt"))?;
+    writeln!(file, "{source:#?}")?;
+    Ok(())
+}
+
+fn successful(case: &str, source: &Instance, parameters: &RuntimeParameters, apis: &[&str], expected_path: &str) -> Result<()> {
+    retain_source(case, source)?;
+    for api in apis {
+        let original = capture(case, api, call(api, source, parameters))?;
+        let expected = fs::read(expected_path)?;
+        assert!(original.direct_cause_matches, "original cause mismatch for {case}/{api}");
+        match original.result {
+            Ok(returned) => assert!(returned.bytes() == expected, "CSV bytes differ for {case}/{api}; full originals retained"),
+            Err(_) => panic!("unexpected CSV failure for {case}/{api}; full originals retained"),
+        }
+    }
+    Ok(())
+}
+
+enum Failure {
+    Required,
+    WrongCount,
+    NoQuote,
+    XmlNil,
+    Maximum,
+    LateNonFinite,
+}
+fn failing(case: &str, source: &Instance, parameters: &RuntimeParameters, apis: &[&str], expected: Failure) -> Result<()> {
+    retain_source(case, source)?;
+    for api in apis {
+        let original = capture(case, api, call(api, source, parameters))?;
+        assert!(original.direct_cause_matches, "original cause mismatch for {case}/{api}");
+        let correct = match (&original.result, &expected) {
+            (Err(CsvBoundaryError::Execution(RuntimeError::MissingRuntimeParameter { node: 15, name })), Failure::Required) => name == "Required",
+            (Err(CsvBoundaryError::Execution(RuntimeError::RuntimeParameterType { node: 12, name, expected: ScalarType::Int, found: "bool" })), Failure::WrongCount) => name == "Count",
+            (Err(CsvBoundaryError::Format(CsvFormatError::UnquotedFieldBoundary { row: 0, field })), Failure::NoQuote) => field == TEXT_FIELD,
+            (Err(CsvBoundaryError::Format(CsvFormatError::ValueType { row: 0, field, expected: ScalarType::String, got: "xml nil" })), Failure::XmlNil) => field == TEXT_FIELD,
+            (Err(CsvBoundaryError::OutputTooLarge { maximum: MAXIMUM }), Failure::Maximum) => true,
+            (Err(CsvBoundaryError::Format(CsvFormatError::ValueType { row: 1, field, expected: ScalarType::Float, got: "non-finite float" })), Failure::LateNonFinite) => field == "Number",
+            _ => false,
+        };
+        assert!(correct, "CSV typed failure differs for {case}/{api}; full originals retained");
+    }
+    Ok(())
+}
+
+fn row(text: Value, integer: Value, number: Value, boolean: Value, keep: bool, rank: i64) -> Instance {
+    group([
+        field("Text", scalar(text)), field("Integer", scalar(integer)),
+        field("Number", scalar(number)), field("Boolean", scalar(boolean)),
+        field("Keep", scalar(Value::Bool(keep))), field("Rank", scalar(Value::Int(rank))),
+    ])
+}
+fn selected_rows() -> Instance {
+    repeated([
+        row(Value::String("tail".into()), Value::Int(9), Value::Float(1.25), Value::Bool(true), true, 1),
+        row(Value::String("filtered".into()), Value::Int(9), Value::Float(1.25), Value::Bool(true), false, 4),
+        row(Value::String("A;'B\"\n😀".into()), Value::Int(-7), Value::Float(1e-7), Value::Bool(true), true, 3),
+        row(Value::String(String::new()), Value::Int(0), Value::Float(-0.0), Value::Bool(false), true, 2),
+    ])
+}
+fn require() -> Result<RuntimeParameters> {
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("Require", Value::Bool(true))?;
+    Ok(parameters)
+}
+fn small(mode: &str) -> Result<()> {
+    let defaults = RuntimeParameters::new();
+    let source = if mode == "disabled" {
+        repeated([row(Value::String("safe's\"quoted".into()), Value::Int(-7), Value::Float(1.25), Value::Bool(true), true, 1)])
+    } else { selected_rows() };
+    successful("default", &source, &defaults, &ALL_APIS, "expected-default.csv")?;
+    let mut supplied = RuntimeParameters::new();
+    supplied.insert("Label", Value::String("host".into()))?;
+    supplied.insert("Count", Value::String(" 9 ".into()))?;
+    successful("supplied-default", &source, &supplied, &ALL_APIS[..2], "expected-default.csv")?;
+    successful("context", &source, &supplied, &CONTEXT_APIS, "expected-context.csv")?;
+    let mut null = RuntimeParameters::new();
+    null.insert("Count", Value::Null)?;
+    successful("null-default", &source, &null, &ALL_APIS[..2], "expected-default.csv")?;
+    successful("null", &source, &null, &CONTEXT_APIS, "expected-null.csv")?;
+    let required = require()?;
+    successful("empty-required", &repeated([]), &required, &ALL_APIS, "expected-empty.csv")?;
+    let filtered = repeated([row(Value::String("not evaluated".into()), Value::Int(-7), Value::Float(1.25), Value::Bool(true), false, 1)]);
+    successful("filtered-required", &filtered, &required, &ALL_APIS, "expected-empty.csv")?;
+    failing("required", &source, &required, &CONTEXT_APIS, Failure::Required)?;
+    let mut wrong = RuntimeParameters::new();
+    wrong.insert("Count", Value::Bool(true))?;
+    failing("wrong-count", &source, &wrong, &CONTEXT_APIS, Failure::WrongCount)?;
+    if mode == "disabled" {
+        let bad = repeated([row(Value::String("bad\tvalue".into()), Value::Int(-7), Value::Float(1.25), Value::Bool(true), true, 1)]);
+        failing("disabled-boundary", &bad, &defaults, &ALL_APIS, Failure::NoQuote)?;
+    }
+    for (name, number) in [
+        ("negative-zero", f64::from_bits(1_u64 << 63)),
+        ("small", 1e-7), ("large", 1e20), ("epsilon", f64::from_bits(1)),
+        ("min-normal", f64::MIN_POSITIVE), ("max", f64::MAX),
+    ] {
+        let numeric = repeated([row(Value::Float(number), Value::Int(-7), Value::Float(number), Value::Bool(true), true, 1)]);
+        successful(&format!("numeric-{name}"), &numeric, &defaults, &ALL_APIS, &format!("expected-numeric-{name}.csv"))?;
+    }
+    let nil = repeated([row(Value::xml_nil(), Value::Int(-7), Value::Float(1.25), Value::Bool(true), true, 1)]);
+    failing("xml-nil", &nil, &defaults, &ALL_APIS, Failure::XmlNil)?;
+    Ok(())
+}
+
+fn large_source(extra: usize, rank: i64, late_non_finite: bool) -> Instance {
+    let mut text = String::with_capacity(extra + 1);
+    text.push('"');
+    text.extend(std::iter::repeat_n('x', extra));
+    let first = row(Value::String(text), Value::Int(-7), Value::Float(1.25), Value::Bool(true), true, rank);
+    if late_non_finite {
+        repeated([first, row(Value::String("late-invalid".into()), Value::Int(-7), Value::Float(f64::INFINITY), Value::Bool(true), true, 1)])
+    } else {
+        repeated([first])
+    }
+}
+fn large() -> Result<()> {
+    let extra = fs::read_to_string("large-extra.txt")?.trim().parse::<usize>()?;
+    if extra >= MAXIMUM || fs::metadata("expected-maximum.csv")?.len() != MAXIMUM as u64 {
+        return Err("native maximum fixture descriptor is invalid".into());
+    }
+    let defaults = RuntimeParameters::new();
+    let source = large_source(extra, 1, false);
+    successful("maximum", &source, &defaults, &ALL_APIS, "expected-maximum.csv")?;
+    drop(source);
+    let source = large_source(extra + 1, 2, false);
+    failing("maximum-plus-one", &source, &defaults, &ALL_APIS, Failure::Maximum)?;
+    drop(source);
+    let source = large_source(extra + 1, 2, true);
+    failing("late-row-before-budget", &source, &defaults, &ALL_APIS, Failure::LateNonFinite)?;
+    let required = require()?;
+    let context = ExecutionContext::new(Path::new("csv-project.json")).with_parameters(&required);
+    let ordinary = execute_with_context(&source, &context);
+    let mut raw = File::create("evidence/ordinary-before-row-and-budget-result-debug.txt")?;
+    writeln!(raw, "{ordinary:#?}")?;
+    writeln!(io::stdout(), "CSV original case=ordinary-before-row-and-budget kind=mapping-result")?;
+    io::stdout().flush()?;
+    assert!(matches!(&ordinary, Err(RuntimeError::MissingRuntimeParameter { node: 15, name }) if name == "Required"),
+        "ordinary mapping must fail before CSV work; original result retained");
+    failing("mapping-before-row-and-budget", &source, &required, &CONTEXT_APIS, Failure::Required)?;
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    fs::create_dir_all("evidence")?;
+    match std::env::args().nth(1).as_deref() {
+        Some("default" | "custom") => small("quoted")?,
+        Some("disabled") => small("disabled")?,
+        Some("large") => large()?,
+        _ => return Err("expected default, custom, disabled or large mode".into()),
+    }
+    println!("generated CSV checks passed");
+    Ok(())
+}
