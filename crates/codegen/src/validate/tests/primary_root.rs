@@ -738,3 +738,228 @@ fn observed_plural_neutral_flatness_refuses_controls_without_root_readers() {
         }
     }
 }
+
+fn observed_combined_static_named_root_program(count: usize) -> Program {
+    let mut program = observed_plural_static_named_root_program(count);
+    program.extra_sources.push(crate::NamedSourceProgram {
+        name: "labels".into(),
+        dynamic: None,
+        source: SchemaNode::group(
+            "Labels",
+            vec![
+                SchemaNode::scalar("Code", ScalarType::String),
+                SchemaNode::scalar("Extra", ScalarType::String),
+            ],
+        ),
+    });
+    program
+        .xml_boundary
+        .as_mut()
+        .unwrap()
+        .extra_inputs
+        .push(crate::NamedXmlInputPolicy {
+            name: "labels".into(),
+            input: crate::XmlInputPolicy {
+                allow_inactive_root_type_members: false,
+                root_view_policy: false,
+            },
+        });
+    program.expressions.push(ExpressionNode {
+        id: 3,
+        expression: Expression::SourceField {
+            frame: None,
+            path: vec!["labels".into(), "Extra".into()],
+        },
+    });
+    if let ir::SchemaKind::Group { children, .. } = &mut program.target.kind {
+        children.push(SchemaNode::scalar("NamedExtra", ScalarType::String));
+    }
+    program.root.bindings.push(crate::Binding {
+        target_field: "NamedExtra".into(),
+        expression: 3,
+        target_domain: ScalarType::String.into(),
+        repeating: false,
+    });
+    // Keep the required root reader genuinely reachable even with one output.
+    let target = program.extra_targets.last_mut().unwrap();
+    target.target = SchemaNode::group(
+        target.target.name.clone(),
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    );
+    target.root.bindings[0].expression = 2;
+    target.root.bindings[0].target_domain = ScalarType::String.into();
+    program
+}
+
+#[test]
+fn observed_combined_neutral_roots_keep_exact_structured_and_output_declarations() {
+    for count in [1, 2] {
+        for reversed in [false, true] {
+            let mut program = observed_combined_static_named_root_program(count);
+            if reversed {
+                program.extra_targets.reverse();
+                program
+                    .xml_boundary
+                    .as_mut()
+                    .unwrap()
+                    .extra_outputs
+                    .reverse();
+            }
+            assert_eq!(validate_program(&program), Ok(()));
+            assert_eq!(
+                program.xml_output_mode(),
+                Ok(Some(crate::XmlOutputMode::SingleDocument))
+            );
+            let input = &program.xml_boundary.as_ref().unwrap().extra_inputs[0];
+            assert_eq!(input.name, "labels");
+            assert_eq!(
+                input.input.profile(),
+                Some(crate::XmlInputProfile::Structured)
+            );
+            program.root.target_field.clear();
+            for target in &mut program.extra_targets {
+                target.root.target_field.clear();
+            }
+            assert_eq!(validate_program(&program), Ok(()));
+        }
+    }
+}
+
+#[test]
+fn observed_combined_neutral_owner_proof_requires_complete_static_input_policies() {
+    let valid = observed_combined_static_named_root_program(2);
+    for mutation in 0..7 {
+        let mut invalid = valid.clone();
+        match mutation {
+            0 => invalid.xml_boundary.as_mut().unwrap().extra_inputs.clear(),
+            1 => invalid.xml_boundary.as_mut().unwrap().extra_inputs[0].name = "other".into(),
+            2 => {
+                invalid.xml_boundary.as_mut().unwrap().extra_inputs[0]
+                    .input
+                    .root_view_policy = true
+            }
+            3 => invalid.extra_sources[0].source = invalid.source.clone(),
+            4 => {
+                invalid.extra_sources[0].dynamic = Some(crate::DynamicSourceProgram {
+                    path: 3,
+                    driver: SourceIteration::new(Vec::new()),
+                })
+            }
+            5 => invalid.extra_targets[1].root.target_field = "Audit".into(),
+            6 => invalid.root.children.push(empty_target_scope()),
+            _ => unreachable!(),
+        }
+        let expressions = invalid
+            .expressions
+            .iter()
+            .map(|node| (node.id, &node.expression))
+            .collect();
+        assert!(
+            super::super::primary_root::validate(&invalid, &expressions).is_err(),
+            "direct owner mutation {mutation}"
+        );
+        assert!(
+            validate_program(&invalid).is_err(),
+            "public mutation {mutation}"
+        );
+    }
+    let mut spoof = valid;
+    spoof
+        .expressions
+        .iter_mut()
+        .find(|node| node.id == 2)
+        .unwrap()
+        .expression = Expression::SourceRootField {
+        path: vec!["labels".into(), "Extra".into()],
+        required: true,
+    };
+    assert!(matches!(
+        validate_program(&spoof),
+        Err(ProgramValidationError::InvalidPrimaryRootField { node: 2, .. })
+    ));
+}
+
+#[test]
+fn observed_combined_neutral_shared_root_readers_still_reject_failure_and_private_consumers() {
+    let valid = observed_combined_static_named_root_program(2);
+    let mut failure = valid.clone();
+    failure.failure_rules.push(crate::FailureRule {
+        iteration: crate::FailureIteration::Source(SourceIteration::new(Vec::new())),
+        selection: crate::FailureSelection::WhenTrue(1),
+        message: None,
+    });
+    let expressions = failure
+        .expressions
+        .iter()
+        .map(|node| (node.id, &node.expression))
+        .collect();
+    assert_eq!(
+        super::super::primary_root::validate(&failure, &expressions),
+        Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 1 })
+    );
+    assert!(validate_program(&failure).is_err());
+    let mut reducer = valid;
+    reducer.expressions.push(ExpressionNode {
+        id: 4,
+        expression: Expression::Aggregate {
+            function: AggregateFunction::Count,
+            collection: Vec::new(),
+            value: AggregateValue::Expression(2),
+            arg: None,
+        },
+    });
+    reducer.extra_targets[1].root.bindings[0].expression = 4;
+    let expressions = reducer
+        .expressions
+        .iter()
+        .map(|node| (node.id, &node.expression))
+        .collect();
+    assert_eq!(
+        super::super::primary_root::validate(&reducer, &expressions),
+        Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 4 })
+    );
+    assert!(validate_program(&reducer).is_err());
+}
+
+#[test]
+fn observed_combined_neutral_flatness_is_not_skipped_without_metadata_expressions() {
+    for count in [1, 2] {
+        let mut valid = observed_combined_static_named_root_program(count);
+        for node in &mut valid.expressions {
+            node.expression = Expression::Const {
+                value: if node.id == 1 {
+                    Value::Bool(false)
+                } else {
+                    Value::String("constant".into())
+                },
+            };
+        }
+        assert_eq!(validate_program(&valid), Ok(()));
+        for primary in [false, true] {
+            for mutation in 0..6 {
+                let mut invalid = valid.clone();
+                let scope = if primary {
+                    &mut invalid.root
+                } else {
+                    &mut invalid.extra_targets.last_mut().unwrap().root
+                };
+                match mutation {
+                    0 => scope.target_field = "descendant".into(),
+                    1 => scope.iteration = Some(IterationPlan::source(Vec::new())),
+                    2 => scope.iteration = Some(IterationPlan::dynamic_documents(Vec::new(), 3)),
+                    3 => scope.repeating = true,
+                    4 => scope.construction = TargetConstruction::CopyCurrentSource,
+                    5 => scope.children.push(empty_target_scope()),
+                    _ => unreachable!(),
+                }
+                assert!(
+                    matches!(
+                        validate_program(&invalid),
+                        Err(ProgramValidationError::InvalidXmlBoundary { .. })
+                    ),
+                    "count {count}, primary {primary}, mutation {mutation}"
+                );
+            }
+        }
+    }
+}

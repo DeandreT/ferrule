@@ -639,8 +639,8 @@ policy. Parsing, mapping, or serialization failure returns no output set.
 An unsuitable ordinary target omits the whole optional XML adapter while
 preserving otherwise supported typed/JSON core generation, including when
 other XML targets retain literal hints. Observed root-view boundaries retain
-their explicit compound restrictions, including the single static named-output
-exception described below.
+their explicit compound restrictions, including the static named-document
+routes described below.
 
 Set APIs return `codegen_runtime::XmlOutputSetError` in Rust and throw
 `FerruleXmlOutputSetException` in C#. The wrapper retains the original typed
@@ -1045,8 +1045,28 @@ writer, and serialization
 failures retain the exact Primary or Named target. This route does not perform
 file publication or add document-member paths.
 
-Dynamic XML document inputs, observed named inputs, dynamic outputs, and combined
-named inputs and outputs remain outside this observed-primary adapter. Unsupported input or target schemas fail during
+Static `Structured` named inputs can also accompany one or more flat static
+named XML outputs. This combined route requires every primary and named output
+root to be a nonrepeating constructed group with no children, dynamic bindings,
+iteration, filters, grouping, sorting, windows or alternative construction. A
+root label is empty or exactly its own schema name. These checks apply even with
+one named output and no primary-metadata expressions. Every named input keeps
+its own closed `Structured` schema, XML options and declaration policy; named
+observed profiles remain unsupported.
+
+The existing source-aware text, byte, output-set, singular and context APIs serve
+this route. Primary metadata readers retain the original primary owner, while
+ordinary named fields read their named document. Required primary fields never
+fall back to a same-named secondary field. Named conditions retain lazy required
+and context reads. Mapping completes for every target before any writer, and
+the singular APIs serialize that same complete set before returning primary.
+Input failures retain the exact input declaration; writer failures retain the
+exact output declaration. Names and original input sizes are checked before
+parsing, and a failure returns no partial output set. Existing zero-source and
+input-only routes retain their previous admission rules and wrappers.
+
+Dynamic XML document inputs, observed named inputs and dynamic outputs remain
+outside this observed-primary adapter. Unsupported input or target schemas fail during
 generation, before the artifact destination is created.
 
 ### Output and Limits

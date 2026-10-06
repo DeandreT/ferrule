@@ -489,3 +489,285 @@ fn observed_plural_named_reader_permission_rejects_mismatch_and_invalid_consumer
         );
     }
 }
+
+fn observed_combined_static_named_root_project(count: usize) -> Project {
+    let mut project = observed_plural_static_named_root_project(count);
+    project.extra_sources.push(NamedSource {
+        name: "labels".into(), path: "labels.xml".into(), dynamic_path: None,
+        schema: serde_json::from_str(r#"{"name":"Labels","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"group","children":[{"name":"Code","xml_namespace":{"kind":"unqualified"},"attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"Extra","xml_namespace":{"kind":"unqualified"},"attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"ReadExtra","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"scalar","ty":"bool"}},{"name":"NeedContext","xml_namespace":{"kind":"unqualified"},"kind":{"kind":"scalar","ty":"bool"}}]}}"#).unwrap(),
+        options: mapping::FormatOptions { xml_document: true, ..Default::default() },
+    });
+    for (id, field) in [
+        (5, "Code"),
+        (6, "Extra"),
+        (7, "ReadExtra"),
+        (11, "NeedContext"),
+    ] {
+        project.graph.nodes.insert(
+            id,
+            Node::SourceField {
+                path: vec!["labels".into(), field.into()],
+                frame: None,
+            },
+        );
+    }
+    project.graph.nodes.insert(
+        8,
+        Node::If {
+            condition: 7,
+            then: 1,
+            else_: 3,
+        },
+    );
+    project.graph.nodes.insert(
+        9,
+        Node::RuntimeValue {
+            value: mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    project.graph.nodes.insert(
+        10,
+        Node::If {
+            condition: 11,
+            then: 9,
+            else_: 3,
+        },
+    );
+    if let ir::SchemaKind::Group { children, .. } = &mut project.target.kind {
+        children.extend([
+            SchemaNode::scalar("NamedCode", ScalarType::String),
+            SchemaNode::scalar("NamedExtra", ScalarType::String),
+        ]);
+    }
+    project.root.bindings.extend([
+        Binding {
+            target_field: "NamedCode".into(),
+            node: 5,
+        },
+        Binding {
+            target_field: "NamedExtra".into(),
+            node: 6,
+        },
+    ]);
+    project.extra_targets.last_mut().unwrap().root.bindings[0].node = 8;
+    project
+}
+
+fn observed_combined_secondary(
+    read_extra: bool,
+    need_context: bool,
+) -> Vec<(String, ir::Instance)> {
+    vec![(
+        "labels".into(),
+        ir::Instance::Group(
+            vec![
+                (
+                    "Code".into(),
+                    ir::Instance::Scalar(Value::String("secondary-code".into())),
+                ),
+                (
+                    "Extra".into(),
+                    ir::Instance::Scalar(Value::String("secondary-extra".into())),
+                ),
+                (
+                    "ReadExtra".into(),
+                    ir::Instance::Scalar(Value::Bool(read_extra)),
+                ),
+                (
+                    "NeedContext".into(),
+                    ir::Instance::Scalar(Value::Bool(need_context)),
+                ),
+            ]
+            .into(),
+        ),
+    )]
+}
+
+#[test]
+fn observed_combined_named_roots_preserve_primary_owner_beside_colliding_named_fields() {
+    let context = crate::ExecutionContext::new(std::path::Path::new("combined.json"));
+    for count in [1, 2] {
+        for reversed in [false, true] {
+            let mut project = observed_combined_static_named_root_project(count);
+            if reversed {
+                project.extra_targets.reverse();
+            }
+            assert!(validate(&project).is_empty());
+            let source = observed_one_static_named_root_source(true, Some("primary-extra"));
+            let outputs = crate::run_outputs_with_sources_and_context(
+                &project,
+                &source,
+                observed_combined_secondary(true, false),
+                &context,
+            )
+            .unwrap();
+            assert_eq!(
+                outputs
+                    .primary
+                    .field("Value")
+                    .and_then(ir::Instance::as_scalar),
+                Some(&Value::String("primary owner 雪".into()))
+            );
+            assert_eq!(
+                outputs
+                    .primary
+                    .field("NamedCode")
+                    .and_then(ir::Instance::as_scalar),
+                Some(&Value::String("secondary-code".into()))
+            );
+            assert_eq!(
+                outputs
+                    .primary
+                    .field("NamedExtra")
+                    .and_then(ir::Instance::as_scalar),
+                Some(&Value::String("secondary-extra".into()))
+            );
+            assert_eq!(
+                outputs
+                    .extras
+                    .iter()
+                    .map(|output| output.name.as_str())
+                    .collect::<Vec<_>>(),
+                project
+                    .extra_targets
+                    .iter()
+                    .map(|target| target.name.as_str())
+                    .collect::<Vec<_>>()
+            );
+            let read = outputs
+                .extras
+                .iter()
+                .zip(&project.extra_targets)
+                .find(|(_, target)| target.root.bindings[0].node == 8)
+                .unwrap()
+                .0;
+            assert_eq!(
+                read.instance
+                    .field("Value")
+                    .and_then(ir::Instance::as_scalar),
+                Some(&Value::String("primary-extra".into()))
+            );
+            assert_eq!(
+                source.xml_type_origin(),
+                Ok(ir::XmlTypeOrigin::Explicit("Derived"))
+            );
+        }
+    }
+}
+
+#[test]
+fn observed_combined_named_condition_keeps_required_reads_and_context_lazy() {
+    let mut project = observed_combined_static_named_root_project(2);
+    let source = observed_one_static_named_root_source(true, None);
+    let context = crate::ExecutionContext::new(std::path::Path::new("combined.json"));
+    let lazy = crate::run_outputs_with_sources_and_context(
+        &project,
+        &source,
+        observed_combined_secondary(false, false),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(
+        lazy.extras[1]
+            .instance
+            .field("Value")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("skipped".into()))
+    );
+    assert!(
+        matches!(crate::run_outputs_with_sources_and_context(&project, &source, observed_combined_secondary(true, false), &context),
+        Err(crate::EngineError::PrimaryRoot { node: 1, source: ir::PrimaryRootError::MissingRequiredField { path } }) if path == vec!["Extra".to_owned()])
+    );
+    project.extra_targets[1].root.bindings[0].node = 10;
+    assert!(validate(&project).is_empty());
+    let lazy = crate::run_outputs_with_sources_and_context(
+        &project,
+        &source,
+        observed_combined_secondary(false, false),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(
+        lazy.extras[1]
+            .instance
+            .field("Value")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("skipped".into()))
+    );
+    assert!(matches!(
+        crate::run_outputs_with_sources_and_context(
+            &project,
+            &source,
+            observed_combined_secondary(false, true),
+            &context
+        ),
+        Err(crate::EngineError::MissingRuntimeValue(
+            mapping::RuntimeValue::CurrentDateTime
+        ))
+    ));
+    let supplied = context.with_current_datetime("2026-10-05T12:00:00Z");
+    let outputs = crate::run_outputs_with_sources_and_context(
+        &project,
+        &source,
+        observed_combined_secondary(false, true),
+        &supplied,
+    )
+    .unwrap();
+    assert_eq!(
+        outputs.extras[1]
+            .instance
+            .field("Value")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("2026-10-05T12:00:00Z".into()))
+    );
+}
+
+#[test]
+fn observed_combined_named_roots_do_not_grant_descendant_control_or_private_ownership() {
+    let valid = observed_combined_static_named_root_project(2);
+    for mutation in 0..10 {
+        let mut invalid = valid.clone();
+        match mutation {
+            0 => invalid.extra_sources[0].options.xml_document = false,
+            1 => invalid.extra_sources[0].schema = valid.source.clone(),
+            2 => {
+                invalid.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
+                    node: 3,
+                    iteration: Vec::new(),
+                })
+            }
+            3 => invalid.extra_targets[1].root.target_field = "Audit".into(),
+            4 => invalid.extra_targets[1].root.filter = Some(2),
+            5 => invalid.extra_targets[1].root.children.push(Scope {
+                target_field: "Value".into(),
+                bindings: invalid.root.bindings.clone(),
+                ..Scope::default()
+            }),
+            6 => invalid
+                .root
+                .dynamic_bindings
+                .push(DynamicBinding { key: 0, value: 1 }),
+            7 => invalid.extra_targets[1].schema.repeating = true,
+            8 => invalid.extra_targets[1].root.set_source(Some(vec![])),
+            9 => {
+                invalid.graph.nodes.insert(
+                    12,
+                    Node::Aggregate {
+                        function: mapping::AggregateOp::Count,
+                        collection: Vec::new(),
+                        value: Vec::new(),
+                        expression: Some(1),
+                        arg: None,
+                    },
+                );
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            validate(&invalid).iter().any(|issue| issue
+                .message
+                .contains("primary-root primitive is unavailable")),
+            "mutation {mutation}"
+        );
+    }
+}
