@@ -19,5 +19,11 @@ fn expected() -> Instance {
         field("Failed", scalar(Value::String("retained".into()))),
         field("Null", scalar(Value::String("null".into()))),
         field("XmlNil", scalar(Value::String("xml-nil".into()))),
+        field("TypedJsonNull", scalar(Value::String("null-row".into()))),
+        field("UntypedJsonNull", scalar(Value::String("json-null-row".into()))),
+        field("TypedXmlNil", scalar(Value::String("xml-nil-row".into()))),
+        field("UntypedXmlNil", scalar(Value::String("xml-nil-row".into()))),
+        field("FunctionConstantJsonNull", scalar(Value::String("json-null-row".into()))),
+        field("FunctionParameterJsonNull", scalar(Value::String("json-null-row".into()))),
     ])
 }

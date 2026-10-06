@@ -288,8 +288,15 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 default,
             } => {
                 output.push_str("\n    {\n");
+                let normalization = if input_type.is_some() {
+                    format!(
+                        "        if (input_{node}.Kind == global::Ferrule.Runtime.FerruleValueKind.JsonNull)\n        {{\n            input_{node} = global::Ferrule.Runtime.FerruleValue.Null;\n        }}\n"
+                    )
+                } else {
+                    String::new()
+                };
                 output.push_str(&format!(
-                    "        var input_{node} = Node_{input}(context);\n        return global::Ferrule.Runtime.FerruleValueMaps.Apply(\n            input_{node}, "
+                    "        var input_{node} = Node_{input}(context);\n{normalization}        return global::Ferrule.Runtime.FerruleValueMaps.Apply(\n            input_{node}, "
                 ));
                 match input_type {
                     Some(value) => output.push_str(&format!(
