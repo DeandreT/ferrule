@@ -359,6 +359,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     for (index, target) in program.extra_targets.iter().enumerate() {
         collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
     }
+    let retained_expressions = multi_source_expression_usage(program, &scopes);
     let item_ids: BTreeSet<_> = scopes
         .iter()
         .filter_map(|(_, scope, _, _)| {
@@ -390,18 +391,22 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
         )
         .collect();
     for node in &program.expressions {
+        // Render even an omitted path graph, preserving all emission validation
+        // errors and their original expression order.
+        let rendered =
+            render_expression(node.id, &node.expression, "expression_", None, &functions)?;
+        if retained_expressions
+            .as_ref()
+            .is_some_and(|retained| !retained.contains(&node.id))
+        {
+            continue;
+        }
         if item_ids.contains(&node.id) {
             // Portable validation retains item identity even when no expression
             // reads its value. Only these owned metadata functions may be unused.
             source.push_str("#[allow(dead_code)]\n");
         }
-        source.push_str(&render_expression(
-            node.id,
-            &node.expression,
-            "expression_",
-            None,
-            &functions,
-        )?);
+        source.push_str(&rendered);
     }
     source.push_str(&failure::render(program));
 
@@ -415,6 +420,154 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
         )?);
     }
     Ok(source)
+}
+
+// Dynamic declaration paths remain in the portable program for validation and
+// adapter policy tables. With multiple declarations, a source may never be
+// walked by any target, so its path graph need not become unused Rust functions.
+// Keep the legacy zero/one-dynamic-source rendering byte-for-byte unchanged.
+fn multi_source_expression_usage(
+    program: &Program,
+    scopes: &[(String, &TargetScope, Vec<String>, Vec<String>)],
+) -> Option<BTreeSet<NodeId>> {
+    if program
+        .extra_sources
+        .iter()
+        .filter(|source| source.dynamic.is_some())
+        .count()
+        < 2
+    {
+        return None;
+    }
+    let mut pending = BTreeSet::new();
+    for (_, scope, _, _) in scopes {
+        pending.extend(scope.bindings.iter().map(|binding| binding.expression));
+        if let Some(iteration) = &scope.iteration {
+            pending.extend(iteration.roots());
+            if let Some(dynamic) = iteration
+                .source_iteration()
+                .and_then(|source| source.path().first())
+                .and_then(|name| {
+                    program
+                        .extra_sources
+                        .iter()
+                        .find(|source| source.name == *name)
+                })
+                .and_then(|source| source.dynamic.as_ref())
+            {
+                pending.insert(dynamic.path);
+            }
+        }
+        match &scope.construction {
+            TargetConstruction::DynamicGroup {
+                bindings, children, ..
+            } => {
+                for binding in bindings {
+                    pending.extend([binding.key, binding.value]);
+                }
+                pending.extend(children.iter().map(|child| child.key));
+            }
+            TargetConstruction::Scalar { expression, .. }
+            | TargetConstruction::RecursiveFilter {
+                predicate: expression,
+                ..
+            } => {
+                pending.insert(*expression);
+            }
+            TargetConstruction::AdjacencyTree { root, .. } => pending.extend(*root),
+            TargetConstruction::Group
+            | TargetConstruction::CopyCurrentSource
+            | TargetConstruction::XmlMixedContent { .. }
+            | TargetConstruction::PathHierarchy { .. } => {}
+        }
+    }
+    for rule in &program.failure_rules {
+        pending.extend(rule.selection.predicate());
+        pending.extend(rule.message);
+        if let codegen::FailureIteration::Generated(sequence) = &rule.iteration {
+            pending.extend(sequence.roots());
+        }
+    }
+    // User-function bodies retain their existing emission. Keeping each call
+    // root also keeps its arguments, without introducing unused function bodies.
+    pending.extend(program.expressions.iter().filter_map(|node| {
+        matches!(&node.expression, Expression::UserFunctionCall { .. }).then_some(node.id)
+    }));
+    let expressions = program
+        .expressions
+        .iter()
+        .map(|node| (node.id, &node.expression))
+        .collect::<BTreeMap<_, _>>();
+    let mut retained = BTreeSet::new();
+    while let Some(node) = pending.pop_first() {
+        if retained.insert(node)
+            && let Some(expression) = expressions.get(&node)
+        {
+            pending.extend(expression_inputs(expression));
+        }
+    }
+    Some(retained)
+}
+
+fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
+    match expression {
+        Expression::DynamicSourceField { key, .. } => vec![*key],
+        Expression::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
+        Expression::RuntimeParameterDefault { default, .. } => vec![*default],
+        Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => args.clone(),
+        Expression::DelimitedTextField { input, .. } | Expression::ValueMap { input, .. } => {
+            vec![*input]
+        }
+        Expression::If {
+            condition,
+            then,
+            else_,
+        } => vec![*condition, *then, *else_],
+        Expression::Lookup { matches, .. } => vec![*matches],
+        Expression::CollectionFind {
+            predicate, value, ..
+        } => vec![*predicate, *value],
+        Expression::Aggregate { value, arg, .. } => {
+            value.expression().into_iter().chain(*arg).collect()
+        }
+        Expression::JoinAggregate {
+            expression, arg, ..
+        } => expression.iter().copied().chain(*arg).collect(),
+        Expression::SequenceExists {
+            sequence,
+            predicate,
+        } => sequence.roots().chain([*predicate]).collect(),
+        Expression::SequenceItemAt { sequence, index } => {
+            sequence.roots().chain([*index]).collect()
+        }
+        Expression::SequenceAggregate {
+            sequence,
+            predicate,
+            expression,
+            arg,
+            ..
+        } => sequence
+            .roots()
+            .chain(*predicate)
+            .chain(*expression)
+            .chain(*arg)
+            .collect(),
+        Expression::SourceField { .. }
+        | Expression::SourceRootXmlTypeEquals { .. }
+        | Expression::SourceRootField { .. }
+        | Expression::XmlSerialize { .. }
+        | Expression::SourceDocumentPath
+        | Expression::Position { .. }
+        | Expression::JoinField { .. }
+        | Expression::JoinPosition { .. }
+        | Expression::Const { .. }
+        | Expression::FunctionParameter { .. }
+        | Expression::RuntimeValue { .. }
+        | Expression::RuntimeParameter { .. } => Vec::new(),
+    }
 }
 
 fn render_json_api(program: &Program) -> Result<String, EmitError> {

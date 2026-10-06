@@ -140,7 +140,7 @@ fn one_dynamic_policy_and_every_static_schema_keep_original_declaration_ownershi
 }
 
 #[test]
-fn static_inputs_are_optional_and_a_second_dynamic_declaration_keeps_ordinary_core_fallback() {
+fn static_inputs_are_optional_and_a_second_dynamic_declaration_keeps_the_xml_adapter() {
     let mut only_dynamic = project();
     only_dynamic
         .extra_sources
@@ -169,7 +169,12 @@ fn static_inputs_are_optional_and_a_second_dynamic_declaration_keeps_ordinary_co
     multiple.extra_sources.push(second);
     let lowered = lower(&multiple).unwrap();
     assert_eq!(lowered.extra_sources.len(), 4);
-    assert_eq!(lowered.xml_output_mode(), Ok(None));
+    assert_eq!(
+        lowered.xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
+        ))
+    );
 }
 
 #[test]
@@ -400,4 +405,313 @@ fn empty_primary_document_set_does_not_evaluate_unreached_loader_scopes() {
     .unwrap();
     assert_eq!(mapped.primary, Instance::DocumentSet(Vec::new()));
     assert!(mapped.extras.is_empty() && loader.calls.borrow().is_empty());
+}
+
+fn multiple_project() -> Project {
+    serde_json::from_str(include_str!(
+        "fixtures/multiple_dynamic_named_inputs_dynamic_primary_xml_documents.json"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn multiple_dynamic_primary_inputs_keep_each_original_index_and_schema() {
+    let mut project = multiple_project();
+    assert!(engine::validate(&project).is_empty());
+    let program = lower(&project).unwrap();
+    assert_eq!(
+        program.xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
+        ))
+    );
+    let policy = program.xml_boundary.as_ref().unwrap();
+    assert_eq!(
+        policy
+            .extra_inputs
+            .iter()
+            .map(|input| input.name.as_str())
+            .collect::<Vec<_>>(),
+        ["rates", "catalog", "labels", "codes"]
+    );
+    for (index, (source, input)) in program
+        .extra_sources
+        .iter()
+        .zip(&policy.extra_inputs)
+        .enumerate()
+    {
+        assert_eq!(source.name, input.name);
+        assert_eq!(source.source, project.extra_sources[index].schema);
+        assert_eq!(source.dynamic.is_some(), index == 1 || index == 3);
+        assert_eq!(input.input.profile(), Some(XmlInputProfile::Structured));
+    }
+    assert_ne!(
+        program.extra_sources[1].source,
+        program.extra_sources[3].source
+    );
+    let mut misaligned = program;
+    misaligned
+        .xml_boundary
+        .as_mut()
+        .unwrap()
+        .extra_inputs
+        .swap(1, 3);
+    assert!(matches!(
+        misaligned.xml_output_mode(),
+        Err(ProgramValidationError::InvalidXmlBoundary { .. })
+    ));
+    let mut unproved = project.clone();
+    let SchemaKind::Group { children, .. } = &mut unproved.extra_sources[3].schema.kind else {
+        unreachable!()
+    };
+    let SchemaKind::Group { children, .. } = &mut children[0].kind else {
+        unreachable!()
+    };
+    children[0].default = Some("1".into());
+    assert!(children[0].metadata_is_valid());
+    assert_eq!(lower(&unproved).unwrap().xml_output_mode(), Ok(None));
+
+    project
+        .extra_sources
+        .retain(|source| source.dynamic_path.is_some());
+    project.graph.nodes.insert(
+        6,
+        Node::Const {
+            value: Value::Float(2.0),
+        },
+    );
+    project.graph.nodes.insert(
+        10,
+        Node::Const {
+            value: Value::String("literal".into()),
+        },
+    );
+    assert_eq!(
+        lower(&project).unwrap().xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
+        ))
+    );
+}
+
+struct MultiplePrimaryLoader {
+    calls: RefCell<Vec<(String, String)>>,
+    fail_source: Option<&'static str>,
+}
+impl engine::DynamicSourceLoader for MultiplePrimaryLoader {
+    fn load(&self, name: &str, path: &str) -> Result<Arc<Instance>, String> {
+        self.calls.borrow_mut().push((name.into(), path.into()));
+        if self.fail_source == Some(name) {
+            return Err("original source host marker".into());
+        }
+        let (collection, fields) = match name {
+            "catalog" => (
+                "Row",
+                vec![
+                    ("Name", value(Value::String("catalog name".into()))),
+                    ("Amount", value(Value::Float(-0.0))),
+                    ("Adjustment", value(Value::xml_nil())),
+                    ("Text", value(Value::String("catalog text".into()))),
+                ],
+            ),
+            "codes" => (
+                "Entry",
+                vec![
+                    ("Code", value(Value::Int(9_007_199_254_740_993))),
+                    ("Text", value(Value::String("codes text".into()))),
+                ],
+            ),
+            _ => return Err(format!("unexpected source {name}")),
+        };
+        Ok(Arc::new(group(vec![(
+            collection,
+            Instance::Repeated(vec![group(fields)]),
+        )])))
+    }
+}
+fn multiple_source(paths: &[&str]) -> Instance {
+    let mut input = source(paths, false);
+    let Instance::Group(fields) = &mut input else {
+        unreachable!()
+    };
+    fields
+        .iter_mut()
+        .find(|(name, _)| name == "LoadRow")
+        .unwrap()
+        .1 = Instance::Repeated(vec![group(vec![
+        ("Id", value(Value::Int(91))),
+        ("Path", value(Value::String("same.xml".into()))),
+    ])]);
+    input
+}
+
+#[test]
+fn native_primary_members_use_both_source_schemas_at_the_same_path() {
+    let loader = MultiplePrimaryLoader {
+        calls: RefCell::default(),
+        fail_source: None,
+    };
+    let execution = engine::ExecutionContext::new(Path::new("mapping.json"))
+        .with_dynamic_source_loader(&loader);
+    let paths = ["same-output.xml", "same-output.xml"];
+    let mapped = engine::run_outputs_with_sources_and_context(
+        &multiple_project(),
+        &multiple_source(&paths),
+        inputs(),
+        &execution,
+    )
+    .unwrap();
+    assert!(mapped.extras.is_empty());
+    let Instance::DocumentSet(members) = mapped.primary else {
+        panic!("primary members")
+    };
+    assert_eq!(
+        members
+            .iter()
+            .map(|member| member.path())
+            .collect::<Vec<_>>(),
+        paths
+    );
+    for (index, member) in members.iter().enumerate() {
+        assert_eq!(
+            member.value().field("Id").and_then(Instance::as_scalar),
+            Some(&Value::Int(index as i64 + 1))
+        );
+        let Some(Instance::Repeated(lines)) = member.value().field("Line") else {
+            panic!("catalog lines")
+        };
+        assert_eq!(lines.len(), 1);
+        for field in ["Amount", "Scaled"] {
+            let Some(Value::Float(actual)) = lines[0].field(field).and_then(Instance::as_scalar)
+            else {
+                panic!("Float {field}")
+            };
+            assert_eq!(actual.to_bits(), (-0.0f64).to_bits());
+        }
+        assert_eq!(
+            lines[0].field("Text").and_then(Instance::as_scalar),
+            Some(&Value::String("catalog text".into()))
+        );
+        let Some(Instance::Repeated(codes)) = member.value().field("CodeLine") else {
+            panic!("codes lines")
+        };
+        assert_eq!(codes.len(), 1);
+        assert_eq!(
+            codes[0].field("Code").and_then(Instance::as_scalar),
+            Some(&Value::Int(9_007_199_254_740_993))
+        );
+        assert_eq!(
+            codes[0].field("Text").and_then(Instance::as_scalar),
+            Some(&Value::String("codes text".into()))
+        );
+    }
+    assert_eq!(
+        loader.calls.borrow().as_slice(),
+        [
+            ("catalog".to_owned(), "same.xml".to_owned()),
+            ("codes".to_owned(), "same.xml".to_owned()),
+            ("catalog".to_owned(), "same.xml".to_owned()),
+            ("codes".to_owned(), "same.xml".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn unreached_second_source_and_empty_members_leave_missing_context_paths_lazy() {
+    let mut project = multiple_project();
+    project.graph.nodes.insert(
+        100,
+        Node::RuntimeValue {
+            value: mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    project.extra_sources[3].dynamic_path.as_mut().unwrap().node = 100;
+    project.root.children.pop();
+    assert!(engine::validate(&project).is_empty());
+    assert_eq!(
+        lower(&project).unwrap().xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
+        ))
+    );
+    for paths in [vec!["one.xml"], Vec::new()] {
+        let loader = MultiplePrimaryLoader {
+            calls: RefCell::default(),
+            fail_source: Some("codes"),
+        };
+        let execution = engine::ExecutionContext::new(Path::new("mapping.json"))
+            .with_dynamic_source_loader(&loader);
+        let mapped = engine::run_outputs_with_sources_and_context(
+            &project,
+            &multiple_source(&paths),
+            inputs(),
+            &execution,
+        )
+        .unwrap();
+        let Instance::DocumentSet(members) = mapped.primary else {
+            panic!("primary members")
+        };
+        assert_eq!(members.len(), paths.len());
+        assert_eq!(loader.calls.borrow().len(), paths.len());
+        assert!(
+            loader
+                .calls
+                .borrow()
+                .iter()
+                .all(|(name, _)| name == "catalog")
+        );
+    }
+}
+
+#[test]
+fn first_source_failure_skips_later_context_and_second_source_failure_returns_no_outputs() {
+    for first in [true, false] {
+        let mut project = multiple_project();
+        project.graph.nodes.insert(
+            10,
+            Node::Const {
+                value: Value::String("\u{1}".into()),
+            },
+        );
+        project.graph.nodes.insert(
+            100,
+            Node::RuntimeValue {
+                value: mapping::RuntimeValue::CurrentDateTime,
+            },
+        );
+        if first {
+            project.extra_sources[3].dynamic_path.as_mut().unwrap().node = 100;
+        } else {
+            project.root.children[1].bindings[1].node = 100;
+        }
+        assert!(engine::validate(&project).is_empty());
+        assert_eq!(
+            lower(&project).unwrap().xml_output_mode(),
+            Ok(Some(
+                XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
+            ))
+        );
+        let failed = if first { "catalog" } else { "codes" };
+        let loader = MultiplePrimaryLoader {
+            calls: RefCell::default(),
+            fail_source: Some(failed),
+        };
+        let execution = engine::ExecutionContext::new(Path::new("mapping.json"))
+            .with_dynamic_source_loader(&loader);
+        assert!(matches!(engine::run_outputs_with_sources_and_context(
+            &project, &multiple_source(&["one.xml", "later.xml"]), inputs(), &execution,
+        ), Err(engine::EngineError::DynamicSourceLoad { source_name, path, message })
+            if source_name == failed && path == "same.xml" && message == "original source host marker"));
+        assert_eq!(
+            loader.calls.borrow().as_slice(),
+            if first {
+                vec![("catalog".to_owned(), "same.xml".to_owned())]
+            } else {
+                vec![
+                    ("catalog".to_owned(), "same.xml".to_owned()),
+                    ("codes".to_owned(), "same.xml".to_owned()),
+                ]
+            }
+        );
+    }
 }

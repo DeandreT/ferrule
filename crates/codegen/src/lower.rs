@@ -83,8 +83,8 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             });
         }
     }
-    // An observed primary may compose only with static ordinary named inputs.
-    // Its zero-named route and every dynamic/extra-output refusal stay separate.
+    // Observed inputs keep separate static-input and one-static-output routes.
+    // Combining the two routes or adding dynamic boundaries remains unsupported.
     let root_view_static_inputs = primary_xml
         && !project.extra_sources.is_empty()
         && project.extra_targets.is_empty()
@@ -100,9 +100,25 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
                     })
                 && ir::xml_structured_document_input_is_supported(&source.schema)
         });
+    let root_view_static_output = primary_xml
+        && project.extra_sources.is_empty()
+        && project.extra_targets.len() == 1
+        && matches!(project.root.iteration, ScopeIteration::None)
+        && matches!(project.root.construction, ScopeConstruction::Constructed)
+        && !project.target.repeating
+        && matches!(project.target.kind, SchemaKind::Group { .. })
+        && xml_document_output_options(&project.target_options)
+        && project.extra_targets.iter().all(|target| {
+            matches!(target.root.iteration, ScopeIteration::None)
+                && matches!(target.root.construction, ScopeConstruction::Constructed)
+                && !target.schema.repeating
+                && matches!(target.schema.kind, SchemaKind::Group { .. })
+                && xml_document_output_options(&target.options)
+        });
     if primary_xml
         && (!project.extra_sources.is_empty() || !project.extra_targets.is_empty())
         && !root_view_static_inputs
+        && !root_view_static_output
     {
         reader_diagnostics.push(Diagnostic::Validation {
             location: "source format options".into(),
@@ -139,7 +155,9 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         )
     {
         if options.xml_schema_hints.is_some()
-            && !(ordinary_xml_input || (primary_xml && location == "target format options"))
+            && !(ordinary_xml_input
+                || (primary_xml && location == "target format options")
+                || root_view_static_output)
         {
             hint_diagnostics.push(Diagnostic::Validation {
                 location,

@@ -205,8 +205,25 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
         && program.root.iteration.is_none()
         && matches!(program.root.construction, crate::TargetConstruction::Group)
         && !program.root.repeating;
+    let root_view_static_output = program.extra_sources.is_empty()
+        && policy.extra_inputs.is_empty()
+        && program.extra_targets.len() == 1
+        && policy.extra_outputs.len() == 1
+        && program.root.iteration.is_none()
+        && matches!(program.root.construction, crate::TargetConstruction::Group)
+        && !program.root.repeating
+        && !program.target.repeating
+        && matches!(program.target.kind, SchemaKind::Group { .. })
+        && program.extra_targets.iter().all(|target| {
+            target.root.iteration.is_none()
+                && matches!(target.root.construction, crate::TargetConstruction::Group)
+                && !target.root.repeating
+                && !target.target.repeating
+                && matches!(target.target.kind, SchemaKind::Group { .. })
+        });
     if policy.input.profile() == Some(crate::XmlInputProfile::RootView)
         && !root_view_static_inputs
+        && !root_view_static_output
         && (!program.extra_sources.is_empty()
             || !policy.extra_inputs.is_empty()
             || !program.extra_targets.is_empty()
@@ -331,17 +348,6 @@ fn validate_dynamic_primary_output(
         } else {
             "dynamic primary XML output requires Structured inputs and no named outputs"
         }));
-    }
-    if program
-        .extra_sources
-        .iter()
-        .filter(|source| source.dynamic.is_some())
-        .count()
-        > 1
-    {
-        return Err(reject(
-            "dynamic primary XML output permits at most one dynamic named input",
-        ));
     }
     if program.target.repeating
         || program.root.repeating
