@@ -1,0 +1,629 @@
+{
+  "source": {
+    "name": "Input",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "PrimaryText",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "PrimaryBad",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "StaticBad",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "StaticContext",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "Row",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Value",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Amount",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "NeedContext",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        },
+        {
+          "name": "SecondRow",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "File",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Value",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Amount",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "NeedContext",
+                "xml_namespace": {
+                  "kind": "unqualified"
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Summary",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Marker",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Echo",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true
+  },
+  "target_options": {
+    "xml_document": true,
+    "xml_schema_hints": {
+      "no_namespace_location": "literal-primary.xsd"
+    }
+  },
+  "extra_sources": [],
+  "extra_targets": [
+    {
+      "name": "z-static",
+      "path": null,
+      "schema": {
+        "name": "Receipt",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:static"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Label",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "Echo",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "Exact",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:static",
+              "location": "literal-static.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "Receipt",
+        "bindings": [
+          {
+            "target_field": "Label",
+            "node": 17
+          },
+          {
+            "target_field": "Echo",
+            "node": 17
+          },
+          {
+            "target_field": "Exact",
+            "node": 9
+          }
+        ],
+        "children": []
+      }
+    },
+    {
+      "name": "a-dynamic",
+      "path": null,
+      "schema": {
+        "name": "Item",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:dynamic"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Value",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "Echo",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "Amount",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:dynamic",
+              "location": "literal-dynamic.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "Item",
+        "source": [
+          "Row"
+        ],
+        "output_path": 0,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 15
+          },
+          {
+            "target_field": "Echo",
+            "node": 15
+          },
+          {
+            "target_field": "Amount",
+            "node": 2
+          }
+        ],
+        "children": []
+      }
+    },
+    {
+      "name": "b-secondary",
+      "path": null,
+      "schema": {
+        "name": "Entry",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:secondary"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Payload",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "Copy",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "Amount",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "float"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:secondary",
+              "location": "literal-secondary.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "Entry",
+        "source": [
+          "SecondRow"
+        ],
+        "output_path": 19,
+        "bindings": [
+          {
+            "target_field": "Payload",
+            "node": 25
+          },
+          {
+            "target_field": "Copy",
+            "node": 25
+          },
+          {
+            "target_field": "Amount",
+            "node": 21
+          }
+        ],
+        "children": []
+      }
+    }
+  ],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "path": [
+          "File"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "Value"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "Amount"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "3": {
+        "kind": "source_field",
+        "path": [
+          "PrimaryText"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "path": [
+          "PrimaryBad"
+        ]
+      },
+      "5": {
+        "kind": "source_field",
+        "path": [
+          "StaticBad"
+        ]
+      },
+      "6": {
+        "kind": "source_field",
+        "path": [
+          "StaticContext"
+        ]
+      },
+      "7": {
+        "kind": "source_field",
+        "path": [
+          "NeedContext"
+        ],
+        "frame": [
+          "Row"
+        ]
+      },
+      "8": {
+        "kind": "const",
+        "value": "receipt"
+      },
+      "9": {
+        "kind": "const",
+        "value": 9007199254740993
+      },
+      "10": {
+        "kind": "const",
+        "value": "\u0001"
+      },
+      "11": {
+        "kind": "const",
+        "value": "bad"
+      },
+      "12": {
+        "kind": "runtime_value",
+        "value": "current_date_time"
+      },
+      "13": {
+        "kind": "call",
+        "function": "equal",
+        "args": [
+          1,
+          11
+        ]
+      },
+      "14": {
+        "kind": "if",
+        "condition": 7,
+        "then": 12,
+        "else": 1
+      },
+      "15": {
+        "kind": "if",
+        "condition": 13,
+        "then": 10,
+        "else": 14
+      },
+      "16": {
+        "kind": "if",
+        "condition": 6,
+        "then": 12,
+        "else": 8
+      },
+      "17": {
+        "kind": "if",
+        "condition": 5,
+        "then": 10,
+        "else": 16
+      },
+      "18": {
+        "kind": "if",
+        "condition": 4,
+        "then": 10,
+        "else": 3
+      },
+      "19": {
+        "kind": "source_field",
+        "path": [
+          "File"
+        ],
+        "frame": [
+          "SecondRow"
+        ]
+      },
+      "20": {
+        "kind": "source_field",
+        "path": [
+          "Value"
+        ],
+        "frame": [
+          "SecondRow"
+        ]
+      },
+      "21": {
+        "kind": "source_field",
+        "path": [
+          "Amount"
+        ],
+        "frame": [
+          "SecondRow"
+        ]
+      },
+      "22": {
+        "kind": "source_field",
+        "path": [
+          "NeedContext"
+        ],
+        "frame": [
+          "SecondRow"
+        ]
+      },
+      "23": {
+        "kind": "call",
+        "function": "equal",
+        "args": [
+          20,
+          11
+        ]
+      },
+      "24": {
+        "kind": "if",
+        "condition": 22,
+        "then": 12,
+        "else": 20
+      },
+      "25": {
+        "kind": "if",
+        "condition": 23,
+        "then": 10,
+        "else": 24
+      }
+    }
+  },
+  "root": {
+    "target_field": "Summary",
+    "bindings": [
+      {
+        "target_field": "Marker",
+        "node": 18
+      },
+      {
+        "target_field": "Echo",
+        "node": 18
+      }
+    ],
+    "children": []
+  }
+}

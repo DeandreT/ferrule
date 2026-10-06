@@ -5,6 +5,16 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 const DATETIME: &str = "2026-01-01T00:00:00Z";
+const MULTIPLE_LIST_CASES: [&str; 7] = [
+    "ordered",
+    "empty",
+    "empty-first",
+    "empty-second",
+    "late-second-path",
+    "second-member-writer",
+    "second-context",
+];
+
 const CASES: [&str; 14] = [
     "ordered",
     "empty",
@@ -143,6 +153,71 @@ fn source(name: &str) -> Instance {
         .into(),
     )
 }
+fn multiple_list_source(name: &str) -> Instance {
+    let primary = source(if name == "late-second-path" {
+        "primary-writer"
+    } else {
+        "ordered"
+    });
+    let Instance::Group(fields) = &primary else {
+        panic!("primary group")
+    };
+    let mut fields = fields
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Vec<_>>();
+    if matches!(name, "empty" | "empty-first") {
+        fields.iter_mut().find(|(key, _)| key == "Row").unwrap().1 = Instance::Repeated(Vec::new());
+    }
+    let rows = if matches!(name, "empty" | "empty-second") {
+        Vec::new()
+    } else {
+        (0..2)
+            .map(|index| {
+                Instance::Group(
+                    vec![
+                        (
+                            "File".into(),
+                            Instance::Scalar(Value::String(
+                                if name == "late-second-path" && index == 1 {
+                                    ""
+                                } else if index == 0 {
+                                    "  same.xml  "
+                                } else {
+                                    "別/next.xml"
+                                }
+                                .into(),
+                            )),
+                        ),
+                        (
+                            "Value".into(),
+                            Instance::Scalar(Value::String(
+                                if name == "second-member-writer" && index == 1 {
+                                    "bad"
+                                } else {
+                                    "independent 雪"
+                                }
+                                .into(),
+                            )),
+                        ),
+                        (
+                            "Amount".into(),
+                            Instance::Scalar(Value::Float(if index == 0 { -0.0 } else { 2.5 })),
+                        ),
+                        (
+                            "NeedContext".into(),
+                            Instance::Scalar(Value::Bool(name == "second-context" && index == 1)),
+                        ),
+                    ]
+                    .into(),
+                )
+            })
+            .collect()
+    };
+    fields.push(("SecondRow".into(), Instance::Repeated(rows)));
+    Instance::Group(fields.into())
+}
+
 fn structured_value_content(instance: &Instance) -> Json {
     fn content(value: &mut Json) {
         match value {
@@ -300,12 +375,13 @@ fn native_expected(
             "declared_names":project.extra_targets.iter().map(|target|&target.name).collect::<Vec<_>>(),"api":api,"context_supplied":supplied}),
         )?,
     )?;
-    assert_eq!(mapped.extras.len(), 2);
-    let mut actual_count = 2;
+    assert_eq!(mapped.extras.len(), project.extra_targets.len());
+    let mut actual_count = 1;
     let mut typed = Vec::new();
     for (index, (target, output)) in project.extra_targets.iter().zip(&mapped.extras).enumerate() {
         assert_eq!(output.name, target.name);
-        if target.name == "z-static" {
+        if matches!(target.root.iteration, mapping::ScopeIteration::None) {
+            actual_count += 1;
             assert_eq!(
                 output.instance.field("Exact"),
                 Some(&Instance::Scalar(Value::Int(9_007_199_254_740_993)))
@@ -459,7 +535,7 @@ fn compare_row(language: &str, row: &Json, expected: &Json, project: &Project) -
     )?;
     let actual = row["outputs"]["extras"].as_array().unwrap();
     let wanted = expected["outputs"]["extras"].as_array().unwrap();
-    assert_eq!(actual.len(), 2);
+    assert_eq!(actual.len(), project.extra_targets.len());
     for (index, ((actual, wanted), target)) in actual
         .iter()
         .zip(wanted)
@@ -642,8 +718,13 @@ fn run_host(
         Ok(recorded(&mut run, directory, "host")?)
     }
 }
-fn exercise(language: &str) -> TestResult<()> {
-    let mut directory = RegressionDirectory::new(language)?;
+fn exercise(language: &str, multiple_lists: bool) -> TestResult<()> {
+    let label = if multiple_lists {
+        format!("{language}_multiple_lists")
+    } else {
+        language.to_owned()
+    };
+    let mut directory = RegressionDirectory::new(&label)?;
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")
         .canonicalize()?;
@@ -657,11 +738,17 @@ fn exercise(language: &str) -> TestResult<()> {
             "static-first"
         });
         std::fs::create_dir(&variant)?;
-        let mut project: Project = serde_json::from_str(include_str!(
-            "../../../codegen/src/tests/fixtures/static_primary_mixed_named_xml_documents.json"
-        ))?;
+        let mut project: Project = serde_json::from_str(if multiple_lists {
+            include_str!(
+                "../../../codegen/src/tests/fixtures/static_primary_mixed_multiple_named_xml_documents.json"
+            )
+        } else {
+            include_str!(
+                "../../../codegen/src/tests/fixtures/static_primary_mixed_named_xml_documents.json"
+            )
+        })?;
         if reverse {
-            project.extra_targets.swap(0, 1);
+            project.extra_targets.reverse();
         }
         assert!(engine::validate(&project).is_empty());
         assert_eq!(
@@ -672,8 +759,17 @@ fn exercise(language: &str) -> TestResult<()> {
         std::fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
         let mut cases = Vec::new();
         let mut expected = BTreeMap::new();
-        for name in CASES {
-            let constructed = source(name);
+        let names: &[&str] = if multiple_lists {
+            &MULTIPLE_LIST_CASES
+        } else {
+            &CASES
+        };
+        for &name in names {
+            let constructed = if multiple_lists {
+                multiple_list_source(name)
+            } else {
+                source(name)
+            };
             std::fs::write(
                 variant.join(format!("{name}-constructed-input-original.json")),
                 serde_json::to_vec(&native_original_instance(&constructed))?,
@@ -691,7 +787,7 @@ fn exercise(language: &str) -> TestResult<()> {
                 structured_value_content(&source),
                 structured_value_content(&constructed)
             );
-            let supplied = matches!(name, "static-context" | "member-context");
+            let supplied = matches!(name, "static-context" | "member-context" | "second-context");
             cases.push(json!({"name":name,"context":supplied}));
             for api in 0..4 {
                 let original = native_expected(
@@ -758,8 +854,8 @@ fn exercise(language: &str) -> TestResult<()> {
             .lines()
             .map(serde_json::from_str::<Json>)
             .collect::<Result<Vec<_>, _>>()?;
-        assert_eq!(originals.len(), 56);
-        assert_eq!(diagnostics.len(), 56);
+        assert_eq!(originals.len(), names.len() * 4);
+        assert_eq!(diagnostics.len(), names.len() * 4);
         let mut identities = BTreeSet::new();
         for (original, diagnostic) in originals.iter().zip(diagnostics) {
             let mut reconstructed = diagnostic;
@@ -784,12 +880,23 @@ fn exercise(language: &str) -> TestResult<()> {
 #[test]
 fn rust_mixed_named_xml_public_apis_preserve_cardinality_owners_and_real_counts() -> TestResult<()>
 {
-    exercise("rust")
+    exercise("rust", false)
 }
 #[test]
 fn csharp_mixed_named_xml_public_apis_preserve_cardinality_owners_and_real_counts() -> TestResult<()>
 {
-    exercise("csharp")
+    exercise("csharp", false)
+}
+
+#[test]
+fn rust_mixed_xml_multiple_lists_preserve_independent_policies_and_late_failures() -> TestResult<()>
+{
+    exercise("rust", true)
+}
+#[test]
+fn csharp_mixed_xml_multiple_lists_preserve_independent_policies_and_late_failures()
+-> TestResult<()> {
+    exercise("csharp", true)
 }
 
 const RUST_HOST: &str = r#"use ferrule_generated_mapping::*;
