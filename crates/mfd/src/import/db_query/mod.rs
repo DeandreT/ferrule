@@ -1012,16 +1012,24 @@ impl GraphBuilder<'_> {
             };
         }
         if matches!(predicate.operator, QueryOperator::In | QueryOperator::NotIn) {
+            let QueryOperand::List(operands) = predicate.operand else {
+                return Err("IN query predicate requires an operand list".to_string());
+            };
+            let not_in = matches!(predicate.operator, QueryOperator::NotIn);
+            if operands.is_empty() {
+                // Both query entry points require explicit SQLite metadata.
+                // Its empty-list result is independent of value and collation,
+                // but the compared column was still validated above.
+                return Ok(self.alloc(Node::Const {
+                    value: Value::Bool(not_in),
+                }));
+            }
             if column_type == ScalarType::String {
                 return Err(
                     "text IN collation cannot be established from SQLite schema metadata"
                         .to_string(),
                 );
             }
-            let QueryOperand::List(operands) = predicate.operand else {
-                return Err("IN query predicate requires an operand list".to_string());
-            };
-            let not_in = matches!(predicate.operator, QueryOperator::NotIn);
             let mut comparisons = operands
                 .into_iter()
                 .map(|operand| {
@@ -1486,8 +1494,6 @@ mod tests {
             );
         }
         for predicate in [
-            "IN ()",
-            "NOT IN ()",
             r#"IN ("NULL")"#,
             "IN ([NULL])",
             "IN ((NULL))",
@@ -1507,6 +1513,32 @@ mod tests {
                 Parser::new(&sql).and_then(Parser::parse).is_err(),
                 "predicate={predicate}"
             );
+        }
+    }
+
+    #[test]
+    fn parses_only_immediately_closed_empty_membership_lists() {
+        for predicate in ["IN ()", "NOT IN ()", "in ( )", "not in (\n\t)"] {
+            let sql = format!("SELECT First FROM Person WHERE ForeignKey {predicate}");
+            let parsed = Parser::new(&sql).and_then(Parser::parse).unwrap();
+            assert_eq!(parsed.predicates.len(), 1);
+            assert!(matches!(
+                parsed.predicates[0].operand,
+                ParsedOperand::List(ref operands) if operands.is_empty()
+            ));
+        }
+        for predicate in [
+            "IN (,)",
+            "NOT IN (,1)",
+            "IN (1,)",
+            "NOT IN (1,,2)",
+            "IN (())",
+            "IN (NULL,)",
+            "NOT IN (",
+            "IN )",
+        ] {
+            let sql = format!("SELECT First FROM Person WHERE ForeignKey {predicate}");
+            assert!(Parser::new(&sql).and_then(Parser::parse).is_err());
         }
     }
 
