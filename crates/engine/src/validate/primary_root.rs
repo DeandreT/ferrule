@@ -64,7 +64,8 @@ pub(super) fn validate_primary_root_primitives(
         );
     }
     validate_scope(project, &primitives, &project.root, true, issues);
-    let named_root_allowed = observed_static_named_root_is_supported(project);
+    let named_root_allowed = observed_static_named_root_is_supported(project)
+        || observed_static_combined_root_is_supported(project);
     for target in &project.extra_targets {
         validate_scope(
             project,
@@ -116,6 +117,36 @@ fn observed_static_named_root_is_supported(project: &Project) -> bool {
         })
         && ir::xml_root_view_read_policy_is_supported(&project.source)
         && project.extra_sources.is_empty()
+        && !project.extra_targets.is_empty()
+        && flat_static_group_root(&project.target, &project.root)
+        && xml_document_output_options(&project.target_options)
+        && project.extra_targets.iter().all(|target| {
+            flat_static_group_root(&target.schema, &target.root)
+                && xml_document_output_options(&target.options)
+        })
+}
+
+// Static Structured secondaries do not change the immutable primary owner.
+// This is a distinct route; the existing zero-source route remains unchanged.
+fn observed_static_combined_root_is_supported(project: &Project) -> bool {
+    project.source_options
+        == (mapping::FormatOptions {
+            xml_document: true,
+            xml_allow_inactive_root_type_members: true,
+            xml_root_view_read_policy: true,
+            ..Default::default()
+        })
+        && ir::xml_root_view_read_policy_is_supported(&project.source)
+        && !project.extra_sources.is_empty()
+        && project.extra_sources.iter().all(|source| {
+            source.dynamic_path.is_none()
+                && source.options
+                    == (mapping::FormatOptions {
+                        xml_document: true,
+                        ..Default::default()
+                    })
+                && ir::xml_structured_document_input_is_supported(&source.schema)
+        })
         && !project.extra_targets.is_empty()
         && flat_static_group_root(&project.target, &project.root)
         && xml_document_output_options(&project.target_options)
