@@ -212,6 +212,10 @@ impl FerruleApp {
                             self.run(ui.ctx());
                             ui.close();
                         }
+                        if ui.button("Run JSON request...").clicked() {
+                            self.begin_rest_run();
+                            ui.close();
+                        }
                         if ui.button("Debug Run...").clicked() {
                             self.debug_run(ui.ctx());
                             ui.close();

@@ -605,6 +605,7 @@ impl FerruleApp {
     pub(super) fn clear_run_report(&mut self) {
         self.run_report = None;
         self.show_run_report = false;
+        self.clear_rest_run_session();
     }
 
     pub(super) fn run(&mut self, ctx: &egui::Context) {
@@ -616,6 +617,9 @@ impl FerruleApp {
     }
 
     fn start_saved_run(&mut self, debug: bool, ctx: &egui::Context) {
+        if self.rest_run_busy() {
+            return;
+        }
         if self.pending_file_run.is_some() || self.pending_pipeline_run.is_some() {
             return;
         }
@@ -661,6 +665,7 @@ impl FerruleApp {
             return;
         }
         self.show_run_report = false;
+        self.clear_rest_run_session();
         self.diagnostics.clear();
         let continuation = if debug {
             SaveContinuation::DebugRun
@@ -671,6 +676,9 @@ impl FerruleApp {
     }
 
     pub(super) fn run_saved(&mut self, debug: bool) {
+        if self.rest_run_busy() {
+            return;
+        }
         let runtime_parameters = match self.host_parameters.compile() {
             Ok(parameters) => parameters,
             Err(error) => {
