@@ -67,6 +67,65 @@ public static partial class FerruleXml
         }
     }
 
+    /// <summary>Prepares bounded UTF-8 output without allocating its returned byte array.</summary>
+    public static FerruleXmlPreparedUtf8Document PrepareDocumentEmbeddedUtf8(
+        string descriptor,
+        FerruleInstance instance,
+        bool declaration,
+        bool indent,
+        string? defaultNamespace,
+        string? schemaHintsJson)
+    {
+        string payload;
+        XmlSchemaNode parsedSchema;
+        try
+        {
+            var schema = FerruleEmbeddedSchema.Unwrap(descriptor, MaximumEmbeddedSchemaBytes);
+            payload = schema.Payload;
+            using var document = JsonDocument.Parse(payload,
+                new JsonDocumentOptions { MaxDepth = MaximumSchemaDepth });
+            parsedSchema = XmlSchemaNode.Parse(document.RootElement, 0, documentBoundary: true);
+            RequireDocumentNamespaceMetadata(parsedSchema, root: true);
+            if (schemaHintsJson is not null && HasSupplementaryDocumentName(parsedSchema))
+                throw new FormatException("supplementary XML names are unsupported by the generated input and hinted-output parsers");
+        }
+        catch (Exception error) when (error is JsonException or FormatException or
+            InvalidOperationException or ArgumentException or OverflowException or XmlException)
+        {
+            throw new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Schema, error.Message, error);
+        }
+        try
+        {
+            if (defaultNamespace is not null &&
+                (defaultNamespace.Length == 0 || OutputUtf8.GetByteCount(defaultNamespace) > 4096))
+                throw new InvalidOperationException("default XML namespace must be nonempty and at most 4096 UTF-8 bytes");
+            if (defaultNamespace is not null) _ = XmlConvert.VerifyXmlChars(defaultNamespace);
+            if (defaultNamespace is "http://www.w3.org/XML/1998/namespace" or
+                "http://www.w3.org/2000/xmlns/" ||
+                parsedSchema.NamespaceUri is "http://www.w3.org/XML/1998/namespace" or
+                "http://www.w3.org/2000/xmlns/")
+                throw new InvalidOperationException("reserved XML namespace cannot be the default namespace");
+            var prepared = SerializeCore<FerruleXmlPreparedUtf8Document>(0, payload, instance,
+                declaration, indent, defaultNamespace, schemaHintsJson, documentBoundary: true,
+                PrepareSerializedUtf8);
+            if (prepared.LegacyText is { } output)
+            {
+                try { _ = XmlConvert.VerifyXmlChars(output); }
+                catch (XmlException error)
+                {
+                    throw new InvalidOperationException("XML output must contain XML 1.0 characters", error);
+                }
+            }
+            return prepared;
+        }
+        catch (FerruleXmlBoundaryException) { throw; }
+        catch (Exception error) when (error is FerruleRuntimeException or JsonException or
+            FormatException or InvalidOperationException or ArgumentException or OverflowException or XmlException)
+        {
+            throw new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Output, error.Message, error);
+        }
+    }
+
     private static void RequireDocumentNamespaceMetadata(XmlSchemaNode schema, bool root)
     {
         if (schema.Attribute && schema.Name == "xmlns" && schema.NamespaceUri is null ||
@@ -142,4 +201,24 @@ public static partial class FerruleXml
             throw new InvalidOperationException("XML schema-hint token must be nonempty, at most 4096 UTF-8 bytes, and contain no XML whitespace");
         _ = XmlConvert.VerifyXmlChars(value);
     }
+}
+
+/// <summary>Opaque completed XML; each encoding returns a fresh caller-owned byte array.</summary>
+public sealed class FerruleXmlPreparedUtf8Document
+{
+    private readonly Func<byte[]> _encode;
+
+    internal FerruleXmlPreparedUtf8Document(int utf8ByteCount, Func<byte[]> encode,
+        string? legacyText = null)
+    {
+        Utf8ByteCount = utf8ByteCount;
+        _encode = encode;
+        LegacyText = legacyText;
+    }
+
+    public int Utf8ByteCount { get; }
+    internal string? LegacyText { get; }
+
+    /// <summary>Encodes the completed document; no mapping or writer is run again.</summary>
+    public byte[] ToByteArray() => _encode();
 }

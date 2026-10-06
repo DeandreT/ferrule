@@ -423,3 +423,221 @@ fn actual_member_count_includes_both_static_artifacts_without_counting_envelopes
         assert_eq!(2 + members.len(), if count == 4094 { 4096 } else { 4097 });
     }
 }
+
+fn multiple_list_project() -> Project {
+    serde_json::from_str(include_str!(
+        "fixtures/static_primary_mixed_multiple_named_xml_documents.json"
+    ))
+    .unwrap()
+}
+
+fn multiple_list_source(
+    primary_bad: bool,
+    first: &[(&str, &str, f64, bool)],
+    second: &[(&str, &str, f64, bool)],
+) -> Instance {
+    let first = source(primary_bad, false, false, first);
+    let second = source(false, false, false, second);
+    let Instance::Group(fields) = &first else {
+        panic!("primary group")
+    };
+    let mut fields = fields
+        .iter()
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect::<Vec<_>>();
+    fields.push(("SecondRow".into(), second.field("Row").unwrap().clone()));
+    Instance::Group(fields.into())
+}
+
+#[test]
+fn multiple_mixed_lists_keep_independent_drivers_schemas_and_policy_order() {
+    for reverse in [false, true] {
+        let mut project = multiple_list_project();
+        if reverse {
+            project.extra_targets.reverse();
+        }
+        assert!(engine::validate(&project).is_empty());
+        let lowered = lower(&project).unwrap();
+        assert_eq!(
+            lowered.xml_output_mode(),
+            Ok(Some(XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs))
+        );
+        let policy = lowered.xml_boundary.as_ref().unwrap();
+        assert!(policy.extra_inputs.is_empty() && lowered.extra_sources.is_empty());
+        for ((target, output), original) in lowered
+            .extra_targets
+            .iter()
+            .zip(&policy.extra_outputs)
+            .zip(&project.extra_targets)
+        {
+            assert_eq!(target.name, original.name);
+            assert_eq!(target.target, original.schema);
+            assert_eq!(output.name, original.name);
+            assert_eq!(
+                output.output.schema_hints,
+                original.options.xml_schema_hints
+            );
+        }
+        assert_eq!(
+            lowered
+                .extra_targets
+                .iter()
+                .filter(|target| target.root.iteration.is_none())
+                .count(),
+            1
+        );
+        let lists = project
+            .extra_targets
+            .iter()
+            .filter(|target| {
+                matches!(
+                    target.root.iteration,
+                    ScopeIteration::DynamicDocuments { .. }
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(lists.len(), 2);
+        assert_ne!(lists[0].schema, lists[1].schema);
+        assert_ne!(
+            lists[0].options.xml_schema_hints,
+            lists[1].options.xml_schema_hints
+        );
+    }
+}
+
+#[test]
+fn multiple_native_lists_preserve_independent_empty_envelopes_paths_and_exact_values() {
+    let first_rows = [("  same.xml  ", "雪 & 😀", -0.0, false)];
+    let second_rows = [
+        ("  same.xml  ", "second", -0.0, false),
+        ("別/next.xml", "third", 2.5, false),
+    ];
+    for reverse in [false, true] {
+        let mut project = multiple_list_project();
+        if reverse {
+            project.extra_targets.reverse();
+        }
+        for empty in 0..4 {
+            let first = if empty & 1 == 0 {
+                first_rows.as_slice()
+            } else {
+                &[]
+            };
+            let second = if empty & 2 == 0 {
+                second_rows.as_slice()
+            } else {
+                &[]
+            };
+            let mapped =
+                engine::run_outputs(&project, &multiple_list_source(false, first, second)).unwrap();
+            assert_eq!(mapped.extras.len(), 3);
+            let mut count = 1;
+            for (output, target) in mapped.extras.iter().zip(&project.extra_targets) {
+                assert_eq!(output.name, target.name);
+                if matches!(target.root.iteration, ScopeIteration::None) {
+                    count += 1;
+                    assert_eq!(
+                        value(&output.instance, "Exact"),
+                        &Value::Int(9_007_199_254_740_993)
+                    );
+                } else {
+                    let Instance::DocumentSet(members) = &output.instance else {
+                        panic!("list envelope")
+                    };
+                    let (rows, field) = if target.name == "a-dynamic" {
+                        (first, "Value")
+                    } else {
+                        (second, "Payload")
+                    };
+                    count += members.len();
+                    assert_eq!(members.len(), rows.len());
+                    for (member, (path, text, amount, _)) in members.iter().zip(rows) {
+                        assert_eq!(member.path(), *path);
+                        assert_eq!(member.source_path(), *path);
+                        assert_eq!(value(member.value(), field), &Value::String((*text).into()));
+                        let Value::Float(actual) = value(member.value(), "Amount") else {
+                            panic!("Float tag")
+                        };
+                        assert_eq!(actual.to_bits(), amount.to_bits());
+                        let xml = format_xml::to_string_with_options(
+                            &target.schema,
+                            member.value(),
+                            &format_xml::XmlWriteOptions {
+                                schema_hints: target.options.xml_schema_hints.clone(),
+                                ..Default::default()
+                            },
+                        )
+                        .unwrap();
+                        let parsed = format_xml::from_str(&xml, &target.schema).unwrap();
+                        assert_eq!(value(&parsed, field), value(member.value(), field));
+                        assert!(xml.contains(if target.name == "a-dynamic" {
+                            "literal-dynamic.xsd"
+                        } else {
+                            "literal-secondary.xsd"
+                        }));
+                    }
+                }
+            }
+            assert_eq!(count, 2 + first.len() + second.len());
+        }
+    }
+}
+
+#[test]
+fn late_second_list_mapping_refuses_before_earlier_invalid_xml_and_keeps_lazy_context() {
+    for reverse in [false, true] {
+        let mut project = multiple_list_project();
+        if reverse {
+            project.extra_targets.reverse();
+        }
+        let input = multiple_list_source(
+            true,
+            &[("first.xml", "bad", -0.0, false)],
+            &[("second.xml", "ok", -0.0, false), ("", "late", 2.5, false)],
+        );
+        assert!(matches!(
+            engine::run_outputs(&project, &input),
+            Err(engine::EngineError::EmptyDynamicTargetPath { node: 19 })
+        ));
+        let lazy = multiple_list_source(false, &[], &[]);
+        assert!(engine::run_outputs(&project, &lazy).is_ok());
+        let selected = multiple_list_source(
+            true,
+            &[("first.xml", "bad", -0.0, false)],
+            &[("second.xml", "ok", -0.0, true)],
+        );
+        assert!(matches!(
+            engine::run_outputs(&project, &selected),
+            Err(engine::EngineError::MissingRuntimeValue(
+                mapping::RuntimeValue::CurrentDateTime
+            ))
+        ));
+        let path = std::path::Path::new("context.xml");
+        let execution =
+            engine::ExecutionContext::new(path).with_current_datetime("2026-01-01T00:00:00Z");
+        let mapped = engine::run_outputs_with_sources_and_context(
+            &project,
+            &selected,
+            Vec::new(),
+            &execution,
+        )
+        .unwrap();
+        let output = mapped
+            .extras
+            .iter()
+            .find(|output| output.name == "b-secondary")
+            .unwrap();
+        let Instance::DocumentSet(members) = &output.instance else {
+            panic!("second list")
+        };
+        assert_eq!(
+            value(members[0].value(), "Payload"),
+            &Value::String("2026-01-01T00:00:00Z".into())
+        );
+        assert_eq!(
+            value(&mapped.primary, "Marker"),
+            &Value::String("\u{1}".into())
+        );
+        assert!(format_xml::to_string(&project.target, &mapped.primary).is_err());
+    }
+}
