@@ -1031,16 +1031,21 @@ impl GraphBuilder<'_> {
                         column_type,
                         QueryOperator::Equal,
                         operand,
+                        true,
                     )
                 })
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter();
-            let Some((first, first_present)) = comparisons.next() else {
-                return Err("IN query predicate requires at least one operand".to_string());
-            };
-            let (predicate_node, all_present) = comparisons.fold(
-                (first, first_present),
-                |(left, present), (right, right_present)| {
+                .collect::<Result<Vec<_>, _>>()?;
+            // Pair adjacent ranges without folding away any operand. Calls
+            // evaluate both arguments left-to-right, so each balanced tree
+            // keeps the original host-read order while bounding its depth.
+            while comparisons.len() > 1 {
+                let mut next = Vec::with_capacity(comparisons.len().div_ceil(2));
+                let mut pairs = comparisons.into_iter();
+                while let Some((left, present)) = pairs.next() {
+                    let Some((right, right_present)) = pairs.next() else {
+                        next.push((left, present));
+                        break;
+                    };
                     let comparison = self.alloc(Node::Call {
                         function: "or".to_string(),
                         args: vec![left, right],
@@ -1053,9 +1058,13 @@ impl GraphBuilder<'_> {
                     } else {
                         present
                     };
-                    (comparison, present)
-                },
-            );
+                    next.push((comparison, present));
+                }
+                comparisons = next;
+            }
+            let Some((predicate_node, all_present)) = comparisons.pop() else {
+                return Err("IN query predicate requires at least one operand".to_string());
+            };
             return if !not_in {
                 Ok(predicate_node)
             } else {
@@ -1096,6 +1105,7 @@ impl GraphBuilder<'_> {
             column_type,
             operator,
             operand,
+            false,
         )
         .map(|(predicate, _)| predicate)
     }
@@ -1107,10 +1117,14 @@ impl GraphBuilder<'_> {
         column_type: ScalarType,
         operator: QueryOperator,
         operand: QueryOperand,
+        literal_null_member: bool,
     ) -> Result<(NodeId, NodeId), String> {
         let operand = match operand {
             QueryOperand::Literal(value) => {
-                let value = coerce_value(value, column_type)?;
+                let value = match (literal_null_member, value) {
+                    (true, Value::Null) => Value::Null,
+                    (_, value) => coerce_value(value, column_type)?,
+                };
                 self.alloc(Node::Const { value })
             }
             QueryOperand::Parameter {
@@ -1403,6 +1417,119 @@ mod tests {
                 parsed.predicates[0].operand,
                 ParsedOperand::List(ref operands) if operands.len() == 3
             ));
+        }
+    }
+
+    #[test]
+    fn parses_literal_null_members_with_quoted_projection_identifiers() {
+        for operator in ["IN", "NOT IN"] {
+            for null in ["NULL", "null", "NuLl"] {
+                let sql = format!(
+                    r#"SELECT "NULL", [First] FROM [Person] WHERE [ForeignKey] {operator} ({null}, 2, :DepartmentID)"#
+                );
+                let parsed = Parser::new(&sql).and_then(Parser::parse).unwrap();
+                assert!(matches!(
+                    parsed.projection,
+                    QueryProjection::Columns(columns) if columns == ["NULL", "First"]
+                ));
+                let ParsedOperand::List(operands) = &parsed.predicates[0].operand else {
+                    panic!("membership operand list");
+                };
+                assert_eq!(operands.len(), 3);
+                assert!(matches!(operands[0], ParsedOperand::Null));
+                assert!(matches!(operands[1], ParsedOperand::Literal(Value::Int(2))));
+                assert!(matches!(
+                    &operands[2],
+                    ParsedOperand::Parameter(name) if name == "DepartmentID"
+                ));
+            }
+        }
+        for (predicate, expected) in [
+            ("IS null", QueryOperator::IsNull),
+            ("IS NOT NuLl", QueryOperator::IsNotNull),
+        ] {
+            let sql = format!(r#"SELECT "NULL" FROM [Person] WHERE "NULL" {predicate}"#);
+            let parsed = Parser::new(&sql).and_then(Parser::parse).unwrap();
+            assert_eq!(parsed.predicates[0].column, "NULL");
+            assert_eq!(parsed.predicates[0].operator, expected);
+            assert!(matches!(parsed.predicates[0].operand, ParsedOperand::Null));
+        }
+        let parsed = Parser::new("SELECT First FROM Person WHERE ForeignKey IN ('NULL')")
+            .and_then(Parser::parse)
+            .unwrap();
+        assert!(matches!(
+            &parsed.predicates[0].operand,
+            ParsedOperand::List(operands)
+                if matches!(&operands[0], ParsedOperand::Literal(Value::String(value)) if value == "NULL")
+        ));
+    }
+
+    #[test]
+    fn null_members_retain_list_limits_and_reject_quoted_or_malformed_operands() {
+        for operator in ["IN", "NOT IN"] {
+            let list = vec!["NULL"; MAX_QUERY_IN_ITEMS].join(", ");
+            let sql = format!("SELECT First FROM Person WHERE ForeignKey {operator} ({list})");
+            let parsed = Parser::new(&sql).and_then(Parser::parse).unwrap();
+            assert!(matches!(
+                parsed.predicates[0].operand,
+                ParsedOperand::List(ref operands)
+                    if operands.len() == MAX_QUERY_IN_ITEMS
+                        && operands.iter().all(|operand| matches!(operand, ParsedOperand::Null))
+            ));
+            let sql = format!("SELECT First FROM Person WHERE ForeignKey {operator} ({list}, 1)");
+            assert!(
+                Parser::new(&sql)
+                    .and_then(Parser::parse)
+                    .err()
+                    .unwrap()
+                    .contains("more than 256 items")
+            );
+        }
+        for predicate in [
+            "IN ()",
+            "NOT IN ()",
+            r#"IN ("NULL")"#,
+            "IN ([NULL])",
+            "IN ((NULL))",
+            "IN (NULL,)",
+            "IN (,NULL)",
+            "IN (NULL 1)",
+            "IN (NULL,,1)",
+            "IN (NULL",
+            "IN (SELECT First FROM Person)",
+            "= NULL",
+            "<> NULL",
+            "BETWEEN NULL AND 1",
+            r#"IS "NULL""#,
+        ] {
+            let sql = format!("SELECT First FROM Person WHERE ForeignKey {predicate}");
+            assert!(
+                Parser::new(&sql).and_then(Parser::parse).is_err(),
+                "predicate={predicate}"
+            );
+        }
+    }
+
+    #[test]
+    fn literal_membership_null_does_not_relax_static_parameter_coercion() {
+        // An encoded empty integer constant is a genuine static Null before
+        // query coercion; a valid integer constant stays a numeric control.
+        let null_default = super::super::function::parse_constant("", "integer");
+        assert_eq!(null_default, Value::Null);
+        assert_eq!(
+            super::super::function::parse_constant("1", "integer"),
+            Value::Int(1)
+        );
+        for ty in [
+            ScalarType::String,
+            ScalarType::Bool,
+            ScalarType::Int,
+            ScalarType::Float,
+        ] {
+            assert_eq!(
+                coerce_value(null_default.clone(), ty).unwrap_err(),
+                "query parameters cannot be null"
+            );
         }
     }
 
