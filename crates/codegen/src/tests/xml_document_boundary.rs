@@ -358,3 +358,273 @@ fn observed_compound_input_count_includes_primary() {
         if reason == "XML document input sets permit at most 4096 artifacts including primary")
     );
 }
+
+fn root_view_static_output_project() -> Project {
+    serde_json::from_str(include_str!(
+        "fixtures/root_view_primary_static_named_xml_output.json"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn observed_primary_and_one_static_output_keep_independent_schema_and_hint_policies() {
+    let project = root_view_static_output_project();
+    assert!(engine::validate(&project).is_empty());
+    let program = lower(&project).unwrap();
+    assert_eq!(
+        program.xml_output_mode(),
+        Ok(Some(crate::XmlOutputMode::SingleDocument))
+    );
+    assert!(program.extra_sources.is_empty());
+    let policy = program.xml_boundary.as_ref().unwrap();
+    assert_eq!(
+        policy.input.profile(),
+        Some(crate::XmlInputProfile::RootView)
+    );
+    assert!(policy.extra_inputs.is_empty());
+    assert_eq!(policy.extra_outputs.len(), 1);
+    assert_eq!(policy.extra_outputs[0].name, "audit");
+    assert_eq!(
+        policy.output.schema_hints,
+        project.target_options.xml_schema_hints
+    );
+    assert_eq!(
+        policy.extra_outputs[0].output.schema_hints,
+        project.extra_targets[0].options.xml_schema_hints
+    );
+    assert_ne!(
+        policy.output.schema_hints,
+        policy.extra_outputs[0].output.schema_hints
+    );
+    assert_eq!(
+        program.extra_targets[0].target,
+        project.extra_targets[0].schema
+    );
+    assert_ne!(
+        program.target.xml_namespace,
+        program.extra_targets[0].target.xml_namespace
+    );
+    for mutation in 0..3 {
+        let mut invalid = program.clone();
+        match mutation {
+            0 => {
+                invalid.xml_boundary.as_mut().unwrap().extra_outputs.clear();
+            }
+            1 => {
+                invalid.xml_boundary.as_mut().unwrap().extra_outputs[0].name = "wrong".into();
+            }
+            _ => {
+                let extra = invalid.xml_boundary.as_mut().unwrap().extra_outputs[0].clone();
+                invalid
+                    .xml_boundary
+                    .as_mut()
+                    .unwrap()
+                    .extra_outputs
+                    .push(extra);
+            }
+        }
+        assert!(matches!(
+            validate_program(&invalid),
+            Err(ProgramValidationError::InvalidXmlBoundary { .. })
+        ));
+    }
+}
+
+#[test]
+fn observed_static_output_exception_keeps_other_compound_and_root_shapes_closed() {
+    let valid = root_view_static_output_project();
+    for mutation in 0..7 {
+        let mut project = valid.clone();
+        match mutation {
+            0 => {
+                let mut second = project.extra_targets[0].clone();
+                second.name = "second".into();
+                project.extra_targets.push(second);
+            }
+            1 => {
+                project.extra_sources = root_view_static_inputs_project().extra_sources;
+            }
+            2 => {
+                project.extra_targets[0].root.set_source(Some(vec![]));
+            }
+            3 => {
+                project.root.set_source(Some(vec![]));
+            }
+            4 => {
+                project.extra_targets[0].schema.repeating = true;
+            }
+            5 => {
+                project.extra_targets[0].options = Default::default();
+            }
+            _ => {
+                project.extra_targets[0].schema.name = "bad root".into();
+            }
+        }
+        assert!(lower(&project).is_err(), "mutation {mutation}");
+    }
+    let mut explicit = lower(&valid).unwrap();
+    explicit.extra_targets[0].root.repeating = true;
+    assert!(matches!(
+        validate_program(&explicit),
+        Err(ProgramValidationError::InvalidXmlBoundary { .. })
+    ));
+    assert!(lower(&root_view_static_inputs_project()).is_ok());
+    assert!(lower(&document_project()).is_ok());
+}
+
+fn root_view_static_output_source(derived: bool, extra: Option<&str>) -> ir::Instance {
+    // Trusted host-owned typed input: this test does not execute an XML reader.
+    let mut fields = vec![(
+        "Code".to_owned(),
+        ir::Instance::Scalar(Value::String("  code 雪😀  ".into())),
+    )];
+    if let Some(extra) = extra {
+        fields.push((
+            "Extra".into(),
+            ir::Instance::Scalar(Value::String(extra.into())),
+        ));
+    }
+    let origin = if derived {
+        ir::XmlTypeOrigin::Explicit("{urn:types}Derived")
+    } else {
+        ir::XmlTypeOrigin::Absent
+    };
+    ir::Instance::Group(
+        ir::InstanceGroup::from(fields)
+            .with_xml_type_origin(origin)
+            .unwrap(),
+    )
+}
+
+#[test]
+fn native_observed_static_outputs_keep_type_selection_and_required_read_laziness() {
+    for derived in [false, true] {
+        let source = root_view_static_output_source(derived, derived.then_some("  extra 雪😀  "));
+        let mapped = engine::run_outputs(&root_view_static_output_project(), &source).unwrap();
+        assert_eq!(
+            mapped
+                .primary
+                .field("Code")
+                .and_then(ir::Instance::as_scalar),
+            Some(&Value::String("  code 雪😀  ".into()))
+        );
+        assert_eq!(
+            mapped
+                .primary
+                .field("Derived")
+                .and_then(ir::Instance::as_scalar),
+            Some(&Value::Bool(derived))
+        );
+        assert_eq!(
+            mapped
+                .primary
+                .field("Marker")
+                .and_then(ir::Instance::as_scalar),
+            Some(&Value::String("primary".into()))
+        );
+        assert_eq!(mapped.extras.len(), 1);
+        assert_eq!(mapped.extras[0].name, "audit");
+        assert_eq!(
+            mapped.extras[0]
+                .instance
+                .field("Code")
+                .and_then(ir::Instance::as_scalar),
+            Some(&Value::String("  code 雪😀  ".into()))
+        );
+        assert_eq!(
+            mapped.extras[0]
+                .instance
+                .field("Extra")
+                .and_then(ir::Instance::as_scalar),
+            Some(&Value::String(
+                if derived {
+                    "  extra 雪😀  "
+                } else {
+                    "skipped"
+                }
+                .into()
+            ))
+        );
+        assert_eq!(
+            mapped.extras[0]
+                .instance
+                .field("Marker")
+                .and_then(ir::Instance::as_scalar),
+            Some(&Value::String("audit".into()))
+        );
+        assert_eq!(
+            source.xml_type_origin(),
+            Ok(if derived {
+                ir::XmlTypeOrigin::Explicit("{urn:types}Derived")
+            } else {
+                ir::XmlTypeOrigin::Absent
+            })
+        );
+    }
+}
+
+#[test]
+fn late_named_required_read_stops_mapping_before_any_primary_writer() {
+    let mut project = root_view_static_output_project();
+    project.graph.nodes.insert(
+        5,
+        Node::Const {
+            value: Value::String("\u{1}".into()),
+        },
+    );
+    assert!(engine::validate(&project).is_empty());
+    assert!(lower(&project).is_ok());
+    assert!(
+        matches!(engine::run_outputs(&project, &root_view_static_output_source(true, None)),
+        Err(engine::EngineError::PrimaryRoot { node: 1, source: ir::PrimaryRootError::MissingRequiredField { path } })
+        if path == vec!["Extra".to_owned()])
+    );
+}
+
+#[test]
+fn named_output_context_read_is_lazy_and_preserves_missing_value_failure() {
+    let mut project = root_view_static_output_project();
+    project.graph.nodes.insert(
+        6,
+        Node::RuntimeValue {
+            value: mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    project.graph.nodes.insert(
+        7,
+        Node::If {
+            condition: 2,
+            then: 6,
+            else_: 3,
+        },
+    );
+    project.extra_targets[0].root.bindings[2].node = 7;
+    assert!(lower(&project).is_ok());
+    let base = engine::run_outputs(&project, &root_view_static_output_source(false, None)).unwrap();
+    assert_eq!(
+        base.extras[0]
+            .instance
+            .field("Marker")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("skipped".into()))
+    );
+    let derived = root_view_static_output_source(true, Some("present"));
+    assert!(matches!(
+        engine::run_outputs(&project, &derived),
+        Err(engine::EngineError::MissingRuntimeValue(
+            mapping::RuntimeValue::CurrentDateTime
+        ))
+    ));
+    let context = engine::ExecutionContext::new(std::path::Path::new("mapping.json"))
+        .with_current_datetime("2026-10-05T12:00:00Z");
+    let mapped =
+        engine::run_outputs_with_sources_and_context(&project, &derived, Vec::new(), &context)
+            .unwrap();
+    assert_eq!(
+        mapped.extras[0]
+            .instance
+            .field("Marker")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("2026-10-05T12:00:00Z".into()))
+    );
+}

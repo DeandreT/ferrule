@@ -359,3 +359,183 @@ fn xml_document_boundary_rejects_reserved_schema_root_namespace() {
         }
     }
 }
+
+fn observed_one_static_named_root_program() -> Program {
+    let mut program = document_boundary_program();
+    program.extra_targets.push(NamedTargetProgram {
+        name: "audit".into(),
+        target: program.target.clone(),
+        root: program.root.clone(),
+    });
+    program
+        .xml_boundary
+        .as_mut()
+        .unwrap()
+        .extra_outputs
+        .push(crate::NamedXmlOutputPolicy {
+            name: "audit".into(),
+            output: crate::XmlOutputPolicy::default(),
+        });
+    program
+}
+
+#[test]
+fn observed_one_static_named_root_program_admits_shared_and_named_only_readers() {
+    let mut program = observed_one_static_named_root_program();
+    assert_eq!(validate_program(&program), Ok(()));
+    program.expressions.push(ExpressionNode {
+        id: 2,
+        expression: Expression::SourceRootField {
+            path: vec!["Extra".into()],
+            required: true,
+        },
+    });
+    program.extra_targets[0].target = SchemaNode::group(
+        "Audit",
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    );
+    program.extra_targets[0].root.bindings[0].expression = 2;
+    program.extra_targets[0].root.bindings[0].target_domain = ScalarType::String.into();
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
+fn observed_static_named_root_program_retains_own_schema_names_from_lowering() {
+    let mut program = observed_one_static_named_root_program();
+    program.root.target_field = program.target.name.clone();
+    program.extra_targets[0].target.name = "Audit".into();
+    program.extra_targets[0].root.target_field = "Audit".into();
+    assert_eq!(validate_program(&program), Ok(()));
+    for (primary, name) in [
+        (true, "descendant"),
+        (false, "descendant"),
+        (true, "Audit"),
+        (false, "Target"),
+    ] {
+        let mut invalid = program.clone();
+        if primary {
+            invalid.root.target_field = name.into();
+        } else {
+            invalid.extra_targets[0].root.target_field = name.into();
+        }
+        assert_eq!(
+            validate_program(&invalid),
+            Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 1 })
+        );
+    }
+    program.extra_targets.clear();
+    program.xml_boundary.as_mut().unwrap().extra_outputs.clear();
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 1 })
+    );
+}
+
+#[test]
+fn observed_one_static_named_root_program_keeps_unproved_compound_roots_closed() {
+    let valid = observed_one_static_named_root_program();
+    for mutation in 0..16 {
+        let mut invalid = valid.clone();
+        match mutation {
+            0 => invalid.xml_boundary = None,
+            1 => {
+                invalid.xml_boundary.as_mut().unwrap().input = crate::XmlInputPolicy {
+                    allow_inactive_root_type_members: false,
+                    root_view_policy: false,
+                }
+            }
+            2 => invalid.extra_sources.push(crate::NamedSourceProgram {
+                name: "reference".into(),
+                source: valid.source.clone(),
+                dynamic: None,
+            }),
+            3 => {
+                let mut other = invalid.extra_targets[0].clone();
+                other.name = "other".into();
+                invalid.extra_targets.push(other);
+            }
+            4 => invalid.extra_targets[0].root.iteration = Some(IterationPlan::source(vec![])),
+            5 => invalid.root.iteration = Some(IterationPlan::source(vec![])),
+            6 => invalid.extra_targets[0].root.repeating = true,
+            7 => invalid.extra_targets[0].target.repeating = true,
+            8 => invalid.extra_targets[0]
+                .root
+                .children
+                .push(empty_target_scope()),
+            9 => invalid.extra_targets[0].root.target_field = "descendant".into(),
+            10 => {
+                invalid.extra_targets[0].root.construction = TargetConstruction::Scalar {
+                    expression: 1,
+                    target_domain: ScalarType::Bool.into(),
+                }
+            }
+            11 => invalid.target.repeating = true,
+            12 => invalid.extra_targets[0].target = SchemaNode::scalar("Audit", ScalarType::Bool),
+            13 => invalid.xml_boundary.as_mut().unwrap().extra_outputs[0].name = "wrong".into(),
+            14 => invalid.xml_boundary.as_mut().unwrap().extra_inputs.push(
+                crate::NamedXmlInputPolicy {
+                    name: "reference".into(),
+                    input: crate::XmlInputPolicy {
+                        allow_inactive_root_type_members: false,
+                        root_view_policy: false,
+                    },
+                },
+            ),
+            15 => {
+                invalid
+                    .xml_boundary
+                    .as_mut()
+                    .unwrap()
+                    .input
+                    .root_view_policy = false
+            }
+            _ => unreachable!(),
+        }
+        let expressions = invalid
+            .expressions
+            .iter()
+            .map(|node| (node.id, &node.expression))
+            .collect();
+        // Inspect this ownership proof directly so an earlier XML-policy error
+        // cannot hide a newly granted root-reader permission.
+        assert_eq!(
+            super::super::primary_root::validate(&invalid, &expressions),
+            Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 1 }),
+            "mutation {mutation}"
+        );
+        assert!(
+            validate_program(&invalid).is_err(),
+            "public mutation {mutation}"
+        );
+    }
+}
+
+#[test]
+fn observed_one_static_named_root_program_still_rejects_private_and_failure_consumers() {
+    let valid = observed_one_static_named_root_program();
+    let mut failure = valid.clone();
+    failure.failure_rules.push(crate::FailureRule {
+        iteration: crate::FailureIteration::Source(SourceIteration::new(vec![])),
+        selection: crate::FailureSelection::WhenTrue(1),
+        message: None,
+    });
+    assert_eq!(
+        validate_program(&failure),
+        Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 1 })
+    );
+    let mut reducer = valid;
+    reducer.expressions.push(ExpressionNode {
+        id: 2,
+        expression: Expression::Aggregate {
+            function: AggregateFunction::Count,
+            collection: vec![],
+            value: AggregateValue::Expression(1),
+            arg: None,
+        },
+    });
+    reducer.extra_targets[0].root.bindings[0].expression = 2;
+    assert_eq!(
+        validate_program(&reducer),
+        Err(ProgramValidationError::PrimaryRootRequiresStaticBinding { node: 2 })
+    );
+}

@@ -317,8 +317,11 @@ fn named_outputs_and_named_drivers_remain_outside_static_input_adapter() {
                 root_view_policy: false,
             },
         });
-    assert!(
-        matches!(dynamic.xml_output_mode(), Err(ProgramValidationError::InvalidXmlBoundary { reason }) if reason.contains("at most one dynamic named input"))
+    assert_eq!(
+        dynamic.xml_output_mode(),
+        Ok(Some(
+            XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
+        ))
     );
     let mut named_driver = valid;
     let row = named_driver.source.child("Row").unwrap().clone();
