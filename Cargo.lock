@@ -960,6 +960,7 @@ version = "0.1.0"
 dependencies = [
  "codegen-schema",
  "engine",
+ "format-xml",
  "ir",
  "mapping",
  "serde_json",

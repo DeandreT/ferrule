@@ -297,7 +297,7 @@ fn unsupported_second_driver_keeps_valid_core_targets_and_omits_the_whole_adapte
 }
 
 #[test]
-fn a_static_named_root_among_dynamic_roots_refuses_only_the_optional_xml_adapter() {
+fn one_static_named_root_and_one_document_list_keep_the_complete_native_outputs() {
     let mut project = project();
     project.extra_targets[1].root.iteration = ScopeIteration::None;
     project.graph.nodes.insert(
@@ -307,7 +307,10 @@ fn a_static_named_root_among_dynamic_roots_refuses_only_the_optional_xml_adapter
         },
     );
     let program = lower(&project).unwrap();
-    assert_eq!(program.xml_output_mode(), Ok(None));
+    assert_eq!(
+        program.xml_output_mode(),
+        Ok(Some(XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs))
+    );
     assert_eq!(program.extra_targets.len(), 2);
     assert!(
         program.extra_targets[0]
@@ -334,9 +337,18 @@ fn a_static_named_root_among_dynamic_roots_refuses_only_the_optional_xml_adapter
 
     let mut explicit = lower(&self::project()).unwrap();
     explicit.extra_targets[1].root.iteration = None;
-    assert!(matches!(explicit.xml_output_mode(),
-        Err(ProgramValidationError::InvalidXmlBoundary { reason })
-            if reason.contains("a-receipt") && reason.contains("dynamic-document root")));
+    explicit
+        .expressions
+        .iter_mut()
+        .find(|expression| expression.id == 4)
+        .unwrap()
+        .expression = crate::Expression::Const {
+        value: Value::Int(23),
+    };
+    assert_eq!(
+        explicit.xml_output_mode(),
+        Ok(Some(XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs))
+    );
 }
 
 #[test]

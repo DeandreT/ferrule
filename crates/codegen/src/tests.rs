@@ -1610,3 +1610,5 @@ fn rejects_filters_without_iteration_before_subset_lowering() {
         }]
     );
 }
+
+mod xml_mixed_named_outputs;
