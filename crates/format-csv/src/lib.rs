@@ -15,8 +15,11 @@ use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{CsvTextRepairDependency, FormatOptions};
 use thiserror::Error;
 
+mod bounded;
 mod fixed_width;
 mod read;
+
+pub use bounded::{CsvBoundedError, to_bytes_with_options_bounded, to_string_with_options_bounded};
 
 pub use read::{
     CsvReadOptions, from_str, from_str_with_dialect, from_str_with_options, from_str_with_quote,
@@ -443,6 +446,49 @@ pub fn to_string_with_options(
     rows: &[Instance],
     options: &CsvWriteOptions,
 ) -> Result<String, CsvFormatError> {
+    let PreparedCsv {
+        fields,
+        delimiter,
+        quote,
+        records,
+    } = prepare_csv(schema, rows, options)?;
+    let mut writer = csv::WriterBuilder::new()
+        .delimiter(delimiter)
+        .quote(quote.unwrap_or(b'"'))
+        .quote_style(if options.quote_disabled {
+            csv::QuoteStyle::Never
+        } else {
+            csv::QuoteStyle::Necessary
+        })
+        .from_writer(Vec::new());
+    if options.has_headers {
+        writer.write_record(fields.iter().map(|(n, _)| *n))?;
+    }
+    for record in records {
+        writer.write_record(record)?;
+    }
+    writer.flush()?;
+    let bytes = writer.into_inner().map_err(|error| error.into_error())?;
+    let mut text = String::from_utf8(bytes)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    if options.utf8_bom {
+        text.insert(0, '\u{feff}');
+    }
+    Ok(text)
+}
+
+struct PreparedCsv<'a> {
+    fields: Vec<(&'a str, ScalarType)>,
+    delimiter: u8,
+    quote: Option<u8>,
+    records: Vec<Vec<String>>,
+}
+
+fn prepare_csv<'a>(
+    schema: &'a SchemaNode,
+    rows: &[Instance],
+    options: &CsvWriteOptions,
+) -> Result<PreparedCsv<'a>, CsvFormatError> {
     require_executable_dependency(options.repair_dependency)?;
     let fields = row_fields(schema)?;
     let (delimiter, quote) =
@@ -476,29 +522,12 @@ pub fn to_string_with_options(
             }
         }
     }
-    let mut writer = csv::WriterBuilder::new()
-        .delimiter(delimiter)
-        .quote(quote.unwrap_or(b'"'))
-        .quote_style(if options.quote_disabled {
-            csv::QuoteStyle::Never
-        } else {
-            csv::QuoteStyle::Necessary
-        })
-        .from_writer(Vec::new());
-    if options.has_headers {
-        writer.write_record(fields.iter().map(|(n, _)| *n))?;
-    }
-    for record in records {
-        writer.write_record(record)?;
-    }
-    writer.flush()?;
-    let bytes = writer.into_inner().map_err(|error| error.into_error())?;
-    let mut text = String::from_utf8(bytes)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-    if options.utf8_bom {
-        text.insert(0, '\u{feff}');
-    }
-    Ok(text)
+    Ok(PreparedCsv {
+        fields,
+        delimiter,
+        quote,
+        records,
+    })
 }
 
 fn requires_quoting(value: &str, delimiter: u8) -> bool {
