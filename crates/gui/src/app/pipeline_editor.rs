@@ -478,6 +478,9 @@ impl FerruleApp {
     }
 
     pub(super) fn guard_app_close_requested(&mut self, ctx: &egui::Context, close_requested: bool) {
+        if close_requested && self.guard_rest_run_close(ctx) {
+            return;
+        }
         if !close_requested || self.allow_close {
             return;
         }

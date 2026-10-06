@@ -809,7 +809,8 @@ impl engine::DebugHook for PreviewDebugHook {
 
 impl FerruleApp {
     pub(super) fn can_preview(&self) -> bool {
-        self.pending_preview.is_none()
+        !self.rest_run_busy()
+            && self.pending_preview.is_none()
             && matches!(
                 self.mapping_workspace.active,
                 MappingDocument::Main | MappingDocument::Target(_)
@@ -817,6 +818,9 @@ impl FerruleApp {
     }
 
     pub(super) fn begin_preview(&mut self) {
+        if self.rest_run_busy() {
+            return;
+        }
         let (target, output_identity) = match self.mapping_workspace.active {
             MappingDocument::Main => (
                 PreviewTarget::Primary,

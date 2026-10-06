@@ -66,6 +66,7 @@ pub use rest_json::{
     MAX_REST_JSON_URL_BYTES, RestExecutionPolicy, RestJsonError, RestJsonHeader,
     RestJsonMappingOptions, RestJsonMethod, RestJsonRequest, RestJsonResponse, fetch_rest_json,
     run_project_rest_json_request_file_payloads, run_project_value_rest_json_payloads,
+    run_project_value_rest_json_request_file_payloads,
 };
 pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;
