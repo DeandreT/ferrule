@@ -230,9 +230,47 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
                 && !target.target.repeating
                 && matches!(target.target.kind, SchemaKind::Group { .. })
         });
+    // All roots in the newly proved combined route are flat independently of
+    // primitive inventory or output count. Complete policy checks still follow.
+    let root_view_static_combined = !program.extra_sources.is_empty()
+        && !program.extra_targets.is_empty()
+        && policy.extra_inputs.len() == program.extra_sources.len()
+        && program
+            .extra_sources
+            .iter()
+            .zip(&policy.extra_inputs)
+            .all(|(source, input)| {
+                source.dynamic.is_none()
+                    && source.name == input.name
+                    && input.input.profile() == Some(crate::XmlInputProfile::Structured)
+                    && ir::xml_structured_document_input_is_supported(&source.source)
+            })
+        && policy.extra_outputs.len() == program.extra_targets.len()
+        && program
+            .extra_targets
+            .iter()
+            .zip(&policy.extra_outputs)
+            .all(|(target, output)| target.name == output.name)
+        && std::iter::once((&program.target, &program.root))
+            .chain(
+                program
+                    .extra_targets
+                    .iter()
+                    .map(|target| (&target.target, &target.root)),
+            )
+            .all(|(schema, scope)| {
+                !schema.repeating
+                    && matches!(schema.kind, SchemaKind::Group { .. })
+                    && (scope.target_field.is_empty() || scope.target_field == schema.name)
+                    && scope.iteration.is_none()
+                    && !scope.repeating
+                    && matches!(scope.construction, crate::TargetConstruction::Group)
+                    && scope.children.is_empty()
+            });
     if policy.input.profile() == Some(crate::XmlInputProfile::RootView)
         && !root_view_static_inputs
         && !root_view_static_output
+        && !root_view_static_combined
         && (!program.extra_sources.is_empty()
             || !policy.extra_inputs.is_empty()
             || !program.extra_targets.is_empty()

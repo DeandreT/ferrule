@@ -83,8 +83,8 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             });
         }
     }
-    // Observed inputs keep separate static-input and static-output routes.
-    // Combining the two routes or adding dynamic boundaries remains unsupported.
+    // Preserve the historical static-input and static-output routes.
+    // The combined route below has its own complete admission proof.
     let root_view_static_inputs = primary_xml
         && !project.extra_sources.is_empty()
         && project.extra_targets.is_empty()
@@ -139,10 +139,57 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
                 && matches!(target.schema.kind, SchemaKind::Group { .. })
                 && xml_document_output_options(&target.options)
         });
+    // Unlike the historical input-only/one-output routes, every combined root
+    // must be flat even with one named output and no primary-root expressions.
+    let root_view_static_combined = primary_xml
+        && project.source_options
+            == (mapping::FormatOptions {
+                xml_document: true,
+                xml_allow_inactive_root_type_members: true,
+                xml_root_view_read_policy: true,
+                ..Default::default()
+            })
+        && !project.extra_sources.is_empty()
+        && !project.extra_targets.is_empty()
+        && project.extra_sources.iter().all(|source| {
+            source.dynamic_path.is_none()
+                && source.options
+                    == (mapping::FormatOptions {
+                        xml_document: true,
+                        ..Default::default()
+                    })
+                && ir::xml_structured_document_input_is_supported(&source.schema)
+        })
+        && std::iter::once((&project.target, &project.root, &project.target_options))
+            .chain(
+                project
+                    .extra_targets
+                    .iter()
+                    .map(|target| (&target.schema, &target.root, &target.options)),
+            )
+            .all(|(schema, scope, options)| {
+                !schema.repeating
+                    && matches!(schema.kind, SchemaKind::Group { .. })
+                    && (scope.target_field.is_empty() || scope.target_field == schema.name)
+                    && matches!(scope.iteration, ScopeIteration::None)
+                    && matches!(scope.construction, ScopeConstruction::Constructed)
+                    && scope.dynamic_bindings.is_empty()
+                    && scope.filter.is_none()
+                    && scope.post_group_filter.is_none()
+                    && !scope.has_grouping()
+                    && !scope.has_sort()
+                    && scope.windows.is_empty()
+                    && !scope.merge_dynamic_fields
+                    && scope.children.is_empty()
+                    && scope.dynamic_children.is_empty()
+                    && scope.concatenated().is_none()
+                    && xml_document_output_options(options)
+            });
     if primary_xml
         && (!project.extra_sources.is_empty() || !project.extra_targets.is_empty())
         && !root_view_static_inputs
         && !root_view_static_output
+        && !root_view_static_combined
     {
         reader_diagnostics.push(Diagnostic::Validation {
             location: "source format options".into(),
@@ -181,7 +228,8 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         if options.xml_schema_hints.is_some()
             && !(ordinary_xml_input
                 || (primary_xml && location == "target format options")
-                || root_view_static_output)
+                || root_view_static_output
+                || root_view_static_combined)
         {
             hint_diagnostics.push(Diagnostic::Validation {
                 location,
